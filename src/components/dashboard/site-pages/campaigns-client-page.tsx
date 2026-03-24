@@ -4,19 +4,19 @@ import { PageHeading } from "@/components/dashboard/page-heading";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
-interface VisitorsClientPageProps {
+interface CampaignsClientPageProps {
   locale: Locale;
   messages: AppMessages;
   siteId: string;
   pathname: string;
 }
 
-export function VisitorsClientPage({ messages }: VisitorsClientPageProps) {
+export function CampaignsClientPage({ messages }: CampaignsClientPageProps) {
   return (
     <div className="space-y-6">
       <PageHeading
-        title={messages.visitors.title}
-        subtitle={messages.visitors.subtitle}
+        title={messages.campaigns.title}
+        subtitle={messages.campaigns.subtitle}
       />
     </div>
   );

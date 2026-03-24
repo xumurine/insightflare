@@ -11,7 +11,10 @@ export interface AppMessages {
     referrers: string;
     sessions: string;
     events: string;
+    funnels: string;
+    campaigns: string;
     visitors: string;
+    retention: string;
     geo: string;
     devices: string;
     browsers: string;
@@ -171,10 +174,22 @@ export interface AppMessages {
   pages: {
     title: string;
     subtitle: string;
+    tabPages: string;
+    tabEntryPages: string;
+    tabExitPages: string;
   };
   referrers: {
     title: string;
     subtitle: string;
+  };
+  campaigns: {
+    title: string;
+    subtitle: string;
+    tabSource: string;
+    tabMedium: string;
+    tabCampaign: string;
+    tabTerm: string;
+    tabContent: string;
   };
   sessions: {
     title: string;
@@ -184,9 +199,43 @@ export interface AppMessages {
     title: string;
     subtitle: string;
   };
+  funnels: {
+    title: string;
+    subtitle: string;
+    createFunnel: string;
+    editFunnel: string;
+    funnelName: string;
+    funnelNamePlaceholder: string;
+    addStep: string;
+    removeStep: string;
+    stepType: string;
+    stepValue: string;
+    pageview: string;
+    event: string;
+    save: string;
+    cancel: string;
+    delete: string;
+    deleteConfirm: string;
+    noFunnels: string;
+    selectFunnel: string;
+    conversionRate: string;
+    dropOff: string;
+    overallConversion: string;
+    step: string;
+  };
   visitors: {
     title: string;
     subtitle: string;
+  };
+  retention: {
+    title: string;
+    subtitle: string;
+    granularityDay: string;
+    granularityWeek: string;
+    granularityMonth: string;
+    cohortDate: string;
+    cohortSize: string;
+    periodLabel: string;
   };
   geo: {
     title: string;

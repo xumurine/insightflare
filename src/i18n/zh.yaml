@@ -6,7 +6,10 @@ navigation:
   referrers: 来源
   sessions: 会话
   events: 事件
+  funnels: 漏斗
+  campaigns: 推广
   visitors: 访客
+  retention: 留存
   geo: 位置
   devices: 设备
   browsers: 浏览器
@@ -172,18 +175,61 @@ overview:
 pages:
   title: 页面分析
   subtitle: 选定时间范围内访问最多的路径。
+  tabPages: 页面
+  tabEntryPages: 入口页面
+  tabExitPages: 出口页面
 referrers:
   title: 来源分析
   subtitle: 流量来源渠道分布。
+campaigns:
+  title: 推广活动
+  subtitle: UTM 推广活动表现与流量归因。
+  tabSource: 来源
+  tabMedium: 媒介
+  tabCampaign: 活动
+  tabTerm: 关键词
+  tabContent: 内容
 sessions:
   title: 会话列表
   subtitle: 用于分析访问质量的会话明细。
 events:
   title: 事件流
   subtitle: 用于排查问题的原始事件列表。
+funnels:
+  title: 漏斗分析
+  subtitle: 衡量多步骤用户旅程的转化情况。
+  createFunnel: 创建漏斗
+  editFunnel: 编辑漏斗
+  funnelName: 漏斗名称
+  funnelNamePlaceholder: "例如：注册流程"
+  addStep: 添加步骤
+  removeStep: 删除
+  stepType: 步骤类型
+  stepValue: 值
+  pageview: 页面浏览
+  event: 自定义事件
+  save: 保存
+  cancel: 取消
+  delete: 删除漏斗
+  deleteConfirm: 确定要删除这个漏斗吗？
+  noFunnels: 尚未配置漏斗。创建一个以开始跟踪转化。
+  selectFunnel: 选择漏斗
+  conversionRate: 转化率
+  dropOff: 流失率
+  overallConversion: 整体转化率
+  step: "步骤 {n}"
 visitors:
   title: 访客分析
   subtitle: 访客级别明细与最近活跃情况。
+retention:
+  title: 留存分析
+  subtitle: 基于群组的访客回访分析。
+  granularityDay: 按天
+  granularityWeek: 按周
+  granularityMonth: 按月
+  cohortDate: 群组
+  cohortSize: 人数
+  periodLabel: "第 {n} 期"
 geo:
   title: 位置分析
   subtitle: 研究任意地点的访问效果

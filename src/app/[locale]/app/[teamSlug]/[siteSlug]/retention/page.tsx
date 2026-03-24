@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
-import { SessionsClientPage } from "@/components/dashboard/site-pages/sessions-client-page";
+import { RetentionClientPage } from "@/components/dashboard/site-pages/retention-client-page";
 import { buildSitePath, getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 
-interface SessionsPageProps {
+interface RetentionPageProps {
   params: Promise<{
     locale: string;
     teamSlug: string;
@@ -12,7 +12,7 @@ interface SessionsPageProps {
   }>;
 }
 
-export default async function SessionsPage({ params }: SessionsPageProps) {
+export default async function RetentionPage({ params }: RetentionPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
@@ -24,11 +24,11 @@ export default async function SessionsPage({ params }: SessionsPageProps) {
     resolvedLocale,
     context.activeTeam.slug,
     context.activeSite.slug,
-    "sessions",
+    "retention",
   );
 
   return (
-    <SessionsClientPage
+    <RetentionClientPage
       locale={resolvedLocale}
       messages={messages}
       siteId={context.activeSite.id}

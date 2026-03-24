@@ -16,8 +16,13 @@ import type {
   OverviewGeoPointsData,
   PagesData,
   ReferrersData,
+  RetentionData,
   TrendData,
   VisitorsData,
+  FunnelListData,
+  FunnelDefinition,
+  FunnelStep,
+  FunnelAnalysisData,
 } from "@/lib/edge-client";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 
@@ -190,6 +195,29 @@ async function fetchPrivateJson<T>(path: string, params?: Record<string, string 
   return (await res.json()) as T;
 }
 
+async function fetchPrivateJsonMutate<T>(
+  path: string,
+  method: "POST" | "DELETE",
+  params?: Record<string, string | number>,
+  body?: unknown,
+): Promise<T> {
+  const url = `${path}${toQueryString(params)}`;
+  const res = await fetch(url, {
+    method,
+    credentials: "include",
+    cache: "no-store",
+    ...(body != null ? {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    } : {}),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Request failed (${res.status} ${path}): ${text}`);
+  }
+  return (await res.json()) as T;
+}
+
 export async function fetchOverview(
   siteId: string,
   window: TimeWindow,
@@ -267,6 +295,88 @@ export async function fetchReferrers(
       filters,
     ),
   );
+}
+
+export type UtmDimensionTab = "source" | "medium" | "campaign" | "term" | "content";
+
+const utmPathMap: Record<UtmDimensionTab, string> = {
+  source: "utm-source",
+  medium: "utm-medium",
+  campaign: "utm-campaign",
+  term: "utm-term",
+  content: "utm-content",
+};
+
+export async function fetchUtmDimension(
+  siteId: string,
+  window: TimeWindow,
+  tab: UtmDimensionTab,
+  filters?: DashboardFilters,
+): Promise<DimensionData> {
+  return fetchPrivateJson<DimensionData>(`/api/private/${utmPathMap[tab]}`, withFilters({
+    siteId,
+    from: window.from,
+    to: window.to,
+    limit: 100,
+  }, filters));
+}
+
+export type RetentionGranularity = "day" | "week" | "month";
+
+export function emptyRetentionData(): RetentionData {
+  return { ok: true, granularity: "week", cohorts: [] };
+}
+
+export async function fetchRetention(
+  siteId: string,
+  window: TimeWindow,
+  granularity: RetentionGranularity,
+  filters?: DashboardFilters,
+): Promise<RetentionData> {
+  return fetchPrivateJson<RetentionData>("/api/private/retention", withFilters({
+    siteId,
+    from: window.from,
+    to: window.to,
+    granularity,
+  }, filters));
+}
+
+export function emptyFunnelList(): FunnelListData {
+  return { ok: true, funnels: [] };
+}
+
+export function emptyFunnelAnalysis(): FunnelAnalysisData {
+  return { ok: true, steps: [], overallConversionRate: 0 };
+}
+
+export async function fetchFunnels(siteId: string): Promise<FunnelListData> {
+  return fetchPrivateJson<FunnelListData>("/api/private/funnels", { siteId });
+}
+
+export async function createFunnel(
+  siteId: string,
+  name: string,
+  steps: FunnelStep[],
+): Promise<{ ok: boolean; funnel: FunnelDefinition }> {
+  return fetchPrivateJsonMutate("/api/private/funnels", "POST", { siteId }, { name, steps });
+}
+
+export async function deleteFunnel(siteId: string, funnelId: string): Promise<{ ok: boolean }> {
+  return fetchPrivateJsonMutate("/api/private/funnels", "DELETE", { siteId, id: funnelId });
+}
+
+export async function fetchFunnelAnalysis(
+  siteId: string,
+  funnelId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+): Promise<FunnelAnalysisData> {
+  return fetchPrivateJson<FunnelAnalysisData>("/api/private/funnel-analysis", withFilters({
+    siteId,
+    funnelId,
+    from: window.from,
+    to: window.to,
+  }, filters));
 }
 
 export async function fetchOverviewGeoPoints(

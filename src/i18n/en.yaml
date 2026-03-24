@@ -6,7 +6,10 @@ navigation:
   referrers: Referrers
   sessions: Sessions
   events: Events
+  funnels: Funnels
+  campaigns: Campaigns
   visitors: Visitors
+  retention: Retention
   geo: Location
   devices: Devices
   browsers: Browsers
@@ -172,18 +175,61 @@ overview:
 pages:
   title: Pages
   subtitle: Most visited paths in the selected range.
+  tabPages: Pages
+  tabEntryPages: Entry Pages
+  tabExitPages: Exit Pages
 referrers:
   title: Referrers
   subtitle: Where traffic comes from.
+campaigns:
+  title: Campaigns
+  subtitle: UTM campaign performance and traffic attribution.
+  tabSource: Source
+  tabMedium: Medium
+  tabCampaign: Campaign
+  tabTerm: Term
+  tabContent: Content
 sessions:
   title: Sessions
   subtitle: Session-level detail for quality analysis.
 events:
   title: Events
   subtitle: Raw event stream for diagnostics.
+funnels:
+  title: Funnels
+  subtitle: Measure conversion through multi-step user journeys.
+  createFunnel: Create Funnel
+  editFunnel: Edit Funnel
+  funnelName: Funnel Name
+  funnelNamePlaceholder: "e.g. Signup Flow"
+  addStep: Add Step
+  removeStep: Remove
+  stepType: Step Type
+  stepValue: Value
+  pageview: Pageview
+  event: Custom Event
+  save: Save
+  cancel: Cancel
+  delete: Delete Funnel
+  deleteConfirm: Are you sure you want to delete this funnel?
+  noFunnels: No funnels configured yet. Create one to start tracking conversions.
+  selectFunnel: Select a funnel
+  conversionRate: Conversion
+  dropOff: Drop-off
+  overallConversion: Overall Conversion
+  step: "Step {n}"
 visitors:
   title: Visitors
   subtitle: Visitor-level breakdown and recency.
+retention:
+  title: Retention
+  subtitle: Cohort-based visitor return analysis.
+  granularityDay: Daily
+  granularityWeek: Weekly
+  granularityMonth: Monthly
+  cohortDate: Cohort
+  cohortSize: Size
+  periodLabel: "Period {n}"
 geo:
   title: Location Analysis
   subtitle: Study traffic performance for any location.

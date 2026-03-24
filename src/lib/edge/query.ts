@@ -3328,6 +3328,313 @@ async function handleVisitors(
   return jsonResponse({ ok: true, data: mapVisitors(rows) });
 }
 
+async function handleRetention(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const granularity = (url.searchParams.get("granularity") || "week") as "day" | "week" | "month";
+
+  const bucketExpr =
+    granularity === "day"
+      ? "started_at / 86400000 * 86400000"
+      : granularity === "month"
+        ? "(((started_at / 1000) - ((started_at / 1000) % 2592000)) * 1000)"
+        : "started_at / 604800000 * 604800000";
+
+  const filter = buildVisitFilterSql(filters);
+  const filterAndClause = filter.clause
+    ? filter.clause.replace(/^WHERE\s+/i, "AND ")
+    : "";
+  const sql = `
+WITH
+${buildVisitSourceCte()},
+filtered_visits AS (
+  SELECT visitor_id, started_at
+  FROM visit_source
+  WHERE visitor_id != ''
+  ${filterAndClause}
+),
+cohort_assign AS (
+  SELECT
+    visitor_id,
+    MIN(${bucketExpr}) AS cohort_bucket
+  FROM filtered_visits
+  GROUP BY visitor_id
+),
+return_data AS (
+  SELECT
+    ca.cohort_bucket,
+    ${bucketExpr} AS visit_bucket,
+    fv.visitor_id
+  FROM filtered_visits fv
+  JOIN cohort_assign ca ON fv.visitor_id = ca.visitor_id
+)
+SELECT
+  cohort_bucket AS cohortBucket,
+  visit_bucket AS visitBucket,
+  COUNT(DISTINCT visitor_id) AS visitors
+FROM return_data
+GROUP BY cohort_bucket, visit_bucket
+ORDER BY cohort_bucket ASC, visit_bucket ASC
+`;
+
+  const rows = await queryD1All<Record<string, unknown>>(
+    env,
+    sql,
+    [...visitSourceBindings(siteId, window), ...filter.bindings],
+  );
+
+  const cohortMap = new Map<number, { size: number; periods: Map<number, number> }>();
+  for (const row of rows) {
+    const cb = Number(row.cohortBucket ?? 0);
+    const vb = Number(row.visitBucket ?? 0);
+    const visitors = Number(row.visitors ?? 0);
+
+    if (!cohortMap.has(cb)) {
+      cohortMap.set(cb, { size: 0, periods: new Map() });
+    }
+    const cohort = cohortMap.get(cb)!;
+    cohort.periods.set(vb, visitors);
+    if (vb === cb) {
+      cohort.size = visitors;
+    }
+  }
+
+  const divisor =
+    granularity === "day" ? 86400000
+      : granularity === "month" ? 2592000000
+        : 604800000;
+
+  const cohorts = Array.from(cohortMap.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([bucket, { size, periods }]) => ({
+      bucket,
+      size,
+      periods: Array.from(periods.entries())
+        .sort(([a], [b]) => a - b)
+        .map(([vb, visitors]) => {
+          const index = Math.round((vb - bucket) / divisor);
+          return {
+            index,
+            visitors,
+            rate: size > 0 ? visitors / size : 0,
+          };
+        }),
+    }));
+
+  return jsonResponse({ ok: true, granularity, cohorts });
+}
+
+async function handleFunnelList(
+  env: Env,
+  siteId: string,
+  _url: URL,
+): Promise<Response> {
+  const rows = await queryD1All<Record<string, unknown>>(
+    env,
+    "SELECT id, site_id, type, name, config_json, created_at, updated_at FROM widgets WHERE site_id = ? AND type = 'funnel' ORDER BY created_at DESC",
+    [siteId],
+  );
+  const funnels = rows.map((row) => ({
+    id: String(row.id ?? ""),
+    siteId: String(row.site_id ?? ""),
+    name: String(row.name ?? ""),
+    steps: JSON.parse(String(row.config_json ?? "[]")),
+    createdAt: Number(row.created_at ?? 0),
+    updatedAt: Number(row.updated_at ?? 0),
+  }));
+  return jsonResponse({ ok: true, funnels });
+}
+
+async function handleFunnelCreate(
+  env: Env,
+  siteId: string,
+  request: Request,
+): Promise<Response> {
+  let body: { name?: string; steps?: Array<{ type: string; value: string }> };
+  try {
+    body = await request.json();
+  } catch {
+    return badRequest("Invalid JSON body");
+  }
+  const name = String(body.name ?? "").trim();
+  if (!name) return badRequest("Name is required");
+  const steps = Array.isArray(body.steps) ? body.steps : [];
+  if (steps.length < 2) return badRequest("At least 2 steps are required");
+  for (const step of steps) {
+    if (!step.type || !step.value) return badRequest("Each step needs type and value");
+    if (step.type !== "pageview" && step.type !== "event") return badRequest("Step type must be pageview or event");
+  }
+
+  const id = crypto.randomUUID();
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.prepare(
+    "INSERT INTO widgets (id, site_id, type, name, config_json, created_at, updated_at) VALUES (?, ?, 'funnel', ?, ?, ?, ?)",
+  ).bind(id, siteId, name, JSON.stringify(steps), now, now).run();
+
+  return jsonResponse({
+    ok: true,
+    funnel: { id, siteId, name, steps, createdAt: now, updatedAt: now },
+  }, 201);
+}
+
+async function handleFunnelDelete(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const funnelId = url.searchParams.get("id");
+  if (!funnelId) return badRequest("Funnel id is required");
+  await env.DB.prepare(
+    "DELETE FROM widgets WHERE id = ? AND site_id = ? AND type = 'funnel'",
+  ).bind(funnelId, siteId).run();
+  return jsonResponse({ ok: true });
+}
+
+async function handleFunnelAnalysis(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const funnelId = url.searchParams.get("funnelId");
+  if (!funnelId) return badRequest("funnelId is required");
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+
+  const funnelRow = await queryD1All<Record<string, unknown>>(
+    env,
+    "SELECT config_json FROM widgets WHERE id = ? AND site_id = ? AND type = 'funnel'",
+    [funnelId, siteId],
+  );
+  if (funnelRow.length === 0) return notFound();
+  const steps: Array<{ type: string; value: string }> = JSON.parse(
+    String(funnelRow[0].config_json ?? "[]"),
+  );
+  if (steps.length < 2) return badRequest("Funnel has fewer than 2 steps");
+
+  const filter = buildVisitFilterSql(filters);
+
+  const pageviewSteps = steps.filter((s) => s.type === "pageview");
+  const eventSteps = steps.filter((s) => s.type === "event");
+
+  let sessionData: Map<string, Array<{ type: string; value: string; ts: number }>> = new Map();
+
+  if (pageviewSteps.length > 0) {
+    const pvFilter = filter.clause
+      ? filter.clause.replace(/^WHERE\s+/i, "AND ")
+      : "";
+    const pvSql = `
+WITH ${buildVisitSourceCte()},
+filtered AS (
+  SELECT session_id, pathname, started_at
+  FROM visit_source
+  WHERE session_id != '' ${pvFilter}
+)
+SELECT session_id AS sessionId, pathname, started_at AS ts
+FROM filtered
+WHERE pathname IN (${pageviewSteps.map(() => "?").join(",")})
+ORDER BY ts ASC
+`;
+    const pvBindings = [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      ...pageviewSteps.map((s) => s.value),
+    ];
+    const pvRows = await queryD1All<Record<string, unknown>>(env, pvSql, pvBindings);
+    for (const row of pvRows) {
+      const sid = String(row.sessionId ?? "");
+      if (!sid) continue;
+      if (!sessionData.has(sid)) sessionData.set(sid, []);
+      sessionData.get(sid)!.push({
+        type: "pageview",
+        value: String(row.pathname ?? ""),
+        ts: Number(row.ts ?? 0),
+      });
+    }
+  }
+
+  if (eventSteps.length > 0) {
+    const evSql = `
+WITH ${buildCustomEventSourceCte()},
+filtered AS (
+  SELECT session_id, event_name, occurred_at
+  FROM event_source
+  WHERE session_id != ''
+)
+SELECT session_id AS sessionId, event_name AS eventName, occurred_at AS ts
+FROM filtered
+WHERE event_name IN (${eventSteps.map(() => "?").join(",")})
+ORDER BY ts ASC
+`;
+    const evBindings = [
+      ...eventSourceBindings(siteId, window),
+      ...eventSteps.map((s) => s.value),
+    ];
+    const evRows = await queryD1All<Record<string, unknown>>(env, evSql, evBindings);
+    for (const row of evRows) {
+      const sid = String(row.sessionId ?? "");
+      if (!sid) continue;
+      if (!sessionData.has(sid)) sessionData.set(sid, []);
+      sessionData.get(sid)!.push({
+        type: "event",
+        value: String(row.eventName ?? ""),
+        ts: Number(row.ts ?? 0),
+      });
+    }
+  }
+
+  const stepResults = steps.map((step, i) => ({
+    index: i,
+    label: step.value,
+    type: step.type,
+    sessions: 0,
+    dropOffRate: 0,
+    conversionRate: 0,
+  }));
+
+  for (const [, events] of sessionData) {
+    events.sort((a, b) => a.ts - b.ts);
+    let lastTs = -1;
+    let matched = true;
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      const matchIdx = events.findIndex(
+        (e) => e.type === step.type && e.value === step.value && e.ts > lastTs,
+      );
+      if (matchIdx === -1) {
+        matched = false;
+        break;
+      }
+      lastTs = events[matchIdx].ts;
+      stepResults[i].sessions++;
+    }
+    if (!matched) {
+      // partial match already counted in the loop
+    }
+  }
+
+  const totalSessions = stepResults[0].sessions || 1;
+  for (let i = 0; i < stepResults.length; i++) {
+    stepResults[i].conversionRate = stepResults[i].sessions / totalSessions;
+    stepResults[i].dropOffRate = i === 0
+      ? 0
+      : 1 - (stepResults[i].sessions / (stepResults[i - 1].sessions || 1));
+  }
+
+  return jsonResponse({
+    ok: true,
+    steps: stepResults,
+    overallConversionRate: stepResults.length > 0
+      ? (stepResults[stepResults.length - 1].sessions / totalSessions)
+      : 0,
+  });
+}
+
 async function handleDimension(
   env: Env,
   siteId: string,
@@ -3776,8 +4083,6 @@ async function routeQuery(
 ): Promise<Response> {
   if (pathname === "overview") return handleOverview(env, siteId, url);
   if (pathname === "trend") return handleTrend(env, siteId, url);
-  if (pathname === "pages") return handlePages(env, siteId, url, !options.publicMode);
-  if (pathname === "referrers") return handleReferrers(env, siteId, url);
   if (options.publicMode) return notFound();
   if (pathname === "browser-trend") return handleBrowserTrend(env, siteId, url);
   if (pathname === "browser-engine-trend") {
@@ -3798,11 +4103,9 @@ async function routeQuery(
   if (pathname === "client-cross-breakdown") {
     return handleClientCrossBreakdown(env, siteId, url);
   }
-  if (pathname === "visitors") return handleVisitors(env, siteId, url);
   if (pathname === "countries") {
     return handleDimension(env, siteId, url, "country", { ignoreGeo: true });
   }
-  if (pathname === "event-types") return handleEventTypes(env, siteId, url);
   if (pathname === "filter-options") return handleFilterOptions(env, siteId, url);
   if (pathname === "overview-page-path") {
     return handleOverviewPageTab(env, siteId, url, "path");

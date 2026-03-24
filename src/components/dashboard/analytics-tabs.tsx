@@ -16,12 +16,14 @@ import {
   RiDashboardLine,
   RiFileList3Line,
   RiFlashlightLine,
+  RiFilter2Line,
   RiGlobalLine,
   RiMapPin2Line,
+  RiMegaphoneLine,
   RiPulseLine,
+  RiRepeatLine,
   RiSettings3Line,
   RiShareForwardLine,
-  RiTimeLine,
   RiUser3Line,
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
@@ -31,9 +33,11 @@ type AnalyticsTabKey =
   | "realtime"
   | "pages"
   | "referrers"
-  | "sessions"
+  | "campaigns"
   | "events"
+  | "funnels"
   | "visitors"
+  | "retention"
   | "geo"
   | "devices"
   | "browsers"
@@ -54,9 +58,11 @@ function getAnalyticsSectionIcon(key: AnalyticsTabKey) {
   if (key === "realtime") return RiPulseLine;
   if (key === "pages") return RiFileList3Line;
   if (key === "referrers") return RiShareForwardLine;
-  if (key === "sessions") return RiTimeLine;
+  if (key === "campaigns") return RiMegaphoneLine;
   if (key === "events") return RiFlashlightLine;
+  if (key === "funnels") return RiFilter2Line;
   if (key === "visitors") return RiUser3Line;
+  if (key === "retention") return RiRepeatLine;
   if (key === "geo") return RiMapPin2Line;
   if (key === "devices") return RiComputerLine;
   if (key === "settings") return RiSettings3Line;
