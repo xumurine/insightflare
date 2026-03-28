@@ -15,6 +15,7 @@ import type {
   OverviewGeoDimensionTabsData as OverviewGeoDimensionTabsResponse,
   OverviewGeoPointsData,
   PagesData,
+  ReferrerRadarData,
   ReferrersData,
   RetentionData,
   TrendData,
@@ -756,6 +757,22 @@ export async function fetchBrowserRadar(
     siteId,
     from: window.from,
     to: window.to,
+  }, filters));
+}
+
+export async function fetchReferrerRadar(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+  options?: {
+    limit?: number;
+  },
+): Promise<ReferrerRadarData> {
+  return fetchPrivateJson<ReferrerRadarData>("/api/private/referrer-radar", withFilters({
+    siteId,
+    from: window.from,
+    to: window.to,
+    limit: options?.limit ?? 24,
   }, filters));
 }
 

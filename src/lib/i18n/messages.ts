@@ -181,6 +181,31 @@ export interface AppMessages {
   referrers: {
     title: string;
     subtitle: string;
+    summaryTitle: string;
+    splitTitle: string;
+    chartTitle: string;
+    radarTitle: string;
+    radarSubtitle: string;
+    radarDuration: string;
+    radarEngagement: string;
+    radarDepth: string;
+    radarLoyalty: string;
+    radarFrequency: string;
+    radarTraffic: string;
+    directSourceNote: string;
+    breakdownTitle: string;
+    directViews: string;
+    directShare: string;
+    uniqueDomains: string;
+    uniqueLinks: string;
+    topSource: string;
+    topSourceShare: string;
+    noExternalSource: string;
+    externalViews: string;
+    externalShare: string;
+    externalLabel: string;
+    nextSources: string;
+    longTail: string;
   };
   campaigns: {
     title: string;

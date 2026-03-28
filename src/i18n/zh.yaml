@@ -181,6 +181,31 @@ pages:
 referrers:
   title: 来源分析
   subtitle: 流量来源渠道分布。
+  summaryTitle: 来源概览
+  splitTitle: 来源拆分
+  chartTitle: 来源结构
+  radarTitle: 前 24 来源雷达图
+  radarSubtitle: 对比头部来源在多项行为指标上的表现
+  radarDuration: 停留时长
+  radarEngagement: 互动率
+  radarDepth: 浏览深度
+  radarLoyalty: 回访率
+  radarFrequency: 访问频次
+  radarTraffic: 流量占比
+  directSourceNote: 这部分流量没有外部来源站点，属于直接访问。
+  breakdownTitle: 来源明细
+  directViews: 直接访问量
+  directShare: 直接访问占比
+  uniqueDomains: 来源域名数
+  uniqueLinks: 来源链接数
+  topSource: 头部外部来源
+  topSourceShare: 访问占比
+  noExternalSource: 暂无外部来源
+  externalViews: 外部来源访问量
+  externalShare: 外部来源占比
+  externalLabel: 外部来源
+  nextSources: 后续 4 个来源
+  longTail: 长尾来源
 campaigns:
   title: 推广活动
   subtitle: UTM 推广活动表现与流量归因。

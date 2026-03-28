@@ -181,6 +181,31 @@ pages:
 referrers:
   title: Referrers
   subtitle: Where traffic comes from.
+  summaryTitle: Source Summary
+  splitTitle: Traffic Split
+  chartTitle: Source Mix
+  radarTitle: Top 24 Source Radar
+  radarSubtitle: Compare the leading referrers across behavioral metrics.
+  radarDuration: Duration
+  radarEngagement: Engagement
+  radarDepth: Depth
+  radarLoyalty: Loyalty
+  radarFrequency: Frequency
+  radarTraffic: Traffic
+  directSourceNote: This traffic arrived without an external referring website.
+  breakdownTitle: Source Breakdown
+  directViews: Direct Views
+  directShare: Direct Share
+  uniqueDomains: Unique Domains
+  uniqueLinks: Unique Links
+  topSource: Top External Source
+  topSourceShare: Share of Views
+  noExternalSource: No external source
+  externalViews: External Views
+  externalShare: External Share
+  externalLabel: External
+  nextSources: Next 4 Sources
+  longTail: Long Tail
 campaigns:
   title: Campaigns
   subtitle: UTM campaign performance and traffic attribution.

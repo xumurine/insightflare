@@ -205,6 +205,18 @@ interface ReferrerRow {
   visitors: number;
 }
 
+interface ReferrerRadarRow {
+  referrer: string;
+  sessions: number;
+  bounces: number;
+  avgDurationMs: number;
+  avgDepth: number;
+  visitors: number;
+  returningVisitors: number;
+  avgFrequency: number;
+  trafficShare: number;
+}
+
 interface VisitorRow {
   visitorId: string;
   firstSeenAt: number;
@@ -3195,6 +3207,156 @@ async function handleBrowserRadar(
   return jsonResponse({ ok: true, data });
 }
 
+async function queryReferrerRadarFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+  limit: number,
+): Promise<ReferrerRadarRow[]> {
+  const filter = buildVisitFilterSql(filters);
+
+  const sql = `
+WITH
+${buildVisitSourceCte()},
+
+filtered_visits AS (
+  SELECT
+    visit_id,
+    visitor_id,
+    session_id,
+    TRIM(COALESCE(referrer_host, '')) AS referrer,
+    CASE WHEN duration_ms IS NOT NULL AND duration_ms >= 0
+         THEN duration_ms ELSE 0 END AS safe_duration_ms
+  FROM visit_source
+  ${filter.clause}
+),
+
+session_level AS (
+  SELECT
+    referrer,
+    session_id,
+    count(*) AS visit_count,
+    sum(safe_duration_ms) AS session_duration
+  FROM filtered_visits
+  WHERE session_id != ''
+  GROUP BY referrer, session_id
+),
+
+referrer_session_agg AS (
+  SELECT
+    referrer,
+    count(*) AS sessions,
+    sum(CASE WHEN visit_count = 1 THEN 1 ELSE 0 END) AS bounces,
+    CASE WHEN count(*) > 0
+         THEN CAST(sum(session_duration) AS REAL) / count(*)
+         ELSE 0 END AS avgDurationMs,
+    CASE WHEN count(*) > 0
+         THEN CAST(sum(visit_count) AS REAL) / count(*)
+         ELSE 0 END AS avgDepth
+  FROM session_level
+  GROUP BY referrer
+),
+
+visitor_level AS (
+  SELECT
+    referrer,
+    visitor_id,
+    count(DISTINCT CASE WHEN session_id != '' THEN session_id ELSE NULL END) AS session_count
+  FROM filtered_visits
+  WHERE visitor_id != ''
+  GROUP BY referrer, visitor_id
+),
+
+referrer_visitor_agg AS (
+  SELECT
+    referrer,
+    count(*) AS visitors,
+    sum(CASE WHEN session_count > 1 THEN 1 ELSE 0 END) AS returningVisitors,
+    CASE WHEN count(*) > 0
+         THEN CAST(sum(session_count) AS REAL) / count(*)
+         ELSE 0 END AS avgFrequency
+  FROM visitor_level
+  GROUP BY referrer
+),
+
+total_visitors AS (
+  SELECT count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS total
+  FROM filtered_visits
+)
+
+SELECT
+  rsa.referrer,
+  rsa.sessions,
+  rsa.bounces,
+  rsa.avgDurationMs,
+  rsa.avgDepth,
+  rva.visitors,
+  rva.returningVisitors,
+  rva.avgFrequency,
+  CASE WHEN tv.total > 0
+       THEN CAST(rva.visitors AS REAL) / tv.total
+       ELSE 0 END AS trafficShare
+FROM referrer_session_agg rsa
+INNER JOIN referrer_visitor_agg rva ON rsa.referrer = rva.referrer
+CROSS JOIN total_visitors tv
+ORDER BY rva.visitors DESC, rsa.sessions DESC, rsa.referrer ASC
+LIMIT ?
+`;
+
+  const rows = await queryD1All<Record<string, unknown>>(
+    env,
+    sql,
+    [...visitSourceBindings(siteId, window), ...filter.bindings, limit],
+  );
+
+  return rows
+    .map((row) => ({
+      referrer: String(row.referrer ?? "").trim(),
+      sessions: Number(row.sessions ?? 0),
+      bounces: Number(row.bounces ?? 0),
+      avgDurationMs: Number(row.avgDurationMs ?? 0),
+      avgDepth: Number(row.avgDepth ?? 0),
+      visitors: Number(row.visitors ?? 0),
+      returningVisitors: Number(row.returningVisitors ?? 0),
+      avgFrequency: Number(row.avgFrequency ?? 0),
+      trafficShare: Number(row.trafficShare ?? 0),
+    }))
+    .filter((row) => row.visitors > 0);
+}
+
+async function handleReferrerRadar(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const limit = parseLimit(url, 24, 48);
+  const rows = await queryReferrerRadarFromD1(env, siteId, window, filters, limit);
+  const data = rows.map((row) => ({
+    referrer: row.referrer,
+    visitors: row.visitors,
+    sessions: row.sessions,
+    metrics: {
+      duration: row.avgDurationMs,
+      engagement:
+        row.sessions > 0
+          ? Number(((row.sessions - row.bounces) / row.sessions).toFixed(6))
+          : 0,
+      depth: row.avgDepth,
+      loyalty:
+        row.visitors > 0
+          ? Number((row.returningVisitors / row.visitors).toFixed(6))
+          : 0,
+      frequency: row.avgFrequency,
+      traffic: row.trafficShare,
+    },
+  }));
+  return jsonResponse({ ok: true, data });
+}
+
 async function handleClientDimensionTrend(
   env: Env,
   siteId: string,
@@ -4096,6 +4258,9 @@ async function routeQuery(
   }
   if (pathname === "browser-radar") {
     return handleBrowserRadar(env, siteId, url);
+  }
+  if (pathname === "referrer-radar") {
+    return handleReferrerRadar(env, siteId, url);
   }
   if (pathname === "client-dimension-trend") {
     return handleClientDimensionTrend(env, siteId, url);

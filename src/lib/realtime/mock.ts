@@ -4156,6 +4156,115 @@ function generateDemoBrowserRadar(
   return { ok: true, data };
 }
 
+function generateDemoReferrerRadar(
+  siteId: string,
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const from = parseDemoNumber(params.from, 0);
+  const to = parseDemoNumber(params.to, Date.now());
+  const filters = parseDemoFilters(params);
+  const limit = parseDemoLimit(params.limit, 24, 1, 48);
+  const dataset = buildDemoFactDataset(siteId, from, to);
+  const filtered = applyDemoFilters(dataset, filters);
+
+  const topReferrers = collectReferrerRows(dataset, filtered, 999, {
+    includeFullUrl: false,
+    directValue: "",
+  }).filter((row) => row.visitors > 0);
+
+  if (topReferrers.length === 0) {
+    return { ok: true, data: [] };
+  }
+
+  const selectedReferrers = topReferrers.slice(0, limit);
+  const totalVisitors = topReferrers.reduce((sum, row) => sum + row.visitors, 0);
+  const globalFrequency =
+    filtered.visitors.size > 0
+      ? filtered.sessions.size / filtered.visitors.size
+      : 1;
+
+  const data = selectedReferrers.map((referrerRow) => {
+    const referrerVisits = filtered.visits.filter((visit) => {
+      const label = visit.referrerHost.trim();
+      return label === referrerRow.referrer;
+    });
+
+    const sessionMap = new Map<
+      string,
+      { visitCount: number; totalDuration: number }
+    >();
+    for (const visit of referrerVisits) {
+      const entry = sessionMap.get(visit.sessionId) ?? {
+        visitCount: 0,
+        totalDuration: 0,
+      };
+      entry.visitCount += 1;
+      entry.totalDuration += Math.max(0, visit.durationMs);
+      sessionMap.set(visit.sessionId, entry);
+    }
+    const sessions = sessionMap.size;
+    const bounces = Array.from(sessionMap.values()).filter(
+      (session) => session.visitCount === 1,
+    ).length;
+    const totalDuration = Array.from(sessionMap.values()).reduce(
+      (sum, session) => sum + session.totalDuration,
+      0,
+    );
+    const totalPages = Array.from(sessionMap.values()).reduce(
+      (sum, session) => sum + session.visitCount,
+      0,
+    );
+
+    const visitorSessionMap = new Map<string, Set<string>>();
+    for (const visit of referrerVisits) {
+      const set = visitorSessionMap.get(visit.visitorId) ?? new Set<string>();
+      set.add(visit.sessionId);
+      visitorSessionMap.set(visit.visitorId, set);
+    }
+    const visitors = visitorSessionMap.size;
+    const returningVisitors = Array.from(visitorSessionMap.values()).filter(
+      (set) => set.size > 1,
+    ).length;
+
+    const avgDuration = sessions > 0 ? totalDuration / sessions : 0;
+    const engagement =
+      sessions > 0
+        ? Number(((sessions - bounces) / sessions).toFixed(6))
+        : 0;
+    const depth = sessions > 0 ? totalPages / sessions : 0;
+    const loyalty =
+      visitors > 0
+        ? Number((returningVisitors / visitors).toFixed(6))
+        : 0;
+    let nameHash = 0;
+    for (let i = 0; i < referrerRow.referrer.length; i++) {
+      nameHash = ((nameHash << 5) - nameHash + referrerRow.referrer.charCodeAt(i)) | 0;
+    }
+    const variation = 0.75 + (Math.abs(nameHash) % 100) / 200;
+    const frequency = globalFrequency * variation;
+    const traffic =
+      totalVisitors > 0
+        ? Number((referrerRow.visitors / totalVisitors).toFixed(6))
+        : 0;
+
+    return {
+      referrer: referrerRow.referrer,
+      visitors: referrerRow.visitors,
+      sessions: referrerRow.sessions,
+      metrics: {
+        duration: avgDuration,
+        engagement,
+        depth,
+        loyalty,
+        frequency,
+        traffic,
+      },
+    };
+  });
+
+  return { ok: true, data };
+}
+
 function generateDemoClientCrossDimensionData(
   dataset: DemoFactDataset,
   filtered: DemoFilteredFacts,
@@ -5433,6 +5542,9 @@ export function handleDemoRequest(options: {
   }
   if (path.includes("/browser-radar")) {
     return generateDemoBrowserRadar(siteId, params);
+  }
+  if (path.includes("/referrer-radar")) {
+    return generateDemoReferrerRadar(siteId, params);
   }
   if (path.includes("/browser-trend")) {
     return generateDemoBrowserTrend(siteId, params);
