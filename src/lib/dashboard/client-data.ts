@@ -322,6 +322,31 @@ export async function fetchUtmDimension(
   }, filters));
 }
 
+export async function fetchUtmTrend(
+  siteId: string,
+  window: TimeWindow,
+  tab: UtmDimensionTab,
+  filters?: DashboardFilters,
+  options?: {
+    limit?: number;
+  },
+): Promise<BrowserTrendData> {
+  return fetchPrivateJson<BrowserTrendData>(
+    "/api/private/utm-dimension-trend",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        interval: window.interval,
+        dimension: tab,
+        limit: options?.limit ?? 5,
+      },
+      filters,
+    ),
+  );
+}
+
 export type RetentionGranularity = "day" | "week" | "month";
 
 export function emptyRetentionData(): RetentionData {

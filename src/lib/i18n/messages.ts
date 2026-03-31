@@ -210,11 +210,24 @@ export interface AppMessages {
   campaigns: {
     title: string;
     subtitle: string;
+    trendTitle: string;
     tabSource: string;
     tabMedium: string;
     tabCampaign: string;
     tabTerm: string;
     tabContent: string;
+    overviewAcquisitionTitle: string;
+    overviewAcquisitionSubtitle: string;
+    overviewSignalsTitle: string;
+    overviewSignalsSubtitle: string;
+    topSource: string;
+    topMedium: string;
+    topCampaign: string;
+    topTerm: string;
+    topContent: string;
+    breakdownTitle: string;
+    notSet: string;
+    noTaggedTraffic: string;
   };
   sessions: {
     title: string;

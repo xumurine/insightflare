@@ -16,7 +16,6 @@ import {
   AnimatePresence,
   motion,
   useReducedMotion,
-  type HTMLMotionProps,
 } from "motion/react";
 import {
   RiArrowDownLine,
@@ -54,6 +53,7 @@ import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { TrendChart } from "@/components/dashboard/trend-chart";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import { TabbedScrollMaskCard } from "@/components/dashboard/tabbed-scroll-mask-card";
 import { OverviewGeoPointsMapCard } from "@/components/dashboard/overview-geo-points-map-card";
 import { Spinner } from "@/components/ui/spinner";
@@ -376,46 +376,6 @@ interface SourceCardRow {
   views: number;
   visitors: number;
   mono: boolean;
-}
-
-const DATA_ROW_LAYOUT_TRANSITION = {
-  layout: {
-    duration: 0.34,
-    ease: [0.22, 1, 0.36, 1],
-  },
-  opacity: {
-    duration: 0.18,
-    ease: [0.22, 1, 0.36, 1],
-  },
-} as const;
-
-interface AnimatedDataTableRowProps extends HTMLMotionProps<"tr"> {
-  reduceMotion?: boolean;
-}
-
-function AnimatedDataTableRow({
-  reduceMotion = false,
-  className,
-  children,
-  ...props
-}: AnimatedDataTableRowProps) {
-  return (
-    <motion.tr
-      data-slot="table-row"
-      layout={reduceMotion ? false : "position"}
-      initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -10 }}
-      transition={DATA_ROW_LAYOUT_TRANSITION}
-      className={cn(
-        "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </motion.tr>
-  );
 }
 
 const PAGE_CARD_TABS: PageCardTab[] = [

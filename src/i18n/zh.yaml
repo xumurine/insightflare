@@ -209,11 +209,24 @@ referrers:
 campaigns:
   title: 推广活动
   subtitle: UTM 推广活动表现与流量归因。
+  trendTitle: UTM 占比趋势
   tabSource: 来源
   tabMedium: 媒介
   tabCampaign: 活动
   tabTerm: 关键词
   tabContent: 内容
+  overviewAcquisitionTitle: 获取面概览
+  overviewAcquisitionSubtitle: 查看带标签的来源与媒介分别带来了多少流量。
+  overviewSignalsTitle: 活动信号
+  overviewSignalsSubtitle: 快速识别表现最强的活动、关键词与创意内容。
+  topSource: 头部来源
+  topMedium: 头部媒介
+  topCampaign: 头部活动
+  topTerm: 头部关键词
+  topContent: 头部内容
+  breakdownTitle: UTM 明细
+  notSet: 未设置
+  noTaggedTraffic: 当前筛选范围内暂无带 UTM 标签的流量。
 sessions:
   title: 会话列表
   subtitle: 用于分析访问质量的会话明细。

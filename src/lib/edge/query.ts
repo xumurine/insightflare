@@ -265,6 +265,13 @@ type ClientDimensionKey =
   | "language"
   | "screenSize";
 
+type UtmDimensionKey =
+  | "source"
+  | "medium"
+  | "campaign"
+  | "term"
+  | "content";
+
 interface ClientDimensionTabs {
   browser: DimensionRow[];
   osVersion: DimensionRow[];
@@ -564,6 +571,43 @@ function clientDimensionDefinition(
   return {
     labelExpr: screenSizeExpr(alias),
     fallbackKeyBase: "screen",
+  };
+}
+
+function utmDimensionDefinition(
+  dimension: UtmDimensionKey,
+  alias = "",
+): { labelExpr: string; fallbackKeyBase: string } {
+  const prefix = alias ? `${alias}.` : "";
+
+  if (dimension === "source") {
+    return {
+      labelExpr: `TRIM(COALESCE(${prefix}utm_source, ''))`,
+      fallbackKeyBase: "utm-source",
+    };
+  }
+  if (dimension === "medium") {
+    return {
+      labelExpr: `TRIM(COALESCE(${prefix}utm_medium, ''))`,
+      fallbackKeyBase: "utm-medium",
+    };
+  }
+  if (dimension === "campaign") {
+    return {
+      labelExpr: `TRIM(COALESCE(${prefix}utm_campaign, ''))`,
+      fallbackKeyBase: "utm-campaign",
+    };
+  }
+  if (dimension === "term") {
+    return {
+      labelExpr: `TRIM(COALESCE(${prefix}utm_term, ''))`,
+      fallbackKeyBase: "utm-term",
+    };
+  }
+
+  return {
+    labelExpr: `TRIM(COALESCE(${prefix}utm_content, ''))`,
+    fallbackKeyBase: "utm-content",
   };
 }
 
@@ -2207,6 +2251,31 @@ async function queryClientDimensionTrendFromD1(
   );
 }
 
+async function queryUtmDimensionTrendFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  interval: Interval,
+  filters: DashboardFilters,
+  dimension: UtmDimensionKey,
+  limit: number,
+): Promise<{
+  series: BrowserTrendSeriesRow[];
+  data: BrowserTrendPointRow[];
+}> {
+  const definition = utmDimensionDefinition(dimension);
+  return queryShareTrendFromD1(
+    env,
+    siteId,
+    window,
+    interval,
+    filters,
+    limit,
+    definition.labelExpr,
+    definition.fallbackKeyBase,
+  );
+}
+
 async function queryClientCrossDimensionFromD1(
   env: Env,
   siteId: string,
@@ -3386,6 +3455,35 @@ async function handleClientDimensionTrend(
   });
 }
 
+async function handleUtmDimensionTrend(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const dimension = parseUtmDimensionKey(url.searchParams.get("dimension"));
+  if (!dimension) return badRequest("Invalid UTM dimension");
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const interval = parseInterval(url);
+  const limit = parseLimit(url, 5, 8);
+  const trend = await queryUtmDimensionTrendFromD1(
+    env,
+    siteId,
+    window,
+    interval,
+    filters,
+    dimension,
+    limit,
+  );
+  return jsonResponse({
+    ok: true,
+    interval,
+    series: trend.series,
+    data: trend.data,
+  });
+}
+
 async function handleClientCrossBreakdown(
   env: Env,
   siteId: string,
@@ -3861,6 +3959,20 @@ function parseClientDimensionKey(value: string | null): ClientDimensionKey | nul
   return null;
 }
 
+function parseUtmDimensionKey(value: string | null): UtmDimensionKey | null {
+  const normalized = String(value ?? "").trim();
+  if (
+    normalized === "source"
+    || normalized === "medium"
+    || normalized === "campaign"
+    || normalized === "term"
+    || normalized === "content"
+  ) {
+    return normalized as UtmDimensionKey;
+  }
+  return null;
+}
+
 async function handleOverviewPageTab(
   env: Env,
   siteId: string,
@@ -4265,8 +4377,51 @@ async function routeQuery(
   if (pathname === "client-dimension-trend") {
     return handleClientDimensionTrend(env, siteId, url);
   }
+  if (pathname === "utm-dimension-trend") {
+    return handleUtmDimensionTrend(env, siteId, url);
+  }
   if (pathname === "client-cross-breakdown") {
     return handleClientCrossBreakdown(env, siteId, url);
+  }
+  if (pathname === "utm-source") {
+    return handleDimension(
+      env,
+      siteId,
+      url,
+      utmDimensionDefinition("source").labelExpr,
+    );
+  }
+  if (pathname === "utm-medium") {
+    return handleDimension(
+      env,
+      siteId,
+      url,
+      utmDimensionDefinition("medium").labelExpr,
+    );
+  }
+  if (pathname === "utm-campaign") {
+    return handleDimension(
+      env,
+      siteId,
+      url,
+      utmDimensionDefinition("campaign").labelExpr,
+    );
+  }
+  if (pathname === "utm-term") {
+    return handleDimension(
+      env,
+      siteId,
+      url,
+      utmDimensionDefinition("term").labelExpr,
+    );
+  }
+  if (pathname === "utm-content") {
+    return handleDimension(
+      env,
+      siteId,
+      url,
+      utmDimensionDefinition("content").labelExpr,
+    );
   }
   if (pathname === "countries") {
     return handleDimension(env, siteId, url, "country", { ignoreGeo: true });

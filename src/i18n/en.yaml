@@ -209,11 +209,24 @@ referrers:
 campaigns:
   title: Campaigns
   subtitle: UTM campaign performance and traffic attribution.
+  trendTitle: UTM Share Trend
   tabSource: Source
   tabMedium: Medium
   tabCampaign: Campaign
   tabTerm: Term
   tabContent: Content
+  overviewAcquisitionTitle: Acquisition Surface
+  overviewAcquisitionSubtitle: Track which tagged sources and media are driving traffic.
+  overviewSignalsTitle: Campaign Signals
+  overviewSignalsSubtitle: Review the strongest campaign, term, and creative combinations.
+  topSource: Top Source
+  topMedium: Top Medium
+  topCampaign: Top Campaign
+  topTerm: Top Term
+  topContent: Top Content
+  breakdownTitle: UTM Breakdown
+  notSet: Not set
+  noTaggedTraffic: No tagged campaign traffic in the selected range.
 sessions:
   title: Sessions
   subtitle: Session-level detail for quality analysis.

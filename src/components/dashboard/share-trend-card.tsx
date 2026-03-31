@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -55,6 +55,7 @@ interface ShareTrendCardProps {
   fetchTrend: ShareTrendFetcher;
   limit?: number;
   otherLabel?: string;
+  headerBelow?: ReactNode;
 }
 
 function emptyTrendData(interval: DashboardInterval): BrowserTrendData {
@@ -124,6 +125,7 @@ export function ShareTrendCard({
   fetchTrend,
   limit = 5,
   otherLabel = messages.browsers.otherLabel,
+  headerBelow,
 }: ShareTrendCardProps) {
   const [loading, setLoading] = useState(true);
   const [hydrated, setHydrated] = useState(false);
@@ -224,6 +226,7 @@ export function ShareTrendCard({
     <Card className="overflow-visible">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
+        {headerBelow ? <div>{headerBelow}</div> : null}
       </CardHeader>
       <CardContent>
         <ContentSwitch
@@ -305,7 +308,11 @@ export function ShareTrendCard({
                     />
                   )}
                 />
-                <ChartLegend content={<ChartLegendContent className="pt-6" />} />
+                <ChartLegend
+                  content={(
+                    <ChartLegendContent className="pt-6 flex-wrap justify-start gap-x-4 gap-y-2" />
+                  )}
+                />
                 {chartSeries.map((series) => (
                   <Area
                     key={series.key}
