@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   ChartContainer,
@@ -348,14 +349,14 @@ function ReferrerMetadataPanel({
     >
       <div key={transitionKey} className="flex h-full min-w-0 flex-col">
         <div className="space-y-4">
-          <div className="flex items-start gap-3">
+          <div className="flex items-center gap-3">
             {metadata?.icon ? (
               <img
                 src={metadata.icon}
                 alt=""
                 width={28}
                 height={28}
-                className="mt-0.5 size-7 shrink-0 rounded-[4px] border border-border/60 object-contain"
+                className="size-7 shrink-0 rounded-[4px] border border-border/60 object-contain"
               />
             ) : (
               <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-[4px] border border-border/60 bg-muted/20 text-[11px] font-semibold text-muted-foreground">
@@ -561,24 +562,26 @@ export function ReferrerPerformanceRadarCard({
                 size="sm"
                 className="h-full"
               >
-                <CardContent className="grid grid-cols-[minmax(0,1fr)_152px] items-start gap-4 sm:grid-cols-[minmax(0,1fr)_220px]">
-                  <ReferrerMetadataPanel
-                    label={label}
-                    metadata={metadata}
-                    loading={metadataLoading}
-                    direct={item.referrer.trim().length === 0}
-                    locale={locale}
-                    messages={messages}
-                  />
-                  <SingleReferrerRadar
-                    item={item}
-                    label={label}
-                    points={points}
-                    color={color}
-                    locale={locale}
-                    chartConfig={config}
-                  />
-                </CardContent>
+                <AutoResizer className="w-full" initial={false} duration={0.22}>
+                  <CardContent className="grid grid-cols-[minmax(0,1fr)_152px] items-start gap-4 sm:grid-cols-[minmax(0,1fr)_220px]">
+                    <ReferrerMetadataPanel
+                      label={label}
+                      metadata={metadata}
+                      loading={metadataLoading}
+                      direct={item.referrer.trim().length === 0}
+                      locale={locale}
+                      messages={messages}
+                    />
+                    <SingleReferrerRadar
+                      item={item}
+                      label={label}
+                      points={points}
+                      color={color}
+                      locale={locale}
+                      chartConfig={config}
+                    />
+                  </CardContent>
+                </AutoResizer>
               </Card>
             );
           })}
