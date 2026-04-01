@@ -310,7 +310,7 @@ export function ShareTrendCard({
                 />
                 <ChartLegend
                   content={(
-                    <ChartLegendContent className="pt-6 flex-wrap justify-start gap-x-4 gap-y-2" />
+                    <ChartLegendContent className="pt-6 flex-wrap justify-center gap-x-4 gap-y-2" />
                   )}
                 />
                 {chartSeries.map((series) => (
