@@ -272,6 +272,8 @@ type UtmDimensionKey =
   | "term"
   | "content";
 
+type ReferrerDimensionKey = "domain" | "link";
+
 interface ClientDimensionTabs {
   browser: DimensionRow[];
   osVersion: DimensionRow[];
@@ -608,6 +610,25 @@ function utmDimensionDefinition(
   return {
     labelExpr: `TRIM(COALESCE(${prefix}utm_content, ''))`,
     fallbackKeyBase: "utm-content",
+  };
+}
+
+function referrerDimensionDefinition(
+  dimension: ReferrerDimensionKey,
+  alias = "",
+): { labelExpr: string; fallbackKeyBase: string } {
+  const prefix = alias ? `${alias}.` : "";
+
+  if (dimension === "domain") {
+    return {
+      labelExpr: `CASE WHEN TRIM(COALESCE(${prefix}referrer_host, '')) != '' THEN TRIM(COALESCE(${prefix}referrer_host, '')) ELSE '${DIRECT_REFERRER_FILTER_VALUE}' END`,
+      fallbackKeyBase: "referrer-domain",
+    };
+  }
+
+  return {
+    labelExpr: `CASE WHEN TRIM(COALESCE(${prefix}referrer_url, '')) != '' THEN TRIM(COALESCE(${prefix}referrer_url, '')) ELSE '${DIRECT_REFERRER_FILTER_VALUE}' END`,
+    fallbackKeyBase: "referrer-link",
   };
 }
 
@@ -2276,6 +2297,31 @@ async function queryUtmDimensionTrendFromD1(
   );
 }
 
+async function queryReferrerDimensionTrendFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  interval: Interval,
+  filters: DashboardFilters,
+  dimension: ReferrerDimensionKey,
+  limit: number,
+): Promise<{
+  series: BrowserTrendSeriesRow[];
+  data: BrowserTrendPointRow[];
+}> {
+  const definition = referrerDimensionDefinition(dimension);
+  return queryShareTrendFromD1(
+    env,
+    siteId,
+    window,
+    interval,
+    filters,
+    limit,
+    definition.labelExpr,
+    definition.fallbackKeyBase,
+  );
+}
+
 async function queryClientCrossDimensionFromD1(
   env: Env,
   siteId: string,
@@ -3484,6 +3530,35 @@ async function handleUtmDimensionTrend(
   });
 }
 
+async function handleReferrerDimensionTrend(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const dimension = parseReferrerDimensionKey(url.searchParams.get("dimension"));
+  if (!dimension) return badRequest("Invalid referrer dimension");
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const interval = parseInterval(url);
+  const limit = parseLimit(url, 5, 8);
+  const trend = await queryReferrerDimensionTrendFromD1(
+    env,
+    siteId,
+    window,
+    interval,
+    filters,
+    dimension,
+    limit,
+  );
+  return jsonResponse({
+    ok: true,
+    interval,
+    series: trend.series,
+    data: trend.data,
+  });
+}
+
 async function handleClientCrossBreakdown(
   env: Env,
   siteId: string,
@@ -3973,6 +4048,16 @@ function parseUtmDimensionKey(value: string | null): UtmDimensionKey | null {
   return null;
 }
 
+function parseReferrerDimensionKey(
+  value: string | null,
+): ReferrerDimensionKey | null {
+  const normalized = String(value ?? "").trim();
+  if (normalized === "domain" || normalized === "link") {
+    return normalized as ReferrerDimensionKey;
+  }
+  return null;
+}
+
 async function handleOverviewPageTab(
   env: Env,
   siteId: string,
@@ -4373,6 +4458,9 @@ async function routeQuery(
   }
   if (pathname === "referrer-radar") {
     return handleReferrerRadar(env, siteId, url);
+  }
+  if (pathname === "referrer-dimension-trend") {
+    return handleReferrerDimensionTrend(env, siteId, url);
   }
   if (pathname === "client-dimension-trend") {
     return handleClientDimensionTrend(env, siteId, url);

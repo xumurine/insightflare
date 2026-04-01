@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { AnimatePresence, useReducedMotion } from "motion/react";
 import { usePathname } from "next/navigation";
 import {
   RiArrowDownSLine,
@@ -8,6 +9,7 @@ import {
   RiArrowUpSLine,
   RiSearchLine,
 } from "@remixicon/react";
+import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import {
   REFERRER_QUERY_PARAM_BY_TAB,
@@ -33,13 +35,20 @@ import { Input } from "@/components/ui/input";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { numberFormat } from "@/lib/dashboard/format";
-import { replaceUrlWithoutNavigation, useLiveSearchParams } from "@/lib/client-history";
+import {
+  replaceUrlWithoutNavigation,
+  useLiveSearchParams,
+} from "@/lib/client-history";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
 import { cn } from "@/lib/utils";
 
 type ReferrerSortKey = "views" | "visitors";
+type ReferrerSortState = {
+  key: ReferrerSortKey;
+  direction: "asc" | "desc";
+};
 
 interface ReferrerBreakdownCardProps {
   locale: Locale;
@@ -47,6 +56,18 @@ interface ReferrerBreakdownCardProps {
   pathname: string;
   rowsByTab: ReferrerRowsByTab;
   loading: boolean;
+}
+
+const DEFAULT_SORT: ReferrerSortState = {
+  key: "views",
+  direction: "desc",
+};
+
+function createInitialSortByTab(): Record<ReferrerTab, ReferrerSortState> {
+  return {
+    domain: { ...DEFAULT_SORT },
+    link: { ...DEFAULT_SORT },
+  };
 }
 
 export function ReferrerBreakdownCard({
@@ -59,22 +80,18 @@ export function ReferrerBreakdownCard({
   const searchParams = useLiveSearchParams();
   const livePathname = usePathname() || pathname;
   const isMobile = useIsMobile();
-  const [tab, setTab] = useState<ReferrerTab>("domain");
-  const [sort, setSort] = useState<{
-    key: ReferrerSortKey;
-    direction: "asc" | "desc";
-  }>({
-    key: "views",
-    direction: "desc",
-  });
-  const [searchOpen, setSearchOpen] = useState(false);
+  const reduceDataRowMotion = useReducedMotion() ?? false;
+  const [sortByTab, setSortByTab] = useState<Record<ReferrerTab, ReferrerSortState>>(
+    createInitialSortByTab,
+  );
+  const [searchTab, setSearchTab] = useState<ReferrerTab | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    if (!searchOpen) {
+    if (!searchTab) {
       setSearchTerm("");
     }
-  }, [searchOpen]);
+  }, [searchTab]);
 
   const tabMeta: Record<
     ReferrerTab,
@@ -91,51 +108,77 @@ export function ReferrerBreakdownCard({
       showIcon: true,
     },
   };
-  const activeTabMeta = tabMeta[tab];
-  const activeQueryValue = useMemo(() => {
-    const raw = searchParams.get(REFERRER_QUERY_PARAM_BY_TAB[tab]);
-    const normalized = String(raw ?? "").trim();
-    return normalized || null;
-  }, [searchParams, tab]);
-  const sortedRows = useMemo(() => {
-    const direction = sort.direction === "asc" ? 1 : -1;
-    return [...rowsByTab[tab]].sort((left, right) => {
-      const primary = (left[sort.key] - right[sort.key]) * direction;
-      if (primary !== 0) return primary;
-      if (right.views !== left.views) return right.views - left.views;
-      if (right.visitors !== left.visitors) return right.visitors - left.visitors;
-      return left.label.localeCompare(right.label);
-    });
-  }, [rowsByTab, sort.direction, sort.key, tab]);
-  const visibleRows = useMemo(
-    () =>
-      activeQueryValue
-        ? sortedRows.filter((row) => row.filterValue === activeQueryValue)
-        : sortedRows,
-    [activeQueryValue, sortedRows],
+
+  const activeQueryValueByTab = useMemo(
+    () => ({
+      domain: normalizeQueryValue(searchParams.get(REFERRER_QUERY_PARAM_BY_TAB.domain)),
+      link: normalizeQueryValue(searchParams.get(REFERRER_QUERY_PARAM_BY_TAB.link)),
+    }),
+    [searchParams],
   );
-  const normalizedSearchTerm = searchTerm.trim().toLocaleLowerCase();
-  const searchedRows = useMemo(() => {
-    if (!normalizedSearchTerm) return sortedRows;
-    return sortedRows.filter((row) =>
-      row.label.toLocaleLowerCase().includes(normalizedSearchTerm),
-    );
-  }, [normalizedSearchTerm, sortedRows]);
-  const progressTotal = useMemo(
-    () =>
-      sortedRows.reduce(
+
+  const sortedRowsByTab = useMemo(() => {
+    const next = {} as ReferrerRowsByTab;
+
+    for (const tab of ["domain", "link"] as const) {
+      const sort = sortByTab[tab];
+      const direction = sort.direction === "asc" ? 1 : -1;
+      next[tab] = [...rowsByTab[tab]].sort((left, right) => {
+        const primary = (left[sort.key] - right[sort.key]) * direction;
+        if (primary !== 0) return primary;
+        if (right.views !== left.views) return right.views - left.views;
+        if (right.visitors !== left.visitors) return right.visitors - left.visitors;
+        return left.label.localeCompare(right.label);
+      });
+    }
+
+    return next;
+  }, [rowsByTab, sortByTab]);
+
+  const visibleRowsByTab = useMemo(() => {
+    const next = {} as ReferrerRowsByTab;
+
+    for (const tab of ["domain", "link"] as const) {
+      const activeQueryValue = activeQueryValueByTab[tab];
+      next[tab] = activeQueryValue
+        ? sortedRowsByTab[tab].filter((row) => row.filterValue === activeQueryValue)
+        : sortedRowsByTab[tab];
+    }
+
+    return next;
+  }, [activeQueryValueByTab, sortedRowsByTab]);
+
+  const progressTotalByTab = useMemo(() => {
+    const next = {} as Record<ReferrerTab, number>;
+
+    for (const tab of ["domain", "link"] as const) {
+      const sort = sortByTab[tab];
+      next[tab] = sortedRowsByTab[tab].reduce(
         (sum, row) => sum + Math.max(0, Number(row[sort.key] ?? 0)),
         0,
-      ),
-    [sortedRows, sort.key],
-  );
+      );
+    }
+
+    return next;
+  }, [sortByTab, sortedRowsByTab]);
+
+  const normalizedSearchTerm = searchTerm.trim().toLocaleLowerCase();
+  const activeSearchTab = searchTab ?? "domain";
+  const activeSearchRows = sortedRowsByTab[activeSearchTab];
+  const searchedRows = useMemo(() => {
+    if (!normalizedSearchTerm) return activeSearchRows;
+    return activeSearchRows.filter((row) =>
+      row.label.toLocaleLowerCase().includes(normalizedSearchTerm),
+    );
+  }, [activeSearchRows, normalizedSearchTerm]);
+
   const searchPlaceholder = formatI18nTemplate(messages.overview.searchInTab, {
-    tab: activeTabMeta.label,
+    tab: tabMeta[activeSearchTab].label,
   });
 
   function setQueryFilter(next: { tab: ReferrerTab; value: string } | null) {
     const params = new URLSearchParams(searchParams.toString());
-    const activeTab = next?.tab ?? tab;
+    const activeTab = next?.tab ?? "domain";
     const queryKey = REFERRER_QUERY_PARAM_BY_TAB[activeTab];
     params.delete(queryKey);
 
@@ -153,21 +196,26 @@ export function ReferrerBreakdownCard({
     replaceUrlWithoutNavigation(target);
   }
 
-  function toggleRowFilter(value: string) {
+  function toggleRowFilter(tab: ReferrerTab, value: string) {
     const normalized = value.trim();
-    const isActive = activeQueryValue === normalized;
+    const isActive = activeQueryValueByTab[tab] === normalized;
     setQueryFilter(isActive ? null : { tab, value: normalized });
   }
 
-  function toggleSort(key: ReferrerSortKey) {
-    setSort((previous) =>
-      previous.key === key
-        ? {
-            key,
-            direction: previous.direction === "desc" ? "asc" : "desc",
-          }
-        : { key, direction: "desc" },
-    );
+  function toggleSort(tab: ReferrerTab, key: ReferrerSortKey) {
+    setSortByTab((previous) => {
+      const current = previous[tab];
+      return {
+        ...previous,
+        [tab]:
+          current.key === key
+            ? {
+                key,
+                direction: current.direction === "desc" ? "asc" : "desc",
+              }
+            : { key, direction: "desc" },
+      };
+    });
   }
 
   function openTarget(targetUrl: string, event: MouseEvent<HTMLElement>) {
@@ -175,7 +223,8 @@ export function ReferrerBreakdownCard({
     globalThis.window.open(targetUrl, "_blank", "noopener,noreferrer");
   }
 
-  function renderSortIndicator(key: ReferrerSortKey) {
+  function renderSortIndicator(tab: ReferrerTab, key: ReferrerSortKey) {
+    const sort = sortByTab[tab];
     if (sort.key === key) {
       return sort.direction === "desc" ? (
         <RiArrowDownSLine className="size-3.5" />
@@ -192,112 +241,129 @@ export function ReferrerBreakdownCard({
     );
   }
 
-  const tableHeader = (
-    <TableRow className="hover:bg-transparent">
-      <TableHead className="h-8 p-0">
-        <div className="px-4">{activeTabMeta.columnLabel}</div>
-      </TableHead>
-      <TableHead className="h-8 w-20 p-0">
-        <div className="flex justify-end px-2">
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              sort.key === "views" ? "text-foreground" : "text-muted-foreground",
-            )}
-            onClick={() => toggleSort("views")}
-          >
-            {messages.common.views}
-            {renderSortIndicator("views")}
-          </button>
-        </div>
-      </TableHead>
-      <TableHead className="h-8 w-20 p-0">
-        <div className="flex justify-end px-2">
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              sort.key === "visitors"
-                ? "text-foreground"
-                : "text-muted-foreground",
-            )}
-            onClick={() => toggleSort("visitors")}
-          >
-            {messages.common.visitors}
-            {renderSortIndicator("visitors")}
-          </button>
-        </div>
-      </TableHead>
-    </TableRow>
-  );
+  function renderTableHeader(tab: ReferrerTab) {
+    const sort = sortByTab[tab];
+    const meta = tabMeta[tab];
 
-  const renderRows = (
+    return (
+      <TableRow className="hover:bg-transparent">
+        <TableHead className="h-8 p-0">
+          <div className="px-4">{meta.columnLabel}</div>
+        </TableHead>
+        <TableHead className="h-8 w-20 p-0">
+          <div className="flex justify-end px-2">
+            <button
+              type="button"
+              className={cn(
+                "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
+                sort.key === "views" ? "text-foreground" : "text-muted-foreground",
+              )}
+              onClick={() => toggleSort(tab, "views")}
+            >
+              {messages.common.views}
+              {renderSortIndicator(tab, "views")}
+            </button>
+          </div>
+        </TableHead>
+        <TableHead className="h-8 w-20 p-0">
+          <div className="flex justify-end px-2">
+            <button
+              type="button"
+              className={cn(
+                "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
+                sort.key === "visitors"
+                  ? "text-foreground"
+                  : "text-muted-foreground",
+              )}
+              onClick={() => toggleSort(tab, "visitors")}
+            >
+              {messages.common.visitors}
+              {renderSortIndicator(tab, "visitors")}
+            </button>
+          </div>
+        </TableHead>
+      </TableRow>
+    );
+  }
+
+  function renderRows(
+    tab: ReferrerTab,
     rows: ReferrerRowsByTab[ReferrerTab],
     contentKeyPrefix: string,
-  ) =>
-    rows.map((row) => {
-      const rowValue = Math.max(0, Number(row[sort.key] ?? 0));
-      const progressPercent =
-        progressTotal > 0
-          ? Math.min(100, (rowValue / progressTotal) * 100)
-          : 0;
-      const rowActive = activeQueryValue === row.filterValue;
+  ) {
+    const sort = sortByTab[tab];
+    const progressTotal = progressTotalByTab[tab];
+    const activeQueryValue = activeQueryValueByTab[tab];
+    const meta = tabMeta[tab];
 
-      return (
-        <TableRow
-          key={`${contentKeyPrefix}-${row.key}`}
-          className={cn(
-            "group/row cursor-pointer bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:bg-transparent hover:brightness-95",
-            rowActive && "brightness-95",
-          )}
-          style={{
-            backgroundImage:
-              "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
-            backgroundSize: `${progressPercent.toFixed(2)}% 100%`,
-            backgroundPosition: "left top",
-          }}
-          onClick={() => toggleRowFilter(row.filterValue)}
-        >
-          <TableCell className="whitespace-normal p-0 align-top">
-            <div
+    return (
+      <AnimatePresence initial={false} mode="popLayout">
+        {rows.map((row) => {
+          const rowValue = Math.max(0, Number(row[sort.key] ?? 0));
+          const progressPercent =
+            progressTotal > 0
+              ? Math.min(100, (rowValue / progressTotal) * 100)
+              : 0;
+          const rowActive = activeQueryValue === row.filterValue;
+
+          return (
+            <AnimatedDataTableRow
+              key={`${contentKeyPrefix}-${row.key}`}
+              reduceMotion={reduceDataRowMotion}
               className={cn(
-                "px-4 py-2 leading-5 whitespace-normal break-words",
-                row.mono && "font-mono",
+                "group/row cursor-pointer bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:bg-transparent hover:brightness-95",
+                rowActive && "brightness-95",
               )}
+              style={{
+                backgroundImage:
+                  "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
+                backgroundSize: `${progressPercent.toFixed(2)}% 100%`,
+                backgroundPosition: "left top",
+              }}
+              onClick={() => toggleRowFilter(tab, row.filterValue)}
             >
-              <span className="inline-flex items-center gap-2 break-words">
-                <LabelWithOptionalIcon
-                  label={row.label}
-                  showIcon={activeTabMeta.showIcon}
-                  unknownLabel={messages.overview.direct}
-                />
-                {row.targetUrl ? (
-                  <Clickable
-                    className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-                    onClick={(event) => openTarget(row.targetUrl!, event)}
-                    aria-label={row.label}
-                    title={row.label}
-                  >
-                    <RiArrowRightUpLine size="1.4em" />
-                  </Clickable>
-                ) : null}
-              </span>
-            </div>
-          </TableCell>
-          <TableCell className="p-0">
-            <div className="px-2 py-2 text-right">
-              {numberFormat(locale, row.views)}
-            </div>
-          </TableCell>
-          <TableCell className="p-0">
-            <div className="px-4 py-2 text-right">
-              {numberFormat(locale, row.visitors)}
-            </div>
-          </TableCell>
-        </TableRow>
-      );
-    });
+              <TableCell className="whitespace-normal p-0 align-top">
+                <div
+                  className={cn(
+                    "px-4 py-2 leading-5 whitespace-normal break-words",
+                    row.mono && "font-mono",
+                  )}
+                >
+                  <span className="inline-flex items-center gap-2 break-words">
+                    <LabelWithOptionalIcon
+                      label={row.label}
+                      showIcon={meta.showIcon}
+                      unknownLabel={messages.overview.direct}
+                    />
+                    {row.targetUrl ? (
+                      <Clickable
+                        className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                        onClick={(event) => openTarget(row.targetUrl!, event)}
+                        aria-label={row.label}
+                        title={row.label}
+                      >
+                        <RiArrowRightUpLine size="1.4em" />
+                      </Clickable>
+                    ) : null}
+                  </span>
+                </div>
+              </TableCell>
+              <TableCell className="p-0">
+                <div className="px-2 py-2 text-right">
+                  {numberFormat(locale, row.views)}
+                </div>
+              </TableCell>
+              <TableCell className="p-0">
+                <div className="px-4 py-2 text-right">
+                  {numberFormat(locale, row.visitors)}
+                </div>
+              </TableCell>
+            </AnimatedDataTableRow>
+          );
+        })}
+      </AnimatePresence>
+    );
+  }
 
   const searchContent = (
     <div className="space-y-3">
@@ -313,16 +379,21 @@ export function ReferrerBreakdownCard({
           loadingLabel={messages.common.loading}
           emptyLabel={messages.common.noData}
           colSpan={3}
-          header={tableHeader}
-          rows={renderRows(searchedRows, `search-${tab}`)}
-          contentKey={`search-${tab}-${searchTerm}-${searchedRows.length}`}
+          header={renderTableHeader(activeSearchTab)}
+          rows={renderRows(activeSearchTab, searchedRows, `search-${activeSearchTab}`)}
+          contentKey={`search-${activeSearchTab}-${searchTerm}-${searchedRows.length}`}
         />
       </div>
     </div>
   );
 
   const searchPanel = isMobile ? (
-    <Drawer open={searchOpen} onOpenChange={setSearchOpen}>
+    <Drawer
+      open={searchTab !== null}
+      onOpenChange={(open) => {
+        if (!open) setSearchTab(null);
+      }}
+    >
       <DrawerContent className="max-h-[90vh]">
         <DrawerHeader>
           <DrawerTitle>{searchPlaceholder}</DrawerTitle>
@@ -331,7 +402,12 @@ export function ReferrerBreakdownCard({
       </DrawerContent>
     </Drawer>
   ) : (
-    <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
+    <Dialog
+      open={searchTab !== null}
+      onOpenChange={(open) => {
+        if (!open) setSearchTab(null);
+      }}
+    >
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>{searchPlaceholder}</DialogTitle>
@@ -349,39 +425,52 @@ export function ReferrerBreakdownCard({
         </h2>
       </div>
 
-      <TabbedScrollMaskCard
-        value={tab}
-        onValueChange={(value) => setTab(value)}
-        tabs={[
-          { value: "domain", label: tabMeta.domain.label },
-          { value: "link", label: tabMeta.link.label },
-        ]}
-        headerRight={
-          <Clickable
-            className="size-6 text-muted-foreground hover:text-foreground"
-            onClick={() => setSearchOpen(true)}
-            aria-label={messages.common.search}
-            title={messages.common.search}
-          >
-            <RiSearchLine className="size-4" />
-          </Clickable>
-        }
-        className="min-h-[420px]"
-        syncKey={`${loading}-${tab}-${sort.key}-${sort.direction}-${sortedRows.length}-${activeQueryValue ?? "all"}-${visibleRows.length}`}
-      >
-        <DataTableSwitch
-          loading={loading}
-          hasContent={visibleRows.length > 0}
-          loadingLabel={messages.common.loading}
-          emptyLabel={messages.common.noData}
-          colSpan={3}
-          header={tableHeader}
-          rows={renderRows(visibleRows, `main-${tab}`)}
-          contentKey={`${tab}-${activeQueryValue ?? "all"}-${visibleRows.length}`}
-        />
-      </TabbedScrollMaskCard>
+      <div className="grid items-stretch gap-6 lg:grid-cols-2">
+        {(["domain", "link"] as const).map((tab) => {
+          const rows = sortedRowsByTab[tab];
+          const visibleRows = visibleRowsByTab[tab];
+
+          return (
+            <div key={tab} className="min-w-0 h-full">
+              <TabbedScrollMaskCard
+                value={tab}
+                onValueChange={() => {}}
+                tabs={[{ value: tab, label: tabMeta[tab].label }]}
+                headerRight={
+                  <Clickable
+                    className="size-6 text-muted-foreground hover:text-foreground"
+                    onClick={() => setSearchTab(tab)}
+                    aria-label={messages.common.search}
+                    title={messages.common.search}
+                  >
+                    <RiSearchLine className="size-4" />
+                  </Clickable>
+                }
+                className="h-full min-h-[420px]"
+                syncKey={`${loading}-${tab}-${sortByTab[tab].key}-${sortByTab[tab].direction}-${rows.length}-${activeQueryValueByTab[tab] ?? "all"}-${visibleRows.length}`}
+              >
+                <DataTableSwitch
+                  loading={loading}
+                  hasContent={visibleRows.length > 0}
+                  loadingLabel={messages.common.loading}
+                  emptyLabel={messages.common.noData}
+                  colSpan={3}
+                  header={renderTableHeader(tab)}
+                  rows={renderRows(tab, visibleRows, `main-${tab}`)}
+                  contentKey={`${tab}-${activeQueryValueByTab[tab] ?? "all"}`}
+                />
+              </TabbedScrollMaskCard>
+            </div>
+          );
+        })}
+      </div>
 
       {searchPanel}
     </section>
   );
+}
+
+function normalizeQueryValue(value: string | null): string | null {
+  const normalized = String(value ?? "").trim();
+  return normalized || null;
 }

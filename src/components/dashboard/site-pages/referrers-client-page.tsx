@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { ReferrerBreakdownCard } from "@/components/dashboard/referrer-breakdown-card";
 import { ReferrerPerformanceRadarCard } from "@/components/dashboard/referrer-performance-radar-card";
+import { ReferrerShareTrendCard } from "@/components/dashboard/referrer-share-trend-card";
 import { ReferrerSummarySection } from "@/components/dashboard/referrer-summary-section";
 import { buildReferrerRowsByTab } from "@/components/dashboard/referrer-utils";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
@@ -95,6 +96,14 @@ export function ReferrersClientPage({
         rowsByTab={normalizedRowsByTab}
         loading={loading}
         hideSummaryCard
+      />
+
+      <ReferrerShareTrendCard
+        locale={locale}
+        messages={messages}
+        siteId={siteId}
+        window={requestWindow}
+        filters={requestFilters}
       />
 
       <ReferrerPerformanceRadarCard

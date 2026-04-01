@@ -518,6 +518,33 @@ export async function fetchOverviewSourceCardTab(
   return payload.data ?? [];
 }
 
+export type ReferrerTrendTab = "domain" | "link";
+
+export async function fetchReferrerTrend(
+  siteId: string,
+  window: TimeWindow,
+  tab: ReferrerTrendTab,
+  filters?: DashboardFilters,
+  options?: {
+    limit?: number;
+  },
+): Promise<BrowserTrendData> {
+  return fetchPrivateJson<BrowserTrendData>(
+    "/api/private/referrer-dimension-trend",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        interval: window.interval,
+        dimension: tab,
+        limit: options?.limit ?? 5,
+      },
+      filters,
+    ),
+  );
+}
+
 export async function fetchOverviewClientDimensionTab(
   siteId: string,
   window: TimeWindow,

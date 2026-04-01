@@ -3643,6 +3643,32 @@ function generateDemoClientDimensionTrend(
   });
 }
 
+function generateDemoReferrerTrend(
+  siteId: string,
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const dimension = parseDemoReferrerDimensionKey(params.dimension);
+  const interval = parseDemoInterval(params.interval);
+  if (!dimension) {
+    return {
+      ok: true,
+      interval,
+      series: [],
+      data: [],
+    };
+  }
+
+  return generateDemoShareTrend(siteId, params, {
+    fallbackKeyBase: dimension === "domain" ? "referrer-domain" : "referrer-link",
+    getLabel: (visit) => {
+      const value = dimension === "domain"
+        ? visit.referrerHost.trim()
+        : visit.referrerUrl.trim();
+      return value || DEMO_DIRECT_REFERRER_FILTER_VALUE;
+    },
+  });
+}
+
 function generateDemoBrowserVersionBreakdown(
   siteId: string,
   params: Record<string, string | number>,
@@ -4925,6 +4951,18 @@ function parseDemoUtmDimensionKey(
   return null;
 }
 
+type DemoReferrerDimensionKey = "domain" | "link";
+
+function parseDemoReferrerDimensionKey(
+  value: string | number | undefined,
+): DemoReferrerDimensionKey | null {
+  const normalized = String(value ?? "").trim();
+  if (normalized === "domain" || normalized === "link") {
+    return normalized as DemoReferrerDimensionKey;
+  }
+  return null;
+}
+
 function buildDemoUtmRows(
   siteId: string,
   tab: DemoUtmDimensionKey,
@@ -5921,6 +5959,9 @@ export function handleDemoRequest(options: {
   }
   if (path.includes("/referrer-radar")) {
     return generateDemoReferrerRadar(siteId, params);
+  }
+  if (path.includes("/referrer-dimension-trend")) {
+    return generateDemoReferrerTrend(siteId, params);
   }
   if (path.includes("/browser-trend")) {
     return generateDemoBrowserTrend(siteId, params);
