@@ -63,18 +63,14 @@ interface BrowserCrossDisplayDimension {
     share: number;
     cells: BrowserCrossDisplayItem[];
   }>;
-  totalViews: number;
   totalVisitors: number;
-  totalSessions: number;
 }
 
 function emptyBrowserCrossBreakdown(): BrowserCrossBreakdownData {
   const emptyDimension: BrowserCrossBreakdownDimensionData = {
     columns: [],
     rows: [],
-    totalViews: 0,
     totalVisitors: 0,
-    totalSessions: 0,
   };
 
   return {
@@ -109,9 +105,7 @@ function buildCrossDisplayDimension(
 
   return {
     columns,
-    totalViews: data.totalViews,
     totalVisitors: data.totalVisitors,
-    totalSessions: data.totalSessions,
     rows: data.rows.map((row) => ({
       key: row.key,
       label: row.label,

@@ -27,9 +27,7 @@ function emptyDimension(): BrowserCrossBreakdownDimensionData {
   return {
     columns: [],
     rows: [],
-    totalViews: 0,
     totalVisitors: 0,
-    totalSessions: 0,
   };
 }
 

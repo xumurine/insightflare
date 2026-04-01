@@ -17,23 +17,11 @@ import type {
   PagesData,
   ReferrerRadarData,
   ReferrersData,
-  RetentionData,
   TrendData,
-  VisitorsData,
-  FunnelListData,
-  FunnelDefinition,
-  FunnelStep,
-  FunnelAnalysisData,
 } from "@/lib/edge-client";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 
 export type DashboardFilterOptionData = DashboardFilterOption;
-
-export interface OverviewBundle {
-  overview: OverviewData;
-  previousOverview: OverviewData;
-  trend: TrendData;
-}
 
 export type PageCardTabsData = NonNullable<PagesData["tabs"]>;
 export type OverviewClientDimensionTabsData =
@@ -118,10 +106,6 @@ function emptyOverviewGeoPoints(): OverviewGeoPointsData {
 }
 
 function emptyReferrers(): ReferrersData {
-  return { ok: true, data: [] };
-}
-
-function emptyVisitors(): VisitorsData {
   return { ok: true, data: [] };
 }
 
@@ -347,64 +331,6 @@ export async function fetchUtmTrend(
   );
 }
 
-export type RetentionGranularity = "day" | "week" | "month";
-
-export function emptyRetentionData(): RetentionData {
-  return { ok: true, granularity: "week", cohorts: [] };
-}
-
-export async function fetchRetention(
-  siteId: string,
-  window: TimeWindow,
-  granularity: RetentionGranularity,
-  filters?: DashboardFilters,
-): Promise<RetentionData> {
-  return fetchPrivateJson<RetentionData>("/api/private/retention", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    granularity,
-  }, filters));
-}
-
-export function emptyFunnelList(): FunnelListData {
-  return { ok: true, funnels: [] };
-}
-
-export function emptyFunnelAnalysis(): FunnelAnalysisData {
-  return { ok: true, steps: [], overallConversionRate: 0 };
-}
-
-export async function fetchFunnels(siteId: string): Promise<FunnelListData> {
-  return fetchPrivateJson<FunnelListData>("/api/private/funnels", { siteId });
-}
-
-export async function createFunnel(
-  siteId: string,
-  name: string,
-  steps: FunnelStep[],
-): Promise<{ ok: boolean; funnel: FunnelDefinition }> {
-  return fetchPrivateJsonMutate("/api/private/funnels", "POST", { siteId }, { name, steps });
-}
-
-export async function deleteFunnel(siteId: string, funnelId: string): Promise<{ ok: boolean }> {
-  return fetchPrivateJsonMutate("/api/private/funnels", "DELETE", { siteId, id: funnelId });
-}
-
-export async function fetchFunnelAnalysis(
-  siteId: string,
-  funnelId: string,
-  window: TimeWindow,
-  filters?: DashboardFilters,
-): Promise<FunnelAnalysisData> {
-  return fetchPrivateJson<FunnelAnalysisData>("/api/private/funnel-analysis", withFilters({
-    siteId,
-    funnelId,
-    from: window.from,
-    to: window.to,
-  }, filters));
-}
-
 export async function fetchOverviewGeoPoints(
   siteId: string,
   window: TimeWindow,
@@ -518,12 +444,9 @@ export async function fetchOverviewSourceCardTab(
   return payload.data ?? [];
 }
 
-export type ReferrerTrendTab = "domain" | "link";
-
 export async function fetchReferrerTrend(
   siteId: string,
   window: TimeWindow,
-  tab: ReferrerTrendTab,
   filters?: DashboardFilters,
   options?: {
     limit?: number;
@@ -537,7 +460,6 @@ export async function fetchReferrerTrend(
         from: window.from,
         to: window.to,
         interval: window.interval,
-        dimension: tab,
         limit: options?.limit ?? 5,
       },
       filters,
@@ -661,24 +583,6 @@ export async function fetchDashboardFilterOptions(
     ),
   ).catch(() => emptyDashboardFilterOptions());
   return Array.isArray(payload.data) ? payload.data : [];
-}
-
-export async function fetchVisitors(siteId: string, window: TimeWindow, filters?: DashboardFilters): Promise<VisitorsData> {
-  return fetchPrivateJson<VisitorsData>("/api/private/visitors", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    limit: 100,
-  }, filters));
-}
-
-export async function fetchCountries(siteId: string, window: TimeWindow, filters?: DashboardFilters): Promise<DimensionData> {
-  return fetchPrivateJson<DimensionData>("/api/private/countries", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    limit: 100,
-  }, filters));
 }
 
 export async function fetchClientDimensionTrend(
@@ -828,60 +732,6 @@ export async function fetchReferrerRadar(
   }, filters));
 }
 
-export async function fetchEventTypes(siteId: string, window: TimeWindow, filters?: DashboardFilters): Promise<DimensionData> {
-  return fetchPrivateJson<DimensionData>("/api/private/event-types", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    limit: 100,
-  }, filters));
-}
-
-export async function loadOverviewBundle(
-  siteId: string,
-  window: TimeWindow,
-  filters?: DashboardFilters,
-): Promise<OverviewBundle> {
-  const previousTo = Math.max(window.from - 1, 0);
-  const previousFrom = Math.max(previousTo - (window.to - window.from), 0);
-  const previousWindow: TimeWindow = {
-    ...window,
-    from: previousFrom,
-    to: previousTo,
-  };
-
-  const overview = await fetchOverview(siteId, window, filters, {
-    includeChange: true,
-    includeDetail: true,
-  }).catch(() => emptyOverview());
-
-  const trend = overview.detail
-    ? {
-      ok: overview.ok,
-      interval: overview.detail.interval,
-      data: overview.detail.data,
-    }
-    : await fetchTrend(siteId, window, filters).catch(() => emptyTrend(window.interval));
-
-  const previousOverview = overview.previousData
-    ? {
-        ok: overview.ok,
-        data: overview.previousData,
-      }
-    : await fetchOverview(siteId, previousWindow, filters).catch(() => emptyOverview());
-
-  return {
-    overview,
-    previousOverview,
-    trend,
-  };
-}
-
-export const emptyDimensionData = emptyDimension;
-export const emptyPagesData = emptyPages;
-export const emptyReferrersData = emptyReferrers;
-export const emptyVisitorsData = emptyVisitors;
-export const emptyPageCardTabsData = emptyPageCardTabs;
 export const emptyOverviewClientDimensionTabsData =
   emptyOverviewClientDimensionTabs;
 export const emptyOverviewGeoDimensionTabsData = emptyOverviewGeoDimensionTabs;

@@ -6,10 +6,7 @@ import {
   ShareTrendCard,
   type ShareTrendFetcher,
 } from "@/components/dashboard/share-trend-card";
-import {
-  fetchReferrerTrend,
-  type ReferrerTrendTab,
-} from "@/lib/dashboard/client-data";
+import { fetchReferrerTrend } from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -22,29 +19,16 @@ interface ReferrerShareTrendCardProps {
   filters: DashboardFilters;
 }
 
-interface ReferrerTrendPanelProps extends ReferrerShareTrendCardProps {
-  tab: ReferrerTrendTab;
-  title: string;
-}
-
 function ReferrerTrendPanel({
   locale,
   messages,
   siteId,
   window,
   filters,
-  tab,
-  title,
-}: ReferrerTrendPanelProps) {
+}: ReferrerShareTrendCardProps) {
   const fetchTrend = useMemo<ShareTrendFetcher>(() => {
     return async (nextSiteId, nextWindow, nextFilters, options) => {
-      const payload = await fetchReferrerTrend(
-        nextSiteId,
-        nextWindow,
-        tab,
-        nextFilters,
-        options,
-      );
+      const payload = await fetchReferrerTrend(nextSiteId, nextWindow, nextFilters, options);
 
       return {
         ...payload,
@@ -57,7 +41,7 @@ function ReferrerTrendPanel({
         })),
       };
     };
-  }, [messages.overview.direct, tab]);
+  }, [messages.overview.direct]);
 
   return (
     <ShareTrendCard
@@ -66,7 +50,7 @@ function ReferrerTrendPanel({
       siteId={siteId}
       window={window}
       filters={filters}
-      title={title}
+      title={messages.overview.sourceTab}
       fetchTrend={fetchTrend}
       otherLabel={messages.referrers.longTail}
     />
@@ -74,11 +58,5 @@ function ReferrerTrendPanel({
 }
 
 export function ReferrerShareTrendCard(props: ReferrerShareTrendCardProps) {
-  return (
-    <ReferrerTrendPanel
-      {...props}
-      tab="domain"
-      title={props.messages.overview.sourceTab}
-    />
-  );
+  return <ReferrerTrendPanel {...props} />;
 }

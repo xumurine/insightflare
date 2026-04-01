@@ -103,12 +103,8 @@ interface BrowserTrendBucketRow {
 interface BrowserTrendPointRow {
   bucket: number;
   timestampMs: number;
-  totalViews: number;
   totalVisitors: number;
-  totalSessions: number;
-  viewsBySeries: Record<string, number>;
   visitorsBySeries: Record<string, number>;
-  sessionsBySeries: Record<string, number>;
 }
 
 interface BrowserVersionAggregateRow {
@@ -154,9 +150,7 @@ interface BrowserCrossBreakdownDimensionRow extends BrowserCrossBreakdownItemRow
 interface BrowserCrossBreakdownDimensionDataRow {
   columns: BrowserCrossBreakdownItemRow[];
   rows: BrowserCrossBreakdownDimensionRow[];
-  totalViews: number;
   totalVisitors: number;
-  totalSessions: number;
 }
 
 interface BrowserCrossAggregateRow {
@@ -271,8 +265,6 @@ type UtmDimensionKey =
   | "campaign"
   | "term"
   | "content";
-
-type ReferrerDimensionKey = "domain" | "link";
 
 interface ClientDimensionTabs {
   browser: DimensionRow[];
@@ -613,22 +605,14 @@ function utmDimensionDefinition(
   };
 }
 
-function referrerDimensionDefinition(
-  dimension: ReferrerDimensionKey,
+function referrerDomainDimensionDefinition(
   alias = "",
 ): { labelExpr: string; fallbackKeyBase: string } {
   const prefix = alias ? `${alias}.` : "";
 
-  if (dimension === "domain") {
-    return {
-      labelExpr: `CASE WHEN TRIM(COALESCE(${prefix}referrer_host, '')) != '' THEN TRIM(COALESCE(${prefix}referrer_host, '')) ELSE '${DIRECT_REFERRER_FILTER_VALUE}' END`,
-      fallbackKeyBase: "referrer-domain",
-    };
-  }
-
   return {
-    labelExpr: `CASE WHEN TRIM(COALESCE(${prefix}referrer_url, '')) != '' THEN TRIM(COALESCE(${prefix}referrer_url, '')) ELSE '${DIRECT_REFERRER_FILTER_VALUE}' END`,
-    fallbackKeyBase: "referrer-link",
+    labelExpr: `CASE WHEN TRIM(COALESCE(${prefix}referrer_host, '')) != '' THEN TRIM(COALESCE(${prefix}referrer_host, '')) ELSE '${DIRECT_REFERRER_FILTER_VALUE}' END`,
+    fallbackKeyBase: "referrer-domain",
   };
 }
 
@@ -1605,9 +1589,7 @@ LIMIT ?
     return {
       columns: [],
       rows: [],
-      totalViews: 0,
       totalVisitors: 0,
-      totalSessions: 0,
     };
   }
 
@@ -1649,9 +1631,7 @@ LIMIT ?
     return {
       columns: [],
       rows: [],
-      totalViews: 0,
       totalVisitors: 0,
-      totalSessions: 0,
     };
   }
 
@@ -1885,9 +1865,7 @@ ORDER BY browser ASC, dimension ASC
   return {
     columns,
     rows,
-    totalViews: rows.reduce((sum, row) => sum + row.views, 0),
     totalVisitors: rows.reduce((sum, row) => sum + row.visitors, 0),
-    totalSessions: rows.reduce((sum, row) => sum + row.sessions, 0),
   };
 }
 
@@ -2212,12 +2190,8 @@ ORDER BY bucket ASC, label ASC
   const createEmptyPoint = (bucket: number): BrowserTrendPointRow => ({
     bucket,
     timestampMs: bucket * bucketDivisor,
-    totalViews: 0,
     totalVisitors: 0,
-    totalSessions: 0,
-    viewsBySeries: Object.fromEntries(series.map((item) => [item.key, 0])),
     visitorsBySeries: Object.fromEntries(series.map((item) => [item.key, 0])),
-    sessionsBySeries: Object.fromEntries(series.map((item) => [item.key, 0])),
   });
 
   const pointsByBucket = new Map<number, BrowserTrendPointRow>();
@@ -2225,12 +2199,8 @@ ORDER BY bucket ASC, label ASC
     const key = keyByLabel.get(row.label);
     if (!key) continue;
     const point = pointsByBucket.get(row.bucket) ?? createEmptyPoint(row.bucket);
-    point.viewsBySeries[key] = row.views;
     point.visitorsBySeries[key] = row.visitors;
-    point.sessionsBySeries[key] = row.sessions;
-    point.totalViews += row.views;
     point.totalVisitors += row.visitors;
-    point.totalSessions += row.sessions;
     pointsByBucket.set(row.bucket, point);
   }
 
@@ -2297,19 +2267,18 @@ async function queryUtmDimensionTrendFromD1(
   );
 }
 
-async function queryReferrerDimensionTrendFromD1(
+async function queryReferrerTrendFromD1(
   env: Env,
   siteId: string,
   window: QueryWindow,
   interval: Interval,
   filters: DashboardFilters,
-  dimension: ReferrerDimensionKey,
   limit: number,
 ): Promise<{
   series: BrowserTrendSeriesRow[];
   data: BrowserTrendPointRow[];
 }> {
-  const definition = referrerDimensionDefinition(dimension);
+  const definition = referrerDomainDimensionDefinition();
   return queryShareTrendFromD1(
     env,
     siteId,
@@ -2377,9 +2346,7 @@ LIMIT ?
     return {
       columns: [],
       rows: [],
-      totalViews: 0,
       totalVisitors: 0,
-      totalSessions: 0,
     };
   }
 
@@ -2421,9 +2388,7 @@ LIMIT ?
     return {
       columns: [],
       rows: [],
-      totalViews: 0,
       totalVisitors: 0,
-      totalSessions: 0,
     };
   }
 
@@ -2665,9 +2630,7 @@ ORDER BY primaryValue ASC, secondaryValue ASC
   return {
     columns,
     rows,
-    totalViews: rows.reduce((sum, row) => sum + row.views, 0),
     totalVisitors: rows.reduce((sum, row) => sum + row.visitors, 0),
-    totalSessions: rows.reduce((sum, row) => sum + row.sessions, 0),
   };
 }
 
@@ -3535,20 +3498,17 @@ async function handleReferrerDimensionTrend(
   siteId: string,
   url: URL,
 ): Promise<Response> {
-  const dimension = parseReferrerDimensionKey(url.searchParams.get("dimension"));
-  if (!dimension) return badRequest("Invalid referrer dimension");
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
   const filters = parseFilters(url);
   const interval = parseInterval(url);
   const limit = parseLimit(url, 5, 8);
-  const trend = await queryReferrerDimensionTrendFromD1(
+  const trend = await queryReferrerTrendFromD1(
     env,
     siteId,
     window,
     interval,
     filters,
-    dimension,
     limit,
   );
   return jsonResponse({
@@ -4044,16 +4004,6 @@ function parseUtmDimensionKey(value: string | null): UtmDimensionKey | null {
     || normalized === "content"
   ) {
     return normalized as UtmDimensionKey;
-  }
-  return null;
-}
-
-function parseReferrerDimensionKey(
-  value: string | null,
-): ReferrerDimensionKey | null {
-  const normalized = String(value ?? "").trim();
-  if (normalized === "domain" || normalized === "link") {
-    return normalized as ReferrerDimensionKey;
   }
   return null;
 }

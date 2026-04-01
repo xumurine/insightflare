@@ -3494,12 +3494,8 @@ function generateDemoShareTrend(
   const createEmptyPoint = (bucket: number) => ({
     bucket,
     timestampMs: bucket * stepMs,
-    totalViews: 0,
     totalVisitors: 0,
-    totalSessions: 0,
-    viewsBySeries: Object.fromEntries(series.map((item) => [item.key, 0])),
     visitorsBySeries: Object.fromEntries(series.map((item) => [item.key, 0])),
-    sessionsBySeries: Object.fromEntries(series.map((item) => [item.key, 0])),
   });
 
   const bucketMap = new Map<
@@ -3507,12 +3503,8 @@ function generateDemoShareTrend(
     {
       bucket: number;
       timestampMs: number;
-      totalViews: number;
       totalVisitors: number;
-      totalSessions: number;
-      viewsBySeries: Record<string, number>;
       visitorsBySeries: Record<string, number>;
-      sessionsBySeries: Record<string, number>;
       sessionSets: Map<string, Set<string>>;
       visitorSets: Map<string, Set<string>>;
     }
@@ -3532,8 +3524,6 @@ function generateDemoShareTrend(
       sessionSets: new Map<string, Set<string>>(),
       visitorSets: new Map<string, Set<string>>(),
     };
-    point.viewsBySeries[key] += dataset.viewWeight;
-    point.totalViews += dataset.viewWeight;
 
     const sessionSet = point.sessionSets.get(key) ?? new Set<string>();
     sessionSet.add(visit.sessionId);
@@ -3547,7 +3537,6 @@ function generateDemoShareTrend(
 
   for (const point of bucketMap.values()) {
     let totalVisitors = 0;
-    let totalSessions = 0;
     for (const seriesItem of series) {
       const visitorSet = point.visitorSets.get(seriesItem.key) ?? new Set<string>();
       const visitors = Math.max(
@@ -3560,17 +3549,9 @@ function generateDemoShareTrend(
         Math.round(weightedSessionCount(dataset, sessionSet)),
       );
       point.visitorsBySeries[seriesItem.key] = visitors;
-      point.sessionsBySeries[seriesItem.key] = sessions;
       totalVisitors += visitors;
-      totalSessions += sessions;
-      point.viewsBySeries[seriesItem.key] = Math.max(
-        0,
-        Math.round(point.viewsBySeries[seriesItem.key] ?? 0),
-      );
     }
-    point.totalViews = Math.max(0, Math.round(point.totalViews));
     point.totalVisitors = totalVisitors;
-    point.totalSessions = totalSessions;
   }
 
   const fromBucket = Math.floor(from / stepMs);
@@ -3582,12 +3563,8 @@ function generateDemoShareTrend(
       data.push({
         bucket: existing.bucket,
         timestampMs: existing.timestampMs,
-        totalViews: existing.totalViews,
         totalVisitors: existing.totalVisitors,
-        totalSessions: existing.totalSessions,
-        viewsBySeries: existing.viewsBySeries,
         visitorsBySeries: existing.visitorsBySeries,
-        sessionsBySeries: existing.sessionsBySeries,
       });
     } else {
       data.push(createEmptyPoint(bucket));
@@ -3647,25 +3624,10 @@ function generateDemoReferrerTrend(
   siteId: string,
   params: Record<string, string | number>,
 ): Record<string, unknown> {
-  const dimension = parseDemoReferrerDimensionKey(params.dimension);
   const interval = parseDemoInterval(params.interval);
-  if (!dimension) {
-    return {
-      ok: true,
-      interval,
-      series: [],
-      data: [],
-    };
-  }
-
   return generateDemoShareTrend(siteId, params, {
-    fallbackKeyBase: dimension === "domain" ? "referrer-domain" : "referrer-link",
-    getLabel: (visit) => {
-      const value = dimension === "domain"
-        ? visit.referrerHost.trim()
-        : visit.referrerUrl.trim();
-      return value || DEMO_DIRECT_REFERRER_FILTER_VALUE;
-    },
+    fallbackKeyBase: "referrer-domain",
+    getLabel: (visit) => visit.referrerHost.trim() || DEMO_DIRECT_REFERRER_FILTER_VALUE,
   });
 }
 
@@ -3782,9 +3744,7 @@ function generateDemoBrowserCrossDimension(
       isUnknown?: boolean;
     }>;
   }>;
-  totalViews: number;
   totalVisitors: number;
-  totalSessions: number;
 } {
   const topBrowsers = aggregateDimensionRowsFromVisits(
     dataset,
@@ -3798,9 +3758,7 @@ function generateDemoBrowserCrossDimension(
     return {
       columns: [],
       rows: [],
-      totalViews: 0,
       totalVisitors: 0,
-      totalSessions: 0,
     };
   }
 
@@ -3819,9 +3777,7 @@ function generateDemoBrowserCrossDimension(
     return {
       columns: [],
       rows: [],
-      totalViews: 0,
       totalVisitors: 0,
-      totalSessions: 0,
     };
   }
 
@@ -4028,9 +3984,7 @@ function generateDemoBrowserCrossDimension(
   return {
     columns,
     rows,
-    totalViews: rows.reduce((sum, row) => sum + row.views, 0),
     totalVisitors: rows.reduce((sum, row) => sum + row.visitors, 0),
-    totalSessions: rows.reduce((sum, row) => sum + row.sessions, 0),
   };
 }
 
@@ -4325,9 +4279,7 @@ function generateDemoClientCrossDimensionData(
       isUnknown?: boolean;
     }>;
   }>;
-  totalViews: number;
   totalVisitors: number;
-  totalSessions: number;
 } {
   const primaryMeta = demoClientDimensionMeta(primaryDimension);
   const secondaryMeta = demoClientDimensionMeta(secondaryDimension);
@@ -4343,9 +4295,7 @@ function generateDemoClientCrossDimensionData(
     return {
       columns: [],
       rows: [],
-      totalViews: 0,
       totalVisitors: 0,
-      totalSessions: 0,
     };
   }
 
@@ -4364,9 +4314,7 @@ function generateDemoClientCrossDimensionData(
     return {
       columns: [],
       rows: [],
-      totalViews: 0,
       totalVisitors: 0,
-      totalSessions: 0,
     };
   }
 
@@ -4581,9 +4529,7 @@ function generateDemoClientCrossDimensionData(
   return {
     columns,
     rows,
-    totalViews: rows.reduce((sum, row) => sum + row.views, 0),
     totalVisitors: rows.reduce((sum, row) => sum + row.visitors, 0),
-    totalSessions: rows.reduce((sum, row) => sum + row.sessions, 0),
   };
 }
 
@@ -4597,9 +4543,7 @@ function generateDemoClientCrossBreakdown(
     return {
       columns: [],
       rows: [],
-      totalViews: 0,
       totalVisitors: 0,
-      totalSessions: 0,
     };
   }
 
@@ -4951,18 +4895,6 @@ function parseDemoUtmDimensionKey(
   return null;
 }
 
-type DemoReferrerDimensionKey = "domain" | "link";
-
-function parseDemoReferrerDimensionKey(
-  value: string | number | undefined,
-): DemoReferrerDimensionKey | null {
-  const normalized = String(value ?? "").trim();
-  if (normalized === "domain" || normalized === "link") {
-    return normalized as DemoReferrerDimensionKey;
-  }
-  return null;
-}
-
 function buildDemoUtmRows(
   siteId: string,
   tab: DemoUtmDimensionKey,
@@ -5156,29 +5088,16 @@ function generateDemoUtmTrend(
       return Math.max(0.05, base * variance);
     });
 
-    const viewAllocations = distributeTotal(bucketRow.views, weights);
     const visitorAllocations = distributeTotal(bucketRow.visitors, weights);
-    const sessionAllocations = distributeTotal(bucketRow.sessions, weights);
-
-    const viewsBySeries = Object.fromEntries(
-      series.map((item, index) => [item.key, viewAllocations[index] ?? 0]),
-    );
     const visitorsBySeries = Object.fromEntries(
       series.map((item, index) => [item.key, visitorAllocations[index] ?? 0]),
-    );
-    const sessionsBySeries = Object.fromEntries(
-      series.map((item, index) => [item.key, sessionAllocations[index] ?? 0]),
     );
 
     return {
       bucket: bucketRow.bucket,
       timestampMs: bucketRow.timestampMs,
-      totalViews: bucketRow.views,
       totalVisitors: bucketRow.visitors,
-      totalSessions: bucketRow.sessions,
-      viewsBySeries,
       visitorsBySeries,
-      sessionsBySeries,
     };
   });
 
