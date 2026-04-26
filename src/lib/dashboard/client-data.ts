@@ -272,6 +272,81 @@ export async function fetchPagesDashboard(
   );
 }
 
+export async function fetchPagesShareTrend(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+  options?: {
+    limit?: number;
+  },
+): Promise<BrowserTrendData> {
+  const limit = Math.max(1, Math.min(options?.limit ?? 5, 12));
+  const payload = await fetchPagesDashboard(siteId, window, filters, {
+    page: 1,
+    pageSize: limit,
+  }).catch(() => ({
+    ok: true,
+    interval: window.interval,
+    data: [],
+    meta: {
+      page: 1,
+      pageSize: limit,
+      returned: 0,
+      hasMore: false,
+      nextPage: null,
+    },
+  } satisfies PagesDashboardData));
+
+  const series = payload.data.map((item, index) => ({
+    key: `page_${index}`,
+    label: item.pathname,
+    views: item.metrics.views,
+    visitors: item.metrics.views,
+    sessions: item.metrics.sessions,
+  }));
+
+  const pointByTimestamp = new Map<
+    number,
+    {
+      timestampMs: number;
+      totalVisitors: number;
+      visitorsBySeries: Record<string, number>;
+    }
+  >();
+
+  for (const [index, item] of payload.data.entries()) {
+    const seriesKey = `page_${index}`;
+    for (const point of item.trend) {
+      const timestampMs = Number(point.timestampMs ?? 0);
+      const value = Math.max(0, Number(point.views ?? 0));
+      const current = pointByTimestamp.get(timestampMs) ?? {
+        timestampMs,
+        totalVisitors: 0,
+        visitorsBySeries: {},
+      };
+      current.totalVisitors += value;
+      current.visitorsBySeries[seriesKey] = value;
+      pointByTimestamp.set(timestampMs, current);
+    }
+  }
+
+  const data = [...pointByTimestamp.values()]
+    .sort((left, right) => left.timestampMs - right.timestampMs)
+    .map((point, index) => ({
+      bucket: index,
+      timestampMs: point.timestampMs,
+      totalVisitors: point.totalVisitors,
+      visitorsBySeries: point.visitorsBySeries,
+    }));
+
+  return {
+    ok: payload.ok,
+    interval: payload.interval,
+    series,
+    data,
+  };
+}
+
 export async function fetchPageCardTabs(
   siteId: string,
   window: TimeWindow,
@@ -448,6 +523,29 @@ export async function fetchOverviewPageCardTab(
   return payload.data ?? [];
 }
 
+export async function fetchPageHashTab(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+  options?: {
+    limit?: number;
+  },
+): Promise<OverviewTabRows> {
+  const payload = await fetchPrivateJson<OverviewTabData>(
+    "/api/private/page-hash",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        limit: options?.limit ?? 100,
+      },
+      filters,
+    ),
+  ).catch(() => emptyOverviewTab());
+  return payload.data ?? [];
+}
+
 export async function fetchOverviewSourceCardTab(
   siteId: string,
   window: TimeWindow,
@@ -459,6 +557,29 @@ export async function fetchOverviewSourceCardTab(
 ): Promise<OverviewTabRows> {
   const payload = await fetchPrivateJson<OverviewTabData>(
     `/api/private/overview-source-${tab}`,
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        limit: options?.limit ?? 100,
+      },
+      filters,
+    ),
+  ).catch(() => emptyOverviewTab());
+  return payload.data ?? [];
+}
+
+export async function fetchEventTypesTab(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+  options?: {
+    limit?: number;
+  },
+): Promise<OverviewTabRows> {
+  const payload = await fetchPrivateJson<OverviewTabData>(
+    "/api/private/event-types",
     withFilters(
       {
         siteId,

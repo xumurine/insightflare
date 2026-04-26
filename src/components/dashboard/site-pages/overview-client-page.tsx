@@ -4205,7 +4205,7 @@ interface OverviewDataSectionProps {
   filters: DashboardFilters;
 }
 
-function OverviewMetricsSection({
+export function OverviewMetricsSection({
   locale,
   messages,
   siteId,
@@ -4447,7 +4447,7 @@ function OverviewMetricsSection({
   );
 }
 
-function OverviewTrendSection({
+export function OverviewTrendSection({
   locale,
   messages,
   siteId,

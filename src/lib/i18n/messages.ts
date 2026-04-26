@@ -185,6 +185,13 @@ export interface AppMessages {
     tabPages: string;
     tabEntryPages: string;
     tabExitPages: string;
+    trendTitle: string;
+    otherPages: string;
+    hashTab: string;
+    noHash: string;
+    eventTab: string;
+    eventsMetric: string;
+    viewDetails: string;
   };
   referrers: {
     title: string;

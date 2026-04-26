@@ -4826,6 +4826,35 @@ function generateDemoVisitors(
   };
 }
 
+const DEMO_EMPTY_HASH_VALUE = "__insightflare_empty_hash__";
+
+function demoHashFragmentForVisit(visit: DemoVisitFact): string {
+  const pathname = normalizePath(visit.pathname);
+  if (!pathname || pathname === "/") return "";
+
+  const seed = `${visit.pathname}:${visit.title}:${visit.visitId}`;
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = ((hash << 5) - hash + seed.charCodeAt(index)) | 0;
+  }
+
+  const magnitude = Math.abs(hash);
+  if (magnitude % 100 < 46) return "";
+
+  let choices = ["#overview", "#details", "#faq", "#cta"];
+  if (pathname.includes("/pricing")) {
+    choices = ["#plans", "#compare", "#faq", "#enterprise"];
+  } else if (pathname.includes("/docs") || pathname.includes("/guide")) {
+    choices = ["#install", "#usage", "#examples", "#api"];
+  } else if (pathname.includes("/news") || pathname.includes("/blog")) {
+    choices = ["#summary", "#timeline", "#quotes", "#comments"];
+  } else if (pathname.includes("/product")) {
+    choices = ["#features", "#demo", "#specs", "#reviews"];
+  }
+
+  return choices[magnitude % choices.length] ?? "";
+}
+
 function generateDemoDimension(
   siteId: string,
   dimensionType: string,
@@ -4846,6 +4875,10 @@ function generateDemoDimension(
     rows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.country);
   } else if (dimensionType === "devices") {
     rows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.deviceType);
+  } else if (dimensionType === "page-hash") {
+    rows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => (
+      demoHashFragmentForVisit(visit) || DEMO_EMPTY_HASH_VALUE
+    ));
   } else if (dimensionType === "event-types") {
     rows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => (
       visit.eventType === "pageview" ? "" : visit.eventType
@@ -4855,9 +4888,10 @@ function generateDemoDimension(
   return {
     ok: true,
     data: rows.map((row) => ({
-      value: row.label,
+      value: row.label === DEMO_EMPTY_HASH_VALUE ? "" : row.label,
       views: row.views,
       sessions: row.sessions,
+      visitors: row.visitors,
     })).sort((a, b) => b.views - a.views),
   };
 }
@@ -6048,6 +6082,9 @@ export function handleDemoRequest(options: {
   }
   if (path.includes("/devices")) {
     return generateDemoDimension(siteId, "devices", params);
+  }
+  if (path.includes("/page-hash")) {
+    return generateDemoDimension(siteId, "page-hash", params);
   }
   if (path.includes("/event-types")) {
     return generateDemoDimension(siteId, "event-types", params);

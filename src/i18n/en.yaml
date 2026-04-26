@@ -186,6 +186,13 @@ pages:
   tabPages: Pages
   tabEntryPages: Entry Pages
   tabExitPages: Exit Pages
+  trendTitle: Page Traffic Trend
+  otherPages: Other Pages
+  hashTab: Hash
+  noHash: No Hash
+  eventTab: Events
+  eventsMetric: Events
+  viewDetails: View details
 referrers:
   title: Referrers
   subtitle: Where traffic comes from.

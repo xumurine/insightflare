@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 import {
   RiAddLine,
@@ -1142,131 +1144,132 @@ export function TeamManagementClient({
               <div className="grid gap-4 lg:grid-cols-2">
                 {siteDashboardCards.map(
                   ({ site, overview, pagesPerSession, changeRates, trend }) => (
-                    <Clickable
+                    <Link
                       key={site.id}
-                      onClick={() => {
-                        navigateWithTransition(
-                          router,
-                          buildSitePath(locale, activeTeam.slug, site.slug),
-                        );
-                      }}
-                      className="block w-full"
-                      enableHoverScale={false}
+                      href={buildSitePath(locale, activeTeam.slug, site.slug)}
+                      className="group block h-full outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
                       aria-label={`${copy.sites.openAnalytics}: ${site.name}`}
                       title={copy.sites.openAnalytics}
                     >
-                      <Card className="h-full transition-colors hover:bg-accent/20">
-                        <CardHeader className="space-y-2">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex min-w-0 items-start gap-2.5">
-                              <div className="min-w-0 space-y-1">
-                                <CardTitle className="truncate text-base flex items-center gap-2">
-                                  <SiteCardIcon
-                                    siteName={site.name}
-                                    domain={site.domain}
+                      <motion.div
+                        className="h-full"
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.994 }}
+                        transition={{ duration: 0.16, ease: "easeOut" }}
+                      >
+                        <Card className="h-full transition-colors group-hover:bg-accent/20">
+                          <CardHeader className="space-y-2">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex min-w-0 items-start gap-2.5">
+                                <div className="min-w-0 space-y-1">
+                                  <CardTitle className="truncate text-base flex items-center gap-2">
+                                    <SiteCardIcon
+                                      siteName={site.name}
+                                      domain={site.domain}
+                                    />
+                                    {site.name}
+                                  </CardTitle>
+                                  <CardDescription className="truncate font-mono text-xs">
+                                    {site.domain}
+                                  </CardDescription>
+                                </div>
+                              </div>
+                              <span className="inline-flex size-6 shrink-0 items-center justify-center text-muted-foreground">
+                                <RiArrowRightSLine className="size-4" />
+                              </span>
+                            </div>
+                          </CardHeader>
+
+                          <CardContent className="space-y-4">
+                            <AutoTransition
+                              type="fade"
+                              duration={0.24}
+                              className="w-full"
+                            >
+                              <div key={`site-chart-${site.id}`}>
+                                <TrafficPairBarChart
+                                  data={trend}
+                                  locale={locale}
+                                  interval={chartWindow.interval}
+                                  viewsLabel={messages.common.views}
+                                  visitorsLabel={messages.common.visitors}
+                                  maxPoints={SITE_CARD_MAX_TREND_POINTS}
+                                />
+                              </div>
+                            </AutoTransition>
+
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-4 text-[11px] sm:grid-cols-3">
+                              <div className="space-y-1">
+                                <p className="text-muted-foreground">
+                                  {messages.common.views}
+                                </p>
+                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                  {numberFormat(locale, overview.views)}
+                                  <ChangeRateInline value={changeRates.views} />
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-muted-foreground">
+                                  {messages.common.visitors}
+                                </p>
+                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                  {numberFormat(locale, overview.visitors)}
+                                  <ChangeRateInline
+                                    value={changeRates.visitors}
                                   />
-                                  {site.name}
-                                </CardTitle>
-                                <CardDescription className="truncate font-mono text-xs">
-                                  {site.domain}
-                                </CardDescription>
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-muted-foreground">
+                                  {messages.common.sessions}
+                                </p>
+                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                  {numberFormat(locale, overview.sessions)}
+                                  <ChangeRateInline
+                                    value={changeRates.sessions}
+                                  />
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-muted-foreground">
+                                  {messages.common.bounceRate}
+                                </p>
+                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                  {percentFormat(locale, overview.bounceRate)}
+                                  <ChangeRateInline
+                                    value={changeRates.bounceRate}
+                                  />
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-muted-foreground">
+                                  {copy.sites.pagesPerSession}
+                                </p>
+                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                  {pagesPerSessionFormatter.format(
+                                    pagesPerSession,
+                                  )}
+                                  <ChangeRateInline
+                                    value={changeRates.pagesPerSession}
+                                  />
+                                </p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-muted-foreground">
+                                  {messages.common.avgDuration}
+                                </p>
+                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                  {durationFormat(locale, overview.avgDurationMs)}
+                                  <ChangeRateInline
+                                    value={changeRates.avgDurationMs}
+                                  />
+                                </p>
                               </div>
                             </div>
-                            <span className="inline-flex size-6 shrink-0 items-center justify-center text-muted-foreground">
-                              <RiArrowRightSLine className="size-4" />
-                            </span>
-                          </div>
-                        </CardHeader>
-
-                        <CardContent className="space-y-4">
-                          <AutoTransition
-                            type="fade"
-                            duration={0.24}
-                            className="w-full"
-                          >
-                            <div key={`site-chart-${site.id}`}>
-                              <TrafficPairBarChart
-                                data={trend}
-                                locale={locale}
-                                interval={chartWindow.interval}
-                                viewsLabel={messages.common.views}
-                                visitorsLabel={messages.common.visitors}
-                                maxPoints={SITE_CARD_MAX_TREND_POINTS}
-                              />
-                            </div>
-                          </AutoTransition>
-
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-4 text-[11px] sm:grid-cols-3">
-                            <div className="space-y-1">
-                              <p className="text-muted-foreground">
-                                {messages.common.views}
-                              </p>
-                              <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                {numberFormat(locale, overview.views)}
-                                <ChangeRateInline value={changeRates.views} />
-                              </p>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-muted-foreground">
-                                {messages.common.visitors}
-                              </p>
-                              <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                {numberFormat(locale, overview.visitors)}
-                                <ChangeRateInline
-                                  value={changeRates.visitors}
-                                />
-                              </p>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-muted-foreground">
-                                {messages.common.sessions}
-                              </p>
-                              <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                {numberFormat(locale, overview.sessions)}
-                                <ChangeRateInline
-                                  value={changeRates.sessions}
-                                />
-                              </p>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-muted-foreground">
-                                {messages.common.bounceRate}
-                              </p>
-                              <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                {percentFormat(locale, overview.bounceRate)}
-                                <ChangeRateInline
-                                  value={changeRates.bounceRate}
-                                />
-                              </p>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-muted-foreground">
-                                {copy.sites.pagesPerSession}
-                              </p>
-                              <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                {pagesPerSessionFormatter.format(
-                                  pagesPerSession,
-                                )}
-                                <ChangeRateInline
-                                  value={changeRates.pagesPerSession}
-                                />
-                              </p>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-muted-foreground">
-                                {messages.common.avgDuration}
-                              </p>
-                              <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                {durationFormat(locale, overview.avgDurationMs)}
-                                <ChangeRateInline
-                                  value={changeRates.avgDurationMs}
-                                />
-                              </p>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </Clickable>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
+                    </Link>
                   ),
                 )}
               </div>

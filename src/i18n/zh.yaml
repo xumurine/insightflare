@@ -186,6 +186,13 @@ pages:
   tabPages: 页面
   tabEntryPages: 入口页面
   tabExitPages: 出口页面
+  trendTitle: 页面访问趋势
+  otherPages: 其他页面
+  hashTab: Hash
+  noHash: 无 Hash
+  eventTab: 事件
+  eventsMetric: 事件数
+  viewDetails: 查看详情
 referrers:
   title: 来源分析
   subtitle: 流量来源渠道分布。

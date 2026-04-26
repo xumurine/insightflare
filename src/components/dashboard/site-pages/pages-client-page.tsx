@@ -7,8 +7,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { RiArrowDownLine, RiArrowUpLine } from "@remixicon/react";
+import Link from "next/link";
+import { motion } from "motion/react";
+import {
+  RiArrowDownLine,
+  RiArrowRightSLine,
+  RiArrowUpLine,
+} from "@remixicon/react";
 import { PageHeading } from "@/components/dashboard/page-heading";
+import { PagesShareTrendCard } from "@/components/dashboard/pages-share-trend-card";
 import { TrafficPairBarChart } from "@/components/dashboard/site-traffic-charts";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import { Button } from "@/components/ui/button";
@@ -26,6 +33,7 @@ import {
   numberFormat,
   percentFormat,
 } from "@/lib/dashboard/format";
+import { buildPageDetailHref } from "@/lib/dashboard/page-detail";
 import {
   fetchPagesDashboard,
   type PagesDashboardRow,
@@ -109,87 +117,108 @@ function PageTrafficCard({
   locale,
   messages,
   pagesPerSessionFormatter,
+  href,
 }: {
   item: PagesDashboardRow;
   interval: TimeWindow["interval"];
   locale: Locale;
   messages: AppMessages;
   pagesPerSessionFormatter: Intl.NumberFormat;
+  href: string;
 }) {
   const titles = item.titles.slice(0, 3);
 
   return (
-    <Card className="h-full">
-      <CardHeader className="space-y-3">
-        <div className="min-w-0 space-y-1.5">
-          {titles.length > 0 ? (
-            <>
-              <CardTitle className="truncate">{titles[0]}</CardTitle>
-              {titles.slice(1).map((title) => (
-                <p
-                  key={`${item.pathname}-${title}`}
-                  className="truncate text-xs text-muted-foreground"
-                >
-                  {title}
+    <Link
+      href={href}
+      className="group block h-full outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
+      aria-label={`${messages.pages.viewDetails}: ${item.pathname}`}
+      title={messages.pages.viewDetails}
+    >
+      <motion.div
+        className="h-full"
+        whileHover={{ scale: 1.012 }}
+        whileTap={{ scale: 0.992 }}
+        transition={{ duration: 0.16, ease: "easeOut" }}
+      >
+        <Card className="h-full transition-colors group-hover:border-border/80 group-hover:bg-accent/15">
+          <CardHeader className="space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-1.5">
+                {titles.length > 0 ? (
+                  <>
+                    <CardTitle className="truncate">{titles[0]}</CardTitle>
+                    {titles.slice(1).map((title) => (
+                      <p
+                        key={`${item.pathname}-${title}`}
+                        className="truncate text-xs text-muted-foreground"
+                      >
+                        {title}
+                      </p>
+                    ))}
+                  </>
+                ) : (
+                  <CardTitle className="text-muted-foreground">
+                    {messages.pages.untitled}
+                  </CardTitle>
+                )}
+                <p className="break-all font-mono text-[11px] text-muted-foreground">
+                  {item.pathname}
                 </p>
-              ))}
-            </>
-          ) : (
-            <CardTitle className="text-muted-foreground">
-              {messages.pages.untitled}
-            </CardTitle>
-          )}
-          <p className="break-all font-mono text-[11px] text-muted-foreground">
-            {item.pathname}
-          </p>
-        </div>
-      </CardHeader>
+              </div>
+              <span className="inline-flex size-6 shrink-0 items-center justify-center text-muted-foreground">
+                <RiArrowRightSLine className="size-4" />
+              </span>
+            </div>
+          </CardHeader>
 
-      <CardContent className="space-y-4">
-        <TrafficPairBarChart
-          data={item.trend}
-          locale={locale}
-          interval={interval}
-          viewsLabel={messages.common.views}
-          visitorsLabel={messages.common.visitors}
-          maxPoints={PAGE_CARD_CHART_MAX_POINTS}
-          className="h-[116px]"
-        />
+          <CardContent className="space-y-4">
+            <TrafficPairBarChart
+              data={item.trend}
+              locale={locale}
+              interval={interval}
+              viewsLabel={messages.common.views}
+              visitorsLabel={messages.common.visitors}
+              maxPoints={PAGE_CARD_CHART_MAX_POINTS}
+              className="h-[116px]"
+            />
 
-        <div className="grid grid-cols-2 gap-x-4 gap-y-4 text-[11px] sm:grid-cols-3">
-          <PageMetricField
-            label={messages.common.views}
-            value={numberFormat(locale, item.metrics.views)}
-            change={item.changeRates.views}
-          />
-          <PageMetricField
-            label={messages.common.visitors}
-            value={numberFormat(locale, item.metrics.visitors)}
-            change={item.changeRates.visitors}
-          />
-          <PageMetricField
-            label={messages.common.sessions}
-            value={numberFormat(locale, item.metrics.sessions)}
-            change={item.changeRates.sessions}
-          />
-          <PageMetricField
-            label={messages.common.bounceRate}
-            value={percentFormat(locale, item.metrics.bounceRate)}
-            change={item.changeRates.bounceRate}
-          />
-          <PageMetricField
-            label={messages.pages.pagesPerSession}
-            value={pagesPerSessionFormatter.format(item.metrics.pagesPerSession)}
-            change={item.changeRates.pagesPerSession}
-          />
-          <PageMetricField
-            label={messages.common.avgDuration}
-            value={durationFormat(locale, item.metrics.avgDurationMs)}
-            change={item.changeRates.avgDurationMs}
-          />
-        </div>
-      </CardContent>
-    </Card>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-4 text-[11px] sm:grid-cols-3">
+              <PageMetricField
+                label={messages.common.views}
+                value={numberFormat(locale, item.metrics.views)}
+                change={item.changeRates.views}
+              />
+              <PageMetricField
+                label={messages.common.visitors}
+                value={numberFormat(locale, item.metrics.visitors)}
+                change={item.changeRates.visitors}
+              />
+              <PageMetricField
+                label={messages.common.sessions}
+                value={numberFormat(locale, item.metrics.sessions)}
+                change={item.changeRates.sessions}
+              />
+              <PageMetricField
+                label={messages.common.bounceRate}
+                value={percentFormat(locale, item.metrics.bounceRate)}
+                change={item.changeRates.bounceRate}
+              />
+              <PageMetricField
+                label={messages.pages.pagesPerSession}
+                value={pagesPerSessionFormatter.format(item.metrics.pagesPerSession)}
+                change={item.changeRates.pagesPerSession}
+              />
+              <PageMetricField
+                label={messages.common.avgDuration}
+                value={durationFormat(locale, item.metrics.avgDurationMs)}
+                change={item.changeRates.avgDurationMs}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    </Link>
   );
 }
 
@@ -221,6 +250,7 @@ export function PagesClientPage({
   locale,
   messages,
   siteId,
+  pathname,
 }: PagesClientPageProps) {
   const { filters, window } = useDashboardQuery() as {
     filters: DashboardFilters;
@@ -363,9 +393,17 @@ export function PagesClientPage({
         subtitle={messages.pages.subtitle}
       />
 
+      <PagesShareTrendCard
+        locale={locale}
+        messages={messages}
+        siteId={siteId}
+        window={window}
+        filters={filters}
+      />
+
       {loadingInitial ? (
         <section
-          className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3"
+          className="grid gap-4 xl:grid-cols-2"
           aria-busy="true"
         >
           <p className="sr-only">{messages.pages.loading}</p>
@@ -393,7 +431,7 @@ export function PagesClientPage({
 
       {items.length > 0 ? (
         <>
-          <section className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+          <section className="grid gap-4 xl:grid-cols-2">
             {items.map((item) => (
               <PageTrafficCard
                 key={item.pathname}
@@ -402,6 +440,7 @@ export function PagesClientPage({
                 locale={locale}
                 messages={messages}
                 pagesPerSessionFormatter={pagesPerSessionFormatter}
+                href={buildPageDetailHref(pathname, item.pathname)}
               />
             ))}
           </section>

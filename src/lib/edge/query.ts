@@ -4811,6 +4811,12 @@ async function routeQuery(
   if (pathname === "pages-dashboard") {
     return handlePagesDashboard(env, siteId, url);
   }
+  if (pathname === "page-hash") {
+    return handleDimension(env, siteId, url, "hash_fragment");
+  }
+  if (pathname === "event-types") {
+    return handleEventTypes(env, siteId, url);
+  }
   if (pathname === "browser-trend") return handleBrowserTrend(env, siteId, url);
   if (pathname === "browser-engine-trend") {
     return handleBrowserEngineTrend(env, siteId, url);
