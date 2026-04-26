@@ -247,15 +247,20 @@ export function PerformanceClientPage({
 
   const filledTrend = useMemo(() => {
     const rows = performanceData.trends[activeMetric] ?? [];
-    const byTimestamp = new Map(
-      rows.map((row) => [Number(row.timestampMs ?? 0), row] as const),
-    );
     const stepMs = intervalStepMs(dataWindow.interval);
+    const byBucket = new Map(
+      rows.map((row) => [
+        Math.floor(Number(row.timestampMs ?? 0) / stepMs),
+        row,
+      ] as const),
+    );
+    const startBucket = Math.floor(dataWindow.from / stepMs);
+    const endBucketExclusive = Math.ceil(dataWindow.to / stepMs);
     const filled = [];
-    for (let ts = dataWindow.from; ts < dataWindow.to; ts += stepMs) {
-      const row = byTimestamp.get(ts);
+    for (let bucket = startBucket; bucket < endBucketExclusive; bucket += 1) {
+      const row = byBucket.get(bucket);
       filled.push({
-        timestampMs: ts,
+        timestampMs: bucket * stepMs,
         p50: row?.p50 ?? null,
         p75: row?.p75 ?? null,
         p95: row?.p95 ?? null,
