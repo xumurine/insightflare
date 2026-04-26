@@ -61,6 +61,7 @@ function settingsFingerprint(input: {
   trackQueryParams: boolean;
   trackHash: boolean;
   ignoreDoNotTrack: boolean;
+  performanceSampleRate: number;
   siteDomain: string;
   sessionWindowMinutes: number;
 }): string {
@@ -69,6 +70,7 @@ function settingsFingerprint(input: {
     input.trackQueryParams ? "1" : "0",
     input.trackHash ? "1" : "0",
     input.ignoreDoNotTrack ? "1" : "0",
+    String(input.performanceSampleRate),
     input.siteDomain,
     String(input.sessionWindowMinutes),
   ].join("|");
@@ -112,8 +114,12 @@ export async function handleTrackerScriptRequest(request: Request, env: Env): Pr
     return Math.max(1, Math.min(24 * 60, Math.floor(raw)));
   })();
   const ttlSeconds = SCRIPT_RESPONSE_CACHE_TTL_SECONDS;
+  const performanceSampleRate = settings.performanceTrackingEnabled
+    ? Math.max(0, Math.min(100, Number(settings.performanceSampleRate || 0)))
+    : 0;
   const fingerprint = settingsFingerprint({
     ...settings,
+    performanceSampleRate,
     sessionWindowMinutes,
   });
   const cacheKey = scriptCacheKeyRequest(siteId, euMode, fingerprint);
@@ -131,6 +137,7 @@ export async function handleTrackerScriptRequest(request: Request, env: Env): Pr
     trackQueryParams: settings.trackQueryParams,
     trackHash: settings.trackHash,
     ignoreDoNotTrack: settings.ignoreDoNotTrack,
+    performanceSampleRate,
     sessionWindowMinutes,
   });
 

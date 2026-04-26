@@ -13,6 +13,7 @@ navigation:
   geo: Location
   devices: Devices
   browsers: Browsers
+  performance: Performance
   settings: Settings
 common:
   id: ID
@@ -399,6 +400,22 @@ browsers:
   radarLoyalty: Loyalty
   radarFrequency: Frequency
   radarTraffic: Traffic
+performance:
+  title: Performance
+  subtitle: Track page-load and interaction metrics across the selected time range.
+  chartTitle: Performance Trend
+  avgLabel: Average
+  samplesLabel: Samples
+  p50Label: P50
+  p75Label: P75
+  p95Label: P95
+  ttfb: TTFB
+  fcp: FCP
+  lcp: LCP
+  cls: CLS
+  inp: INP
+  msUnit: ms
+  clsUnit: score
 siteSettings:
   title: Site Settings
   subtitle: Configure this site's basic information and lifecycle.
@@ -435,6 +452,11 @@ siteSettings:
     /private
   pathBlacklistHint: Uses startsWith prefix matching; matched paths are not reported.
   ignoreDoNotTrackLabel: Ignore Browser Do Not Track
+  performanceGroupTitle: Performance Tracking
+  performanceGroupDescription: Control whether web performance metrics are collected and how often they are sampled.
+  performanceTrackingEnabledLabel: Enable Performance Tracking
+  performanceSampleRateLabel: Performance Sample Rate (%)
+  performanceSampleRateHint: A sampled visit records TTFB, FCP, LCP, CLS, and INP on leave. Use 0 to disable sampling or 100 for full coverage.
   booleanOn: On
   booleanOff: Off
   loadingSettings: Loading script settings...

@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SITE_SCRIPT_SETTINGS,
   normalizeSiteTrackingConfig,
   normalizeSiteScriptSettings,
   type SiteTrackingConfig,
@@ -82,6 +83,34 @@ export function normalizeSiteSettingsKey(input: unknown): string {
   return value.slice(0, SITE_SETTINGS_MAX_ID_LENGTH);
 }
 
+function serializeSiteTrackingConfig(settings: SiteTrackingConfig): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    siteId: settings.siteId,
+    siteDomain: settings.siteDomain,
+    trackingStrength: settings.trackingStrength,
+    trackQueryParams: settings.trackQueryParams,
+    trackHash: settings.trackHash,
+    domainWhitelist: settings.domainWhitelist,
+    pathBlacklist: settings.pathBlacklist,
+    ignoreDoNotTrack: settings.ignoreDoNotTrack,
+  };
+
+  if (
+    settings.performanceTrackingEnabled !==
+    DEFAULT_SITE_SCRIPT_SETTINGS.performanceTrackingEnabled
+  ) {
+    payload.performanceTrackingEnabled = settings.performanceTrackingEnabled;
+  }
+  if (
+    settings.performanceSampleRate !==
+    DEFAULT_SITE_SCRIPT_SETTINGS.performanceSampleRate
+  ) {
+    payload.performanceSampleRate = settings.performanceSampleRate;
+  }
+
+  return payload;
+}
+
 export async function readSiteScriptSettings(
   env: Env,
   siteId: string,
@@ -146,7 +175,7 @@ export async function upsertSiteTrackingConfig(
     throw new Error("siteDomain is required");
   }
   const kv = siteSettingsBinding(env);
-  await kv.put(normalizedSiteId, JSON.stringify(normalized));
+  await kv.put(normalizedSiteId, JSON.stringify(serializeSiteTrackingConfig(normalized)));
   await writeSettingsToCache(normalizedSiteId, normalized);
   return normalized;
 }

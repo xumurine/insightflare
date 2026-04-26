@@ -4,6 +4,7 @@ interface BuildTrackerScriptOptions {
   trackQueryParams: boolean;
   trackHash: boolean;
   ignoreDoNotTrack: boolean;
+  performanceSampleRate: number;
   sessionWindowMinutes: number;
 }
 
@@ -13,7 +14,12 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
   const trackQueryParamsLiteral = options.trackQueryParams ? "true" : "false";
   const trackHashLiteral = options.trackHash ? "true" : "false";
   const ignoreDoNotTrackLiteral = options.ignoreDoNotTrack ? "true" : "false";
-  const sessionWindowMsLiteral = String(Math.max(1, Math.floor(options.sessionWindowMinutes)) * 60 * 1000);
+  const performanceSampleRateLiteral = String(
+    Math.max(0, Math.min(100, Number(options.performanceSampleRate) || 0)),
+  );
+  const sessionWindowMsLiteral = String(
+    Math.max(1, Math.floor(options.sessionWindowMinutes)) * 60 * 1000,
+  );
 
   return `(() => {
   "use strict";
@@ -23,7 +29,8 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
   const TRACK_QUERY_PARAMS = ${trackQueryParamsLiteral};
   const TRACK_HASH = ${trackHashLiteral};
   const IGNORE_DO_NOT_TRACK = ${ignoreDoNotTrackLiteral};
-  const INSTALL_KEY = "__insightflare_tracker_v5__";
+  const PERFORMANCE_SAMPLE_RATE = ${performanceSampleRateLiteral};
+  const INSTALL_KEY = "__insightflare_tracker_v6__";
   const VISITOR_KEY = "__insightflare_visitor_" + SITE_ID + "__";
   const SESSION_KEY = "__insightflare_session_" + SITE_ID + "__";
   const SESSION_ACTIVITY_KEY = "__insightflare_session_activity_" + SITE_ID + "__";
@@ -124,6 +131,125 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
     }).catch(() => {});
   }
 
+  function roundMetric(value) {
+    if (!Number.isFinite(value) || value < 0) return null;
+    return Math.round(value * 1000) / 1000;
+  }
+
+  function shouldSamplePerformance() {
+    return PERFORMANCE_SAMPLE_RATE > 0 && Math.random() * 100 < PERFORMANCE_SAMPLE_RATE;
+  }
+
+  function updatePerformanceMetric(metric, value) {
+    const next = roundMetric(value);
+    if (next === null) return;
+    performanceMetrics[metric] = next;
+  }
+
+  function observePerformanceEntry(type, options, onEntries) {
+    if (typeof PerformanceObserver !== "function") return;
+    const supportedTypes = Array.isArray(PerformanceObserver.supportedEntryTypes)
+      ? PerformanceObserver.supportedEntryTypes
+      : [];
+    if (supportedTypes.length > 0 && !supportedTypes.includes(type)) return;
+    try {
+      const observer = new PerformanceObserver((list) => {
+        onEntries(list.getEntries());
+      });
+      observer.observe(options);
+      performanceObserverCleanups.push(() => observer.disconnect());
+    } catch {}
+  }
+
+  function startPerformanceCollection(visitId) {
+    if (performanceCollectionStarted) return;
+    performanceCollectionStarted = true;
+    performanceVisitId = visitId;
+    performanceSampled = shouldSamplePerformance();
+    if (!performanceSampled) return;
+
+    try {
+      const navigationEntry = performance.getEntriesByType("navigation")[0];
+      if (navigationEntry) {
+        updatePerformanceMetric("ttfb", navigationEntry.responseStart);
+      }
+    } catch {}
+
+    observePerformanceEntry("paint", { type: "paint", buffered: true }, (entries) => {
+      for (const entry of entries) {
+        if (entry.name === "first-contentful-paint") {
+          updatePerformanceMetric("fcp", entry.startTime);
+        }
+      }
+    });
+
+    observePerformanceEntry(
+      "largest-contentful-paint",
+      { type: "largest-contentful-paint", buffered: true },
+      (entries) => {
+        const latest = entries[entries.length - 1];
+        if (latest) {
+          updatePerformanceMetric("lcp", latest.startTime);
+        }
+      },
+    );
+
+    observePerformanceEntry(
+      "layout-shift",
+      { type: "layout-shift", buffered: true },
+      (entries) => {
+        for (const entry of entries) {
+          if (entry && !entry.hadRecentInput) {
+            performanceMetrics.cls = roundMetric((performanceMetrics.cls || 0) + entry.value) || 0;
+          }
+        }
+      },
+    );
+
+    observePerformanceEntry(
+      "event",
+      { type: "event", buffered: true, durationThreshold: 40 },
+      (entries) => {
+        for (const entry of entries) {
+          const interactionId = Number(entry.interactionId || 0);
+          const duration = Number(entry.duration || 0);
+          if (!Number.isFinite(duration) || duration < 0) continue;
+          if (interactionId > 0) {
+            const previous = interactionDurations.get(interactionId) || 0;
+            const next = Math.max(previous, duration);
+            interactionDurations.set(interactionId, next);
+            updatePerformanceMetric("inp", Math.max(performanceMetrics.inp || 0, next));
+            continue;
+          }
+          updatePerformanceMetric("inp", Math.max(performanceMetrics.inp || 0, duration));
+        }
+      },
+    );
+  }
+
+  function stopPerformanceCollection() {
+    for (const cleanup of performanceObserverCleanups) {
+      try {
+        cleanup();
+      } catch {}
+    }
+    performanceObserverCleanups = [];
+  }
+
+  function buildPerformancePayload() {
+    if (!performanceSampled || !performanceVisitId) return null;
+    return {
+      performanceVisitId,
+      performance: {
+        ttfb: performanceMetrics.ttfb ?? 0,
+        fcp: performanceMetrics.fcp ?? 0,
+        lcp: performanceMetrics.lcp ?? 0,
+        cls: performanceMetrics.cls ?? 0,
+        inp: performanceMetrics.inp ?? 0,
+      },
+    };
+  }
+
   function startVisit(href, referrerUrl, startedAt) {
     leaveSent = false;
     currentVisit = {
@@ -133,6 +259,10 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
       routeKey: routeKey(href),
       referrerUrl,
     };
+
+    if (!performanceVisitId) {
+      startPerformanceCollection(currentVisit.id);
+    }
 
     send(
       {
@@ -151,17 +281,21 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
   function sendLeave() {
     if (!currentVisit || leaveSent) return;
     leaveSent = true;
+    const eventAt = Date.now();
+    const performancePayload = buildPerformancePayload();
     send(
       {
         kind: "leave",
         siteId: SITE_ID,
         visitId: currentVisit.id,
         sessionId,
-        timestamp: Date.now(),
-        durationMs: Math.max(0, Date.now() - currentVisit.startedAt),
+        timestamp: eventAt,
+        durationMs: Math.max(0, eventAt - currentVisit.startedAt),
+        ...(performancePayload || {}),
       },
       true,
     );
+    stopPerformanceCollection();
   }
 
   function commitRouteChange(routeChange) {
@@ -236,6 +370,19 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
   let pendingRouteChange = null;
   let routeChangeTimer = 0;
   let leaveSent = false;
+  let performanceVisitId = "";
+  let performanceSampled = false;
+  let performanceCollectionStarted = false;
+  let performanceObserverCleanups = [];
+  const interactionDurations = new Map();
+  const performanceMetrics = {
+    ttfb: null,
+    fcp: null,
+    lcp: null,
+    cls: 0,
+    inp: 0,
+  };
+
   startVisit(window.location.href, document.referrer || "", Date.now());
 
   wrapHistoryMethod("pushState");
@@ -258,7 +405,7 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
   });
 
   window[INSTALL_KEY] = {
-    version: "5",
+    version: "6",
     siteId: SITE_ID,
     track
   };

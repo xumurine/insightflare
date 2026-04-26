@@ -18,6 +18,7 @@ export interface AppMessages {
     geo: string;
     devices: string;
     browsers: string;
+    performance: string;
     settings: string;
   };
   common: {
@@ -394,6 +395,23 @@ export interface AppMessages {
     radarFrequency: string;
     radarTraffic: string;
   };
+  performance: {
+    title: string;
+    subtitle: string;
+    chartTitle: string;
+    avgLabel: string;
+    samplesLabel: string;
+    p50Label: string;
+    p75Label: string;
+    p95Label: string;
+    ttfb: string;
+    fcp: string;
+    lcp: string;
+    cls: string;
+    inp: string;
+    msUnit: string;
+    clsUnit: string;
+  };
   siteSettings: {
     title: string;
     subtitle: string;
@@ -426,6 +444,11 @@ export interface AppMessages {
     pathBlacklistPlaceholder: string;
     pathBlacklistHint: string;
     ignoreDoNotTrackLabel: string;
+    performanceGroupTitle: string;
+    performanceGroupDescription: string;
+    performanceTrackingEnabledLabel: string;
+    performanceSampleRateLabel: string;
+    performanceSampleRateHint: string;
     booleanOn: string;
     booleanOff: string;
     loadingSettings: string;

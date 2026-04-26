@@ -30,8 +30,10 @@ async function moveVisitsToArchive(env: Env, cutoffMs: number): Promise<number> 
           utm_source, utm_medium, utm_campaign, utm_term, utm_content,
           is_eu, country, region, region_code, city, continent, latitude, longitude,
           postal_code, metro_code, timezone, as_organization, ua_raw, browser, browser_version,
-          os, os_version, device_type, screen_width, screen_height, language, ae_synced_at, archived_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())
+          os, os_version, device_type, screen_width, screen_height, language,
+          perf_ttfb_ms, perf_fcp_ms, perf_lcp_ms, perf_cls, perf_inp_ms,
+          ae_synced_at, archived_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())
       `,
     ).bind(
       row.visit_id,
@@ -79,6 +81,11 @@ async function moveVisitsToArchive(env: Env, cutoffMs: number): Promise<number> 
       row.screen_width,
       row.screen_height,
       row.language,
+      row.perf_ttfb_ms,
+      row.perf_fcp_ms,
+      row.perf_lcp_ms,
+      row.perf_cls,
+      row.perf_inp_ms,
       row.ae_synced_at,
     ),
     env.DB.prepare("DELETE FROM visits WHERE visit_id = ?").bind(row.visit_id),

@@ -9,6 +9,7 @@ import type {
   NormalizedPageview,
   NormalizedVisitContext,
   TrackerClientPayload,
+  TrackerPerformancePayload,
   TrackerPayloadKind,
 } from "./types";
 import { readSiteTrackingConfig } from "./site-settings-store";
@@ -105,6 +106,11 @@ interface VisitRow {
   screenWidth: number | null;
   screenHeight: number | null;
   language: string;
+  perfTtfbMs: number | null;
+  perfFcpMs: number | null;
+  perfLcpMs: number | null;
+  perfCls: number | null;
+  perfInpMs: number | null;
 }
 
 interface BufferedVisitRow extends VisitRow {
@@ -142,8 +148,10 @@ const INSERT_VISIT_SQL = `
     utm_source, utm_medium, utm_campaign, utm_term, utm_content,
     is_eu, country, region, region_code, city, continent, latitude, longitude,
     postal_code, metro_code, timezone, as_organization, ua_raw, browser, browser_version,
-    os, os_version, device_type, screen_width, screen_height, language, ae_synced_at, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    os, os_version, device_type, screen_width, screen_height, language,
+    perf_ttfb_ms, perf_fcp_ms, perf_lcp_ms, perf_cls, perf_inp_ms,
+    ae_synced_at, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
 const UPSERT_VISIT_SQL = `
@@ -154,8 +162,10 @@ const UPSERT_VISIT_SQL = `
     utm_source, utm_medium, utm_campaign, utm_term, utm_content,
     is_eu, country, region, region_code, city, continent, latitude, longitude,
     postal_code, metro_code, timezone, as_organization, ua_raw, browser, browser_version,
-    os, os_version, device_type, screen_width, screen_height, language, ae_synced_at, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    os, os_version, device_type, screen_width, screen_height, language,
+    perf_ttfb_ms, perf_fcp_ms, perf_lcp_ms, perf_cls, perf_inp_ms,
+    ae_synced_at, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(visit_id) DO UPDATE SET
     site_id = excluded.site_id,
     visitor_id = excluded.visitor_id,
@@ -201,6 +211,11 @@ const UPSERT_VISIT_SQL = `
     screen_width = excluded.screen_width,
     screen_height = excluded.screen_height,
     language = excluded.language,
+    perf_ttfb_ms = excluded.perf_ttfb_ms,
+    perf_fcp_ms = excluded.perf_fcp_ms,
+    perf_lcp_ms = excluded.perf_lcp_ms,
+    perf_cls = excluded.perf_cls,
+    perf_inp_ms = excluded.perf_inp_ms,
     ae_synced_at = excluded.ae_synced_at,
     updated_at = excluded.updated_at
 `;
@@ -278,6 +293,11 @@ function visitBindings(row: BufferedVisitRow): SqlBinding[] {
     row.screenWidth,
     row.screenHeight,
     row.language,
+    row.perfTtfbMs,
+    row.perfFcpMs,
+    row.perfLcpMs,
+    row.perfCls,
+    row.perfInpMs,
     null,
     row.createdAt,
     row.updatedAt,
@@ -308,6 +328,42 @@ function clampTimestamp(input: unknown, fallback: number): number {
   const value = coerceNumber(input, fallback) ?? fallback;
   if (!Number.isFinite(value) || value <= 0) return fallback;
   return Math.floor(value);
+}
+
+function normalizePerformanceMetric(input: unknown): number | null {
+  const value = coerceNumber(input, null);
+  if (!Number.isFinite(value) || value == null || value < 0) return null;
+  return Math.round(value * 1000) / 1000;
+}
+
+function normalizePerformancePayload(
+  input: unknown,
+): TrackerPerformancePayload | null {
+  if (!input || typeof input !== "object") return null;
+  const source = input as Record<string, unknown>;
+  const ttfb = normalizePerformanceMetric(source.ttfb);
+  const fcp = normalizePerformanceMetric(source.fcp);
+  const lcp = normalizePerformanceMetric(source.lcp);
+  const cls = normalizePerformanceMetric(source.cls);
+  const inp = normalizePerformanceMetric(source.inp);
+
+  if (
+    ttfb === null
+    && fcp === null
+    && lcp === null
+    && cls === null
+    && inp === null
+  ) {
+    return null;
+  }
+
+  return {
+    ...(ttfb !== null ? { ttfb } : {}),
+    ...(fcp !== null ? { fcp } : {}),
+    ...(lcp !== null ? { lcp } : {}),
+    ...(cls !== null ? { cls } : {}),
+    ...(inp !== null ? { inp } : {}),
+  };
 }
 
 function matchesBlockedPath(pathname: string, blockedPaths: string[]): boolean {
@@ -625,6 +681,11 @@ export class IngestDurableObject extends DurableObject {
         screen_width INTEGER,
         screen_height INTEGER,
         language TEXT NOT NULL DEFAULT '',
+        perf_ttfb_ms REAL,
+        perf_fcp_ms REAL,
+        perf_lcp_ms REAL,
+        perf_cls REAL,
+        perf_inp_ms REAL,
         dirty INTEGER NOT NULL DEFAULT 1,
         flush_attempts INTEGER NOT NULL DEFAULT 0,
         last_flush_error TEXT,
@@ -632,6 +693,16 @@ export class IngestDurableObject extends DurableObject {
         updated_at INTEGER NOT NULL
       )
     `);
+    const visitColumns = sql.exec("PRAGMA table_info(buffered_visits)").toArray() as Array<{ name?: string }>;
+    const ensureBufferedVisitColumn = (columnName: string, columnType: string) => {
+      if (visitColumns.some((row) => row.name === columnName)) return;
+      sql.exec(`ALTER TABLE buffered_visits ADD COLUMN ${columnName} ${columnType}`);
+    };
+    ensureBufferedVisitColumn("perf_ttfb_ms", "REAL");
+    ensureBufferedVisitColumn("perf_fcp_ms", "REAL");
+    ensureBufferedVisitColumn("perf_lcp_ms", "REAL");
+    ensureBufferedVisitColumn("perf_cls", "REAL");
+    ensureBufferedVisitColumn("perf_inp_ms", "REAL");
     sql.exec(`
       CREATE INDEX IF NOT EXISTS idx_buffered_visits_dirty_updated
       ON buffered_visits(dirty, updated_at, started_at)
@@ -817,14 +888,18 @@ export class IngestDurableObject extends DurableObject {
     if (kind === "leave") {
       if (!visitId) return null;
       const sessionId = clampString(coerceString(client.sessionId), 128);
+      const performanceVisitId =
+        clampString(coerceString(client.performanceVisitId), 128) || visitId;
       return {
         kind: "leave",
         siteId,
         visitId,
         sessionId,
+        performanceVisitId,
         receivedAt,
         leaveAt: eventAt,
         durationMs: coerceNumber(client.durationMs, null),
+        performance: normalizePerformancePayload(client.performance),
       } satisfies NormalizedLeave;
     }
 
@@ -960,39 +1035,6 @@ export class IngestDurableObject extends DurableObject {
   }
 
   private async handleLeave(record: NormalizedLeave): Promise<void> {
-    // Find the open visit matching this visitId (or the latest open visit for the session)
-    const visitQuery = record.visitId
-      ? `SELECT visit_id AS visitId, started_at AS startedAt, visitor_id AS visitorId, site_id AS siteId,
-                session_id AS sessionId, pathname, title, hostname,
-                referrer_url AS referrerUrl, referrer_host AS referrerHost,
-                country, region, region_code AS regionCode, city, continent, timezone,
-                as_organization AS organization, browser, os, os_version AS osVersion,
-                device_type AS deviceType, language,
-                CASE
-                  WHEN screen_width IS NOT NULL AND screen_height IS NOT NULL
-                    THEN CAST(screen_width AS TEXT) || 'x' || CAST(screen_height AS TEXT)
-                  ELSE ''
-                END AS screenSize,
-                latitude, longitude
-         FROM buffered_visits WHERE site_id = ? AND visit_id = ? AND status = 'open' LIMIT 1`
-      : `SELECT visit_id AS visitId, started_at AS startedAt, visitor_id AS visitorId, site_id AS siteId,
-                session_id AS sessionId, pathname, title, hostname,
-                referrer_url AS referrerUrl, referrer_host AS referrerHost,
-                country, region, region_code AS regionCode, city, continent, timezone,
-                as_organization AS organization, browser, os, os_version AS osVersion,
-                device_type AS deviceType, language,
-                CASE
-                  WHEN screen_width IS NOT NULL AND screen_height IS NOT NULL
-                    THEN CAST(screen_width AS TEXT) || 'x' || CAST(screen_height AS TEXT)
-                  ELSE ''
-                END AS screenSize,
-                latitude, longitude
-         FROM buffered_visits WHERE site_id = ? AND session_id = ? AND status = 'open'
-         ORDER BY started_at DESC LIMIT 1`;
-    const visitBindings = record.visitId
-      ? [record.siteId, record.visitId]
-      : [record.siteId, record.sessionId];
-
     const visit = this.sqlOne<{
       visitId: string; startedAt: number; visitorId: string; siteId: string;
       sessionId: string; pathname: string; title: string; hostname: string;
@@ -1002,41 +1044,74 @@ export class IngestDurableObject extends DurableObject {
       browser: string; os: string; osVersion: string; deviceType: string;
       language: string; screenSize: string;
       latitude: number | null; longitude: number | null;
-    }>(visitQuery, ...visitBindings);
-    if (!visit) return;
-
-    const leaveAt = Math.max(record.leaveAt, visit.startedAt);
-    const durationMs = typeof record.durationMs === "number" && Number.isFinite(record.durationMs)
-      ? Math.max(0, Math.floor(record.durationMs))
-      : Math.max(0, leaveAt - visit.startedAt);
-
-    const rowsWritten = this.sqlRun(
+    }>(
       `
-        UPDATE buffered_visits
-        SET status = 'complete',
-            last_activity_at = ?,
-            ended_at = ?,
-            finalized_at = ?,
-            duration_ms = ?,
-            duration_source = 'reported',
-            dirty = 1,
-            updated_at = ?
-        WHERE visit_id = ? AND status = 'open'
+        SELECT visit_id AS visitId, started_at AS startedAt, visitor_id AS visitorId, site_id AS siteId,
+               session_id AS sessionId, pathname, title, hostname,
+               referrer_url AS referrerUrl, referrer_host AS referrerHost,
+               country, region, region_code AS regionCode, city, continent, timezone,
+               as_organization AS organization, browser, os, os_version AS osVersion,
+               device_type AS deviceType, language,
+               CASE
+                 WHEN screen_width IS NOT NULL AND screen_height IS NOT NULL
+                   THEN CAST(screen_width AS TEXT) || 'x' || CAST(screen_height AS TEXT)
+                 ELSE ''
+               END AS screenSize,
+               latitude, longitude
+        FROM buffered_visits
+        WHERE site_id = ? AND visit_id = ? AND status = 'open'
+        LIMIT 1
       `,
-      leaveAt,
-      leaveAt,
-      leaveAt,
-      durationMs,
-      toUnixSeconds(record.receivedAt),
-      visit.visitId,
+      record.siteId,
+      record.visitId,
     );
-    if (rowsWritten === 0) return;
+
+    let closedVisit = false;
+    if (visit) {
+      const leaveAt = Math.max(record.leaveAt, visit.startedAt);
+      const durationMs = typeof record.durationMs === "number" && Number.isFinite(record.durationMs)
+        ? Math.max(0, Math.floor(record.durationMs))
+        : Math.max(0, leaveAt - visit.startedAt);
+
+      const rowsWritten = this.sqlRun(
+        `
+          UPDATE buffered_visits
+          SET status = 'complete',
+              last_activity_at = ?,
+              ended_at = ?,
+              finalized_at = ?,
+              duration_ms = ?,
+              duration_source = 'reported',
+              dirty = 1,
+              updated_at = ?
+          WHERE visit_id = ? AND status = 'open'
+        `,
+        leaveAt,
+        leaveAt,
+        leaveAt,
+        durationMs,
+        toUnixSeconds(record.receivedAt),
+        visit.visitId,
+      );
+      closedVisit = rowsWritten > 0;
+    }
+
+    if (record.performance) {
+      await this.attachPerformanceToVisit(
+        record.siteId,
+        record.performanceVisitId,
+        record.performance,
+        record.receivedAt,
+      );
+    }
+
+    if (!visit || !closedVisit) return;
 
     if (!this.hasOpenVisitsForVisitor(visit.siteId, visit.visitorId)) {
       await this.pushRealtimeRecord({
         id: `leave:${visit.visitId}`,
         eventType: WS_PRESENCE_LEAVE_EVENT,
-        eventAt: leaveAt,
+        eventAt: Math.max(record.leaveAt, visit.startedAt),
         visitId: visit.visitId,
         sessionId: visit.sessionId,
         pathname: visit.pathname,
@@ -1062,6 +1137,52 @@ export class IngestDurableObject extends DurableObject {
         longitude: visit.longitude,
       });
     }
+  }
+
+  private async attachPerformanceToVisit(
+    siteId: string,
+    visitId: string,
+    performance: TrackerPerformancePayload,
+    receivedAt: number,
+  ): Promise<void> {
+    if (!siteId || !visitId) return;
+    const updatedAt = toUnixSeconds(receivedAt);
+    const rowsWritten = this.sqlRun(
+      `
+        UPDATE buffered_visits
+        SET perf_ttfb_ms = ?,
+            perf_fcp_ms = ?,
+            perf_lcp_ms = ?,
+            perf_cls = ?,
+            perf_inp_ms = ?,
+            dirty = 1,
+            updated_at = ?
+        WHERE site_id = ? AND visit_id = ?
+      `,
+      performance.ttfb ?? null,
+      performance.fcp ?? null,
+      performance.lcp ?? null,
+      performance.cls ?? null,
+      performance.inp ?? null,
+      updatedAt,
+      siteId,
+      visitId,
+    );
+    if (rowsWritten > 0) return;
+
+    const persistedRow = await this.readPersistedVisitRow(siteId, visitId);
+    if (!persistedRow) return;
+    this.insertBufferedVisitRow({
+      ...persistedRow,
+      perfTtfbMs: performance.ttfb ?? null,
+      perfFcpMs: performance.fcp ?? null,
+      perfLcpMs: performance.lcp ?? null,
+      perfCls: performance.cls ?? null,
+      perfInpMs: performance.inp ?? null,
+      dirty: 1,
+      flushAttempts: 0,
+      updatedAt,
+    });
   }
 
   private async handleCustomEvent(record: NormalizedCustomEvent): Promise<void> {
@@ -1187,13 +1308,170 @@ export class IngestDurableObject extends DurableObject {
           device_type AS deviceType,
           screen_width AS screenWidth,
           screen_height AS screenHeight,
-          language
+          language,
+          perf_ttfb_ms AS perfTtfbMs,
+          perf_fcp_ms AS perfFcpMs,
+          perf_lcp_ms AS perfLcpMs,
+          perf_cls AS perfCls,
+          perf_inp_ms AS perfInpMs
         FROM buffered_visits
         WHERE site_id = ? AND visit_id = ?
         LIMIT 1
       `,
       siteId,
       visitId,
+    );
+  }
+
+  private async readPersistedVisitRow(
+    siteId: string,
+    visitId: string,
+  ): Promise<BufferedVisitRow | null> {
+    const row = await this.doEnv.DB.prepare(
+      `
+        SELECT
+          visit_id AS visitId,
+          status,
+          site_id AS siteId,
+          visitor_id AS visitorId,
+          session_id AS sessionId,
+          started_at AS startedAt,
+          last_activity_at AS lastActivityAt,
+          ended_at AS endedAt,
+          finalized_at AS finalizedAt,
+          duration_ms AS durationMs,
+          COALESCE(duration_source, '') AS durationSource,
+          COALESCE(exit_reason, '') AS exitReason,
+          pathname,
+          query_string AS queryString,
+          hash_fragment AS hashFragment,
+          hostname,
+          title,
+          referrer_url AS referrerUrl,
+          referrer_host AS referrerHost,
+          utm_source AS utmSource,
+          utm_medium AS utmMedium,
+          utm_campaign AS utmCampaign,
+          utm_term AS utmTerm,
+          utm_content AS utmContent,
+          is_eu AS isEU,
+          country,
+          region,
+          region_code AS regionCode,
+          city,
+          continent,
+          latitude,
+          longitude,
+          postal_code AS postalCode,
+          metro_code AS metroCode,
+          timezone,
+          as_organization AS asOrganization,
+          ua_raw AS uaRaw,
+          browser,
+          browser_version AS browserVersion,
+          os,
+          os_version AS osVersion,
+          device_type AS deviceType,
+          screen_width AS screenWidth,
+          screen_height AS screenHeight,
+          language,
+          perf_ttfb_ms AS perfTtfbMs,
+          perf_fcp_ms AS perfFcpMs,
+          perf_lcp_ms AS perfLcpMs,
+          perf_cls AS perfCls,
+          perf_inp_ms AS perfInpMs,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM visits
+        WHERE site_id = ? AND visit_id = ?
+        LIMIT 1
+      `,
+    )
+      .bind(siteId, visitId)
+      .first<BufferedVisitRow>();
+
+    return row
+      ? {
+          ...row,
+          dirty: 0,
+          flushAttempts: 0,
+        }
+      : null;
+  }
+
+  private insertBufferedVisitRow(row: BufferedVisitRow): void {
+    const bindings: Array<string | number | null> = [
+      row.visitId,
+      row.siteId,
+      row.visitorId,
+      row.sessionId,
+      row.status,
+      row.startedAt,
+      row.lastActivityAt,
+      row.endedAt,
+      row.finalizedAt,
+      row.durationMs,
+      row.durationSource || null,
+      row.exitReason || null,
+      row.pathname,
+      row.queryString,
+      row.hashFragment,
+      row.hostname,
+      row.title,
+      row.referrerUrl,
+      row.referrerHost,
+      row.utmSource,
+      row.utmMedium,
+      row.utmCampaign,
+      row.utmTerm,
+      row.utmContent,
+      row.isEU,
+      row.country,
+      row.region,
+      row.regionCode,
+      row.city,
+      row.continent,
+      row.latitude,
+      row.longitude,
+      row.postalCode,
+      row.metroCode,
+      row.timezone,
+      row.asOrganization,
+      row.uaRaw,
+      row.browser,
+      row.browserVersion,
+      row.os,
+      row.osVersion,
+      row.deviceType,
+      row.screenWidth,
+      row.screenHeight,
+      row.language,
+      row.perfTtfbMs,
+      row.perfFcpMs,
+      row.perfLcpMs,
+      row.perfCls,
+      row.perfInpMs,
+      row.dirty,
+      row.flushAttempts,
+      null,
+      row.createdAt,
+      row.updatedAt,
+    ];
+    this.sqlRun(
+      `
+        INSERT OR REPLACE INTO buffered_visits (
+          visit_id, site_id, visitor_id, session_id, status, started_at, last_activity_at,
+          ended_at, finalized_at, duration_ms, duration_source, exit_reason,
+          pathname, query_string, hash_fragment, hostname, title, referrer_url, referrer_host,
+          utm_source, utm_medium, utm_campaign, utm_term, utm_content,
+          is_eu, country, region, region_code, city, continent, latitude, longitude,
+          postal_code, metro_code, timezone, as_organization, ua_raw, browser, browser_version,
+          os, os_version, device_type, screen_width, screen_height, language,
+          perf_ttfb_ms, perf_fcp_ms, perf_lcp_ms, perf_cls, perf_inp_ms,
+          dirty, flush_attempts, last_flush_error, created_at, updated_at
+        ) VALUES (${bindings.map(() => "?").join(", ")})
+      `,
+      ...bindings,
     );
   }
 
@@ -1208,8 +1486,9 @@ export class IngestDurableObject extends DurableObject {
           is_eu, country, region, region_code, city, continent, latitude, longitude,
           postal_code, metro_code, timezone, as_organization, ua_raw, browser, browser_version,
           os, os_version, device_type, screen_width, screen_height, language,
+          perf_ttfb_ms, perf_fcp_ms, perf_lcp_ms, perf_cls, perf_inp_ms,
           dirty, flush_attempts, last_flush_error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, NULL, ?, ?)
+        ) VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, 1, 0, NULL, ?, ?)
       `,
       record.visitId,
       record.siteId,
@@ -1654,6 +1933,11 @@ export class IngestDurableObject extends DurableObject {
             screen_width AS screenWidth,
             screen_height AS screenHeight,
             language,
+            perf_ttfb_ms AS perfTtfbMs,
+            perf_fcp_ms AS perfFcpMs,
+            perf_lcp_ms AS perfLcpMs,
+            perf_cls AS perfCls,
+            perf_inp_ms AS perfInpMs,
             dirty,
             flush_attempts AS flushAttempts,
             created_at AS createdAt,

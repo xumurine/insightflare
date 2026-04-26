@@ -231,6 +231,35 @@ export interface BrowserTrendData {
   data: BrowserTrendPoint[];
 }
 
+export type PerformanceMetricKey =
+  | "ttfb"
+  | "fcp"
+  | "lcp"
+  | "cls"
+  | "inp";
+
+export interface PerformanceSummary {
+  avg: number | null;
+  samples: number;
+}
+
+export interface PerformanceTrendPoint {
+  bucket: number;
+  timestampMs: number;
+  avg: number | null;
+  p50: number | null;
+  p75: number | null;
+  p95: number | null;
+  samples: number;
+}
+
+export interface PerformanceData {
+  ok: boolean;
+  interval: "minute" | "hour" | "day" | "week" | "month";
+  summaries: Record<PerformanceMetricKey, PerformanceSummary>;
+  trends: Record<PerformanceMetricKey, PerformanceTrendPoint[]>;
+}
+
 export interface BrowserVersionSlice {
   key: string;
   label: string;

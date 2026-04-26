@@ -16,6 +16,8 @@ import type {
   OverviewGeoPointsData,
   PagesData,
   PagesDashboardData,
+  PerformanceData,
+  PerformanceMetricKey,
   ReferrerRadarData,
   ReferrersData,
   TrendData,
@@ -114,6 +116,32 @@ function emptyReferrers(): ReferrersData {
 
 function emptyDimension(): DimensionData {
   return { ok: true, data: [] };
+}
+
+function emptyPerformance(interval: TimeWindow["interval"]): PerformanceData {
+  const emptyMetric = {
+    avg: null,
+    samples: 0,
+  };
+  const emptyTrend: PerformanceData["trends"][PerformanceMetricKey] = [];
+  return {
+    ok: true,
+    interval,
+    summaries: {
+      ttfb: { ...emptyMetric },
+      fcp: { ...emptyMetric },
+      lcp: { ...emptyMetric },
+      cls: { ...emptyMetric },
+      inp: { ...emptyMetric },
+    },
+    trends: {
+      ttfb: [...emptyTrend],
+      fcp: [...emptyTrend],
+      lcp: [...emptyTrend],
+      cls: [...emptyTrend],
+      inp: [...emptyTrend],
+    },
+  };
 }
 
 function emptyOverviewTab(): OverviewTabData {
@@ -274,6 +302,19 @@ export async function fetchPages(siteId: string, window: TimeWindow, filters?: D
     limit: 100,
     details: 1,
   }, filters));
+}
+
+export async function fetchPerformance(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+): Promise<PerformanceData> {
+  return fetchPrivateJson<PerformanceData>("/api/private/performance", withFilters({
+    siteId,
+    from: window.from,
+    to: window.to,
+    interval: window.interval,
+  }, filters)).catch(() => emptyPerformance(window.interval));
 }
 
 export async function fetchPagesDashboard(

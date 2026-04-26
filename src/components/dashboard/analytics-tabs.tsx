@@ -24,6 +24,7 @@ import {
   RiRepeatLine,
   RiSettings3Line,
   RiShareForwardLine,
+  RiSpeedUpLine,
   RiUser3Line,
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ type AnalyticsTabKey =
   | "geo"
   | "devices"
   | "browsers"
+  | "performance"
   | "settings";
 
 interface AnalyticsTabItem {
@@ -65,6 +67,7 @@ function getAnalyticsSectionIcon(key: AnalyticsTabKey) {
   if (key === "retention") return RiRepeatLine;
   if (key === "geo") return RiMapPin2Line;
   if (key === "devices") return RiComputerLine;
+  if (key === "performance") return RiSpeedUpLine;
   if (key === "settings") return RiSettings3Line;
   return RiGlobalLine;
 }

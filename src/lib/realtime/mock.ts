@@ -4626,6 +4626,157 @@ function generateDemoTrend(
   };
 }
 
+type DemoPerformanceMetricKey =
+  | "ttfb"
+  | "fcp"
+  | "lcp"
+  | "cls"
+  | "inp";
+
+function roundDemoPerformanceValue(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+function demoPerformanceMetricValue(
+  siteId: string,
+  visit: DemoVisitFact,
+  metric: DemoPerformanceMetricKey,
+): number {
+  const rng = mulberry32(fnv1a(`${siteId}:${visit.visitId}:${metric}`));
+  const mobileFactor = visit.deviceType === "Mobile"
+    ? 1.18
+    : visit.deviceType === "Tablet"
+      ? 1.09
+      : 1;
+  const articleFactor = visit.pathname.includes("/blog")
+    || visit.pathname.includes("/news")
+    || visit.pathname.includes("/posts")
+    ? 1.08
+    : 1;
+  const browserFactor = visit.browser.includes("Safari")
+    ? 1.04
+    : visit.browser.includes("Firefox")
+      ? 1.02
+      : 1;
+
+  if (metric === "cls") {
+    const value = (0.025 + rng() * 0.12) * Math.min(1.35, mobileFactor * articleFactor);
+    return roundDemoPerformanceValue(Math.min(0.35, value));
+  }
+
+  const base = {
+    ttfb: 155,
+    fcp: 920,
+    lcp: 1560,
+    inp: 145,
+  } satisfies Record<Exclude<DemoPerformanceMetricKey, "cls">, number>;
+  const durationFactor = 1 + Math.min(visit.durationMs, 180_000) / 600_000;
+  const variability = 0.78 + rng() * 0.68;
+  return roundDemoPerformanceValue(
+    base[metric] * mobileFactor * articleFactor * browserFactor * durationFactor * variability,
+  );
+}
+
+function demoPercentile(values: number[], ratio: number): number | null {
+  if (values.length === 0) return null;
+  const rank = Math.max(0, Math.ceil(values.length * ratio) - 1);
+  return roundDemoPerformanceValue(values[Math.min(rank, values.length - 1)] ?? 0);
+}
+
+function generateDemoPerformance(
+  siteId: string,
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const from = parseDemoNumber(params.from, 0);
+  const to = parseDemoNumber(params.to, Date.now());
+  const interval = parseDemoInterval(params.interval);
+  const filters = parseDemoFilters(params);
+  const dataset = buildDemoFactDataset(siteId, from, to);
+  const filtered = applyDemoFilters(dataset, filters);
+  const stepMs = demoIntervalStepMs(interval);
+  const metrics = ["ttfb", "fcp", "lcp", "cls", "inp"] as const;
+  const summaryValues = {
+    ttfb: [] as number[],
+    fcp: [] as number[],
+    lcp: [] as number[],
+    cls: [] as number[],
+    inp: [] as number[],
+  };
+  const bucketValues = {
+    ttfb: new Map<number, number[]>(),
+    fcp: new Map<number, number[]>(),
+    lcp: new Map<number, number[]>(),
+    cls: new Map<number, number[]>(),
+    inp: new Map<number, number[]>(),
+  };
+
+  for (const visit of filtered.visits) {
+    const bucket = Math.floor(visit.startedAt / stepMs);
+    for (const metric of metrics) {
+      const value = demoPerformanceMetricValue(siteId, visit, metric);
+      summaryValues[metric].push(value);
+      const bucketSeries = bucketValues[metric].get(bucket) ?? [];
+      bucketSeries.push(value);
+      bucketValues[metric].set(bucket, bucketSeries);
+    }
+  }
+
+  const summaries = Object.fromEntries(
+    metrics.map((metric) => {
+      const values = [...summaryValues[metric]].sort((left, right) => left - right);
+      const avg = values.length > 0
+        ? roundDemoPerformanceValue(
+            values.reduce((sum, value) => sum + value, 0) / values.length,
+          )
+        : null;
+      const samples = Math.max(0, Math.round(values.length * dataset.viewWeight));
+      return [metric, { avg, samples }];
+    }),
+  );
+
+  const trends = Object.fromEntries(
+    metrics.map((metric) => {
+      const rows: Array<{
+        bucket: number;
+        timestampMs: number;
+        avg: number | null;
+        p50: number | null;
+        p75: number | null;
+        p95: number | null;
+        samples: number;
+      }> = [];
+
+      for (let ts = from; ts < to; ts += stepMs) {
+        const bucket = Math.floor(ts / stepMs);
+        const values = [...(bucketValues[metric].get(bucket) ?? [])].sort((left, right) => left - right);
+        const avg = values.length > 0
+          ? roundDemoPerformanceValue(
+              values.reduce((sum, value) => sum + value, 0) / values.length,
+            )
+          : null;
+        rows.push({
+          bucket,
+          timestampMs: ts,
+          avg,
+          p50: demoPercentile(values, 0.5),
+          p75: demoPercentile(values, 0.75),
+          p95: demoPercentile(values, 0.95),
+          samples: Math.max(0, Math.round(values.length * dataset.viewWeight)),
+        });
+      }
+
+      return [metric, rows];
+    }),
+  );
+
+  return {
+    ok: true,
+    interval,
+    summaries,
+    trends,
+  };
+}
+
 function generateDemoPages(
   siteId: string,
   params: Record<string, string | number>,
@@ -5875,6 +6026,8 @@ function getDemoSiteConfig() {
     domainWhitelist: [] as string[],
     pathBlacklist: [] as string[],
     ignoreDoNotTrack: true,
+    performanceTrackingEnabled: true,
+    performanceSampleRate: 100,
   };
 }
 
@@ -5904,8 +6057,8 @@ export function handleDemoRequest(options: {
   const teamId = String(params.teamId || "");
 
   // Write operations → read-only stub
-  if (method === "POST" || method === "PATCH" || method === "PUT" || method === "DELETE") {
-    // Special cases that need real-looking responses
+    if (method === "POST" || method === "PATCH" || method === "PUT" || method === "DELETE") {
+      // Special cases that need real-looking responses
     if (path.includes("/auth/login")) {
       const user = getDemoUser();
       return { ok: true, data: { user, teams: getDemoTeams() } };
@@ -5917,9 +6070,23 @@ export function handleDemoRequest(options: {
     if (path.includes("/profile")) {
       return { ok: true, data: getDemoUser() };
     }
-    if (path.includes("/site-config")) {
-      return { ok: true, data: getDemoSiteConfig() };
-    }
+      if (path.includes("/site-config")) {
+        const config =
+          options.body &&
+          typeof options.body === "object" &&
+          "config" in options.body &&
+          options.body.config &&
+          typeof options.body.config === "object"
+            ? (options.body.config as Record<string, unknown>)
+            : {};
+        return {
+          ok: true,
+          data: {
+            ...getDemoSiteConfig(),
+            ...config,
+          },
+        };
+      }
     // Generic write → return empty success
     return { ok: true, data: {} };
   }
@@ -6016,6 +6183,9 @@ export function handleDemoRequest(options: {
   }
   if (path.includes("/pages-dashboard")) {
     return generateDemoPagesDashboard(siteId, params);
+  }
+  if (path.includes("/performance")) {
+    return generateDemoPerformance(siteId, params);
   }
   if (path.includes("/overview")) {
     return generateDemoOverview(siteId, params);

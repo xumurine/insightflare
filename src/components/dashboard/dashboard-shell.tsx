@@ -75,6 +75,7 @@ type AnalyticsNavKey =
   | "geo"
   | "devices"
   | "browsers"
+  | "performance"
   | "settings";
 
 interface SidebarRouteState {
@@ -121,8 +122,9 @@ function buildSitePath(
     | "geo"
     | "devices"
     | "browsers"
+    | "performance"
     | "settings",
-): string {
+  ): string {
   const base = `/${locale}/app/${teamSlug}/${siteSlug}`;
   if (!section) return base;
   return `${base}/${section}`;
@@ -248,13 +250,14 @@ export function DashboardShell({
           { key: "events", href: `${activeSiteBase}/events` },
           { key: "funnels", href: `${activeSiteBase}/funnels` },
           { key: "visitors", href: `${activeSiteBase}/visitors` },
-          { key: "retention", href: `${activeSiteBase}/retention` },
-          { key: "geo", href: `${activeSiteBase}/geo` },
-          { key: "devices", href: `${activeSiteBase}/devices` },
-          { key: "browsers", href: `${activeSiteBase}/browsers` },
-          { key: "settings", href: `${activeSiteBase}/settings` },
-        ]
-      : [];
+            { key: "retention", href: `${activeSiteBase}/retention` },
+            { key: "geo", href: `${activeSiteBase}/geo` },
+            { key: "devices", href: `${activeSiteBase}/devices` },
+            { key: "browsers", href: `${activeSiteBase}/browsers` },
+            { key: "performance", href: `${activeSiteBase}/performance` },
+            { key: "settings", href: `${activeSiteBase}/settings` },
+          ]
+        : [];
 
   const localeSuffix = normalizeLocalePath(livePathname);
   const switchToEn = `/en${localeSuffix}`;

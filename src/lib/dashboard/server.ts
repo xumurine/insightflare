@@ -174,6 +174,7 @@ export function buildSitePath(
     | "geo"
     | "devices"
     | "browsers"
+    | "performance"
     | "settings",
 ): string {
   const base = `/${locale}/app/${teamSlug}/${siteSlug}`;

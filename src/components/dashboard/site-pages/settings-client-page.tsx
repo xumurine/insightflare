@@ -165,6 +165,8 @@ export function SettingsClientPage({
   const [saving, setSaving] = useState(false);
   const [savingTrackingStrength, setSavingTrackingStrength] = useState(false);
   const [savingQueryHash, setSavingQueryHash] = useState(false);
+  const [savingPerformanceTracking, setSavingPerformanceTracking] =
+    useState(false);
   const [savingDomainWhitelist, setSavingDomainWhitelist] = useState(false);
   const [savingPathBlacklist, setSavingPathBlacklist] = useState(false);
   const [transferring, setTransferring] = useState(false);
@@ -187,6 +189,11 @@ export function SettingsClientPage({
   const [ignoreDoNotTrack, setIgnoreDoNotTrack] = useState(
     DEFAULT_SITE_SCRIPT_SETTINGS.ignoreDoNotTrack,
   );
+  const [performanceTrackingEnabled, setPerformanceTrackingEnabled] = useState(
+    DEFAULT_SITE_SCRIPT_SETTINGS.performanceTrackingEnabled,
+  );
+  const [performanceSampleRateInput, setPerformanceSampleRateInput] =
+    useState(String(DEFAULT_SITE_SCRIPT_SETTINGS.performanceSampleRate));
   const [domainWhitelistInput, setDomainWhitelistInput] = useState(
     formatListInput(DEFAULT_SITE_SCRIPT_SETTINGS.domainWhitelist),
   );
@@ -200,6 +207,7 @@ export function SettingsClientPage({
   const trackingSaving =
     savingTrackingStrength ||
     savingQueryHash ||
+    savingPerformanceTracking ||
     savingDomainWhitelist ||
     savingPathBlacklist;
 
@@ -224,6 +232,15 @@ export function SettingsClientPage({
     trackHash !== persistedSettings.trackHash ||
     ignoreDoNotTrack !== persistedSettings.ignoreDoNotTrack;
 
+  const normalizedPerformanceSampleRate = normalizeSiteScriptSettings({
+    performanceSampleRate: performanceSampleRateInput,
+  }).performanceSampleRate;
+
+  const hasPerformanceTrackingChanges =
+    performanceTrackingEnabled !==
+      persistedSettings.performanceTrackingEnabled ||
+    normalizedPerformanceSampleRate !== persistedSettings.performanceSampleRate;
+
   const hasDomainWhitelistChanges = !equalStringArray(
     parseDomainWhitelist(domainWhitelistInput),
     persistedSettings.domainWhitelist,
@@ -241,6 +258,8 @@ export function SettingsClientPage({
     setTrackQueryParams(normalized.trackQueryParams);
     setTrackHash(normalized.trackHash);
     setIgnoreDoNotTrack(normalized.ignoreDoNotTrack);
+    setPerformanceTrackingEnabled(normalized.performanceTrackingEnabled);
+    setPerformanceSampleRateInput(String(normalized.performanceSampleRate));
     setDomainWhitelistInput(formatListInput(normalized.domainWhitelist));
     setPathBlacklistInput(formatListInput(normalized.pathBlacklist));
   }
@@ -449,6 +468,23 @@ export function SettingsClientPage({
       toast.error(message || copy.toasts.saveFailed);
     } finally {
       setSavingQueryHash(false);
+    }
+  }
+
+  async function handleSavePerformanceTracking() {
+    if (!hasPerformanceTrackingChanges) return;
+    setSavingPerformanceTracking(true);
+    try {
+      await persistTrackingSettings({
+        performanceTrackingEnabled,
+        performanceSampleRate: performanceSampleRateInput,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : copy.toasts.saveFailed;
+      toast.error(message || copy.toasts.saveFailed);
+    } finally {
+      setSavingPerformanceTracking(false);
     }
   }
 
@@ -909,6 +945,100 @@ export function SettingsClientPage({
 
         <Card className="h-full order-5">
           <CardHeader>
+            <CardTitle>{copy.performanceGroupTitle}</CardTitle>
+            <CardDescription>
+              {copy.performanceGroupDescription}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="site-settings-performance-enabled">
+                {copy.performanceTrackingEnabledLabel}
+              </Label>
+              <Select
+                value={performanceTrackingEnabled ? "true" : "false"}
+                onValueChange={(value) => {
+                  setPerformanceTrackingEnabled(value === "true");
+                }}
+                disabled={
+                  saving ||
+                  trackingSaving ||
+                  transferring ||
+                  deleting ||
+                  loadingSettings
+                }
+              >
+                <SelectTrigger
+                  id="site-settings-performance-enabled"
+                  className="w-full"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">{copy.booleanOn}</SelectItem>
+                  <SelectItem value="false">{copy.booleanOff}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="site-settings-performance-sample-rate">
+                {copy.performanceSampleRateLabel}
+              </Label>
+              <Input
+                id="site-settings-performance-sample-rate"
+                type="number"
+                min={0}
+                max={100}
+                step="0.1"
+                value={performanceSampleRateInput}
+                onChange={(event) => {
+                  setPerformanceSampleRateInput(event.target.value);
+                }}
+                disabled={
+                  saving ||
+                  trackingSaving ||
+                  transferring ||
+                  deleting ||
+                  loadingSettings
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                {copy.performanceSampleRateHint}
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={() => {
+                void handleSavePerformanceTracking();
+              }}
+              disabled={
+                saving ||
+                trackingSaving ||
+                transferring ||
+                deleting ||
+                loadingSettings ||
+                !hasPerformanceTrackingChanges
+              }
+            >
+              <AutoTransition className="inline-flex items-center gap-2">
+                {savingPerformanceTracking ? (
+                  <span
+                    key="saving-performance"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <Spinner className="size-4" />
+                    {copy.savingTracking}
+                  </span>
+                ) : (
+                  <span key="save-performance">{copy.saveTracking}</span>
+                )}
+              </AutoTransition>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="h-full order-6">
+          <CardHeader>
             <CardTitle>{copy.domainWhitelistTitle}</CardTitle>
             <CardDescription>{copy.domainWhitelistDescription}</CardDescription>
           </CardHeader>
@@ -969,7 +1099,7 @@ export function SettingsClientPage({
           </CardContent>
         </Card>
 
-        <Card className="h-full order-6">
+        <Card className="h-full order-7">
           <CardHeader>
             <CardTitle>{copy.pathBlacklistTitle}</CardTitle>
             <CardDescription>{copy.pathBlacklistDescription}</CardDescription>
@@ -1029,7 +1159,7 @@ export function SettingsClientPage({
           </CardContent>
         </Card>
 
-        <Card className="h-full order-7">
+        <Card className="h-full order-8">
           <CardHeader>
             <CardTitle>{copy.transferTitle}</CardTitle>
             <CardDescription>{copy.transferSubtitle}</CardDescription>
@@ -1092,19 +1222,19 @@ export function SettingsClientPage({
               </Button>
             </form>
           </CardContent>
-        </Card>
+          </Card>
 
-        <AlertDialog
-          open={deleteDialogOpen}
-          onOpenChange={(open) => {
+          <AlertDialog
+            open={deleteDialogOpen}
+            onOpenChange={(open) => {
             if (deleting) return;
             setDeleteDialogOpen(open);
-          }}
-        >
-          <Card className="h-full border-destructive/40 order-8">
-            <CardHeader>
-              <CardTitle>{copy.deleteTitle}</CardTitle>
-              <CardDescription>{copy.deleteSubtitle}</CardDescription>
+            }}
+          >
+            <Card className="h-full border-destructive/40 order-9">
+              <CardHeader>
+                <CardTitle>{copy.deleteTitle}</CardTitle>
+                <CardDescription>{copy.deleteSubtitle}</CardDescription>
             </CardHeader>
             <CardContent className="flex h-full items-end">
               <AlertDialogTrigger asChild>

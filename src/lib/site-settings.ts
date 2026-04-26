@@ -7,6 +7,8 @@ export interface SiteScriptSettings {
   domainWhitelist: string[];
   pathBlacklist: string[];
   ignoreDoNotTrack: boolean;
+  performanceTrackingEnabled: boolean;
+  performanceSampleRate: number;
 }
 
 export interface SiteTrackingConfig extends SiteScriptSettings {
@@ -22,6 +24,8 @@ export const DEFAULT_SITE_SCRIPT_SETTINGS: SiteScriptSettings = {
   domainWhitelist: [],
   pathBlacklist: [],
   ignoreDoNotTrack: true,
+  performanceTrackingEnabled: true,
+  performanceSampleRate: 100,
 };
 
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
@@ -45,6 +49,17 @@ function normalizeTrackingStrength(input: unknown): TrackingStrength {
   if (normalized === "strong") return "strong";
   if (normalized === "weak") return "weak";
   return "smart";
+}
+
+function normalizeSampleRate(input: unknown, fallback: number): number {
+  const numeric =
+    typeof input === "number"
+      ? input
+      : typeof input === "string"
+        ? Number(input.trim())
+        : NaN;
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(numeric * 100) / 100));
 }
 
 function splitListInput(input: unknown): string[] {
@@ -173,6 +188,14 @@ export function normalizeSiteScriptSettings(input: unknown): SiteScriptSettings 
     ignoreDoNotTrack: normalizeBoolean(
       record.ignoreDoNotTrack ?? record.ignoreDnt,
       DEFAULT_SITE_SCRIPT_SETTINGS.ignoreDoNotTrack,
+    ),
+    performanceTrackingEnabled: normalizeBoolean(
+      record.performanceTrackingEnabled ?? record.trackPerformance,
+      DEFAULT_SITE_SCRIPT_SETTINGS.performanceTrackingEnabled,
+    ),
+    performanceSampleRate: normalizeSampleRate(
+      record.performanceSampleRate ?? record.performanceSamplingRate,
+      DEFAULT_SITE_SCRIPT_SETTINGS.performanceSampleRate,
     ),
   };
 }

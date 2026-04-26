@@ -107,6 +107,23 @@ interface BrowserTrendPointRow {
   visitorsBySeries: Record<string, number>;
 }
 
+type PerformanceMetricKey = "ttfb" | "fcp" | "lcp" | "cls" | "inp";
+
+interface PerformanceSummaryRow {
+  avg: number | null;
+  samples: number;
+}
+
+interface PerformanceTrendPointRow {
+  bucket: number;
+  timestampMs: number;
+  avg: number | null;
+  p50: number | null;
+  p75: number | null;
+  p95: number | null;
+  samples: number;
+}
+
 interface BrowserVersionAggregateRow {
   browser: string;
   version: string;
@@ -506,6 +523,14 @@ const BROWSER_CROSS_OTHER_DIMENSION_TOKEN = "__browser_cross_other_dimension__";
 const CLIENT_CROSS_UNKNOWN_TOKEN = "__client_cross_unknown__";
 const CLIENT_CROSS_OTHER_PRIMARY_TOKEN = "__client_cross_other_primary__";
 const CLIENT_CROSS_OTHER_SECONDARY_TOKEN = "__client_cross_other_secondary__";
+
+const PERFORMANCE_METRIC_COLUMNS: Record<PerformanceMetricKey, string> = {
+  ttfb: "perf_ttfb_ms",
+  fcp: "perf_fcp_ms",
+  lcp: "perf_lcp_ms",
+  cls: "perf_cls",
+  inp: "perf_inp_ms",
+};
 
 function shareTrendSeriesKey(
   label: string,
@@ -1046,14 +1071,16 @@ function cityValueExpr(): string {
 }
 
 const VISIT_SOURCE_COLUMNS = `
-  visit_id, site_id, visitor_id, session_id, status, started_at, last_activity_at,
-  ended_at, finalized_at, duration_ms, duration_source, exit_reason,
-  pathname, query_string, hash_fragment, hostname, title, referrer_url, referrer_host,
-  utm_source, utm_medium, utm_campaign, utm_term, utm_content,
-  is_eu, country, region, region_code, city, continent, latitude, longitude,
-  postal_code, metro_code, timezone, as_organization, ua_raw, browser, browser_version,
-  os, os_version, device_type, screen_width, screen_height, language, ae_synced_at
-`;
+    visit_id, site_id, visitor_id, session_id, status, started_at, last_activity_at,
+    ended_at, finalized_at, duration_ms, duration_source, exit_reason,
+    pathname, query_string, hash_fragment, hostname, title, referrer_url, referrer_host,
+    utm_source, utm_medium, utm_campaign, utm_term, utm_content,
+    is_eu, country, region, region_code, city, continent, latitude, longitude,
+    postal_code, metro_code, timezone, as_organization, ua_raw, browser, browser_version,
+    os, os_version, device_type, screen_width, screen_height, language,
+    perf_ttfb_ms, perf_fcp_ms, perf_lcp_ms, perf_cls, perf_inp_ms,
+    ae_synced_at
+  `;
 
 const CUSTOM_EVENT_SOURCE_COLUMNS = `
   event_id, site_id, visit_id, occurred_at, event_name, event_data_json, ae_synced_at
@@ -1259,6 +1286,150 @@ async function queryD1All<T extends Record<string, unknown>>(
 ): Promise<T[]> {
   const result = await env.DB.prepare(sql).bind(...bindings).all<T>();
   return result.results;
+}
+
+function performanceMetricColumn(metric: PerformanceMetricKey): string {
+  return PERFORMANCE_METRIC_COLUMNS[metric];
+}
+
+function roundPerformanceValue(value: unknown): number | null {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.round(numeric * 1000) / 1000;
+}
+
+async function queryPerformanceSummariesFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+): Promise<Record<PerformanceMetricKey, PerformanceSummaryRow>> {
+  const filter = buildVisitFilterSql(filters);
+  const sql = `
+WITH
+${buildVisitSourceCte()},
+filtered_visits AS (
+  SELECT *
+  FROM visit_source
+  ${filter.clause}
+)
+SELECT
+  AVG(perf_ttfb_ms) AS ttfbAvg,
+  COUNT(perf_ttfb_ms) AS ttfbSamples,
+  AVG(perf_fcp_ms) AS fcpAvg,
+  COUNT(perf_fcp_ms) AS fcpSamples,
+  AVG(perf_lcp_ms) AS lcpAvg,
+  COUNT(perf_lcp_ms) AS lcpSamples,
+  AVG(perf_cls) AS clsAvg,
+  COUNT(perf_cls) AS clsSamples,
+  AVG(perf_inp_ms) AS inpAvg,
+  COUNT(perf_inp_ms) AS inpSamples
+FROM filtered_visits
+`;
+  const row = (
+    await queryD1All<Record<string, unknown>>(
+      env,
+      sql,
+      [...visitSourceBindings(siteId, window), ...filter.bindings],
+    )
+  )[0] ?? {};
+
+  return {
+    ttfb: {
+      avg: roundPerformanceValue(row.ttfbAvg),
+      samples: Number(row.ttfbSamples ?? 0),
+    },
+    fcp: {
+      avg: roundPerformanceValue(row.fcpAvg),
+      samples: Number(row.fcpSamples ?? 0),
+    },
+    lcp: {
+      avg: roundPerformanceValue(row.lcpAvg),
+      samples: Number(row.lcpSamples ?? 0),
+    },
+    cls: {
+      avg: roundPerformanceValue(row.clsAvg),
+      samples: Number(row.clsSamples ?? 0),
+    },
+    inp: {
+      avg: roundPerformanceValue(row.inpAvg),
+      samples: Number(row.inpSamples ?? 0),
+    },
+  };
+}
+
+async function queryPerformanceTrendFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  interval: Interval,
+  filters: DashboardFilters,
+  metric: PerformanceMetricKey,
+): Promise<PerformanceTrendPointRow[]> {
+  const filter = buildVisitFilterSql(filters);
+  const bucketDivisor = intervalBucketMs(interval);
+  const column = performanceMetricColumn(metric);
+  const filteredClause = appendSqlConditions(filter.clause, [
+    `${column} IS NOT NULL`,
+  ]);
+  const sql = `
+WITH
+${buildVisitSourceCte()},
+metric_visits AS (
+  SELECT
+    CAST(started_at / ${bucketDivisor} AS INTEGER) AS bucket,
+    ${column} AS metricValue
+  FROM visit_source
+  ${filteredClause}
+),
+ordered_values AS (
+  SELECT
+    bucket,
+    metricValue,
+    ROW_NUMBER() OVER (PARTITION BY bucket ORDER BY metricValue ASC) AS rowNum,
+    COUNT(*) OVER (PARTITION BY bucket) AS sampleCount
+  FROM metric_visits
+),
+bucket_thresholds AS (
+  SELECT
+    bucket,
+    sampleCount,
+    AVG(metricValue) AS avgValue,
+    CAST(((sampleCount * 50) + 99) / 100 AS INTEGER) AS p50Rank,
+    CAST(((sampleCount * 75) + 99) / 100 AS INTEGER) AS p75Rank,
+    CAST(((sampleCount * 95) + 99) / 100 AS INTEGER) AS p95Rank
+  FROM ordered_values
+  GROUP BY bucket, sampleCount
+)
+SELECT
+  thresholds.bucket AS bucket,
+  thresholds.sampleCount AS samples,
+  thresholds.avgValue AS avgValue,
+  MIN(CASE WHEN ordered.rowNum >= thresholds.p50Rank THEN ordered.metricValue END) AS p50,
+  MIN(CASE WHEN ordered.rowNum >= thresholds.p75Rank THEN ordered.metricValue END) AS p75,
+  MIN(CASE WHEN ordered.rowNum >= thresholds.p95Rank THEN ordered.metricValue END) AS p95
+FROM bucket_thresholds thresholds
+JOIN ordered_values ordered
+  ON ordered.bucket = thresholds.bucket
+GROUP BY thresholds.bucket, thresholds.sampleCount, thresholds.avgValue
+ORDER BY thresholds.bucket ASC
+`;
+  const bucketMs = intervalBucketMs(interval);
+  return (
+    await queryD1All<Record<string, unknown>>(
+      env,
+      sql,
+      [...visitSourceBindings(siteId, window), ...filter.bindings],
+    )
+  ).map((row) => ({
+    bucket: Number(row.bucket ?? 0),
+    timestampMs: Number(row.bucket ?? 0) * bucketMs,
+    avg: roundPerformanceValue(row.avgValue),
+    p50: roundPerformanceValue(row.p50),
+    p75: roundPerformanceValue(row.p75),
+    p95: roundPerformanceValue(row.p95),
+    samples: Number(row.samples ?? 0),
+  }));
 }
 
 async function queryOverviewFromD1(
@@ -3295,6 +3466,38 @@ async function handleTrend(env: Env, siteId: string, url: URL): Promise<Response
   });
 }
 
+async function handlePerformance(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const interval = parseInterval(url);
+  const [summaries, ttfb, fcp, lcp, cls, inp] = await Promise.all([
+    queryPerformanceSummariesFromD1(env, siteId, window, filters),
+    queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "ttfb"),
+    queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "fcp"),
+    queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "lcp"),
+    queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "cls"),
+    queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "inp"),
+  ]);
+
+  return jsonResponse({
+    ok: true,
+    interval,
+    summaries,
+    trends: {
+      ttfb,
+      fcp,
+      lcp,
+      cls,
+      inp,
+    },
+  });
+}
+
 async function handleBrowserTrend(
   env: Env,
   siteId: string,
@@ -4816,6 +5019,9 @@ async function routeQuery(
   }
   if (pathname === "event-types") {
     return handleEventTypes(env, siteId, url);
+  }
+  if (pathname === "performance") {
+    return handlePerformance(env, siteId, url);
   }
   if (pathname === "browser-trend") return handleBrowserTrend(env, siteId, url);
   if (pathname === "browser-engine-trend") {
