@@ -48,6 +48,10 @@ interface TrafficPairBarChartProps {
   compact?: boolean;
   maxPoints?: number;
   className?: string;
+  range?: {
+    from: number;
+    to: number;
+  };
 }
 
 interface SiteTrafficSeriesItem {
@@ -260,6 +264,68 @@ function buildSiteColorPairs(
 function safeCount(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.round(value));
+}
+
+function trafficIntervalStepMs(interval: DashboardInterval): number {
+  if (interval === "minute") return 60_000;
+  if (interval === "hour") return 60 * 60_000;
+  if (interval === "day") return 24 * 60 * 60_000;
+  if (interval === "week") return 7 * 24 * 60 * 60_000;
+  return 30 * 24 * 60 * 60_000;
+}
+
+function fillMissingTrafficData(
+  data: Array<{ timestampMs: number; views: number; visitors: number }>,
+  interval: DashboardInterval,
+  range?: {
+    from: number;
+    to: number;
+  },
+): Array<{ timestampMs: number; views: number; visitors: number }> {
+  if (data.length === 0) return data;
+
+  const stepMs = trafficIntervalStepMs(interval);
+  if (!Number.isFinite(stepMs) || stepMs <= 0) return data;
+
+  const bucketMap = new Map<
+    number,
+    { timestampMs: number; views: number; visitors: number }
+  >();
+
+  for (const point of data) {
+    const bucket = Math.floor(Number(point.timestampMs ?? 0) / stepMs);
+    const current = bucketMap.get(bucket) ?? {
+      timestampMs: bucket * stepMs,
+      views: 0,
+      visitors: 0,
+    };
+    current.views += safeCount(point.views);
+    current.visitors += safeCount(point.visitors);
+    bucketMap.set(bucket, current);
+  }
+
+  const sortedBuckets = [...bucketMap.keys()].sort((left, right) => left - right);
+  const fallbackFromBucket = sortedBuckets[0] ?? 0;
+  const fallbackToBucket = sortedBuckets[sortedBuckets.length - 1] ?? fallbackFromBucket;
+  const rangeFromBucket = Number.isFinite(range?.from)
+    ? Math.floor(Number(range?.from ?? 0) / stepMs)
+    : fallbackFromBucket;
+  const rangeToBucket = Number.isFinite(range?.to)
+    ? Math.floor(Number(range?.to ?? 0) / stepMs)
+    : fallbackToBucket;
+  const fromBucket = Math.min(rangeFromBucket, fallbackFromBucket);
+  const toBucket = Math.max(fromBucket, Math.max(rangeToBucket, fallbackToBucket));
+
+  return Array.from({ length: toBucket - fromBucket + 1 }, (_, index) => {
+    const bucket = fromBucket + index;
+    return (
+      bucketMap.get(bucket) ?? {
+        timestampMs: bucket * stepMs,
+        views: 0,
+        visitors: 0,
+      }
+    );
+  });
 }
 
 function useChartVisibility(rootMargin = "120px 0px") {
@@ -787,13 +853,15 @@ export const TrafficPairBarChart = memo(function TrafficPairBarChart({
   compact = false,
   maxPoints,
   className,
+  range,
 }: TrafficPairBarChartProps) {
   const { containerRef, isVisible, hasMeasuredVisibility } =
     useChartVisibility();
   const chartData = useMemo(() => {
+    const completed = fillMissingTrafficData(data, interval, range);
     const normalized = downsampleTrafficData(
-      data,
-      maxPoints ?? (compact ? 72 : data.length),
+      completed,
+      maxPoints ?? (compact ? 72 : completed.length),
     );
     // Input is already sorted upstream by timestamp.
     return normalized.map((point) => {
@@ -805,7 +873,7 @@ export const TrafficPairBarChart = memo(function TrafficPairBarChart({
         nonVisitorViews: Math.max(0, views - visitors),
       };
     });
-  }, [data, maxPoints, compact]);
+  }, [data, interval, maxPoints, compact, range]);
   const config = useMemo(
     () => ({
       visitors: {

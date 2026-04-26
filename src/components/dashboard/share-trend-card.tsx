@@ -12,6 +12,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { ContentSwitch } from "@/components/dashboard/content-switch";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
   intlLocale,
@@ -113,6 +114,38 @@ function seriesDisplayLabel(
   otherLabel: string,
 ): string {
   return series.isOther ? otherLabel : series.label;
+}
+
+function ShareTrendCardSkeleton() {
+  return (
+    <div className="space-y-6 min-h-[360px]">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-3 w-56" />
+        </div>
+        <div className="flex flex-wrap justify-start gap-2 sm:justify-end">
+          {Array.from({ length: 4 }, (_, index) => (
+            <Skeleton
+              key={`share-trend-legend-skeleton-${index}`}
+              className="h-5 w-20"
+            />
+          ))}
+        </div>
+      </div>
+      <div className="space-y-4">
+        <Skeleton className="h-[260px] w-full" />
+        <div className="flex flex-wrap justify-center gap-3">
+          {Array.from({ length: 6 }, (_, index) => (
+            <Skeleton
+              key={`share-trend-label-skeleton-${index}`}
+              className="h-4 w-20"
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function ShareTrendCard({
@@ -233,6 +266,7 @@ export function ShareTrendCard({
           loading={loading && !hydrated}
           hasContent={hasContent}
           loadingLabel={messages.common.loading}
+          loadingContent={<ShareTrendCardSkeleton />}
           emptyContent={<p>{messages.common.noData}</p>}
           minHeightClassName="min-h-[360px]"
         >

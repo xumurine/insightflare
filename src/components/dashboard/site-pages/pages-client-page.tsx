@@ -18,6 +18,7 @@ import { PageHeading } from "@/components/dashboard/page-heading";
 import { PagesShareTrendCard } from "@/components/dashboard/pages-share-trend-card";
 import { TrafficPairBarChart } from "@/components/dashboard/site-traffic-charts";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+import { AutoResizer } from "@/components/ui/auto-resizer";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -26,7 +27,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
 import {
   durationFormat,
   intlLocale,
@@ -114,6 +114,7 @@ function PageMetricField({
 function PageTrafficCard({
   item,
   interval,
+  range,
   locale,
   messages,
   pagesPerSessionFormatter,
@@ -121,6 +122,7 @@ function PageTrafficCard({
 }: {
   item: PagesDashboardRow;
   interval: TimeWindow["interval"];
+  range: Pick<TimeWindow, "from" | "to">;
   locale: Locale;
   messages: AppMessages;
   pagesPerSessionFormatter: Intl.NumberFormat;
@@ -177,6 +179,7 @@ function PageTrafficCard({
               data={item.trend}
               locale={locale}
               interval={interval}
+              range={range}
               viewsLabel={messages.common.views}
               visitorsLabel={messages.common.visitors}
               maxPoints={PAGE_CARD_CHART_MAX_POINTS}
@@ -386,6 +389,9 @@ export function PagesClientPage({
     };
   }, [appendError, loadingInitial, loadingMore, meta.hasMore]);
 
+  const shouldShowLoadMoreSkeletons =
+    !loadingInitial && !error && items.length > 0 && meta.hasMore;
+
   return (
     <div className="space-y-6">
       <PageHeading
@@ -401,77 +407,81 @@ export function PagesClientPage({
         filters={filters}
       />
 
-      {loadingInitial ? (
-        <section
-          className="grid gap-4 xl:grid-cols-2"
-          aria-busy="true"
-        >
-          <p className="sr-only">{messages.pages.loading}</p>
-          {Array.from({ length: 6 }, (_, index) => (
-            <PageTrafficCardSkeleton key={index} />
-          ))}
-        </section>
-      ) : null}
+      <AutoResizer className="w-full" initial duration={0.24}>
+        <div className="space-y-4">
+          {loadingInitial ? (
+            <section
+              className="grid gap-4 xl:grid-cols-2"
+              aria-busy="true"
+              aria-label={messages.common.loading}
+            >
+              {Array.from({ length: 6 }, (_, index) => (
+                <PageTrafficCardSkeleton key={`initial-skeleton-${index}`} />
+              ))}
+            </section>
+          ) : null}
 
-      {!loadingInitial && error ? (
-        <Card>
-          <CardContent className="py-8 text-sm text-muted-foreground">
-            {error}
-          </CardContent>
-        </Card>
-      ) : null}
+          {!loadingInitial && error ? (
+            <Card>
+              <CardContent className="py-8 text-sm text-muted-foreground">
+                {error}
+              </CardContent>
+            </Card>
+          ) : null}
 
-      {!loadingInitial && !error && items.length === 0 ? (
-        <Card>
-          <CardContent className="py-8 text-sm text-muted-foreground">
-            {messages.pages.empty}
-          </CardContent>
-        </Card>
-      ) : null}
+          {!loadingInitial && !error && items.length === 0 ? (
+            <Card>
+              <CardContent className="py-8 text-sm text-muted-foreground">
+                {messages.pages.empty}
+              </CardContent>
+            </Card>
+          ) : null}
 
-      {items.length > 0 ? (
-        <>
-          <section className="grid gap-4 xl:grid-cols-2">
-            {items.map((item) => (
-              <PageTrafficCard
-                key={item.pathname}
-                item={item}
-                interval={window.interval}
-                locale={locale}
-                messages={messages}
-                pagesPerSessionFormatter={pagesPerSessionFormatter}
-                href={buildPageDetailHref(pathname, item.pathname)}
-              />
-            ))}
-          </section>
+          {items.length > 0 ? (
+            <>
+              <section className="grid gap-4 xl:grid-cols-2">
+                {items.map((item) => (
+                  <PageTrafficCard
+                    key={item.pathname}
+                    item={item}
+                    interval={window.interval}
+                    range={window}
+                    locale={locale}
+                    messages={messages}
+                    pagesPerSessionFormatter={pagesPerSessionFormatter}
+                    href={buildPageDetailHref(pathname, item.pathname)}
+                  />
+                ))}
+                {shouldShowLoadMoreSkeletons
+                  ? Array.from({ length: 2 }, (_, index) => (
+                      <div
+                        key={`append-skeleton-${meta.nextPage ?? "pending"}-${index}`}
+                        ref={index === 0 ? sentinelRef : null}
+                      >
+                        <PageTrafficCardSkeleton />
+                      </div>
+                    ))
+                  : null}
+              </section>
 
-          <div className="flex min-h-10 items-center justify-center">
-            {loadingMore ? (
-              <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                <Spinner className="size-4" />
-                {messages.pages.loadingMore}
-              </span>
-            ) : appendError && meta.nextPage !== null ? (
-              <span className="inline-flex items-center gap-3 text-xs text-muted-foreground">
-                {appendError}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    void loadPage(meta.nextPage!, "append");
-                  }}
-                >
-                  {messages.pages.retry}
-                </Button>
-              </span>
-            ) : null}
-            {meta.hasMore ? (
-              <div ref={sentinelRef} className="h-1 w-full" aria-hidden />
-            ) : null}
-          </div>
-        </>
-      ) : null}
+              {appendError && meta.nextPage !== null ? (
+                <div className="flex justify-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      void loadPage(meta.nextPage!, "append");
+                    }}
+                  >
+                    {messages.pages.retry}
+                  </Button>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      </AutoResizer>
     </div>
   );
 }

@@ -338,6 +338,26 @@ export interface OverviewPagesSectionCardData {
   };
 }
 
+interface PageCardTabMeta {
+  label: string;
+  columnLabel: string;
+  mono: boolean;
+  showIcon: boolean;
+}
+
+type PageCardTabFetcher = (
+  siteId: string,
+  window: TimeWindow,
+  filters: DashboardFilters,
+) => Promise<OverviewTabRows>;
+
+type PageCardTargetUrlResolver = (params: {
+  tab: PageCardTab;
+  value: string;
+  unknownLabel: string;
+  fallbackHostname: string;
+}) => string | null;
+
 interface PageCardRow {
   key: string;
   label: string;
@@ -389,12 +409,12 @@ const SOURCE_CARD_TABS: SourceCardTab[] = [
   "domain",
   "link",
 ];
-const PAGE_CARD_NAVIGABLE_TABS = new Set<PageCardNavigableTab>([
+const PAGE_CARD_NAVIGABLE_TAB_LIST: PageCardNavigableTab[] = [
   "path",
   "hostname",
   "entry",
   "exit",
-]);
+];
 const ABSOLUTE_URL_PATTERN = /^[a-z][a-z\d+\-.]*:\/\//i;
 const PAGE_CARD_QUERY_PARAM_BY_TAB: Record<PageCardTab, string> = {
   path: "path",
@@ -706,10 +726,6 @@ function useGeoStateTranslationBundle({
   }, [countryCode, enabled, locale, stateCode]);
 
   return bundle;
-}
-
-function isPageCardNavigableTab(tab: PageCardTab): tab is PageCardNavigableTab {
-  return PAGE_CARD_NAVIGABLE_TABS.has(tab as PageCardNavigableTab);
 }
 
 function sanitizeHostname(value: string): string {
@@ -2123,6 +2139,19 @@ function MetricAreaMap({
   );
 }
 
+interface OverviewPagesSectionProps extends OverviewClientPageProps {
+  filters: DashboardFilters;
+  cardDataOverride?: OverviewPagesSectionCardData | null;
+  pageCardTabMetaOverride?: Partial<Record<PageCardTab, Partial<PageCardTabMeta>>>;
+  pageCardQueryParamOverride?: Partial<Record<PageCardTab, string | null>>;
+  pageCardNavigableTabs?: readonly PageCardNavigableTab[];
+  pageCardFetchers?: Partial<Record<PageCardTab, PageCardTabFetcher>>;
+  pageCardTargetUrlResolvers?: Partial<
+    Record<PageCardTab, PageCardTargetUrlResolver>
+  >;
+  geoPageBasePathname?: string;
+}
+
 export function OverviewPagesSection({
   locale,
   messages,
@@ -2131,10 +2160,13 @@ export function OverviewPagesSection({
   pathname,
   filters,
   cardDataOverride,
-}: OverviewClientPageProps & {
-  filters: DashboardFilters;
-  cardDataOverride?: OverviewPagesSectionCardData | null;
-}) {
+  pageCardTabMetaOverride,
+  pageCardQueryParamOverride,
+  pageCardNavigableTabs,
+  pageCardFetchers,
+  pageCardTargetUrlResolvers,
+  geoPageBasePathname,
+}: OverviewPagesSectionProps) {
   const router = useRouter();
   const searchParams = useLiveSearchParams();
   const livePathname = usePathname() || pathname;
@@ -2232,6 +2264,20 @@ export function OverviewPagesSection({
     resolvedClientDimensionCardTabData[clientDimensionCardTab];
   const activeGeoDimensionCardTabData =
     resolvedGeoDimensionCardTabData[geoDimensionCardTab];
+  const resolvedPageCardNavigableTabs = useMemo(
+    () =>
+      new Set<PageCardNavigableTab>(
+        pageCardNavigableTabs ?? PAGE_CARD_NAVIGABLE_TAB_LIST,
+      ),
+    [pageCardNavigableTabs],
+  );
+  const pageCardQueryParamByTab = useMemo<Record<PageCardTab, string | null>>(
+    () => ({
+      ...PAGE_CARD_QUERY_PARAM_BY_TAB,
+      ...(pageCardQueryParamOverride ?? {}),
+    }),
+    [pageCardQueryParamOverride],
+  );
 
   useEffect(() => {
     if (hasCardDataOverride) return;
@@ -2267,9 +2313,20 @@ export function OverviewPagesSection({
     let active = true;
     pageCardInFlightRef.current[pageCardTab] = true;
 
-    fetchOverviewPageCardTab(siteId, window, pageCardTab, filters, {
-      limit: 100,
-    })
+    const loadPageCardTab =
+      pageCardFetchers?.[pageCardTab] ??
+      ((requestedSiteId: string, requestedWindow: TimeWindow, requestedFilters: DashboardFilters) =>
+        fetchOverviewPageCardTab(
+          requestedSiteId,
+          requestedWindow,
+          pageCardTab,
+          requestedFilters,
+          {
+            limit: 100,
+          },
+        ));
+
+    loadPageCardTab(siteId, window, filters)
       .then((data) => {
         if (!active) return;
         setPageCardTabData((prev) => ({
@@ -2286,14 +2343,14 @@ export function OverviewPagesSection({
     };
   }, [
     activePageCardTabData,
-    filters,
+    filtersKey,
     pageCardTab,
     siteId,
     window.from,
     window.interval,
     window.to,
-    window,
     hasCardDataOverride,
+    pageCardFetchers,
   ]);
 
   useEffect(() => {
@@ -2322,13 +2379,12 @@ export function OverviewPagesSection({
     };
   }, [
     activeSourceCardTabData,
-    filters,
+    filtersKey,
     siteId,
     sourceCardTab,
     window.from,
     window.interval,
     window.to,
-    window,
     hasCardDataOverride,
   ]);
 
@@ -2365,12 +2421,11 @@ export function OverviewPagesSection({
   }, [
     activeClientDimensionCardTabData,
     clientDimensionCardTab,
-    filters,
+    filtersKey,
     siteId,
     window.from,
     window.interval,
     window.to,
-    window,
     hasCardDataOverride,
   ]);
 
@@ -2400,13 +2455,12 @@ export function OverviewPagesSection({
     };
   }, [
     activeGeoDimensionCardTabData,
-    filters,
+    filtersKey,
     geoDimensionCardTab,
     siteId,
     window.from,
     window.interval,
     window.to,
-    window,
     hasCardDataOverride,
   ]);
 
@@ -2439,51 +2493,76 @@ export function OverviewPagesSection({
     !hasCardDataOverride && activeGeoDimensionCardTabData === null;
   const noDataText = messages.common.noData;
 
-  const pageCardTabMeta: Record<
-    PageCardTab,
-    { label: string; columnLabel: string; mono: boolean; showIcon: boolean }
-  > = {
-    path: {
-      label: messages.common.path,
-      columnLabel: messages.common.path,
-      mono: true,
-      showIcon: false,
-    },
-    title: {
-      label: messages.common.title,
-      columnLabel: messages.common.title,
-      mono: false,
-      showIcon: false,
-    },
-    hostname: {
-      label: messages.common.hostname,
-      columnLabel: messages.common.hostname,
-      mono: true,
-      showIcon: true,
-    },
-    entry: {
-      label: messages.common.entryPage,
-      columnLabel: messages.common.entryPage,
-      mono: true,
-      showIcon: false,
-    },
-    exit: {
-      label: messages.common.exitPage,
-      columnLabel: messages.common.exitPage,
-      mono: true,
-      showIcon: false,
-    },
-  };
+  const pageCardTabMeta = useMemo<Record<PageCardTab, PageCardTabMeta>>(
+    () => ({
+      path: {
+        label: messages.common.path,
+        columnLabel: messages.common.path,
+        mono: true,
+        showIcon: false,
+        ...(pageCardTabMetaOverride?.path ?? {}),
+      },
+      title: {
+        label: messages.common.title,
+        columnLabel: messages.common.title,
+        mono: false,
+        showIcon: false,
+        ...(pageCardTabMetaOverride?.title ?? {}),
+      },
+      hostname: {
+        label: messages.common.hostname,
+        columnLabel: messages.common.hostname,
+        mono: true,
+        showIcon: true,
+        ...(pageCardTabMetaOverride?.hostname ?? {}),
+      },
+      entry: {
+        label: messages.common.entryPage,
+        columnLabel: messages.common.entryPage,
+        mono: true,
+        showIcon: false,
+        ...(pageCardTabMetaOverride?.entry ?? {}),
+      },
+      exit: {
+        label: messages.common.exitPage,
+        columnLabel: messages.common.exitPage,
+        mono: true,
+        showIcon: false,
+        ...(pageCardTabMetaOverride?.exit ?? {}),
+      },
+    }),
+    [
+      messages.common.entryPage,
+      messages.common.exitPage,
+      messages.common.hostname,
+      messages.common.path,
+      messages.common.title,
+      pageCardTabMetaOverride,
+    ],
+  );
   const pathRows = useMemo<PageCardRow[]>(
     () =>
-      (resolvedPageCardTabData.path ?? []).map((item) => ({
-        key: String(item.label || "/"),
-        label: String(item.label || "/"),
-        views: Math.max(0, Number(item.views || 0)),
-        visitors: Math.max(0, Number(item.visitors || 0)),
-        mono: true,
-      })),
-    [resolvedPageCardTabData.path],
+      (resolvedPageCardTabData.path ?? []).map((item, index) => {
+        const label = String(item.label || "").trim();
+        const fallbackLabel =
+          pageCardTabMeta.path.label === messages.pages.hashTab
+            ? messages.pages.noHash
+            : "/";
+        return {
+          key: `${label || fallbackLabel}-${index}`,
+          label: label || fallbackLabel,
+          views: Math.max(0, Number(item.views || 0)),
+          visitors: Math.max(0, Number(item.visitors || 0)),
+          mono: pageCardTabMeta.path.mono,
+        };
+      }),
+    [
+      messages.pages.hashTab,
+      messages.pages.noHash,
+      pageCardTabMeta.path.label,
+      pageCardTabMeta.path.mono,
+      resolvedPageCardTabData.path,
+    ],
   );
   const titleRows = useMemo<PageCardRow[]>(
     () =>
@@ -2576,12 +2655,13 @@ export function OverviewPagesSection({
     [sortedPageCardRows, pageCardSort.key],
   );
   const activePageCardQueryValue = useMemo(() => {
-    const queryParamKey = PAGE_CARD_QUERY_PARAM_BY_TAB[pageCardTab];
+    const queryParamKey = pageCardQueryParamByTab[pageCardTab];
+    if (!queryParamKey) return null;
     const raw = searchParams.get(queryParamKey);
     if (!raw) return null;
     const normalized = raw.trim();
     return normalized.length > 0 ? normalized : null;
-  }, [pageCardTab, searchParams]);
+  }, [pageCardQueryParamByTab, pageCardTab, searchParams]);
   const visiblePageCardRows = useMemo(
     () =>
       activePageCardQueryValue
@@ -3138,7 +3218,8 @@ export function OverviewPagesSection({
   ) => {
     const params = new URLSearchParams(searchParams.toString());
     const activeTab = next?.tab ?? pageCardTab;
-    const queryKey = PAGE_CARD_QUERY_PARAM_BY_TAB[activeTab];
+    const queryKey = pageCardQueryParamByTab[activeTab];
+    if (!queryKey) return;
     params.delete(queryKey);
     if (next) {
       const normalized = next.value.trim();
@@ -3218,6 +3299,7 @@ export function OverviewPagesSection({
     }
   };
   const togglePageCardRowFilter = (rowKey: string) => {
+    if (!pageCardQueryParamByTab[pageCardTab]) return;
     const normalized = rowKey.trim();
     const isActive = activePageCardQueryValue === normalized;
     setPageCardQueryFilter(
@@ -3398,8 +3480,14 @@ export function OverviewPagesSection({
               ? Math.min(100, (rowValue / pageCardProgressTotal) * 100)
               : 0;
           const progressWidth = `${progressPercent.toFixed(2)}%`;
-          const rowTargetUrl = isPageCardNavigableTab(pageCardTab)
-            ? resolvePageCardTargetUrl({
+          const rowFilterEnabled = Boolean(pageCardQueryParamByTab[pageCardTab]);
+          const rowTargetUrl = resolvedPageCardNavigableTabs.has(
+            pageCardTab as PageCardNavigableTab,
+          )
+            ? (
+                pageCardTargetUrlResolvers?.[pageCardTab] ??
+                resolvePageCardTargetUrl
+              )({
                 tab: pageCardTab,
                 value: item.label,
                 unknownLabel: messages.common.unknown,
@@ -3407,13 +3495,15 @@ export function OverviewPagesSection({
               })
             : null;
           const rowFilterActive = activePageCardQueryValue === item.label;
+          const rowInteractive = rowFilterEnabled || Boolean(rowTargetUrl);
 
           return (
             <AnimatedDataTableRow
               key={`${pageCardTab}-${item.key}`}
               reduceMotion={reduceDataRowMotion}
               className={cn(
-                "group/row cursor-pointer bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-95",
+                "group/row bg-no-repeat transition-[background-size,filter] duration-300 ease-out",
+                rowInteractive ? "cursor-pointer hover:brightness-95" : "cursor-default",
                 rowFilterActive && "brightness-95",
               )}
               style={{
@@ -3422,7 +3512,19 @@ export function OverviewPagesSection({
                 backgroundSize: `${progressWidth} 100%`,
                 backgroundPosition: "left top",
               }}
-              onClick={() => togglePageCardRowFilter(item.label)}
+              onClick={() => {
+                if (rowFilterEnabled) {
+                  togglePageCardRowFilter(item.label);
+                  return;
+                }
+                if (rowTargetUrl) {
+                  globalThis.window.open(
+                    rowTargetUrl,
+                    "_blank",
+                    "noopener,noreferrer",
+                  );
+                }
+              }}
             >
               <TableCell className="p-0 whitespace-normal align-top">
                 <div
@@ -3865,7 +3967,7 @@ export function OverviewPagesSection({
             messages.common.unknown,
           );
           const rowLocationTarget = rowLocationValue
-            ? `${buildGeoPagePath(livePathname)}?${new URLSearchParams({
+            ? `${buildGeoPagePath(geoPageBasePathname ?? livePathname)}?${new URLSearchParams({
                 location: rowLocationValue,
               }).toString()}`
             : null;

@@ -10,6 +10,7 @@ interface ContentSwitchProps {
   loading: boolean;
   hasContent: boolean;
   loadingLabel: string;
+  loadingContent?: ReactNode;
   emptyContent: ReactNode;
   children: ReactNode;
   className?: string;
@@ -20,6 +21,7 @@ export function ContentSwitch({
   loading,
   hasContent,
   loadingLabel,
+  loadingContent,
   emptyContent,
   children,
   className,
@@ -29,16 +31,20 @@ export function ContentSwitch({
     <AutoResizer className={className} initial>
       <AutoTransition initial duration={0.22}>
         {loading ? (
-          <div
-            key="loading"
-            className={cn(
-              "flex items-center justify-center gap-2 text-sm text-muted-foreground",
-              minHeightClassName,
-            )}
-          >
-            <Spinner className="size-4" />
-            <span>{loadingLabel}</span>
-          </div>
+          loadingContent ? (
+            <div key="loading-content">{loadingContent}</div>
+          ) : (
+            <div
+              key="loading"
+              className={cn(
+                "flex items-center justify-center gap-2 text-sm text-muted-foreground",
+                minHeightClassName,
+              )}
+            >
+              <Spinner className="size-4" />
+              <span>{loadingLabel}</span>
+            </div>
+          )
         ) : hasContent ? (
           <div key="content">{children}</div>
         ) : (
@@ -56,4 +62,3 @@ export function ContentSwitch({
     </AutoResizer>
   );
 }
-

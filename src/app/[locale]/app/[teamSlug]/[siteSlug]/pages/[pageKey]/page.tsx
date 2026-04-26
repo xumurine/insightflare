@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { PageDetailClientPage } from "@/components/dashboard/site-pages/page-detail-client-page";
-import { getTeamSiteContext } from "@/lib/dashboard/server";
+import { buildSitePath, getTeamSiteContext } from "@/lib/dashboard/server";
 import {
   PAGE_DETAIL_QUERY_PARAM,
   normalizePagePath,
@@ -33,12 +33,19 @@ export default async function PageDetailPage({
   const messages = getMessages(resolvedLocale);
   const context = await getTeamSiteContext(teamSlug, siteSlug);
   if (!context) notFound();
+  const pathname = buildSitePath(
+    resolvedLocale,
+    context.activeTeam.slug,
+    context.activeSite.slug,
+  );
 
   return (
     <PageDetailClientPage
       locale={resolvedLocale}
       messages={messages}
       siteId={context.activeSite.id}
+      siteDomain={context.activeSite.domain}
+      pathname={pathname}
       pagePath={pagePath}
     />
   );

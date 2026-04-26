@@ -120,6 +120,35 @@ function emptyOverviewTab(): OverviewTabData {
   return { ok: true, data: [] };
 }
 
+function normalizeOverviewRows(
+  rows: OverviewTabData["data"] | Array<Record<string, unknown>> | undefined,
+): OverviewTabRows {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => ({
+    label:
+      String((row as { label?: unknown }).label ?? "").trim() ||
+      String((row as { value?: unknown }).value ?? "").trim(),
+    views: Number((row as { views?: unknown }).views ?? 0),
+    sessions: Number((row as { sessions?: unknown }).sessions ?? 0),
+    visitors: Number((row as { visitors?: unknown }).visitors ?? 0),
+  }));
+}
+
+function decodeHashLabel(value: string): string {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+
+  const prefixed = normalized.startsWith("#") ? normalized : `#${normalized}`;
+  const encodedFragment = prefixed.slice(1);
+  if (!encodedFragment) return "";
+
+  try {
+    return `#${decodeURIComponent(encodedFragment)}`;
+  } catch {
+    return prefixed;
+  }
+}
+
 function emptyOverviewGeoTab(): OverviewGeoTabData {
   return { ok: true, data: [] };
 }
@@ -281,23 +310,26 @@ export async function fetchPagesShareTrend(
   },
 ): Promise<BrowserTrendData> {
   const limit = Math.max(1, Math.min(options?.limit ?? 5, 12));
-  const payload = await fetchPagesDashboard(siteId, window, filters, {
-    page: 1,
-    pageSize: limit,
-  }).catch(() => ({
-    ok: true,
-    interval: window.interval,
-    data: [],
-    meta: {
+  const [payload, totalTrend] = await Promise.all([
+    fetchPagesDashboard(siteId, window, filters, {
       page: 1,
       pageSize: limit,
-      returned: 0,
-      hasMore: false,
-      nextPage: null,
-    },
-  } satisfies PagesDashboardData));
+    }).catch(() => ({
+      ok: true,
+      interval: window.interval,
+      data: [],
+      meta: {
+        page: 1,
+        pageSize: limit,
+        returned: 0,
+        hasMore: false,
+        nextPage: null,
+      },
+    } satisfies PagesDashboardData)),
+    fetchTrend(siteId, window, filters).catch(() => emptyTrend(window.interval)),
+  ]);
 
-  const series = payload.data.map((item, index) => ({
+  const series: BrowserTrendData["series"] = payload.data.map((item, index) => ({
     key: `page_${index}`,
     label: item.pathname,
     views: item.metrics.views,
@@ -328,6 +360,46 @@ export async function fetchPagesShareTrend(
       current.visitorsBySeries[seriesKey] = value;
       pointByTimestamp.set(timestampMs, current);
     }
+  }
+
+  for (const point of totalTrend.data) {
+    const timestampMs = Number(point.timestampMs ?? 0);
+    const totalVisitors = Math.max(0, Number(point.views ?? 0));
+    const current = pointByTimestamp.get(timestampMs) ?? {
+      timestampMs,
+      totalVisitors: 0,
+      visitorsBySeries: {},
+    };
+    current.totalVisitors = Math.max(current.totalVisitors, totalVisitors);
+    pointByTimestamp.set(timestampMs, current);
+  }
+
+  let otherViews = 0;
+  let otherVisitors = 0;
+  let otherSessions = 0;
+
+  for (const point of pointByTimestamp.values()) {
+    const topSeriesTotal = Object.values(point.visitorsBySeries).reduce(
+      (sum, value) => sum + Math.max(0, Number(value ?? 0)),
+      0,
+    );
+    const otherValue = Math.max(0, point.totalVisitors - topSeriesTotal);
+    if (otherValue <= 0) continue;
+    point.visitorsBySeries.other = otherValue;
+    otherViews += otherValue;
+    otherVisitors += otherValue;
+    otherSessions += otherValue;
+  }
+
+  if (otherVisitors > 0) {
+    series.push({
+      key: "other",
+      label: "Other",
+      views: otherViews,
+      visitors: otherVisitors,
+      sessions: otherSessions,
+      isOther: true,
+    });
   }
 
   const data = [...pointByTimestamp.values()]
@@ -520,7 +592,7 @@ export async function fetchOverviewPageCardTab(
       filters,
     ),
   ).catch(() => emptyOverviewTab());
-  return payload.data ?? [];
+  return normalizeOverviewRows(payload.data);
 }
 
 export async function fetchPageHashTab(
@@ -543,7 +615,10 @@ export async function fetchPageHashTab(
       filters,
     ),
   ).catch(() => emptyOverviewTab());
-  return payload.data ?? [];
+  return normalizeOverviewRows(payload.data).map((row) => ({
+    ...row,
+    label: decodeHashLabel(row.label),
+  }));
 }
 
 export async function fetchOverviewSourceCardTab(
@@ -567,7 +642,7 @@ export async function fetchOverviewSourceCardTab(
       filters,
     ),
   ).catch(() => emptyOverviewTab());
-  return payload.data ?? [];
+  return normalizeOverviewRows(payload.data);
 }
 
 export async function fetchEventTypesTab(
@@ -590,7 +665,7 @@ export async function fetchEventTypesTab(
       filters,
     ),
   ).catch(() => emptyOverviewTab());
-  return payload.data ?? [];
+  return normalizeOverviewRows(payload.data);
 }
 
 export async function fetchReferrerTrend(
@@ -644,7 +719,7 @@ export async function fetchOverviewClientDimensionTab(
       filters,
     ),
   ).catch(() => emptyOverviewTab());
-  return payload.data ?? [];
+  return normalizeOverviewRows(payload.data);
 }
 
 export async function fetchOverviewGeoDimensionTab(
