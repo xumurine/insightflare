@@ -174,6 +174,14 @@ export interface AppMessages {
   pages: {
     title: string;
     subtitle: string;
+    pagesPerSession: string;
+    untitled: string;
+    empty: string;
+    loading: string;
+    loadingMore: string;
+    loadError: string;
+    loadMoreError: string;
+    retry: string;
     tabPages: string;
     tabEntryPages: string;
     tabExitPages: string;

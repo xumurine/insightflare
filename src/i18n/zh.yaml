@@ -175,6 +175,14 @@ overview:
 pages:
   title: 页面分析
   subtitle: 选定时间范围内访问最多的路径。
+  pagesPerSession: 每会话页面数
+  untitled: 未命名页面
+  empty: 当前筛选条件下暂无页面数据。
+  loading: 正在加载页面卡片...
+  loadingMore: 正在加载更多页面...
+  loadError: 页面数据加载失败，请稍后重试。
+  loadMoreError: 加载更多页面失败。
+  retry: 重试
   tabPages: 页面
   tabEntryPages: 入口页面
   tabExitPages: 出口页面

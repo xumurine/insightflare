@@ -175,6 +175,14 @@ overview:
 pages:
   title: Pages
   subtitle: Most visited paths in the selected range.
+  pagesPerSession: Pages / Session
+  untitled: Untitled Page
+  empty: No page data matches the current filters.
+  loading: Loading page cards...
+  loadingMore: Loading more pages...
+  loadError: Failed to load page data. Please try again later.
+  loadMoreError: Failed to load more pages.
+  retry: Retry
   tabPages: Pages
   tabEntryPages: Entry Pages
   tabExitPages: Exit Pages

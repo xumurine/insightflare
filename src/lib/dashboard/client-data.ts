@@ -15,6 +15,7 @@ import type {
   OverviewGeoDimensionTabsData as OverviewGeoDimensionTabsResponse,
   OverviewGeoPointsData,
   PagesData,
+  PagesDashboardData,
   ReferrerRadarData,
   ReferrersData,
   TrendData,
@@ -35,6 +36,8 @@ export type OverviewGeoTabRows = Array<{
   sessions: number;
   visitors: number;
 }>;
+export type PagesDashboardRows = PagesDashboardData["data"];
+export type PagesDashboardRow = PagesDashboardData["data"][number];
 
 function emptyOverview(): OverviewData {
   return {
@@ -242,6 +245,31 @@ export async function fetchPages(siteId: string, window: TimeWindow, filters?: D
     limit: 100,
     details: 1,
   }, filters));
+}
+
+export async function fetchPagesDashboard(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+  options?: {
+    page?: number;
+    pageSize?: number;
+  },
+): Promise<PagesDashboardData> {
+  return fetchPrivateJson<PagesDashboardData>(
+    "/api/private/pages-dashboard",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        interval: window.interval,
+        page: options?.page ?? 1,
+        pageSize: options?.pageSize ?? 12,
+      },
+      filters,
+    ),
+  );
 }
 
 export async function fetchPageCardTabs(

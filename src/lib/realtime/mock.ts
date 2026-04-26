@@ -4645,6 +4645,122 @@ function generateDemoPages(
   };
 }
 
+function generateDemoPagesDashboard(
+  siteId: string,
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const page = parseDemoLimit(params.page, 1, 1, 10_000);
+  const pageSize = parseDemoLimit(params.pageSize, 12, 1, 24);
+  const from = parseDemoNumber(params.from, 0);
+  const to = parseDemoNumber(params.to, Date.now());
+  const interval = parseDemoInterval(params.interval);
+  const filters = parseDemoFilters(params);
+  const dataset = buildDemoFactDataset(siteId, from, to);
+  const filtered = applyDemoFilters(dataset, filters);
+  const allPathRows = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    Math.max(filtered.visits.length, page * pageSize + 1),
+    (visit) => visit.pathname,
+  );
+  const offset = (page - 1) * pageSize;
+  const requestedRows = allPathRows.slice(offset, offset + pageSize + 1);
+  const hasMore = requestedRows.length > pageSize;
+  const currentRows = requestedRows.slice(0, pageSize);
+  const span = Math.max(0, to - from);
+  const previousFrom = Math.max(0, from - span);
+  const previousTo = Math.max(previousFrom, from);
+  const previousDataset = buildDemoFactDataset(siteId, previousFrom, previousTo);
+
+  const percentDelta = (current: number, previous: number) =>
+    previous <= 0 ? null : ((current - previous) / previous) * 100;
+
+  return {
+    ok: true,
+    interval,
+    data: currentRows.map((row) => {
+      const pathname = row.label;
+      const currentMetrics = aggregateOverviewMetrics(
+        dataset,
+        applyDemoFilters(dataset, { ...filters, path: pathname }),
+      );
+      const previousMetrics = aggregateOverviewMetrics(
+        previousDataset,
+        applyDemoFilters(previousDataset, { ...filters, path: pathname }),
+      );
+      const currentPagesPerSession =
+        currentMetrics.sessions > 0
+          ? currentMetrics.views / currentMetrics.sessions
+          : 0;
+      const previousPagesPerSession =
+        previousMetrics.sessions > 0
+          ? previousMetrics.views / previousMetrics.sessions
+          : 0;
+      const titles = aggregateDimensionRowsFromVisits(
+        dataset,
+        filtered.visits.filter((visit) => visit.pathname === pathname),
+        3,
+        (visit) => visit.title,
+      ).map((titleRow) => titleRow.label);
+      const trend = buildDemoTrendBuckets(
+        siteId,
+        from,
+        to,
+        interval,
+        { ...filters, path: pathname },
+      ).map((point) => ({
+        timestampMs: point.timestampMs,
+        views: point.views,
+        visitors: point.visitors,
+      }));
+
+      return {
+        pathname,
+        titles,
+        trend,
+        metrics: {
+          views: currentMetrics.views,
+          visitors: currentMetrics.visitors,
+          sessions: currentMetrics.sessions,
+          bounceRate: currentMetrics.bounceRate,
+          pagesPerSession: currentPagesPerSession,
+          avgDurationMs: currentMetrics.avgDurationMs,
+        },
+        changeRates: {
+          views: percentDelta(currentMetrics.views, previousMetrics.views),
+          visitors: percentDelta(
+            currentMetrics.visitors,
+            previousMetrics.visitors,
+          ),
+          sessions: percentDelta(
+            currentMetrics.sessions,
+            previousMetrics.sessions,
+          ),
+          bounceRate: percentDelta(
+            currentMetrics.bounceRate,
+            previousMetrics.bounceRate,
+          ),
+          pagesPerSession: percentDelta(
+            currentPagesPerSession,
+            previousPagesPerSession,
+          ),
+          avgDurationMs: percentDelta(
+            currentMetrics.avgDurationMs,
+            previousMetrics.avgDurationMs,
+          ),
+        },
+      };
+    }),
+    meta: {
+      page,
+      pageSize,
+      returned: currentRows.length,
+      hasMore,
+      nextPage: hasMore ? page + 1 : null,
+    },
+  };
+}
+
 function generateDemoReferrers(
   siteId: string,
   params: Record<string, string | number>,
@@ -5863,6 +5979,9 @@ export function handleDemoRequest(options: {
   if (path.includes("/team-dashboard")) {
     const tid = teamId || getDemoTeams()[0].id;
     return generateDemoTeamDashboard(tid, params);
+  }
+  if (path.includes("/pages-dashboard")) {
+    return generateDemoPagesDashboard(siteId, params);
   }
   if (path.includes("/overview")) {
     return generateDemoOverview(siteId, params);

@@ -192,6 +192,23 @@ interface PageRow {
   sessions: number;
 }
 
+interface PageCardAggregateRow extends OverviewAggregateRow {
+  pathname: string;
+}
+
+interface PageCardTitleRow {
+  pathname: string;
+  title: string;
+  views: number;
+}
+
+interface PageCardTrendRow {
+  pathname: string;
+  bucket: number;
+  views: number;
+  visitors: number;
+}
+
 interface ReferrerRow {
   referrer: string;
   views: number;
@@ -438,6 +455,17 @@ function withoutFilterKey(
   return next;
 }
 
+function appendSqlConditions(baseClause: string, conditions: string[]): string {
+  const normalizedConditions = conditions
+    .map((condition) => condition.trim())
+    .filter((condition) => condition.length > 0);
+  if (normalizedConditions.length === 0) return baseClause;
+  if (baseClause.trim().length > 0) {
+    return `${baseClause} AND ${normalizedConditions.join(" AND ")}`;
+  }
+  return `WHERE ${normalizedConditions.join(" AND ")}`;
+}
+
 function sourceLabel(window: QueryWindow): "detail" | "archive" | "mixed" {
   const archiveCutoff = window.nowMs - RETENTION_DAYS * ONE_DAY_MS;
   if (window.toMs < archiveCutoff) return "archive";
@@ -644,6 +672,30 @@ function mapOverviewAggregate(
     avgDurationMs: avgDuration(row.totalDuration, row.sessions),
     bounceRate: bounceRate(row.bounces, row.sessions),
     approximateVisitors: Boolean(options?.approximateVisitors),
+  };
+}
+
+function emptyOverviewAggregateRow(): OverviewAggregateRow {
+  return {
+    views: 0,
+    sessions: 0,
+    visitors: 0,
+    bounces: 0,
+    totalDuration: 0,
+    durationViews: 0,
+  };
+}
+
+function mapPageCardMetrics(row: OverviewAggregateRow) {
+  const overview = mapOverviewAggregate(row);
+  return {
+    views: overview.views,
+    visitors: overview.visitors,
+    sessions: overview.sessions,
+    bounceRate: overview.bounceRate,
+    pagesPerSession:
+      overview.sessions > 0 ? overview.views / overview.sessions : 0,
+    avgDurationMs: overview.avgDurationMs,
   };
 }
 
@@ -2848,6 +2900,236 @@ async function queryPageTabsAggregate(
   return queryPageTabsFromD1(env, siteId, window, filters, limit);
 }
 
+async function queryPageCardMetricsFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+  options?: {
+    pathnames?: string[];
+    limit?: number;
+    offset?: number;
+  },
+): Promise<PageCardAggregateRow[]> {
+  const filter = buildVisitFilterSql(filters);
+  const requestedPathnames = Array.from(
+    new Set(
+      (options?.pathnames ?? [])
+        .map((pathname) => String(pathname ?? "").trim())
+        .filter((pathname) => pathname.length > 0),
+    ),
+  );
+  const pathnameCondition =
+    requestedPathnames.length > 0
+      ? `TRIM(COALESCE(pathname, '')) IN (${requestedPathnames.map(() => "?").join(", ")})`
+      : "";
+  const filteredClause = appendSqlConditions(filter.clause, [
+    `TRIM(COALESCE(pathname, '')) != ''`,
+    pathnameCondition,
+  ]);
+  const hasLimit = typeof options?.limit === "number";
+  const sql = `
+WITH
+${buildVisitSourceCte()},
+filtered_visits AS (
+  SELECT
+    pathname,
+    session_id AS sessionId,
+    visitor_id AS visitorId,
+    duration_ms AS durationMs
+  FROM visit_source
+  ${filteredClause}
+),
+path_rollup AS (
+  SELECT
+    pathname,
+    count(*) AS views,
+    count(DISTINCT CASE WHEN sessionId != '' THEN sessionId ELSE NULL END) AS sessions,
+    count(DISTINCT CASE WHEN visitorId != '' THEN visitorId ELSE NULL END) AS visitors,
+    COALESCE(sum(CASE WHEN durationMs IS NOT NULL AND durationMs >= 0 THEN durationMs ELSE 0 END), 0) AS totalDuration
+  FROM filtered_visits
+  GROUP BY pathname
+),
+path_session_rollup AS (
+  SELECT
+    pathname,
+    sessionId,
+    count(*) AS visitCount
+  FROM filtered_visits
+  WHERE sessionId != ''
+  GROUP BY pathname, sessionId
+),
+path_bounce_rollup AS (
+  SELECT
+    pathname,
+    count(*) AS bounces
+  FROM path_session_rollup
+  WHERE visitCount = 1
+  GROUP BY pathname
+)
+SELECT
+  pr.pathname AS pathname,
+  pr.views AS views,
+  pr.sessions AS sessions,
+  pr.visitors AS visitors,
+  COALESCE(pb.bounces, 0) AS bounces,
+  pr.totalDuration AS totalDuration,
+  0 AS durationViews
+FROM path_rollup pr
+LEFT JOIN path_bounce_rollup pb ON pb.pathname = pr.pathname
+ORDER BY pr.views DESC, pr.sessions DESC, pr.pathname ASC
+${hasLimit ? "LIMIT ? OFFSET ?" : ""}
+`;
+  return (await queryD1All<Record<string, unknown>>(
+    env,
+    sql,
+    [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      ...requestedPathnames,
+      ...(hasLimit
+        ? [options?.limit ?? 0, Math.max(0, options?.offset ?? 0)]
+        : []),
+    ],
+  )).map((row) => ({
+    pathname: String(row.pathname ?? ""),
+    views: Number(row.views ?? 0),
+    sessions: Number(row.sessions ?? 0),
+    visitors: Number(row.visitors ?? 0),
+    bounces: Number(row.bounces ?? 0),
+    totalDuration: Number(row.totalDuration ?? 0),
+    durationViews: Number(row.durationViews ?? 0),
+  }));
+}
+
+async function queryPageCardTitlesFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+  pathnames: string[],
+  titleLimit: number,
+): Promise<PageCardTitleRow[]> {
+  const requestedPathnames = Array.from(
+    new Set(
+      pathnames
+        .map((pathname) => String(pathname ?? "").trim())
+        .filter((pathname) => pathname.length > 0),
+    ),
+  );
+  if (requestedPathnames.length === 0) return [];
+
+  const filter = buildVisitFilterSql(filters);
+  const filteredClause = appendSqlConditions(filter.clause, [
+    `TRIM(COALESCE(pathname, '')) IN (${requestedPathnames.map(() => "?").join(", ")})`,
+  ]);
+  const sql = `
+WITH
+${buildVisitSourceCte()},
+filtered_visits AS (
+  SELECT pathname, title
+  FROM visit_source
+  ${filteredClause}
+),
+title_rollup AS (
+  SELECT
+    pathname,
+    TRIM(COALESCE(title, '')) AS title,
+    count(*) AS views
+  FROM filtered_visits
+  WHERE TRIM(COALESCE(title, '')) != ''
+  GROUP BY pathname, TRIM(COALESCE(title, ''))
+),
+ranked_titles AS (
+  SELECT
+    pathname,
+    title,
+    views,
+    ROW_NUMBER() OVER (PARTITION BY pathname ORDER BY views DESC, title ASC) AS titleRank
+  FROM title_rollup
+)
+SELECT
+  pathname,
+  title,
+  views
+FROM ranked_titles
+WHERE titleRank <= ?
+ORDER BY pathname ASC, titleRank ASC
+`;
+  return (await queryD1All<Record<string, unknown>>(
+    env,
+    sql,
+    [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      ...requestedPathnames,
+      titleLimit,
+    ],
+  )).map((row) => ({
+    pathname: String(row.pathname ?? ""),
+    title: String(row.title ?? ""),
+    views: Number(row.views ?? 0),
+  }));
+}
+
+async function queryPageCardTrendFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  interval: Interval,
+  filters: DashboardFilters,
+  pathnames: string[],
+): Promise<PageCardTrendRow[]> {
+  const requestedPathnames = Array.from(
+    new Set(
+      pathnames
+        .map((pathname) => String(pathname ?? "").trim())
+        .filter((pathname) => pathname.length > 0),
+    ),
+  );
+  if (requestedPathnames.length === 0) return [];
+
+  const filter = buildVisitFilterSql(filters);
+  const bucketDivisor = intervalBucketMs(interval);
+  const filteredClause = appendSqlConditions(filter.clause, [
+    `TRIM(COALESCE(pathname, '')) IN (${requestedPathnames.map(() => "?").join(", ")})`,
+  ]);
+  const sql = `
+WITH
+${buildVisitSourceCte()},
+filtered_visits AS (
+  SELECT
+    pathname,
+    started_at AS startedAt,
+    visitor_id AS visitorId
+  FROM visit_source
+  ${filteredClause}
+)
+SELECT
+  pathname,
+  CAST(startedAt / ${bucketDivisor} AS INTEGER) AS bucket,
+  count(*) AS views,
+  count(DISTINCT CASE WHEN visitorId != '' THEN visitorId ELSE NULL END) AS visitors
+FROM filtered_visits
+GROUP BY pathname, bucket
+ORDER BY pathname ASC, bucket ASC
+`;
+  return (await queryD1All<Record<string, unknown>>(
+    env,
+    sql,
+    [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      ...requestedPathnames,
+    ],
+  )).map((row) => ({
+    pathname: String(row.pathname ?? ""),
+    bucket: Number(row.bucket ?? 0),
+    views: Number(row.views ?? 0),
+    visitors: Number(row.visitors ?? 0),
+  }));
+}
+
 async function queryReferrerAggregate(
   env: Env,
   siteId: string,
@@ -3587,6 +3869,139 @@ async function handlePages(
     };
   }
   return jsonResponse(payload);
+}
+
+async function handlePagesDashboard(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+
+  const filters = parseFilters(url);
+  const interval = parseInterval(url);
+  const page = parseQueryLimit(url, "page", 1, 1, 10_000);
+  const pageSize = parseQueryLimit(url, "pageSize", 12, 1, 24);
+  const offset = (page - 1) * pageSize;
+  const requestedRows = await queryPageCardMetricsFromD1(
+    env,
+    siteId,
+    window,
+    filters,
+    {
+      limit: pageSize + 1,
+      offset,
+    },
+  );
+  const hasMore = requestedRows.length > pageSize;
+  const currentRows = hasMore ? requestedRows.slice(0, pageSize) : requestedRows;
+  if (currentRows.length === 0) {
+    return jsonResponse({
+      ok: true,
+      interval,
+      data: [],
+      meta: {
+        page,
+        pageSize,
+        returned: 0,
+        hasMore: false,
+        nextPage: null,
+      },
+    });
+  }
+
+  const pathnames = currentRows.map((row) => row.pathname);
+  const previousTo = Math.max(window.fromMs - 1, 0);
+  const previousFrom = Math.max(previousTo - (window.toMs - window.fromMs), 0);
+  const previousWindow: QueryWindow = {
+    fromMs: previousFrom,
+    toMs: previousTo,
+    nowMs: window.nowMs,
+  };
+
+  const [previousRows, titleRows, trendRows] = await Promise.all([
+    queryPageCardMetricsFromD1(env, siteId, previousWindow, filters, {
+      pathnames,
+    }),
+    queryPageCardTitlesFromD1(env, siteId, window, filters, pathnames, 3),
+    queryPageCardTrendFromD1(env, siteId, window, interval, filters, pathnames),
+  ]);
+
+  const previousByPath = new Map<string, PageCardAggregateRow>();
+  for (const row of previousRows) {
+    previousByPath.set(row.pathname, row);
+  }
+
+  const titlesByPath = new Map<string, string[]>();
+  for (const row of titleRows) {
+    const titles = titlesByPath.get(row.pathname) ?? [];
+    if (titles.length >= 3) continue;
+    const title = row.title.trim();
+    if (!title || titles.includes(title)) continue;
+    titles.push(title);
+    titlesByPath.set(row.pathname, titles);
+  }
+
+  const bucketMs = intervalBucketMs(interval);
+  const trendByPath = new Map<
+    string,
+    Array<{
+      timestampMs: number;
+      views: number;
+      visitors: number;
+    }>
+  >();
+  for (const row of trendRows) {
+    const trend = trendByPath.get(row.pathname) ?? [];
+    trend.push({
+      timestampMs: row.bucket * bucketMs,
+      views: row.views,
+      visitors: row.visitors,
+    });
+    trendByPath.set(row.pathname, trend);
+  }
+
+  return jsonResponse({
+    ok: true,
+    interval,
+    data: currentRows.map((row) => {
+      const previousRow =
+        previousByPath.get(row.pathname) ?? emptyOverviewAggregateRow();
+      const metrics = mapPageCardMetrics(row);
+      const previousMetrics = mapPageCardMetrics(previousRow);
+      return {
+        pathname: normalizePathname(row.pathname),
+        titles: titlesByPath.get(row.pathname) ?? [],
+        trend: trendByPath.get(row.pathname) ?? [],
+        metrics,
+        changeRates: {
+          views: percentChange(metrics.views, previousMetrics.views),
+          visitors: percentChange(metrics.visitors, previousMetrics.visitors),
+          sessions: percentChange(metrics.sessions, previousMetrics.sessions),
+          bounceRate: percentChange(
+            metrics.bounceRate,
+            previousMetrics.bounceRate,
+          ),
+          pagesPerSession: percentChange(
+            metrics.pagesPerSession,
+            previousMetrics.pagesPerSession,
+          ),
+          avgDurationMs: percentChange(
+            metrics.avgDurationMs,
+            previousMetrics.avgDurationMs,
+          ),
+        },
+      };
+    }),
+    meta: {
+      page,
+      pageSize,
+      returned: currentRows.length,
+      hasMore,
+      nextPage: hasMore ? page + 1 : null,
+    },
+  });
 }
 
 async function handleReferrers(
@@ -4393,6 +4808,9 @@ async function routeQuery(
   if (pathname === "overview") return handleOverview(env, siteId, url);
   if (pathname === "trend") return handleTrend(env, siteId, url);
   if (options.publicMode) return notFound();
+  if (pathname === "pages-dashboard") {
+    return handlePagesDashboard(env, siteId, url);
+  }
   if (pathname === "browser-trend") return handleBrowserTrend(env, siteId, url);
   if (pathname === "browser-engine-trend") {
     return handleBrowserEngineTrend(env, siteId, url);
