@@ -121,6 +121,9 @@ function emptyDimension(): DimensionData {
 function emptyPerformance(interval: TimeWindow["interval"]): PerformanceData {
   const emptyMetric = {
     avg: null,
+    p50: null,
+    p75: null,
+    p95: null,
     samples: 0,
   };
   const emptyTrend: PerformanceData["trends"][PerformanceMetricKey] = [];
@@ -141,6 +144,7 @@ function emptyPerformance(interval: TimeWindow["interval"]): PerformanceData {
       cls: [...emptyTrend],
       inp: [...emptyTrend],
     },
+    routes: [],
   };
 }
 

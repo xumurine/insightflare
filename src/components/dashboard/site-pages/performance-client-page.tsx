@@ -1,9 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
-import { PageHeading } from "@/components/dashboard/page-heading";
+import { startTransition, useEffect, useMemo, useState } from "react";
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ReferenceLine,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  RiArrowDownSLine,
+  RiArrowUpSLine,
+  RiCheckboxCircleFill,
+  RiCloseCircleFill,
+  RiErrorWarningFill,
+  RiPulseLine,
+  RiRouteLine,
+  RiSpeedUpLine,
+} from "@remixicon/react";
+import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import { ContentSwitch } from "@/components/dashboard/content-switch";
+import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { PageHeading } from "@/components/dashboard/page-heading";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   ChartContainer,
@@ -13,21 +33,24 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { Clickable } from "@/components/ui/clickable";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AutoTransition } from "@/components/ui/auto-transition";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { fetchPerformance } from "@/lib/dashboard/client-data";
-import {
-  intlLocale,
-  numberFormat,
-} from "@/lib/dashboard/format";
+import { intlLocale, numberFormat } from "@/lib/dashboard/format";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type {
   PerformanceData,
   PerformanceMetricKey,
+  PerformanceRouteMetricSummary,
+  PerformanceRouteSummary,
+  PerformanceSummary,
+  PerformanceTrendPoint,
 } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { formatI18nTemplate } from "@/lib/i18n/template";
+import { cn } from "@/lib/utils";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 
 interface PerformanceClientPageProps {
@@ -36,37 +59,131 @@ interface PerformanceClientPageProps {
   siteId: string;
 }
 
+type PerformancePanelKey = PerformanceMetricKey | "score";
+type PerformanceStatus = "great" | "needs-improvement" | "poor" | "none";
+type PathSortKey = "views" | "value" | "score";
+type SortDirection = "asc" | "desc";
+
+interface MetricCardModel {
+  key: PerformancePanelKey;
+  label: string;
+  valueLabel: string;
+  status: PerformanceStatus;
+  score: number | null;
+  progress: number;
+}
+
+interface PathPerformanceRow {
+  pathname: string;
+  views: number;
+  samples: number;
+  value: number | null;
+  score: number | null;
+  status: PerformanceStatus;
+}
+
+interface ChartPoint {
+  timestampMs: number;
+  p50: number | null;
+  p75: number | null;
+  p95: number | null;
+  avg: number | null;
+  samples: number;
+}
+
+const PERFORMANCE_METRICS: PerformanceMetricKey[] = [
+  "ttfb",
+  "fcp",
+  "lcp",
+  "cls",
+  "inp",
+];
+
+const PERFORMANCE_PANELS: PerformancePanelKey[] = [
+  "score",
+  ...PERFORMANCE_METRICS,
+];
+
+const EMPTY_SUMMARY: PerformanceSummary = {
+  avg: null,
+  p50: null,
+  p75: null,
+  p95: null,
+  samples: 0,
+};
+
+const EMPTY_ROUTE_METRIC_SUMMARY: PerformanceRouteMetricSummary = {
+  avg: null,
+  p50: null,
+  p75: null,
+  p95: null,
+  samples: 0,
+};
+
+const METRIC_THRESHOLDS: Record<
+  PerformanceMetricKey,
+  { good: number; poor: number }
+> = {
+  ttfb: { good: 800, poor: 1800 },
+  fcp: { good: 1800, poor: 3000 },
+  lcp: { good: 2500, poor: 4000 },
+  cls: { good: 0.1, poor: 0.25 },
+  inp: { good: 200, poor: 500 },
+};
+
 const PERFORMANCE_SERIES_COLORS = {
   p50: "var(--color-chart-1)",
-  p75: "var(--color-chart-2)",
-  p95: "var(--color-chart-4)",
+  p75: "var(--color-chart-4)",
+  p95: "var(--color-chart-5)",
 } as const;
 
-const PERFORMANCE_CHART_CONFIG = {
-  p50: {
-    label: "P50",
-    color: PERFORMANCE_SERIES_COLORS.p50,
+const ZONE_COLORS = {
+  great: "var(--color-chart-2)",
+  needsImprovement: "oklch(0.75 0.16 80)",
+  poor: "var(--color-destructive)",
+} as const;
+
+const STATUS_STYLE: Record<
+  PerformanceStatus,
+  {
+    labelClassName: string;
+    softClassName: string;
+    icon: typeof RiCheckboxCircleFill;
+  }
+> = {
+  great: {
+    labelClassName: "text-chart-4",
+    softClassName: "bg-chart-4/10 text-chart-4",
+    icon: RiCheckboxCircleFill,
   },
-  p75: {
-    label: "P75",
-    color: PERFORMANCE_SERIES_COLORS.p75,
+  "needs-improvement": {
+    labelClassName: "text-[oklch(0.75_0.16_80)]",
+    softClassName:
+      "bg-[oklch(0.75_0.16_80_/_0.12)] text-[oklch(0.75_0.16_80)]",
+    icon: RiErrorWarningFill,
   },
-  p95: {
-    label: "P95",
-    color: PERFORMANCE_SERIES_COLORS.p95,
+  poor: {
+    labelClassName: "text-destructive",
+    softClassName: "bg-destructive/10 text-destructive",
+    icon: RiCloseCircleFill,
   },
-} satisfies ChartConfig;
+  none: {
+    labelClassName: "text-muted-foreground",
+    softClassName: "bg-muted text-muted-foreground",
+    icon: RiPulseLine,
+  },
+};
 
 function emptyPerformance(interval: TimeWindow["interval"]): PerformanceData {
   return {
     ok: true,
     interval,
     summaries: {
-      ttfb: { avg: null, samples: 0 },
-      fcp: { avg: null, samples: 0 },
-      lcp: { avg: null, samples: 0 },
-      cls: { avg: null, samples: 0 },
-      inp: { avg: null, samples: 0 },
+      ttfb: { ...EMPTY_SUMMARY },
+      fcp: { ...EMPTY_SUMMARY },
+      lcp: { ...EMPTY_SUMMARY },
+      cls: { ...EMPTY_SUMMARY },
+      inp: { ...EMPTY_SUMMARY },
     },
     trends: {
       ttfb: [],
@@ -75,6 +192,7 @@ function emptyPerformance(interval: TimeWindow["interval"]): PerformanceData {
       cls: [],
       inp: [],
     },
+    routes: [],
   };
 }
 
@@ -127,31 +245,147 @@ function tooltipDateFormat(localeCode: string, interval: TimeWindow["interval"])
   });
 }
 
-function PerformanceSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-2">
-          <Skeleton className="h-5 w-40" />
-          <Skeleton className="h-3 w-52" />
-        </div>
-        <div className="space-y-2 lg:text-right">
-          <Skeleton className="h-3 w-16" />
-          <Skeleton className="h-8 w-28" />
-          <Skeleton className="h-3 w-20" />
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {Array.from({ length: 5 }, (_, index) => (
-          <Skeleton
-            key={`performance-tab-skeleton-${index}`}
-            className="h-8 w-20"
-          />
-        ))}
-      </div>
-      <Skeleton className="h-[360px] w-full" />
-    </div>
+function metricLabel(
+  messages: AppMessages,
+  metric: PerformanceMetricKey,
+): string {
+  return messages.performance[metric];
+}
+
+function panelLabel(
+  messages: AppMessages,
+  key: PerformancePanelKey,
+): string {
+  return key === "score" ? messages.performance.score : metricLabel(messages, key);
+}
+
+function metricDescription(
+  messages: AppMessages,
+  key: PerformancePanelKey,
+): string {
+  if (key === "score") return messages.performance.scoreDescription;
+  return messages.performance[`${key}Description`];
+}
+
+function statusLabel(messages: AppMessages, status: PerformanceStatus): string {
+  if (status === "great") return messages.performance.great;
+  if (status === "needs-improvement") {
+    return messages.performance.needsImprovement;
+  }
+  if (status === "poor") return messages.performance.poor;
+  return messages.common.noData;
+}
+
+function scoreStatus(score: number | null | undefined): PerformanceStatus {
+  if (score == null || !Number.isFinite(score)) return "none";
+  if (score >= 90) return "great";
+  if (score >= 50) return "needs-improvement";
+  return "poor";
+}
+
+function metricStatus(
+  metric: PerformanceMetricKey,
+  value: number | null | undefined,
+): PerformanceStatus {
+  if (value == null || !Number.isFinite(value)) return "none";
+  const thresholds = METRIC_THRESHOLDS[metric];
+  if (value <= thresholds.good) return "great";
+  if (value <= thresholds.poor) return "needs-improvement";
+  return "poor";
+}
+
+function metricScore(
+  metric: PerformanceMetricKey,
+  value: number | null | undefined,
+): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const thresholds = METRIC_THRESHOLDS[metric];
+  if (value <= thresholds.good) return 100;
+  if (value >= thresholds.poor) return 0;
+  const ratio = (value - thresholds.good) / (thresholds.poor - thresholds.good);
+  return Math.max(0, Math.min(100, 100 - ratio * 100));
+}
+
+function averageScore(values: Array<number | null | undefined>): number | null {
+  const scores = values.filter(
+    (value): value is number => value != null && Number.isFinite(value),
   );
+  if (scores.length === 0) return null;
+  return scores.reduce((sum, value) => sum + value, 0) / scores.length;
+}
+
+function roundedScore(score: number | null | undefined): number | null {
+  if (score == null || !Number.isFinite(score)) return null;
+  return Math.round(score);
+}
+
+function scoreSummary(data: PerformanceData): PerformanceSummary {
+  const scoreForPercentile = (
+    percentile: keyof Pick<PerformanceSummary, "avg" | "p50" | "p75" | "p95">,
+  ) =>
+    averageScore(
+      PERFORMANCE_METRICS.map((metric) =>
+        metricScore(metric, data.summaries[metric]?.[percentile]),
+      ),
+    );
+
+  return {
+    avg: scoreForPercentile("avg"),
+    p50: scoreForPercentile("p50"),
+    p75: scoreForPercentile("p75"),
+    p95: scoreForPercentile("p95"),
+    samples: Math.max(
+      0,
+      ...PERFORMANCE_METRICS.map(
+        (metric) => data.summaries[metric]?.samples ?? 0,
+      ),
+    ),
+  };
+}
+
+function routeMetric(
+  route: PerformanceRouteSummary,
+  metric: PerformanceMetricKey,
+): PerformanceRouteMetricSummary {
+  return route.metrics[metric] ?? EMPTY_ROUTE_METRIC_SUMMARY;
+}
+
+function routeScore(route: PerformanceRouteSummary): number | null {
+  return averageScore(
+    PERFORMANCE_METRICS.map((metric) =>
+      metricScore(metric, routeMetric(route, metric).p75),
+    ),
+  );
+}
+
+function routeSamples(
+  route: PerformanceRouteSummary,
+  key: PerformancePanelKey,
+): number {
+  if (key !== "score") return routeMetric(route, key).samples ?? 0;
+  return Math.max(
+    0,
+    ...PERFORMANCE_METRICS.map(
+      (metric) => routeMetric(route, metric).samples ?? 0,
+    ),
+  );
+}
+
+function routeValue(
+  route: PerformanceRouteSummary,
+  key: PerformancePanelKey,
+): number | null {
+  if (key === "score") return routeScore(route);
+  return routeMetric(route, key).p75;
+}
+
+function routeStatus(
+  route: PerformanceRouteSummary,
+  key: PerformancePanelKey,
+): PerformanceStatus {
+  const value = routeValue(route, key);
+  if (key === "score") return scoreStatus(value);
+  return metricStatus(key, value);
 }
 
 function formatMetricValue(
@@ -162,11 +396,952 @@ function formatMetricValue(
 ): string {
   if (value == null || !Number.isFinite(value)) return "--";
   if (metric === "cls") {
-    return `${new Intl.NumberFormat(intlLocale(locale), {
+    const formatted = new Intl.NumberFormat(intlLocale(locale), {
       maximumFractionDigits: 3,
-    }).format(value)} ${messages.performance.clsUnit}`;
+    }).format(value);
+    return `${formatted} ${messages.performance.clsUnit}`;
   }
-  return `${numberFormat(locale, Math.round(value))} ${messages.performance.msUnit}`;
+  if (metric === "inp") {
+    return `${numberFormat(locale, Math.round(value))} ${messages.performance.msUnit}`;
+  }
+  const seconds = value / 1000;
+  const formatted = new Intl.NumberFormat(intlLocale(locale), {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: seconds < 10 ? 2 : 1,
+  }).format(seconds);
+  return `${formatted} ${messages.performance.secondsUnit}`;
+}
+
+function formatPanelValue(
+  locale: Locale,
+  messages: AppMessages,
+  key: PerformancePanelKey,
+  value: number | null | undefined,
+): string {
+  if (key === "score") {
+    const score = roundedScore(value);
+    return score == null ? "--" : numberFormat(locale, score);
+  }
+  return formatMetricValue(locale, messages, key, value);
+}
+
+function chartDomain(
+  key: PerformancePanelKey,
+  points: ChartPoint[],
+): [number, number] {
+  if (key === "score") return [0, 100];
+  const thresholds = METRIC_THRESHOLDS[key];
+  const observedMax = points.reduce((max, point) => {
+    const values = [point.p50, point.p75, point.p95].filter(
+      (value): value is number => value != null && Number.isFinite(value),
+    );
+    return Math.max(max, ...values);
+  }, thresholds.poor);
+
+  if (key === "cls") {
+    return [0, Math.max(0.3, Math.ceil(observedMax * 120) / 100)];
+  }
+  return [0, Math.max(thresholds.poor * 1.2, Math.ceil(observedMax * 1.2 / 100) * 100)];
+}
+
+function zoneBackground(key: PerformancePanelKey, domainMax: number): string {
+  const great = "color-mix(in oklch, var(--color-chart-4) 26%, transparent)";
+  const needs =
+    "color-mix(in oklch, oklch(0.75 0.16 80) 24%, transparent)";
+  const poor = "color-mix(in oklch, var(--color-destructive) 24%, transparent)";
+
+  if (key === "score") {
+    return `linear-gradient(to bottom, ${great} 0% 10%, ${needs} 10% 50%, ${poor} 50% 100%)`;
+  }
+
+  const thresholds = METRIC_THRESHOLDS[key];
+  const safeDomainMax = Math.max(domainMax, thresholds.poor);
+  const poorEnd = Math.max(
+    0,
+    Math.min(100, 100 - (thresholds.poor / safeDomainMax) * 100),
+  );
+  const needsEnd = Math.max(
+    poorEnd,
+    Math.min(100, 100 - (thresholds.good / safeDomainMax) * 100),
+  );
+  return `linear-gradient(to bottom, ${poor} 0% ${poorEnd}%, ${needs} ${poorEnd}% ${needsEnd}%, ${great} ${needsEnd}% 100%)`;
+}
+
+function scoreProgress(key: PerformancePanelKey, value: number | null): number {
+  if (value == null || !Number.isFinite(value)) return 0;
+  if (key === "score") return Math.max(0, Math.min(100, value));
+  return Math.max(0, Math.min(100, value));
+}
+
+function buildScoreTrend(
+  performanceData: PerformanceData,
+  dataWindow: Pick<TimeWindow, "from" | "to" | "interval">,
+): ChartPoint[] {
+  const stepMs = intervalStepMs(dataWindow.interval);
+  const metricMaps = new Map<
+    PerformanceMetricKey,
+    Map<number, PerformanceTrendPoint>
+  >();
+
+  for (const metric of PERFORMANCE_METRICS) {
+    metricMaps.set(
+      metric,
+      new Map(
+        (performanceData.trends[metric] ?? []).map((point) => [
+          Math.floor(Number(point.timestampMs ?? 0) / stepMs),
+          point,
+        ]),
+      ),
+    );
+  }
+
+  const startBucket = Math.floor(dataWindow.from / stepMs);
+  const endBucketExclusive = Math.ceil(dataWindow.to / stepMs);
+  const rows: ChartPoint[] = [];
+
+  for (let bucket = startBucket; bucket < endBucketExclusive; bucket += 1) {
+    const metricPoints = PERFORMANCE_METRICS.map((metric) => ({
+      metric,
+      point: metricMaps.get(metric)?.get(bucket),
+    }));
+    rows.push({
+      timestampMs: bucket * stepMs,
+      p50: averageScore(
+        metricPoints.map(({ metric, point }) => metricScore(metric, point?.p50)),
+      ),
+      p75: averageScore(
+        metricPoints.map(({ metric, point }) => metricScore(metric, point?.p75)),
+      ),
+      p95: averageScore(
+        metricPoints.map(({ metric, point }) => metricScore(metric, point?.p95)),
+      ),
+      avg: averageScore(
+        metricPoints.map(({ metric, point }) => metricScore(metric, point?.avg)),
+      ),
+      samples: Math.max(0, ...metricPoints.map(({ point }) => point?.samples ?? 0)),
+    });
+  }
+
+  return rows;
+}
+
+function buildMetricTrend(
+  performanceData: PerformanceData,
+  key: PerformanceMetricKey,
+  dataWindow: Pick<TimeWindow, "from" | "to" | "interval">,
+): ChartPoint[] {
+  const rows = performanceData.trends[key] ?? [];
+  const stepMs = intervalStepMs(dataWindow.interval);
+  const byBucket = new Map(
+    rows.map((row) => [
+      Math.floor(Number(row.timestampMs ?? 0) / stepMs),
+      row,
+    ]),
+  );
+  const startBucket = Math.floor(dataWindow.from / stepMs);
+  const endBucketExclusive = Math.ceil(dataWindow.to / stepMs);
+  const filled: ChartPoint[] = [];
+
+  for (let bucket = startBucket; bucket < endBucketExclusive; bucket += 1) {
+    const row = byBucket.get(bucket);
+    filled.push({
+      timestampMs: bucket * stepMs,
+      p50: row?.p50 ?? null,
+      p75: row?.p75 ?? null,
+      p95: row?.p95 ?? null,
+      avg: row?.avg ?? null,
+      samples: row?.samples ?? 0,
+    });
+  }
+
+  return filled;
+}
+
+function TrendZones({
+  activePanel,
+}: {
+  activePanel: PerformancePanelKey;
+}) {
+  if (activePanel === "score") {
+    return (
+      <>
+        <ReferenceLine
+          y={50}
+          stroke={ZONE_COLORS.needsImprovement}
+          strokeDasharray="7 5"
+          strokeWidth={2}
+        />
+        <ReferenceLine
+          y={90}
+          stroke={ZONE_COLORS.great}
+          strokeDasharray="7 5"
+          strokeWidth={2}
+        />
+      </>
+    );
+  }
+
+  const { good, poor } = METRIC_THRESHOLDS[activePanel];
+  return (
+    <>
+      <ReferenceLine
+        y={good}
+        stroke={ZONE_COLORS.great}
+        strokeDasharray="7 5"
+        strokeWidth={2}
+      />
+      <ReferenceLine
+        y={poor}
+        stroke={ZONE_COLORS.needsImprovement}
+        strokeDasharray="7 5"
+        strokeWidth={2}
+      />
+    </>
+  );
+}
+
+function PerformanceSkeleton() {
+  return (
+    <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+      <div className="space-y-3 self-start">
+        {Array.from({ length: 6 }, (_, index) => (
+          <Card key={`performance-rail-skeleton-${index}`} className="overflow-hidden">
+            <CardContent className="space-y-3 p-4">
+              <Skeleton className="h-3 w-32" />
+              <Skeleton className="h-8 w-24" />
+              <Skeleton className="h-1.5 w-full" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="space-y-4">
+        <Card>
+          <CardContent className="grid gap-6 p-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+            <div className="space-y-4">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="size-28 rounded-full" />
+              <Skeleton className="h-4 w-44" />
+              <Skeleton className="h-20 w-full" />
+            </div>
+            <div className="space-y-4">
+              <Skeleton className="ml-auto h-7 w-24" />
+              <Skeleton className="h-20 w-full" />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-6">
+            <Skeleton className="h-[340px] w-full" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-6">
+            <Skeleton className="h-[260px] w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function PerformanceRail({
+  activePanel,
+  cards,
+  onSelect,
+}: {
+  activePanel: PerformancePanelKey;
+  cards: MetricCardModel[];
+  onSelect: (key: PerformancePanelKey) => void;
+}) {
+  return (
+    <div className="space-y-3 self-start lg:sticky lg:top-4">
+      {cards.map((card) => {
+        const active = card.key === activePanel;
+        const statusStyle = STATUS_STYLE[card.status];
+        const StatusIcon = statusStyle.icon;
+        return (
+          <Clickable
+            key={card.key}
+            className="block w-full text-left"
+            enableHoverScale={false}
+            tapScale={0.985}
+            aria-label={card.label}
+            onClick={() => onSelect(card.key)}
+          >
+            <div
+              className={cn(
+                "relative overflow-hidden rounded-none bg-card p-4 ring-1 ring-border/70 transition-all duration-200",
+                "hover:bg-muted/35",
+              )}
+            >
+              <div
+                className={cn(
+                  "pointer-events-none absolute inset-y-0 left-0 w-1 bg-primary opacity-0 transition-opacity duration-200",
+                  active && "opacity-100",
+                )}
+              />
+              <div className="relative space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-muted-foreground">
+                      {card.label}
+                    </div>
+                    <AutoTransition className="mt-2" duration={0.18}>
+                      <div
+                        key={`${card.key}-${card.valueLabel}`}
+                        className="text-2xl font-semibold tracking-tight"
+                      >
+                        {card.valueLabel}
+                      </div>
+                    </AutoTransition>
+                  </div>
+                  <div
+                    className={cn(
+                      "flex size-9 shrink-0 items-center justify-center rounded-full",
+                      statusStyle.softClassName,
+                    )}
+                  >
+                    <StatusIcon className="size-4" />
+                  </div>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-500",
+                      card.status === "poor" && "bg-destructive",
+                      card.status === "needs-improvement" &&
+                        "bg-[oklch(0.75_0.16_80)]",
+                      card.status === "great" && "bg-chart-4",
+                      card.status === "none" && "bg-muted-foreground/40",
+                    )}
+                    style={{ width: `${card.progress}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </Clickable>
+        );
+      })}
+    </div>
+  );
+}
+
+function MetricSummaryCard({
+  locale,
+  messages,
+  activePanel,
+  activeSummary,
+  activeValue,
+  pathCount,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  activePanel: PerformancePanelKey;
+  activeSummary: PerformanceSummary;
+  activeValue: number | null;
+  pathCount: number;
+}) {
+  const activeStatus =
+    activePanel === "score"
+      ? scoreStatus(activeValue)
+      : metricStatus(activePanel, activeValue);
+  const statusStyle = STATUS_STYLE[activeStatus];
+  const StatusIcon = statusStyle.icon;
+  const score =
+    activePanel === "score"
+      ? activeValue
+      : metricScore(activePanel, activeValue);
+  const scoreValue = roundedScore(score);
+  const displayValue = formatPanelValue(locale, messages, activePanel, activeValue);
+  const description = metricDescription(messages, activePanel);
+  const thresholdText =
+    activePanel === "score"
+      ? messages.performance.scoreThresholdText
+      : formatI18nTemplate(messages.performance.metricThresholdText, {
+          good: formatMetricValue(
+            locale,
+            messages,
+            activePanel,
+            METRIC_THRESHOLDS[activePanel].good,
+          ),
+          poor: formatMetricValue(
+            locale,
+            messages,
+            activePanel,
+            METRIC_THRESHOLDS[activePanel].poor,
+          ),
+        });
+  const reading =
+    activeSummary.samples > 0
+      ? formatI18nTemplate(messages.performance.currentReading, {
+          metric: panelLabel(messages, activePanel),
+          value: displayValue,
+          score: scoreValue == null ? "--" : numberFormat(locale, scoreValue),
+          samples: numberFormat(locale, activeSummary.samples),
+          status: statusLabel(messages, activeStatus),
+        })
+      : messages.common.noData;
+
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="grid gap-5 p-5 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+        <div className="space-y-4">
+          <AutoTransition duration={0.2}>
+            <div key={`${activePanel}-${displayValue}`} className="space-y-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 space-y-2">
+                  <div className="text-sm text-muted-foreground">
+                    {panelLabel(messages, activePanel)}
+                  </div>
+                  <div className="text-3xl font-semibold tracking-tight">
+                    {displayValue}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusIcon
+                      className={cn("size-5", statusStyle.labelClassName)}
+                    />
+                    <span className={cn("font-medium", statusStyle.labelClassName)}>
+                      {statusLabel(messages, activeStatus)}
+                    </span>
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    "relative flex size-[4.5rem] shrink-0 items-center justify-center rounded-full ring-[6px]",
+                    activeStatus === "great" && "ring-chart-4/65",
+                    activeStatus === "needs-improvement" &&
+                      "ring-[oklch(0.75_0.16_80_/_0.6)]",
+                    activeStatus === "poor" && "ring-destructive/60",
+                    activeStatus === "none" && "ring-muted",
+                  )}
+                >
+                  <span className="text-xl font-semibold tracking-tight">
+                    {scoreValue ?? "--"}
+                  </span>
+                  {scoreValue == null ? null : (
+                    <span className="ml-0.5 text-[0.65rem] font-medium text-muted-foreground">
+                      %
+                    </span>
+                  )}
+                </div>
+              </div>
+              <p className="max-w-xl text-sm leading-6 text-muted-foreground">
+                {description}
+              </p>
+            </div>
+          </AutoTransition>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <div className="text-sm font-medium">
+                {messages.performance.interpretationTitle}
+              </div>
+              <p className="text-sm leading-6 text-muted-foreground">{reading}</p>
+            </div>
+            <div className="shrink-0 rounded-none bg-muted px-3 py-2 text-right">
+              <div className="text-[0.68rem] uppercase tracking-[0.2em] text-muted-foreground">
+                {messages.performance.samplesLabel}
+              </div>
+              <div className="text-lg font-semibold tabular-nums">
+                {numberFormat(locale, activeSummary.samples)}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-none bg-muted/45 p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+              <RiSpeedUpLine className="size-4 text-muted-foreground" />
+              {messages.performance.datasetTitle}
+            </div>
+            <p className="text-sm leading-6 text-muted-foreground">{thresholdText}</p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-4">
+            {[
+              ["p50", messages.performance.p50Label, activeSummary.p50],
+              ["p75", messages.performance.p75Label, activeSummary.p75],
+              ["p95", messages.performance.p95Label, activeSummary.p95],
+            ].map(([key, label, value]) => (
+              <div key={key as string} className="rounded-none bg-muted/45 p-3">
+                <div className="text-xs text-muted-foreground">{label as string}</div>
+                <div className="mt-2 font-mono text-sm font-medium tabular-nums">
+                  {formatPanelValue(
+                    locale,
+                    messages,
+                    activePanel,
+                    value as number | null,
+                  )}
+                </div>
+              </div>
+            ))}
+            <div className="rounded-none bg-muted/45 p-3">
+              <div className="text-xs text-muted-foreground">
+                {messages.performance.pathsAnalyzedLabel}
+              </div>
+              <div className="mt-2 font-mono text-sm font-medium tabular-nums">
+                {numberFormat(locale, pathCount)}
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PerformanceTrendCard({
+  locale,
+  messages,
+  activePanel,
+  dataWindow,
+  points,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  activePanel: PerformancePanelKey;
+  dataWindow: Pick<TimeWindow, "from" | "to" | "interval">;
+  points: ChartPoint[];
+}) {
+  const localeCode = intlLocale(locale);
+  const axisTickFormatter = useMemo(
+    () => tickDateFormat(localeCode, dataWindow.interval),
+    [dataWindow.interval, localeCode],
+  );
+  const tooltipFormatter = useMemo(
+    () => tooltipDateFormat(localeCode, dataWindow.interval),
+    [dataWindow.interval, localeCode],
+  );
+  const chartConfig = useMemo(
+    () =>
+      ({
+        p50: {
+          label: messages.performance.p50Label,
+          color: PERFORMANCE_SERIES_COLORS.p50,
+        },
+        p75: {
+          label: messages.performance.p75Label,
+          color: PERFORMANCE_SERIES_COLORS.p75,
+        },
+        p95: {
+          label: messages.performance.p95Label,
+          color: PERFORMANCE_SERIES_COLORS.p95,
+        },
+      }) satisfies ChartConfig,
+    [
+      messages.performance.p50Label,
+      messages.performance.p75Label,
+      messages.performance.p95Label,
+    ],
+  );
+  const [, domainMax] = chartDomain(activePanel, points);
+  const xStart = points[0]?.timestampMs ?? dataWindow.from;
+  const rawXEnd = points[points.length - 1]?.timestampMs ?? dataWindow.to;
+  const xEnd = rawXEnd > xStart ? rawXEnd : xStart + 1;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle>{messages.performance.chartTitle}</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {panelLabel(messages, activePanel)}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-[0.7rem] text-muted-foreground">
+            {(["poor", "needs-improvement", "great"] as const).map((status) => (
+              <span
+                key={status}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2 py-1",
+                  STATUS_STYLE[status].softClassName,
+                )}
+              >
+                <span className="inline-flex size-1.5 rounded-full bg-current" />
+                {statusLabel(messages, status)}{" "}
+                {pathStatusRangeLabel(locale, messages, activePanel, status)}
+              </span>
+            ))}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="relative">
+          <div
+            className="pointer-events-none absolute top-3 right-3 bottom-16 left-20 rounded-none"
+            style={{ background: zoneBackground(activePanel, domainMax) }}
+          />
+        <ChartContainer className="relative z-10 h-[360px] w-full aspect-auto" config={chartConfig}>
+          <LineChart
+            accessibilityLayer
+            data={points}
+            margin={{ left: 12, right: 12, top: 12, bottom: 4 }}
+          >
+            <TrendZones activePanel={activePanel} />
+            <CartesianGrid vertical={false} strokeDasharray="3 3" />
+            <XAxis
+              type="number"
+              dataKey="timestampMs"
+              domain={[xStart, xEnd]}
+              tickFormatter={(value) =>
+                axisTickFormatter.format(new Date(Number(value ?? 0)))
+              }
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+              minTickGap={12}
+            />
+            <YAxis
+              domain={[0, domainMax]}
+              tickFormatter={(value) =>
+                formatPanelValue(
+                  locale,
+                  messages,
+                  activePanel,
+                  Number(value ?? 0),
+                )
+              }
+              tickLine={false}
+              axisLine={false}
+              width={activePanel === "cls" ? 64 : 80}
+            />
+            <ChartTooltip
+              cursor={false}
+              content={
+                <ChartTooltipContent
+                  className="min-w-[14rem]"
+                  indicator="line"
+                  labelFormatter={(value, payload) => {
+                    const timestamp = Number(
+                      payload?.[0]?.payload?.timestampMs ?? value ?? 0,
+                    );
+                    return tooltipFormatter.format(new Date(timestamp));
+                  }}
+                  formatter={(value, name) => (
+                    <div className="flex w-full items-center justify-between gap-3">
+                      <span className="text-muted-foreground">
+                        {String(name ?? "")}
+                      </span>
+                      <span className="font-mono text-foreground tabular-nums">
+                        {formatPanelValue(
+                          locale,
+                          messages,
+                          activePanel,
+                          Number(value ?? 0),
+                        )}
+                      </span>
+                    </div>
+                  )}
+                />
+              }
+            />
+            <ChartLegend
+              content={
+                <ChartLegendContent className="pt-6 flex-wrap justify-center gap-x-4 gap-y-2" />
+              }
+            />
+            <Line
+              type="monotone"
+              dataKey="p50"
+              name={messages.performance.p50Label}
+              stroke={PERFORMANCE_SERIES_COLORS.p50}
+              strokeWidth={2}
+              dot={false}
+              connectNulls={false}
+              isAnimationActive
+            />
+            <Line
+              type="monotone"
+              dataKey="p75"
+              name={messages.performance.p75Label}
+              stroke={PERFORMANCE_SERIES_COLORS.p75}
+              strokeWidth={2.4}
+              dot={false}
+              connectNulls={false}
+              isAnimationActive
+            />
+            <Line
+              type="monotone"
+              dataKey="p95"
+              name={messages.performance.p95Label}
+              stroke={PERFORMANCE_SERIES_COLORS.p95}
+              strokeWidth={2}
+              dot={false}
+              connectNulls={false}
+              isAnimationActive
+            />
+          </LineChart>
+        </ChartContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SortHeaderButton({
+  active,
+  direction,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  direction: SortDirection;
+  children: string;
+  onClick: () => void;
+}) {
+  const SortIcon = direction === "asc" ? RiArrowUpSLine : RiArrowDownSLine;
+  return (
+    <button
+      type="button"
+      className={cn(
+        "inline-flex items-center gap-1 whitespace-nowrap transition-colors hover:text-foreground",
+        active ? "text-foreground" : "text-muted-foreground",
+      )}
+      onClick={onClick}
+    >
+      <span>{children}</span>
+      {active ? <SortIcon className="size-3" /> : null}
+    </button>
+  );
+}
+
+function pathStatusRangeLabel(
+  locale: Locale,
+  messages: AppMessages,
+  activePanel: PerformancePanelKey,
+  status: Exclude<PerformanceStatus, "none">,
+): string {
+  if (activePanel === "score") {
+    if (status === "poor") return "<50";
+    if (status === "needs-improvement") return "50 - 90";
+    return ">90";
+  }
+
+  const thresholds = METRIC_THRESHOLDS[activePanel];
+  if (status === "poor") {
+    return `>${formatMetricValue(locale, messages, activePanel, thresholds.poor)}`;
+  }
+  if (status === "needs-improvement") {
+    return `${formatMetricValue(
+      locale,
+      messages,
+      activePanel,
+      thresholds.good,
+    )} - ${formatMetricValue(locale, messages, activePanel, thresholds.poor)}`;
+  }
+  return `<=${formatMetricValue(locale, messages, activePanel, thresholds.good)}`;
+}
+
+function PathStatusColumn({
+  locale,
+  messages,
+  activePanel,
+  status,
+  rows,
+  maxViews,
+  sort,
+  onSort,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  activePanel: PerformancePanelKey;
+  status: Exclude<PerformanceStatus, "none">;
+  rows: PathPerformanceRow[];
+  maxViews: number;
+  sort: { key: PathSortKey; direction: SortDirection };
+  onSort: (key: PathSortKey) => void;
+}) {
+  const statusStyle = STATUS_STYLE[status];
+  const StatusIcon = statusStyle.icon;
+  const header = (
+    <TableRow className="hover:bg-transparent">
+      <TableHead className="h-8 p-0">
+        <div className="px-3">{messages.common.path}</div>
+      </TableHead>
+      <TableHead className="h-8 p-0 text-right">
+        <div className="px-3">
+          <SortHeaderButton
+            active={sort.key === "views"}
+            direction={sort.direction}
+            onClick={() => onSort("views")}
+          >
+            {messages.common.views}
+          </SortHeaderButton>
+        </div>
+      </TableHead>
+      <TableHead className="h-8 p-0 text-right">
+        <div className="px-3">
+          <SortHeaderButton
+            active={sort.key === "value"}
+            direction={sort.direction}
+            onClick={() => onSort("value")}
+          >
+            {activePanel === "score"
+              ? messages.performance.score
+              : messages.performance.metricValueColumn}
+          </SortHeaderButton>
+        </div>
+      </TableHead>
+    </TableRow>
+  );
+
+  const renderedRows = rows.map((row) => {
+    const progressWidth = `${Math.max(2, Math.min(100, (row.views / maxViews) * 100))}%`;
+    return (
+      <AnimatedDataTableRow
+        key={`${status}-${row.pathname}`}
+        className="group/row bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-[0.98] dark:hover:brightness-125"
+        style={{
+          backgroundImage:
+            "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
+          backgroundPosition: "left top",
+          backgroundSize: `${progressWidth} 100%`,
+        }}
+      >
+        <TableCell className="p-0 whitespace-normal align-top">
+          <div className="max-w-[18rem] px-3 py-2 leading-5 whitespace-normal break-words">
+            {row.pathname || "/"}
+          </div>
+        </TableCell>
+        <TableCell className="p-0 text-right align-top">
+          <div className="px-3 py-2 font-mono tabular-nums">
+            {numberFormat(locale, row.views)}
+          </div>
+        </TableCell>
+        <TableCell className="p-0 text-right align-top">
+          <div className="px-3 py-2 font-mono tabular-nums">
+            {formatPanelValue(locale, messages, activePanel, row.value)}
+          </div>
+        </TableCell>
+      </AnimatedDataTableRow>
+    );
+  });
+
+  return (
+    <div className="min-w-0">
+      <div className="flex items-start justify-between gap-3 px-4 py-4">
+        <div className="min-w-0 space-y-1">
+          <div className={cn("flex items-center gap-2 font-medium", statusStyle.labelClassName)}>
+            <StatusIcon className="size-4" />
+            {statusLabel(messages, status)}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {pathStatusRangeLabel(locale, messages, activePanel, status)}
+          </div>
+        </div>
+        <div className="font-mono text-sm text-muted-foreground tabular-nums">
+          {numberFormat(locale, rows.length)}
+        </div>
+      </div>
+      <div className="px-1 pb-4">
+        <DataTableSwitch
+          loading={false}
+          hasContent={rows.length > 0}
+          loadingLabel={messages.common.loading}
+          emptyLabel={messages.common.noData}
+          colSpan={3}
+          contentKey={`${activePanel}-${status}-${sort.key}-${sort.direction}-${rows.length}`}
+          header={header}
+          rows={renderedRows}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PathPerformanceTable({
+  locale,
+  messages,
+  activePanel,
+  rows,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  activePanel: PerformancePanelKey;
+  rows: PathPerformanceRow[];
+}) {
+  const [sort, setSort] = useState<{ key: PathSortKey; direction: SortDirection }>({
+    key: "views",
+    direction: "desc",
+  });
+  const sortedRows = useMemo(() => {
+    const direction = sort.direction === "asc" ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      if (sort.key === "views") return (a.views - b.views) * direction;
+      if (sort.key === "score") {
+        return ((a.score ?? -1) - (b.score ?? -1)) * direction;
+      }
+      return ((a.value ?? -1) - (b.value ?? -1)) * direction;
+    });
+  }, [rows, sort.direction, sort.key]);
+  const maxViews = Math.max(1, ...sortedRows.map((row) => row.views));
+  const groupedRows = useMemo(
+    () => ({
+      poor: sortedRows.filter((row) => row.status === "poor"),
+      "needs-improvement": sortedRows.filter(
+        (row) => row.status === "needs-improvement",
+      ),
+      great: sortedRows.filter((row) => row.status === "great"),
+    }),
+    [sortedRows],
+  );
+
+  const updateSort = (key: PathSortKey) => {
+    setSort((current) =>
+      current.key === key
+        ? {
+            key,
+            direction: current.direction === "asc" ? "desc" : "asc",
+          }
+        : { key, direction: "desc" },
+    );
+  };
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="pb-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiRouteLine className="size-4 text-muted-foreground" />
+              {messages.performance.pathsTitle}
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {panelLabel(messages, activePanel)}
+            </p>
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {messages.performance.pathsAnalyzedLabel}:{" "}
+            {numberFormat(locale, rows.length)}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="grid min-h-[18rem] divide-y divide-border/70 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+          {(["poor", "needs-improvement", "great"] as const).map((status) => (
+            <PathStatusColumn
+              key={status}
+              locale={locale}
+              messages={messages}
+              activePanel={activePanel}
+              status={status}
+              rows={groupedRows[status]}
+              maxViews={maxViews}
+              sort={sort}
+              onSort={updateSort}
+            />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function PerformanceClientPage({
@@ -178,8 +1353,7 @@ export function PerformanceClientPage({
     filters: DashboardFilters;
     window: TimeWindow;
   };
-  const [activeMetric, setActiveMetric] =
-    useState<PerformanceMetricKey>("lcp");
+  const [activePanel, setActivePanel] = useState<PerformancePanelKey>("score");
   const [loading, setLoading] = useState(true);
   const [hydrated, setHydrated] = useState(false);
   const [performanceData, setPerformanceData] = useState<PerformanceData>(() =>
@@ -198,13 +1372,16 @@ export function PerformanceClientPage({
     setLoading(true);
 
     fetchPerformance(siteId, window, filters)
+      .catch(() => emptyPerformance(window.interval))
       .then((payload) => {
         if (!active) return;
-        setPerformanceData(payload);
-        setDataWindow({
-          from: window.from,
-          to: window.to,
-          interval: window.interval,
+        startTransition(() => {
+          setPerformanceData(payload);
+          setDataWindow({
+            from: window.from,
+            to: window.to,
+            interval: window.interval,
+          });
         });
       })
       .finally(() => {
@@ -216,69 +1393,68 @@ export function PerformanceClientPage({
     return () => {
       active = false;
     };
-  }, [
-    filters,
-    siteId,
-    window.from,
-    window.interval,
-    window.to,
-  ]);
+  }, [filters, siteId, window.from, window.interval, window.to]);
 
-  const metricMeta = useMemo(
-    () => ({
-      ttfb: { label: messages.performance.ttfb },
-      fcp: { label: messages.performance.fcp },
-      lcp: { label: messages.performance.lcp },
-      cls: { label: messages.performance.cls },
-      inp: { label: messages.performance.inp },
-    }),
-    [messages.performance.cls, messages.performance.fcp, messages.performance.inp, messages.performance.lcp, messages.performance.ttfb],
+  const activeSummary = useMemo(() => {
+    if (activePanel === "score") return scoreSummary(performanceData);
+    return performanceData.summaries[activePanel] ?? EMPTY_SUMMARY;
+  }, [activePanel, performanceData]);
+  const activeValue = activeSummary.p75 ?? activeSummary.avg;
+
+  const chartPoints = useMemo(
+    () =>
+      activePanel === "score"
+        ? buildScoreTrend(performanceData, dataWindow)
+        : buildMetricTrend(performanceData, activePanel, dataWindow),
+    [activePanel, dataWindow, performanceData],
   );
 
-  const localeCode = intlLocale(locale);
-  const axisTickFormatter = useMemo(
-    () => tickDateFormat(localeCode, dataWindow.interval),
-    [dataWindow.interval, localeCode],
-  );
-  const tooltipFormatter = useMemo(
-    () => tooltipDateFormat(localeCode, dataWindow.interval),
-    [dataWindow.interval, localeCode],
-  );
-
-  const filledTrend = useMemo(() => {
-    const rows = performanceData.trends[activeMetric] ?? [];
-    const stepMs = intervalStepMs(dataWindow.interval);
-    const byBucket = new Map(
-      rows.map((row) => [
-        Math.floor(Number(row.timestampMs ?? 0) / stepMs),
-        row,
-      ] as const),
+  const metricCards = useMemo<MetricCardModel[]>(() => {
+    const summaryByPanel = new Map<PerformancePanelKey, PerformanceSummary>(
+      PERFORMANCE_PANELS.map((key) => [
+        key,
+        key === "score"
+          ? scoreSummary(performanceData)
+          : (performanceData.summaries[key] ?? EMPTY_SUMMARY),
+      ]),
     );
-    const startBucket = Math.floor(dataWindow.from / stepMs);
-    const endBucketExclusive = Math.ceil(dataWindow.to / stepMs);
-    const filled = [];
-    for (let bucket = startBucket; bucket < endBucketExclusive; bucket += 1) {
-      const row = byBucket.get(bucket);
-      filled.push({
-        timestampMs: bucket * stepMs,
-        p50: row?.p50 ?? null,
-        p75: row?.p75 ?? null,
-        p95: row?.p95 ?? null,
-        avg: row?.avg ?? null,
-        samples: row?.samples ?? 0,
-      });
-    }
-    return filled;
-  }, [
-    activeMetric,
-    dataWindow.from,
-    dataWindow.interval,
-    dataWindow.to,
-    performanceData.trends,
-  ]);
+    return PERFORMANCE_PANELS.map((key) => {
+      const summary = summaryByPanel.get(key) ?? EMPTY_SUMMARY;
+      const value = summary.p75 ?? summary.avg;
+      const score = key === "score" ? value : metricScore(key, value);
+      const status = key === "score" ? scoreStatus(value) : metricStatus(key, value);
+      return {
+        key,
+        label: panelLabel(messages, key),
+        valueLabel: formatPanelValue(locale, messages, key, value),
+        status,
+        score,
+        progress: scoreProgress(key, score),
+      };
+    });
+  }, [locale, messages, performanceData]);
 
-  const summary = performanceData.summaries[activeMetric];
-  const hasContent = filledTrend.some((row) => row.samples > 0);
+  const pathRows = useMemo<PathPerformanceRow[]>(
+    () =>
+      (performanceData.routes ?? []).map((route) => {
+        const value = routeValue(route, activePanel);
+        const score = routeScore(route);
+        return {
+          pathname: route.pathname || "/",
+          views: route.views ?? 0,
+          samples: routeSamples(route, activePanel),
+          value,
+          score,
+          status: routeStatus(route, activePanel),
+        };
+      }),
+    [activePanel, performanceData.routes],
+  );
+
+  const hasContent =
+    chartPoints.some((row) => row.samples > 0) ||
+    metricCards.some((card) => card.valueLabel !== "--") ||
+    pathRows.length > 0;
 
   return (
     <div className="space-y-6">
@@ -287,172 +1463,45 @@ export function PerformanceClientPage({
         subtitle={messages.performance.subtitle}
       />
 
-      <Tabs
-        value={activeMetric}
-        onValueChange={(value) => setActiveMetric(value as PerformanceMetricKey)}
-        className="gap-0"
+      <ContentSwitch
+        loading={loading && !hydrated}
+        hasContent={hasContent}
+        loadingLabel={messages.common.loading}
+        loadingContent={<PerformanceSkeleton />}
+        emptyContent={<p>{messages.common.noData}</p>}
+        minHeightClassName="min-h-[520px]"
       >
-        <Card>
-          <CardHeader className="space-y-4">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-1">
-                <CardTitle>{messages.performance.chartTitle}</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  {metricMeta[activeMetric].label}
-                </p>
-              </div>
-              <div className="space-y-1 lg:text-right">
-                <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                  {messages.performance.avgLabel}
-                </div>
-                <AutoTransition
-                  className="text-3xl font-semibold tracking-tight"
-                >
-                  <span
-                    key={`${activeMetric}:${summary?.avg ?? "na"}`}
-                  >
-                    {formatMetricValue(
-                      locale,
-                      messages,
-                      activeMetric,
-                      summary?.avg,
-                    )}
-                  </span>
-                </AutoTransition>
-                <div className="text-xs text-muted-foreground">
-                  {messages.performance.samplesLabel}:{" "}
-                  {numberFormat(locale, summary?.samples ?? 0)}
-                </div>
-              </div>
-            </div>
-
-            <TabsList variant="line" className="h-auto flex-wrap justify-start">
-              {(Object.keys(metricMeta) as PerformanceMetricKey[]).map(
-                (metric) => (
-                  <TabsTrigger
-                    key={metric}
-                    value={metric}
-                    className="px-3 py-2 text-xs"
-                  >
-                    {metricMeta[metric].label}
-                  </TabsTrigger>
-                ),
-              )}
-            </TabsList>
-          </CardHeader>
-          <CardContent>
-            <ContentSwitch
-              loading={loading && !hydrated}
-              hasContent={hasContent}
-              loadingLabel={messages.common.loading}
-              loadingContent={<PerformanceSkeleton />}
-              emptyContent={<p>{messages.common.noData}</p>}
-              minHeightClassName="min-h-[360px]"
-            >
-              <ChartContainer
-                className="h-[360px] w-full aspect-auto"
-                config={PERFORMANCE_CHART_CONFIG}
-              >
-                <LineChart
-                  accessibilityLayer
-                  data={filledTrend}
-                  margin={{ left: 12, right: 12, top: 12 }}
-                >
-                  <CartesianGrid vertical={false} />
-                  <XAxis
-                    dataKey="timestampMs"
-                    tickFormatter={(value) =>
-                      axisTickFormatter.format(new Date(Number(value ?? 0)))
-                    }
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    minTickGap={12}
-                  />
-                  <YAxis
-                    tickFormatter={(value) =>
-                      formatMetricValue(
-                        locale,
-                        messages,
-                        activeMetric,
-                        Number(value ?? 0),
-                      )
-                    }
-                    tickLine={false}
-                    axisLine={false}
-                    width={activeMetric === "cls" ? 56 : 72}
-                  />
-                  <ChartTooltip
-                    cursor={false}
-                    content={(
-                      <ChartTooltipContent
-                        className="min-w-[14rem]"
-                        indicator="line"
-                        labelFormatter={(value, payload) => {
-                          const timestamp = Number(
-                            payload?.[0]?.payload?.timestampMs ?? value ?? 0,
-                          );
-                          return tooltipFormatter.format(new Date(timestamp));
-                        }}
-                        formatter={(value, name) => (
-                          <div className="flex w-full items-center justify-between gap-3">
-                            <span className="text-muted-foreground">
-                              {String(name ?? "")}
-                            </span>
-                            <span className="font-mono text-foreground tabular-nums">
-                              {formatMetricValue(
-                                locale,
-                                messages,
-                                activeMetric,
-                                Number(value ?? 0),
-                              )}
-                            </span>
-                          </div>
-                        )}
-                      />
-                    )}
-                  />
-                  <ChartLegend
-                    content={(
-                      <ChartLegendContent className="pt-6 flex-wrap justify-center gap-x-4 gap-y-2" />
-                    )}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="p50"
-                    name={messages.performance.p50Label}
-                    stroke={PERFORMANCE_SERIES_COLORS.p50}
-                    strokeWidth={2}
-                    dot={false}
-                    connectNulls={false}
-                    isAnimationActive
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="p75"
-                    name={messages.performance.p75Label}
-                    stroke={PERFORMANCE_SERIES_COLORS.p75}
-                    strokeWidth={2}
-                    dot={false}
-                    connectNulls={false}
-                    isAnimationActive
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="p95"
-                    name={messages.performance.p95Label}
-                    stroke={PERFORMANCE_SERIES_COLORS.p95}
-                    strokeWidth={2}
-                    dot={false}
-                    connectNulls={false}
-                    isAnimationActive
-                  />
-                </LineChart>
-              </ChartContainer>
-            </ContentSwitch>
-          </CardContent>
-        </Card>
-      </Tabs>
+        <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+          <PerformanceRail
+            activePanel={activePanel}
+            cards={metricCards}
+            onSelect={setActivePanel}
+          />
+          <div className="min-w-0 space-y-4">
+            <MetricSummaryCard
+              locale={locale}
+              messages={messages}
+              activePanel={activePanel}
+              activeSummary={activeSummary}
+              activeValue={activeValue}
+              pathCount={pathRows.length}
+            />
+            <PerformanceTrendCard
+              locale={locale}
+              messages={messages}
+              activePanel={activePanel}
+              dataWindow={dataWindow}
+              points={chartPoints}
+            />
+            <PathPerformanceTable
+              locale={locale}
+              messages={messages}
+              activePanel={activePanel}
+              rows={pathRows}
+            />
+          </div>
+        </div>
+      </ContentSwitch>
     </div>
   );
 }

@@ -402,20 +402,40 @@ browsers:
   radarTraffic: Traffic
 performance:
   title: Performance
-  subtitle: Track page-load and interaction metrics across the selected time range.
+  subtitle: Review real visitor performance by metric, trend, and path.
   chartTitle: Performance Trend
   avgLabel: Average
   samplesLabel: Samples
   p50Label: P50
   p75Label: P75
   p95Label: P95
-  ttfb: TTFB
-  fcp: FCP
-  lcp: LCP
-  cls: CLS
-  inp: INP
+  ttfb: Time to First Byte
+  fcp: First Contentful Paint
+  lcp: Largest Contentful Paint
+  cls: Cumulative Layout Shift
+  inp: Interaction to Next Paint
+  ttfbDescription: Measures how long the browser waits before receiving the first byte from the server. It reflects backend latency, network delay, and cache effectiveness.
+  fcpDescription: Measures when the first text or image is painted. It reflects how quickly visitors see that the page is starting to load.
+  lcpDescription: Measures when the largest visible content element finishes rendering. It is the main loading speed signal for perceived page readiness.
+  clsDescription: Measures unexpected layout movement during the page lifecycle. Lower values mean the page is visually stable.
+  inpDescription: Measures the latency of user interactions before the next paint. It reflects how responsive the page feels after loading.
   msUnit: ms
+  secondsUnit: s
   clsUnit: score
+  score: Experience Score
+  scoreDescription: Combines P75 loading, stability, and interaction metrics into a 0 to 100 experience score. Higher is better.
+  great: Great
+  needsImprovement: Needs Improvement
+  poor: Poor
+  datasetTitle: Dataset Overview
+  interpretationTitle: Current Reading
+  currentReading: "{metric} is {value} at P75 with an experience score of {score} across {samples} samples. Current status: {status}."
+  metricThresholdText: "Great is at or below {good}; needs improvement is between {good} and {poor}; poor is above {poor}."
+  scoreThresholdText: Great is above 90, needs improvement is 50 to 90, and poor is below 50.
+  pathsTitle: Path Performance
+  pathsAnalyzedLabel: Paths analyzed
+  metricValueColumn: P75 value
+  statusColumn: Status
 siteSettings:
   title: Site Settings
   subtitle: Configure this site's basic information and lifecycle.

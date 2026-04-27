@@ -240,6 +240,9 @@ export type PerformanceMetricKey =
 
 export interface PerformanceSummary {
   avg: number | null;
+  p50: number | null;
+  p75: number | null;
+  p95: number | null;
   samples: number;
 }
 
@@ -253,11 +256,26 @@ export interface PerformanceTrendPoint {
   samples: number;
 }
 
+export interface PerformanceRouteMetricSummary {
+  avg: number | null;
+  p50: number | null;
+  p75: number | null;
+  p95: number | null;
+  samples: number;
+}
+
+export interface PerformanceRouteSummary {
+  pathname: string;
+  views: number;
+  metrics: Record<PerformanceMetricKey, PerformanceRouteMetricSummary>;
+}
+
 export interface PerformanceData {
   ok: boolean;
   interval: "minute" | "hour" | "day" | "week" | "month";
   summaries: Record<PerformanceMetricKey, PerformanceSummary>;
   trends: Record<PerformanceMetricKey, PerformanceTrendPoint[]>;
+  routes: PerformanceRouteSummary[];
 }
 
 export interface BrowserVersionSlice {

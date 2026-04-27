@@ -402,20 +402,40 @@ browsers:
   radarTraffic: 流量占比
 performance:
   title: 性能追踪
-  subtitle: 观察所选时间范围内页面加载与交互指标的变化。
+  subtitle: 按指标、趋势与路径查看真实访客性能。
   chartTitle: 性能趋势
   avgLabel: 平均值
   samplesLabel: 样本数
   p50Label: P50
   p75Label: P75
   p95Label: P95
-  ttfb: TTFB
-  fcp: FCP
-  lcp: LCP
-  cls: CLS
-  inp: INP
+  ttfb: 首字节时间
+  fcp: 首次内容绘制
+  lcp: 最大内容绘制
+  cls: 累积布局偏移
+  inp: 下次绘制交互
+  ttfbDescription: 衡量浏览器在收到服务器第一个字节前等待了多久，反映后端响应、网络延迟和缓存效果。
+  fcpDescription: 衡量页面首次绘制文本或图片的时间，反映访客多久能看到页面开始加载。
+  lcpDescription: 衡量视口内最大内容元素完成渲染的时间，是感知加载速度的核心指标。
+  clsDescription: 衡量页面生命周期中非预期布局位移的程度，数值越低表示视觉越稳定。
+  inpDescription: 衡量用户交互到下一次绘制之间的延迟，反映页面加载后的响应能力。
   msUnit: 毫秒
+  secondsUnit: 秒
   clsUnit: 分值
+  score: 体验评分
+  scoreDescription: 将加载、稳定性和交互指标的 P75 数值合成为 0 到 100 的体验评分，分数越高越好。
+  great: 优秀
+  needsImprovement: 需要改进
+  poor: 较差
+  datasetTitle: 数据集概览
+  interpretationTitle: 当前解读
+  currentReading: "{metric} 当前 P75 为 {value}，体验评分为 {score}，覆盖 {samples} 个样本。当前判定：{status}。"
+  metricThresholdText: "优秀为不高于 {good}；需要改进为 {good} 到 {poor}；较差为高于 {poor}。"
+  scoreThresholdText: 优秀为高于 90，需要改进为 50 到 90，较差为低于 50。
+  pathsTitle: 路径性能
+  pathsAnalyzedLabel: 已分析路径
+  metricValueColumn: P75 数值
+  statusColumn: 状态
 siteSettings:
   title: 站点设置
   subtitle: 管理当前站点的基础信息与生命周期。

@@ -409,8 +409,28 @@ export interface AppMessages {
     lcp: string;
     cls: string;
     inp: string;
+    ttfbDescription: string;
+    fcpDescription: string;
+    lcpDescription: string;
+    clsDescription: string;
+    inpDescription: string;
     msUnit: string;
+    secondsUnit: string;
     clsUnit: string;
+    score: string;
+    scoreDescription: string;
+    great: string;
+    needsImprovement: string;
+    poor: string;
+    datasetTitle: string;
+    interpretationTitle: string;
+    currentReading: string;
+    metricThresholdText: string;
+    scoreThresholdText: string;
+    pathsTitle: string;
+    pathsAnalyzedLabel: string;
+    metricValueColumn: string;
+    statusColumn: string;
   };
   siteSettings: {
     title: string;

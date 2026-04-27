@@ -4730,7 +4730,16 @@ function generateDemoPerformance(
           )
         : null;
       const samples = Math.max(0, Math.round(values.length * dataset.viewWeight));
-      return [metric, { avg, samples }];
+      return [
+        metric,
+        {
+          avg,
+          p50: demoPercentile(values, 0.5),
+          p75: demoPercentile(values, 0.75),
+          p95: demoPercentile(values, 0.95),
+          samples,
+        },
+      ];
     }),
   );
 
@@ -4769,11 +4778,53 @@ function generateDemoPerformance(
     }),
   );
 
+  const routeLimit = parseDemoLimit(params.limit, 18, 1, 50);
+  const routeRows = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    Math.max(routeLimit, 1),
+    (visit) => visit.pathname,
+  );
+  const routes = routeRows.map((row) => {
+    const visitsForPath = filtered.visits.filter(
+      (visit) => visit.pathname === row.label,
+    );
+    const routeMetrics = Object.fromEntries(
+      metrics.map((metric) => {
+        const values = visitsForPath
+          .map((visit) => demoPerformanceMetricValue(siteId, visit, metric))
+          .sort((left, right) => left - right);
+        const avg = values.length > 0
+          ? roundDemoPerformanceValue(
+              values.reduce((sum, value) => sum + value, 0) / values.length,
+            )
+          : null;
+        return [
+          metric,
+          {
+            avg,
+            p50: demoPercentile(values, 0.5),
+            p75: demoPercentile(values, 0.75),
+            p95: demoPercentile(values, 0.95),
+            samples: Math.max(0, Math.round(values.length * dataset.viewWeight)),
+          },
+        ];
+      }),
+    );
+
+    return {
+      pathname: row.label,
+      views: row.views,
+      metrics: routeMetrics,
+    };
+  });
+
   return {
     ok: true,
     interval,
     summaries,
     trends,
+    routes,
   };
 }
 

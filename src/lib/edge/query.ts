@@ -111,6 +111,9 @@ type PerformanceMetricKey = "ttfb" | "fcp" | "lcp" | "cls" | "inp";
 
 interface PerformanceSummaryRow {
   avg: number | null;
+  p50: number | null;
+  p75: number | null;
+  p95: number | null;
   samples: number;
 }
 
@@ -122,6 +125,20 @@ interface PerformanceTrendPointRow {
   p75: number | null;
   p95: number | null;
   samples: number;
+}
+
+interface PerformanceRouteMetricRow {
+  avg: number | null;
+  p50: number | null;
+  p75: number | null;
+  p95: number | null;
+  samples: number;
+}
+
+interface PerformanceRouteRow {
+  pathname: string;
+  views: number;
+  metrics: Record<PerformanceMetricKey, PerformanceRouteMetricRow>;
 }
 
 interface BrowserVersionAggregateRow {
@@ -1298,6 +1315,26 @@ function roundPerformanceValue(value: unknown): number | null {
   return Math.round(numeric * 1000) / 1000;
 }
 
+function emptyPerformanceRouteMetric(): PerformanceRouteMetricRow {
+  return {
+    avg: null,
+    p50: null,
+    p75: null,
+    p95: null,
+    samples: 0,
+  };
+}
+
+function emptyPerformanceRouteMetrics(): Record<PerformanceMetricKey, PerformanceRouteMetricRow> {
+  return {
+    ttfb: emptyPerformanceRouteMetric(),
+    fcp: emptyPerformanceRouteMetric(),
+    lcp: emptyPerformanceRouteMetric(),
+    cls: emptyPerformanceRouteMetric(),
+    inp: emptyPerformanceRouteMetric(),
+  };
+}
+
 async function queryPerformanceSummariesFromD1(
   env: Env,
   siteId: string,
@@ -1312,50 +1349,83 @@ filtered_visits AS (
   SELECT *
   FROM visit_source
   ${filter.clause}
+),
+metric_visits AS (
+  SELECT 'ttfb' AS metric, perf_ttfb_ms AS metricValue
+  FROM filtered_visits
+  WHERE perf_ttfb_ms IS NOT NULL
+  UNION ALL
+  SELECT 'fcp' AS metric, perf_fcp_ms AS metricValue
+  FROM filtered_visits
+  WHERE perf_fcp_ms IS NOT NULL
+  UNION ALL
+  SELECT 'lcp' AS metric, perf_lcp_ms AS metricValue
+  FROM filtered_visits
+  WHERE perf_lcp_ms IS NOT NULL
+  UNION ALL
+  SELECT 'cls' AS metric, perf_cls AS metricValue
+  FROM filtered_visits
+  WHERE perf_cls IS NOT NULL
+  UNION ALL
+  SELECT 'inp' AS metric, perf_inp_ms AS metricValue
+  FROM filtered_visits
+  WHERE perf_inp_ms IS NOT NULL
+),
+ordered_values AS (
+  SELECT
+    metric,
+    metricValue,
+    ROW_NUMBER() OVER (PARTITION BY metric ORDER BY metricValue ASC) AS rowNum,
+    COUNT(*) OVER (PARTITION BY metric) AS sampleCount
+  FROM metric_visits
+),
+metric_thresholds AS (
+  SELECT
+    metric,
+    sampleCount,
+    AVG(metricValue) AS avgValue,
+    CAST(((sampleCount * 50) + 99) / 100 AS INTEGER) AS p50Rank,
+    CAST(((sampleCount * 75) + 99) / 100 AS INTEGER) AS p75Rank,
+    CAST(((sampleCount * 95) + 99) / 100 AS INTEGER) AS p95Rank
+  FROM ordered_values
+  GROUP BY metric, sampleCount
 )
 SELECT
-  AVG(perf_ttfb_ms) AS ttfbAvg,
-  COUNT(perf_ttfb_ms) AS ttfbSamples,
-  AVG(perf_fcp_ms) AS fcpAvg,
-  COUNT(perf_fcp_ms) AS fcpSamples,
-  AVG(perf_lcp_ms) AS lcpAvg,
-  COUNT(perf_lcp_ms) AS lcpSamples,
-  AVG(perf_cls) AS clsAvg,
-  COUNT(perf_cls) AS clsSamples,
-  AVG(perf_inp_ms) AS inpAvg,
-  COUNT(perf_inp_ms) AS inpSamples
-FROM filtered_visits
+  thresholds.metric AS metric,
+  thresholds.sampleCount AS samples,
+  thresholds.avgValue AS avgValue,
+  MIN(CASE WHEN ordered.rowNum >= thresholds.p50Rank THEN ordered.metricValue END) AS p50,
+  MIN(CASE WHEN ordered.rowNum >= thresholds.p75Rank THEN ordered.metricValue END) AS p75,
+  MIN(CASE WHEN ordered.rowNum >= thresholds.p95Rank THEN ordered.metricValue END) AS p95
+FROM metric_thresholds thresholds
+JOIN ordered_values ordered
+  ON ordered.metric = thresholds.metric
+GROUP BY thresholds.metric, thresholds.sampleCount, thresholds.avgValue
 `;
-  const row = (
-    await queryD1All<Record<string, unknown>>(
-      env,
-      sql,
-      [...visitSourceBindings(siteId, window), ...filter.bindings],
-    )
-  )[0] ?? {};
-
-  return {
-    ttfb: {
-      avg: roundPerformanceValue(row.ttfbAvg),
-      samples: Number(row.ttfbSamples ?? 0),
-    },
-    fcp: {
-      avg: roundPerformanceValue(row.fcpAvg),
-      samples: Number(row.fcpSamples ?? 0),
-    },
-    lcp: {
-      avg: roundPerformanceValue(row.lcpAvg),
-      samples: Number(row.lcpSamples ?? 0),
-    },
-    cls: {
-      avg: roundPerformanceValue(row.clsAvg),
-      samples: Number(row.clsSamples ?? 0),
-    },
-    inp: {
-      avg: roundPerformanceValue(row.inpAvg),
-      samples: Number(row.inpSamples ?? 0),
-    },
+  const summaries: Record<PerformanceMetricKey, PerformanceSummaryRow> = {
+    ttfb: { avg: null, p50: null, p75: null, p95: null, samples: 0 },
+    fcp: { avg: null, p50: null, p75: null, p95: null, samples: 0 },
+    lcp: { avg: null, p50: null, p75: null, p95: null, samples: 0 },
+    cls: { avg: null, p50: null, p75: null, p95: null, samples: 0 },
+    inp: { avg: null, p50: null, p75: null, p95: null, samples: 0 },
   };
+  const rows = await queryD1All<Record<string, unknown>>(
+    env,
+    sql,
+    [...visitSourceBindings(siteId, window), ...filter.bindings],
+  );
+  for (const row of rows) {
+    const metric = String(row.metric ?? "") as PerformanceMetricKey;
+    if (!(metric in PERFORMANCE_METRIC_COLUMNS)) continue;
+    summaries[metric] = {
+      avg: roundPerformanceValue(row.avgValue),
+      p50: roundPerformanceValue(row.p50),
+      p75: roundPerformanceValue(row.p75),
+      p95: roundPerformanceValue(row.p95),
+      samples: Number(row.samples ?? 0),
+    };
+  }
+  return summaries;
 }
 
 async function queryPerformanceTrendFromD1(
@@ -1430,6 +1500,131 @@ ORDER BY thresholds.bucket ASC
     p95: roundPerformanceValue(row.p95),
     samples: Number(row.samples ?? 0),
   }));
+}
+
+async function queryPerformanceRoutesFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+  limit: number,
+): Promise<PerformanceRouteRow[]> {
+  const filter = buildVisitFilterSql(filters);
+  const pathExpr = "COALESCE(NULLIF(trim(pathname), ''), '/')";
+  const sql = `
+WITH
+${buildVisitSourceCte()},
+filtered_visits AS (
+  SELECT *
+  FROM visit_source
+  ${filter.clause}
+),
+path_views AS (
+  SELECT
+    ${pathExpr} AS pathname,
+    count(*) AS views
+  FROM filtered_visits
+  GROUP BY pathname
+  ORDER BY views DESC, pathname ASC
+  LIMIT ?
+),
+metric_visits AS (
+  SELECT ${pathExpr} AS pathname, 'ttfb' AS metric, perf_ttfb_ms AS metricValue
+  FROM filtered_visits
+  WHERE perf_ttfb_ms IS NOT NULL
+  UNION ALL
+  SELECT ${pathExpr} AS pathname, 'fcp' AS metric, perf_fcp_ms AS metricValue
+  FROM filtered_visits
+  WHERE perf_fcp_ms IS NOT NULL
+  UNION ALL
+  SELECT ${pathExpr} AS pathname, 'lcp' AS metric, perf_lcp_ms AS metricValue
+  FROM filtered_visits
+  WHERE perf_lcp_ms IS NOT NULL
+  UNION ALL
+  SELECT ${pathExpr} AS pathname, 'cls' AS metric, perf_cls AS metricValue
+  FROM filtered_visits
+  WHERE perf_cls IS NOT NULL
+  UNION ALL
+  SELECT ${pathExpr} AS pathname, 'inp' AS metric, perf_inp_ms AS metricValue
+  FROM filtered_visits
+  WHERE perf_inp_ms IS NOT NULL
+),
+scoped_metric_visits AS (
+  SELECT metric_visits.*
+  FROM metric_visits
+  JOIN path_views ON path_views.pathname = metric_visits.pathname
+),
+ordered_values AS (
+  SELECT
+    pathname,
+    metric,
+    metricValue,
+    ROW_NUMBER() OVER (PARTITION BY pathname, metric ORDER BY metricValue ASC) AS rowNum,
+    COUNT(*) OVER (PARTITION BY pathname, metric) AS sampleCount
+  FROM scoped_metric_visits
+),
+metric_thresholds AS (
+  SELECT
+    pathname,
+    metric,
+    sampleCount,
+    AVG(metricValue) AS avgValue,
+    CAST(((sampleCount * 50) + 99) / 100 AS INTEGER) AS p50Rank,
+    CAST(((sampleCount * 75) + 99) / 100 AS INTEGER) AS p75Rank,
+    CAST(((sampleCount * 95) + 99) / 100 AS INTEGER) AS p95Rank
+  FROM ordered_values
+  GROUP BY pathname, metric, sampleCount
+)
+SELECT
+  thresholds.pathname AS pathname,
+  thresholds.metric AS metric,
+  path_views.views AS views,
+  thresholds.sampleCount AS samples,
+  thresholds.avgValue AS avgValue,
+  MIN(CASE WHEN ordered.rowNum >= thresholds.p50Rank THEN ordered.metricValue END) AS p50,
+  MIN(CASE WHEN ordered.rowNum >= thresholds.p75Rank THEN ordered.metricValue END) AS p75,
+  MIN(CASE WHEN ordered.rowNum >= thresholds.p95Rank THEN ordered.metricValue END) AS p95
+FROM metric_thresholds thresholds
+JOIN ordered_values ordered
+  ON ordered.pathname = thresholds.pathname
+ AND ordered.metric = thresholds.metric
+JOIN path_views ON path_views.pathname = thresholds.pathname
+GROUP BY
+  thresholds.pathname,
+  thresholds.metric,
+  path_views.views,
+  thresholds.sampleCount,
+  thresholds.avgValue
+ORDER BY path_views.views DESC, thresholds.pathname ASC, thresholds.metric ASC
+`;
+  const rows = await queryD1All<Record<string, unknown>>(
+    env,
+    sql,
+    [...visitSourceBindings(siteId, window), ...filter.bindings, limit],
+  );
+  const byPath = new Map<string, PerformanceRouteRow>();
+
+  for (const row of rows) {
+    const pathname = normalizePathname(String(row.pathname ?? ""));
+    const metric = String(row.metric ?? "") as PerformanceMetricKey;
+    if (!(metric in PERFORMANCE_METRIC_COLUMNS)) continue;
+
+    const current = byPath.get(pathname) ?? {
+      pathname,
+      views: Number(row.views ?? 0),
+      metrics: emptyPerformanceRouteMetrics(),
+    };
+    current.metrics[metric] = {
+      avg: roundPerformanceValue(row.avgValue),
+      p50: roundPerformanceValue(row.p50),
+      p75: roundPerformanceValue(row.p75),
+      p95: roundPerformanceValue(row.p95),
+      samples: Number(row.samples ?? 0),
+    };
+    byPath.set(pathname, current);
+  }
+
+  return [...byPath.values()];
 }
 
 async function queryOverviewFromD1(
@@ -3475,13 +3670,15 @@ async function handlePerformance(
   if (!window) return badRequest("Invalid time window");
   const filters = parseFilters(url);
   const interval = parseInterval(url);
-  const [summaries, ttfb, fcp, lcp, cls, inp] = await Promise.all([
+  const routeLimit = parseLimit(url, 18, 50);
+  const [summaries, ttfb, fcp, lcp, cls, inp, routes] = await Promise.all([
     queryPerformanceSummariesFromD1(env, siteId, window, filters),
     queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "ttfb"),
     queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "fcp"),
     queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "lcp"),
     queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "cls"),
     queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "inp"),
+    queryPerformanceRoutesFromD1(env, siteId, window, filters, routeLimit),
   ]);
 
   return jsonResponse({
@@ -3495,6 +3692,7 @@ async function handlePerformance(
       cls,
       inp,
     },
+    routes,
   });
 }
 
