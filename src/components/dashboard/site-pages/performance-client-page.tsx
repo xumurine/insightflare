@@ -83,6 +83,7 @@ interface MetricCardModel {
   label: string;
   valueLabel: string;
   value: number | null;
+  summary: PerformanceSummary;
   status: PerformanceStatus;
   score: number | null;
 }
@@ -566,51 +567,132 @@ function statusColor(status: PerformanceStatus): string {
   return "var(--color-muted-foreground)";
 }
 
-function railDomainMax(key: PerformancePanelKey): number {
-  if (key === "score") return 100;
-  const thresholds = METRIC_THRESHOLDS[key];
-  if (key === "cls") return Math.max(0.3, thresholds.poor * 1.2);
-  return Math.max(thresholds.poor * 1.2, thresholds.good);
-}
-
-function railSegments(key: PerformancePanelKey): Array<{
+function normalizedSegmentWidths(
+  segments: Array<{
+    status: Exclude<PerformanceStatus, "none">;
+    width: number;
+  }>,
+): Array<{
   status: Exclude<PerformanceStatus, "none">;
   width: number;
 }> {
-  if (key === "score") {
+  const total = segments.reduce((sum, segment) => sum + segment.width, 0);
+  if (total <= 0) return segments.map((segment) => ({ ...segment, width: 0 }));
+  return segments.map((segment) => ({
+    ...segment,
+    width: Math.max(0, Math.min(100, (segment.width / total) * 100)),
+  }));
+}
+
+function percentileAtThreshold(
+  anchors: Array<{ percentile: number; value: number }>,
+  threshold: number,
+): number {
+  if (anchors.length === 0) return 0;
+
+  const first = anchors[0];
+  const last = anchors[anchors.length - 1];
+  const descending = first.value > last.value;
+  if (!descending && threshold <= first.value) return first.percentile;
+  if (!descending && threshold >= last.value) return last.percentile;
+  if (descending && threshold >= first.value) return first.percentile;
+  if (descending && threshold <= last.value) return last.percentile;
+
+  for (let index = 1; index < anchors.length; index += 1) {
+    const previous = anchors[index - 1];
+    const current = anchors[index];
+    const min = Math.min(previous.value, current.value);
+    const max = Math.max(previous.value, current.value);
+    if (threshold < min || threshold > max) continue;
+    if (previous.value === current.value) return current.percentile;
+    const ratio = (threshold - previous.value) / (current.value - previous.value);
+    return Math.max(
+      0,
+      Math.min(
+        100,
+        previous.percentile + ratio * (current.percentile - previous.percentile),
+      ),
+    );
+  }
+
+  return last.percentile;
+}
+
+function metricDistributionMax(
+  key: PerformanceMetricKey,
+  summary: PerformanceSummary,
+): number {
+  const thresholds = METRIC_THRESHOLDS[key];
+  const observedMax = Math.max(
+    thresholds.poor,
+    summary.p50 ?? 0,
+    summary.p75 ?? 0,
+    summary.p95 ?? 0,
+    summary.avg ?? 0,
+  );
+  if (key === "cls") return Math.max(0.3, observedMax * 1.15);
+  return Math.max(thresholds.poor * 1.2, observedMax * 1.15);
+}
+
+function railSegments(
+  key: PerformancePanelKey,
+  summary: PerformanceSummary,
+): Array<{
+  status: Exclude<PerformanceStatus, "none">;
+  width: number;
+}> {
+  if (summary.samples <= 0 || summary.p75 == null) {
     return [
-      { status: "poor", width: 50 },
-      { status: "needs-improvement", width: 40 },
-      { status: "great", width: 10 },
+      { status: "great", width: 0 },
+      { status: "needs-improvement", width: 0 },
+      { status: "poor", width: 0 },
     ];
   }
 
+  if (key === "score") {
+    const anchors = [
+      { percentile: 0, value: 100 },
+      { percentile: 50, value: summary.p50 ?? summary.p75 },
+      { percentile: 75, value: summary.p75 },
+      { percentile: 95, value: summary.p95 ?? summary.p75 },
+      { percentile: 100, value: 0 },
+    ].map((anchor, index, list) => ({
+      ...anchor,
+      value:
+        index === 0
+          ? anchor.value
+          : Math.min(list[index - 1]?.value ?? 100, Math.max(0, anchor.value)),
+    }));
+    const greatEnd = percentileAtThreshold(anchors, 90);
+    const needsEnd = percentileAtThreshold(anchors, 50);
+    return normalizedSegmentWidths([
+      { status: "great", width: greatEnd },
+      { status: "needs-improvement", width: Math.max(0, needsEnd - greatEnd) },
+      { status: "poor", width: Math.max(0, 100 - needsEnd) },
+    ]);
+  }
+
   const thresholds = METRIC_THRESHOLDS[key];
-  const domainMax = railDomainMax(key);
-  const greatWidth = Math.max(
-    0,
-    Math.min(100, (thresholds.good / domainMax) * 100),
-  );
-  const needsWidth = Math.max(
-    0,
-    Math.min(100 - greatWidth, ((thresholds.poor - thresholds.good) / domainMax) * 100),
-  );
-  const poorWidth = Math.max(0, 100 - greatWidth - needsWidth);
-
+  const anchors = [
+    { percentile: 0, value: 0 },
+    { percentile: 50, value: summary.p50 ?? summary.p75 },
+    { percentile: 75, value: summary.p75 },
+    { percentile: 95, value: summary.p95 ?? summary.p75 },
+    { percentile: 100, value: metricDistributionMax(key, summary) },
+  ].map((anchor, index, list) => ({
+    ...anchor,
+    value:
+      index === 0
+        ? anchor.value
+        : Math.max(list[index - 1]?.value ?? 0, anchor.value),
+  }));
+  const greatEnd = percentileAtThreshold(anchors, thresholds.good);
+  const needsEnd = percentileAtThreshold(anchors, thresholds.poor);
   return [
-    { status: "great", width: greatWidth },
-    { status: "needs-improvement", width: needsWidth },
-    { status: "poor", width: poorWidth },
+    { status: "great", width: greatEnd },
+    { status: "needs-improvement", width: Math.max(0, needsEnd - greatEnd) },
+    { status: "poor", width: Math.max(0, 100 - needsEnd) },
   ];
-}
-
-function railMarkerPosition(
-  key: PerformancePanelKey,
-  value: number | null,
-): number | null {
-  if (value == null || !Number.isFinite(value)) return null;
-  if (key === "score") return Math.max(0, Math.min(100, value));
-  return Math.max(0, Math.min(100, (value / railDomainMax(key)) * 100));
 }
 
 function buildScoreTrend(
@@ -791,15 +873,15 @@ function PerformanceSkeleton() {
 
 function SegmentedThresholdBar({
   panelKey,
-  value,
+  summary,
   status,
 }: {
   panelKey: PerformancePanelKey;
-  value: number | null;
+  summary: PerformanceSummary;
   status: PerformanceStatus;
 }) {
-  const marker = railMarkerPosition(panelKey, value);
-  const segments = railSegments(panelKey);
+  const marker = summary.p75 == null ? null : 75;
+  const segments = railSegments(panelKey, summary);
 
   return (
     <div className="relative h-5">
@@ -890,7 +972,7 @@ function PerformanceRail({
                 </div>
                 <SegmentedThresholdBar
                   panelKey={card.key}
-                  value={card.value}
+                  summary={card.summary}
                   status={card.status}
                 />
               </div>
@@ -2196,6 +2278,7 @@ export function PerformanceClientPage({
         label: panelLabel(messages, key),
         valueLabel: formatPanelValue(locale, messages, key, value),
         value,
+        summary,
         status,
         score,
       };
@@ -2275,34 +2358,38 @@ export function PerformanceClientPage({
               cards={metricCards}
               onSelect={setActivePanel}
             />
-            <div className="min-w-0 space-y-4">
-              <MetricSummaryCard
-                locale={locale}
-                messages={messages}
-                activePanel={activePanel}
-                activeSummary={activeSummary}
-                activeValue={activeValue}
-                pathCount={pathRows.length}
-              />
-              <PerformanceTrendCard
-                locale={locale}
-                messages={messages}
-                activePanel={activePanel}
-                dataWindow={dataWindow}
-                points={chartPoints}
-              />
-              <PerformanceHealthMapCard
-                locale={locale}
-                messages={messages}
-                activePanel={activePanel}
-                countries={countryRows}
-              />
-              <PathPerformanceTable
-                locale={locale}
-                messages={messages}
-                activePanel={activePanel}
-                rows={pathRows}
-              />
+            <div className="min-w-0">
+              <AutoTransition initial={false} duration={0.22}>
+                <div key={activePanel} className="space-y-4">
+                  <MetricSummaryCard
+                    locale={locale}
+                    messages={messages}
+                    activePanel={activePanel}
+                    activeSummary={activeSummary}
+                    activeValue={activeValue}
+                    pathCount={pathRows.length}
+                  />
+                  <PerformanceTrendCard
+                    locale={locale}
+                    messages={messages}
+                    activePanel={activePanel}
+                    dataWindow={dataWindow}
+                    points={chartPoints}
+                  />
+                  <PerformanceHealthMapCard
+                    locale={locale}
+                    messages={messages}
+                    activePanel={activePanel}
+                    countries={countryRows}
+                  />
+                  <PathPerformanceTable
+                    locale={locale}
+                    messages={messages}
+                    activePanel={activePanel}
+                    rows={pathRows}
+                  />
+                </div>
+              </AutoTransition>
             </div>
           </div>
         ) : (
