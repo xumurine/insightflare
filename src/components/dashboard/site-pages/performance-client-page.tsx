@@ -20,7 +20,6 @@ import {
   RiSpeedUpLine,
 } from "@remixicon/react";
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
-import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -473,6 +472,13 @@ function scoreProgress(key: PerformancePanelKey, value: number | null): number {
   return Math.max(0, Math.min(100, value));
 }
 
+function statusColor(status: PerformanceStatus): string {
+  if (status === "great") return "var(--color-chart-4)";
+  if (status === "needs-improvement") return "oklch(0.75 0.16 80)";
+  if (status === "poor") return "var(--color-destructive)";
+  return "var(--color-muted-foreground)";
+}
+
 function buildScoreTrend(
   performanceData: PerformanceData,
   dataWindow: Pick<TimeWindow, "from" | "to" | "interval">,
@@ -659,7 +665,7 @@ function PerformanceRail({
   onSelect: (key: PerformancePanelKey) => void;
 }) {
   return (
-    <div className="space-y-3 self-start lg:sticky lg:top-4">
+    <div className="space-y-3 self-start lg:sticky lg:top-[7.5rem]">
       {cards.map((card) => {
         const active = card.key === activePanel;
         const statusStyle = STATUS_STYLE[card.status];
@@ -786,11 +792,13 @@ function MetricSummaryCard({
           status: statusLabel(messages, activeStatus),
         })
       : messages.common.noData;
+  const ringPercent = scoreValue == null ? 0 : Math.max(0, Math.min(100, scoreValue));
+  const ringColor = statusColor(activeStatus);
 
   return (
     <Card className="overflow-hidden">
       <CardContent className="grid gap-5 p-5 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
-        <div className="space-y-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <AutoTransition duration={0.2}>
             <div key={`${activePanel}-${displayValue}`} className="space-y-4">
               <div className="flex items-start justify-between gap-4">
@@ -811,23 +819,22 @@ function MetricSummaryCard({
                   </div>
                 </div>
                 <div
-                  className={cn(
-                    "relative flex size-[4.5rem] shrink-0 items-center justify-center rounded-full ring-[6px]",
-                    activeStatus === "great" && "ring-chart-4/65",
-                    activeStatus === "needs-improvement" &&
-                      "ring-[oklch(0.75_0.16_80_/_0.6)]",
-                    activeStatus === "poor" && "ring-destructive/60",
-                    activeStatus === "none" && "ring-muted",
-                  )}
+                  className="relative flex size-[4.5rem] shrink-0 items-center justify-center rounded-full"
+                  style={{
+                    background: `conic-gradient(${ringColor} ${ringPercent * 3.6}deg, var(--muted) 0deg)`,
+                  }}
                 >
-                  <span className="text-xl font-semibold tracking-tight">
-                    {scoreValue ?? "--"}
-                  </span>
-                  {scoreValue == null ? null : (
-                    <span className="ml-0.5 text-[0.65rem] font-medium text-muted-foreground">
-                      %
+                  <div className="absolute inset-[6px] rounded-full bg-card" />
+                  <div className="relative z-10 flex items-baseline">
+                    <span className="text-xl font-semibold tracking-tight">
+                      {scoreValue ?? "--"}
                     </span>
-                  )}
+                    {scoreValue == null ? null : (
+                      <span className="ml-0.5 text-[0.65rem] font-medium text-muted-foreground">
+                        %
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               <p className="max-w-xl text-sm leading-6 text-muted-foreground">
@@ -835,9 +842,16 @@ function MetricSummaryCard({
               </p>
             </div>
           </AutoTransition>
+          <div className="mt-auto rounded-none bg-muted/45 p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+              <RiSpeedUpLine className="size-4 text-muted-foreground" />
+              {messages.performance.datasetTitle}
+            </div>
+            <p className="text-sm leading-6 text-muted-foreground">{thresholdText}</p>
+          </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1">
               <div className="text-sm font-medium">
@@ -855,15 +869,7 @@ function MetricSummaryCard({
             </div>
           </div>
 
-          <div className="rounded-none bg-muted/45 p-4">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-              <RiSpeedUpLine className="size-4 text-muted-foreground" />
-              {messages.performance.datasetTitle}
-            </div>
-            <p className="text-sm leading-6 text-muted-foreground">{thresholdText}</p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="mt-auto grid gap-3 sm:grid-cols-4">
             {[
               ["p50", messages.performance.p50Label, activeSummary.p50],
               ["p75", messages.performance.p75Label, activeSummary.p75],
@@ -954,21 +960,6 @@ function PerformanceTrendCard({
             <p className="text-sm text-muted-foreground">
               {panelLabel(messages, activePanel)}
             </p>
-          </div>
-          <div className="flex flex-wrap gap-2 text-[0.7rem] text-muted-foreground">
-            {(["poor", "needs-improvement", "great"] as const).map((status) => (
-              <span
-                key={status}
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-full px-2 py-1",
-                  STATUS_STYLE[status].softClassName,
-                )}
-              >
-                <span className="inline-flex size-1.5 rounded-full bg-current" />
-                {statusLabel(messages, status)}{" "}
-                {pathStatusRangeLabel(locale, messages, activePanel, status)}
-              </span>
-            ))}
           </div>
         </div>
       </CardHeader>
@@ -1240,7 +1231,7 @@ function PathStatusColumn({
           {numberFormat(locale, rows.length)}
         </div>
       </div>
-      <div className="px-1 pb-4">
+      <div className="pb-4">
         <DataTableSwitch
           loading={false}
           hasContent={rows.length > 0}
@@ -1463,45 +1454,54 @@ export function PerformanceClientPage({
         subtitle={messages.performance.subtitle}
       />
 
-      <ContentSwitch
-        loading={loading && !hydrated}
-        hasContent={hasContent}
-        loadingLabel={messages.common.loading}
-        loadingContent={<PerformanceSkeleton />}
-        emptyContent={<p>{messages.common.noData}</p>}
-        minHeightClassName="min-h-[520px]"
-      >
-        <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
-          <PerformanceRail
-            activePanel={activePanel}
-            cards={metricCards}
-            onSelect={setActivePanel}
-          />
-          <div className="min-w-0 space-y-4">
-            <MetricSummaryCard
-              locale={locale}
-              messages={messages}
-              activePanel={activePanel}
-              activeSummary={activeSummary}
-              activeValue={activeValue}
-              pathCount={pathRows.length}
-            />
-            <PerformanceTrendCard
-              locale={locale}
-              messages={messages}
-              activePanel={activePanel}
-              dataWindow={dataWindow}
-              points={chartPoints}
-            />
-            <PathPerformanceTable
-              locale={locale}
-              messages={messages}
-              activePanel={activePanel}
-              rows={pathRows}
-            />
+      <AutoTransition initial duration={0.22}>
+        {loading && !hydrated ? (
+          <div key="loading">
+            <PerformanceSkeleton />
           </div>
-        </div>
-      </ContentSwitch>
+        ) : hasContent ? (
+          <div
+            key="content"
+            className="grid items-start gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]"
+          >
+            <PerformanceRail
+              activePanel={activePanel}
+              cards={metricCards}
+              onSelect={setActivePanel}
+            />
+            <div className="min-w-0 space-y-4">
+              <MetricSummaryCard
+                locale={locale}
+                messages={messages}
+                activePanel={activePanel}
+                activeSummary={activeSummary}
+                activeValue={activeValue}
+                pathCount={pathRows.length}
+              />
+              <PerformanceTrendCard
+                locale={locale}
+                messages={messages}
+                activePanel={activePanel}
+                dataWindow={dataWindow}
+                points={chartPoints}
+              />
+              <PathPerformanceTable
+                locale={locale}
+                messages={messages}
+                activePanel={activePanel}
+                rows={pathRows}
+              />
+            </div>
+          </div>
+        ) : (
+          <div
+            key="empty"
+            className="flex min-h-[520px] items-center justify-center text-sm text-muted-foreground"
+          >
+            {messages.common.noData}
+          </div>
+        )}
+      </AutoTransition>
     </div>
   );
 }
