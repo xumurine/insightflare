@@ -1,6 +1,12 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useState } from "react";
+import {
+  startTransition,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { AnimatePresence, motion } from "motion/react";
 import {
   CartesianGrid,
   Line,
@@ -25,6 +31,7 @@ import type { Feature, FeatureCollection, Geometry, Position } from "geojson";
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { PageHeading } from "@/components/dashboard/page-heading";
+import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -96,6 +103,14 @@ interface CountryHealthRow {
   views: number;
   samples: number;
   value: number | null;
+  score: number | null;
+  status: PerformanceStatus;
+}
+
+interface CountryMapHover {
+  key: string;
+  label: string;
+  samples: number;
   score: number | null;
   status: PerformanceStatus;
 }
@@ -319,10 +334,23 @@ function metricScore(
 ): number | null {
   if (value == null || !Number.isFinite(value)) return null;
   const thresholds = METRIC_THRESHOLDS[metric];
-  if (value <= thresholds.good) return 100;
-  if (value >= thresholds.poor) return 0;
-  const ratio = (value - thresholds.good) / (thresholds.poor - thresholds.good);
-  return Math.max(0, Math.min(100, 100 - ratio * 100));
+  if (value <= thresholds.good) {
+    const ratio = thresholds.good > 0 ? value / thresholds.good : 0;
+    return Math.max(90, Math.min(100, 100 - ratio * 10));
+  }
+  if (value <= thresholds.poor) {
+    const ratio =
+      (value - thresholds.good) / (thresholds.poor - thresholds.good);
+    return Math.max(50, Math.min(90, 90 - ratio * 40));
+  }
+
+  const poorWindow = Math.max(
+    thresholds.poor - thresholds.good,
+    thresholds.poor,
+    1,
+  );
+  const ratio = (value - thresholds.poor) / poorWindow;
+  return Math.max(0, Math.min(50, 50 - ratio * 50));
 }
 
 function averageScore(values: Array<number | null | undefined>): number | null {
@@ -538,14 +566,41 @@ function statusColor(status: PerformanceStatus): string {
   return "var(--color-muted-foreground)";
 }
 
-function railSegments(): Array<{
+function railDomainMax(key: PerformancePanelKey): number {
+  if (key === "score") return 100;
+  const thresholds = METRIC_THRESHOLDS[key];
+  if (key === "cls") return Math.max(0.3, thresholds.poor * 1.2);
+  return Math.max(thresholds.poor * 1.2, thresholds.good);
+}
+
+function railSegments(key: PerformancePanelKey): Array<{
   status: Exclude<PerformanceStatus, "none">;
   width: number;
 }> {
+  if (key === "score") {
+    return [
+      { status: "poor", width: 50 },
+      { status: "needs-improvement", width: 40 },
+      { status: "great", width: 10 },
+    ];
+  }
+
+  const thresholds = METRIC_THRESHOLDS[key];
+  const domainMax = railDomainMax(key);
+  const greatWidth = Math.max(
+    0,
+    Math.min(100, (thresholds.good / domainMax) * 100),
+  );
+  const needsWidth = Math.max(
+    0,
+    Math.min(100 - greatWidth, ((thresholds.poor - thresholds.good) / domainMax) * 100),
+  );
+  const poorWidth = Math.max(0, 100 - greatWidth - needsWidth);
+
   return [
-    { status: "poor", width: 50 },
-    { status: "needs-improvement", width: 40 },
-    { status: "great", width: 10 },
+    { status: "great", width: greatWidth },
+    { status: "needs-improvement", width: needsWidth },
+    { status: "poor", width: poorWidth },
   ];
 }
 
@@ -554,9 +609,8 @@ function railMarkerPosition(
   value: number | null,
 ): number | null {
   if (value == null || !Number.isFinite(value)) return null;
-  const score = key === "score" ? value : metricScore(key, value);
-  if (score == null || !Number.isFinite(score)) return null;
-  return Math.max(0, Math.min(100, score));
+  if (key === "score") return Math.max(0, Math.min(100, value));
+  return Math.max(0, Math.min(100, (value / railDomainMax(key)) * 100));
 }
 
 function buildScoreTrend(
@@ -745,11 +799,11 @@ function SegmentedThresholdBar({
   status: PerformanceStatus;
 }) {
   const marker = railMarkerPosition(panelKey, value);
-  const segments = railSegments();
+  const segments = railSegments(panelKey);
 
   return (
-    <div className="relative h-3">
-      <div className="absolute inset-x-0 top-1/2 flex h-0.5 -translate-y-1/2 overflow-hidden rounded-full bg-muted">
+    <div className="relative h-5">
+      <div className="absolute inset-x-0 top-1/2 flex h-2 -translate-y-1/2 overflow-hidden rounded-full bg-muted">
         {segments.map((segment) => (
           <div
             key={`${panelKey}-${segment.status}`}
@@ -763,7 +817,7 @@ function SegmentedThresholdBar({
       </div>
       {marker == null ? null : (
         <span
-          className="absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-card"
+          className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-card"
           style={{
             left: `${marker}%`,
             backgroundColor: statusColor(status),
@@ -1203,7 +1257,7 @@ type CountryFeature = Feature<Geometry, Record<string, unknown>>;
 type CountriesFeatureCollection = FeatureCollection<Geometry, Record<string, unknown>>;
 
 const WORLD_MAP_WIDTH = 960;
-const WORLD_MAP_HEIGHT = 430;
+const WORLD_MAP_HEIGHT = 480;
 
 function normalizeCountryCode(value: string | null | undefined): string | null {
   const normalized = String(value ?? "").trim().toUpperCase();
@@ -1256,6 +1310,22 @@ function resolveCountryCodeFromFeature(
   }
 
   return null;
+}
+
+function resolveCountryLabelFromFeature(
+  feature: CountryFeature,
+  code: string | null,
+  locale: Locale,
+  unknownLabel: string,
+): string {
+  if (code) return resolveCountryLabel(code, locale, unknownLabel).label;
+  const props = feature.properties ?? {};
+  const labelCandidates = [props.name, props.NAME, props.admin, props.ADMIN];
+  for (const candidate of labelCandidates) {
+    const label = String(candidate ?? "").trim();
+    if (label) return label;
+  }
+  return unknownLabel;
 }
 
 function projectWorldPosition(position: Position): [number, number] {
@@ -1334,6 +1404,8 @@ function PerformanceHealthMapCard({
 }) {
   const [featureCollection, setFeatureCollection] =
     useState<CountriesFeatureCollection | null>(null);
+  const [hoveredCountry, setHoveredCountry] =
+    useState<CountryMapHover | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -1407,6 +1479,34 @@ function PerformanceHealthMapCard({
     );
   };
 
+  const updateCountryHover = (
+    hoverKey: string,
+    feature: CountryFeature,
+    code: string | null,
+    country: CountryHealthRow | null,
+    status: PerformanceStatus,
+  ) => {
+    const label =
+      country?.label ??
+      resolveCountryLabelFromFeature(
+        feature,
+        code,
+        locale,
+        messages.common.unknown,
+      );
+    setHoveredCountry({
+      key: hoverKey,
+      label,
+      samples: country?.samples ?? 0,
+      score: country?.score ?? null,
+      status,
+    });
+  };
+  const hoverScore = roundedScore(hoveredCountry?.score);
+  const hoveredSamplesText = numberFormat(locale, hoveredCountry?.samples ?? 0);
+  const hoveredScoreText =
+    hoverScore == null ? "--" : numberFormat(locale, hoverScore);
+
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-3">
@@ -1422,42 +1522,193 @@ function PerformanceHealthMapCard({
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="relative min-h-[22rem] overflow-hidden border-t border-border/70 bg-muted/20 p-4">
+        <div className="relative overflow-hidden border-t border-border/70 bg-muted/20 p-3">
           {featureCollection ? (
-            <svg
-              role="img"
-              aria-label={messages.performance.countryHealthTitle}
-              className="h-full min-h-[20rem] w-full"
-              viewBox={`0 0 ${WORLD_MAP_WIDTH} ${WORLD_MAP_HEIGHT}`}
-              preserveAspectRatio="xMidYMid meet"
+            <div
+              className="relative mx-auto aspect-[2/1] w-full"
+              onMouseLeave={() => setHoveredCountry(null)}
             >
-              <rect
-                width={WORLD_MAP_WIDTH}
-                height={WORLD_MAP_HEIGHT}
-                fill="transparent"
-              />
-              {featureCollection.features.map((feature, index) => {
-                const code = resolveCountryCodeFromFeature(feature);
-                const country = code ? countryMap.get(code) : null;
-                const status = country?.status ?? "none";
-                const path = geometryToPath(feature.geometry);
-                if (!path) return null;
-                return (
-                  <path
-                    key={`${code ?? "country"}-${index}`}
-                    d={path}
-                    fill={statusColor(status)}
-                    fillOpacity={countryFillOpacity(status, country?.samples ?? 0)}
-                    stroke="var(--border)"
-                    strokeOpacity={0.86}
-                    strokeWidth={0.65}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                );
-              })}
-            </svg>
+              <svg
+                role="img"
+                aria-label={messages.performance.countryHealthTitle}
+                className="block h-full w-full"
+                viewBox={`0 0 ${WORLD_MAP_WIDTH} ${WORLD_MAP_HEIGHT}`}
+                preserveAspectRatio="xMidYMid meet"
+              >
+                <rect
+                  width={WORLD_MAP_WIDTH}
+                  height={WORLD_MAP_HEIGHT}
+                  fill="transparent"
+                />
+                {featureCollection.features.map((feature, index) => {
+                  const code = resolveCountryCodeFromFeature(feature);
+                  const country = code ? countryMap.get(code) : null;
+                  const status = country?.status ?? "none";
+                  const path = geometryToPath(feature.geometry);
+                  const hoverKey = `${code ?? "country"}-${index}`;
+                  const isHovered = hoveredCountry?.key === hoverKey;
+                  const label =
+                    country?.label ??
+                    resolveCountryLabelFromFeature(
+                      feature,
+                      code,
+                      locale,
+                      messages.common.unknown,
+                    );
+                  const score = roundedScore(country?.score);
+                  if (!path) return null;
+                  return (
+                    <path
+                      key={hoverKey}
+                      d={path}
+                      fill={statusColor(status)}
+                      fillOpacity={
+                        isHovered
+                          ? Math.min(
+                              0.82,
+                              countryFillOpacity(status, country?.samples ?? 0) +
+                                0.22,
+                            )
+                          : countryFillOpacity(status, country?.samples ?? 0)
+                      }
+                      stroke={isHovered ? "var(--foreground)" : "var(--border)"}
+                      strokeOpacity={isHovered ? 0.96 : 0.86}
+                      strokeWidth={isHovered ? 1 : 0.65}
+                      vectorEffect="non-scaling-stroke"
+                      className="cursor-default transition-[fill-opacity,stroke,stroke-opacity] duration-150"
+                      onMouseEnter={() =>
+                        updateCountryHover(
+                          hoverKey,
+                          feature,
+                          code,
+                          country ?? null,
+                          status,
+                        )
+                      }
+                      onMouseMove={() =>
+                        updateCountryHover(
+                          hoverKey,
+                          feature,
+                          code,
+                          country ?? null,
+                          status,
+                        )
+                      }
+                    >
+                      <title>
+                        {`${label}\n${messages.performance.samplesLabel}: ${numberFormat(
+                          locale,
+                          country?.samples ?? 0,
+                        )}\n${messages.performance.score}: ${
+                          score == null ? "--" : numberFormat(locale, score)
+                        }`}
+                      </title>
+                    </path>
+                  );
+                })}
+              </svg>
+              <AnimatePresence>
+                {hoveredCountry ? (
+                  <motion.div
+                    key="performance-country-toolbar"
+                    className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3"
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 12 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                  >
+                    <div className="inline-flex max-w-full items-center gap-4 rounded-md border border-border/70 bg-background/92 px-3 py-2 text-xs shadow-lg backdrop-blur-sm">
+                      <AutoResizer
+                        initial
+                        animateWidth
+                        animateHeight={false}
+                        className="inline-flex min-w-0 shrink items-center"
+                      >
+                        <AutoTransition
+                          className="inline-block"
+                          duration={0.2}
+                          type="fade"
+                          initial={false}
+                          presenceMode="wait"
+                          customVariants={{
+                            initial: { opacity: 0 },
+                            animate: { opacity: 1 },
+                            exit: { opacity: 0 },
+                          }}
+                        >
+                          <span
+                            key={`country-${hoveredCountry.key}-${hoveredCountry.label}`}
+                            className="inline-flex items-center gap-2 whitespace-nowrap font-medium"
+                          >
+                            <span
+                              className="size-2 rounded-full"
+                              style={{
+                                backgroundColor: statusColor(hoveredCountry.status),
+                              }}
+                            />
+                            {hoveredCountry.label}
+                          </span>
+                        </AutoTransition>
+                      </AutoResizer>
+                      <span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground">
+                        <span>{messages.performance.samplesLabel}:</span>
+                        <AutoResizer
+                          initial
+                          animateWidth
+                          animateHeight={false}
+                          className="inline-flex shrink-0 items-center"
+                        >
+                          <AutoTransition
+                            className="inline-block font-mono text-foreground tabular-nums"
+                            duration={0.2}
+                            type="fade"
+                            initial={false}
+                            presenceMode="wait"
+                            customVariants={{
+                              initial: { opacity: 0 },
+                              animate: { opacity: 1 },
+                              exit: { opacity: 0 },
+                            }}
+                          >
+                            <span key={`samples-${hoveredSamplesText}`}>
+                              {hoveredSamplesText}
+                            </span>
+                          </AutoTransition>
+                        </AutoResizer>
+                      </span>
+                      <span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground">
+                        <span>{messages.performance.score}:</span>
+                        <AutoResizer
+                          initial
+                          animateWidth
+                          animateHeight={false}
+                          className="inline-flex shrink-0 items-center"
+                        >
+                          <AutoTransition
+                            className="inline-block font-mono text-foreground tabular-nums"
+                            duration={0.2}
+                            type="fade"
+                            initial={false}
+                            presenceMode="wait"
+                            customVariants={{
+                              initial: { opacity: 0 },
+                              animate: { opacity: 1 },
+                              exit: { opacity: 0 },
+                            }}
+                          >
+                            <span key={`score-${hoveredScoreText}`}>
+                              {hoveredScoreText}
+                            </span>
+                          </AutoTransition>
+                        </AutoResizer>
+                      </span>
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </div>
           ) : (
-            <Skeleton className="h-[20rem] w-full rounded-none" />
+            <Skeleton className="mx-auto aspect-[2/1] w-full rounded-none" />
           )}
         </div>
         <div className="grid min-h-[18rem] divide-y divide-border/70 border-t border-border/70 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
@@ -1504,10 +1755,10 @@ function CountryStatusColumn({
   const header = (
     <TableRow className="hover:bg-transparent">
       <TableHead className="h-8 p-0">
-        <div className="px-3">{messages.common.country}</div>
+        <div className="px-4">{messages.common.country}</div>
       </TableHead>
-      <TableHead className="h-8 p-0 text-right">
-        <div className="px-3">
+      <TableHead className="h-8 p-0 w-20">
+        <div className="flex justify-end px-2">
           <SortHeaderButton
             active={sort.key === "samples"}
             direction={sort.direction}
@@ -1517,8 +1768,8 @@ function CountryStatusColumn({
           </SortHeaderButton>
         </div>
       </TableHead>
-      <TableHead className="h-8 p-0 text-right">
-        <div className="px-3">
+      <TableHead className="h-8 p-0 w-20">
+        <div className="flex justify-end px-2">
           <SortHeaderButton
             active={sort.key === "value"}
             direction={sort.direction}
@@ -1547,17 +1798,17 @@ function CountryStatusColumn({
         }}
       >
         <TableCell className="p-0 whitespace-normal align-top">
-          <div className="max-w-[18rem] px-3 py-2 leading-5">
+          <div className="max-w-[18rem] px-4 py-2 leading-5 whitespace-normal break-words">
             <CountryLabelWithFlag label={row.label} iconName={row.iconName} />
           </div>
         </TableCell>
-        <TableCell className="p-0 text-right align-top">
-          <div className="px-3 py-2 font-mono tabular-nums">
+        <TableCell className="p-0 text-right">
+          <div className="px-2 py-2 font-mono tabular-nums">
             {numberFormat(locale, row.samples)}
           </div>
         </TableCell>
-        <TableCell className="p-0 text-right align-top">
-          <div className="px-3 py-2 font-mono tabular-nums">
+        <TableCell className="p-0 text-right">
+          <div className="px-4 py-2 font-mono tabular-nums">
             {formatPanelValue(locale, messages, activePanel, row.value)}
           </div>
         </TableCell>
@@ -1680,10 +1931,10 @@ function PathStatusColumn({
   const header = (
     <TableRow className="hover:bg-transparent">
       <TableHead className="h-8 p-0">
-        <div className="px-3">{messages.common.path}</div>
+        <div className="px-4">{messages.common.path}</div>
       </TableHead>
-      <TableHead className="h-8 p-0 text-right">
-        <div className="px-3">
+      <TableHead className="h-8 p-0 w-20">
+        <div className="flex justify-end px-2">
           <SortHeaderButton
             active={sort.key === "samples"}
             direction={sort.direction}
@@ -1693,8 +1944,8 @@ function PathStatusColumn({
           </SortHeaderButton>
         </div>
       </TableHead>
-      <TableHead className="h-8 p-0 text-right">
-        <div className="px-3">
+      <TableHead className="h-8 p-0 w-20">
+        <div className="flex justify-end px-2">
           <SortHeaderButton
             active={sort.key === "value"}
             direction={sort.direction}
@@ -1723,17 +1974,17 @@ function PathStatusColumn({
         }}
       >
         <TableCell className="p-0 whitespace-normal align-top">
-          <div className="max-w-[18rem] px-3 py-2 leading-5 whitespace-normal break-words">
+          <div className="max-w-[18rem] px-4 py-2 leading-5 whitespace-normal break-words">
             {row.pathname || "/"}
           </div>
         </TableCell>
-        <TableCell className="p-0 text-right align-top">
-          <div className="px-3 py-2 font-mono tabular-nums">
+        <TableCell className="p-0 text-right">
+          <div className="px-2 py-2 font-mono tabular-nums">
             {numberFormat(locale, row.samples)}
           </div>
         </TableCell>
-        <TableCell className="p-0 text-right align-top">
-          <div className="px-3 py-2 font-mono tabular-nums">
+        <TableCell className="p-0 text-right">
+          <div className="px-4 py-2 font-mono tabular-nums">
             {formatPanelValue(locale, messages, activePanel, row.value)}
           </div>
         </TableCell>
@@ -1972,7 +2223,8 @@ export function PerformanceClientPage({
       (performanceData.countries ?? [])
         .map((country) => {
           const value = countryValue(country, activePanel);
-          const score = countryScore(country);
+          const score =
+            activePanel === "score" ? value : metricScore(activePanel, value);
           const normalizedCountry = String(country.country ?? "").trim().toUpperCase();
           const { label, code } = resolveCountryLabel(
             normalizedCountry,
