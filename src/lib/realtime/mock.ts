@@ -4677,6 +4677,39 @@ function demoPerformanceMetricValue(
   );
 }
 
+type DemoPerformanceHealthBand = "great" | "needs" | "poor";
+
+const DEMO_PERFORMANCE_BAND_VALUES: Record<
+  DemoPerformanceMetricKey,
+  Record<DemoPerformanceHealthBand, number>
+> = {
+  ttfb: { great: 380, needs: 1050, poor: 2250 },
+  fcp: { great: 920, needs: 2200, poor: 3650 },
+  lcp: { great: 1650, needs: 3000, poor: 5200 },
+  cls: { great: 0.045, needs: 0.14, poor: 0.34 },
+  inp: { great: 95, needs: 280, poor: 650 },
+};
+
+function demoPerformanceBandForIndex(index: number): DemoPerformanceHealthBand {
+  const bucket = Math.abs(index) % 3;
+  if (bucket === 0) return "great";
+  if (bucket === 1) return "needs";
+  return "poor";
+}
+
+function demoPerformanceBandValue(
+  siteId: string,
+  visit: DemoVisitFact,
+  metric: DemoPerformanceMetricKey,
+  index: number,
+): number {
+  const band = demoPerformanceBandForIndex(index);
+  const target = DEMO_PERFORMANCE_BAND_VALUES[metric][band];
+  const rng = mulberry32(fnv1a(`${siteId}:${visit.visitId}:${metric}:${band}:${index}`));
+  const jitter = 0.86 + rng() * 0.28;
+  return roundDemoPerformanceValue(target * jitter);
+}
+
 function demoPercentile(values: number[], ratio: number): number | null {
   if (values.length === 0) return null;
   const rank = Math.max(0, Math.ceil(values.length * ratio) - 1);
@@ -4785,14 +4818,16 @@ function generateDemoPerformance(
     Math.max(routeLimit, 1),
     (visit) => visit.pathname,
   );
-  const routes = routeRows.map((row) => {
+  const routes = routeRows.map((row, routeIndex) => {
     const visitsForPath = filtered.visits.filter(
       (visit) => visit.pathname === row.label,
     );
     const routeMetrics = Object.fromEntries(
       metrics.map((metric) => {
         const values = visitsForPath
-          .map((visit) => demoPerformanceMetricValue(siteId, visit, metric))
+          .map((visit) =>
+            demoPerformanceBandValue(siteId, visit, metric, routeIndex),
+          )
           .sort((left, right) => left - right);
         const avg = values.length > 0
           ? roundDemoPerformanceValue(
@@ -4819,12 +4854,55 @@ function generateDemoPerformance(
     };
   });
 
+  const countryRows = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    48,
+    (visit) => visit.country,
+  );
+  const countries = countryRows.map((row, countryIndex) => {
+    const visitsForCountry = filtered.visits.filter(
+      (visit) => visit.country === row.label,
+    );
+    const countryMetrics = Object.fromEntries(
+      metrics.map((metric) => {
+        const values = visitsForCountry
+          .map((visit) =>
+            demoPerformanceBandValue(siteId, visit, metric, countryIndex),
+          )
+          .sort((left, right) => left - right);
+        const avg = values.length > 0
+          ? roundDemoPerformanceValue(
+              values.reduce((sum, value) => sum + value, 0) / values.length,
+            )
+          : null;
+        return [
+          metric,
+          {
+            avg,
+            p50: demoPercentile(values, 0.5),
+            p75: demoPercentile(values, 0.75),
+            p95: demoPercentile(values, 0.95),
+            samples: Math.max(0, Math.round(values.length * dataset.viewWeight)),
+          },
+        ];
+      }),
+    );
+
+    return {
+      country: row.label,
+      views: row.views,
+      metrics: countryMetrics,
+    };
+  });
+
   return {
     ok: true,
     interval,
     summaries,
     trends,
     routes,
+    countries,
   };
 }
 

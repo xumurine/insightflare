@@ -270,12 +270,19 @@ export interface PerformanceRouteSummary {
   metrics: Record<PerformanceMetricKey, PerformanceRouteMetricSummary>;
 }
 
+export interface PerformanceCountrySummary {
+  country: string;
+  views: number;
+  metrics: Record<PerformanceMetricKey, PerformanceRouteMetricSummary>;
+}
+
 export interface PerformanceData {
   ok: boolean;
   interval: "minute" | "hour" | "day" | "week" | "month";
   summaries: Record<PerformanceMetricKey, PerformanceSummary>;
   trends: Record<PerformanceMetricKey, PerformanceTrendPoint[]>;
   routes: PerformanceRouteSummary[];
+  countries: PerformanceCountrySummary[];
 }
 
 export interface BrowserVersionSlice {

@@ -141,6 +141,12 @@ interface PerformanceRouteRow {
   metrics: Record<PerformanceMetricKey, PerformanceRouteMetricRow>;
 }
 
+interface PerformanceCountryRow {
+  country: string;
+  views: number;
+  metrics: Record<PerformanceMetricKey, PerformanceRouteMetricRow>;
+}
+
 interface BrowserVersionAggregateRow {
   browser: string;
   version: string;
@@ -1625,6 +1631,124 @@ ORDER BY path_views.views DESC, thresholds.pathname ASC, thresholds.metric ASC
   }
 
   return [...byPath.values()];
+}
+
+async function queryPerformanceCountriesFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+): Promise<PerformanceCountryRow[]> {
+  const filter = buildVisitFilterSql(filters);
+  const countryExpr = "UPPER(TRIM(COALESCE(country, '')))";
+  const sql = `
+WITH
+${buildVisitSourceCte()},
+filtered_visits AS (
+  SELECT *
+  FROM visit_source
+  ${filter.clause}
+),
+country_views AS (
+  SELECT
+    ${countryExpr} AS country,
+    count(*) AS views
+  FROM filtered_visits
+  WHERE ${countryExpr} != ''
+  GROUP BY country
+),
+metric_visits AS (
+  SELECT ${countryExpr} AS country, 'ttfb' AS metric, perf_ttfb_ms AS metricValue
+  FROM filtered_visits
+  WHERE ${countryExpr} != '' AND perf_ttfb_ms IS NOT NULL
+  UNION ALL
+  SELECT ${countryExpr} AS country, 'fcp' AS metric, perf_fcp_ms AS metricValue
+  FROM filtered_visits
+  WHERE ${countryExpr} != '' AND perf_fcp_ms IS NOT NULL
+  UNION ALL
+  SELECT ${countryExpr} AS country, 'lcp' AS metric, perf_lcp_ms AS metricValue
+  FROM filtered_visits
+  WHERE ${countryExpr} != '' AND perf_lcp_ms IS NOT NULL
+  UNION ALL
+  SELECT ${countryExpr} AS country, 'cls' AS metric, perf_cls AS metricValue
+  FROM filtered_visits
+  WHERE ${countryExpr} != '' AND perf_cls IS NOT NULL
+  UNION ALL
+  SELECT ${countryExpr} AS country, 'inp' AS metric, perf_inp_ms AS metricValue
+  FROM filtered_visits
+  WHERE ${countryExpr} != '' AND perf_inp_ms IS NOT NULL
+),
+ordered_values AS (
+  SELECT
+    country,
+    metric,
+    metricValue,
+    ROW_NUMBER() OVER (PARTITION BY country, metric ORDER BY metricValue ASC) AS rowNum,
+    COUNT(*) OVER (PARTITION BY country, metric) AS sampleCount
+  FROM metric_visits
+),
+metric_thresholds AS (
+  SELECT
+    country,
+    metric,
+    sampleCount,
+    AVG(metricValue) AS avgValue,
+    CAST(((sampleCount * 50) + 99) / 100 AS INTEGER) AS p50Rank,
+    CAST(((sampleCount * 75) + 99) / 100 AS INTEGER) AS p75Rank,
+    CAST(((sampleCount * 95) + 99) / 100 AS INTEGER) AS p95Rank
+  FROM ordered_values
+  GROUP BY country, metric, sampleCount
+)
+SELECT
+  thresholds.country AS country,
+  thresholds.metric AS metric,
+  country_views.views AS views,
+  thresholds.sampleCount AS samples,
+  thresholds.avgValue AS avgValue,
+  MIN(CASE WHEN ordered.rowNum >= thresholds.p50Rank THEN ordered.metricValue END) AS p50,
+  MIN(CASE WHEN ordered.rowNum >= thresholds.p75Rank THEN ordered.metricValue END) AS p75,
+  MIN(CASE WHEN ordered.rowNum >= thresholds.p95Rank THEN ordered.metricValue END) AS p95
+FROM metric_thresholds thresholds
+JOIN ordered_values ordered
+  ON ordered.country = thresholds.country
+ AND ordered.metric = thresholds.metric
+JOIN country_views ON country_views.country = thresholds.country
+GROUP BY
+  thresholds.country,
+  thresholds.metric,
+  country_views.views,
+  thresholds.sampleCount,
+  thresholds.avgValue
+ORDER BY country_views.views DESC, thresholds.country ASC, thresholds.metric ASC
+`;
+  const rows = await queryD1All<Record<string, unknown>>(
+    env,
+    sql,
+    [...visitSourceBindings(siteId, window), ...filter.bindings],
+  );
+  const byCountry = new Map<string, PerformanceCountryRow>();
+
+  for (const row of rows) {
+    const country = String(row.country ?? "").trim().toUpperCase();
+    const metric = String(row.metric ?? "") as PerformanceMetricKey;
+    if (!country || !(metric in PERFORMANCE_METRIC_COLUMNS)) continue;
+
+    const current = byCountry.get(country) ?? {
+      country,
+      views: Number(row.views ?? 0),
+      metrics: emptyPerformanceRouteMetrics(),
+    };
+    current.metrics[metric] = {
+      avg: roundPerformanceValue(row.avgValue),
+      p50: roundPerformanceValue(row.p50),
+      p75: roundPerformanceValue(row.p75),
+      p95: roundPerformanceValue(row.p95),
+      samples: Number(row.samples ?? 0),
+    };
+    byCountry.set(country, current);
+  }
+
+  return [...byCountry.values()];
 }
 
 async function queryOverviewFromD1(
@@ -3671,7 +3795,7 @@ async function handlePerformance(
   const filters = parseFilters(url);
   const interval = parseInterval(url);
   const routeLimit = parseLimit(url, 18, 50);
-  const [summaries, ttfb, fcp, lcp, cls, inp, routes] = await Promise.all([
+  const [summaries, ttfb, fcp, lcp, cls, inp, routes, countries] = await Promise.all([
     queryPerformanceSummariesFromD1(env, siteId, window, filters),
     queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "ttfb"),
     queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "fcp"),
@@ -3679,6 +3803,7 @@ async function handlePerformance(
     queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "cls"),
     queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "inp"),
     queryPerformanceRoutesFromD1(env, siteId, window, filters, routeLimit),
+    queryPerformanceCountriesFromD1(env, siteId, window, filters),
   ]);
 
   return jsonResponse({
@@ -3693,6 +3818,7 @@ async function handlePerformance(
       inp,
     },
     routes,
+    countries,
   });
 }
 

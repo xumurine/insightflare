@@ -427,6 +427,8 @@ export interface AppMessages {
     currentReading: string;
     metricThresholdText: string;
     scoreThresholdText: string;
+    countryHealthTitle: string;
+    countryHealthSubtitle: string;
     pathsTitle: string;
     pathsAnalyzedLabel: string;
     metricValueColumn: string;

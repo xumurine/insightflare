@@ -432,6 +432,8 @@ performance:
   currentReading: "{metric} is {value} at P75 with an experience score of {score} across {samples} samples. Current status: {status}."
   metricThresholdText: "Great is at or below {good}; needs improvement is between {good} and {poor}; poor is above {poor}."
   scoreThresholdText: Great is above 90, needs improvement is 50 to 90, and poor is below 50.
+  countryHealthTitle: Country Health
+  countryHealthSubtitle: Boundary fill shows {metric} health by country or region.
   pathsTitle: Path Performance
   pathsAnalyzedLabel: Paths analyzed
   metricValueColumn: P75 value

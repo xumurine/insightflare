@@ -143,10 +143,11 @@ function emptyPerformance(interval: TimeWindow["interval"]): PerformanceData {
       lcp: [...emptyTrend],
       cls: [...emptyTrend],
       inp: [...emptyTrend],
-    },
-    routes: [],
-  };
-}
+      },
+      routes: [],
+      countries: [],
+    };
+  }
 
 function emptyOverviewTab(): OverviewTabData {
   return { ok: true, data: [] };

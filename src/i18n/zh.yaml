@@ -432,6 +432,8 @@ performance:
   currentReading: "{metric} 当前 P75 为 {value}，体验评分为 {score}，覆盖 {samples} 个样本。当前判定：{status}。"
   metricThresholdText: "优秀为不高于 {good}；需要改进为 {good} 到 {poor}；较差为高于 {poor}。"
   scoreThresholdText: 优秀为高于 90，需要改进为 50 到 90，较差为低于 50。
+  countryHealthTitle: 国家和地区健康度
+  countryHealthSubtitle: 根据 {metric} 对国家或地区边界进行健康度着色。
   pathsTitle: 路径性能
   pathsAnalyzedLabel: 已分析路径
   metricValueColumn: P75 数值

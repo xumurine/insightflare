@@ -19,6 +19,9 @@ import {
   RiRouteLine,
   RiSpeedUpLine,
 } from "@remixicon/react";
+import { Icon } from "@iconify/react";
+import isoCountries from "i18n-iso-countries";
+import type { Feature, FeatureCollection, Geometry, Position } from "geojson";
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -39,6 +42,7 @@ import { fetchPerformance } from "@/lib/dashboard/client-data";
 import { intlLocale, numberFormat } from "@/lib/dashboard/format";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type {
+  PerformanceCountrySummary,
   PerformanceData,
   PerformanceMetricKey,
   PerformanceRouteMetricSummary,
@@ -47,6 +51,10 @@ import type {
   PerformanceTrendPoint,
 } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
+import {
+  resolveCountryFlagCode,
+  resolveCountryLabel,
+} from "@/lib/i18n/code-labels";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
 import { cn } from "@/lib/utils";
@@ -60,20 +68,31 @@ interface PerformanceClientPageProps {
 
 type PerformancePanelKey = PerformanceMetricKey | "score";
 type PerformanceStatus = "great" | "needs-improvement" | "poor" | "none";
-type PathSortKey = "views" | "value" | "score";
+type PathSortKey = "samples" | "value" | "score";
 type SortDirection = "asc" | "desc";
 
 interface MetricCardModel {
   key: PerformancePanelKey;
   label: string;
   valueLabel: string;
+  value: number | null;
   status: PerformanceStatus;
   score: number | null;
-  progress: number;
 }
 
 interface PathPerformanceRow {
   pathname: string;
+  views: number;
+  samples: number;
+  value: number | null;
+  score: number | null;
+  status: PerformanceStatus;
+}
+
+interface CountryHealthRow {
+  country: string;
+  label: string;
+  iconName: string | null;
   views: number;
   samples: number;
   value: number | null;
@@ -192,6 +211,7 @@ function emptyPerformance(interval: TimeWindow["interval"]): PerformanceData {
       inp: [],
     },
     routes: [],
+    countries: [],
   };
 }
 
@@ -387,6 +407,51 @@ function routeStatus(
   return metricStatus(key, value);
 }
 
+function countryMetric(
+  country: PerformanceCountrySummary,
+  metric: PerformanceMetricKey,
+): PerformanceRouteMetricSummary {
+  return country.metrics[metric] ?? EMPTY_ROUTE_METRIC_SUMMARY;
+}
+
+function countryScore(country: PerformanceCountrySummary): number | null {
+  return averageScore(
+    PERFORMANCE_METRICS.map((metric) =>
+      metricScore(metric, countryMetric(country, metric).p75),
+    ),
+  );
+}
+
+function countrySamples(
+  country: PerformanceCountrySummary,
+  key: PerformancePanelKey,
+): number {
+  if (key !== "score") return countryMetric(country, key).samples ?? 0;
+  return Math.max(
+    0,
+    ...PERFORMANCE_METRICS.map(
+      (metric) => countryMetric(country, metric).samples ?? 0,
+    ),
+  );
+}
+
+function countryValue(
+  country: PerformanceCountrySummary,
+  key: PerformancePanelKey,
+): number | null {
+  if (key === "score") return countryScore(country);
+  return countryMetric(country, key).p75;
+}
+
+function countryStatus(
+  country: PerformanceCountrySummary,
+  key: PerformancePanelKey,
+): PerformanceStatus {
+  const value = countryValue(country, key);
+  if (key === "score") return scoreStatus(value);
+  return metricStatus(key, value);
+}
+
 function formatMetricValue(
   locale: Locale,
   messages: AppMessages,
@@ -466,17 +531,32 @@ function zoneBackground(key: PerformancePanelKey, domainMax: number): string {
   return `linear-gradient(to bottom, ${poor} 0% ${poorEnd}%, ${needs} ${poorEnd}% ${needsEnd}%, ${great} ${needsEnd}% 100%)`;
 }
 
-function scoreProgress(key: PerformancePanelKey, value: number | null): number {
-  if (value == null || !Number.isFinite(value)) return 0;
-  if (key === "score") return Math.max(0, Math.min(100, value));
-  return Math.max(0, Math.min(100, value));
-}
-
 function statusColor(status: PerformanceStatus): string {
   if (status === "great") return "var(--color-chart-4)";
   if (status === "needs-improvement") return "oklch(0.75 0.16 80)";
   if (status === "poor") return "var(--color-destructive)";
   return "var(--color-muted-foreground)";
+}
+
+function railSegments(): Array<{
+  status: Exclude<PerformanceStatus, "none">;
+  width: number;
+}> {
+  return [
+    { status: "poor", width: 50 },
+    { status: "needs-improvement", width: 40 },
+    { status: "great", width: 10 },
+  ];
+}
+
+function railMarkerPosition(
+  key: PerformancePanelKey,
+  value: number | null,
+): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const score = key === "score" ? value : metricScore(key, value);
+  if (score == null || !Number.isFinite(score)) return null;
+  return Math.max(0, Math.min(100, score));
 }
 
 function buildScoreTrend(
@@ -655,6 +735,45 @@ function PerformanceSkeleton() {
   );
 }
 
+function SegmentedThresholdBar({
+  panelKey,
+  value,
+  status,
+}: {
+  panelKey: PerformancePanelKey;
+  value: number | null;
+  status: PerformanceStatus;
+}) {
+  const marker = railMarkerPosition(panelKey, value);
+  const segments = railSegments();
+
+  return (
+    <div className="relative h-3">
+      <div className="absolute inset-x-0 top-1/2 flex h-0.5 -translate-y-1/2 overflow-hidden rounded-full bg-muted">
+        {segments.map((segment) => (
+          <div
+            key={`${panelKey}-${segment.status}`}
+            className="h-full"
+            style={{
+              width: `${segment.width}%`,
+              backgroundColor: statusColor(segment.status),
+            }}
+          />
+        ))}
+      </div>
+      {marker == null ? null : (
+        <span
+          className="absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-card"
+          style={{
+            left: `${marker}%`,
+            backgroundColor: statusColor(status),
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 function PerformanceRail({
   activePanel,
   cards,
@@ -715,19 +834,11 @@ function PerformanceRail({
                     <StatusIcon className="size-4" />
                   </div>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className={cn(
-                      "h-full rounded-full transition-all duration-500",
-                      card.status === "poor" && "bg-destructive",
-                      card.status === "needs-improvement" &&
-                        "bg-[oklch(0.75_0.16_80)]",
-                      card.status === "great" && "bg-chart-4",
-                      card.status === "none" && "bg-muted-foreground/40",
-                    )}
-                    style={{ width: `${card.progress}%` }}
-                  />
-                </div>
+                <SegmentedThresholdBar
+                  panelKey={card.key}
+                  value={card.value}
+                  status={card.status}
+                />
               </div>
             </div>
           </Clickable>
@@ -842,42 +953,53 @@ function MetricSummaryCard({
               </p>
             </div>
           </AutoTransition>
-          <div className="mt-auto rounded-none bg-muted/45 p-4">
+          <div className="mt-auto grid grid-cols-2 gap-3">
+            <div className="flex min-h-[4.75rem] flex-col justify-between rounded-none bg-muted/45 p-3">
+              <div className="text-xs text-muted-foreground">
+                {messages.performance.pathsAnalyzedLabel}
+              </div>
+              <div className="font-mono text-lg font-semibold tabular-nums">
+                {numberFormat(locale, pathCount)}
+              </div>
+            </div>
+            <div className="flex min-h-[4.75rem] flex-col justify-between rounded-none bg-muted/45 p-3">
+              <div className="text-xs text-muted-foreground">
+                {messages.performance.samplesLabel}
+              </div>
+              <div className="font-mono text-lg font-semibold tabular-nums">
+                {numberFormat(locale, activeSummary.samples)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className="space-y-1">
+            <div className="text-sm font-medium">
+              {messages.performance.interpretationTitle}
+            </div>
+            <p className="text-sm leading-6 text-muted-foreground">{reading}</p>
+          </div>
+          <div className="rounded-none bg-muted/45 p-4">
             <div className="mb-2 flex items-center gap-2 text-sm font-medium">
               <RiSpeedUpLine className="size-4 text-muted-foreground" />
               {messages.performance.datasetTitle}
             </div>
             <p className="text-sm leading-6 text-muted-foreground">{thresholdText}</p>
           </div>
-        </div>
 
-        <div className="flex min-w-0 flex-col gap-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              <div className="text-sm font-medium">
-                {messages.performance.interpretationTitle}
-              </div>
-              <p className="text-sm leading-6 text-muted-foreground">{reading}</p>
-            </div>
-            <div className="shrink-0 rounded-none bg-muted px-3 py-2 text-right">
-              <div className="text-[0.68rem] uppercase tracking-[0.2em] text-muted-foreground">
-                {messages.performance.samplesLabel}
-              </div>
-              <div className="text-lg font-semibold tabular-nums">
-                {numberFormat(locale, activeSummary.samples)}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-auto grid gap-3 sm:grid-cols-4">
+          <div className="mt-auto grid gap-3 sm:grid-cols-3">
             {[
               ["p50", messages.performance.p50Label, activeSummary.p50],
               ["p75", messages.performance.p75Label, activeSummary.p75],
               ["p95", messages.performance.p95Label, activeSummary.p95],
             ].map(([key, label, value]) => (
-              <div key={key as string} className="rounded-none bg-muted/45 p-3">
+              <div
+                key={key as string}
+                className="flex min-h-[4.75rem] flex-col justify-between rounded-none bg-muted/45 p-3"
+              >
                 <div className="text-xs text-muted-foreground">{label as string}</div>
-                <div className="mt-2 font-mono text-sm font-medium tabular-nums">
+                <div className="font-mono text-sm font-medium tabular-nums">
                   {formatPanelValue(
                     locale,
                     messages,
@@ -887,14 +1009,6 @@ function MetricSummaryCard({
                 </div>
               </div>
             ))}
-            <div className="rounded-none bg-muted/45 p-3">
-              <div className="text-xs text-muted-foreground">
-                {messages.performance.pathsAnalyzedLabel}
-              </div>
-              <div className="mt-2 font-mono text-sm font-medium tabular-nums">
-                {numberFormat(locale, pathCount)}
-              </div>
-            </div>
           </div>
         </div>
       </CardContent>
@@ -950,6 +1064,12 @@ function PerformanceTrendCard({
   const xStart = points[0]?.timestampMs ?? dataWindow.from;
   const rawXEnd = points[points.length - 1]?.timestampMs ?? dataWindow.to;
   const xEnd = rawXEnd > xStart ? rawXEnd : xStart + 1;
+  const visiblePointCount = points.filter(
+    (point) => point.p50 != null || point.p75 != null || point.p95 != null,
+  ).length;
+  const lineDot = visiblePointCount <= 1
+    ? { r: 3.2, strokeWidth: 0 }
+    : false;
 
   return (
     <Card>
@@ -1044,7 +1164,8 @@ function PerformanceTrendCard({
               name={messages.performance.p50Label}
               stroke={PERFORMANCE_SERIES_COLORS.p50}
               strokeWidth={2}
-              dot={false}
+              dot={lineDot}
+              activeDot={{ r: 4 }}
               connectNulls={false}
               isAnimationActive
             />
@@ -1054,7 +1175,8 @@ function PerformanceTrendCard({
               name={messages.performance.p75Label}
               stroke={PERFORMANCE_SERIES_COLORS.p75}
               strokeWidth={2.4}
-              dot={false}
+              dot={lineDot}
+              activeDot={{ r: 4 }}
               connectNulls={false}
               isAnimationActive
             />
@@ -1064,7 +1186,8 @@ function PerformanceTrendCard({
               name={messages.performance.p95Label}
               stroke={PERFORMANCE_SERIES_COLORS.p95}
               strokeWidth={2}
-              dot={false}
+              dot={lineDot}
+              activeDot={{ r: 4 }}
               connectNulls={false}
               isAnimationActive
             />
@@ -1073,6 +1196,409 @@ function PerformanceTrendCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+type CountryFeature = Feature<Geometry, Record<string, unknown>>;
+type CountriesFeatureCollection = FeatureCollection<Geometry, Record<string, unknown>>;
+
+const WORLD_MAP_WIDTH = 960;
+const WORLD_MAP_HEIGHT = 430;
+
+function normalizeCountryCode(value: string | null | undefined): string | null {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
+}
+
+function resolveCountryCodeFromFeature(
+  feature: CountryFeature | null | undefined,
+): string | null {
+  if (!feature) return null;
+  const props = feature.properties ?? {};
+  const alpha2Candidates = [
+    props.ISO_A2,
+    props.iso_a2,
+    props.ADM0_A2,
+    props.adm0_a2,
+    props.WB_A2,
+    props.wb_a2,
+  ];
+
+  for (const candidate of alpha2Candidates) {
+    const code = normalizeCountryCode(String(candidate ?? ""));
+    if (code) return code;
+  }
+
+  const alpha3Candidates = [
+    props.ISO_A3,
+    props.iso_a3,
+    props.ADM0_A3,
+    props.adm0_a3,
+    props.WB_A3,
+    props.wb_a3,
+    props.SOV_A3,
+    props.sov_a3,
+    typeof feature.id === "string" ? feature.id : null,
+  ];
+  for (const candidate of alpha3Candidates) {
+    const alpha3 = String(candidate ?? "").trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(alpha3)) continue;
+    const code = normalizeCountryCode(isoCountries.alpha3ToAlpha2(alpha3) ?? "");
+    if (code) return code;
+  }
+
+  const nameCandidates = [props.name, props.NAME, props.admin, props.ADMIN];
+  for (const candidate of nameCandidates) {
+    const name = String(candidate ?? "").trim();
+    if (!name) continue;
+    const code = normalizeCountryCode(isoCountries.getAlpha2Code(name, "en") ?? "");
+    if (code) return code;
+  }
+
+  return null;
+}
+
+function projectWorldPosition(position: Position): [number, number] {
+  const longitude = Number(position[0] ?? 0);
+  const latitude = Number(position[1] ?? 0);
+  return [
+    ((longitude + 180) / 360) * WORLD_MAP_WIDTH,
+    ((90 - latitude) / 180) * WORLD_MAP_HEIGHT,
+  ];
+}
+
+function ringToPath(ring: Position[]): string {
+  return ring
+    .map((position, index) => {
+      const [x, y] = projectWorldPosition(position);
+      return `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+function geometryToPath(geometry: Geometry | null | undefined): string {
+  if (!geometry) return "";
+  if (geometry.type === "Polygon") {
+    return geometry.coordinates
+      .map((ring) => `${ringToPath(ring)} Z`)
+      .join(" ");
+  }
+  if (geometry.type === "MultiPolygon") {
+    return geometry.coordinates
+      .flatMap((polygon) => polygon.map((ring) => `${ringToPath(ring)} Z`))
+      .join(" ");
+  }
+  return "";
+}
+
+function countryFillOpacity(status: PerformanceStatus, samples: number): number {
+  if (samples <= 0 || status === "none") return 0.07;
+  if (status === "great") return 0.48;
+  if (status === "needs-improvement") return 0.42;
+  return 0.46;
+}
+
+function CountryLabelWithFlag({
+  label,
+  iconName,
+}: {
+  label: string;
+  iconName: string | null;
+}) {
+  if (!iconName) {
+    return <span className="truncate">{label}</span>;
+  }
+
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <Icon
+        icon={iconName}
+        style={{ width: 16, height: 12 }}
+        className="block shrink-0"
+      />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
+function PerformanceHealthMapCard({
+  locale,
+  messages,
+  activePanel,
+  countries,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  activePanel: PerformancePanelKey;
+  countries: CountryHealthRow[];
+}) {
+  const [featureCollection, setFeatureCollection] =
+    useState<CountriesFeatureCollection | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    fetch("/api/world-countries", { cache: "force-cache" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!active) return;
+        const next =
+          payload &&
+          typeof payload === "object" &&
+          (payload as { type?: unknown }).type === "FeatureCollection" &&
+          Array.isArray((payload as { features?: unknown }).features)
+            ? (payload as CountriesFeatureCollection)
+            : null;
+        setFeatureCollection(next);
+      })
+      .catch(() => {
+        if (!active) return;
+        setFeatureCollection(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const countryMap = useMemo(() => {
+    const map = new Map<string, CountryHealthRow>();
+    for (const country of countries) {
+      const code = normalizeCountryCode(country.country);
+      if (!code) continue;
+      map.set(code, country);
+    }
+    return map;
+  }, [countries]);
+  const [sort, setSort] = useState<{ key: PathSortKey; direction: SortDirection }>({
+    key: "samples",
+    direction: "desc",
+  });
+  const sortedCountries = useMemo(() => {
+    const direction = sort.direction === "asc" ? 1 : -1;
+    return [...countries].sort((a, b) => {
+      if (sort.key === "samples") return (a.samples - b.samples) * direction;
+      if (sort.key === "score") {
+        return ((a.score ?? -1) - (b.score ?? -1)) * direction;
+      }
+      return ((a.value ?? -1) - (b.value ?? -1)) * direction;
+    });
+  }, [countries, sort.direction, sort.key]);
+  const maxSamples = Math.max(1, ...sortedCountries.map((row) => row.samples));
+  const groupedRows = useMemo(
+    () => ({
+      poor: sortedCountries.filter((row) => row.status === "poor"),
+      "needs-improvement": sortedCountries.filter(
+        (row) => row.status === "needs-improvement",
+      ),
+      great: sortedCountries.filter((row) => row.status === "great"),
+    }),
+    [sortedCountries],
+  );
+
+  const updateSort = (key: PathSortKey) => {
+    setSort((current) =>
+      current.key === key
+        ? {
+            key,
+            direction: current.direction === "asc" ? "desc" : "asc",
+          }
+        : { key, direction: "desc" },
+    );
+  };
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="pb-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle>{messages.performance.countryHealthTitle}</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {formatI18nTemplate(messages.performance.countryHealthSubtitle, {
+                metric: panelLabel(messages, activePanel),
+              })}
+            </p>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="relative min-h-[22rem] overflow-hidden border-t border-border/70 bg-muted/20 p-4">
+          {featureCollection ? (
+            <svg
+              role="img"
+              aria-label={messages.performance.countryHealthTitle}
+              className="h-full min-h-[20rem] w-full"
+              viewBox={`0 0 ${WORLD_MAP_WIDTH} ${WORLD_MAP_HEIGHT}`}
+              preserveAspectRatio="xMidYMid meet"
+            >
+              <rect
+                width={WORLD_MAP_WIDTH}
+                height={WORLD_MAP_HEIGHT}
+                fill="transparent"
+              />
+              {featureCollection.features.map((feature, index) => {
+                const code = resolveCountryCodeFromFeature(feature);
+                const country = code ? countryMap.get(code) : null;
+                const status = country?.status ?? "none";
+                const path = geometryToPath(feature.geometry);
+                if (!path) return null;
+                return (
+                  <path
+                    key={`${code ?? "country"}-${index}`}
+                    d={path}
+                    fill={statusColor(status)}
+                    fillOpacity={countryFillOpacity(status, country?.samples ?? 0)}
+                    stroke="var(--border)"
+                    strokeOpacity={0.86}
+                    strokeWidth={0.65}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                );
+              })}
+            </svg>
+          ) : (
+            <Skeleton className="h-[20rem] w-full rounded-none" />
+          )}
+        </div>
+        <div className="grid min-h-[18rem] divide-y divide-border/70 border-t border-border/70 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+          {(["poor", "needs-improvement", "great"] as const).map((status) => (
+            <CountryStatusColumn
+              key={status}
+              locale={locale}
+              messages={messages}
+              activePanel={activePanel}
+              status={status}
+              rows={groupedRows[status]}
+              maxSamples={maxSamples}
+              sort={sort}
+              onSort={updateSort}
+            />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CountryStatusColumn({
+  locale,
+  messages,
+  activePanel,
+  status,
+  rows,
+  maxSamples,
+  sort,
+  onSort,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  activePanel: PerformancePanelKey;
+  status: Exclude<PerformanceStatus, "none">;
+  rows: CountryHealthRow[];
+  maxSamples: number;
+  sort: { key: PathSortKey; direction: SortDirection };
+  onSort: (key: PathSortKey) => void;
+}) {
+  const statusStyle = STATUS_STYLE[status];
+  const StatusIcon = statusStyle.icon;
+  const header = (
+    <TableRow className="hover:bg-transparent">
+      <TableHead className="h-8 p-0">
+        <div className="px-3">{messages.common.country}</div>
+      </TableHead>
+      <TableHead className="h-8 p-0 text-right">
+        <div className="px-3">
+          <SortHeaderButton
+            active={sort.key === "samples"}
+            direction={sort.direction}
+            onClick={() => onSort("samples")}
+          >
+            {messages.performance.samplesLabel}
+          </SortHeaderButton>
+        </div>
+      </TableHead>
+      <TableHead className="h-8 p-0 text-right">
+        <div className="px-3">
+          <SortHeaderButton
+            active={sort.key === "value"}
+            direction={sort.direction}
+            onClick={() => onSort("value")}
+          >
+            {activePanel === "score"
+              ? messages.performance.score
+              : messages.performance.metricValueColumn}
+          </SortHeaderButton>
+        </div>
+      </TableHead>
+    </TableRow>
+  );
+
+  const renderedRows = rows.map((row) => {
+    const progressWidth = `${Math.max(2, Math.min(100, (row.samples / maxSamples) * 100))}%`;
+    return (
+      <AnimatedDataTableRow
+        key={`${status}-${row.country}`}
+        className="group/row bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-[0.98] dark:hover:brightness-125"
+        style={{
+          backgroundImage:
+            "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
+          backgroundPosition: "left top",
+          backgroundSize: `${progressWidth} 100%`,
+        }}
+      >
+        <TableCell className="p-0 whitespace-normal align-top">
+          <div className="max-w-[18rem] px-3 py-2 leading-5">
+            <CountryLabelWithFlag label={row.label} iconName={row.iconName} />
+          </div>
+        </TableCell>
+        <TableCell className="p-0 text-right align-top">
+          <div className="px-3 py-2 font-mono tabular-nums">
+            {numberFormat(locale, row.samples)}
+          </div>
+        </TableCell>
+        <TableCell className="p-0 text-right align-top">
+          <div className="px-3 py-2 font-mono tabular-nums">
+            {formatPanelValue(locale, messages, activePanel, row.value)}
+          </div>
+        </TableCell>
+      </AnimatedDataTableRow>
+    );
+  });
+
+  return (
+    <div className="min-w-0">
+      <div className="flex items-start justify-between gap-3 px-4 py-4">
+        <div className="min-w-0 space-y-1">
+          <div
+            className={cn(
+              "flex items-center gap-2 font-medium",
+              statusStyle.labelClassName,
+            )}
+          >
+            <StatusIcon className="size-4" />
+            {statusLabel(messages, status)}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {pathStatusRangeLabel(locale, messages, activePanel, status)}
+          </div>
+        </div>
+        <div className="font-mono text-sm text-muted-foreground tabular-nums">
+          {numberFormat(locale, rows.length)}
+        </div>
+      </div>
+      <div className="pb-4">
+        <DataTableSwitch
+          loading={false}
+          hasContent={rows.length > 0}
+          loadingLabel={messages.common.loading}
+          emptyLabel={messages.common.noData}
+          colSpan={3}
+          contentKey={`countries-${activePanel}-${status}-${sort.key}-${sort.direction}-${rows.length}`}
+          header={header}
+          rows={renderedRows}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -1136,7 +1662,7 @@ function PathStatusColumn({
   activePanel,
   status,
   rows,
-  maxViews,
+  maxSamples,
   sort,
   onSort,
 }: {
@@ -1145,7 +1671,7 @@ function PathStatusColumn({
   activePanel: PerformancePanelKey;
   status: Exclude<PerformanceStatus, "none">;
   rows: PathPerformanceRow[];
-  maxViews: number;
+  maxSamples: number;
   sort: { key: PathSortKey; direction: SortDirection };
   onSort: (key: PathSortKey) => void;
 }) {
@@ -1159,11 +1685,11 @@ function PathStatusColumn({
       <TableHead className="h-8 p-0 text-right">
         <div className="px-3">
           <SortHeaderButton
-            active={sort.key === "views"}
+            active={sort.key === "samples"}
             direction={sort.direction}
-            onClick={() => onSort("views")}
+            onClick={() => onSort("samples")}
           >
-            {messages.common.views}
+            {messages.performance.samplesLabel}
           </SortHeaderButton>
         </div>
       </TableHead>
@@ -1184,7 +1710,7 @@ function PathStatusColumn({
   );
 
   const renderedRows = rows.map((row) => {
-    const progressWidth = `${Math.max(2, Math.min(100, (row.views / maxViews) * 100))}%`;
+    const progressWidth = `${Math.max(2, Math.min(100, (row.samples / maxSamples) * 100))}%`;
     return (
       <AnimatedDataTableRow
         key={`${status}-${row.pathname}`}
@@ -1203,7 +1729,7 @@ function PathStatusColumn({
         </TableCell>
         <TableCell className="p-0 text-right align-top">
           <div className="px-3 py-2 font-mono tabular-nums">
-            {numberFormat(locale, row.views)}
+            {numberFormat(locale, row.samples)}
           </div>
         </TableCell>
         <TableCell className="p-0 text-right align-top">
@@ -1259,20 +1785,20 @@ function PathPerformanceTable({
   rows: PathPerformanceRow[];
 }) {
   const [sort, setSort] = useState<{ key: PathSortKey; direction: SortDirection }>({
-    key: "views",
+    key: "samples",
     direction: "desc",
   });
   const sortedRows = useMemo(() => {
     const direction = sort.direction === "asc" ? 1 : -1;
     return [...rows].sort((a, b) => {
-      if (sort.key === "views") return (a.views - b.views) * direction;
+      if (sort.key === "samples") return (a.samples - b.samples) * direction;
       if (sort.key === "score") {
         return ((a.score ?? -1) - (b.score ?? -1)) * direction;
       }
       return ((a.value ?? -1) - (b.value ?? -1)) * direction;
     });
   }, [rows, sort.direction, sort.key]);
-  const maxViews = Math.max(1, ...sortedRows.map((row) => row.views));
+  const maxSamples = Math.max(1, ...sortedRows.map((row) => row.samples));
   const groupedRows = useMemo(
     () => ({
       poor: sortedRows.filter((row) => row.status === "poor"),
@@ -1324,7 +1850,7 @@ function PathPerformanceTable({
               activePanel={activePanel}
               status={status}
               rows={groupedRows[status]}
-              maxViews={maxViews}
+              maxSamples={maxSamples}
               sort={sort}
               onSort={updateSort}
             />
@@ -1418,9 +1944,9 @@ export function PerformanceClientPage({
         key,
         label: panelLabel(messages, key),
         valueLabel: formatPanelValue(locale, messages, key, value),
+        value,
         status,
         score,
-        progress: scoreProgress(key, score),
       };
     });
   }, [locale, messages, performanceData]);
@@ -1441,11 +1967,39 @@ export function PerformanceClientPage({
       }),
     [activePanel, performanceData.routes],
   );
+  const countryRows = useMemo<CountryHealthRow[]>(
+    () =>
+      (performanceData.countries ?? [])
+        .map((country) => {
+          const value = countryValue(country, activePanel);
+          const score = countryScore(country);
+          const normalizedCountry = String(country.country ?? "").trim().toUpperCase();
+          const { label, code } = resolveCountryLabel(
+            normalizedCountry,
+            locale,
+            messages.common.unknown,
+          );
+          const flagCode = resolveCountryFlagCode(code, locale);
+          return {
+            country: normalizedCountry,
+            label,
+            iconName: flagCode ? `flagpack:${flagCode.toLowerCase()}` : null,
+            views: country.views ?? 0,
+            samples: countrySamples(country, activePanel),
+            value,
+            score,
+            status: countryStatus(country, activePanel),
+          };
+        })
+        .filter((country) => country.country.length > 0),
+    [activePanel, locale, messages.common.unknown, performanceData.countries],
+  );
 
   const hasContent =
     chartPoints.some((row) => row.samples > 0) ||
     metricCards.some((card) => card.valueLabel !== "--") ||
-    pathRows.length > 0;
+    pathRows.length > 0 ||
+    countryRows.length > 0;
 
   return (
     <div className="space-y-6">
@@ -1484,6 +2038,12 @@ export function PerformanceClientPage({
                 activePanel={activePanel}
                 dataWindow={dataWindow}
                 points={chartPoints}
+              />
+              <PerformanceHealthMapCard
+                locale={locale}
+                messages={messages}
+                activePanel={activePanel}
+                countries={countryRows}
               />
               <PathPerformanceTable
                 locale={locale}
