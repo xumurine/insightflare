@@ -1030,21 +1030,69 @@ function PerformanceSkeleton() {
         ))}
       </div>
       <div className="min-w-0 space-y-4">
-        <Card>
-          <CardContent className="grid gap-6 p-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
-            <div className="space-y-4">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="size-28 rounded-full" />
-              <Skeleton className="h-4 w-44" />
-              <Skeleton className="h-20 w-full" />
+        <Card className="overflow-hidden">
+          <CardContent className="grid gap-5 p-5 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+            <div className="flex min-w-0 flex-col gap-4">
+              <div className="space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 space-y-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-9 w-16" />
+                    <div className="flex items-center gap-2">
+                      <Skeleton className="size-5 rounded-full" />
+                      <Skeleton className="h-5 w-12" />
+                    </div>
+                  </div>
+                  <Skeleton className="size-[4.5rem] shrink-0 rounded-full" />
+                </div>
+                <div className="max-w-xl space-y-2">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-10/12" />
+                </div>
+              </div>
+              <div className="mt-auto grid grid-cols-2 gap-3">
+                {Array.from({ length: 2 }, (_, index) => (
+                  <div
+                    key={`performance-summary-stat-skeleton-${index}`}
+                    className="flex min-h-[4.75rem] flex-col justify-between rounded-none bg-muted/45 p-3"
+                  >
+                    <Skeleton className="h-3 w-20 bg-background/70" />
+                    <Skeleton className="h-6 w-12 bg-background/70" />
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="space-y-4">
-              <Skeleton className="ml-auto h-7 w-24" />
-              <Skeleton className="h-20 w-full" />
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Skeleton className="h-20 w-full" />
-                <Skeleton className="h-20 w-full" />
-                <Skeleton className="h-20 w-full" />
+
+            <div className="flex min-w-0 flex-col gap-4">
+              <div className="space-y-2">
+                <Skeleton className="h-5 w-24" />
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-11/12" />
+                  <Skeleton className="h-4 w-7/12" />
+                </div>
+              </div>
+              <div className="rounded-none bg-muted/45 p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <Skeleton className="size-4 bg-background/70" />
+                  <Skeleton className="h-5 w-28 bg-background/70" />
+                </div>
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-full bg-background/70" />
+                  <Skeleton className="h-4 w-10/12 bg-background/70" />
+                </div>
+              </div>
+
+              <div className="mt-auto grid gap-3 sm:grid-cols-3">
+                {Array.from({ length: 3 }, (_, index) => (
+                  <div
+                    key={`performance-percentile-skeleton-${index}`}
+                    className="flex min-h-[4.75rem] flex-col justify-between rounded-none bg-muted/45 p-3"
+                  >
+                    <Skeleton className="h-3 w-10 bg-background/70" />
+                    <Skeleton className="h-5 w-12 bg-background/70" />
+                  </div>
+                ))}
               </div>
             </div>
           </CardContent>
