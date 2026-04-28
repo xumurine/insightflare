@@ -425,6 +425,7 @@ function buildCardData(
         emptyLabel: "/",
         resolveLabel: (value) => value || "/",
       }),
+      query: [],
       title: aggregateVisitRows(visits, (visit) => visit.title, {
         emptyLabel: messages.common.unknown,
       }),
@@ -544,6 +545,7 @@ export function parseRealtimeCardFilters(
     device: normalizeRealtimeFilterValue(searchParams.get("device")),
     browser: normalizeRealtimeFilterValue(searchParams.get("browser")),
     path: normalizeRealtimeFilterValue(searchParams.get("path")),
+    query: normalizeRealtimeFilterValue(searchParams.get("query")),
     title: normalizeRealtimeFilterValue(searchParams.get("title")),
     hostname: normalizeRealtimeFilterValue(searchParams.get("hostname")),
     entry: normalizeRealtimeFilterValue(searchParams.get("entry")),

@@ -189,8 +189,10 @@ pages:
   tabExitPages: Exit Pages
   trendTitle: Page Traffic Trend
   otherPages: Other Pages
-  hashTab: Hash
-  noHash: No Hash
+  hashTab: Anchor
+  noHash: No Anchor
+  queryTab: Query Params
+  noQuery: No Query Params
   eventTab: Events
   eventsMetric: Events
   viewDetails: View details

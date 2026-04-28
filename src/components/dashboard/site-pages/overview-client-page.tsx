@@ -293,9 +293,9 @@ interface MetricAreaPoint {
   value: number;
 }
 
-type PageCardTab = "path" | "title" | "hostname" | "entry" | "exit";
+type PageCardTab = "path" | "query" | "title" | "hostname" | "entry" | "exit";
 type PageCardSortKey = "views" | "visitors";
-type PageCardNavigableTab = "path" | "hostname" | "entry" | "exit";
+type PageCardNavigableTab = "path" | "query" | "hostname" | "entry" | "exit";
 type PageCardDetailTab = "path" | "entry" | "exit";
 type SourceCardTab = "domain" | "link";
 type ClientDimensionCardTab =
@@ -317,6 +317,7 @@ type OverviewCardTabCache<T extends string> = Record<T, OverviewTabRows | null>;
 export interface OverviewPagesSectionCardData {
   page: {
     path: OverviewTabRows;
+    query: OverviewTabRows;
     title: OverviewTabRows;
     hostname: OverviewTabRows;
     entry: OverviewTabRows;
@@ -403,6 +404,14 @@ interface SourceCardRow {
   mono: boolean;
 }
 
+const ALL_PAGE_CARD_TABS: PageCardTab[] = [
+  "path",
+  "query",
+  "title",
+  "hostname",
+  "entry",
+  "exit",
+];
 const PAGE_CARD_TABS: PageCardTab[] = [
   "path",
   "title",
@@ -428,6 +437,7 @@ const PAGE_CARD_DETAIL_TAB_LIST: PageCardDetailTab[] = [
 const ABSOLUTE_URL_PATTERN = /^[a-z][a-z\d+\-.]*:\/\//i;
 const PAGE_CARD_QUERY_PARAM_BY_TAB: Record<PageCardTab, string> = {
   path: "path",
+  query: "query",
   title: "title",
   hostname: "hostname",
   entry: "entry",
@@ -831,6 +841,7 @@ export function parseOverviewCardFilters(searchParams: SearchParamsLike): Dashbo
     device: normalizeOverviewFilterValue(searchParams.get("device")),
     browser: normalizeOverviewFilterValue(searchParams.get("browser")),
     path: normalizeOverviewFilterValue(searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.path)),
+    query: normalizeOverviewFilterValue(searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.query)),
     title: normalizeOverviewFilterValue(searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.title)),
     hostname: normalizeOverviewFilterValue(searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.hostname)),
     entry: normalizeOverviewFilterValue(searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.entry)),
@@ -2180,6 +2191,7 @@ function MetricAreaMap({
 interface OverviewPagesSectionProps extends OverviewClientPageProps {
   filters: DashboardFilters;
   cardDataOverride?: OverviewPagesSectionCardData | null;
+  pageCardTabs?: readonly PageCardTab[];
   pageCardTabMetaOverride?: Partial<Record<PageCardTab, Partial<PageCardTabMeta>>>;
   pageCardQueryParamOverride?: Partial<Record<PageCardTab, string | null>>;
   pageCardNavigableTabs?: readonly PageCardNavigableTab[];
@@ -2199,6 +2211,7 @@ export function OverviewPagesSection({
   pathname,
   filters,
   cardDataOverride,
+  pageCardTabs,
   pageCardTabMetaOverride,
   pageCardQueryParamOverride,
   pageCardNavigableTabs,
@@ -2213,6 +2226,10 @@ export function OverviewPagesSection({
   const isMobile = useIsMobile();
   const reduceDataRowMotion = useReducedMotion() ?? false;
   const { window } = useDashboardQuery();
+  const resolvedPageCardTabs = useMemo(
+    () => pageCardTabs ?? PAGE_CARD_TABS,
+    [pageCardTabs],
+  );
   const timezoneReferenceTimestampMs = useMemo(() => {
     const from = Number(window.from ?? 0);
     const to = Number(window.to ?? 0);
@@ -2222,7 +2239,7 @@ export function OverviewPagesSection({
   }, [window.from, window.to]);
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const pageCardInFlightRef = useRef<Record<PageCardTab, boolean>>(
-    createOverviewCardTabFlightState(PAGE_CARD_TABS),
+    createOverviewCardTabFlightState(ALL_PAGE_CARD_TABS),
   );
   const sourceCardInFlightRef = useRef<Record<SourceCardTab, boolean>>(
     createOverviewCardTabFlightState(SOURCE_CARD_TABS),
@@ -2235,7 +2252,7 @@ export function OverviewPagesSection({
   );
   const [pageCardTabData, setPageCardTabData] = useState<
     OverviewCardTabCache<PageCardTab>
-  >(() => createOverviewCardTabCache(PAGE_CARD_TABS));
+  >(() => createOverviewCardTabCache(ALL_PAGE_CARD_TABS));
   const [sourceCardTabData, setSourceCardTabData] = useState<
     OverviewCardTabCache<SourceCardTab>
   >(() => createOverviewCardTabCache(SOURCE_CARD_TABS));
@@ -2327,8 +2344,14 @@ export function OverviewPagesSection({
   );
 
   useEffect(() => {
+    if (resolvedPageCardTabs.includes(pageCardTab)) return;
+    setPageCardTab(resolvedPageCardTabs[0] ?? "path");
+  }, [pageCardTab, resolvedPageCardTabs]);
+
+  useEffect(() => {
     if (hasCardDataOverride) return;
-    pageCardInFlightRef.current = createOverviewCardTabFlightState(PAGE_CARD_TABS);
+    pageCardInFlightRef.current =
+      createOverviewCardTabFlightState(ALL_PAGE_CARD_TABS);
     sourceCardInFlightRef.current = createOverviewCardTabFlightState(
       SOURCE_CARD_TABS,
     );
@@ -2338,7 +2361,7 @@ export function OverviewPagesSection({
     geoDimensionCardInFlightRef.current = createOverviewCardTabFlightState(
       GEO_DIMENSION_CARD_TABS,
     );
-    setPageCardTabData(createOverviewCardTabCache(PAGE_CARD_TABS));
+    setPageCardTabData(createOverviewCardTabCache(ALL_PAGE_CARD_TABS));
     setSourceCardTabData(createOverviewCardTabCache(SOURCE_CARD_TABS));
     setClientDimensionCardTabData(
       createOverviewCardTabCache(CLIENT_DIMENSION_CARD_TABS),
@@ -2549,6 +2572,13 @@ export function OverviewPagesSection({
         showIcon: false,
         ...(pageCardTabMetaOverride?.path ?? {}),
       },
+      query: {
+        label: messages.pages.queryTab,
+        columnLabel: messages.pages.queryTab,
+        mono: true,
+        showIcon: false,
+        ...(pageCardTabMetaOverride?.query ?? {}),
+      },
       title: {
         label: messages.common.title,
         columnLabel: messages.common.title,
@@ -2584,6 +2614,7 @@ export function OverviewPagesSection({
       messages.common.hostname,
       messages.common.path,
       messages.common.title,
+      messages.pages.queryTab,
       pageCardTabMetaOverride,
     ],
   );
@@ -2609,6 +2640,25 @@ export function OverviewPagesSection({
       pageCardTabMeta.path.label,
       pageCardTabMeta.path.mono,
       resolvedPageCardTabData.path,
+    ],
+  );
+  const queryRows = useMemo<PageCardRow[]>(
+    () =>
+      (resolvedPageCardTabData.query ?? []).map((item, index) => {
+        const label = String(item.label || "").trim();
+        const fallbackLabel = messages.pages.noQuery;
+        return {
+          key: `query-${label || fallbackLabel}-${index}`,
+          label: label || fallbackLabel,
+          views: Math.max(0, Number(item.views || 0)),
+          visitors: Math.max(0, Number(item.visitors || 0)),
+          mono: pageCardTabMeta.query.mono,
+        };
+      }),
+    [
+      messages.pages.noQuery,
+      pageCardTabMeta.query.mono,
+      resolvedPageCardTabData.query,
     ],
   );
   const titleRows = useMemo<PageCardRow[]>(
@@ -2674,12 +2724,13 @@ export function OverviewPagesSection({
   const pageCardRows = useMemo<Record<PageCardTab, PageCardRow[]>>(
     () => ({
       path: pathRows,
+      query: queryRows,
       title: titleRows,
       hostname: hostnameRows,
       entry: entryRows,
       exit: exitRows,
     }),
-    [pathRows, titleRows, hostnameRows, entryRows, exitRows],
+    [pathRows, queryRows, titleRows, hostnameRows, entryRows, exitRows],
   );
   const activePageTabMeta = pageCardTabMeta[pageCardTab];
   const sortedPageCardRows = useMemo(() => {
@@ -4275,7 +4326,7 @@ export function OverviewPagesSection({
           <TabbedScrollMaskCard
             value={pageCardTab}
             onValueChange={(value) => handlePageCardTabChange(value)}
-            tabs={PAGE_CARD_TABS.map((tab) => ({
+            tabs={resolvedPageCardTabs.map((tab) => ({
               value: tab,
               label: pageCardTabMeta[tab].label,
             }))}

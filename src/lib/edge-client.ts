@@ -17,6 +17,7 @@ export interface QueryFilters {
   device?: string;
   browser?: string;
   path?: string;
+  query?: string;
   title?: string;
   hostname?: string;
   entry?: string;
@@ -75,6 +76,7 @@ function withFilters(
   if (filters.device) next.device = filters.device;
   if (filters.browser) next.browser = filters.browser;
   if (filters.path) next.path = filters.path;
+  if (filters.query) next.query = filters.query;
   if (filters.title) next.title = filters.title;
   if (filters.hostname) next.hostname = filters.hostname;
   if (filters.entry) next.entry = filters.entry;

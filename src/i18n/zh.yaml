@@ -189,8 +189,10 @@ pages:
   tabExitPages: 出口页面
   trendTitle: 页面访问趋势
   otherPages: 其他页面
-  hashTab: Hash
-  noHash: 无 Hash
+  hashTab: 锚点
+  noHash: 无锚点
+  queryTab: 查询参数
+  noQuery: 无查询参数
   eventTab: 事件
   eventsMetric: 事件数
   viewDetails: 查看详情

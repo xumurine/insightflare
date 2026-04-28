@@ -2003,6 +2003,7 @@ interface DemoQueryFilters {
   device?: string;
   browser?: string;
   path?: string;
+  query?: string;
   title?: string;
   hostname?: string;
   entry?: string;
@@ -2291,6 +2292,7 @@ function parseDemoFilters(params: Record<string, string | number>): DemoQueryFil
     device: normalizeDemoFilterValue(params.device),
     browser: normalizeDemoFilterValue(params.browser),
     path: normalizeDemoFilterValue(params.path),
+    query: normalizeDemoFilterValue(params.query),
     title: normalizeDemoFilterValue(params.title),
     hostname: normalizeDemoFilterValue(params.hostname),
     entry: normalizeDemoFilterValue(params.entry),
@@ -2867,6 +2869,7 @@ function applyDemoFilters(
     if (filters.device && !equalsTrimmed(visit.deviceType, filters.device)) continue;
     if (filters.browser && !equalsTrimmed(visit.browser, filters.browser)) continue;
     if (filters.path && !equalsTrimmed(visit.pathname, filters.path)) continue;
+    if (filters.query && !equalsTrimmed(demoQueryStringForVisit(visit), filters.query)) continue;
     if (filters.title && !equalsTrimmed(visit.title, filters.title)) continue;
     if (filters.hostname && !equalsCaseInsensitive(visit.hostname, filters.hostname)) continue;
 
@@ -5107,18 +5110,42 @@ function generateDemoVisitors(
 }
 
 const DEMO_EMPTY_HASH_VALUE = "__insightflare_empty_hash__";
+const DEMO_EMPTY_QUERY_VALUE = "__insightflare_empty_query__";
+
+function demoStringHash(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function demoQueryStringForVisit(visit: DemoVisitFact): string {
+  const pathname = normalizePath(visit.pathname);
+  const seed = `${visit.pathname}:${visit.title}:${visit.visitId}:query`;
+  const magnitude = demoStringHash(seed);
+  if (magnitude % 100 < 42) return "";
+
+  let choices = ["?utm_source=newsletter", "?ref=nav", "?variant=a", "?theme=dark"];
+  if (pathname.includes("/pricing")) {
+    choices = ["?plan=pro", "?billing=annual", "?utm_campaign=pricing", "?seat=team"];
+  } else if (pathname.includes("/docs") || pathname.includes("/guide")) {
+    choices = ["?q=install", "?version=latest", "?tab=examples", "?lang=js"];
+  } else if (pathname.includes("/news") || pathname.includes("/blog")) {
+    choices = ["?utm_source=rss", "?comment=1", "?share=twitter", "?ref=homepage"];
+  } else if (pathname.includes("/product")) {
+    choices = ["?sku=core", "?variant=trial", "?demo=1", "?review=latest"];
+  }
+
+  return choices[magnitude % choices.length] ?? "";
+}
 
 function demoHashFragmentForVisit(visit: DemoVisitFact): string {
   const pathname = normalizePath(visit.pathname);
   if (!pathname || pathname === "/") return "";
 
   const seed = `${visit.pathname}:${visit.title}:${visit.visitId}`;
-  let hash = 0;
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = ((hash << 5) - hash + seed.charCodeAt(index)) | 0;
-  }
-
-  const magnitude = Math.abs(hash);
+  const magnitude = demoStringHash(seed);
   if (magnitude % 100 < 46) return "";
 
   let choices = ["#overview", "#details", "#faq", "#cta"];
@@ -5159,6 +5186,10 @@ function generateDemoDimension(
     rows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => (
       demoHashFragmentForVisit(visit) || DEMO_EMPTY_HASH_VALUE
     ));
+  } else if (dimensionType === "page-query") {
+    rows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => (
+      demoQueryStringForVisit(visit) || DEMO_EMPTY_QUERY_VALUE
+    ));
   } else if (dimensionType === "event-types") {
     rows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => (
       visit.eventType === "pageview" ? "" : visit.eventType
@@ -5168,7 +5199,10 @@ function generateDemoDimension(
   return {
     ok: true,
     data: rows.map((row) => ({
-      value: row.label === DEMO_EMPTY_HASH_VALUE ? "" : row.label,
+      value:
+        row.label === DEMO_EMPTY_HASH_VALUE || row.label === DEMO_EMPTY_QUERY_VALUE
+          ? ""
+          : row.label,
       views: row.views,
       sessions: row.sessions,
       visitors: row.visitors,
@@ -6384,6 +6418,9 @@ export function handleDemoRequest(options: {
   }
   if (path.includes("/page-hash")) {
     return generateDemoDimension(siteId, "page-hash", params);
+  }
+  if (path.includes("/page-query")) {
+    return generateDemoDimension(siteId, "page-query", params);
   }
   if (path.includes("/event-types")) {
     return generateDemoDimension(siteId, "event-types", params);

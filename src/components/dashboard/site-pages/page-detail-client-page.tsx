@@ -15,6 +15,7 @@ import {
   fetchEventTypesTab,
   fetchOverviewPageCardTab,
   fetchPageHashTab,
+  fetchPageQueryTab,
   type OverviewTabRows,
 } from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
@@ -106,11 +107,23 @@ export function PageDetailClientPage({
         fetchPageHashTab(requestedSiteId, requestedWindow, requestedFilters, {
           limit: 100,
         }),
+      query: (
+        requestedSiteId: string,
+        requestedWindow: TimeWindow,
+        requestedFilters: DashboardFilters,
+      ) =>
+        fetchPageQueryTab(requestedSiteId, requestedWindow, requestedFilters, {
+          limit: 100,
+        }),
     }),
     [],
   );
+  const pageCardTabs = useMemo(
+    () => ["path", "query", "title", "hostname", "entry", "exit"] as const,
+    [],
+  );
   const pageCardNavigableTabs = useMemo(
-    () => ["path", "hostname", "entry", "exit"] as const,
+    () => ["path", "query", "hostname", "entry", "exit"] as const,
     [],
   );
   const pageCardDetailTabs = useMemo(
@@ -125,7 +138,7 @@ export function PageDetailClientPage({
         unknownLabel,
         fallbackHostname,
       }: {
-        tab: "path" | "title" | "hostname" | "entry" | "exit";
+        tab: "path" | "query" | "title" | "hostname" | "entry" | "exit";
         value: string;
         unknownLabel: string;
         fallbackHostname: string;
@@ -155,8 +168,44 @@ export function PageDetailClientPage({
           return null;
         }
       },
+      query: ({
+        tab: _tab,
+        value,
+        unknownLabel,
+        fallbackHostname,
+      }: {
+        tab: "path" | "query" | "title" | "hostname" | "entry" | "exit";
+        value: string;
+        unknownLabel: string;
+        fallbackHostname: string;
+      }) => {
+        const normalizedQuery = String(value || "").trim();
+        if (
+          normalizedQuery.length === 0 ||
+          normalizedQuery === messages.pages.noQuery ||
+          normalizedQuery === unknownLabel
+        ) {
+          return null;
+        }
+
+        const normalizedHost = String(siteDomain || fallbackHostname || "")
+          .trim()
+          .replace(/^[a-z][a-z\d+\-.]*:\/\//i, "")
+          .replace(/\/+.*$/, "");
+        if (!normalizedHost) return null;
+
+        try {
+          const target = new URL(pagePath, `https://${normalizedHost}`);
+          target.search = normalizedQuery.startsWith("?")
+            ? normalizedQuery
+            : `?${normalizedQuery}`;
+          return target.toString();
+        } catch {
+          return null;
+        }
+      },
     }),
-    [messages.pages.noHash, pagePath, siteDomain],
+    [messages.pages.noHash, messages.pages.noQuery, pagePath, siteDomain],
   );
   const eventTabs = useMemo(
     () => [
@@ -276,15 +325,22 @@ export function PageDetailClientPage({
         siteDomain={siteDomain}
         pathname={pathname}
         filters={detailFilters}
+        pageCardTabs={pageCardTabs}
         pageCardFetchers={pageCardFetchers}
         pageCardNavigableTabs={pageCardNavigableTabs}
         pageCardDetailTabs={pageCardDetailTabs}
         pageCardTargetUrlResolvers={pageCardTargetUrlResolvers}
-        pageCardQueryParamOverride={{ path: null }}
+        pageCardQueryParamOverride={{ path: null, query: null }}
         pageCardTabMetaOverride={{
           path: {
             label: messages.pages.hashTab,
             columnLabel: messages.pages.hashTab,
+            mono: true,
+            showIcon: false,
+          },
+          query: {
+            label: messages.pages.queryTab,
+            columnLabel: messages.pages.queryTab,
             mono: true,
             showIcon: false,
           },

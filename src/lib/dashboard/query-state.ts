@@ -34,6 +34,7 @@ export interface DashboardFilters {
   device?: string;
   browser?: string;
   path?: string;
+  query?: string;
   title?: string;
   hostname?: string;
   entry?: string;
@@ -273,6 +274,7 @@ export function parseDashboardFiltersFromSearchParams(searchParams: URLSearchPar
     device: normalizeFilterValue(searchParams.get("device")),
     browser: normalizeFilterValue(searchParams.get("browser")),
     path: normalizeFilterValue(searchParams.get("path")),
+    query: normalizeFilterValue(searchParams.get("query")),
     title: normalizeFilterValue(searchParams.get("title")),
     hostname: normalizeFilterValue(searchParams.get("hostname")),
     entry: normalizeFilterValue(searchParams.get("entry")),
@@ -297,6 +299,7 @@ function applyFiltersToParams(params: URLSearchParams, filters?: DashboardFilter
   if (filters.device) params.set("device", filters.device);
   if (filters.browser) params.set("browser", filters.browser);
   if (filters.path) params.set("path", filters.path);
+  if (filters.query) params.set("query", filters.query);
   if (filters.title) params.set("title", filters.title);
   if (filters.hostname) params.set("hostname", filters.hostname);
   if (filters.entry) params.set("entry", filters.entry);

@@ -182,6 +182,21 @@ function decodeHashLabel(value: string): string {
   }
 }
 
+function decodeQueryLabel(value: string): string {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+
+  const prefixed = normalized.startsWith("?") ? normalized : `?${normalized}`;
+  const encodedQuery = prefixed.slice(1);
+  if (!encodedQuery) return "";
+
+  try {
+    return `?${decodeURIComponent(encodedQuery)}`;
+  } catch {
+    return prefixed;
+  }
+}
+
 function emptyOverviewGeoTab(): OverviewGeoTabData {
   return { ok: true, data: [] };
 }
@@ -200,6 +215,7 @@ function withFilters(
   if (filters.device) next.device = filters.device;
   if (filters.browser) next.browser = filters.browser;
   if (filters.path) next.path = filters.path;
+  if (filters.query) next.query = filters.query;
   if (filters.title) next.title = filters.title;
   if (filters.hostname) next.hostname = filters.hostname;
   if (filters.entry) next.entry = filters.entry;
@@ -620,14 +636,16 @@ export async function fetchOverviewGeoPoints(
 export async function fetchOverviewPageCardTab(
   siteId: string,
   window: TimeWindow,
-  tab: "path" | "title" | "hostname" | "entry" | "exit",
+  tab: "path" | "query" | "title" | "hostname" | "entry" | "exit",
   filters?: DashboardFilters,
   options?: {
     limit?: number;
   },
 ): Promise<OverviewTabRows> {
+  const endpoint =
+    tab === "query" ? "/api/private/page-query" : `/api/private/overview-page-${tab}`;
   const payload = await fetchPrivateJson<OverviewTabData>(
-    `/api/private/overview-page-${tab}`,
+    endpoint,
     withFilters(
       {
         siteId,
@@ -638,7 +656,13 @@ export async function fetchOverviewPageCardTab(
       filters,
     ),
   ).catch(() => emptyOverviewTab());
-  return normalizeOverviewRows(payload.data);
+  const rows = normalizeOverviewRows(payload.data);
+  return tab === "query"
+    ? rows.map((row) => ({
+        ...row,
+        label: decodeQueryLabel(row.label),
+      }))
+    : rows;
 }
 
 export async function fetchPageHashTab(
@@ -665,6 +689,17 @@ export async function fetchPageHashTab(
     ...row,
     label: decodeHashLabel(row.label),
   }));
+}
+
+export async function fetchPageQueryTab(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+  options?: {
+    limit?: number;
+  },
+): Promise<OverviewTabRows> {
+  return fetchOverviewPageCardTab(siteId, window, "query", filters, options);
 }
 
 export async function fetchOverviewSourceCardTab(

@@ -190,6 +190,8 @@ export interface AppMessages {
     otherPages: string;
     hashTab: string;
     noHash: string;
+    queryTab: string;
+    noQuery: string;
     eventTab: string;
     eventsMetric: string;
     viewDetails: string;

@@ -53,6 +53,7 @@ interface DashboardFilters {
   device?: string;
   browser?: string;
   path?: string;
+  query?: string;
   title?: string;
   hostname?: string;
   entry?: string;
@@ -439,6 +440,7 @@ function parseFilters(url: URL): DashboardFilters {
     device: normalizeFilterValue(url.searchParams.get("device")),
     browser: normalizeFilterValue(url.searchParams.get("browser")),
     path: normalizeFilterValue(url.searchParams.get("path")),
+    query: normalizeFilterValue(url.searchParams.get("query")),
     title: normalizeFilterValue(url.searchParams.get("title")),
     hostname: normalizeFilterValue(url.searchParams.get("hostname")),
     entry: normalizeFilterValue(url.searchParams.get("entry")),
@@ -1216,6 +1218,9 @@ function buildVisitFilterSql(filters: DashboardFilters, alias = ""): { clause: s
   }
   if (filters.path) {
     equalsTrimmed(`${prefix}pathname`, filters.path);
+  }
+  if (filters.query) {
+    equalsTrimmed(`${prefix}query_string`, filters.query);
   }
   if (filters.title) {
     equalsTrimmed(`${prefix}title`, filters.title);
@@ -5340,6 +5345,9 @@ async function routeQuery(
   }
   if (pathname === "page-hash") {
     return handleDimension(env, siteId, url, "hash_fragment");
+  }
+  if (pathname === "page-query") {
+    return handleDimension(env, siteId, url, "query_string");
   }
   if (pathname === "event-types") {
     return handleEventTypes(env, siteId, url);
