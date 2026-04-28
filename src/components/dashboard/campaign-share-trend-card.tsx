@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import {
-  type CampaignTab,
-} from "@/components/dashboard/campaign-utils";
+
+import { type CampaignTab } from "@/components/dashboard/campaign-utils";
 import {
   ShareTrendCard,
   type ShareTrendFetcher,
@@ -37,13 +36,7 @@ function CampaignTrendPanel({
 }: CampaignTrendPanelProps) {
   const fetchTrend = useMemo<ShareTrendFetcher>(() => {
     return (nextSiteId, nextWindow, nextFilters, options) =>
-      fetchUtmTrend(
-        nextSiteId,
-        nextWindow,
-        tab,
-        nextFilters,
-        options,
-      );
+      fetchUtmTrend(nextSiteId, nextWindow, tab, nextFilters, options);
   }, [tab]);
 
   return (
@@ -93,11 +86,7 @@ export function CampaignShareTrendCard(props: CampaignShareTrendCardProps) {
     <div className="grid gap-6 lg:grid-cols-2">
       {panels.map((panel) => (
         <div key={panel.tab} className={panel.className}>
-          <CampaignTrendPanel
-            {...props}
-            tab={panel.tab}
-            title={panel.title}
-          />
+          <CampaignTrendPanel {...props} tab={panel.tab} title={panel.title} />
         </div>
       ))}
     </div>

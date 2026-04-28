@@ -2,14 +2,15 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+
+import { AutoResizer } from "@/components/ui/auto-resizer";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import {
+  type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  type ChartConfig,
 } from "@/components/ui/chart";
-import { AutoResizer } from "@/components/ui/auto-resizer";
-import { AutoTransition } from "@/components/ui/auto-transition";
 import { intlLocale } from "@/lib/dashboard/format";
 import type { DashboardInterval } from "@/lib/dashboard/query-state";
 import type { Locale } from "@/lib/i18n/config";
@@ -304,9 +305,12 @@ function fillMissingTrafficData(
     bucketMap.set(bucket, current);
   }
 
-  const sortedBuckets = [...bucketMap.keys()].sort((left, right) => left - right);
+  const sortedBuckets = [...bucketMap.keys()].sort(
+    (left, right) => left - right,
+  );
   const fallbackFromBucket = sortedBuckets[0] ?? 0;
-  const fallbackToBucket = sortedBuckets[sortedBuckets.length - 1] ?? fallbackFromBucket;
+  const fallbackToBucket =
+    sortedBuckets[sortedBuckets.length - 1] ?? fallbackFromBucket;
   const rangeFromBucket = Number.isFinite(range?.from)
     ? Math.floor(Number(range?.from ?? 0) / stepMs)
     : fallbackFromBucket;
@@ -314,7 +318,10 @@ function fillMissingTrafficData(
     ? Math.floor(Number(range?.to ?? 0) / stepMs)
     : fallbackToBucket;
   const fromBucket = Math.min(rangeFromBucket, fallbackFromBucket);
-  const toBucket = Math.max(fromBucket, Math.max(rangeToBucket, fallbackToBucket));
+  const toBucket = Math.max(
+    fromBucket,
+    Math.max(rangeToBucket, fallbackToBucket),
+  );
 
   return Array.from({ length: toBucket - fromBucket + 1 }, (_, index) => {
     const bucket = fromBucket + index;
@@ -628,17 +635,22 @@ export const SiteTrafficStackChart = memo(function SiteTrafficStackChart({
     // Mirrors NeutralPress DimensionStats: start from a base color, invert to complementary,
     // then interpolate in OKLCH for evenly perceived multi-site colors.
     const pairs = buildSiteColorPairs(orderedSites.length);
-    const nextSeries: SiteTrafficSeriesItem[] = orderedSites.map((site, index) => {
-      const colors = pairs[index] ?? { views: "#2dd4bf", visitors: "#2dd4bf" };
-      return {
-        siteId: site.id,
-        siteName: site.name,
-        visitorsKey: `site${index}Visitors`,
-        viewsKey: `site${index}Views`,
-        visitorsColor: colors.visitors,
-        viewsColor: colors.views,
-      };
-    });
+    const nextSeries: SiteTrafficSeriesItem[] = orderedSites.map(
+      (site, index) => {
+        const colors = pairs[index] ?? {
+          views: "#2dd4bf",
+          visitors: "#2dd4bf",
+        };
+        return {
+          siteId: site.id,
+          siteName: site.name,
+          visitorsKey: `site${index}Visitors`,
+          viewsKey: `site${index}Views`,
+          visitorsColor: colors.visitors,
+          viewsColor: colors.views,
+        };
+      },
+    );
 
     const nextConfig: ChartConfig = {};
     for (const item of nextSeries) {
@@ -731,28 +743,40 @@ export const SiteTrafficStackChart = memo(function SiteTrafficStackChart({
         className={cn("h-[320px] w-full aspect-auto", className)}
         config={config}
       >
-        <BarChart data={chartData} margin={{ left: 8, right: 8 }} barCategoryGap="22%" barGap={2}>
+        <BarChart
+          data={chartData}
+          margin={{ left: 8, right: 8 }}
+          barCategoryGap="22%"
+          barGap={2}
+        >
           <CartesianGrid vertical={false} />
           <XAxis
             dataKey="timestampMs"
-            tickFormatter={(value) => tickFormatter.format(new Date(Number(value ?? 0)))}
+            tickFormatter={(value) =>
+              tickFormatter.format(new Date(Number(value ?? 0)))
+            }
             tickLine={false}
             axisLine={false}
             tickMargin={8}
             minTickGap={14}
           />
-          <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={36} />
+          <YAxis
+            allowDecimals={false}
+            tickLine={false}
+            axisLine={false}
+            width={36}
+          />
           <ChartTooltip
             allowEscapeViewBox={{ x: false, y: true }}
             wrapperStyle={{ zIndex: 20 }}
-            content={(
+            content={
               <SiteTrafficStackTooltip
                 series={series}
                 dateFormatter={tooltipFormatter}
                 viewsLabel={viewsLabel}
                 visitorsLabel={visitorsLabel}
               />
-            )}
+            }
           />
           {series.map((item) => (
             <Bar
@@ -918,14 +942,20 @@ export const TrafficPairBarChart = memo(function TrafficPairBarChart({
       >
         <BarChart
           data={chartData}
-          margin={compact ? { left: 0, right: 0, top: 0, bottom: 0 } : { left: 8, right: 8 }}
+          margin={
+            compact
+              ? { left: 0, right: 0, top: 0, bottom: 0 }
+              : { left: 8, right: 8 }
+          }
           barGap={0}
         >
           {compact ? null : <CartesianGrid vertical={false} />}
           {compact ? null : (
             <XAxis
               dataKey="timestampMs"
-              tickFormatter={(value) => tickFormatter.format(new Date(Number(value ?? 0)))}
+              tickFormatter={(value) =>
+                tickFormatter.format(new Date(Number(value ?? 0)))
+              }
               tickLine={false}
               axisLine={false}
               tickMargin={8}
@@ -933,21 +963,28 @@ export const TrafficPairBarChart = memo(function TrafficPairBarChart({
             />
           )}
           {compact ? null : (
-            <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
+            <YAxis
+              allowDecimals={false}
+              tickLine={false}
+              axisLine={false}
+              width={32}
+            />
           )}
           {compact ? null : (
             <ChartTooltip
               allowEscapeViewBox={{ x: false, y: true }}
               wrapperStyle={{ zIndex: 20 }}
-              content={(
+              content={
                 <ChartTooltipContent
                   indicator="line"
                   labelFormatter={(value, payload) => {
-                    const timestamp = Number(payload?.[0]?.payload?.timestampMs ?? value ?? 0);
+                    const timestamp = Number(
+                      payload?.[0]?.payload?.timestampMs ?? value ?? 0,
+                    );
                     return tooltipFormatter.format(new Date(timestamp));
                   }}
                 />
-              )}
+              }
             />
           )}
           <Bar

@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import type { Locale } from "@/lib/i18n/config";
-import { navigateWithTransition } from "@/lib/page-transition";
-import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+
 import { AutoTransition } from "@/components/ui/auto-transition";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
+import type { Locale } from "@/lib/i18n/config";
+import { navigateWithTransition } from "@/lib/page-transition";
 
 interface LoginFormProps {
   locale: Locale;
@@ -64,9 +65,10 @@ export function LoginForm({
       });
       const payload = (await response.json()) as LoginResponse;
       if (!response.ok || !payload.ok || !payload.data) {
-        const message = payload.error === "invalid_credentials"
-          ? invalidCredentialsLabel
-          : payload.message || failedLabel;
+        const message =
+          payload.error === "invalid_credentials"
+            ? invalidCredentialsLabel
+            : payload.message || failedLabel;
         throw new Error(message);
       }
       navigateWithTransition(router, payload.data.next || `/${locale}/app`);

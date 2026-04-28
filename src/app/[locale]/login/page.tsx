@@ -1,4 +1,8 @@
 import Link from "next/link";
+
+import { LoginForm } from "@/components/auth/login-form";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -6,9 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { LoginForm } from "@/components/auth/login-form";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 

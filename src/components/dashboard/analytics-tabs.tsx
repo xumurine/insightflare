@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -10,13 +8,14 @@ import {
   useRef,
   useState,
 } from "react";
-import { motion } from "motion/react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   RiComputerLine,
   RiDashboardLine,
   RiFileList3Line,
-  RiFlashlightLine,
   RiFilter2Line,
+  RiFlashlightLine,
   RiGlobalLine,
   RiMapPin2Line,
   RiMegaphoneLine,
@@ -27,6 +26,8 @@ import {
   RiSpeedUpLine,
   RiUser3Line,
 } from "@remixicon/react";
+import { motion } from "motion/react";
+
 import { cn } from "@/lib/utils";
 
 type AnalyticsTabKey =
@@ -79,7 +80,10 @@ function normalizePathname(pathname: string): string {
   return pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
 }
 
-function isTabActive(item: AnalyticsTabItem, normalizedPathname: string): boolean {
+function isTabActive(
+  item: AnalyticsTabItem,
+  normalizedPathname: string,
+): boolean {
   if (item.key === "overview") return normalizedPathname === item.href;
   return normalizedPathname.startsWith(item.href);
 }
@@ -96,7 +100,9 @@ export function AnalyticsTabs({ items }: AnalyticsTabsProps) {
   });
 
   const pathActiveKey = useMemo(() => {
-    const activeItem = items.find((item) => isTabActive(item, normalizedPathname));
+    const activeItem = items.find((item) =>
+      isTabActive(item, normalizedPathname),
+    );
     return activeItem?.key ?? items[0]?.key ?? null;
   }, [items, normalizedPathname]);
 

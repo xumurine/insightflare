@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { OverlayScrollbars } from "overlayscrollbars";
 import type { PartialOptions } from "overlayscrollbars";
+import { OverlayScrollbars } from "overlayscrollbars";
 
 const globalScrollbarOptions = {
   overflow: {

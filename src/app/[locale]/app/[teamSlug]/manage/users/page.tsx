@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+
 import { AdminUsersManagementClient } from "@/components/dashboard/admin-users-management-client";
 import { getDashboardProfile } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
@@ -11,7 +12,9 @@ interface ManageUsersPageProps {
   }>;
 }
 
-export default async function ManageUsersPage({ params }: ManageUsersPageProps) {
+export default async function ManageUsersPage({
+  params,
+}: ManageUsersPageProps) {
   const { locale, teamSlug } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);

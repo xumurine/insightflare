@@ -1,7 +1,17 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { RiArrowLeftLine, RiExternalLinkLine } from "@remixicon/react";
+
+import { ContentSwitch } from "@/components/dashboard/content-switch";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   Card,
   CardAction,
@@ -11,17 +21,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Clickable } from "@/components/ui/clickable";
-import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { AutoTransition } from "@/components/ui/auto-transition";
 import { fetchBrowserVersionBreakdown } from "@/lib/dashboard/client-data";
 import { numberFormat, percentFormat } from "@/lib/dashboard/format";
-import { cn } from "@/lib/utils";
-import type { BrowserVersionBreakdownData } from "@/lib/edge-client";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { BrowserVersionBreakdownData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { cn } from "@/lib/utils";
 
 /* ---------- caniuse types ---------- */
 
@@ -173,11 +181,14 @@ export function CanIUseCompatCard({
   /* -- catalog state -- */
   const [searchIndex, setSearchIndex] = useState<CaniuseSearchEntry[]>([]);
   const [hotFeatures, setHotFeatures] = useState<CaniuseHotFeature[]>([]);
-  const [trendingFeatures, setTrendingFeatures] = useState<CaniuseTrendingFeature[]>([]);
+  const [trendingFeatures, setTrendingFeatures] = useState<
+    CaniuseTrendingFeature[]
+  >([]);
   const [indexLoading, setIndexLoading] = useState(true);
 
   /* -- browser data -- */
-  const [browserData, setBrowserData] = useState<BrowserVersionBreakdownData>(emptyBreakdown);
+  const [browserData, setBrowserData] =
+    useState<BrowserVersionBreakdownData>(emptyBreakdown);
   const [browserLoading, setBrowserLoading] = useState(true);
 
   /* -- search UI -- */
@@ -188,11 +199,14 @@ export function CanIUseCompatCard({
 
   /* -- selected feature -- */
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [featureDetail, setFeatureDetail] = useState<CaniuseFeatureDetail | null>(null);
+  const [featureDetail, setFeatureDetail] =
+    useState<CaniuseFeatureDetail | null>(null);
   const [featureLoading, setFeatureLoading] = useState(false);
 
   /* -- preview details for default view -- */
-  const [previewDetails, setPreviewDetails] = useState<Record<string, CaniuseFeatureDetail>>({});
+  const [previewDetails, setPreviewDetails] = useState<
+    Record<string, CaniuseFeatureDetail>
+  >({});
 
   const m = messages.browsers;
 
@@ -202,9 +216,15 @@ export function CanIUseCompatCard({
     setIndexLoading(true);
 
     Promise.all([
-      fetch(CANIUSE_BASE).then((r) => r.json() as Promise<CaniuseSearchEntry[]>),
-      fetch(`${CANIUSE_BASE}/hot/`).then((r) => r.json() as Promise<CaniuseHotFeature[]>),
-      fetch(`${CANIUSE_BASE}/trending/`).then((r) => r.json() as Promise<CaniuseTrendingFeature[]>),
+      fetch(CANIUSE_BASE).then(
+        (r) => r.json() as Promise<CaniuseSearchEntry[]>,
+      ),
+      fetch(`${CANIUSE_BASE}/hot/`).then(
+        (r) => r.json() as Promise<CaniuseHotFeature[]>,
+      ),
+      fetch(`${CANIUSE_BASE}/trending/`).then(
+        (r) => r.json() as Promise<CaniuseTrendingFeature[]>,
+      ),
     ])
       .then(([idx, hot, trend]) => {
         if (!active) return;
@@ -217,7 +237,9 @@ export function CanIUseCompatCard({
         if (active) setIndexLoading(false);
       });
 
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
   /* ---- fetch site browser data ---- */
@@ -237,7 +259,9 @@ export function CanIUseCompatCard({
         if (active) setBrowserLoading(false);
       });
 
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [siteId, tw.from, tw.to, filters]);
 
   /* ---- fetch feature detail ---- */
@@ -262,7 +286,9 @@ export function CanIUseCompatCard({
         if (active) setFeatureLoading(false);
       });
 
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [selectedId]);
 
   /* ---- batch-fetch preview details for default view ---- */
@@ -291,13 +317,18 @@ export function CanIUseCompatCard({
       setPreviewDetails(map);
     });
 
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [hotFeatures, trendingFeatures]);
 
   /* ---- click outside ---- */
   useEffect(() => {
     function handler(e: MouseEvent) {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+      if (
+        wrapperRef.current &&
+        !wrapperRef.current.contains(e.target as Node)
+      ) {
         setDropdownOpen(false);
       }
     }
@@ -372,9 +403,10 @@ export function CanIUseCompatCard({
       if (caniuseBrowser) {
         perBrowser.push({
           browser: siteBrowser.browser,
-          support: browserTotalVisitors > 0
-            ? browserSupportedVisitors / browserTotalVisitors
-            : 0,
+          support:
+            browserTotalVisitors > 0
+              ? browserSupportedVisitors / browserTotalVisitors
+              : 0,
           visitors: siteBrowser.visitors,
           status: parseBaseStatus(caniuseBrowser.current_status),
           firstFullVersion: caniuseBrowser.first_full_version,
@@ -437,7 +469,8 @@ export function CanIUseCompatCard({
 
   /* ---- render ---- */
   const loading = indexLoading || browserLoading;
-  const hasContent = hotFeatures.length > 0 || trendingFeatures.length > 0 || !!selectedId;
+  const hasContent =
+    hotFeatures.length > 0 || trendingFeatures.length > 0 || !!selectedId;
 
   return (
     <section className="space-y-4">
@@ -517,14 +550,16 @@ export function CanIUseCompatCard({
                             "[&_svg]:size-4 [&_svg]:shrink-0",
                           )}
                         >
-                        <RiArrowLeftLine />
-                        <span>{m.caniuseClearSelection}</span>
+                          <RiArrowLeftLine />
+                          <span>{m.caniuseClearSelection}</span>
                         </Clickable>
                       </div>
 
                       {/* header */}
                       <div className="space-y-1">
-                        <h3 className="text-sm font-medium">{featureDetail.title}</h3>
+                        <h3 className="text-sm font-medium">
+                          {featureDetail.title}
+                        </h3>
                         <p className="text-xs text-muted-foreground">
                           {featureDetail.description}
                         </p>
@@ -540,7 +575,8 @@ export function CanIUseCompatCard({
                           ))}
                           {featureDetail.status && (
                             <span className="border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                              {SPEC_STATUS_LABELS[featureDetail.status] ?? featureDetail.status}
+                              {SPEC_STATUS_LABELS[featureDetail.status] ??
+                                featureDetail.status}
                             </span>
                           )}
                         </div>
@@ -551,15 +587,22 @@ export function CanIUseCompatCard({
                         <div className="border border-border p-3 text-center">
                           <div
                             className="font-mono text-2xl font-bold tabular-nums"
-                            style={{ color: supportColor(siteSupport.sitePercent) }}
+                            style={{
+                              color: supportColor(siteSupport.sitePercent),
+                            }}
                           >
                             {percentFormat(locale, siteSupport.sitePercent)}
                           </div>
-                          <div className="text-xs text-muted-foreground">{m.caniuseSiteSupport}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {m.caniuseSiteSupport}
+                          </div>
                         </div>
                         <div className="border border-border p-3 text-center">
                           <div className="font-mono text-2xl font-bold tabular-nums">
-                            {percentFormat(locale, siteSupport.globalFullPercent)}
+                            {percentFormat(
+                              locale,
+                              siteSupport.globalFullPercent,
+                            )}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {m.caniuseGlobalSupport} ({m.caniuseFullSupport})
@@ -567,7 +610,10 @@ export function CanIUseCompatCard({
                         </div>
                         <div className="border border-border p-3 text-center">
                           <div className="font-mono text-2xl font-bold tabular-nums text-muted-foreground">
-                            {percentFormat(locale, siteSupport.globalPartialPercent)}
+                            {percentFormat(
+                              locale,
+                              siteSupport.globalPartialPercent,
+                            )}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {m.caniuseGlobalSupport} ({m.caniusePartialSupport})
@@ -576,40 +622,49 @@ export function CanIUseCompatCard({
                       </div>
 
                       {/* per-browser table */}
-                      {(siteSupport.desktop.length > 0 || siteSupport.mobile.length > 0) && (
+                      {(siteSupport.desktop.length > 0 ||
+                        siteSupport.mobile.length > 0) && (
                         <div className="grid grid-cols-[minmax(0,1fr)_max-content_max-content_max-content] items-center gap-x-3 gap-y-2">
-                          {[...siteSupport.desktop, ...siteSupport.mobile].map((b) => (
-                            <Fragment key={b.browser}>
-                              <span className="truncate text-muted-foreground">
-                                {b.browser}
-                                <span className="ml-1 text-[10px] text-muted-foreground/60">
-                                  v{b.currentVersion}
-                                  {b.firstFullVersion && (
-                                    <>, &ge;{b.firstFullVersion}</>
-                                  )}
-                                  {!b.firstFullVersion && b.firstPartialVersion && (
-                                    <>, ~{b.firstPartialVersion}</>
-                                  )}
+                          {[...siteSupport.desktop, ...siteSupport.mobile].map(
+                            (b) => (
+                              <Fragment key={b.browser}>
+                                <span className="truncate text-muted-foreground">
+                                  {b.browser}
+                                  <span className="ml-1 text-[10px] text-muted-foreground/60">
+                                    v{b.currentVersion}
+                                    {b.firstFullVersion && (
+                                      <>, &ge;{b.firstFullVersion}</>
+                                    )}
+                                    {!b.firstFullVersion &&
+                                      b.firstPartialVersion && (
+                                        <>, ~{b.firstPartialVersion}</>
+                                      )}
+                                  </span>
                                 </span>
-                              </span>
-                              <span className="text-right font-mono tabular-nums">
-                                {percentFormat(locale, b.support)}
-                              </span>
-                              <span className="text-right font-mono text-[11px] text-muted-foreground tabular-nums">
-                                {numberFormat(locale, b.visitors)} {messages.common.visitors}
-                              </span>
-                              <span
-                                className={cn(
-                                  "text-right text-[11px] tabular-nums",
-                                  b.status === "y" && "text-[var(--color-chart-2)]",
-                                  b.status === "a" && "text-[var(--color-chart-4)]",
-                                  b.status !== "y" && b.status !== "a" && "text-[var(--color-chart-5)]",
-                                )}
-                              >
-                                {statusLabel(b.status)}
-                              </span>
-                            </Fragment>
-                          ))}
+                                <span className="text-right font-mono tabular-nums">
+                                  {percentFormat(locale, b.support)}
+                                </span>
+                                <span className="text-right font-mono text-[11px] text-muted-foreground tabular-nums">
+                                  {numberFormat(locale, b.visitors)}{" "}
+                                  {messages.common.visitors}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "text-right text-[11px] tabular-nums",
+                                    b.status === "y" &&
+                                      "text-[var(--color-chart-2)]",
+                                    b.status === "a" &&
+                                      "text-[var(--color-chart-4)]",
+                                    b.status !== "y" &&
+                                      b.status !== "a" &&
+                                      "text-[var(--color-chart-5)]",
+                                  )}
+                                >
+                                  {statusLabel(b.status)}
+                                </span>
+                              </Fragment>
+                            ),
+                          )}
                         </div>
                       )}
 
@@ -669,15 +724,26 @@ export function CanIUseCompatCard({
                             tapScale={0.98}
                             className="col-span-3 grid grid-cols-subgrid items-center gap-x-3 px-2 py-1.5 text-xs hover:bg-accent"
                           >
-                            <span className="truncate text-left">{f.title}</span>
+                            <span className="truncate text-left">
+                              {f.title}
+                            </span>
                             <span
                               className="text-right font-mono tabular-nums"
-                              style={sitePct != null ? { color: supportColor(sitePct) } : undefined}
+                              style={
+                                sitePct != null
+                                  ? { color: supportColor(sitePct) }
+                                  : undefined
+                              }
                             >
-                              {sitePct != null ? percentFormat(locale, sitePct) : "–"}
+                              {sitePct != null
+                                ? percentFormat(locale, sitePct)
+                                : "–"}
                             </span>
                             <span className="text-right font-mono text-muted-foreground tabular-nums">
-                              {percentFormat(locale, f.usage.fully_supported / 100)}
+                              {percentFormat(
+                                locale,
+                                f.usage.fully_supported / 100,
+                              )}
                             </span>
                           </Clickable>
                         );
@@ -701,15 +767,26 @@ export function CanIUseCompatCard({
                             tapScale={0.98}
                             className="col-span-3 grid grid-cols-subgrid items-center gap-x-3 px-2 py-1.5 text-xs hover:bg-accent"
                           >
-                            <span className="truncate text-left">{f.title}</span>
+                            <span className="truncate text-left">
+                              {f.title}
+                            </span>
                             <span
                               className="text-right font-mono tabular-nums"
-                              style={sitePct != null ? { color: supportColor(sitePct) } : undefined}
+                              style={
+                                sitePct != null
+                                  ? { color: supportColor(sitePct) }
+                                  : undefined
+                              }
                             >
-                              {sitePct != null ? percentFormat(locale, sitePct) : "–"}
+                              {sitePct != null
+                                ? percentFormat(locale, sitePct)
+                                : "–"}
                             </span>
                             <span className="text-right font-mono text-muted-foreground tabular-nums">
-                              {percentFormat(locale, f.usage.fully_supported / 100)}
+                              {percentFormat(
+                                locale,
+                                f.usage.fully_supported / 100,
+                              )}
                             </span>
                           </Clickable>
                         );

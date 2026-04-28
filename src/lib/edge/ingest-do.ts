@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { UAParser } from "ua-parser-js";
+
 import type {
   Env,
   IngestEnvelopePayload,
@@ -9,8 +10,8 @@ import type {
   NormalizedPageview,
   NormalizedVisitContext,
   TrackerClientPayload,
-  TrackerPerformancePayload,
   TrackerPayloadKind,
+  TrackerPerformancePayload,
 } from "./types";
 import {
   clampString,
@@ -347,11 +348,11 @@ function normalizePerformancePayload(
   const inp = normalizePerformanceMetric(source.inp);
 
   if (
-    ttfb === null
-    && fcp === null
-    && lcp === null
-    && cls === null
-    && inp === null
+    ttfb === null &&
+    fcp === null &&
+    lcp === null &&
+    cls === null &&
+    inp === null
   ) {
     return null;
   }
@@ -397,7 +398,9 @@ function formatRealtimeOsLabel(os: string, osVersion: string): string {
   return normalizedOs || normalizedVersion;
 }
 
-function toRealtimePayload(record: RealtimeSnapshotRecord): Record<string, unknown> {
+function toRealtimePayload(
+  record: RealtimeSnapshotRecord,
+): Record<string, unknown> {
   return {
     id: record.id,
     eventType: record.eventType,
@@ -608,10 +611,17 @@ export class IngestDurableObject extends DurableObject {
     const toMsRaw = Number(url.searchParams.get("to") || String(Date.now()));
     const limitRaw = Number(url.searchParams.get("limit") || "5000");
 
-    const fromMs = Number.isFinite(fromMsRaw) ? Math.max(0, Math.floor(fromMsRaw)) : 0;
-    const toMs = Number.isFinite(toMsRaw) ? Math.max(fromMs, Math.floor(toMsRaw)) : Date.now();
+    const fromMs = Number.isFinite(fromMsRaw)
+      ? Math.max(0, Math.floor(fromMsRaw))
+      : 0;
+    const toMs = Number.isFinite(toMsRaw)
+      ? Math.max(fromMs, Math.floor(toMsRaw))
+      : Date.now();
     const limit = Number.isFinite(limitRaw)
-      ? Math.min(RECENT_EVENT_QUERY_SCAN_LIMIT, Math.max(1, Math.floor(limitRaw)))
+      ? Math.min(
+          RECENT_EVENT_QUERY_SCAN_LIMIT,
+          Math.max(1, Math.floor(limitRaw)),
+        )
       : 5000;
 
     return jsonResponse({
@@ -682,10 +692,17 @@ export class IngestDurableObject extends DurableObject {
         updated_at INTEGER NOT NULL
       )
     `);
-    const visitColumns = sql.exec("PRAGMA table_info(buffered_visits)").toArray() as Array<{ name?: string }>;
-    const ensureBufferedVisitColumn = (columnName: string, columnType: string) => {
+    const visitColumns = sql
+      .exec("PRAGMA table_info(buffered_visits)")
+      .toArray() as Array<{ name?: string }>;
+    const ensureBufferedVisitColumn = (
+      columnName: string,
+      columnType: string,
+    ) => {
       if (visitColumns.some((row) => row.name === columnName)) return;
-      sql.exec(`ALTER TABLE buffered_visits ADD COLUMN ${columnName} ${columnType}`);
+      sql.exec(
+        `ALTER TABLE buffered_visits ADD COLUMN ${columnName} ${columnType}`,
+      );
     };
     ensureBufferedVisitColumn("perf_ttfb_ms", "REAL");
     ensureBufferedVisitColumn("perf_fcp_ms", "REAL");
@@ -721,13 +738,21 @@ export class IngestDurableObject extends DurableObject {
       ON buffered_visits(status, ended_at)
     `);
     sql.exec(CREATE_BUFFERED_CUSTOM_EVENTS_SQL);
-    const eventColumns = sql.exec("PRAGMA table_info(buffered_custom_events)").toArray() as Array<{ name?: string }>;
-    const hasLegacyEventContextColumns = eventColumns.some((row) =>
-      row.name === "visitor_id" || row.name === "session_id" || row.name === "pathname" || row.name === "hostname",
+    const eventColumns = sql
+      .exec("PRAGMA table_info(buffered_custom_events)")
+      .toArray() as Array<{ name?: string }>;
+    const hasLegacyEventContextColumns = eventColumns.some(
+      (row) =>
+        row.name === "visitor_id" ||
+        row.name === "session_id" ||
+        row.name === "pathname" ||
+        row.name === "hostname",
     );
     if (hasLegacyEventContextColumns) {
       sql.exec("DROP TABLE IF EXISTS buffered_custom_events_legacy");
-      sql.exec("ALTER TABLE buffered_custom_events RENAME TO buffered_custom_events_legacy");
+      sql.exec(
+        "ALTER TABLE buffered_custom_events RENAME TO buffered_custom_events_legacy",
+      );
       sql.exec(CREATE_BUFFERED_CUSTOM_EVENTS_SQL);
       sql.exec(`
         INSERT INTO buffered_custom_events (
@@ -765,12 +790,18 @@ export class IngestDurableObject extends DurableObject {
   }
 
   private hasDirtyRows(): boolean {
-    const visits = this.sqlOne<{ ok: number }>("SELECT 1 AS ok FROM buffered_visits WHERE dirty = 1 LIMIT 1");
+    const visits = this.sqlOne<{ ok: number }>(
+      "SELECT 1 AS ok FROM buffered_visits WHERE dirty = 1 LIMIT 1",
+    );
     if (visits) return true;
-    const events = this.sqlOne<{ ok: number }>("SELECT 1 AS ok FROM buffered_custom_events WHERE dirty = 1 LIMIT 1");
+    const events = this.sqlOne<{ ok: number }>(
+      "SELECT 1 AS ok FROM buffered_custom_events WHERE dirty = 1 LIMIT 1",
+    );
     return Boolean(events);
   }
-  private async normalizeRecord(envelope: IngestEnvelopePayload): Promise<NormalizedIngestRecord | null> {
+  private async normalizeRecord(
+    envelope: IngestEnvelopePayload,
+  ): Promise<NormalizedIngestRecord | null> {
     const client = envelope.client ?? ({} as TrackerClientPayload);
     const siteId = clampString(coerceString(client.siteId), 120);
     if (!siteId) return null;
@@ -780,11 +811,17 @@ export class IngestDurableObject extends DurableObject {
     const receivedAt = clampTimestamp(envelope.request.receivedAt, nowMs);
     const eventAt = clampTimestamp(client.timestamp, nowMs);
     const startedAt = clampTimestamp(client.startedAt, eventAt);
-    const kind = clampString(coerceString(client.kind), 40) as TrackerPayloadKind;
+    const kind = clampString(
+      coerceString(client.kind),
+      40,
+    ) as TrackerPayloadKind;
     const visitId = clampString(coerceString(client.visitId), 128);
 
     const cf = envelope.request.cf ?? {};
-    const uaRaw = clampString(coerceString(requestHeaders["user-agent"] ?? ""), 1024);
+    const uaRaw = clampString(
+      coerceString(requestHeaders["user-agent"] ?? ""),
+      1024,
+    );
     const parser = new UAParser(uaRaw);
     const ua = parser.getResult();
     const isEU = Boolean(cf.isEUCountry);
@@ -792,7 +829,11 @@ export class IngestDurableObject extends DurableObject {
     let visitorId = clampString(coerceString(client.visitorId), 128);
     if (isEU || !visitorId) {
       const ip = clampString(
-        coerceString(requestHeaders["cf-connection-ip"] ?? requestHeaders["x-forwarded-for"] ?? ""),
+        coerceString(
+          requestHeaders["cf-connection-ip"] ??
+            requestHeaders["x-forwarded-for"] ??
+            "",
+        ),
         80,
       );
       visitorId = await deriveEuVisitorId({
@@ -814,7 +855,10 @@ export class IngestDurableObject extends DurableObject {
       longitude: coerceNumber(cf.longitude, null),
       postalCode: clampString(coerceString(cf.postalCode ?? ""), 32),
       metroCode: clampString(coerceString(cf.metroCode ?? ""), 32),
-      timezone: clampString(coerceString(client.timezone || cf.timezone || ""), 120),
+      timezone: clampString(
+        coerceString(client.timezone || cf.timezone || ""),
+        120,
+      ),
       asOrganization: clampString(coerceString(cf.asOrganization ?? ""), 255),
       uaRaw,
       browser: clampString(coerceString(ua.browser.name ?? ""), 80),
@@ -834,12 +878,19 @@ export class IngestDurableObject extends DurableObject {
       if (!hostname) {
         return null;
       }
-      const rawReferrerUrl = clampString(coerceString(client.referrerUrl), 2000);
-      const rawReferrerHost = clampString(safeHostname(rawReferrerUrl), 255).toLowerCase();
+      const rawReferrerUrl = clampString(
+        coerceString(client.referrerUrl),
+        2000,
+      );
+      const rawReferrerHost = clampString(
+        safeHostname(rawReferrerUrl),
+        255,
+      ).toLowerCase();
       const referrerIsSameHostname = isSameHostname(rawReferrerHost, hostname);
       const referrerUrl = referrerIsSameHostname ? "" : rawReferrerUrl;
       const referrerHost = referrerIsSameHostname ? "" : rawReferrerHost;
-      const sessionId = clampString(coerceString(client.sessionId), 128) || crypto.randomUUID();
+      const sessionId =
+        clampString(coerceString(client.sessionId), 128) || crypto.randomUUID();
       return {
         kind: "pageview",
         receivedAt,
@@ -893,7 +944,10 @@ export class IngestDurableObject extends DurableObject {
       if (!visit) return null;
       return {
         kind: "custom_event",
-        eventId: clampString(coerceString(client.eventId || crypto.randomUUID()), 128),
+        eventId: clampString(
+          coerceString(client.eventId || crypto.randomUUID()),
+          128,
+        ),
         receivedAt,
         eventAt,
         eventName,
@@ -946,7 +1000,14 @@ export class IngestDurableObject extends DurableObject {
     const now = toUnixSeconds(record.receivedAt);
 
     // Complete the previous open visit for this session (server-side duration calculation)
-    const prevVisit = this.sqlOne<{ visitId: string; startedAt: number; visitorId: string; pathname: string; country: string; browser: string }>(
+    const prevVisit = this.sqlOne<{
+      visitId: string;
+      startedAt: number;
+      visitorId: string;
+      pathname: string;
+      country: string;
+      browser: string;
+    }>(
       `
         SELECT visit_id AS visitId, started_at AS startedAt, visitor_id AS visitorId,
                pathname, country, browser
@@ -1018,14 +1079,31 @@ export class IngestDurableObject extends DurableObject {
 
   private async handleLeave(record: NormalizedLeave): Promise<void> {
     const visit = this.sqlOne<{
-      visitId: string; startedAt: number; visitorId: string; siteId: string;
-      sessionId: string; pathname: string; title: string; hostname: string;
-      referrerUrl: string; referrerHost: string;
-      country: string; region: string; regionCode: string; city: string;
-      continent: string; timezone: string; organization: string;
-      browser: string; os: string; osVersion: string; deviceType: string;
-      language: string; screenSize: string;
-      latitude: number | null; longitude: number | null;
+      visitId: string;
+      startedAt: number;
+      visitorId: string;
+      siteId: string;
+      sessionId: string;
+      pathname: string;
+      title: string;
+      hostname: string;
+      referrerUrl: string;
+      referrerHost: string;
+      country: string;
+      region: string;
+      regionCode: string;
+      city: string;
+      continent: string;
+      timezone: string;
+      organization: string;
+      browser: string;
+      os: string;
+      osVersion: string;
+      deviceType: string;
+      language: string;
+      screenSize: string;
+      latitude: number | null;
+      longitude: number | null;
     }>(
       `
         SELECT visit_id AS visitId, started_at AS startedAt, visitor_id AS visitorId, site_id AS siteId,
@@ -1051,9 +1129,11 @@ export class IngestDurableObject extends DurableObject {
     let closedVisit = false;
     if (visit) {
       const leaveAt = Math.max(record.leaveAt, visit.startedAt);
-      const durationMs = typeof record.durationMs === "number" && Number.isFinite(record.durationMs)
-        ? Math.max(0, Math.floor(record.durationMs))
-        : Math.max(0, leaveAt - visit.startedAt);
+      const durationMs =
+        typeof record.durationMs === "number" &&
+        Number.isFinite(record.durationMs)
+          ? Math.max(0, Math.floor(record.durationMs))
+          : Math.max(0, leaveAt - visit.startedAt);
 
       const rowsWritten = this.sqlRun(
         `
@@ -1167,7 +1247,9 @@ export class IngestDurableObject extends DurableObject {
     });
   }
 
-  private async handleCustomEvent(record: NormalizedCustomEvent): Promise<void> {
+  private async handleCustomEvent(
+    record: NormalizedCustomEvent,
+  ): Promise<void> {
     const inserted = await this.insertCustomEvent(record);
     if (!inserted) {
       return;
@@ -1202,7 +1284,10 @@ export class IngestDurableObject extends DurableObject {
       longitude: record.longitude,
     });
   }
-  private async getVisitContext(siteId: string, visitId: string): Promise<StoredOpenVisit | null> {
+  private async getVisitContext(
+    siteId: string,
+    visitId: string,
+  ): Promise<StoredOpenVisit | null> {
     const row = await this.readVisitRow(siteId, visitId);
     if (!row) return null;
     return {
@@ -1248,7 +1333,10 @@ export class IngestDurableObject extends DurableObject {
     };
   }
 
-  private async readVisitRow(siteId: string, visitId: string): Promise<VisitRow | null> {
+  private async readVisitRow(
+    siteId: string,
+    visitId: string,
+  ): Promise<VisitRow | null> {
     return this.sqlOne<VisitRow>(
       `
         SELECT
@@ -1517,7 +1605,9 @@ export class IngestDurableObject extends DurableObject {
     return rowsWritten > 0;
   }
 
-  private async insertCustomEvent(record: NormalizedCustomEvent): Promise<boolean> {
+  private async insertCustomEvent(
+    record: NormalizedCustomEvent,
+  ): Promise<boolean> {
     const createdAt = toUnixSeconds(record.receivedAt);
     const rowsWritten = this.sqlRun(
       `
@@ -1537,7 +1627,10 @@ export class IngestDurableObject extends DurableObject {
     return rowsWritten > 0;
   }
 
-  private async updateOpenVisitActivity(visitId: string, eventAt: number): Promise<void> {
+  private async updateOpenVisitActivity(
+    visitId: string,
+    eventAt: number,
+  ): Promise<void> {
     this.sqlRun(
       `
         UPDATE buffered_visits
@@ -1550,7 +1643,9 @@ export class IngestDurableObject extends DurableObject {
     );
   }
 
-  private async pushRealtimeRecord(record: RealtimeSnapshotRecord): Promise<void> {
+  private async pushRealtimeRecord(
+    record: RealtimeSnapshotRecord,
+  ): Promise<void> {
     await this.pushToWebsocketClients(record);
   }
 
@@ -1563,7 +1658,11 @@ export class IngestDurableObject extends DurableObject {
   }
 
   private async hasOpenVisits(): Promise<boolean> {
-    return this.sqlOne<{ ok: number }>("SELECT 1 AS ok FROM buffered_visits WHERE status = 'open' LIMIT 1") !== null;
+    return (
+      this.sqlOne<{ ok: number }>(
+        "SELECT 1 AS ok FROM buffered_visits WHERE status = 'open' LIMIT 1",
+      ) !== null
+    );
   }
 
   private hasOpenVisitsForVisitor(siteId: string, visitorId: string): boolean {
@@ -1587,15 +1686,9 @@ export class IngestDurableObject extends DurableObject {
     toMs: number,
     limit?: number,
   ): Array<Record<string, unknown>> {
-    const limitClause = typeof limit === "number" ? "\n        LIMIT ?\n      " : "";
-    const bindings: SqlBinding[] = [
-      fromMs,
-      toMs,
-      fromMs,
-      toMs,
-      fromMs,
-      toMs,
-    ];
+    const limitClause =
+      typeof limit === "number" ? "\n        LIMIT ?\n      " : "";
+    const bindings: SqlBinding[] = [fromMs, toMs, fromMs, toMs, fromMs, toMs];
     if (typeof limit === "number") {
       bindings.push(limit);
     }
@@ -1748,7 +1841,9 @@ export class IngestDurableObject extends DurableObject {
     return rows.map((row) => toRealtimePayload(row));
   }
 
-  private readActiveRealtimeVisits(cutoffMs: number): Array<Record<string, unknown>> {
+  private readActiveRealtimeVisits(
+    cutoffMs: number,
+  ): Array<Record<string, unknown>> {
     const rows = this.sqlAll<
       VisitRow & {
         lastActivityAt: number;
@@ -1814,31 +1909,36 @@ export class IngestDurableObject extends DurableObject {
         Math.max(0, Date.now() - RECENT_EVENT_RETENTION_MS),
         Date.now(),
       );
-      const activeNow = this.sqlOne<{ count: number }>(
-        `
+      const activeNow =
+        this.sqlOne<{ count: number }>(
+          `
           SELECT count(DISTINCT visitor_id) AS count
           FROM buffered_visits
           WHERE status = 'open'
             AND last_activity_at >= ?
         `,
-        cutoffMs,
-      )?.count ?? 0;
+          cutoffMs,
+        )?.count ?? 0;
       const visits = this.readActiveRealtimeVisits(cutoffMs);
 
-      socket.send(JSON.stringify({
-        type: "snapshot",
-        data: {
-          activeNow,
-          events,
-          visits,
-        },
-      }));
+      socket.send(
+        JSON.stringify({
+          type: "snapshot",
+          data: {
+            activeNow,
+            events,
+            visits,
+          },
+        }),
+      );
     } catch (error) {
       console.error("ws_snapshot_init_failed", error);
     }
   }
 
-  private async pushToWebsocketClients(record: RealtimeSnapshotRecord): Promise<void> {
+  private async pushToWebsocketClients(
+    record: RealtimeSnapshotRecord,
+  ): Promise<void> {
     if (this.sockets.size === 0) return;
 
     const payload = JSON.stringify({
@@ -1970,7 +2070,10 @@ export class IngestDurableObject extends DurableObject {
         await this.flushRowsIndividually(visitRows, eventRows);
       }
 
-      if (visitRows.length < D1_FLUSH_BATCH_SIZE && eventRows.length < D1_FLUSH_BATCH_SIZE) {
+      if (
+        visitRows.length < D1_FLUSH_BATCH_SIZE &&
+        eventRows.length < D1_FLUSH_BATCH_SIZE
+      ) {
         return;
       }
     }
@@ -1996,7 +2099,10 @@ export class IngestDurableObject extends DurableObject {
     this.deleteFlushedCustomEventRows(rows);
   }
 
-  private markVisitRowsFailed(rows: BufferedVisitRow[], errorMessage: string): void {
+  private markVisitRowsFailed(
+    rows: BufferedVisitRow[],
+    errorMessage: string,
+  ): void {
     if (rows.length === 0) return;
     const ids = rows.map((row) => row.visitId);
     this.sqlRun(
@@ -2006,7 +2112,10 @@ export class IngestDurableObject extends DurableObject {
     );
   }
 
-  private markCustomEventRowsFailed(rows: BufferedCustomEventRow[], errorMessage: string): void {
+  private markCustomEventRowsFailed(
+    rows: BufferedCustomEventRow[],
+    errorMessage: string,
+  ): void {
     if (rows.length === 0) return;
     const ids = rows.map((row) => row.eventId);
     this.sqlRun(
@@ -2020,14 +2129,22 @@ export class IngestDurableObject extends DurableObject {
     return this.doEnv.DB.prepare(UPSERT_VISIT_SQL).bind(...visitBindings(row));
   }
 
-  private prepareCustomEventStatement(row: BufferedCustomEventRow): D1PreparedStatement {
-    return this.doEnv.DB.prepare(INSERT_CUSTOM_EVENT_SQL).bind(...customEventBindings(row));
+  private prepareCustomEventStatement(
+    row: BufferedCustomEventRow,
+  ): D1PreparedStatement {
+    return this.doEnv.DB.prepare(INSERT_CUSTOM_EVENT_SQL).bind(
+      ...customEventBindings(row),
+    );
   }
 
   private deleteFlushedVisitRows(rows: BufferedVisitRow[]): void {
     const cutoffMs = Date.now() - FLUSHED_BUFFER_RETENTION_MS;
     const ids = rows
-      .filter((row) => row.status === "timeout" || this.visitEndedBeforeRealtimeCutoff(row, cutoffMs))
+      .filter(
+        (row) =>
+          row.status === "timeout" ||
+          this.visitEndedBeforeRealtimeCutoff(row, cutoffMs),
+      )
       .map((row) => row.visitId);
     if (ids.length === 0) return;
     this.sqlRun(
@@ -2049,7 +2166,10 @@ export class IngestDurableObject extends DurableObject {
   }
 
   private visitEndedBeforeRealtimeCutoff(
-    row: Pick<BufferedVisitRow, "status" | "startedAt" | "endedAt" | "finalizedAt">,
+    row: Pick<
+      BufferedVisitRow,
+      "status" | "startedAt" | "endedAt" | "finalizedAt"
+    >,
     cutoffMs: number,
   ): boolean {
     if (row.status === "open") return false;
@@ -2069,23 +2189,33 @@ export class IngestDurableObject extends DurableObject {
     }
   }
 
-  private async flushVisitRowIndividually(row: BufferedVisitRow): Promise<void> {
+  private async flushVisitRowIndividually(
+    row: BufferedVisitRow,
+  ): Promise<void> {
     try {
       await this.doEnv.DB.batch([this.prepareVisitStatement(row)]);
       this.markVisitRowsFlushed([row]);
     } catch (error) {
-      const message = clampString(String(error instanceof Error ? error.message : error), 400);
+      const message = clampString(
+        String(error instanceof Error ? error.message : error),
+        400,
+      );
       this.markVisitRowsFailed([row], message);
       console.error("d1_flush_visit_failed", row.visitId, error);
     }
   }
 
-  private async flushCustomEventRowIndividually(row: BufferedCustomEventRow): Promise<void> {
+  private async flushCustomEventRowIndividually(
+    row: BufferedCustomEventRow,
+  ): Promise<void> {
     try {
       await this.doEnv.DB.batch([this.prepareCustomEventStatement(row)]);
       this.markCustomEventRowsFlushed([row]);
     } catch (error) {
-      const message = clampString(String(error instanceof Error ? error.message : error), 400);
+      const message = clampString(
+        String(error instanceof Error ? error.message : error),
+        400,
+      );
       this.markCustomEventRowsFailed([row], message);
       console.error("d1_flush_custom_event_failed", row.eventId, error);
     }
@@ -2243,5 +2373,4 @@ export class IngestDurableObject extends DurableObject {
       }
     }
   }
-
 }

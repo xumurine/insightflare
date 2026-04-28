@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+
 import {
   OverviewPagesSection,
   type OverviewPagesSectionCardData,
@@ -50,7 +51,9 @@ function equalsCaseInsensitive(left: string, right: string): boolean {
 }
 
 function sessionKeyOf(visit: RealtimeVisit): string {
-  return visit.sessionId.trim() || visit.visitId.trim() || visit.visitorId.trim();
+  return (
+    visit.sessionId.trim() || visit.visitId.trim() || visit.visitorId.trim()
+  );
 }
 
 function compareVisitStart(left: RealtimeVisit, right: RealtimeVisit): number {
@@ -70,10 +73,13 @@ function compareVisitEnd(left: RealtimeVisit, right: RealtimeVisit): number {
 function buildSessionBoundaries(
   visits: RealtimeVisit[],
 ): Map<string, SessionBoundary> {
-  const boundaryBySession = new Map<string, {
-    entryVisit: RealtimeVisit;
-    exitVisit: RealtimeVisit;
-  }>();
+  const boundaryBySession = new Map<
+    string,
+    {
+      entryVisit: RealtimeVisit;
+      exitVisit: RealtimeVisit;
+    }
+  >();
 
   for (const visit of visits) {
     const sessionKey = sessionKeyOf(visit);
@@ -163,8 +169,8 @@ function matchesSourceLink(
   }
 
   if (
-    equalsCaseInsensitive(referrerUrl, filterValue)
-    || equalsCaseInsensitive(referrerHost, filterValue)
+    equalsCaseInsensitive(referrerUrl, filterValue) ||
+    equalsCaseInsensitive(referrerHost, filterValue)
   ) {
     return true;
   }
@@ -194,8 +200,8 @@ function matchesGeoFilter(visit: RealtimeVisit, filterValue: string): boolean {
 
   if (!parsedFilter.regionCode && !parsedFilter.regionName) {
     return (
-      equalsCaseInsensitive(visit.country, parsedFilter.countryCode)
-      && equalsCaseInsensitive(visit.city, parsedFilter.localityName ?? "")
+      equalsCaseInsensitive(visit.country, parsedFilter.countryCode) &&
+      equalsCaseInsensitive(visit.city, parsedFilter.localityName ?? "")
     );
   }
 
@@ -231,10 +237,16 @@ function filterRealtimeVisits(
     if (filters.hostname && !equalsTrimmed(visit.hostname, filters.hostname)) {
       return false;
     }
-    if (filters.entry && !equalsTrimmed(sessionBoundary?.entryPath ?? "", filters.entry)) {
+    if (
+      filters.entry &&
+      !equalsTrimmed(sessionBoundary?.entryPath ?? "", filters.entry)
+    ) {
       return false;
     }
-    if (filters.exit && !equalsTrimmed(sessionBoundary?.exitPath ?? "", filters.exit)) {
+    if (
+      filters.exit &&
+      !equalsTrimmed(sessionBoundary?.exitPath ?? "", filters.exit)
+    ) {
       return false;
     }
     if (filters.sourceDomain) {
@@ -242,44 +254,49 @@ function filterRealtimeVisits(
         if (visit.referrerHost.trim()) {
           return false;
         }
-      } else if (!equalsCaseInsensitive(visit.referrerHost, filters.sourceDomain)) {
+      } else if (
+        !equalsCaseInsensitive(visit.referrerHost, filters.sourceDomain)
+      ) {
         return false;
       }
     }
-    if (filters.sourceLink && !matchesSourceLink(
-      visit.referrerUrl,
-      visit.referrerHost,
-      filters.sourceLink,
-    )) {
-      return false;
-    }
     if (
-      filters.clientBrowser
-      && !equalsTrimmed(visit.browser, filters.clientBrowser)
+      filters.sourceLink &&
+      !matchesSourceLink(
+        visit.referrerUrl,
+        visit.referrerHost,
+        filters.sourceLink,
+      )
     ) {
       return false;
     }
     if (
-      filters.clientOsVersion
-      && !equalsTrimmed(visit.osVersion, filters.clientOsVersion)
+      filters.clientBrowser &&
+      !equalsTrimmed(visit.browser, filters.clientBrowser)
     ) {
       return false;
     }
     if (
-      filters.clientDeviceType
-      && !equalsTrimmed(visit.deviceType, filters.clientDeviceType)
+      filters.clientOsVersion &&
+      !equalsTrimmed(visit.osVersion, filters.clientOsVersion)
     ) {
       return false;
     }
     if (
-      filters.clientLanguage
-      && !equalsTrimmed(visit.language, filters.clientLanguage)
+      filters.clientDeviceType &&
+      !equalsTrimmed(visit.deviceType, filters.clientDeviceType)
     ) {
       return false;
     }
     if (
-      filters.clientScreenSize
-      && !equalsTrimmed(visit.screenSize, filters.clientScreenSize)
+      filters.clientLanguage &&
+      !equalsTrimmed(visit.language, filters.clientLanguage)
+    ) {
+      return false;
+    }
+    if (
+      filters.clientScreenSize &&
+      !equalsTrimmed(visit.screenSize, filters.clientScreenSize)
     ) {
       return false;
     }
@@ -287,20 +304,20 @@ function filterRealtimeVisits(
       return false;
     }
     if (
-      filters.geoContinent
-      && !equalsTrimmed(visit.continent, filters.geoContinent)
+      filters.geoContinent &&
+      !equalsTrimmed(visit.continent, filters.geoContinent)
     ) {
       return false;
     }
     if (
-      filters.geoTimezone
-      && !equalsTrimmed(visit.timezone, filters.geoTimezone)
+      filters.geoTimezone &&
+      !equalsTrimmed(visit.timezone, filters.geoTimezone)
     ) {
       return false;
     }
     if (
-      filters.geoOrganization
-      && !equalsTrimmed(visit.organization, filters.geoOrganization)
+      filters.geoOrganization &&
+      !equalsTrimmed(visit.organization, filters.geoOrganization)
     ) {
       return false;
     }
@@ -317,12 +334,15 @@ function aggregateVisitRows(
     resolveLabel?: (value: string) => string;
   },
 ): OverviewTabRows {
-  const buckets = new Map<string, {
-    label: string;
-    views: number;
-    sessionIds: Set<string>;
-    visitorIds: Set<string>;
-  }>();
+  const buckets = new Map<
+    string,
+    {
+      label: string;
+      views: number;
+      sessionIds: Set<string>;
+      visitorIds: Set<string>;
+    }
+  >();
 
   for (const visit of visits) {
     const value = getValue(visit).trim();
@@ -336,7 +356,7 @@ function aggregateVisitRows(
 
     bucket.label = options.resolveLabel
       ? options.resolveLabel(value)
-      : (value || options.emptyLabel);
+      : value || options.emptyLabel;
     bucket.views += 1;
     bucket.sessionIds.add(sessionKeyOf(visit));
     const visitorId = visit.visitorId.trim();
@@ -353,7 +373,8 @@ function aggregateVisitRows(
     }))
     .sort((left, right) => {
       if (right.views !== left.views) return right.views - left.views;
-      if (right.sessions !== left.sessions) return right.sessions - left.sessions;
+      if (right.sessions !== left.sessions)
+        return right.sessions - left.sessions;
       return left.label.localeCompare(right.label);
     });
 }
@@ -368,12 +389,15 @@ function aggregateSessionBoundaryRows(
     resolveLabel?: (value: string) => string;
   },
 ): OverviewTabRows {
-  const buckets = new Map<string, {
-    label: string;
-    views: number;
-    sessionIds: Set<string>;
-    visitorIds: Set<string>;
-  }>();
+  const buckets = new Map<
+    string,
+    {
+      label: string;
+      views: number;
+      sessionIds: Set<string>;
+      visitorIds: Set<string>;
+    }
+  >();
 
   for (const sessionKey of sessionKeys) {
     const boundary = sessionBoundaries.get(sessionKey);
@@ -390,7 +414,7 @@ function aggregateSessionBoundaryRows(
 
     bucket.label = options.resolveLabel
       ? options.resolveLabel(value)
-      : (value || options.emptyLabel);
+      : value || options.emptyLabel;
     bucket.views += 1;
     bucket.sessionIds.add(sessionKey);
     const visitorId = boundary.visitorId;
@@ -407,7 +431,8 @@ function aggregateSessionBoundaryRows(
     }))
     .sort((left, right) => {
       if (right.views !== left.views) return right.views - left.views;
-      if (right.sessions !== left.sessions) return right.sessions - left.sessions;
+      if (right.sessions !== left.sessions)
+        return right.sessions - left.sessions;
       return left.label.localeCompare(right.label);
     });
 }
@@ -417,7 +442,9 @@ function buildCardData(
   messages: AppMessages,
 ): OverviewPagesSectionCardData {
   const sessionBoundaries = buildSessionBoundaries(visits);
-  const filteredSessionKeys = new Set(visits.map((visit) => sessionKeyOf(visit)));
+  const filteredSessionKeys = new Set(
+    visits.map((visit) => sessionKeyOf(visit)),
+  );
 
   return {
     page: {
@@ -484,12 +511,20 @@ function buildCardData(
       country: aggregateVisitRows(visits, (visit) => visit.country, {
         emptyLabel: messages.common.unknown,
       }),
-      region: aggregateVisitRows(visits, (visit) => resolveVisitRegionValue(visit), {
-        emptyLabel: messages.common.unknown,
-      }),
-      city: aggregateVisitRows(visits, (visit) => resolveVisitCityValue(visit), {
-        emptyLabel: messages.common.unknown,
-      }),
+      region: aggregateVisitRows(
+        visits,
+        (visit) => resolveVisitRegionValue(visit),
+        {
+          emptyLabel: messages.common.unknown,
+        },
+      ),
+      city: aggregateVisitRows(
+        visits,
+        (visit) => resolveVisitCityValue(visit),
+        {
+          emptyLabel: messages.common.unknown,
+        },
+      ),
       continent: aggregateVisitRows(visits, (visit) => visit.continent, {
         emptyLabel: messages.common.unknown,
       }),
@@ -550,21 +585,29 @@ export function parseRealtimeCardFilters(
     hostname: normalizeRealtimeFilterValue(searchParams.get("hostname")),
     entry: normalizeRealtimeFilterValue(searchParams.get("entry")),
     exit: normalizeRealtimeFilterValue(searchParams.get("exit")),
-    sourceDomain: normalizeRealtimeFilterValue(searchParams.get("sourceDomain")),
+    sourceDomain: normalizeRealtimeFilterValue(
+      searchParams.get("sourceDomain"),
+    ),
     sourceLink: normalizeRealtimeFilterValue(searchParams.get("sourceLink")),
-    clientBrowser: normalizeRealtimeFilterValue(searchParams.get("clientBrowser")),
+    clientBrowser: normalizeRealtimeFilterValue(
+      searchParams.get("clientBrowser"),
+    ),
     clientOsVersion: normalizeRealtimeFilterValue(
       searchParams.get("clientOsVersion"),
     ),
     clientDeviceType: normalizeRealtimeFilterValue(
       searchParams.get("clientDeviceType"),
     ),
-    clientLanguage: normalizeRealtimeFilterValue(searchParams.get("clientLanguage")),
+    clientLanguage: normalizeRealtimeFilterValue(
+      searchParams.get("clientLanguage"),
+    ),
     clientScreenSize: normalizeRealtimeFilterValue(
       searchParams.get("clientScreenSize"),
     ),
     geo: normalizeRealtimeFilterValue(searchParams.get("geo")),
-    geoContinent: normalizeRealtimeFilterValue(searchParams.get("geoContinent")),
+    geoContinent: normalizeRealtimeFilterValue(
+      searchParams.get("geoContinent"),
+    ),
     geoTimezone: normalizeRealtimeFilterValue(searchParams.get("geoTimezone")),
     geoOrganization: normalizeRealtimeFilterValue(
       searchParams.get("geoOrganization"),

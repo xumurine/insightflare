@@ -2,24 +2,25 @@
 
 import {
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
+
 import {
   allowedIntervalsForRange,
   clampIntervalForRange,
-  finestIntervalForRange,
-  resolveRangePreset,
-  resolveTimeWindow,
   type CustomTimeRange,
   type DashboardFilters,
   type DashboardInterval,
+  finestIntervalForRange,
   type RangePreset,
+  resolveRangePreset,
+  resolveTimeWindow,
   type TimeWindow,
 } from "@/lib/dashboard/query-state";
 
@@ -53,7 +54,9 @@ const STORAGE_KEY = "insightflare.dashboard.query.v2";
 const EMPTY_FILTERS: DashboardFilters = {};
 const DEFAULT_RANGE: RangePreset = "7d";
 
-const DashboardQueryContext = createContext<DashboardQueryContextValue | null>(null);
+const DashboardQueryContext = createContext<DashboardQueryContextValue | null>(
+  null,
+);
 
 function clampFilter(value: string | undefined): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -66,7 +69,9 @@ function clampFilter(value: string | undefined): string | undefined {
   return normalized;
 }
 
-function normalizeFilters(filters: DashboardFilters | undefined | null): DashboardFilters {
+function normalizeFilters(
+  filters: DashboardFilters | undefined | null,
+): DashboardFilters {
   return {
     country: clampFilter(filters?.country),
     device: clampFilter(filters?.device),
@@ -90,7 +95,9 @@ function normalizeFilters(filters: DashboardFilters | undefined | null): Dashboa
   };
 }
 
-function normalizeCustomRange(range: CustomTimeRange | undefined | null): CustomTimeRange | null {
+function normalizeCustomRange(
+  range: CustomTimeRange | undefined | null,
+): CustomTimeRange | null {
   if (!range) return null;
   if (!Number.isFinite(range.from) || !Number.isFinite(range.to)) return null;
   if (range.from >= range.to) return null;
@@ -100,7 +107,9 @@ function normalizeCustomRange(range: CustomTimeRange | undefined | null): Custom
   };
 }
 
-function parsePersistedState(raw: string | null): PersistedDashboardQueryState | null {
+function parsePersistedState(
+  raw: string | null,
+): PersistedDashboardQueryState | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as PersistedDashboardQueryState;
@@ -121,7 +130,9 @@ function buildInitialState() {
     };
   }
 
-  const persisted = parsePersistedState(window.localStorage.getItem(STORAGE_KEY));
+  const persisted = parsePersistedState(
+    window.localStorage.getItem(STORAGE_KEY),
+  );
   if (!persisted) {
     const initialWindow = resolveTimeWindow(DEFAULT_RANGE);
     return {
@@ -153,9 +164,15 @@ export function DashboardQueryProvider({
 }: DashboardQueryProviderProps) {
   const initial = useMemo(() => buildInitialState(), []);
   const [range, setRangeState] = useState<RangePreset>(initial.range);
-  const [interval, setIntervalState] = useState<DashboardInterval>(initial.interval);
-  const [customRange, setCustomRangeState] = useState<CustomTimeRange | null>(initial.customRange);
-  const [uiFilters, setUiFiltersState] = useState<DashboardFilters>(initial.uiFilters);
+  const [interval, setIntervalState] = useState<DashboardInterval>(
+    initial.interval,
+  );
+  const [customRange, setCustomRangeState] = useState<CustomTimeRange | null>(
+    initial.customRange,
+  );
+  const [uiFilters, setUiFiltersState] = useState<DashboardFilters>(
+    initial.uiFilters,
+  );
   const previousScopeKeyRef = useRef(scopeKey);
 
   const windowState = useMemo(
@@ -168,7 +185,11 @@ export function DashboardQueryProvider({
   );
 
   useEffect(() => {
-    const clamped = clampIntervalForRange(interval, windowState.from, windowState.to);
+    const clamped = clampIntervalForRange(
+      interval,
+      windowState.from,
+      windowState.to,
+    );
     if (clamped !== interval) {
       setIntervalState(clamped);
     }
@@ -193,18 +214,21 @@ export function DashboardQueryProvider({
     setUiFiltersState(EMPTY_FILTERS);
   }, [scopeKey]);
 
-  const setRange = useCallback((next: RangePreset) => {
-    if (next === "custom" && !customRange) {
+  const setRange = useCallback(
+    (next: RangePreset) => {
+      if (next === "custom" && !customRange) {
+        setRangeState(next);
+        return;
+      }
+      const nextWindow = resolveTimeWindow(next, Date.now(), {
+        customRange: customRange || undefined,
+        interval: null,
+      });
       setRangeState(next);
-      return;
-    }
-    const nextWindow = resolveTimeWindow(next, Date.now(), {
-      customRange: customRange || undefined,
-      interval: null,
-    });
-    setRangeState(next);
-    setIntervalState(finestIntervalForRange(nextWindow.from, nextWindow.to));
-  }, [customRange]);
+      setIntervalState(finestIntervalForRange(nextWindow.from, nextWindow.to));
+    },
+    [customRange],
+  );
 
   const setCustomRange = useCallback((next: CustomTimeRange | null) => {
     const normalized = normalizeCustomRange(next);

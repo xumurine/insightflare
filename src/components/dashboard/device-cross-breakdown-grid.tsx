@@ -2,14 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+
 import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  type ChartConfig,
   ChartContainer,
   ChartLegend,
   ChartLegendContent,
   ChartTooltip,
-  type ChartConfig,
 } from "@/components/ui/chart";
 import { fetchClientCrossBreakdown } from "@/lib/dashboard/client-data";
 import { numberFormat, percentFormat } from "@/lib/dashboard/format";
@@ -71,7 +72,10 @@ function emptyDimension(): BrowserCrossBreakdownDimensionData {
   };
 }
 
-function crossLabel(item: BrowserCrossBreakdownItem, messages: AppMessages): string {
+function crossLabel(
+  item: BrowserCrossBreakdownItem,
+  messages: AppMessages,
+): string {
   if (item.isOther) return messages.devices.otherLabel;
   if (item.isUnknown) return messages.common.unknown;
   return item.label;
@@ -147,7 +151,10 @@ function CrossBreakdownCard({
           segment: shortenLabel(row.displayLabel),
           segmentFullLabel: row.displayLabel,
         };
-        const rowVisitors = row.cells.reduce((sum, cell) => sum + cell.visitors, 0);
+        const rowVisitors = row.cells.reduce(
+          (sum, cell) => sum + cell.visitors,
+          0,
+        );
         for (const cell of row.cells) {
           entry[cell.key] = rowVisitors > 0 ? cell.visitors / rowVisitors : 0;
           entry[`${cell.key}Visitors`] = cell.visitors;
@@ -194,7 +201,9 @@ function CrossBreakdownCard({
                 axisLine={false}
                 tickMargin={8}
                 minTickGap={24}
-                tickFormatter={(value) => percentFormat(locale, Number(value ?? 0))}
+                tickFormatter={(value) =>
+                  percentFormat(locale, Number(value ?? 0))
+                }
               />
               <YAxis
                 type="category"
@@ -206,7 +215,9 @@ function CrossBreakdownCard({
               <ChartTooltip
                 cursor={false}
                 content={({ active, payload }) => {
-                  const row = payload?.[0]?.payload as CrossChartRow | undefined;
+                  const row = payload?.[0]?.payload as
+                    | CrossChartRow
+                    | undefined;
                   if (!active || !payload?.length || !row) return null;
                   const payloadByKey = new Map(
                     payload.map((item) => [String(item.dataKey ?? ""), item]),
@@ -218,7 +229,9 @@ function CrossBreakdownCard({
 
                   return (
                     <div className="grid min-w-[18rem] gap-2 rounded-none border border-border/50 bg-background px-2.5 py-2 text-xs shadow-xl">
-                      <div className="font-medium">{String(row.segmentFullLabel || "")}</div>
+                      <div className="font-medium">
+                        {String(row.segmentFullLabel || "")}
+                      </div>
                       <div className="grid gap-1.5">
                         {visibleItems.map((item) => {
                           const seriesKey = String(item.dataKey ?? "");
@@ -239,17 +252,22 @@ function CrossBreakdownCard({
                               <span className="inline-flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
                                 <span
                                   className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
-                                  style={{ backgroundColor: currentSeries?.color }}
+                                  style={{
+                                    backgroundColor: currentSeries?.color,
+                                  }}
                                 />
                                 <span
                                   className="truncate text-muted-foreground"
-                                  title={currentSeries?.displayLabel ?? seriesKey}
+                                  title={
+                                    currentSeries?.displayLabel ?? seriesKey
+                                  }
                                 >
                                   {currentSeries?.displayLabel ?? seriesKey}
                                 </span>
                               </span>
                               <span className="ml-auto min-w-[7.5rem] shrink-0 whitespace-nowrap text-right font-mono text-foreground tabular-nums">
-                                {numberFormat(locale, visitors)} · {percentFormat(locale, share)}
+                                {numberFormat(locale, visitors)} ·{" "}
+                                {percentFormat(locale, share)}
                               </span>
                             </div>
                           );
@@ -260,9 +278,9 @@ function CrossBreakdownCard({
                 }}
               />
               <ChartLegend
-                content={(
+                content={
                   <ChartLegendContent className="pt-4 flex-wrap justify-start gap-x-4 gap-y-2" />
-                )}
+                }
               />
               {dimension.columns.map((column) => (
                 <Bar
@@ -289,24 +307,38 @@ export function DeviceCrossBreakdownGrid({
   filters,
 }: DeviceCrossBreakdownGridProps) {
   const [loading, setLoading] = useState(true);
-  const [browserData, setBrowserData] = useState<BrowserCrossBreakdownDimensionData>(
-    emptyDimension,
-  );
-  const [osData, setOsData] = useState<BrowserCrossBreakdownDimensionData>(emptyDimension);
+  const [browserData, setBrowserData] =
+    useState<BrowserCrossBreakdownDimensionData>(emptyDimension);
+  const [osData, setOsData] =
+    useState<BrowserCrossBreakdownDimensionData>(emptyDimension);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
 
     Promise.all([
-      fetchClientCrossBreakdown(siteId, window, "deviceType", "browser", filters, {
-        primaryLimit: 5,
-        secondaryLimit: 6,
-      }).catch(() => emptyDimension()),
-      fetchClientCrossBreakdown(siteId, window, "deviceType", "operatingSystem", filters, {
-        primaryLimit: 5,
-        secondaryLimit: 6,
-      }).catch(() => emptyDimension()),
+      fetchClientCrossBreakdown(
+        siteId,
+        window,
+        "deviceType",
+        "browser",
+        filters,
+        {
+          primaryLimit: 5,
+          secondaryLimit: 6,
+        },
+      ).catch(() => emptyDimension()),
+      fetchClientCrossBreakdown(
+        siteId,
+        window,
+        "deviceType",
+        "operatingSystem",
+        filters,
+        {
+          primaryLimit: 5,
+          secondaryLimit: 6,
+        },
+      ).catch(() => emptyDimension()),
     ])
       .then(([nextBrowserData, nextOsData]) => {
         if (!active) return;

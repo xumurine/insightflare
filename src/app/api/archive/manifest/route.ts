@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { fetchEdgeForServer } from "@/lib/edge-proxy";
 
 export async function GET(request: Request): Promise<NextResponse> {
@@ -8,7 +9,10 @@ export async function GET(request: Request): Promise<NextResponse> {
   const to = incomingUrl.searchParams.get("to") || "";
 
   if (siteId.length === 0) {
-    return NextResponse.json({ ok: false, error: "Missing siteId" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Missing siteId" },
+      { status: 400 },
+    );
   }
 
   const edgeRes = await fetchEdgeForServer({
@@ -39,14 +43,13 @@ export async function GET(request: Request): Promise<NextResponse> {
     );
   }
 
-  const files = (
+  const files =
     payload &&
     typeof payload === "object" &&
     "files" in payload &&
     Array.isArray((payload as { files: unknown }).files)
-  )
-    ? ((payload as { files: Array<Record<string, unknown>> }).files)
-    : [];
+      ? (payload as { files: Array<Record<string, unknown>> }).files
+      : [];
 
   const normalizedFiles = files.map((file) => ({
     ...file,

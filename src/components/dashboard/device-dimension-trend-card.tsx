@@ -23,7 +23,13 @@ async function fetchDeviceTypeTrend(
   filters?: DashboardFilters,
   options?: { limit?: number },
 ) {
-  return fetchClientDimensionTrend(siteId, window, "deviceType", filters, options);
+  return fetchClientDimensionTrend(
+    siteId,
+    window,
+    "deviceType",
+    filters,
+    options,
+  );
 }
 
 async function fetchOperatingSystemTrend(
@@ -32,7 +38,13 @@ async function fetchOperatingSystemTrend(
   filters?: DashboardFilters,
   options?: { limit?: number },
 ) {
-  return fetchClientDimensionTrend(siteId, window, "operatingSystem", filters, options);
+  return fetchClientDimensionTrend(
+    siteId,
+    window,
+    "operatingSystem",
+    filters,
+    options,
+  );
 }
 
 export function DeviceDimensionTrendCard({
@@ -44,9 +56,10 @@ export function DeviceDimensionTrendCard({
   dimension,
   title,
 }: DeviceDimensionTrendCardProps) {
-  const fetchTrend = dimension === "deviceType"
-    ? fetchDeviceTypeTrend
-    : fetchOperatingSystemTrend;
+  const fetchTrend =
+    dimension === "deviceType"
+      ? fetchDeviceTypeTrend
+      : fetchOperatingSystemTrend;
 
   return (
     <ShareTrendCard

@@ -33,7 +33,12 @@ function normalizeTileX(x: number, z: number): number {
   return ((x % max) + max) % max;
 }
 
-function buildUpstreamUrl(template: string, z: number, x: number, y: number): string {
+function buildUpstreamUrl(
+  template: string,
+  z: number,
+  x: number,
+  y: number,
+): string {
   return template
     .replace("{z}", String(z))
     .replace("{x}", String(x))

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync,readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -23,7 +23,6 @@ function readAstGrepVersion() {
 
 function canLoadAstGrep() {
   try {
-    // eslint-disable-next-line global-require, import/no-dynamic-require
     require("@ast-grep/napi");
     return true;
   } catch {

@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import "./globals.css";
 import { JetBrains_Mono } from "next/font/google";
+
+import { GlobalScrollbars } from "@/components/global-scrollbars";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { GlobalScrollbars } from "@/components/global-scrollbars";
+
+import "./globals.css";
 
 const appMono = JetBrains_Mono({
   subsets: ["latin"],

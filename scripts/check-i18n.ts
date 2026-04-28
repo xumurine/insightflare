@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+
 import ts from "typescript";
 import YAML from "yaml";
 
@@ -88,11 +89,20 @@ function extractPlaceholders(value: string): string[] {
 }
 
 function sameArray(left: string[], right: string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
 }
 
-function toPos(filePath: string, sourceFile: ts.SourceFile, node: ts.Node): UsageRef {
-  const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+function toPos(
+  filePath: string,
+  sourceFile: ts.SourceFile,
+  node: ts.Node,
+): UsageRef {
+  const { line, character } = sourceFile.getLineAndCharacterOfPosition(
+    node.getStart(sourceFile),
+  );
   return {
     file: relativeFromRoot(filePath),
     line: line + 1,
@@ -105,30 +115,44 @@ function isRelevantSourceFile(filePath: string): boolean {
   if (normalized.includes("/node_modules/")) return false;
   if (normalized.includes("/.next/")) return false;
   if (normalized.includes("/.open-next/")) return false;
-  return normalized.startsWith(asPosix(SRC_DIR)) || normalized.startsWith(asPosix(SCRIPTS_DIR));
+  return (
+    normalized.startsWith(asPosix(SRC_DIR)) ||
+    normalized.startsWith(asPosix(SCRIPTS_DIR))
+  );
 }
 
 function parseTsConfig(tsconfigPath: string): ts.ParsedCommandLine {
   const configFile = ts.readConfigFile(tsconfigPath, ts.sys.readFile);
   if (configFile.error) {
-    throw new Error(ts.flattenDiagnosticMessageText(configFile.error.messageText, "\n"));
+    throw new Error(
+      ts.flattenDiagnosticMessageText(configFile.error.messageText, "\n"),
+    );
   }
 
-  return ts.parseJsonConfigFileContent(configFile.config, ts.sys, path.dirname(tsconfigPath));
+  return ts.parseJsonConfigFileContent(
+    configFile.config,
+    ts.sys,
+    path.dirname(tsconfigPath),
+  );
 }
 
 function getAppMessagesType(
   program: ts.Program,
   checker: ts.TypeChecker,
 ): { type: ts.Type; symbol: ts.Symbol } {
-  const sourceFile = program.getSourceFiles().find((file) => path.resolve(file.fileName) === APP_MESSAGES_PATH);
+  const sourceFile = program
+    .getSourceFiles()
+    .find((file) => path.resolve(file.fileName) === APP_MESSAGES_PATH);
   if (!sourceFile) {
-    throw new Error(`Unable to find ${relativeFromRoot(APP_MESSAGES_PATH)} in ts.Program`);
+    throw new Error(
+      `Unable to find ${relativeFromRoot(APP_MESSAGES_PATH)} in ts.Program`,
+    );
   }
 
   const declaration = sourceFile.statements.find(
     (statement): statement is ts.InterfaceDeclaration =>
-      ts.isInterfaceDeclaration(statement) && statement.name.text === "AppMessages",
+      ts.isInterfaceDeclaration(statement) &&
+      statement.name.text === "AppMessages",
   );
   if (!declaration) {
     throw new Error("Unable to locate AppMessages interface declaration");
@@ -143,7 +167,10 @@ function getAppMessagesType(
   return { type, symbol };
 }
 
-function resolveTypeNodePath(typeNode: ts.TypeNode | undefined, typePaths: TypePathMap): string[] | null {
+function resolveTypeNodePath(
+  typeNode: ts.TypeNode | undefined,
+  typePaths: TypePathMap,
+): string[] | null {
   if (!typeNode) return null;
 
   if (ts.isTypeReferenceNode(typeNode)) {
@@ -181,7 +208,8 @@ function collectTypePaths(program: ts.Program): TypePathMap {
 
     for (const sourceFile of program.getSourceFiles()) {
       const filePath = path.resolve(sourceFile.fileName);
-      if (!isRelevantSourceFile(filePath) && filePath !== APP_MESSAGES_PATH) continue;
+      if (!isRelevantSourceFile(filePath) && filePath !== APP_MESSAGES_PATH)
+        continue;
 
       for (const statement of sourceFile.statements) {
         if (!ts.isTypeAliasDeclaration(statement)) continue;
@@ -205,7 +233,10 @@ function isRootAppMessagesType(
   appMessagesType: ts.Type,
   appMessagesSymbol: ts.Symbol,
 ): boolean {
-  if (type.aliasSymbol && (type.aliasSymbol.flags & ts.SymbolFlags.Alias) !== 0) {
+  if (
+    type.aliasSymbol &&
+    (type.aliasSymbol.flags & ts.SymbolFlags.Alias) !== 0
+  ) {
     const aliased = checker.getAliasedSymbol(type.aliasSymbol);
     if (aliased === appMessagesSymbol) return true;
   }
@@ -213,7 +244,10 @@ function isRootAppMessagesType(
   const symbol = type.getSymbol();
   if (symbol === appMessagesSymbol) return true;
 
-  if ("isTypeAssignableTo" in checker && typeof checker.isTypeAssignableTo === "function") {
+  if (
+    "isTypeAssignableTo" in checker &&
+    typeof checker.isTypeAssignableTo === "function"
+  ) {
     try {
       return checker.isTypeAssignableTo(type, appMessagesType);
     } catch {
@@ -232,7 +266,13 @@ function resolvePathFromExpression(
   appMessagesSymbol: ts.Symbol,
 ): ResolvedPath | null {
   if (ts.isParenthesizedExpression(expression)) {
-    return resolvePathFromExpression(expression.expression, checker, bindings, appMessagesType, appMessagesSymbol);
+    return resolvePathFromExpression(
+      expression.expression,
+      checker,
+      bindings,
+      appMessagesType,
+      appMessagesSymbol,
+    );
   }
 
   if (ts.isIdentifier(expression)) {
@@ -244,13 +284,19 @@ function resolvePathFromExpression(
     }
 
     const type = checker.getTypeAtLocation(expression);
-    if (isRootAppMessagesType(type, checker, appMessagesType, appMessagesSymbol)) {
+    if (
+      isRootAppMessagesType(type, checker, appMessagesType, appMessagesSymbol)
+    ) {
       return { path: [], dynamic: false };
     }
     return null;
   }
 
-  if (ts.isCallExpression(expression) && ts.isIdentifier(expression.expression) && expression.expression.text === "getMessages") {
+  if (
+    ts.isCallExpression(expression) &&
+    ts.isIdentifier(expression.expression) &&
+    expression.expression.text === "getMessages"
+  ) {
     return { path: [], dynamic: false };
   }
 
@@ -263,7 +309,10 @@ function resolvePathFromExpression(
       appMessagesSymbol,
     );
     if (!base) return null;
-    return { path: [...base.path, expression.name.text], dynamic: base.dynamic };
+    return {
+      path: [...base.path, expression.name.text],
+      dynamic: base.dynamic,
+    };
   }
 
   if (ts.isElementAccessExpression(expression)) {
@@ -277,7 +326,11 @@ function resolvePathFromExpression(
     if (!base) return null;
 
     const argument = expression.argumentExpression;
-    if (argument && (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument))) {
+    if (
+      argument &&
+      (ts.isStringLiteral(argument) ||
+        ts.isNoSubstitutionTemplateLiteral(argument))
+    ) {
       return {
         path: [...base.path, argument.text],
         dynamic: base.dynamic,
@@ -290,7 +343,11 @@ function resolvePathFromExpression(
   return null;
 }
 
-function bindName(name: ts.BindingName, prefix: string[], scope: BindingMap): void {
+function bindName(
+  name: ts.BindingName,
+  prefix: string[],
+  scope: BindingMap,
+): void {
   if (ts.isIdentifier(name)) {
     scope.set(name.text, [...prefix]);
     return;
@@ -299,7 +356,12 @@ function bindName(name: ts.BindingName, prefix: string[], scope: BindingMap): vo
   if (ts.isObjectBindingPattern(name)) {
     for (const element of name.elements) {
       const propertyName = element.propertyName;
-      if (propertyName && !ts.isIdentifier(propertyName) && !ts.isStringLiteral(propertyName)) continue;
+      if (
+        propertyName &&
+        !ts.isIdentifier(propertyName) &&
+        !ts.isStringLiteral(propertyName)
+      )
+        continue;
       const key = propertyName
         ? ts.isIdentifier(propertyName)
           ? propertyName.text
@@ -313,22 +375,31 @@ function bindName(name: ts.BindingName, prefix: string[], scope: BindingMap): vo
   }
 }
 
-function addUsage(map: Map<string, UsageRef[]>, key: string, ref: UsageRef): void {
+function addUsage(
+  map: Map<string, UsageRef[]>,
+  key: string,
+  ref: UsageRef,
+): void {
   const existing = map.get(key) ?? [];
   existing.push(ref);
   map.set(key, existing);
 }
 
-function isOutermostAccess(node: ts.PropertyAccessExpression | ts.ElementAccessExpression): boolean {
+function isOutermostAccess(
+  node: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+): boolean {
   const parent = node.parent;
   return !(
-    (ts.isPropertyAccessExpression(parent) || ts.isElementAccessExpression(parent))
-    && parent.expression === node
+    (ts.isPropertyAccessExpression(parent) ||
+      ts.isElementAccessExpression(parent)) &&
+    parent.expression === node
   );
 }
 
 function isAliasInitializer(node: ts.Node): boolean {
-  return ts.isVariableDeclaration(node.parent) && node.parent.initializer === node;
+  return (
+    ts.isVariableDeclaration(node.parent) && node.parent.initializer === node
+  );
 }
 
 function collectUsedKeys(
@@ -356,7 +427,11 @@ function collectUsedKeys(
           for (const parameter of node.parameters) {
             const fromType = resolveTypeNodePath(parameter.type, typePaths);
             if (fromType) {
-              bindName(parameter.name, fromType, bindings[bindings.length - 1]!);
+              bindName(
+                parameter.name,
+                fromType,
+                bindings[bindings.length - 1]!,
+              );
             }
             if (!parameter.initializer) continue;
             const resolved = resolvePathFromExpression(
@@ -367,7 +442,11 @@ function collectUsedKeys(
               appMessagesSymbol,
             );
             if (resolved) {
-              bindName(parameter.name, resolved.path, bindings[bindings.length - 1]!);
+              bindName(
+                parameter.name,
+                resolved.path,
+                bindings[bindings.length - 1]!,
+              );
             }
           }
         }
@@ -391,7 +470,11 @@ function collectUsedKeys(
         }
       }
 
-      if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && isOutermostAccess(node)) {
+      if (
+        (ts.isPropertyAccessExpression(node) ||
+          ts.isElementAccessExpression(node)) &&
+        isOutermostAccess(node)
+      ) {
         const resolved = resolvePathFromExpression(
           node,
           checker,
@@ -402,7 +485,11 @@ function collectUsedKeys(
         if (resolved && resolved.path.length > 0) {
           const resolvedKey = joinPath(resolved.path);
           const nodeInfo = definedNodes.get(resolvedKey);
-          if (isAliasInitializer(node) && nodeInfo?.kind === "object" && !resolved.dynamic) {
+          if (
+            isAliasInitializer(node) &&
+            nodeInfo?.kind === "object" &&
+            !resolved.dynamic
+          ) {
             ts.forEachChild(node, visit);
             if (pushedScope) {
               bindings.pop();
@@ -448,15 +535,20 @@ function findUnusedLeaves(
   leaves: Map<string, string>,
   usedPaths: string[],
 ): string[] {
-  return [...leaves.keys()].filter((leafPath) =>
-    !usedPaths.some((usedPath) => startsWithPath(leafPath, usedPath)),
+  return [...leaves.keys()].filter(
+    (leafPath) =>
+      !usedPaths.some((usedPath) => startsWithPath(leafPath, usedPath)),
   );
 }
 
 function compareNodeShapes(
   left: Map<string, NodeInfo>,
   right: Map<string, NodeInfo>,
-): { missingOnRight: string[]; missingOnLeft: string[]; kindMismatch: string[] } {
+): {
+  missingOnRight: string[];
+  missingOnLeft: string[];
+  kindMismatch: string[];
+} {
   const missingOnRight: string[] = [];
   const missingOnLeft: string[] = [];
   const kindMismatch: string[] = [];
@@ -517,7 +609,10 @@ function formatUsageRefs(refs: UsageRef[] | undefined): string {
 }
 
 async function main(): Promise<void> {
-  const [enYaml, zhYaml] = await Promise.all([readYaml(EN_PATH), readYaml(ZH_PATH)]);
+  const [enYaml, zhYaml] = await Promise.all([
+    readYaml(EN_PATH),
+    readYaml(ZH_PATH),
+  ]);
 
   const enNodes = new Map<string, NodeInfo>();
   const zhNodes = new Map<string, NodeInfo>();
@@ -533,7 +628,8 @@ async function main(): Promise<void> {
   });
   const checker = program.getTypeChecker();
   const typePaths = collectTypePaths(program);
-  const { type: appMessagesType, symbol: appMessagesSymbol } = getAppMessagesType(program, checker);
+  const { type: appMessagesType, symbol: appMessagesSymbol } =
+    getAppMessagesType(program, checker);
   const usageMap = collectUsedKeys(
     program,
     checker,
@@ -552,12 +648,12 @@ async function main(): Promise<void> {
   const unusedZhKeys = findUnusedLeaves(zhLeaves, usedPaths);
 
   const errors =
-    shapeDiff.missingOnRight.length
-    + shapeDiff.missingOnLeft.length
-    + shapeDiff.kindMismatch.length
-    + placeholderMismatches.length
-    + usedButMissingInEn.length
-    + usedButMissingInZh.length;
+    shapeDiff.missingOnRight.length +
+    shapeDiff.missingOnLeft.length +
+    shapeDiff.kindMismatch.length +
+    placeholderMismatches.length +
+    usedButMissingInEn.length +
+    usedButMissingInZh.length;
 
   console.log("I18n Check");
   console.log(`- en leaf keys: ${enLeaves.size}`);
@@ -631,7 +727,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.stack || error.message : String(error);
+  const message =
+    error instanceof Error ? error.stack || error.message : String(error);
   console.error(message);
   process.exitCode = 1;
 });

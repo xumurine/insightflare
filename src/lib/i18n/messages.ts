@@ -1,6 +1,7 @@
-import type { Locale } from "./config";
 import en from "@/i18n/en.yaml";
 import zh from "@/i18n/zh.yaml";
+
+import type { Locale } from "./config";
 
 export interface AppMessages {
   appName: string;

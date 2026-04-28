@@ -3,38 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import type { SiteData } from "@/lib/edge-client";
-import type { Locale } from "@/lib/i18n/config";
-import type { AppMessages } from "@/lib/i18n/messages";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
-import { Spinner } from "@/components/ui/spinner";
-import { AutoTransition } from "@/components/ui/auto-transition";
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldLabel,
-  FieldTitle,
-} from "@/components/ui/field";
+
 import { PageHeading } from "@/components/dashboard/page-heading";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,8 +16,38 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { AutoTransition } from "@/components/ui/auto-transition";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldLabel,
+  FieldTitle,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Spinner } from "@/components/ui/spinner";
+import type { SiteData } from "@/lib/edge-client";
+import type { Locale } from "@/lib/i18n/config";
+import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
-import { cn } from "@/lib/utils";
 import {
   DEFAULT_SITE_SCRIPT_SETTINGS,
   formatListInput,
@@ -56,6 +56,7 @@ import {
   parsePathBlacklist,
   type TrackingStrength,
 } from "@/lib/site-settings";
+import { cn } from "@/lib/utils";
 
 interface SiteSettingsClientPageProps {
   locale: Locale;
@@ -703,7 +704,9 @@ export function SettingsClientPage({
                 </div>
               ) : (
                 <div className="overflow-x-auto text-xs leading-relaxed text-foreground">
-                  <code className="font-mono">{scriptSnippet || copy.scriptUnavailable}</code>
+                  <code className="font-mono">
+                    {scriptSnippet || copy.scriptUnavailable}
+                  </code>
                 </div>
               )}
             </div>
@@ -1204,19 +1207,19 @@ export function SettingsClientPage({
               </Button>
             </form>
           </CardContent>
-          </Card>
+        </Card>
 
-          <AlertDialog
-            open={deleteDialogOpen}
-            onOpenChange={(open) => {
+        <AlertDialog
+          open={deleteDialogOpen}
+          onOpenChange={(open) => {
             if (deleting) return;
             setDeleteDialogOpen(open);
-            }}
-          >
-            <Card className="h-full border-destructive/40 order-9">
-              <CardHeader>
-                <CardTitle>{copy.deleteTitle}</CardTitle>
-                <CardDescription>{copy.deleteSubtitle}</CardDescription>
+          }}
+        >
+          <Card className="h-full border-destructive/40 order-9">
+            <CardHeader>
+              <CardTitle>{copy.deleteTitle}</CardTitle>
+              <CardDescription>{copy.deleteSubtitle}</CardDescription>
             </CardHeader>
             <CardContent className="flex h-full items-end">
               <AlertDialogTrigger asChild>

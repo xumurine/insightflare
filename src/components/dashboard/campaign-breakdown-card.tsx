@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AnimatePresence, useReducedMotion } from "motion/react";
 import {
   RiArrowDownSLine,
   RiArrowUpSLine,
   RiSearchLine,
 } from "@remixicon/react";
+import { AnimatePresence, useReducedMotion } from "motion/react";
+
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import {
   CAMPAIGN_TABS,
@@ -15,6 +16,7 @@ import {
 } from "@/components/dashboard/campaign-utils";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { TabbedScrollMaskCard } from "@/components/dashboard/tabbed-scroll-mask-card";
+import { Clickable } from "@/components/ui/clickable";
 import {
   Dialog,
   DialogContent,
@@ -27,7 +29,6 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { Clickable } from "@/components/ui/clickable";
 import { Input } from "@/components/ui/input";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -73,9 +74,9 @@ export function CampaignBreakdownCard({
 }: CampaignBreakdownCardProps) {
   const isMobile = useIsMobile();
   const reduceDataRowMotion = useReducedMotion() ?? false;
-  const [sortByTab, setSortByTab] = useState<Record<CampaignTab, CampaignSortState>>(
-    createInitialSortByTab,
-  );
+  const [sortByTab, setSortByTab] = useState<
+    Record<CampaignTab, CampaignSortState>
+  >(createInitialSortByTab);
   const [searchTab, setSearchTab] = useState<CampaignTab | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -187,7 +188,9 @@ export function CampaignBreakdownCard({
               type="button"
               className={cn(
                 "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-                sort.key === "views" ? "text-foreground" : "text-muted-foreground",
+                sort.key === "views"
+                  ? "text-foreground"
+                  : "text-muted-foreground",
               )}
               onClick={() => toggleSort(tab, "views")}
             >
@@ -287,7 +290,11 @@ export function CampaignBreakdownCard({
           emptyLabel={messages.common.noData}
           colSpan={3}
           header={renderTableHeader(activeSearchTab)}
-          rows={renderRows(activeSearchTab, `search-${activeSearchTab}`, searchedRows)}
+          rows={renderRows(
+            activeSearchTab,
+            `search-${activeSearchTab}`,
+            searchedRows,
+          )}
           contentKey={`search-${activeSearchTab}-${searchTerm}-${searchedRows.length}`}
         />
       </div>

@@ -1,6 +1,6 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 
 const startedAt = Date.now();
 
@@ -47,7 +47,9 @@ function resolveWranglerCli(rootDir: string, edgeDir: string): string {
     }
   }
 
-  throw new Error("Cannot resolve local Wrangler CLI (node_modules/wrangler/bin/wrangler.js)");
+  throw new Error(
+    "Cannot resolve local Wrangler CLI (node_modules/wrangler/bin/wrangler.js)",
+  );
 }
 
 async function main(): Promise<void> {
@@ -126,7 +128,9 @@ async function main(): Promise<void> {
     ),
   );
 
-  log(`InsightFlare prebuild done in ${((finishedAt - startedAt) / 1000).toFixed(2)}s`);
+  log(
+    `InsightFlare prebuild done in ${((finishedAt - startedAt) / 1000).toFixed(2)}s`,
+  );
 }
 
 main().catch((error: unknown) => {

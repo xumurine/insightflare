@@ -25,12 +25,10 @@ const SOCKET_STATE = {
 } as const;
 
 const USE_REALTIME_MOCK =
-  process.env.NEXT_PUBLIC_DEMO_MODE === "1"
-  || process.env.NEXT_PUBLIC_REALTIME_MOCK === "1"
-  || (
-    process.env.NEXT_PUBLIC_REALTIME_MOCK !== "0"
-    && process.env.NODE_ENV !== "production"
-  );
+  process.env.NEXT_PUBLIC_DEMO_MODE === "1" ||
+  process.env.NEXT_PUBLIC_REALTIME_MOCK === "1" ||
+  (process.env.NEXT_PUBLIC_REALTIME_MOCK !== "0" &&
+    process.env.NODE_ENV !== "production");
 
 interface ChannelContext {
   siteId: string;
@@ -147,11 +145,9 @@ function stopChannel(channel: ChannelContext): void {
     channel.connectWatchdog = null;
   }
   if (
-    channel.socket
-    && (
-      channel.socket.readyState === SOCKET_STATE.OPEN
-      || channel.socket.readyState === SOCKET_STATE.CONNECTING
-    )
+    channel.socket &&
+    (channel.socket.readyState === SOCKET_STATE.OPEN ||
+      channel.socket.readyState === SOCKET_STATE.CONNECTING)
   ) {
     channel.socket.close();
   }
@@ -185,7 +181,10 @@ function attachSocketHandlers(channel: ChannelContext): void {
 
   channel.connectWatchdog = setTimeout(() => {
     if (channel.refCount <= 0) return;
-    if (channel.socket && channel.socket.readyState === SOCKET_STATE.CONNECTING) {
+    if (
+      channel.socket &&
+      channel.socket.readyState === SOCKET_STATE.CONNECTING
+    ) {
       setChannelStatus(channel, "disconnected");
       channel.socket.close();
     }
@@ -264,11 +263,18 @@ function applyEvent(channel: ChannelContext, payload: unknown): void {
   const event = normalizeRealtimeEvent(payload);
   if (!event) return;
 
-  channel.state.events = mergeEvents([event], channel.state.events, event.eventAt);
+  channel.state.events = mergeEvents(
+    [event],
+    channel.state.events,
+    event.eventAt,
+  );
   recomputeDerivedState(channel, event.eventAt || Date.now());
 }
 
-function recomputeDerivedState(channel: ChannelContext, now = Date.now()): void {
+function recomputeDerivedState(
+  channel: ChannelContext,
+  now = Date.now(),
+): void {
   const events = sortAndPruneEvents(channel.state.events, now);
   const derived = buildDerivedState(events, now);
 
@@ -531,7 +537,10 @@ function compareRealtimeEventsDesc(
   if (right.eventAt !== left.eventAt) {
     return right.eventAt - left.eventAt;
   }
-  return realtimeEventPriority(right.eventType) - realtimeEventPriority(left.eventType);
+  return (
+    realtimeEventPriority(right.eventType) -
+    realtimeEventPriority(left.eventType)
+  );
 }
 
 function realtimeEventPriority(eventType: string): number {
@@ -566,7 +575,10 @@ function normalizeRealtimeEvent(payload: unknown): RealtimeEvent | null {
     continent: String(record.continent ?? ""),
     timezone: String(record.timezone ?? ""),
     organization: String(
-      record.organization ?? record.asOrganization ?? record.as_organization ?? "",
+      record.organization ??
+        record.asOrganization ??
+        record.as_organization ??
+        "",
     ),
     browser: String(record.browser ?? ""),
     osVersion: String(record.osVersion ?? record.os_version ?? ""),
@@ -621,9 +633,10 @@ function normalizeRealtimeSnapshot(payload: unknown): RealtimeSnapshot {
     .filter((item): item is RealtimeVisit => item !== null);
 
   const activeNowRaw = Number(record.activeNow);
-  const activeNow = Number.isFinite(activeNowRaw) && activeNowRaw >= 0
-    ? Math.floor(activeNowRaw)
-    : null;
+  const activeNow =
+    Number.isFinite(activeNowRaw) && activeNowRaw >= 0
+      ? Math.floor(activeNowRaw)
+      : null;
 
   return { activeNow, events, points, visits };
 }
@@ -657,7 +670,10 @@ function normalizeRealtimeVisit(payload: unknown): RealtimeVisit | null {
 
   const startedAt = Number(record.startedAt ?? record.started_at ?? Date.now());
   const lastActivityAt = Number(
-    record.lastActivityAt ?? record.last_activity_at ?? record.eventAt ?? Date.now(),
+    record.lastActivityAt ??
+      record.last_activity_at ??
+      record.eventAt ??
+      Date.now(),
   );
   const latitude = normalizeCoordinate(record.latitude, -90, 90);
   const longitude = normalizeCoordinate(record.longitude, -180, 180);
@@ -667,7 +683,9 @@ function normalizeRealtimeVisit(payload: unknown): RealtimeVisit | null {
     visitorId,
     sessionId: String(record.sessionId ?? record.session_id ?? ""),
     startedAt: Number.isFinite(startedAt) ? startedAt : Date.now(),
-    lastActivityAt: Number.isFinite(lastActivityAt) ? lastActivityAt : Date.now(),
+    lastActivityAt: Number.isFinite(lastActivityAt)
+      ? lastActivityAt
+      : Date.now(),
     pathname: String(record.pathname ?? "/"),
     title: String(record.title ?? ""),
     hostname: String(record.hostname ?? ""),
@@ -680,7 +698,10 @@ function normalizeRealtimeVisit(payload: unknown): RealtimeVisit | null {
     continent: String(record.continent ?? ""),
     timezone: String(record.timezone ?? ""),
     organization: String(
-      record.organization ?? record.asOrganization ?? record.as_organization ?? "",
+      record.organization ??
+        record.asOrganization ??
+        record.as_organization ??
+        "",
     ),
     browser: String(record.browser ?? ""),
     osVersion: String(record.osVersion ?? record.os_version ?? ""),
@@ -716,7 +737,8 @@ function decodeRealtimeEnvelope(data: unknown): {
 
 function toRealtimeWsUrl(siteId: string): string {
   const configuredBase = process.env.NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL || "";
-  const origin = configuredBase.length > 0 ? configuredBase : window.location.origin;
+  const origin =
+    configuredBase.length > 0 ? configuredBase : window.location.origin;
   const url = new URL("/admin/ws", origin);
   url.searchParams.set("siteId", siteId);
 

@@ -2,41 +2,33 @@
 
 import {
   memo,
+  type ReactNode,
+  type SyntheticEvent,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
-  type SyntheticEvent,
 } from "react";
-import {
-  AnimatePresence,
-  motion,
-  useReducedMotion,
-} from "motion/react";
 import { Icon } from "@iconify/react";
-import Avatar from "boring-avatars";
 import { RiGlobalLine } from "@remixicon/react";
-import { OverlayScrollbars } from "overlayscrollbars";
+import Avatar from "boring-avatars";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { PartialOptions } from "overlayscrollbars";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { OverlayScrollbars } from "overlayscrollbars";
+
 import {
   GeoPointsMap,
   type GeoPointsMapCountryCount,
   type GeoPointsMapPoint,
 } from "@/components/dashboard/geo-points-map";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Clickable } from "@/components/ui/clickable";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Clickable } from "@/components/ui/clickable";
 import { Spinner } from "@/components/ui/spinner";
 import { intlLocale, shortDateTime } from "@/lib/dashboard/format";
 import { parseGeoLocationValue } from "@/lib/dashboard/geo-location";
@@ -91,10 +83,11 @@ const PANEL_SCROLLBAR_OPTIONS = {
   },
 } satisfies PartialOptions;
 const GEO_TRANSLATION_API_BASE_URL = "https://locale.ravelloh.com";
-const GEO_TRANSLATION_API_LOCALE_BY_APP_LOCALE: Record<Locale, string | null> = {
-  en: null,
-  zh: "zh-CN",
-};
+const GEO_TRANSLATION_API_LOCALE_BY_APP_LOCALE: Record<Locale, string | null> =
+  {
+    en: null,
+    zh: "zh-CN",
+  };
 const GEO_STATE_CODE_PATTERN = /^[A-Z0-9-]{1,16}$/;
 
 type RealtimeLogEventKind = "enter" | "exit" | "view" | "custom";
@@ -181,23 +174,29 @@ function formatLogTitle(
   const separator = messages.realtime.logTitleSeparator;
   const prefix = eventTitlePrefix(messages, kind);
   const pathname = event.pathname.trim() || "/";
-  const content = kind === "custom"
-    ? event.eventType.trim() || messages.common.unknown
-    : decodeUrlDisplayValue(pathname);
+  const content =
+    kind === "custom"
+      ? event.eventType.trim() || messages.common.unknown
+      : decodeUrlDisplayValue(pathname);
   return `${prefix}${separator}${content}`;
 }
 
 function resolveBrowserIconKey(value: string): string {
   const normalized = value.trim().toLocaleLowerCase();
   if (!normalized) return UNKNOWN_ICON_KEY;
-  if (normalized.includes("android webview") || normalized.includes("android-webview")) {
+  if (
+    normalized.includes("android webview") ||
+    normalized.includes("android-webview")
+  ) {
     return "android-webview";
   }
   if (normalized.includes("chromium-webview")) return "chromium-webview";
   if (normalized.includes("edge ios")) return "edge-ios";
   if (normalized.includes("edge")) return "edge-chromium";
-  if (normalized.includes("chrome ios") || normalized.includes("crios")) return "crios";
-  if (normalized.includes("firefox ios") || normalized.includes("fxios")) return "fxios";
+  if (normalized.includes("chrome ios") || normalized.includes("crios"))
+    return "crios";
+  if (normalized.includes("firefox ios") || normalized.includes("fxios"))
+    return "fxios";
   if (normalized.includes("ios webview")) return "ios-webview";
   if (normalized === "ios") return "ios";
   if (normalized.includes("arc")) return "arc";
@@ -210,15 +209,21 @@ function resolveBrowserIconKey(value: string): string {
   if (normalized.includes("instagram")) return "instagram";
   if (normalized.includes("facebook")) return "facebook";
   if (normalized.includes("huawei")) return "huawei";
-  if (normalized.includes("qqbrowser") || normalized.includes("qq browser") || normalized === "qq") {
+  if (
+    normalized.includes("qqbrowser") ||
+    normalized.includes("qq browser") ||
+    normalized === "qq"
+  ) {
     return "qq";
   }
-  if (normalized.includes("ucbrowser") || normalized.includes("uc browser")) return "uc";
+  if (normalized.includes("ucbrowser") || normalized.includes("uc browser"))
+    return "uc";
   if (normalized.includes("brave")) return "brave";
   if (normalized.includes("miui")) return "miui";
   if (normalized.includes("firefox")) return "firefox";
   if (normalized.includes("safari")) return "safari";
-  if (normalized.includes("chrome") || normalized.includes("chromium")) return "chrome";
+  if (normalized.includes("chrome") || normalized.includes("chromium"))
+    return "chrome";
   if (normalized.includes("android")) return "android";
   return UNKNOWN_ICON_KEY;
 }
@@ -230,22 +235,25 @@ function resolveOsIconKey(value: string): string {
   if (normalized.includes("windows 10")) return "windows-10";
   if (normalized.startsWith("windows")) return "windows-10";
   if (
-    normalized.startsWith("mac")
-    || normalized.startsWith("os x")
-    || normalized.startsWith("darwin")
+    normalized.startsWith("mac") ||
+    normalized.startsWith("os x") ||
+    normalized.startsWith("darwin")
   ) {
     return "mac-os";
   }
   if (normalized.startsWith("ios")) return "ios";
   if (normalized.startsWith("android")) return "android-os";
-  if (normalized.startsWith("chrome os") || normalized.startsWith("chromium os")) {
+  if (
+    normalized.startsWith("chrome os") ||
+    normalized.startsWith("chromium os")
+  ) {
     return "chrome-os";
   }
   if (
-    normalized.includes("linux")
-    || normalized.startsWith("ubuntu")
-    || normalized.startsWith("debian")
-    || normalized.startsWith("fedora")
+    normalized.includes("linux") ||
+    normalized.startsWith("ubuntu") ||
+    normalized.startsWith("debian") ||
+    normalized.startsWith("fedora")
   ) {
     return "linux";
   }
@@ -397,7 +405,11 @@ function MetaItem({
       <span className="inline-flex size-4 shrink-0 items-center justify-center">
         {icon}
       </span>
-      <span className={cn(hideLabelOnMobile ? "hidden sm:inline sm:truncate" : "truncate")}>
+      <span
+        className={cn(
+          hideLabelOnMobile ? "hidden sm:inline sm:truncate" : "truncate",
+        )}
+      >
         {label}
       </span>
     </span>
@@ -411,9 +423,9 @@ function maybeReachScrollEnd(
   if (!instance || !onReachEnd) return;
   const scrollElement = instance.elements().scrollOffsetElement;
   const remaining =
-    scrollElement.scrollHeight
-    - scrollElement.clientHeight
-    - scrollElement.scrollTop;
+    scrollElement.scrollHeight -
+    scrollElement.clientHeight -
+    scrollElement.scrollTop;
   if (remaining <= LOAD_MORE_THRESHOLD_PX) {
     onReachEnd();
   }
@@ -431,7 +443,9 @@ function LogStreamScrollbar({
   onReachEnd?: (() => void) | null;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(null);
+  const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
+    null,
+  );
   const onReachEndRef = useRef<(() => void) | null>(onReachEnd ?? null);
 
   useEffect(() => {
@@ -489,7 +503,11 @@ function LogStreamScrollbar({
   );
 }
 
-function formatRelativeTime(locale: Locale, timestamp: number, now: number): string {
+function formatRelativeTime(
+  locale: Locale,
+  timestamp: number,
+  now: number,
+): string {
   const formatter = new Intl.RelativeTimeFormat(intlLocale(locale), {
     numeric: "auto",
   });
@@ -704,7 +722,10 @@ function formatLocalizedGeoValue(
   rawValue: string,
   unknownLabel: string,
 ): string {
-  const normalizedLocalized = normalizeDetailLabel(localizedValue, unknownLabel);
+  const normalizedLocalized = normalizeDetailLabel(
+    localizedValue,
+    unknownLabel,
+  );
   const normalizedRaw = normalizeDetailLabel(rawValue, unknownLabel);
   if (
     normalizedRaw === unknownLabel ||
@@ -805,24 +826,20 @@ function buildRealtimeVisitorVisitHistory(
       return {
         visitId,
         sessionId:
-          visit?.sessionId.trim()
-          || mostRecentEvent.sessionId.trim()
-          || selectedEvent.sessionId.trim(),
+          visit?.sessionId.trim() ||
+          mostRecentEvent.sessionId.trim() ||
+          selectedEvent.sessionId.trim(),
         startedAt: visit?.startedAt ?? oldestEvent.eventAt,
         lastActivityAt: visit?.lastActivityAt ?? mostRecentEvent.eventAt,
         pathname:
-          visit?.pathname.trim()
-          || mostRecentEvent.pathname.trim()
-          || "/",
+          visit?.pathname.trim() || mostRecentEvent.pathname.trim() || "/",
         title:
-          visit?.title.trim()
-          || mostRecentEvent.title.trim()
-          || mostRecentEvent.pathname.trim()
-          || "/",
+          visit?.title.trim() ||
+          mostRecentEvent.title.trim() ||
+          mostRecentEvent.pathname.trim() ||
+          "/",
         hostname:
-          visit?.hostname.trim()
-          || mostRecentEvent.hostname.trim()
-          || "",
+          visit?.hostname.trim() || mostRecentEvent.hostname.trim() || "",
         events: visitEvents,
       };
     })
@@ -840,19 +857,21 @@ function areRealtimeLogStreamItemPropsEqual(
   previousProps: RealtimeLogStreamItemProps,
   nextProps: RealtimeLogStreamItemProps,
 ) {
-  return previousProps.locale === nextProps.locale
-    && previousProps.messages === nextProps.messages
-    && previousProps.now === nextProps.now
-    && previousProps.event.id === nextProps.event.id
-    && previousProps.event.eventType === nextProps.event.eventType
-    && previousProps.event.eventAt === nextProps.event.eventAt
-    && previousProps.event.pathname === nextProps.event.pathname
-    && previousProps.event.visitorId === nextProps.event.visitorId
-    && previousProps.event.sessionId === nextProps.event.sessionId
-    && previousProps.event.browser === nextProps.event.browser
-    && previousProps.event.osVersion === nextProps.event.osVersion
-    && previousProps.event.country === nextProps.event.country
-    && previousProps.event.referrerHost === nextProps.event.referrerHost;
+  return (
+    previousProps.locale === nextProps.locale &&
+    previousProps.messages === nextProps.messages &&
+    previousProps.now === nextProps.now &&
+    previousProps.event.id === nextProps.event.id &&
+    previousProps.event.eventType === nextProps.event.eventType &&
+    previousProps.event.eventAt === nextProps.event.eventAt &&
+    previousProps.event.pathname === nextProps.event.pathname &&
+    previousProps.event.visitorId === nextProps.event.visitorId &&
+    previousProps.event.sessionId === nextProps.event.sessionId &&
+    previousProps.event.browser === nextProps.event.browser &&
+    previousProps.event.osVersion === nextProps.event.osVersion &&
+    previousProps.event.country === nextProps.event.country &&
+    previousProps.event.referrerHost === nextProps.event.referrerHost
+  );
 }
 
 function RealtimeEventDetailValue({
@@ -865,10 +884,11 @@ function RealtimeEventDetailValue({
   mono?: boolean;
 }) {
   return (
-    <span className={cn(
-      "inline-flex max-w-full items-center gap-2 break-words text-[11px] text-foreground sm:justify-end",
-      mono && "font-mono",
-    )}
+    <span
+      className={cn(
+        "inline-flex max-w-full items-center gap-2 break-words text-[11px] text-foreground sm:justify-end",
+        mono && "font-mono",
+      )}
     >
       {icon ? (
         <span className="inline-flex size-4 shrink-0 items-center justify-center">
@@ -899,108 +919,107 @@ function RealtimeEventDetailRow({
   );
 }
 
-const RealtimeLogStreamItemCard = memo(
-  function RealtimeLogStreamItemCard({
-    event,
-    locale,
-    messages,
-    now,
-  }: RealtimeLogStreamItemProps) {
-    const {
-      avatarSeed,
-      browserLabel,
-      browserIconKey,
-      countryFlagCode,
-      countryLabel,
-      osIconKey,
-      osLabel,
-      sourceLabel,
-      title,
-    } = resolveRealtimeEventDisplayData(locale, messages, event);
+const RealtimeLogStreamItemCard = memo(function RealtimeLogStreamItemCard({
+  event,
+  locale,
+  messages,
+  now,
+}: RealtimeLogStreamItemProps) {
+  const {
+    avatarSeed,
+    browserLabel,
+    browserIconKey,
+    countryFlagCode,
+    countryLabel,
+    osIconKey,
+    osLabel,
+    sourceLabel,
+    title,
+  } = resolveRealtimeEventDisplayData(locale, messages, event);
 
-    return (
-      <Card size="sm" className="w-full">
-        <CardContent className="px-3">
-          <div className="flex items-start gap-3">
-            <div className="shrink-0 self-center">
-              <Avatar
-                size={34}
-                name={avatarSeed}
-                variant="ring"
-                colors={VISITOR_AVATAR_COLORS}
-                aria-hidden="true"
-              />
-            </div>
-            <div className="flex min-w-0 flex-1 items-stretch justify-between gap-4">
-              <div className="min-w-0 space-y-2">
-                <p className="min-w-0 truncate text-sm font-medium text-foreground">
-                  {title}
-                </p>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-                  <MetaItem
-                    icon={(
-                      <LogoIcon
-                        src={`${BROWSER_ICON_DIR}/${browserIconKey}.svg`}
-                        fallbackSrc={`${BROWSER_ICON_DIR}/${UNKNOWN_ICON_KEY}.svg`}
-                        invertInDark={BROWSER_APPLE_ICON_KEYS.has(browserIconKey)}
-                      />
-                    )}
-                    label={browserLabel}
-                    hideLabelOnMobile
-                  />
-                  <MetaItem
-                    icon={(
-                      <LogoIcon
-                        src={`${OS_ICON_DIR}/${osIconKey}.svg`}
-                        fallbackSrc={`${OS_ICON_DIR}/${UNKNOWN_ICON_KEY}.svg`}
-                        invertInDark={OS_APPLE_ICON_KEYS.has(osIconKey)}
-                      />
-                    )}
-                    label={osLabel}
-                    hideLabelOnMobile
-                  />
-                  <MetaItem
-                    icon={countryFlagCode ? (
+  return (
+    <Card size="sm" className="w-full">
+      <CardContent className="px-3">
+        <div className="flex items-start gap-3">
+          <div className="shrink-0 self-center">
+            <Avatar
+              size={34}
+              name={avatarSeed}
+              variant="ring"
+              colors={VISITOR_AVATAR_COLORS}
+              aria-hidden="true"
+            />
+          </div>
+          <div className="flex min-w-0 flex-1 items-stretch justify-between gap-4">
+            <div className="min-w-0 space-y-2">
+              <p className="min-w-0 truncate text-sm font-medium text-foreground">
+                {title}
+              </p>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                <MetaItem
+                  icon={
+                    <LogoIcon
+                      src={`${BROWSER_ICON_DIR}/${browserIconKey}.svg`}
+                      fallbackSrc={`${BROWSER_ICON_DIR}/${UNKNOWN_ICON_KEY}.svg`}
+                      invertInDark={BROWSER_APPLE_ICON_KEYS.has(browserIconKey)}
+                    />
+                  }
+                  label={browserLabel}
+                  hideLabelOnMobile
+                />
+                <MetaItem
+                  icon={
+                    <LogoIcon
+                      src={`${OS_ICON_DIR}/${osIconKey}.svg`}
+                      fallbackSrc={`${OS_ICON_DIR}/${UNKNOWN_ICON_KEY}.svg`}
+                      invertInDark={OS_APPLE_ICON_KEYS.has(osIconKey)}
+                    />
+                  }
+                  label={osLabel}
+                  hideLabelOnMobile
+                />
+                <MetaItem
+                  icon={
+                    countryFlagCode ? (
                       <Icon
                         icon={`flagpack:${countryFlagCode.toLowerCase()}`}
                         style={{ width: 16, height: 12 }}
                         className="block shrink-0"
                       />
                     ) : (
-                        <RiGlobalLine className="size-3.5 text-muted-foreground" />
-                      )}
-                    label={countryLabel}
-                    hideLabelOnMobile
-                  />
-                  <MetaItem
-                    icon={(
-                      <DomainOrUrlIcon
-                        label={sourceLabel}
-                        unknownLabel={messages.overview.direct}
-                      />
-                    )}
-                    label={sourceLabel}
-                  />
-                </div>
+                      <RiGlobalLine className="size-3.5 text-muted-foreground" />
+                    )
+                  }
+                  label={countryLabel}
+                  hideLabelOnMobile
+                />
+                <MetaItem
+                  icon={
+                    <DomainOrUrlIcon
+                      label={sourceLabel}
+                      unknownLabel={messages.overview.direct}
+                    />
+                  }
+                  label={sourceLabel}
+                />
               </div>
-              <div className="shrink-0 self-stretch">
-                <div className="flex h-full min-w-[7.5rem] flex-col items-end justify-between text-right">
-                  <p className="font-mono text-[11px] text-foreground">
-                    {formatRelativeTime(locale, event.eventAt, now)}
-                  </p>
-                  <p className="font-mono text-[11px] text-muted-foreground">
-                    {shortDateTime(locale, event.eventAt)}
-                  </p>
-                </div>
+            </div>
+            <div className="shrink-0 self-stretch">
+              <div className="flex h-full min-w-[7.5rem] flex-col items-end justify-between text-right">
+                <p className="font-mono text-[11px] text-foreground">
+                  {formatRelativeTime(locale, event.eventAt, now)}
+                </p>
+                <p className="font-mono text-[11px] text-muted-foreground">
+                  {shortDateTime(locale, event.eventAt)}
+                </p>
               </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
-    );
-  },
-  areRealtimeLogStreamItemPropsEqual,
-);
+        </div>
+      </CardContent>
+    </Card>
+  );
+}, areRealtimeLogStreamItemPropsEqual);
 
 function RealtimeLogStreamItem({
   event,
@@ -1114,7 +1133,8 @@ function RealtimeVisitorHistorySection({
                         {decodeUrlDisplayValue(visit.pathname || "/")}
                       </span>
                       <span className="truncate">
-                        {messages.common.hostname}: {visit.hostname || messages.common.unknown}
+                        {messages.common.hostname}:{" "}
+                        {visit.hostname || messages.common.unknown}
                       </span>
                     </div>
                   </div>
@@ -1129,13 +1149,15 @@ function RealtimeVisitorHistorySection({
                 </div>
                 <div className="grid gap-2 text-[11px] text-muted-foreground sm:grid-cols-3">
                   <span>
-                    {messages.common.startedAt}: {formatDetailDateTime(locale, visit.startedAt)}
+                    {messages.common.startedAt}:{" "}
+                    {formatDetailDateTime(locale, visit.startedAt)}
                   </span>
                   <span>
                     {messages.realtime.visitId}: {visit.visitId}
                   </span>
                   <span>
-                    {messages.realtime.sessionId}: {visit.sessionId || messages.common.unknown}
+                    {messages.realtime.sessionId}:{" "}
+                    {visit.sessionId || messages.common.unknown}
                   </span>
                 </div>
                 <div className="space-y-1.5 border-t border-border/70 pt-3">
@@ -1179,27 +1201,30 @@ function RealtimeVisitorLocationMapSection({
   const points = useMemo<GeoPointsMapPoint[]>(
     () =>
       hasLocation
-        ? [{
-            latitude: Number(event.latitude),
-            longitude: Number(event.longitude),
-            country: String(event.country ?? ""),
-          }]
+        ? [
+            {
+              latitude: Number(event.latitude),
+              longitude: Number(event.longitude),
+              country: String(event.country ?? ""),
+            },
+          ]
         : [],
     [event.country, event.latitude, event.longitude, hasLocation],
   );
-  const countryCounts = useMemo<GeoPointsMapCountryCount[]>(
-    () => {
-      const country = String(event.country ?? "").trim().toUpperCase();
-      if (!country) return [];
-      return [{
+  const countryCounts = useMemo<GeoPointsMapCountryCount[]>(() => {
+    const country = String(event.country ?? "")
+      .trim()
+      .toUpperCase();
+    if (!country) return [];
+    return [
+      {
         country,
         views: 1,
         sessions: 1,
         visitors: 1,
-      }];
-    },
-    [event.country],
-  );
+      },
+    ];
+  }, [event.country]);
 
   return (
     <section className="space-y-2">
@@ -1278,31 +1303,65 @@ function RealtimeLogEventDetailsDialog({
   const detailRows = [
     {
       label: messages.common.id,
-      value: <RealtimeEventDetailValue value={event.id.trim() || messages.common.unknown} mono />,
+      value: (
+        <RealtimeEventDetailValue
+          value={event.id.trim() || messages.common.unknown}
+          mono
+        />
+      ),
     },
     {
       label: messages.realtime.visitorId,
-      value: <RealtimeEventDetailValue value={event.visitorId.trim() || messages.common.unknown} mono />,
+      value: (
+        <RealtimeEventDetailValue
+          value={event.visitorId.trim() || messages.common.unknown}
+          mono
+        />
+      ),
     },
     {
       label: messages.realtime.sessionId,
-      value: <RealtimeEventDetailValue value={event.sessionId.trim() || messages.common.unknown} mono />,
+      value: (
+        <RealtimeEventDetailValue
+          value={event.sessionId.trim() || messages.common.unknown}
+          mono
+        />
+      ),
     },
     {
       label: messages.realtime.visitId,
-      value: <RealtimeEventDetailValue value={event.visitId.trim() || messages.common.unknown} mono />,
+      value: (
+        <RealtimeEventDetailValue
+          value={event.visitId.trim() || messages.common.unknown}
+          mono
+        />
+      ),
     },
     {
       label: messages.realtime.eventType,
-      value: <RealtimeEventDetailValue value={event.eventType.trim() || messages.common.unknown} mono />,
+      value: (
+        <RealtimeEventDetailValue
+          value={event.eventType.trim() || messages.common.unknown}
+          mono
+        />
+      ),
     },
     {
       label: messages.realtime.eventTime,
-      value: <RealtimeEventDetailValue value={formatDetailDateTime(locale, event.eventAt)} mono />,
+      value: (
+        <RealtimeEventDetailValue
+          value={formatDetailDateTime(locale, event.eventAt)}
+          mono
+        />
+      ),
     },
     {
       label: messages.common.title,
-      value: <RealtimeEventDetailValue value={event.title.trim() || messages.common.unknown} />,
+      value: (
+        <RealtimeEventDetailValue
+          value={event.title.trim() || messages.common.unknown}
+        />
+      ),
     },
     {
       label: messages.common.path,
@@ -1315,19 +1374,24 @@ function RealtimeLogEventDetailsDialog({
     },
     {
       label: messages.common.hostname,
-      value: <RealtimeEventDetailValue value={event.hostname.trim() || messages.common.unknown} mono />,
+      value: (
+        <RealtimeEventDetailValue
+          value={event.hostname.trim() || messages.common.unknown}
+          mono
+        />
+      ),
     },
     {
       label: messages.common.browser,
       value: (
         <RealtimeEventDetailValue
-          icon={(
+          icon={
             <LogoIcon
               src={`${BROWSER_ICON_DIR}/${browserIconKey}.svg`}
               fallbackSrc={`${BROWSER_ICON_DIR}/${UNKNOWN_ICON_KEY}.svg`}
               invertInDark={BROWSER_APPLE_ICON_KEYS.has(browserIconKey)}
             />
-          )}
+          }
           value={browserLabel}
         />
       ),
@@ -1336,34 +1400,40 @@ function RealtimeLogEventDetailsDialog({
       label: messages.common.operatingSystem,
       value: (
         <RealtimeEventDetailValue
-          icon={(
+          icon={
             <LogoIcon
               src={`${OS_ICON_DIR}/${osIconKey}.svg`}
               fallbackSrc={`${OS_ICON_DIR}/${UNKNOWN_ICON_KEY}.svg`}
               invertInDark={OS_APPLE_ICON_KEYS.has(osIconKey)}
             />
-          )}
+          }
           value={osLabel}
         />
       ),
     },
     {
       label: messages.common.deviceType,
-      value: <RealtimeEventDetailValue value={event.deviceType.trim() || messages.common.unknown} />,
+      value: (
+        <RealtimeEventDetailValue
+          value={event.deviceType.trim() || messages.common.unknown}
+        />
+      ),
     },
     {
       label: messages.common.country,
       value: (
         <RealtimeEventDetailValue
-          icon={countryFlagCode ? (
-            <Icon
-              icon={`flagpack:${countryFlagCode.toLowerCase()}`}
-              style={{ width: 16, height: 12 }}
-              className="block shrink-0"
-            />
-          ) : (
-            <RiGlobalLine className="size-3.5 text-muted-foreground" />
-          )}
+          icon={
+            countryFlagCode ? (
+              <Icon
+                icon={`flagpack:${countryFlagCode.toLowerCase()}`}
+                style={{ width: 16, height: 12 }}
+                className="block shrink-0"
+              />
+            ) : (
+              <RiGlobalLine className="size-3.5 text-muted-foreground" />
+            )
+          }
           value={
             event.country.trim() && event.country.trim() !== countryLabel
               ? `${countryLabel} (${event.country.trim()})`
@@ -1386,7 +1456,12 @@ function RealtimeLogEventDetailsDialog({
     },
     {
       label: messages.common.regionCode,
-      value: <RealtimeEventDetailValue value={event.regionCode.trim() || messages.common.unknown} mono />,
+      value: (
+        <RealtimeEventDetailValue
+          value={event.regionCode.trim() || messages.common.unknown}
+          mono
+        />
+      ),
     },
     {
       label: messages.common.city,
@@ -1414,22 +1489,32 @@ function RealtimeLogEventDetailsDialog({
     },
     {
       label: messages.common.timezone,
-      value: <RealtimeEventDetailValue value={event.timezone.trim() || messages.common.unknown} mono />,
+      value: (
+        <RealtimeEventDetailValue
+          value={event.timezone.trim() || messages.common.unknown}
+          mono
+        />
+      ),
     },
     {
       label: messages.common.referrerHost,
-      value: <RealtimeEventDetailValue value={event.referrerHost.trim() || messages.overview.direct} mono />,
+      value: (
+        <RealtimeEventDetailValue
+          value={event.referrerHost.trim() || messages.overview.direct}
+          mono
+        />
+      ),
     },
     {
       label: messages.common.referrer,
       value: (
         <RealtimeEventDetailValue
-          icon={(
+          icon={
             <DomainOrUrlIcon
               label={sourceLabel}
               unknownLabel={messages.overview.direct}
             />
-          )}
+          }
           value={event.referrerUrl.trim() || sourceLabel}
           mono
         />
@@ -1437,7 +1522,12 @@ function RealtimeLogEventDetailsDialog({
     },
     {
       label: messages.common.screenSize,
-      value: <RealtimeEventDetailValue value={event.screenSize.trim() || messages.common.unknown} mono />,
+      value: (
+        <RealtimeEventDetailValue
+          value={event.screenSize.trim() || messages.common.unknown}
+          mono
+        />
+      ),
     },
     {
       label: messages.common.language,
@@ -1445,15 +1535,29 @@ function RealtimeLogEventDetailsDialog({
     },
     {
       label: messages.common.organization,
-      value: <RealtimeEventDetailValue value={event.organization.trim() || messages.common.unknown} />,
+      value: (
+        <RealtimeEventDetailValue
+          value={event.organization.trim() || messages.common.unknown}
+        />
+      ),
     },
     {
       label: messages.common.latitude,
-      value: <RealtimeEventDetailValue value={formatCoordinateValue(event.latitude)} mono />,
+      value: (
+        <RealtimeEventDetailValue
+          value={formatCoordinateValue(event.latitude)}
+          mono
+        />
+      ),
     },
     {
       label: messages.common.longitude,
-      value: <RealtimeEventDetailValue value={formatCoordinateValue(event.longitude)} mono />,
+      value: (
+        <RealtimeEventDetailValue
+          value={formatCoordinateValue(event.longitude)}
+          mono
+        />
+      ),
     },
   ];
 
@@ -1518,7 +1622,9 @@ export function RealtimeLogStreamCard({
   const reduceLogItemMotion = useReducedMotion() ?? false;
   const [now, setNow] = useState(() => Date.now());
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_EVENTS);
-  const [selectedEvent, setSelectedEvent] = useState<RealtimeEvent | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<RealtimeEvent | null>(
+    null,
+  );
 
   const visibleEvents = events.slice(0, visibleCount);
   const hasMoreEvents = visibleCount < events.length;
@@ -1537,7 +1643,10 @@ export function RealtimeLogStreamCard({
   useEffect(() => {
     setVisibleCount((previous) => {
       if (events.length <= 0) return INITIAL_VISIBLE_EVENTS;
-      return Math.min(events.length, Math.max(previous, INITIAL_VISIBLE_EVENTS));
+      return Math.min(
+        events.length,
+        Math.max(previous, INITIAL_VISIBLE_EVENTS),
+      );
     });
   }, [events.length]);
 

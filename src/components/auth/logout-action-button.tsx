@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import type { Locale } from "@/lib/i18n/config";
-import { navigateWithTransition } from "@/lib/page-transition";
+
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { AutoTransition } from "@/components/ui/auto-transition";
+import type { Locale } from "@/lib/i18n/config";
+import { navigateWithTransition } from "@/lib/page-transition";
 
 interface LogoutActionButtonProps {
   locale: Locale;
@@ -51,7 +52,12 @@ export function LogoutActionButton({
   }
 
   return (
-    <Button type="button" variant="outline" onClick={() => void handleLogout()} disabled={pending}>
+    <Button
+      type="button"
+      variant="outline"
+      onClick={() => void handleLogout()}
+      disabled={pending}
+    >
       <AutoTransition className="inline-flex items-center gap-2">
         {pending ? (
           <span key="pending" className="inline-flex items-center gap-2">

@@ -1,14 +1,15 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+
 import { SESSION_COOKIE } from "@/lib/constants";
-import { configuredSessionSecret, verifySessionToken } from "@/lib/session";
 import {
-  SUPPORTED_LOCALES,
   DEFAULT_LOCALE,
   LOCALE_COOKIE,
   resolveLocale,
+  SUPPORTED_LOCALES,
 } from "@/lib/i18n/config";
 import { isValidLocale } from "@/lib/i18n/config";
+import { configuredSessionSecret, verifySessionToken } from "@/lib/session";
 
 type AuthState = "authenticated" | "unauthenticated" | "unknown";
 
@@ -52,7 +53,9 @@ async function authState(request: NextRequest): Promise<AuthState> {
   return session ? "authenticated" : "unauthenticated";
 }
 
-async function fetchRedirectProfile(request: NextRequest): Promise<RedirectProfile | null> {
+async function fetchRedirectProfile(
+  request: NextRequest,
+): Promise<RedirectProfile | null> {
   const token = request.cookies.get(SESSION_COOKIE)?.value || "";
   if (!token) return null;
 
@@ -182,17 +185,24 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   // Demo mode: skip all auth checks
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
     if (pathname === "/admin/ws") return NextResponse.next();
-    if (pathname.startsWith("/api/admin") || pathname.startsWith("/api/archive")) {
+    if (
+      pathname.startsWith("/api/admin") ||
+      pathname.startsWith("/api/archive")
+    ) {
       return NextResponse.next();
     }
     if (!pathnameHasLocale(pathname)) {
       const locale = getLocale(request);
-      return redirectWithPath(request, toLocalizedPath(pathname, locale), { preserveSearch: true });
+      return redirectWithPath(request, toLocalizedPath(pathname, locale), {
+        preserveSearch: true,
+      });
     }
     const demoLocale = pathname.split("/")[1];
     const demoNormalized = normalizePathname(pathname);
     if (demoLocale && demoNormalized === `/${demoLocale}`) {
-      return redirectWithPath(request, `/${demoLocale}/app`, { preserveSearch: true });
+      return redirectWithPath(request, `/${demoLocale}/app`, {
+        preserveSearch: true,
+      });
     }
     const demoRest = pathname.replace(/^\/[^/]+/, "") || "/";
     const demoNormalizedRest = normalizePathname(demoRest);
@@ -204,7 +214,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       );
     }
     if (demoNormalizedRest === "/login") {
-      return redirectWithPath(request, `/${demoLocale}/app`, { preserveSearch: false });
+      return redirectWithPath(request, `/${demoLocale}/app`, {
+        preserveSearch: false,
+      });
     }
     const demoResponse = NextResponse.next();
     demoResponse.headers.set("x-pathname", pathname);
@@ -235,7 +247,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return redirectProfile;
   };
   const normalizedPathname = normalizePathname(pathname);
-  const localeFromPath = pathnameHasLocale(pathname) ? pathname.split("/")[1] : null;
+  const localeFromPath = pathnameHasLocale(pathname)
+    ? pathname.split("/")[1]
+    : null;
 
   if (pathname === "/admin/ws") {
     return NextResponse.next();
@@ -244,14 +258,20 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   // API routes — no locale handling, just auth checks
   if (pathname.startsWith("/api/admin")) {
     if ((await ensureAuthState()) !== "authenticated") {
-      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { ok: false, error: "unauthorized" },
+        { status: 401 },
+      );
     }
     return NextResponse.next();
   }
 
   if (pathname.startsWith("/api/archive")) {
     if ((await ensureAuthState()) !== "authenticated") {
-      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { ok: false, error: "unauthorized" },
+        { status: 401 },
+      );
     }
     return NextResponse.next();
   }
@@ -259,11 +279,15 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   // Non-locale path: unify all redirects here.
   if (!pathnameHasLocale(pathname)) {
     const locale = getLocale(request);
-    return redirectWithPath(request, toLocalizedPath(pathname, locale), { preserveSearch: true });
+    return redirectWithPath(request, toLocalizedPath(pathname, locale), {
+      preserveSearch: true,
+    });
   }
 
   if (localeFromPath && normalizedPathname === `/${localeFromPath}`) {
-    return redirectWithPath(request, `/${localeFromPath}/app`, { preserveSearch: true });
+    return redirectWithPath(request, `/${localeFromPath}/app`, {
+      preserveSearch: true,
+    });
   }
 
   const restPath = pathname.replace(/^\/[^/]+/, "") || "/";
@@ -287,7 +311,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       return response;
     }
 
-    const appSegments = normalizedRestPath.split("/").filter((segment) => segment.length > 0);
+    const appSegments = normalizedRestPath
+      .split("/")
+      .filter((segment) => segment.length > 0);
     if (appSegments.length === 1) {
       const profile = await ensureRedirectProfile();
       if (profile && profile.teams.length === 1) {
@@ -311,8 +337,13 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  if (normalizedRestPath === "/login" && (await ensureAuthState()) === "authenticated") {
-    return redirectWithPath(request, `/${localeFromPath}/app`, { preserveSearch: false });
+  if (
+    normalizedRestPath === "/login" &&
+    (await ensureAuthState()) === "authenticated"
+  ) {
+    return redirectWithPath(request, `/${localeFromPath}/app`, {
+      preserveSearch: false,
+    });
   }
 
   const response = NextResponse.next();

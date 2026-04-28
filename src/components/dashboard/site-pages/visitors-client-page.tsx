@@ -1,12 +1,12 @@
 "use client";
 
 import {
+  type KeyboardEvent,
   useEffect,
   useEffectEvent,
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
 } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -14,8 +14,7 @@ import {
   RiArrowUpSLine,
   RiSearchLine,
 } from "@remixicon/react";
-import { PageHeading } from "@/components/dashboard/page-heading";
-import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+
 import {
   BrowserMeta,
   CountryRegionMeta,
@@ -25,10 +24,12 @@ import {
   ReferrerMeta,
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
+import { PageHeading } from "@/components/dashboard/page-heading";
+import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   Table,
   TableBody,
@@ -37,12 +38,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { numberFormat } from "@/lib/dashboard/format";
 import { fetchVisitors } from "@/lib/dashboard/client-data";
+import { numberFormat } from "@/lib/dashboard/format";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { VisitorsData, VisitorsMeta } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
-import type { VisitorsData, VisitorsMeta } from "@/lib/edge-client";
 import { navigateWithTransition } from "@/lib/page-transition";
 import { cn } from "@/lib/utils";
 
@@ -279,8 +280,9 @@ export function VisitorsClientPage({
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState<VisitorSortState>(DEFAULT_VISITOR_SORT);
   const [now, setNow] = useState(() => Date.now());
-  const [sentinelNode, setSentinelNode] =
-    useState<HTMLTableRowElement | null>(null);
+  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
+    null,
+  );
   const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const requestKey = useMemo(
@@ -362,11 +364,12 @@ export function VisitorsClientPage({
           setAppendError(true);
         }
       } finally {
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        if (mode === "replace") {
-          setLoadingInitial(false);
-        } else {
-          setLoadingMore(false);
+        if (latestRequestKeyRef.current === capturedRequestKey) {
+          if (mode === "replace") {
+            setLoadingInitial(false);
+          } else {
+            setLoadingMore(false);
+          }
         }
       }
     },
@@ -491,183 +494,187 @@ export function VisitorsClientPage({
         initial={false}
         className="w-full"
       >
-      <Card key={tableTransitionKey} className="py-0">
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-32 pl-4">{labels.visitor}</TableHead>
-                <TableHead>{labels.sessionId}</TableHead>
-                <SortHeader
-                  label={labels.firstSeen}
-                  active={sort.key === "firstSeenAt"}
-                  direction={sort.direction}
-                  onClick={() => toggleSort("firstSeenAt")}
-                />
-                <SortHeader
-                  label={labels.lastSeen}
-                  active={sort.key === "lastSeenAt"}
-                  direction={sort.direction}
-                  onClick={() => toggleSort("lastSeenAt")}
-                />
-                <SortHeader
-                  label={labels.sessions}
-                  active={sort.key === "sessions"}
-                  direction={sort.direction}
-                  onClick={() => toggleSort("sessions")}
-                  align="right"
-                  className="text-right"
-                />
-                <SortHeader
-                  label={labels.pageViews}
-                  active={sort.key === "views"}
-                  direction={sort.direction}
-                  onClick={() => toggleSort("views")}
-                  align="center"
-                  className="text-center"
-                />
-                <TableHead>{labels.referrer}</TableHead>
-                <TableHead>{labels.location}</TableHead>
-                <TableHead>{labels.os}</TableHead>
-                <TableHead>{labels.browser}</TableHead>
-                <TableHead className="pr-4">{labels.device}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody aria-busy={replacingRows || loadingMore}>
-              {replacingRows ? (
-                Array.from({ length: VISITOR_SKELETON_ROWS }, (_, index) => (
-                  <VisitorRowSkeleton
-                    key={`initial-skeleton-${index}`}
-                    index={index}
+        <Card key={tableTransitionKey} className="py-0">
+          <CardContent className="px-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-32 pl-4">{labels.visitor}</TableHead>
+                  <TableHead>{labels.sessionId}</TableHead>
+                  <SortHeader
+                    label={labels.firstSeen}
+                    active={sort.key === "firstSeenAt"}
+                    direction={sort.direction}
+                    onClick={() => toggleSort("firstSeenAt")}
                   />
-                ))
-              ) : error ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={11}
-                    className="h-28 text-center text-muted-foreground"
-                  >
-                    {labels.loadError}
-                  </TableCell>
+                  <SortHeader
+                    label={labels.lastSeen}
+                    active={sort.key === "lastSeenAt"}
+                    direction={sort.direction}
+                    onClick={() => toggleSort("lastSeenAt")}
+                  />
+                  <SortHeader
+                    label={labels.sessions}
+                    active={sort.key === "sessions"}
+                    direction={sort.direction}
+                    onClick={() => toggleSort("sessions")}
+                    align="right"
+                    className="text-right"
+                  />
+                  <SortHeader
+                    label={labels.pageViews}
+                    active={sort.key === "views"}
+                    direction={sort.direction}
+                    onClick={() => toggleSort("views")}
+                    align="center"
+                    className="text-center"
+                  />
+                  <TableHead>{labels.referrer}</TableHead>
+                  <TableHead>{labels.location}</TableHead>
+                  <TableHead>{labels.os}</TableHead>
+                  <TableHead>{labels.browser}</TableHead>
+                  <TableHead className="pr-4">{labels.device}</TableHead>
                 </TableRow>
-              ) : rows.length === 0 && !meta.hasMore ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={11}
-                    className="h-28 text-center text-muted-foreground"
-                  >
-                    {labels.empty}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                <>
-                  {rows.map((row) => {
-                    const href = `${pathname}/detail?visitorId=${encodeURIComponent(row.visitorId)}`;
-                    return (
-                      <TableRow
-                        key={row.visitorId}
-                        role="link"
-                        tabIndex={0}
-                        aria-label={`${labels.visitor}: ${row.visitorId}`}
-                        className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-                        onClick={() => openVisitor(href)}
-                        onKeyDown={(event) => handleVisitorKeyDown(event, href)}
-                      >
-                        <TableCell className="w-32 pl-4">
-                          <div className="flex w-28 items-center gap-2">
-                            <VisitorAvatar
-                              seed={row.visitorId}
-                              className="size-6"
+              </TableHeader>
+              <TableBody aria-busy={replacingRows || loadingMore}>
+                {replacingRows ? (
+                  Array.from({ length: VISITOR_SKELETON_ROWS }, (_, index) => (
+                    <VisitorRowSkeleton
+                      key={`initial-skeleton-${index}`}
+                      index={index}
+                    />
+                  ))
+                ) : error ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={11}
+                      className="h-28 text-center text-muted-foreground"
+                    >
+                      {labels.loadError}
+                    </TableCell>
+                  </TableRow>
+                ) : rows.length === 0 && !meta.hasMore ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={11}
+                      className="h-28 text-center text-muted-foreground"
+                    >
+                      {labels.empty}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  <>
+                    {rows.map((row) => {
+                      const href = `${pathname}/detail?visitorId=${encodeURIComponent(row.visitorId)}`;
+                      return (
+                        <TableRow
+                          key={row.visitorId}
+                          role="link"
+                          tabIndex={0}
+                          aria-label={`${labels.visitor}: ${row.visitorId}`}
+                          className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                          onClick={() => openVisitor(href)}
+                          onKeyDown={(event) =>
+                            handleVisitorKeyDown(event, href)
+                          }
+                        >
+                          <TableCell className="w-32 pl-4">
+                            <div className="flex w-28 items-center gap-2">
+                              <VisitorAvatar
+                                seed={row.visitorId}
+                                className="size-6"
+                              />
+                              <span className="truncate">
+                                {labels.anonymous}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <SessionIdValue value={row.sessionId} />
+                          </TableCell>
+                          <TableCell className="font-mono text-muted-foreground">
+                            {formatRelativeTime(locale, row.firstSeenAt, now)}
+                          </TableCell>
+                          <TableCell className="font-mono text-muted-foreground">
+                            {formatRelativeTime(locale, row.lastSeenAt, now)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono tabular-nums">
+                            {numberFormat(locale, row.sessions)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="font-mono tabular-nums">
+                              {numberFormat(locale, row.views)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-48">
+                            <ReferrerMeta
+                              referrerHost={row.referrerHost || ""}
+                              referrerUrl={row.referrerUrl}
+                              directLabel={messages.overview.direct}
                             />
-                            <span className="truncate">{labels.anonymous}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <SessionIdValue value={row.sessionId} />
-                        </TableCell>
-                        <TableCell className="font-mono text-muted-foreground">
-                          {formatRelativeTime(locale, row.firstSeenAt, now)}
-                        </TableCell>
-                        <TableCell className="font-mono text-muted-foreground">
-                          {formatRelativeTime(locale, row.lastSeenAt, now)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono tabular-nums">
-                          {numberFormat(locale, row.sessions)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="font-mono tabular-nums">
-                            {numberFormat(locale, row.views)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="max-w-48">
-                          <ReferrerMeta
-                            referrerHost={row.referrerHost || ""}
-                            referrerUrl={row.referrerUrl}
-                            directLabel={messages.overview.direct}
-                          />
-                        </TableCell>
-                        <TableCell className="max-w-52">
-                          <CountryRegionMeta
-                            locale={locale}
-                            messages={messages}
-                            country={row.country || ""}
-                            region={row.region}
-                            regionCode={row.regionCode}
-                          />
-                        </TableCell>
-                        <TableCell className="max-w-40">
-                          <OsMeta
-                            os={row.os || ""}
-                            version={row.osVersion}
-                            unknownLabel={messages.common.unknown}
-                          />
-                        </TableCell>
-                        <TableCell className="max-w-40">
-                          <BrowserMeta
-                            browser={row.browser || ""}
-                            version={row.browserVersion}
-                            unknownLabel={messages.common.unknown}
-                          />
-                        </TableCell>
-                        <TableCell className="max-w-36 pr-4">
-                          <DeviceMeta
-                            deviceType={row.deviceType || ""}
-                            locale={locale}
-                            unknownLabel={messages.common.unknown}
-                          />
+                          </TableCell>
+                          <TableCell className="max-w-52">
+                            <CountryRegionMeta
+                              locale={locale}
+                              messages={messages}
+                              country={row.country || ""}
+                              region={row.region}
+                              regionCode={row.regionCode}
+                            />
+                          </TableCell>
+                          <TableCell className="max-w-40">
+                            <OsMeta
+                              os={row.os || ""}
+                              version={row.osVersion}
+                              unknownLabel={messages.common.unknown}
+                            />
+                          </TableCell>
+                          <TableCell className="max-w-40">
+                            <BrowserMeta
+                              browser={row.browser || ""}
+                              version={row.browserVersion}
+                              unknownLabel={messages.common.unknown}
+                            />
+                          </TableCell>
+                          <TableCell className="max-w-36 pr-4">
+                            <DeviceMeta
+                              deviceType={row.deviceType || ""}
+                              locale={locale}
+                              unknownLabel={messages.common.unknown}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {appendError ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={11}
+                          className="h-16 text-center text-muted-foreground"
+                        >
+                          {labels.loadError}
                         </TableCell>
                       </TableRow>
-                    );
-                  })}
-                  {appendError ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={11}
-                        className="h-16 text-center text-muted-foreground"
-                      >
-                        {labels.loadError}
-                      </TableCell>
-                    </TableRow>
-                  ) : meta.hasMore ? (
-                    Array.from(
-                      { length: VISITOR_SKELETON_ROWS },
-                      (_, index) => (
-                        <VisitorRowSkeleton
-                          key={`append-skeleton-${rows.length}-${index}`}
-                          index={index}
-                          sentinelRef={
-                            index === 0 ? setSentinelNode : undefined
-                          }
-                        />
-                      ),
-                    )
-                  ) : null}
-                </>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                    ) : meta.hasMore ? (
+                      Array.from(
+                        { length: VISITOR_SKELETON_ROWS },
+                        (_, index) => (
+                          <VisitorRowSkeleton
+                            key={`append-skeleton-${rows.length}-${index}`}
+                            index={index}
+                            sentinelRef={
+                              index === 0 ? setSentinelNode : undefined
+                            }
+                          />
+                        ),
+                      )
+                    ) : null}
+                  </>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </AutoTransition>
     </div>
   );

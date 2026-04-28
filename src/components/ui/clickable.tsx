@@ -3,6 +3,7 @@
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { forwardRef } from "react";
 import { motion } from "motion/react";
+
 import { cn } from "@/lib/utils";
 
 interface ClickableProps {
@@ -57,9 +58,7 @@ export const Clickable = forwardRef<HTMLDivElement, ClickableProps>(
         aria-disabled={disabled}
         className={cn(
           "inline-flex select-none items-center justify-center rounded-none outline-none focus-visible:ring-1 focus-visible:ring-ring/60",
-          disabled
-            ? "cursor-not-allowed opacity-50"
-            : "cursor-pointer",
+          disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
           className,
         )}
         onClick={handleClick}
@@ -80,4 +79,3 @@ export const Clickable = forwardRef<HTMLDivElement, ClickableProps>(
 );
 
 Clickable.displayName = "Clickable";
-

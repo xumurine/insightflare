@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+
 import { SessionsClientPage } from "@/components/dashboard/site-pages/sessions-client-page";
 import { buildSitePath, getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
@@ -36,4 +37,3 @@ export default async function SessionsPage({ params }: SessionsPageProps) {
     />
   );
 }
-

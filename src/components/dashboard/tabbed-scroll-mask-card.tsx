@@ -1,12 +1,9 @@
 "use client";
 
-import {
-  useEffect,
-  useRef,
-  type ReactNode,
-} from "react";
-import { OverlayScrollbars } from "overlayscrollbars";
+import { type ReactNode, useEffect, useRef } from "react";
 import type { PartialOptions } from "overlayscrollbars";
+import { OverlayScrollbars } from "overlayscrollbars";
+
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -57,7 +54,9 @@ export function TabbedScrollMaskCard<T extends string = string>({
   viewportClassName,
 }: TabbedScrollMaskCardProps<T>) {
   const scrollHostRef = useRef<HTMLDivElement | null>(null);
-  const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(null);
+  const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
+    null,
+  );
   const topMaskRef = useRef<HTMLDivElement | null>(null);
   const bottomMaskRef = useRef<HTMLDivElement | null>(null);
   const topVisibleRef = useRef(false);
@@ -176,7 +175,10 @@ export function TabbedScrollMaskCard<T extends string = string>({
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className={cn("h-8 flex-none px-3 text-xs", tabTriggerClassName)}
+                      className={cn(
+                        "h-8 flex-none px-3 text-xs",
+                        tabTriggerClassName,
+                      )}
                     >
                       {tab.label}
                     </TabsTrigger>
@@ -203,7 +205,10 @@ export function TabbedScrollMaskCard<T extends string = string>({
 
         <div
           ref={scrollHostRef}
-          className={cn("max-h-[60vh] overflow-hidden pt-1.5", viewportClassName)}
+          className={cn(
+            "max-h-[60vh] overflow-hidden pt-1.5",
+            viewportClassName,
+          )}
           data-overlayscrollbars-initialize
         >
           {children}

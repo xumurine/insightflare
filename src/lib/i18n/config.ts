@@ -5,7 +5,9 @@ export type Locale = (typeof SUPPORTED_LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "en";
 export const LOCALE_COOKIE = "if_locale";
 
-export function isValidLocale(value: string | null | undefined): value is Locale {
+export function isValidLocale(
+  value: string | null | undefined,
+): value is Locale {
   return SUPPORTED_LOCALES.includes(value as Locale);
 }
 

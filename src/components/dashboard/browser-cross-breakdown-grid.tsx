@@ -2,15 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+
 import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  type ChartConfig,
   ChartContainer,
   ChartLegend,
   ChartLegendContent,
   ChartTooltip,
-  type ChartConfig,
 } from "@/components/ui/chart";
 import { Spinner } from "@/components/ui/spinner";
 import { fetchBrowserCrossBreakdown } from "@/lib/dashboard/client-data";
@@ -80,7 +81,10 @@ function emptyBrowserCrossBreakdown(): BrowserCrossBreakdownData {
   };
 }
 
-function crossItemLabel(item: BrowserCrossBreakdownItem, messages: AppMessages): string {
+function crossItemLabel(
+  item: BrowserCrossBreakdownItem,
+  messages: AppMessages,
+): string {
   if (item.isOther) return messages.browsers.otherLabel;
   if (item.isUnknown) return messages.common.unknown;
   return item.label;
@@ -169,9 +173,8 @@ function BrowserCrossStackedBarCard({
         );
 
         for (const cell of row.cells) {
-          entry[cell.key] = rowSegmentVisitors > 0
-            ? cell.visitors / rowSegmentVisitors
-            : 0;
+          entry[cell.key] =
+            rowSegmentVisitors > 0 ? cell.visitors / rowSegmentVisitors : 0;
           entry[`${cell.key}Visitors`] = cell.visitors;
         }
 
@@ -219,7 +222,9 @@ function BrowserCrossStackedBarCard({
                   axisLine={false}
                   tickMargin={8}
                   minTickGap={24}
-                  tickFormatter={(value) => percentFormat(locale, Number(value ?? 0))}
+                  tickFormatter={(value) =>
+                    percentFormat(locale, Number(value ?? 0))
+                  }
                 />
                 <YAxis
                   type="category"
@@ -231,21 +236,24 @@ function BrowserCrossStackedBarCard({
                 <ChartTooltip
                   cursor={false}
                   content={({ active, payload }) => {
-                    const row = payload?.[0]?.payload as BrowserCrossChartRow | undefined;
+                    const row = payload?.[0]?.payload as
+                      | BrowserCrossChartRow
+                      | undefined;
                     if (!active || !payload?.length || !row) return null;
 
                     const payloadByKey = new Map(
                       payload.map((item) => [String(item.dataKey ?? ""), item]),
                     );
-                    const visibleItems = dimension.columns
-                      .flatMap((column) => {
-                        const item = payloadByKey.get(column.key);
-                        return item && Number(item.value ?? 0) > 0 ? [item] : [];
-                      });
+                    const visibleItems = dimension.columns.flatMap((column) => {
+                      const item = payloadByKey.get(column.key);
+                      return item && Number(item.value ?? 0) > 0 ? [item] : [];
+                    });
 
                     return (
                       <div className="grid min-w-[18rem] gap-2 rounded-none border border-border/50 bg-background px-2.5 py-2 text-xs shadow-xl">
-                        <div className="font-medium">{String(row.browserFullLabel || "")}</div>
+                        <div className="font-medium">
+                          {String(row.browserFullLabel || "")}
+                        </div>
                         <div className="grid gap-1.5">
                           {visibleItems.map((item) => {
                             const seriesKey = String(item.dataKey ?? "");
@@ -266,17 +274,22 @@ function BrowserCrossStackedBarCard({
                                 <span className="inline-flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
                                   <span
                                     className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
-                                    style={{ backgroundColor: currentSeries?.color }}
+                                    style={{
+                                      backgroundColor: currentSeries?.color,
+                                    }}
                                   />
                                   <span
                                     className="truncate text-muted-foreground"
-                                    title={currentSeries?.displayLabel ?? seriesKey}
+                                    title={
+                                      currentSeries?.displayLabel ?? seriesKey
+                                    }
                                   >
                                     {currentSeries?.displayLabel ?? seriesKey}
                                   </span>
                                 </span>
                                 <span className="ml-auto min-w-[7.5rem] shrink-0 whitespace-nowrap text-right font-mono text-foreground tabular-nums">
-                                  {numberFormat(locale, visitors)} · {percentFormat(locale, share)}
+                                  {numberFormat(locale, visitors)} ·{" "}
+                                  {percentFormat(locale, share)}
                                 </span>
                               </div>
                             );
@@ -287,9 +300,9 @@ function BrowserCrossStackedBarCard({
                   }}
                 />
                 <ChartLegend
-                  content={(
+                  content={
                     <ChartLegendContent className="pt-4 flex-wrap justify-start gap-x-4 gap-y-2" />
-                  )}
+                  }
                 />
                 {dimension.columns.map((column) => (
                   <Bar
@@ -362,12 +375,7 @@ export function BrowserCrossBreakdownGrid({
     return () => {
       active = false;
     };
-  }, [
-    filters,
-    siteId,
-    window.from,
-    window.to,
-  ]);
+  }, [filters, siteId, window.from, window.to]);
 
   const operatingSystem = useMemo(
     () => buildCrossDisplayDimension(breakdownData.operatingSystem, messages),

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+
 import { AdminSitesManagementClient } from "@/components/dashboard/admin-sites-management-client";
 import { getDashboardProfile } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
@@ -11,7 +12,9 @@ interface ManageSitesPageProps {
   }>;
 }
 
-export default async function ManageSitesPage({ params }: ManageSitesPageProps) {
+export default async function ManageSitesPage({
+  params,
+}: ManageSitesPageProps) {
   const { locale, teamSlug } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);

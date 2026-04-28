@@ -8,14 +8,15 @@ import {
   Radar,
   RadarChart,
 } from "recharts";
+
 import { ContentSwitch } from "@/components/dashboard/content-switch";
-import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
+import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import {
+  type ChartConfig,
   ChartContainer,
   ChartTooltip,
-  type ChartConfig,
 } from "@/components/ui/chart";
 import { fetchReferrerRadar } from "@/lib/dashboard/client-data";
 import {
@@ -96,9 +97,7 @@ function formatRawMetric(
 function normalizeReferrerLabel(value: string, directLabel: string): string {
   const raw = value.trim();
   if (!raw) return directLabel;
-  return raw
-    .replace(/^[a-z][a-z\d+\-.]*:\/\//i, "")
-    .replace(/\/+.*$/, "");
+  return raw.replace(/^[a-z][a-z\d+\-.]*:\/\//i, "").replace(/\/+.*$/, "");
 }
 
 function buildReferrerRequestUrl(referrer: string): string | null {
@@ -203,7 +202,10 @@ function domainMonogram(label: string): string {
   return normalized.slice(0, 1).toUpperCase();
 }
 
-function formatMetadataDate(locale: Locale, value: string | undefined): string | null {
+function formatMetadataDate(
+  locale: Locale,
+  value: string | undefined,
+): string | null {
   const raw = String(value ?? "").trim();
   if (!raw) return null;
   const date = new Date(raw);
@@ -253,7 +255,10 @@ function SingleReferrerRadar({
 }) {
   return (
     <div className="flex items-center justify-center">
-      <ChartContainer config={chartConfig} className="aspect-square w-full max-w-[220px]">
+      <ChartContainer
+        config={chartConfig}
+        className="aspect-square w-full max-w-[220px]"
+      >
         <RadarChart data={points} cx="50%" cy="50%" outerRadius="70%">
           <PolarGrid />
           <PolarAngleAxis dataKey="metric" tick={{ fontSize: 10 }} />
@@ -273,7 +278,9 @@ function SingleReferrerRadar({
           <ChartTooltip
             content={({ active, label: activeLabel, payload }) => {
               if (!active || !payload?.length) return null;
-              const point = points.find((entry) => entry.metric === activeLabel);
+              const point = points.find(
+                (entry) => entry.metric === activeLabel,
+              );
               if (!point) return null;
               const raw = item.metrics[point.metricKey];
 
@@ -318,17 +325,19 @@ function ReferrerMetadataPanel({
     ? messages.referrers.directSourceNote
     : metadata?.description || metadata?.firstParagraph || null;
   const author = direct ? null : String(metadata?.author ?? "").trim() || null;
-  const language = direct ? null : String(metadata?.language ?? "").trim() || null;
-  const keywords = direct ? null : String(metadata?.keywords ?? "").trim() || null;
+  const language = direct
+    ? null
+    : String(metadata?.language ?? "").trim() || null;
+  const keywords = direct
+    ? null
+    : String(metadata?.keywords ?? "").trim() || null;
   const publishedLabel = direct
     ? null
     : formatMetadataDate(
         locale,
         metadata?.publishedTime || metadata?.modifiedTime,
       );
-  const urlTarget = direct
-    ? null
-    : buildReferrerRequestUrl(label);
+  const urlTarget = direct ? null : buildReferrerRequestUrl(label);
   const displayLabel = direct
     ? messages.overview.direct
     : decodeUrlDisplayValue(label);
@@ -469,7 +478,10 @@ export function ReferrerPerformanceRadarCard({
 
   useEffect(() => {
     let active = true;
-    const nextMetadataState: Record<string, ReferrerMetadata | null | undefined> = {};
+    const nextMetadataState: Record<
+      string,
+      ReferrerMetadata | null | undefined
+    > = {};
 
     for (const item of data) {
       const normalized = normalizeReferrerLabel(item.referrer, "").trim();
@@ -558,7 +570,8 @@ export function ReferrerPerformanceRadarCard({
               value: { label, color },
             };
             const metadata = metadataByReferrer[item.referrer];
-            const metadataLoading = item.referrer.trim().length > 0 && metadata === undefined;
+            const metadataLoading =
+              item.referrer.trim().length > 0 && metadata === undefined;
 
             return (
               <Card

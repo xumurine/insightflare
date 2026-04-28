@@ -1,18 +1,25 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { RiArrowDownSLine, RiArrowUpSLine } from "@remixicon/react";
 import {
   AnimatePresence,
+  type HTMLMotionProps,
   motion,
   useReducedMotion,
-  type HTMLMotionProps,
 } from "motion/react";
 import { Cell, Pie, PieChart } from "recharts";
+
 import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { TabbedScrollMaskCard } from "@/components/dashboard/tabbed-scroll-mask-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+} from "@/components/ui/chart";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,18 +27,13 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  ChartContainer,
-  ChartTooltip,
-  type ChartConfig,
-} from "@/components/ui/chart";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { fetchClientDimensionTrend } from "@/lib/dashboard/client-data";
 import {
   aggregateScreenBuckets,
   classifyScreenBucket,
-  parseScreenSizeLabel,
   type ParsedScreenSize,
+  parseScreenSizeLabel,
   type ScreenBucketKey,
 } from "@/lib/dashboard/device-insights";
 import { numberFormat, percentFormat } from "@/lib/dashboard/format";
@@ -40,7 +42,6 @@ import type { BrowserTrendData, BrowserTrendSeries } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { cn } from "@/lib/utils";
-import { RiArrowDownSLine, RiArrowUpSLine } from "@remixicon/react";
 
 const CHART_COLORS = [
   "var(--color-chart-1)",
@@ -111,8 +112,13 @@ function formatScreenLabel(label: string): string {
   return `${parsed.width} x ${parsed.height}`;
 }
 
-function displaySeriesLabel(series: BrowserTrendSeries, messages: AppMessages): string {
-  return series.isOther ? messages.devices.otherLabel : formatScreenLabel(series.label);
+function displaySeriesLabel(
+  series: BrowserTrendSeries,
+  messages: AppMessages,
+): string {
+  return series.isOther
+    ? messages.devices.otherLabel
+    : formatScreenLabel(series.label);
 }
 
 function bucketLabel(bucket: ScreenBucketKey, messages: AppMessages): string {
@@ -120,13 +126,15 @@ function bucketLabel(bucket: ScreenBucketKey, messages: AppMessages): string {
 }
 
 function resolvePreviewUrl(siteDomain: string): string | null {
-  const normalized = String(siteDomain ?? "").trim().replace(/\/+$/, "");
+  const normalized = String(siteDomain ?? "")
+    .trim()
+    .replace(/\/+$/, "");
   if (!normalized) return null;
   if (/^https?:\/\//i.test(normalized)) return normalized;
   if (
-    normalized.startsWith("localhost")
-    || normalized.startsWith("127.")
-    || normalized.endsWith(".local")
+    normalized.startsWith("localhost") ||
+    normalized.startsWith("127.") ||
+    normalized.endsWith(".local")
   ) {
     return `http://${normalized}`;
   }
@@ -191,7 +199,8 @@ function ScreenCategoryPieCard({
                     <div className="font-medium">{item.label}</div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-muted-foreground">
-                        {numberFormat(locale, item.visitors)} {messages.common.visitors}
+                        {numberFormat(locale, item.visitors)}{" "}
+                        {messages.common.visitors}
                       </span>
                       <span className="font-mono font-medium tabular-nums text-foreground">
                         {percentFormat(locale, item.share)}
@@ -251,7 +260,10 @@ function ScreenValueListCard({
   loading: boolean;
 }) {
   const reduceDataRowMotion = useReducedMotion() ?? false;
-  const [sort, setSort] = useState<{ key: ScreenSortKey; direction: "asc" | "desc" }>({
+  const [sort, setSort] = useState<{
+    key: ScreenSortKey;
+    direction: "asc" | "desc";
+  }>({
     key: "visitors",
     direction: "desc",
   });
@@ -261,7 +273,8 @@ function ScreenValueListCard({
       const primary = (left[sort.key] - right[sort.key]) * direction;
       if (primary !== 0) return primary;
       if (right.views !== left.views) return right.views - left.views;
-      if (right.sessions !== left.sessions) return right.sessions - left.sessions;
+      if (right.sessions !== left.sessions)
+        return right.sessions - left.sessions;
       return left.displayLabel.localeCompare(right.displayLabel);
     });
   }, [items, sort.direction, sort.key]);
@@ -310,7 +323,9 @@ function ScreenValueListCard({
             type="button"
             className={cn(
               "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              sort.key === "visitors" ? "text-foreground" : "text-muted-foreground",
+              sort.key === "visitors"
+                ? "text-foreground"
+                : "text-muted-foreground",
             )}
             onClick={() => toggleSort("visitors")}
           >
@@ -325,7 +340,9 @@ function ScreenValueListCard({
             type="button"
             className={cn(
               "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              sort.key === "views" ? "text-foreground" : "text-muted-foreground",
+              sort.key === "views"
+                ? "text-foreground"
+                : "text-muted-foreground",
             )}
             onClick={() => toggleSort("views")}
           >
@@ -340,7 +357,9 @@ function ScreenValueListCard({
             type="button"
             className={cn(
               "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              sort.key === "sessions" ? "text-foreground" : "text-muted-foreground",
+              sort.key === "sessions"
+                ? "text-foreground"
+                : "text-muted-foreground",
             )}
             onClick={() => toggleSort("sessions")}
           >
@@ -356,9 +375,10 @@ function ScreenValueListCard({
     <AnimatePresence initial={false} mode="popLayout">
       {sortedItems.map((item) => {
         const rowValue = Math.max(0, Number(item[sort.key] ?? 0));
-        const progressPercent = progressTotal > 0
-          ? Math.min(100, (rowValue / progressTotal) * 100)
-          : 0;
+        const progressPercent =
+          progressTotal > 0
+            ? Math.min(100, (rowValue / progressTotal) * 100)
+            : 0;
         const progressWidth = `${progressPercent.toFixed(2)}%`;
 
         return (
@@ -367,7 +387,8 @@ function ScreenValueListCard({
             reduceMotion={reduceDataRowMotion}
             className="bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-95"
             style={{
-              backgroundImage: "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
+              backgroundImage:
+                "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
               backgroundSize: `${progressWidth} 100%`,
               backgroundPosition: "left top",
             }}
@@ -476,8 +497,12 @@ function ScreenPreviewCard({
       1,
     );
   }, [frameBounds.height, frameBounds.width, selectedViewport]);
-  const scaledWidth = selectedViewport ? Math.max(1, Math.round(selectedViewport.width * scale)) : 0;
-  const scaledHeight = selectedViewport ? Math.max(1, Math.round(selectedViewport.height * scale)) : 0;
+  const scaledWidth = selectedViewport
+    ? Math.max(1, Math.round(selectedViewport.width * scale))
+    : 0;
+  const scaledHeight = selectedViewport
+    ? Math.max(1, Math.round(selectedViewport.height * scale))
+    : 0;
 
   return (
     <Card className="overflow-hidden">
@@ -492,7 +517,8 @@ function ScreenPreviewCard({
                 className="min-w-44 justify-between font-normal"
               >
                 <span className="truncate">
-                  {selectedItem?.displayLabel ?? messages.devices.selectedViewportLabel}
+                  {selectedItem?.displayLabel ??
+                    messages.devices.selectedViewportLabel}
                 </span>
                 <RiArrowDownSLine className="size-4 text-muted-foreground" />
               </Button>
@@ -521,13 +547,17 @@ function ScreenPreviewCard({
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-3 text-sm">
-          <span className="text-muted-foreground">{messages.devices.selectedViewportLabel}</span>
+          <span className="text-muted-foreground">
+            {messages.devices.selectedViewportLabel}
+          </span>
           <span className="font-medium text-foreground">
-            {selectedItem?.displayLabel ?? messages.devices.previewUnavailableLabel}
+            {selectedItem?.displayLabel ??
+              messages.devices.previewUnavailableLabel}
           </span>
           {selectedItem ? (
             <span className="font-mono text-xs tabular-nums text-muted-foreground">
-              {numberFormat(locale, selectedItem.visitors)} {messages.common.visitors}
+              {numberFormat(locale, selectedItem.visitors)}{" "}
+              {messages.common.visitors}
               {" · "}
               {percentFormat(locale, selectedItem.share)}
             </span>
@@ -602,7 +632,9 @@ export function DeviceScreenBreakdownCard({
     let active = true;
     setLoading(true);
 
-    fetchClientDimensionTrend(siteId, window, "screenSize", filters, { limit: 10 })
+    fetchClientDimensionTrend(siteId, window, "screenSize", filters, {
+      limit: 10,
+    })
       .catch(() => emptyTrend())
       .then((nextTrend) => {
         if (!active) return;
@@ -645,10 +677,7 @@ export function DeviceScreenBreakdownCard({
     buckets.sort((left, right) => right.visitors - left.visitors);
     return buckets;
   }, [screenTrend.series]);
-  const previewUrl = useMemo(
-    () => resolvePreviewUrl(siteDomain),
-    [siteDomain],
-  );
+  const previewUrl = useMemo(() => resolvePreviewUrl(siteDomain), [siteDomain]);
 
   return (
     <section className="space-y-4">

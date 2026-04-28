@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
-import { createAdminTeam, removeAdminTeam, updateAdminTeam } from "@/lib/edge-client";
-import { parseRequestBody, bodyStr } from "@/lib/form-helpers";
+
+import {
+  createAdminTeam,
+  removeAdminTeam,
+  updateAdminTeam,
+} from "@/lib/edge-client";
+import { bodyStr, parseRequestBody } from "@/lib/form-helpers";
 
 function normalizeErrorMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
@@ -8,9 +13,14 @@ function normalizeErrorMessage(error: unknown): string {
   if (jsonStart >= 0) {
     const maybeJson = raw.slice(jsonStart).trim();
     try {
-      const parsed = JSON.parse(maybeJson) as { message?: unknown; error?: unknown };
-      if (typeof parsed.message === "string" && parsed.message.trim()) return parsed.message.trim();
-      if (typeof parsed.error === "string" && parsed.error.trim()) return parsed.error.trim();
+      const parsed = JSON.parse(maybeJson) as {
+        message?: unknown;
+        error?: unknown;
+      };
+      if (typeof parsed.message === "string" && parsed.message.trim())
+        return parsed.message.trim();
+      if (typeof parsed.error === "string" && parsed.error.trim())
+        return parsed.error.trim();
     } catch {
       // fall through to raw
     }
@@ -28,7 +38,10 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   if (intent === "remove" || intent === "delete") {
     if (teamId.length === 0) {
-      return NextResponse.json({ ok: false, error: "missing_team_id" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "missing_team_id" },
+        { status: 400 },
+      );
     }
 
     try {
@@ -44,7 +57,10 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   if (name.length < 2) {
-    return NextResponse.json({ ok: false, error: "invalid_team_name" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "invalid_team_name" },
+      { status: 400 },
+    );
   }
 
   if (teamId.length > 0) {

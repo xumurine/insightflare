@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+
 import { addAdminMember, removeAdminMember } from "@/lib/edge-client";
-import { parseRequestBody, bodyStr } from "@/lib/form-helpers";
+import { bodyStr, parseRequestBody } from "@/lib/form-helpers";
 
 function normalizeErrorMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
@@ -8,9 +9,14 @@ function normalizeErrorMessage(error: unknown): string {
   if (jsonStart >= 0) {
     const maybeJson = raw.slice(jsonStart).trim();
     try {
-      const parsed = JSON.parse(maybeJson) as { message?: unknown; error?: unknown };
-      if (typeof parsed.message === "string" && parsed.message.trim()) return parsed.message.trim();
-      if (typeof parsed.error === "string" && parsed.error.trim()) return parsed.error.trim();
+      const parsed = JSON.parse(maybeJson) as {
+        message?: unknown;
+        error?: unknown;
+      };
+      if (typeof parsed.message === "string" && parsed.message.trim())
+        return parsed.message.trim();
+      if (typeof parsed.error === "string" && parsed.error.trim())
+        return parsed.error.trim();
     } catch {
       // fall through to raw
     }
@@ -46,7 +52,10 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const identifier = bodyStr(body, "identifier");
   if (teamId.length === 0 || identifier.length < 2) {
-    return NextResponse.json({ ok: false, error: "invalid_member_input" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "invalid_member_input" },
+      { status: 400 },
+    );
   }
 
   try {

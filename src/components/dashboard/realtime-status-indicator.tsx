@@ -27,21 +27,33 @@ export function RealtimeStatusDot({
       className="relative inline-flex size-4 items-center justify-center"
     >
       {status === "connected" ? (
-        <span key="connected" className="relative inline-flex size-4 items-center justify-center">
+        <span
+          key="connected"
+          className="relative inline-flex size-4 items-center justify-center"
+        >
           <span className="absolute inline-flex size-3 rounded-full bg-emerald-500/70 dark:bg-emerald-400/70 animate-ping" />
           <span className="inline-flex size-2 rounded-full bg-emerald-500 dark:bg-emerald-400" />
         </span>
       ) : status === "connecting" ? (
-        <span key="connecting" className="relative inline-flex size-4 items-center justify-center">
+        <span
+          key="connecting"
+          className="relative inline-flex size-4 items-center justify-center"
+        >
           <span className="inline-flex size-2 rounded-full bg-neutral-500 dark:bg-neutral-400 animate-pulse" />
         </span>
       ) : status === "disconnected" ? (
-        <span key="disconnected" className="relative inline-flex size-4 items-center justify-center">
+        <span
+          key="disconnected"
+          className="relative inline-flex size-4 items-center justify-center"
+        >
           <span className="absolute inline-flex size-3 rounded-full bg-amber-500/70 dark:bg-amber-400/70 animate-ping" />
           <span className="inline-flex size-2 rounded-full bg-amber-500 dark:bg-amber-400" />
         </span>
       ) : (
-        <span key="failed" className="relative inline-flex size-4 items-center justify-center">
+        <span
+          key="failed"
+          className="relative inline-flex size-4 items-center justify-center"
+        >
           <span className="absolute inline-flex size-3 rounded-full bg-rose-500/70 dark:bg-rose-400/70 animate-ping" />
           <span className="inline-flex size-2 rounded-full bg-rose-500 dark:bg-rose-400" />
         </span>

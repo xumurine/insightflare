@@ -1,22 +1,23 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MapViewState } from "@deck.gl/core";
-import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
-import { GeoJsonLayer, ScatterplotLayer } from "@deck.gl/layers";
-import isoCountries from "i18n-iso-countries";
-import type { Feature, GeoJSON, Geometry } from "geojson";
-import { AnimatePresence, animate, motion } from "motion/react";
-import { useTheme } from "next-themes";
-import type { StyleSpecification } from "maplibre-gl";
 import Map, { type MapRef, useControl } from "react-map-gl/maplibre";
+import { useTheme } from "next-themes";
+import type { MapViewState } from "@deck.gl/core";
+import { GeoJsonLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
+import type { Feature, GeoJSON, Geometry } from "geojson";
+import isoCountries from "i18n-iso-countries";
+import type { StyleSpecification } from "maplibre-gl";
+import { animate, AnimatePresence, motion } from "motion/react";
+
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Spinner } from "@/components/ui/spinner";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { numberFormat } from "@/lib/dashboard/format";
-import type { Locale } from "@/lib/i18n/config";
 import { resolveCountryLabel } from "@/lib/i18n/code-labels";
+import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
 export interface GeoPointsMapPoint {
@@ -137,8 +138,12 @@ function computeInitialViewState(points: GeoPointsMapPoint[]): MapViewState {
 
   return {
     ...DEFAULT_VIEW_STATE,
-    latitude: Number.isFinite(centerLat) ? centerLat : DEFAULT_VIEW_STATE.latitude,
-    longitude: Number.isFinite(centerLon) ? centerLon : DEFAULT_VIEW_STATE.longitude,
+    latitude: Number.isFinite(centerLat)
+      ? centerLat
+      : DEFAULT_VIEW_STATE.latitude,
+    longitude: Number.isFinite(centerLon)
+      ? centerLon
+      : DEFAULT_VIEW_STATE.longitude,
     zoom: Number.isFinite(zoom) ? zoom : DEFAULT_VIEW_STATE.zoom,
   };
 }
@@ -155,7 +160,9 @@ const DeckOverlay = memo(function DeckOverlay(props: MapboxOverlayProps) {
   return null;
 });
 
-function resolveCountryFeatureKey(feature: CountryFeature | null | undefined): string {
+function resolveCountryFeatureKey(
+  feature: CountryFeature | null | undefined,
+): string {
   if (!feature) return "";
   if (typeof feature.id === "string" || typeof feature.id === "number") {
     return String(feature.id);
@@ -186,12 +193,16 @@ function resolveCountryFeatureKey(feature: CountryFeature | null | undefined): s
 }
 
 function normalizeCountryCode(value: string | null | undefined): string | null {
-  const normalized = String(value ?? "").trim().toUpperCase();
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase();
   if (!/^[A-Z]{2}$/.test(normalized)) return null;
   return normalized;
 }
 
-function resolveCountryCodeFromFeature(feature: CountryFeature | null | undefined): string | null {
+function resolveCountryCodeFromFeature(
+  feature: CountryFeature | null | undefined,
+): string | null {
   if (!feature) return null;
   const props = feature.properties ?? {};
   const alpha2Candidates = [
@@ -229,7 +240,9 @@ function resolveCountryCodeFromFeature(feature: CountryFeature | null | undefine
   ];
 
   for (const candidate of alpha3Candidates) {
-    const normalizedAlpha3 = String(candidate ?? "").trim().toUpperCase();
+    const normalizedAlpha3 = String(candidate ?? "")
+      .trim()
+      .toUpperCase();
     if (!/^[A-Z]{3}$/.test(normalizedAlpha3)) continue;
     const alpha2 = isoCountries.alpha3ToAlpha2(normalizedAlpha3);
     const code = normalizeCountryCode(alpha2 ?? "");
@@ -287,11 +300,16 @@ function projectLatitudeToWorldY(latitude: number, zoom: number): number {
   const rad = (lat * Math.PI) / 180;
   const scale = 256 * 2 ** zoom;
   return (
-    (0.5 - Math.log((1 + Math.sin(rad)) / (1 - Math.sin(rad))) / (4 * Math.PI)) * scale
+    (0.5 -
+      Math.log((1 + Math.sin(rad)) / (1 - Math.sin(rad))) / (4 * Math.PI)) *
+    scale
   );
 }
 
-function clusterGeoPoints(points: GeoPointsMapPoint[], zoom: number): ClusteredGeoPoint[] {
+function clusterGeoPoints(
+  points: GeoPointsMapPoint[],
+  zoom: number,
+): ClusteredGeoPoint[] {
   if (points.length === 0) return [];
 
   const buckets = new globalThis.Map<
@@ -363,8 +381,12 @@ export function GeoPointsMap({
   const isMobile = useIsMobile();
   const [mounted, setMounted] = useState(false);
   const [countryGeoJson, setCountryGeoJson] = useState<GeoJSON | null>(null);
-  const [hoveredCountryKey, setHoveredCountryKey] = useState<string | null>(null);
-  const [hoveredCountryCode, setHoveredCountryCode] = useState<string | null>(null);
+  const [hoveredCountryKey, setHoveredCountryKey] = useState<string | null>(
+    null,
+  );
+  const [hoveredCountryCode, setHoveredCountryCode] = useState<string | null>(
+    null,
+  );
   const [hoveredCountryName, setHoveredCountryName] = useState("");
   const [currentZoom, setCurrentZoom] = useState(
     normalizeClusterZoom(DEFAULT_VIEW_STATE.zoom),
@@ -430,7 +452,8 @@ export function GeoPointsMap({
     () => computeInitialViewState(normalizedPoints),
     [normalizedPoints],
   );
-  const mobileMinZoom = initialViewState.minZoom ?? DEFAULT_VIEW_STATE.minZoom ?? 0;
+  const mobileMinZoom =
+    initialViewState.minZoom ?? DEFAULT_VIEW_STATE.minZoom ?? 0;
   const mapInitialViewState = useMemo(
     () =>
       isMobile
@@ -455,7 +478,9 @@ export function GeoPointsMap({
   const [incomingClusters, setIncomingClusters] = useState<ClusteredGeoPoint[]>(
     () => clusteredPoints,
   );
-  const [outgoingClusters, setOutgoingClusters] = useState<ClusteredGeoPoint[]>([]);
+  const [outgoingClusters, setOutgoingClusters] = useState<ClusteredGeoPoint[]>(
+    [],
+  );
   const [clusterFadeProgress, setClusterFadeProgress] = useState(1);
   const incomingClustersRef = useRef<ClusteredGeoPoint[]>(clusteredPoints);
   const mapRef = useRef<MapRef | null>(null);
@@ -493,8 +518,12 @@ export function GeoPointsMap({
     };
   }, [clusteredPoints]);
 
-  const incomingAlpha = Math.round(MAP_POINT_ALPHA_VISIBLE * clusterFadeProgress);
-  const outgoingAlpha = Math.round(MAP_POINT_ALPHA_VISIBLE * (1 - clusterFadeProgress));
+  const incomingAlpha = Math.round(
+    MAP_POINT_ALPHA_VISIBLE * clusterFadeProgress,
+  );
+  const outgoingAlpha = Math.round(
+    MAP_POINT_ALPHA_VISIBLE * (1 - clusterFadeProgress),
+  );
 
   const effectiveMapTheme: EffectiveMapTheme =
     mounted && resolvedTheme === "dark" ? "dark" : "light";
@@ -518,7 +547,8 @@ export function GeoPointsMap({
 
   const layers = useMemo(() => {
     const result: Array<
-      ScatterplotLayer<ClusteredGeoPoint> | GeoJsonLayer<Record<string, unknown>>
+      | ScatterplotLayer<ClusteredGeoPoint>
+      | GeoJsonLayer<Record<string, unknown>>
     > = [];
 
     const createPointLayer = (
@@ -558,55 +588,64 @@ export function GeoPointsMap({
       );
     }
 
-    result.push(new GeoJsonLayer<Record<string, unknown>>({
-      id: "overview-country-outline-hover",
-      data: countryGeoJson ?? EMPTY_COUNTRY_FEATURES,
-      filled: true,
-      stroked: true,
-      lineWidthUnits: "pixels",
-      lineWidthMinPixels: 0,
-      getFillColor: (feature) =>
-        normalizedSelectedCountryCode &&
-        resolveCountryCodeFromFeature(feature) === normalizedSelectedCountryCode
-          ? withAlpha(MAP_ACCENT_RGB, 80)
-          : [0, 0, 0, 0],
-      getLineColor: (feature) =>
-        normalizedSelectedCountryCode &&
-        resolveCountryCodeFromFeature(feature) === normalizedSelectedCountryCode
-          ? withAlpha(MAP_ACCENT_RGB, 255)
-          : resolveCountryFeatureKey(feature) === hoveredCountryKey
-            ? withAlpha(MAP_ACCENT_RGB, 240)
+    result.push(
+      new GeoJsonLayer<Record<string, unknown>>({
+        id: "overview-country-outline-hover",
+        data: countryGeoJson ?? EMPTY_COUNTRY_FEATURES,
+        filled: true,
+        stroked: true,
+        lineWidthUnits: "pixels",
+        lineWidthMinPixels: 0,
+        getFillColor: (feature) =>
+          normalizedSelectedCountryCode &&
+          resolveCountryCodeFromFeature(feature) ===
+            normalizedSelectedCountryCode
+            ? withAlpha(MAP_ACCENT_RGB, 80)
             : [0, 0, 0, 0],
-      getLineWidth: (feature) =>
-        normalizedSelectedCountryCode &&
-        resolveCountryCodeFromFeature(feature) === normalizedSelectedCountryCode
-          ? 3
-          : resolveCountryFeatureKey(feature) === hoveredCountryKey
-            ? 2.5
-            : 0,
-      pickable: true,
-      onHover: (info) => {
-        const feature = (info.object as CountryFeature | undefined) ?? null;
-        const nextKey = resolveCountryFeatureKey(feature);
-        const nextCode = resolveCountryCodeFromFeature(feature);
-        const nextName = resolveCountryDisplayNameFromFeature(feature);
-        setHoveredCountryKey((prev) => {
-          const normalized = nextKey.length > 0 ? nextKey : null;
-          return prev === normalized ? prev : normalized;
-        });
-        setHoveredCountryCode((prev) => (prev === nextCode ? prev : nextCode));
-        setHoveredCountryName((prev) => (prev === nextName ? prev : nextName));
-      },
-      onClick: (info) => {
-        const feature = (info.object as CountryFeature | undefined) ?? null;
-        handleCountryClick(feature);
-      },
-      updateTriggers: {
-        getFillColor: normalizedSelectedCountryCode,
-        getLineColor: [hoveredCountryKey, normalizedSelectedCountryCode],
-        getLineWidth: [hoveredCountryKey, normalizedSelectedCountryCode],
-      },
-    }));
+        getLineColor: (feature) =>
+          normalizedSelectedCountryCode &&
+          resolveCountryCodeFromFeature(feature) ===
+            normalizedSelectedCountryCode
+            ? withAlpha(MAP_ACCENT_RGB, 255)
+            : resolveCountryFeatureKey(feature) === hoveredCountryKey
+              ? withAlpha(MAP_ACCENT_RGB, 240)
+              : [0, 0, 0, 0],
+        getLineWidth: (feature) =>
+          normalizedSelectedCountryCode &&
+          resolveCountryCodeFromFeature(feature) ===
+            normalizedSelectedCountryCode
+            ? 3
+            : resolveCountryFeatureKey(feature) === hoveredCountryKey
+              ? 2.5
+              : 0,
+        pickable: true,
+        onHover: (info) => {
+          const feature = (info.object as CountryFeature | undefined) ?? null;
+          const nextKey = resolveCountryFeatureKey(feature);
+          const nextCode = resolveCountryCodeFromFeature(feature);
+          const nextName = resolveCountryDisplayNameFromFeature(feature);
+          setHoveredCountryKey((prev) => {
+            const normalized = nextKey.length > 0 ? nextKey : null;
+            return prev === normalized ? prev : normalized;
+          });
+          setHoveredCountryCode((prev) =>
+            prev === nextCode ? prev : nextCode,
+          );
+          setHoveredCountryName((prev) =>
+            prev === nextName ? prev : nextName,
+          );
+        },
+        onClick: (info) => {
+          const feature = (info.object as CountryFeature | undefined) ?? null;
+          handleCountryClick(feature);
+        },
+        updateTriggers: {
+          getFillColor: normalizedSelectedCountryCode,
+          getLineColor: [hoveredCountryKey, normalizedSelectedCountryCode],
+          getLineWidth: [hoveredCountryKey, normalizedSelectedCountryCode],
+        },
+      }),
+    );
 
     return result;
   }, [
@@ -631,11 +670,21 @@ export function GeoPointsMap({
     }
     return hoveredCountryName.trim() || messages.common.unknown;
   }, [hoveredCountryCode, hoveredCountryName, locale, messages.common.unknown]);
-  const hoveredCountryCounts =
-    hoveredCountryCode ? countryCountMap.get(hoveredCountryCode) : null;
-  const hoveredViewsText = numberFormat(locale, hoveredCountryCounts?.views ?? 0);
-  const hoveredVisitorsText = numberFormat(locale, hoveredCountryCounts?.visitors ?? 0);
-  const hoveredSessionsText = numberFormat(locale, hoveredCountryCounts?.sessions ?? 0);
+  const hoveredCountryCounts = hoveredCountryCode
+    ? countryCountMap.get(hoveredCountryCode)
+    : null;
+  const hoveredViewsText = numberFormat(
+    locale,
+    hoveredCountryCounts?.views ?? 0,
+  );
+  const hoveredVisitorsText = numberFormat(
+    locale,
+    hoveredCountryCounts?.visitors ?? 0,
+  );
+  const hoveredSessionsText = numberFormat(
+    locale,
+    hoveredCountryCounts?.sessions ?? 0,
+  );
   const showCountryToolbar = Boolean(hoveredCountryKey);
 
   useEffect(() => {
@@ -743,7 +792,9 @@ export function GeoPointsMap({
                       exit: { opacity: 0 },
                     }}
                   >
-                    <span key={`views-${hoveredViewsText}`}>{hoveredViewsText}</span>
+                    <span key={`views-${hoveredViewsText}`}>
+                      {hoveredViewsText}
+                    </span>
                   </AutoTransition>
                 </AutoResizer>
               </span>

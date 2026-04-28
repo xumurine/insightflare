@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+
 import { GeoClientPage } from "@/components/dashboard/site-pages/geo-client-page";
 import { getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";

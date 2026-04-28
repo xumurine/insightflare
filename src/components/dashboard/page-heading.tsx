@@ -13,7 +13,11 @@ export function PageHeading({ title, subtitle, actions }: PageHeadingProps) {
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         <p className="text-sm text-muted-foreground">{subtitle}</p>
       </div>
-      {actions ? <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }

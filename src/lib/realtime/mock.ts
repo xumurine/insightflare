@@ -1,9 +1,32 @@
+import { browserEngineLabel } from "@/lib/browser-engine";
+import {
+  DEMO_SITE_PROFILES,
+  DEMO_TEAMS,
+  type DemoSiteProfile,
+  findSiteProfile,
+} from "@/lib/realtime/demo-site-profiles";
+import {
+  createDemoRng,
+  expandPathLabels,
+  fnv1a,
+  mulberry32,
+  normalizePath,
+  sFloat,
+  sInt,
+  sPick,
+  sShuffle,
+  titleFromPath,
+  todayKey,
+  uniqueNonEmptyStrings,
+  weightedDistribution,
+  weightedDistributionFromWeights,
+  weightedPickLabel,
+} from "@/lib/realtime/demo-utils";
 import type {
   RealtimeEvent,
   RealtimeVisit,
   RealtimeVisitorPoint,
 } from "@/lib/realtime/types";
-import { browserEngineLabel } from "@/lib/browser-engine";
 
 // ---------------------------------------------------------------------------
 //  Realtime mock socket (existing)
@@ -63,7 +86,10 @@ class MockRealtimeSocket implements RealtimeSocketLike {
   private eventTimer: ReturnType<typeof setInterval> | null = null;
   private dropTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor({ siteId, activeWindowMs = 5 * 60 * 1000 }: MockRealtimeSocketOptions) {
+  constructor({
+    siteId,
+    activeWindowMs = 5 * 60 * 1000,
+  }: MockRealtimeSocketOptions) {
     this.siteId = siteId;
     this.activeWindowMs = activeWindowMs;
     this.seedSnapshot();
@@ -75,7 +101,11 @@ class MockRealtimeSocket implements RealtimeSocketLike {
     this.readyState = READY_STATE.CLOSING;
     this.clearTimers();
     this.readyState = READY_STATE.CLOSED;
-    this.emitClose(code ?? 1000, reason ?? "mock closed", (code ?? 1000) === 1000);
+    this.emitClose(
+      code ?? 1000,
+      reason ?? "mock closed",
+      (code ?? 1000) === 1000,
+    );
   }
 
   private beginHandshake(): void {
@@ -126,10 +156,7 @@ class MockRealtimeSocket implements RealtimeSocketLike {
   }
 
   private emitOpen(): void {
-    this.onopen?.call(
-      this as unknown as WebSocket,
-      new Event("open"),
-    );
+    this.onopen?.call(this as unknown as WebSocket, new Event("open"));
   }
 
   private emitMessage(payload: RealtimeSocketMessage): void {
@@ -142,10 +169,7 @@ class MockRealtimeSocket implements RealtimeSocketLike {
   }
 
   private emitError(): void {
-    this.onerror?.call(
-      this as unknown as WebSocket,
-      new Event("error"),
-    );
+    this.onerror?.call(this as unknown as WebSocket, new Event("error"));
   }
 
   private emitClose(code: number, reason: string, wasClean: boolean): void {
@@ -164,7 +188,9 @@ class MockRealtimeSocket implements RealtimeSocketLike {
     const now = Date.now();
     this.prune(now);
     const activeNow = this.visitors.size;
-    const events = [...this.recentEvents].sort((left, right) => right.eventAt - left.eventAt);
+    const events = [...this.recentEvents].sort(
+      (left, right) => right.eventAt - left.eventAt,
+    );
     this.emitMessage({
       type: "snapshot",
       data: {
@@ -178,7 +204,11 @@ class MockRealtimeSocket implements RealtimeSocketLike {
 
   private seedSnapshot(): void {
     const now = Date.now();
-    const windowViews = integrateViews(this.siteId, now - RECENT_RECORD_WINDOW_MS, now);
+    const windowViews = integrateViews(
+      this.siteId,
+      now - RECENT_RECORD_WINDOW_MS,
+      now,
+    );
     const r = siteRatios(this.siteId);
     const targetViews = Math.min(
       960,
@@ -191,9 +221,8 @@ class MockRealtimeSocket implements RealtimeSocketLike {
         Math.round(targetViews * r.sessionsPerView * r.visitorsPerSession),
       ),
     );
-    const visitorIds = Array.from(
-      { length: targetVisitors },
-      () => this.nextVisitorId(),
+    const visitorIds = Array.from({ length: targetVisitors }, () =>
+      this.nextVisitorId(),
     );
     const timestamps = Array.from(
       { length: targetViews },
@@ -201,9 +230,11 @@ class MockRealtimeSocket implements RealtimeSocketLike {
     ).sort((left, right) => left - right);
 
     for (let i = 0; i < timestamps.length; i += 1) {
-      const visitorId = i < visitorIds.length
-        ? visitorIds[i] ?? this.nextVisitorId()
-        : visitorIds[randomInt(0, visitorIds.length - 1)] ?? this.nextVisitorId();
+      const visitorId =
+        i < visitorIds.length
+          ? (visitorIds[i] ?? this.nextVisitorId())
+          : (visitorIds[randomInt(0, visitorIds.length - 1)] ??
+            this.nextVisitorId());
       const event = this.buildEvent({
         visitorId,
         eventAt: timestamps[i] ?? now,
@@ -237,7 +268,8 @@ class MockRealtimeSocket implements RealtimeSocketLike {
 
   private trackEvent(event: RealtimeEvent): void {
     const previousVisit = this.visitors.get(event.visitorId);
-    const visitId = event.visitId || previousVisit?.visitId || `${event.visitorId}-visit`;
+    const visitId =
+      event.visitId || previousVisit?.visitId || `${event.visitorId}-visit`;
     const sessionId = event.sessionId || previousVisit?.sessionId || visitId;
 
     this.visitors.set(event.visitorId, {
@@ -273,7 +305,9 @@ class MockRealtimeSocket implements RealtimeSocketLike {
     const activeCutoff = now - this.activeWindowMs;
     const recordCutoff = now - RECENT_RECORD_WINDOW_MS;
 
-    this.recentEvents = this.recentEvents.filter((item) => item.eventAt >= recordCutoff);
+    this.recentEvents = this.recentEvents.filter(
+      (item) => item.eventAt >= recordCutoff,
+    );
     for (const [visitorId, visit] of this.visitors.entries()) {
       if (visit.lastActivityAt < activeCutoff) {
         this.visitors.delete(visitorId);
@@ -304,7 +338,8 @@ class MockRealtimeSocket implements RealtimeSocketLike {
     const paths = profile.paths;
     const previousVisit = input.previousVisit ?? null;
     const country =
-      previousVisit?.country || weightedPickCountry(Math.random, profile.topCountries);
+      previousVisit?.country ||
+      weightedPickCountry(Math.random, profile.topCountries);
     const geo = previousVisit
       ? {
           regionCode: previousVisit.regionCode,
@@ -315,15 +350,21 @@ class MockRealtimeSocket implements RealtimeSocketLike {
           continent: previousVisit.continent,
           timezone: previousVisit.timezone,
           organization: previousVisit.organization,
-          latitude: previousVisit.latitude ?? sampleGeoPointByCountry(Math.random, country).latitude,
-          longitude: previousVisit.longitude ?? sampleGeoPointByCountry(Math.random, country).longitude,
+          latitude:
+            previousVisit.latitude ??
+            sampleGeoPointByCountry(Math.random, country).latitude,
+          longitude:
+            previousVisit.longitude ??
+            sampleGeoPointByCountry(Math.random, country).longitude,
         }
       : pickDemoGeoContext(Math.random, country);
-    const pathname = previousVisit?.pathname && Math.random() < 0.58
-      ? previousVisit.pathname
-      : paths[randomInt(0, paths.length - 1)] ?? "/";
+    const pathname =
+      previousVisit?.pathname && Math.random() < 0.58
+        ? previousVisit.pathname
+        : (paths[randomInt(0, paths.length - 1)] ?? "/");
     const pathIndex = profile.paths.indexOf(pathname);
-    const title = String(profile.titles[pathIndex] || "").trim() || titleFromPath(pathname);
+    const title =
+      String(profile.titles[pathIndex] || "").trim() || titleFromPath(pathname);
     const deviceType =
       previousVisit?.deviceType || pickDemoDeviceType(Math.random, profile);
     const browser =
@@ -338,8 +379,8 @@ class MockRealtimeSocket implements RealtimeSocketLike {
     const sessionId = previousVisit?.sessionId || visitId;
 
     const selectedReferrer =
-      previousVisit?.referrerHost
-      || weightedPickLabel(
+      previousVisit?.referrerHost ||
+      weightedPickLabel(
         Math.random,
         profile.topReferrers.map((item) => ({
           label: item.name,
@@ -355,14 +396,12 @@ class MockRealtimeSocket implements RealtimeSocketLike {
     const referrerUrl = isDirect
       ? ""
       : `https://${referrerHost}/search/${keyword}`;
-    const eventType = input.eventType
-      ?? (
-        !previousVisit
-        || customEventTypes.length === 0
-        || Math.random() < 0.68
-          ? "pageview"
-          : customEventTypes[randomInt(0, customEventTypes.length - 1)] ?? "pageview"
-      );
+    const eventType =
+      input.eventType ??
+      (!previousVisit || customEventTypes.length === 0 || Math.random() < 0.68
+        ? "pageview"
+        : (customEventTypes[randomInt(0, customEventTypes.length - 1)] ??
+          "pageview"));
 
     return {
       id: this.nextEventId(),
@@ -395,8 +434,13 @@ class MockRealtimeSocket implements RealtimeSocketLike {
 
   private buildSnapshotPoints(): RealtimeVisitorPoint[] {
     const points: RealtimeVisitorPoint[] = [];
-    for (const visit of Array.from(this.visitors.values()).sort((a, b) => b.lastActivityAt - a.lastActivityAt)) {
-      if (!Number.isFinite(visit.latitude) || !Number.isFinite(visit.longitude)) {
+    for (const visit of Array.from(this.visitors.values()).sort(
+      (a, b) => b.lastActivityAt - a.lastActivityAt,
+    )) {
+      if (
+        !Number.isFinite(visit.latitude) ||
+        !Number.isFinite(visit.longitude)
+      ) {
         continue;
       }
       points.push({
@@ -441,628 +485,6 @@ export function createMockRealtimeSocket(
 // ---------------------------------------------------------------------------
 //  Demo mode — seeded PRNG & data generators
 // ---------------------------------------------------------------------------
-
-function fnv1a(str: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
-
-function mulberry32(seed: number): () => number {
-  let s = seed | 0;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function todayKey(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function createDemoRng(siteId: string, endpoint: string): () => number {
-  return mulberry32(fnv1a(`${todayKey()}:${siteId}:${endpoint}`));
-}
-
-// Seeded helpers that use a provided rng
-function sInt(rng: () => number, min: number, max: number): number {
-  return Math.floor(rng() * (max - min + 1)) + min;
-}
-
-function sFloat(rng: () => number, min: number, max: number): number {
-  return min + rng() * (max - min);
-}
-
-function sPick<T>(rng: () => number, arr: readonly T[]): T {
-  return arr[Math.floor(rng() * arr.length)];
-}
-
-function sShuffle<T>(rng: () => number, arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-// Generate weighted distribution values (Zipf-like), returns array summing to ~total
-function weightedDistribution(
-  rng: () => number,
-  labels: readonly string[],
-  total: number,
-  count: number,
-): Array<{ label: string; views: number; sessions: number }> {
-  const n = Math.min(count, labels.length);
-  const picked = sShuffle(rng, [...labels]).slice(0, n);
-  const weights: number[] = [];
-  let wSum = 0;
-  for (let i = 0; i < n; i++) {
-    const w = 1 / (i + 1 + rng() * 0.5);
-    weights.push(w);
-    wSum += w;
-  }
-  return picked.map((label, i) => {
-    const views = Math.max(1, Math.round((weights[i] / wSum) * total * (0.85 + rng() * 0.3)));
-    const sessions = Math.max(1, Math.round(views * (0.55 + rng() * 0.35)));
-    return { label, views, sessions };
-  });
-}
-
-function weightedPickLabel(
-  rng: () => number,
-  entries: Array<{ label: string; weight: number }>,
-  fallback: string,
-): string {
-  const normalized = entries
-    .map((item) => ({
-      label: String(item.label || "").trim(),
-      weight: Math.max(0, Number(item.weight) || 0),
-    }))
-    .filter((item) => item.label.length > 0 && item.weight > 0);
-  if (normalized.length === 0) return fallback;
-  const totalWeight = normalized.reduce((sum, item) => sum + item.weight, 0);
-  if (totalWeight <= 0) return fallback;
-  let hit = rng() * totalWeight;
-  for (const item of normalized) {
-    hit -= item.weight;
-    if (hit <= 0) return item.label;
-  }
-  return normalized[normalized.length - 1]?.label || fallback;
-}
-
-function weightedDistributionFromWeights(
-  rng: () => number,
-  entries: Array<{ label: string; weight: number }>,
-  total: number,
-  count: number,
-  sessionRatioRange: [number, number] = [0.52, 0.86],
-): Array<{ label: string; views: number; sessions: number }> {
-  const merged = new Map<string, number>();
-  for (const entry of entries) {
-    const label = String(entry.label || "").trim();
-    const weight = Math.max(0, Number(entry.weight) || 0);
-    if (!label || weight <= 0) continue;
-    merged.set(label, (merged.get(label) ?? 0) + weight);
-  }
-  const normalized = Array.from(merged.entries())
-    .map(([label, weight]) => ({ label, weight }))
-    .sort((left, right) => right.weight - left.weight);
-  const n = Math.min(count, normalized.length);
-  if (n <= 0) return [];
-  const picked = normalized.slice(0, n);
-  const weightSum = picked.reduce((sum, item) => sum + item.weight, 0);
-  const sessionMin = Math.min(sessionRatioRange[0], sessionRatioRange[1]);
-  const sessionMax = Math.max(sessionRatioRange[0], sessionRatioRange[1]);
-  return picked.map((item) => {
-    const ratio = item.weight / Math.max(weightSum, Number.EPSILON);
-    const variance = 0.92 + rng() * 0.16;
-    const views = Math.max(1, Math.round(total * ratio * variance));
-    const sessionRatio = sessionMin + rng() * (sessionMax - sessionMin);
-    const sessions = Math.max(1, Math.min(views, Math.round(views * sessionRatio)));
-    return {
-      label: item.label,
-      views,
-      sessions,
-    };
-  });
-}
-
-function uniqueNonEmptyStrings(values: readonly string[]): string[] {
-  const seen = new Set<string>();
-  const output: string[] = [];
-  for (const value of values) {
-    const normalized = String(value || "").trim();
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    output.push(normalized);
-  }
-  return output;
-}
-
-function normalizePath(pathname: string): string {
-  const normalized = String(pathname || "")
-    .trim()
-    .replace(/\/{2,}/g, "/");
-  if (!normalized.startsWith("/")) return "";
-  if (normalized.length > 1 && normalized.endsWith("/")) return normalized.slice(0, -1);
-  return normalized || "/";
-}
-
-function humanizeSlug(slug: string): string {
-  const cleaned = slug
-    .replace(/[_-]+/g, " ")
-    .replace(/\b(v\d+)\b/gi, "")
-    .trim();
-  if (!cleaned) return "Page";
-  return cleaned
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function titleFromPath(pathname: string): string {
-  if (pathname === "/") return "Home";
-  const segments = pathname.split("/").filter(Boolean);
-  const meaningful = segments[segments.length - 1] ?? segments[0] ?? "page";
-  return humanizeSlug(meaningful);
-}
-
-function expandPathLabels(
-  rng: () => number,
-  basePaths: readonly string[],
-  desiredCount: number,
-): string[] {
-  const normalizedBase = uniqueNonEmptyStrings(
-    basePaths.map((path) => normalizePath(path)).filter((path) => path.length > 0),
-  );
-  const nonRootBase = normalizedBase.filter((path) => path !== "/");
-  const sourcePaths = nonRootBase.length > 0 ? nonRootBase : ["/home"];
-
-  const seen = new Set<string>();
-  const output: string[] = [];
-  const addPath = (candidate: string) => {
-    const normalized = normalizePath(candidate);
-    if (!normalized || seen.has(normalized)) return;
-    seen.add(normalized);
-    output.push(normalized);
-  };
-
-  for (const path of normalizedBase) addPath(path);
-
-  const genericPool = [
-    "/pricing/enterprise",
-    "/pricing/startup",
-    "/integrations",
-    "/docs",
-    "/docs/getting-started",
-    "/docs/api",
-    "/docs/changelog",
-    "/blog",
-    "/blog/2026-product-roadmap",
-    "/blog/customer-story",
-    "/resources",
-    "/resources/templates",
-    "/support",
-    "/support/contact",
-    "/status",
-    "/security",
-    "/about/company",
-    "/careers/open-roles",
-  ];
-
-  const languagePrefixes = ["/en", "/de", "/fr", "/ja", "/zh", "/pt-br", "/es", "/it"];
-  const contentSuffixes = [
-    "overview",
-    "pricing",
-    "faq",
-    "compare",
-    "case-study",
-    "guide",
-    "integration",
-    "checklist",
-    "playbook",
-    "release-notes",
-    "benchmarks",
-    "examples",
-  ];
-
-  for (const base of sourcePaths) {
-    if (output.length >= desiredCount) break;
-    const stem = base.replace(/\/+$/, "");
-    const candidates = [
-      `${stem}/overview`,
-      `${stem}/faq`,
-      `${stem}/pricing`,
-      `${stem}/compare`,
-      `${stem}/case-study`,
-      `${stem}/guide`,
-    ];
-    if (stem.includes("/blog") || stem.includes("/posts") || stem.includes("/article")) {
-      candidates.push(`${stem}/weekly-roundup`, `${stem}/2026-trends`, `${stem}/editor-note`);
-    }
-    if (stem.includes("/docs") || stem.includes("/guides") || stem.includes("/sdk") || stem.includes("/api")) {
-      candidates.push(`${stem}/quickstart`, `${stem}/examples`, `${stem}/troubleshooting`);
-    }
-    if (stem.includes("/products") || stem.includes("/collections") || stem.includes("/courses")) {
-      candidates.push(`${stem}/reviews`, `${stem}/specs`, `${stem}/compatibility`);
-    }
-    for (const variant of sShuffle(rng, candidates)) {
-      addPath(variant);
-      if (output.length >= desiredCount) break;
-    }
-  }
-
-  for (const path of sShuffle(rng, genericPool)) {
-    addPath(path);
-    if (output.length >= desiredCount) break;
-  }
-
-  let attempts = 0;
-  while (output.length < desiredCount && attempts < desiredCount * 20) {
-    attempts += 1;
-    const base = sPick(rng, sourcePaths).replace(/\/+$/, "");
-    const langPrefix = sPick(rng, languagePrefixes);
-    const contentSuffix = sPick(rng, contentSuffixes);
-    const tail = base.split("/").filter(Boolean).pop() ?? "page";
-    const candidateType = sInt(rng, 0, 6);
-    let candidate = base;
-    if (candidateType === 0) candidate = `${base}/${contentSuffix}`;
-    else if (candidateType === 1) candidate = `${base}/${tail}-${contentSuffix}`;
-    else if (candidateType === 2) candidate = `${langPrefix}${base}`;
-    else if (candidateType === 3) candidate = `${langPrefix}${base}/${contentSuffix}`;
-    else if (candidateType === 4) candidate = `${base}-${sInt(rng, 2, 4)}`;
-    else if (candidateType === 5) candidate = `${base}/${sInt(rng, 2024, 2026)}/${contentSuffix}`;
-    else candidate = `${base}/${contentSuffix}/${sInt(rng, 1, 12)}`;
-    addPath(candidate);
-  }
-
-  return output.slice(0, Math.max(1, desiredCount));
-}
-
-// ---------------------------------------------------------------------------
-//  Demo site profiles
-// ---------------------------------------------------------------------------
-
-interface DemoSiteHourProfile {
-  /** UTC hour when traffic begins rising (0–23). May cause midnight wrap if riseHour + activeWidth > 24. */
-  riseHour: number;
-  /** Duration in hours of the active (sine) window */
-  activeWidth: number;
-  /** Baseline traffic level outside the active window (0–1). Higher = flatter curve. */
-  baseLevel: number;
-}
-
-interface DemoSiteProfile {
-  id: string;
-  teamId: string;
-  name: string;
-  domain: string;
-  dailyPvRange: [number, number];
-  bounceRateRange: [number, number];
-  avgDurationMsRange: [number, number];
-  topCountries: Array<{ code: string; weight: number }>;
-  topReferrers: Array<{ name: string; weight: number }>;
-  paths: string[];
-  titles: string[];
-  deviceWeights: { Desktop: number; Mobile: number; Tablet: number };
-  weekendFactor: number;
-  eventNames: string[];
-  hourProfile: DemoSiteHourProfile;
-}
-
-const DEMO_TEAMS = [
-  { id: "demo-team-001", name: "XEOOS Team", slug: "xeoos-team", ownerUserId: "demo-user-001" },
-] as const;
-
-const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
-  {
-    id: "demo-site-001", teamId: "demo-team-001",
-    name: "Corporate Website", domain: "acme-corp.com",
-    dailyPvRange: [8200, 14500], bounceRateRange: [0.38, 0.52], avgDurationMsRange: [45000, 95000],
-    topCountries: [
-      { code: "US", weight: 0.35 }, { code: "GB", weight: 0.15 }, { code: "DE", weight: 0.12 },
-      { code: "CA", weight: 0.10 }, { code: "AU", weight: 0.08 }, { code: "FR", weight: 0.06 },
-      { code: "JP", weight: 0.04 }, { code: "IN", weight: 0.03 }, { code: "BR", weight: 0.03 },
-      { code: "NL", weight: 0.02 }, { code: "SG", weight: 0.02 },
-    ],
-    topReferrers: [
-      { name: "google.com", weight: 0.40 }, { name: "(direct)", weight: 0.25 },
-      { name: "linkedin.com", weight: 0.12 }, { name: "twitter.com", weight: 0.08 },
-      { name: "bing.com", weight: 0.05 }, { name: "facebook.com", weight: 0.04 },
-      { name: "baidu.com", weight: 0.03 }, { name: "reddit.com", weight: 0.03 },
-    ],
-    paths: ["/", "/about", "/products", "/pricing", "/careers", "/contact", "/blog", "/blog/company-update", "/solutions", "/partners"],
-    titles: ["Home", "About Us", "Products", "Pricing", "Careers", "Contact", "Blog", "Company Update", "Solutions", "Partners"],
-    deviceWeights: { Desktop: 0.68, Mobile: 0.27, Tablet: 0.05 },
-    weekendFactor: 0.35,
-    eventNames: ["cta_click", "demo_request", "newsletter_signup", "pdf_download", "contact_form"],
-    hourProfile: { riseHour: 10, activeWidth: 12, baseLevel: 0.12 },
-  },
-  {
-    id: "demo-site-002", teamId: "demo-team-001",
-    name: "E-Commerce Store", domain: "shopwave.store",
-    dailyPvRange: [12000, 22000], bounceRateRange: [0.28, 0.42], avgDurationMsRange: [120000, 240000],
-    topCountries: [
-      { code: "US", weight: 0.30 }, { code: "CN", weight: 0.15 }, { code: "DE", weight: 0.10 },
-      { code: "GB", weight: 0.10 }, { code: "JP", weight: 0.08 }, { code: "FR", weight: 0.06 },
-      { code: "KR", weight: 0.05 }, { code: "AU", weight: 0.04 }, { code: "CA", weight: 0.04 },
-      { code: "BR", weight: 0.04 }, { code: "IN", weight: 0.03 }, { code: "IT", weight: 0.01 },
-    ],
-    topReferrers: [
-      { name: "google.com", weight: 0.35 }, { name: "(direct)", weight: 0.20 },
-      { name: "instagram.com", weight: 0.12 }, { name: "facebook.com", weight: 0.10 },
-      { name: "pinterest.com", weight: 0.07 }, { name: "twitter.com", weight: 0.05 },
-      { name: "youtube.com", weight: 0.04 }, { name: "tiktok.com", weight: 0.04 },
-      { name: "bing.com", weight: 0.03 },
-    ],
-    paths: ["/", "/collections", "/collections/new-arrivals", "/products/wireless-headphones", "/products/smart-watch", "/cart", "/checkout", "/account", "/sale", "/products/laptop-stand", "/wishlist", "/returns"],
-    titles: ["Shop Home", "Collections", "New Arrivals", "Wireless Headphones", "Smart Watch", "Cart", "Checkout", "My Account", "Sale", "Laptop Stand", "Wishlist", "Returns"],
-    deviceWeights: { Desktop: 0.42, Mobile: 0.52, Tablet: 0.06 },
-    weekendFactor: 1.25,
-    eventNames: ["add_to_cart", "purchase", "wishlist_add", "product_view", "checkout_start", "coupon_apply", "review_submit"],
-    hourProfile: { riseHour: 5, activeWidth: 17, baseLevel: 0.22 },
-  },
-  {
-    id: "demo-site-003", teamId: "demo-team-001",
-    name: "News Portal", domain: "dailypulse.news",
-    dailyPvRange: [18000, 35000], bounceRateRange: [0.55, 0.72], avgDurationMsRange: [30000, 70000],
-    topCountries: [
-      { code: "US", weight: 0.40 }, { code: "GB", weight: 0.18 }, { code: "CA", weight: 0.10 },
-      { code: "AU", weight: 0.08 }, { code: "IN", weight: 0.06 }, { code: "DE", weight: 0.04 },
-      { code: "IE", weight: 0.03 }, { code: "NZ", weight: 0.03 }, { code: "SG", weight: 0.02 },
-      { code: "ZA", weight: 0.02 }, { code: "PH", weight: 0.02 }, { code: "NG", weight: 0.02 },
-    ],
-    topReferrers: [
-      { name: "google.com", weight: 0.30 }, { name: "(direct)", weight: 0.15 },
-      { name: "news.google.com", weight: 0.15 }, { name: "twitter.com", weight: 0.12 },
-      { name: "facebook.com", weight: 0.10 }, { name: "reddit.com", weight: 0.06 },
-      { name: "apple.news", weight: 0.05 }, { name: "flipboard.com", weight: 0.04 },
-      { name: "bing.com", weight: 0.03 },
-    ],
-    paths: ["/", "/politics", "/tech", "/world", "/business", "/sports", "/culture", "/opinion", "/science", "/health"],
-    titles: ["Breaking News", "Politics", "Tech", "World", "Business", "Sports", "Culture", "Opinion", "Science", "Health"],
-    deviceWeights: { Desktop: 0.35, Mobile: 0.60, Tablet: 0.05 },
-    weekendFactor: 0.90,
-    eventNames: ["article_read", "share_click", "newsletter_subscribe", "comment_post", "bookmark"],
-    hourProfile: { riseHour: 6, activeWidth: 17, baseLevel: 0.25 },
-  },
-  {
-    id: "demo-site-004", teamId: "demo-team-001",
-    name: "Marketing Landing", domain: "launch.brightpath.co",
-    dailyPvRange: [3500, 7200], bounceRateRange: [0.62, 0.78], avgDurationMsRange: [15000, 40000],
-    topCountries: [
-      { code: "US", weight: 0.50 }, { code: "CA", weight: 0.12 }, { code: "GB", weight: 0.10 },
-      { code: "AU", weight: 0.08 }, { code: "DE", weight: 0.05 }, { code: "FR", weight: 0.04 },
-      { code: "NL", weight: 0.03 }, { code: "IN", weight: 0.03 }, { code: "BR", weight: 0.03 },
-      { code: "SG", weight: 0.02 },
-    ],
-    topReferrers: [
-      { name: "google.com", weight: 0.25 }, { name: "facebook.com", weight: 0.20 },
-      { name: "instagram.com", weight: 0.15 }, { name: "(direct)", weight: 0.12 },
-      { name: "twitter.com", weight: 0.10 }, { name: "linkedin.com", weight: 0.08 },
-      { name: "producthunt.com", weight: 0.05 }, { name: "tiktok.com", weight: 0.05 },
-    ],
-    paths: ["/", "/features", "/pricing", "/testimonials", "/faq", "/get-started"],
-    titles: ["BrightPath — Launch Faster", "Features", "Pricing", "Testimonials", "FAQ", "Get Started"],
-    deviceWeights: { Desktop: 0.48, Mobile: 0.47, Tablet: 0.05 },
-    weekendFactor: 0.55,
-    eventNames: ["signup_click", "video_play", "pricing_view", "testimonial_scroll", "cta_click"],
-    hourProfile: { riseHour: 12, activeWidth: 9, baseLevel: 0.06 },
-  },
-
-  {
-    id: "demo-site-005", teamId: "demo-team-001",
-    name: "Developer Docs", domain: "docs.devstack.io",
-    dailyPvRange: [6500, 12000], bounceRateRange: [0.22, 0.35], avgDurationMsRange: [180000, 420000],
-    topCountries: [
-      { code: "US", weight: 0.25 }, { code: "CN", weight: 0.15 }, { code: "IN", weight: 0.12 },
-      { code: "DE", weight: 0.10 }, { code: "GB", weight: 0.08 }, { code: "JP", weight: 0.06 },
-      { code: "BR", weight: 0.05 }, { code: "FR", weight: 0.04 }, { code: "KR", weight: 0.04 },
-      { code: "RU", weight: 0.03 }, { code: "CA", weight: 0.03 }, { code: "PL", weight: 0.02 },
-      { code: "NL", weight: 0.02 }, { code: "SE", weight: 0.01 },
-    ],
-    topReferrers: [
-      { name: "google.com", weight: 0.35 }, { name: "(direct)", weight: 0.20 },
-      { name: "github.com", weight: 0.15 }, { name: "stackoverflow.com", weight: 0.10 },
-      { name: "dev.to", weight: 0.05 }, { name: "twitter.com", weight: 0.04 },
-      { name: "reddit.com", weight: 0.04 }, { name: "hackernews.com", weight: 0.04 },
-      { name: "bing.com", weight: 0.03 },
-    ],
-    paths: ["/", "/getting-started", "/api-reference", "/guides/authentication", "/guides/webhooks", "/sdk/javascript", "/sdk/python", "/sdk/go", "/changelog", "/examples", "/migration-guide", "/troubleshooting"],
-    titles: ["Documentation", "Getting Started", "API Reference", "Authentication Guide", "Webhooks Guide", "JavaScript SDK", "Python SDK", "Go SDK", "Changelog", "Examples", "Migration Guide", "Troubleshooting"],
-    deviceWeights: { Desktop: 0.85, Mobile: 0.12, Tablet: 0.03 },
-    weekendFactor: 0.45,
-    eventNames: ["code_copy", "api_key_generate", "search", "feedback_submit", "example_run"],
-    hourProfile: { riseHour: 3, activeWidth: 18, baseLevel: 0.20 },
-  },
-  {
-    id: "demo-site-006", teamId: "demo-team-001",
-    name: "SaaS Dashboard", domain: "app.cloudmetrics.io",
-    dailyPvRange: [4200, 8500], bounceRateRange: [0.12, 0.22], avgDurationMsRange: [240000, 600000],
-    topCountries: [
-      { code: "US", weight: 0.30 }, { code: "DE", weight: 0.12 }, { code: "GB", weight: 0.10 },
-      { code: "CA", weight: 0.08 }, { code: "FR", weight: 0.07 }, { code: "AU", weight: 0.06 },
-      { code: "JP", weight: 0.05 }, { code: "NL", weight: 0.05 }, { code: "SG", weight: 0.04 },
-      { code: "SE", weight: 0.04 }, { code: "BR", weight: 0.03 }, { code: "IN", weight: 0.03 },
-      { code: "KR", weight: 0.03 },
-    ],
-    topReferrers: [
-      { name: "(direct)", weight: 0.55 }, { name: "google.com", weight: 0.20 },
-      { name: "github.com", weight: 0.08 }, { name: "twitter.com", weight: 0.05 },
-      { name: "linkedin.com", weight: 0.05 }, { name: "producthunt.com", weight: 0.04 },
-      { name: "bing.com", weight: 0.03 },
-    ],
-    paths: ["/", "/dashboard", "/analytics", "/settings", "/integrations", "/billing", "/team", "/alerts", "/reports", "/api-keys"],
-    titles: ["CloudMetrics", "Dashboard", "Analytics", "Settings", "Integrations", "Billing", "Team", "Alerts", "Reports", "API Keys"],
-    deviceWeights: { Desktop: 0.82, Mobile: 0.15, Tablet: 0.03 },
-    weekendFactor: 0.30,
-    eventNames: ["dashboard_view", "report_export", "alert_create", "integration_connect", "plan_upgrade"],
-    hourProfile: { riseHour: 8, activeWidth: 11, baseLevel: 0.08 },
-  },
-  {
-    id: "demo-site-007", teamId: "demo-team-001",
-    name: "Open Source Project", domain: "oss-toolkit.dev",
-    dailyPvRange: [2800, 5500], bounceRateRange: [0.32, 0.48], avgDurationMsRange: [90000, 200000],
-    topCountries: [
-      { code: "US", weight: 0.22 }, { code: "CN", weight: 0.18 }, { code: "IN", weight: 0.12 },
-      { code: "DE", weight: 0.08 }, { code: "BR", weight: 0.07 }, { code: "JP", weight: 0.06 },
-      { code: "GB", weight: 0.05 }, { code: "RU", weight: 0.05 }, { code: "FR", weight: 0.04 },
-      { code: "KR", weight: 0.04 }, { code: "CA", weight: 0.03 }, { code: "PL", weight: 0.03 },
-      { code: "ID", weight: 0.02 }, { code: "TR", weight: 0.01 },
-    ],
-    topReferrers: [
-      { name: "github.com", weight: 0.35 }, { name: "google.com", weight: 0.25 },
-      { name: "(direct)", weight: 0.12 }, { name: "stackoverflow.com", weight: 0.08 },
-      { name: "reddit.com", weight: 0.06 }, { name: "hackernews.com", weight: 0.05 },
-      { name: "dev.to", weight: 0.04 }, { name: "twitter.com", weight: 0.03 },
-      { name: "npmjs.com", weight: 0.02 },
-    ],
-    paths: ["/", "/docs", "/docs/installation", "/docs/configuration", "/docs/plugins", "/examples", "/playground", "/blog", "/sponsors", "/community"],
-    titles: ["OSS Toolkit", "Documentation", "Installation", "Configuration", "Plugins", "Examples", "Playground", "Blog", "Sponsors", "Community"],
-    deviceWeights: { Desktop: 0.80, Mobile: 0.16, Tablet: 0.04 },
-    weekendFactor: 0.65,
-    eventNames: ["star_click", "install_copy", "playground_run", "docs_search", "issue_create"],
-    hourProfile: { riseHour: 20, activeWidth: 16, baseLevel: 0.18 },
-  },
-  {
-    id: "demo-site-008", teamId: "demo-team-001",
-    name: "API Documentation", domain: "api.swiftlink.dev",
-    dailyPvRange: [2200, 4800], bounceRateRange: [0.18, 0.30], avgDurationMsRange: [200000, 480000],
-    topCountries: [
-      { code: "US", weight: 0.28 }, { code: "IN", weight: 0.15 }, { code: "DE", weight: 0.10 },
-      { code: "CN", weight: 0.09 }, { code: "GB", weight: 0.08 }, { code: "JP", weight: 0.06 },
-      { code: "BR", weight: 0.05 }, { code: "FR", weight: 0.04 }, { code: "CA", weight: 0.04 },
-      { code: "KR", weight: 0.04 }, { code: "NL", weight: 0.03 }, { code: "AU", weight: 0.02 },
-      { code: "PL", weight: 0.02 },
-    ],
-    topReferrers: [
-      { name: "(direct)", weight: 0.30 }, { name: "google.com", weight: 0.28 },
-      { name: "github.com", weight: 0.15 }, { name: "stackoverflow.com", weight: 0.10 },
-      { name: "dev.to", weight: 0.05 }, { name: "twitter.com", weight: 0.04 },
-      { name: "reddit.com", weight: 0.04 }, { name: "bing.com", weight: 0.04 },
-    ],
-    paths: ["/", "/v2/endpoints", "/v2/authentication", "/v2/rate-limits", "/v2/errors", "/v2/webhooks", "/sdks", "/sdks/node", "/sdks/python", "/changelog", "/status"],
-    titles: ["SwiftLink API", "Endpoints", "Authentication", "Rate Limits", "Errors", "Webhooks", "SDKs", "Node SDK", "Python SDK", "Changelog", "Status"],
-    deviceWeights: { Desktop: 0.88, Mobile: 0.10, Tablet: 0.02 },
-    weekendFactor: 0.38,
-    eventNames: ["api_test", "code_copy", "sdk_download", "search_query", "feedback"],
-    hourProfile: { riseHour: 4, activeWidth: 15, baseLevel: 0.15 },
-  },
-
-  {
-    id: "demo-site-009", teamId: "demo-team-001",
-    name: "Personal Blog", domain: "thoughts.jchen.me",
-    dailyPvRange: [800, 2200], bounceRateRange: [0.45, 0.62], avgDurationMsRange: [60000, 150000],
-    topCountries: [
-      { code: "CN", weight: 0.35 }, { code: "US", weight: 0.20 }, { code: "JP", weight: 0.08 },
-      { code: "SG", weight: 0.08 }, { code: "TW", weight: 0.06 }, { code: "HK", weight: 0.05 },
-      { code: "DE", weight: 0.04 }, { code: "GB", weight: 0.04 }, { code: "CA", weight: 0.03 },
-      { code: "AU", weight: 0.03 }, { code: "KR", weight: 0.02 }, { code: "MY", weight: 0.02 },
-    ],
-    topReferrers: [
-      { name: "google.com", weight: 0.30 }, { name: "(direct)", weight: 0.22 },
-      { name: "twitter.com", weight: 0.15 }, { name: "baidu.com", weight: 0.10 },
-      { name: "weibo.com", weight: 0.06 }, { name: "github.com", weight: 0.05 },
-      { name: "zhihu.com", weight: 0.05 }, { name: "bing.com", weight: 0.04 },
-      { name: "reddit.com", weight: 0.03 },
-    ],
-    paths: ["/", "/posts", "/posts/building-in-public", "/posts/rust-vs-go", "/posts/side-project-lessons", "/posts/design-systems", "/about", "/projects", "/newsletter", "/archive"],
-    titles: ["J.Chen's Blog", "Posts", "Building in Public", "Rust vs Go", "Side Project Lessons", "Design Systems", "About", "Projects", "Newsletter", "Archive"],
-    deviceWeights: { Desktop: 0.62, Mobile: 0.33, Tablet: 0.05 },
-    weekendFactor: 1.15,
-    eventNames: ["article_read_complete", "newsletter_subscribe", "share_click", "comment"],
-    hourProfile: { riseHour: 21, activeWidth: 13, baseLevel: 0.10 },
-  },
-  {
-    id: "demo-site-010", teamId: "demo-team-001",
-    name: "Community Forum", domain: "community.pixelforge.io",
-    dailyPvRange: [5500, 10000], bounceRateRange: [0.18, 0.28], avgDurationMsRange: [300000, 720000],
-    topCountries: [
-      { code: "US", weight: 0.28 }, { code: "DE", weight: 0.12 }, { code: "GB", weight: 0.10 },
-      { code: "FR", weight: 0.08 }, { code: "CA", weight: 0.06 }, { code: "JP", weight: 0.06 },
-      { code: "AU", weight: 0.05 }, { code: "BR", weight: 0.05 }, { code: "IN", weight: 0.05 },
-      { code: "NL", weight: 0.04 }, { code: "KR", weight: 0.04 }, { code: "SE", weight: 0.03 },
-      { code: "PL", weight: 0.02 }, { code: "ES", weight: 0.02 },
-    ],
-    topReferrers: [
-      { name: "(direct)", weight: 0.35 }, { name: "google.com", weight: 0.28 },
-      { name: "github.com", weight: 0.10 }, { name: "twitter.com", weight: 0.08 },
-      { name: "reddit.com", weight: 0.06 }, { name: "discord.com", weight: 0.05 },
-      { name: "youtube.com", weight: 0.04 }, { name: "dev.to", weight: 0.04 },
-    ],
-    paths: ["/", "/latest", "/categories/general", "/categories/showcase", "/categories/help", "/categories/feedback", "/t/getting-started-guide", "/t/monthly-challenge", "/u/profile", "/search"],
-    titles: ["PixelForge Community", "Latest", "General", "Showcase", "Help", "Feedback", "Getting Started", "Monthly Challenge", "Profile", "Search"],
-    deviceWeights: { Desktop: 0.72, Mobile: 0.24, Tablet: 0.04 },
-    weekendFactor: 1.20,
-    eventNames: ["post_create", "reply_submit", "like_click", "bookmark", "mention", "upload"],
-    hourProfile: { riseHour: 7, activeWidth: 18, baseLevel: 0.28 },
-  },
-  {
-    id: "demo-site-011", teamId: "demo-team-001",
-    name: "Portfolio Site", domain: "studio.mikalee.design",
-    dailyPvRange: [600, 1800], bounceRateRange: [0.50, 0.68], avgDurationMsRange: [40000, 100000],
-    topCountries: [
-      { code: "US", weight: 0.32 }, { code: "GB", weight: 0.12 }, { code: "DE", weight: 0.08 },
-      { code: "FR", weight: 0.08 }, { code: "CA", weight: 0.07 }, { code: "JP", weight: 0.06 },
-      { code: "AU", weight: 0.05 }, { code: "NL", weight: 0.05 }, { code: "SE", weight: 0.04 },
-      { code: "IT", weight: 0.04 }, { code: "BR", weight: 0.03 }, { code: "KR", weight: 0.03 },
-      { code: "SG", weight: 0.03 },
-    ],
-    topReferrers: [
-      { name: "dribbble.com", weight: 0.22 }, { name: "google.com", weight: 0.20 },
-      { name: "(direct)", weight: 0.18 }, { name: "behance.net", weight: 0.12 },
-      { name: "linkedin.com", weight: 0.10 }, { name: "twitter.com", weight: 0.08 },
-      { name: "instagram.com", weight: 0.06 }, { name: "pinterest.com", weight: 0.04 },
-    ],
-    paths: ["/", "/work", "/work/brand-identity", "/work/web-design", "/work/mobile-app", "/about", "/contact", "/blog", "/services"],
-    titles: ["Mika Lee Design", "Work", "Brand Identity", "Web Design", "Mobile App", "About", "Contact", "Blog", "Services"],
-    deviceWeights: { Desktop: 0.58, Mobile: 0.35, Tablet: 0.07 },
-    weekendFactor: 0.70,
-    eventNames: ["project_view", "contact_form", "resume_download", "social_click"],
-    hourProfile: { riseHour: 10, activeWidth: 11, baseLevel: 0.08 },
-  },
-  {
-    id: "demo-site-012", teamId: "demo-team-001",
-    name: "Education Platform", domain: "learn.codeacademy.org",
-    dailyPvRange: [7000, 13000], bounceRateRange: [0.15, 0.25], avgDurationMsRange: [480000, 1200000],
-    topCountries: [
-      { code: "US", weight: 0.22 }, { code: "IN", weight: 0.18 }, { code: "BR", weight: 0.10 },
-      { code: "NG", weight: 0.06 }, { code: "GB", weight: 0.06 }, { code: "DE", weight: 0.05 },
-      { code: "ID", weight: 0.05 }, { code: "PH", weight: 0.04 }, { code: "PK", weight: 0.04 },
-      { code: "CA", weight: 0.04 }, { code: "MX", weight: 0.03 }, { code: "KE", weight: 0.03 },
-      { code: "EG", weight: 0.03 }, { code: "VN", weight: 0.03 }, { code: "TR", weight: 0.02 },
-      { code: "CO", weight: 0.02 },
-    ],
-    topReferrers: [
-      { name: "google.com", weight: 0.35 }, { name: "(direct)", weight: 0.25 },
-      { name: "youtube.com", weight: 0.10 }, { name: "reddit.com", weight: 0.06 },
-      { name: "twitter.com", weight: 0.05 }, { name: "facebook.com", weight: 0.05 },
-      { name: "linkedin.com", weight: 0.04 }, { name: "dev.to", weight: 0.04 },
-      { name: "quora.com", weight: 0.03 }, { name: "stackoverflow.com", weight: 0.03 },
-    ],
-    paths: ["/", "/courses", "/courses/javascript-fundamentals", "/courses/python-data-science", "/courses/react-masterclass", "/courses/sql-basics", "/dashboard", "/certificates", "/community", "/pricing", "/blog", "/paths/fullstack"],
-    titles: ["CodeAcademy", "Courses", "JavaScript Fundamentals", "Python Data Science", "React Masterclass", "SQL Basics", "Dashboard", "Certificates", "Community", "Pricing", "Blog", "Full-Stack Path"],
-    deviceWeights: { Desktop: 0.65, Mobile: 0.30, Tablet: 0.05 },
-    weekendFactor: 1.10,
-    eventNames: ["lesson_complete", "quiz_submit", "certificate_earn", "course_enroll", "exercise_run", "hint_request"],
-    hourProfile: { riseHour: 0, activeWidth: 20, baseLevel: 0.22 },
-  },
-];
-
-function findSiteProfile(siteId: string): DemoSiteProfile {
-  return DEMO_SITE_PROFILES.find((s) => s.id === siteId) ?? DEMO_SITE_PROFILES[0];
-}
 
 // ---------------------------------------------------------------------------
 //  Shared data constants
@@ -1146,7 +568,14 @@ const ALL_SCREEN_SIZES = [
   "834x1194",
   "1024x1366",
 ] as const;
-const ALL_CONTINENTS = ["North America", "Europe", "Asia", "South America", "Oceania", "Africa"] as const;
+const ALL_CONTINENTS = [
+  "North America",
+  "Europe",
+  "Asia",
+  "South America",
+  "Oceania",
+  "Africa",
+] as const;
 const ALL_TIMEZONES = [
   "America/New_York",
   "America/Los_Angeles",
@@ -1400,7 +829,10 @@ const ALL_CITIES = [
   "MY::14::Kuala Lumpur::Kuala Lumpur",
 ] as const;
 
-const COUNTRY_COORDINATE_ANCHORS: Record<string, { latitude: number; longitude: number }> = {
+const COUNTRY_COORDINATE_ANCHORS: Record<
+  string,
+  { latitude: number; longitude: number }
+> = {
   US: { latitude: 39.5, longitude: -98.35 },
   CA: { latitude: 56.13, longitude: -106.35 },
   GB: { latitude: 54.8, longitude: -2.3 },
@@ -1649,10 +1081,16 @@ function randomGaussian(rng: () => number): number {
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
-function pickCountryGeoCluster(rng: () => number, countryCode: string): GeoCluster {
+function pickCountryGeoCluster(
+  rng: () => number,
+  countryCode: string,
+): GeoCluster {
   const clusters = COUNTRY_GEO_CLUSTERS[countryCode];
   if (!clusters || clusters.length === 0) {
-    const anchor = COUNTRY_COORDINATE_ANCHORS[countryCode] ?? { latitude: 20, longitude: 0 };
+    const anchor = COUNTRY_COORDINATE_ANCHORS[countryCode] ?? {
+      latitude: 20,
+      longitude: 0,
+    };
     return {
       latitude: anchor.latitude,
       longitude: anchor.longitude,
@@ -1660,7 +1098,10 @@ function pickCountryGeoCluster(rng: () => number, countryCode: string): GeoClust
       spreadKm: 170,
     };
   }
-  const index = weightedPickIndex(rng, clusters.map((cluster) => cluster.weight));
+  const index = weightedPickIndex(
+    rng,
+    clusters.map((cluster) => cluster.weight),
+  );
   return clusters[index] ?? clusters[0];
 }
 
@@ -1678,7 +1119,9 @@ function sampleGeoPointByCountry(
     -85,
     Math.min(85, cluster.latitude + randomGaussian(rng) * latSigma),
   );
-  const longitude = normalizeLongitude(cluster.longitude + randomGaussian(rng) * lonSigma);
+  const longitude = normalizeLongitude(
+    cluster.longitude + randomGaussian(rng) * lonSigma,
+  );
   return {
     latitude: Number(latitude.toFixed(5)),
     longitude: Number(longitude.toFixed(5)),
@@ -1689,7 +1132,10 @@ function weightedPickCountry(
   rng: () => number,
   countries: Array<{ code: string; weight: number }>,
 ): string {
-  const totalWeight = countries.reduce((sum, item) => sum + Math.max(0, item.weight), 0);
+  const totalWeight = countries.reduce(
+    (sum, item) => sum + Math.max(0, item.weight),
+    0,
+  );
   if (totalWeight <= 0 || countries.length === 0) return "US";
   let hit = rng() * totalWeight;
   for (const item of countries) {
@@ -1708,14 +1154,19 @@ function buildCountryPool(
   const normalizedTarget = Math.max(4, targetCount);
   const pool = new Map<string, number>();
   for (const country of baseCountries) {
-    const code = String(country.code || "").trim().toUpperCase();
+    const code = String(country.code || "")
+      .trim()
+      .toUpperCase();
     const weight = Math.max(0, Number(country.weight) || 0);
     if (!code || weight <= 0) continue;
     pool.set(code, (pool.get(code) ?? 0) + weight);
   }
   if (pool.size === 0) pool.set("US", 1);
 
-  const baseWeightSum = Array.from(pool.values()).reduce((sum, value) => sum + value, 0);
+  const baseWeightSum = Array.from(pool.values()).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
   const longTailScale = Math.max(0.08, baseWeightSum * 0.22);
 
   for (const candidate of sShuffle(rng, [...GLOBAL_COUNTRY_LONG_TAIL])) {
@@ -1745,7 +1196,10 @@ function buildReferrerPool(
   }
   if (!pool.has("(direct)")) pool.set("(direct)", 0.2);
 
-  const baseWeightSum = Array.from(pool.values()).reduce((sum, value) => sum + value, 0);
+  const baseWeightSum = Array.from(pool.values()).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
   const longTailScale = Math.max(0.04, baseWeightSum * 0.16);
 
   for (const candidate of sShuffle(rng, [...GLOBAL_REFERRER_LONG_TAIL])) {
@@ -1764,8 +1218,12 @@ function filterGeoLabelsByCountries(
   labels: readonly string[],
   countries: string[],
 ): string[] {
-  const allowed = new Set(countries.map((country) => country.trim().toUpperCase()).filter(Boolean));
-  const filtered = labels.filter((label) => allowed.has(String(label).split("::")[0] || ""));
+  const allowed = new Set(
+    countries.map((country) => country.trim().toUpperCase()).filter(Boolean),
+  );
+  const filtered = labels.filter((label) =>
+    allowed.has(String(label).split("::")[0] || ""),
+  );
   if (filtered.length >= 6) return filtered;
   return [...labels];
 }
@@ -1798,8 +1256,11 @@ function filterGeoLabelsByCountries(
  * Active zone wraps around midnight when riseHour + activeWidth > 24.
  */
 function siteHourShapeIntegral(
-  h1: number, h2: number,
-  riseHour: number, activeWidth: number, baseLevel: number,
+  h1: number,
+  h2: number,
+  riseHour: number,
+  activeWidth: number,
+  baseLevel: number,
 ): number {
   if (h1 >= h2) return 0;
   const constPart = baseLevel * (h2 - h1);
@@ -1824,10 +1285,10 @@ function siteHourShapeIntegral(
     const oEnd = Math.min(h2, segEnd);
     if (oStart >= oEnd) continue;
     // ∫ sin((h - riseHour + offset) · k) dh = (1/k)(cos(start) - cos(end))
-    sinPart += (1 / k) * (
-      Math.cos((oStart - riseHour + offset) * k) -
-      Math.cos((oEnd - riseHour + offset) * k)
-    );
+    sinPart +=
+      (1 / k) *
+      (Math.cos((oStart - riseHour + offset) * k) -
+        Math.cos((oEnd - riseHour + offset) * k));
   }
 
   return constPart + (1 - baseLevel) * sinPart;
@@ -1840,7 +1301,13 @@ function siteDayIntegral(siteId: string): number {
   const cached = _siteDayIntegralCache.get(siteId);
   if (cached !== undefined) return cached;
   const hp = findSiteProfile(siteId).hourProfile;
-  const val = siteHourShapeIntegral(0, 24, hp.riseHour, hp.activeWidth, hp.baseLevel);
+  const val = siteHourShapeIntegral(
+    0,
+    24,
+    hp.riseHour,
+    hp.activeWidth,
+    hp.baseLevel,
+  );
   _siteDayIntegralCache.set(siteId, val);
   return val;
 }
@@ -1851,7 +1318,7 @@ function dailyViewCount(siteId: string, dayNum: number): number {
   const rng = mulberry32(fnv1a(`${siteId}:day:${dayNum}`));
   let pv = sInt(rng, profile.dailyPvRange[0], profile.dailyPvRange[1]);
   // 1970-01-01 (dayNum 0) = Thursday (dow 4). 0=Sun…6=Sat
-  const dow = (4 + ((dayNum % 7) + 7) % 7) % 7;
+  const dow = (4 + (((dayNum % 7) + 7) % 7)) % 7;
   if (dow === 0 || dow === 6) pv = Math.round(pv * profile.weekendFactor);
   return pv;
 }
@@ -1873,7 +1340,16 @@ function integrateViews(siteId: string, fromMs: number, toMs: number): number {
     const h1 = Math.max(fromH - dayStartH, 0);
     const h2 = Math.min(toH - dayStartH, DAY_H);
     if (h1 >= h2) continue;
-    total += dailyViewCount(siteId, d) * siteHourShapeIntegral(h1, h2, hp.riseHour, hp.activeWidth, hp.baseLevel) / dayInt;
+    total +=
+      (dailyViewCount(siteId, d) *
+        siteHourShapeIntegral(
+          h1,
+          h2,
+          hp.riseHour,
+          hp.activeWidth,
+          hp.baseLevel,
+        )) /
+      dayInt;
   }
   return Math.round(total);
 }
@@ -1896,8 +1372,16 @@ function siteRatios(siteId: string): SiteMetricRatios {
   const ratios: SiteMetricRatios = {
     sessionsPerView: 0.4 + rng() * 0.25,
     visitorsPerSession: 0.65 + rng() * 0.25,
-    bounceRate: sFloat(rng, profile.bounceRateRange[0], profile.bounceRateRange[1]),
-    avgDurationMs: sInt(rng, profile.avgDurationMsRange[0], profile.avgDurationMsRange[1]),
+    bounceRate: sFloat(
+      rng,
+      profile.bounceRateRange[0],
+      profile.bounceRateRange[1],
+    ),
+    avgDurationMs: sInt(
+      rng,
+      profile.avgDurationMsRange[0],
+      profile.avgDurationMsRange[1],
+    ),
   };
   _siteRatiosCache.set(siteId, ratios);
   return ratios;
@@ -1908,14 +1392,23 @@ function siteRatios(siteId: string): SiteMetricRatios {
  * Returns a deterministic multiplier around 1.0 that varies per day,
  * making bounce rate, avg duration, etc. change across time windows.
  */
-function dailyMetricFactor(siteId: string, dayNum: number, metric: string): number {
+function dailyMetricFactor(
+  siteId: string,
+  dayNum: number,
+  metric: string,
+): number {
   const rng = mulberry32(fnv1a(`${siteId}:dfactor:${metric}:${dayNum}`));
   switch (metric) {
-    case "sessions": return 0.88 + rng() * 0.24;   // 0.88–1.12
-    case "visitors": return 0.90 + rng() * 0.20;   // 0.90–1.10
-    case "bounce":   return 0.78 + rng() * 0.44;   // 0.78–1.22
-    case "duration": return 0.65 + rng() * 0.70;   // 0.65–1.35
-    default: return 1.0;
+    case "sessions":
+      return 0.88 + rng() * 0.24; // 0.88–1.12
+    case "visitors":
+      return 0.9 + rng() * 0.2; // 0.90–1.10
+    case "bounce":
+      return 0.78 + rng() * 0.44; // 0.78–1.22
+    case "duration":
+      return 0.65 + rng() * 0.7; // 0.65–1.35
+    default:
+      return 1.0;
   }
 }
 
@@ -1923,8 +1416,13 @@ function dailyMetricFactor(siteId: string, dayNum: number, metric: string): numb
 function computeMetrics(siteId: string, fromMs: number, toMs: number) {
   if (fromMs >= toMs) {
     return {
-      views: 0, sessions: 0, visitors: 0, bounces: 0,
-      totalDurationMs: 0, avgDurationMs: 0, bounceRate: 0,
+      views: 0,
+      sessions: 0,
+      visitors: 0,
+      bounces: 0,
+      totalDurationMs: 0,
+      avgDurationMs: 0,
+      bounceRate: 0,
       approximateVisitors: false,
     };
   }
@@ -1951,8 +1449,16 @@ function computeMetrics(siteId: string, fromMs: number, toMs: number) {
     const h2 = Math.min(toH - dayStartH, DAY_H);
     if (h1 >= h2) continue;
 
-    const viewsFrac = dailyViewCount(siteId, d)
-      * siteHourShapeIntegral(h1, h2, hp.riseHour, hp.activeWidth, hp.baseLevel) / dayInt;
+    const viewsFrac =
+      (dailyViewCount(siteId, d) *
+        siteHourShapeIntegral(
+          h1,
+          h2,
+          hp.riseHour,
+          hp.activeWidth,
+          hp.baseLevel,
+        )) /
+      dayInt;
 
     const sf = dailyMetricFactor(siteId, d, "sessions");
     const vf = dailyMetricFactor(siteId, d, "visitors");
@@ -1978,23 +1484,35 @@ function computeMetrics(siteId: string, fromMs: number, toMs: number) {
   const visitors = Math.max(sessions > 0 ? 1 : 0, Math.round(sumVisitors));
   const bounces = Math.min(sessions, Math.round(sumBounces));
   const totalDurationMs = Math.round(sumDurationMs);
-  const bounceRate = sessions > 0 ? Math.round((bounces / sessions) * 10000) / 10000 : 0;
-  const avgDurationMs = sessions > 0 ? Math.round(totalDurationMs / sessions) : 0;
+  const bounceRate =
+    sessions > 0 ? Math.round((bounces / sessions) * 10000) / 10000 : 0;
+  const avgDurationMs =
+    sessions > 0 ? Math.round(totalDurationMs / sessions) : 0;
 
   return {
-    views, sessions, visitors, bounces,
-    totalDurationMs, avgDurationMs, bounceRate,
+    views,
+    sessions,
+    visitors,
+    bounces,
+    totalDurationMs,
+    avgDurationMs,
+    bounceRate,
     approximateVisitors: false,
   };
 }
 
 function demoIntervalStepMs(interval: string): number {
   switch (interval) {
-    case "minute": return 60_000;
-    case "hour": return 3_600_000;
-    case "week": return 7 * 86_400_000;
-    case "month": return 30 * 86_400_000;
-    default: return 86_400_000;
+    case "minute":
+      return 60_000;
+    case "hour":
+      return 3_600_000;
+    case "week":
+      return 7 * 86_400_000;
+    case "month":
+      return 30 * 86_400_000;
+    default:
+      return 86_400_000;
   }
 }
 
@@ -2134,11 +1652,7 @@ const DEMO_MOBILE_SCREENS = [
   "360x780",
   "360x800",
 ] as const;
-const DEMO_TABLET_SCREENS = [
-  "768x1024",
-  "834x1194",
-  "1024x1366",
-] as const;
+const DEMO_TABLET_SCREENS = ["768x1024", "834x1194", "1024x1366"] as const;
 
 const DEMO_COUNTRY_TO_CONTINENT: Record<string, string> = {
   US: "North America",
@@ -2183,7 +1697,12 @@ const DEMO_COUNTRY_TO_CONTINENT: Record<string, string> = {
 };
 
 const DEMO_COUNTRY_TO_TIMEZONES: Record<string, string[]> = {
-  US: ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles"],
+  US: [
+    "America/New_York",
+    "America/Chicago",
+    "America/Denver",
+    "America/Los_Angeles",
+  ],
   CA: ["America/Toronto", "America/Vancouver"],
   MX: ["America/Mexico_City"],
   BR: ["America/Sao_Paulo"],
@@ -2254,10 +1773,16 @@ const DEMO_COUNTRY_TO_LANGUAGES: Record<string, string[]> = {
   AE: ["ar-SA", "en-US"],
 };
 
-function groupGeoLabelsByCountry(labels: readonly string[]): Map<string, string[]> {
+function groupGeoLabelsByCountry(
+  labels: readonly string[],
+): Map<string, string[]> {
   const grouped = new Map<string, string[]>();
   for (const label of labels) {
-    const country = String(label).split(DEMO_GEO_SEGMENT_SEPARATOR)[0]?.trim().toUpperCase() || "";
+    const country =
+      String(label)
+        .split(DEMO_GEO_SEGMENT_SEPARATOR)[0]
+        ?.trim()
+        .toUpperCase() || "";
     if (!country) continue;
     const list = grouped.get(country) ?? [];
     list.push(String(label));
@@ -2270,7 +1795,9 @@ const DEMO_REGIONS_BY_COUNTRY = groupGeoLabelsByCountry(ALL_REGIONS);
 const DEMO_CITIES_BY_COUNTRY = groupGeoLabelsByCountry(ALL_CITIES);
 const DEMO_FACT_DATASET_CACHE = new Map<string, DemoFactDataset>();
 
-function normalizeDemoFilterValue(value: string | number | undefined): string | undefined {
+function normalizeDemoFilterValue(
+  value: string | number | undefined,
+): string | undefined {
   if (value === undefined || value === null) return undefined;
   const normalized = String(value).trim().slice(0, 120);
   if (normalized.length === 0) return undefined;
@@ -2281,12 +1808,14 @@ function normalizeDemoFilterValue(value: string | number | undefined): string | 
   return normalized;
 }
 
-function parseDemoFilters(params: Record<string, string | number>): DemoQueryFilters {
+function parseDemoFilters(
+  params: Record<string, string | number>,
+): DemoQueryFilters {
   const geo =
-    normalizeDemoFilterValue(params.geo)
-    || normalizeDemoFilterValue(params.geoCountry)
-    || normalizeDemoFilterValue(params.geoRegion)
-    || normalizeDemoFilterValue(params.geoCity);
+    normalizeDemoFilterValue(params.geo) ||
+    normalizeDemoFilterValue(params.geoCountry) ||
+    normalizeDemoFilterValue(params.geoRegion) ||
+    normalizeDemoFilterValue(params.geoCity);
   return {
     country: normalizeDemoFilterValue(params.country),
     device: normalizeDemoFilterValue(params.device),
@@ -2312,13 +1841,18 @@ function parseDemoFilters(params: Record<string, string | number>): DemoQueryFil
 }
 
 function normalizeDemoSearch(params: Record<string, string | number>): string {
-  return String(params.search ?? params.q ?? "").trim().toLowerCase();
+  return String(params.search ?? params.q ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 function demoValuesIncludeSearch(search: string, values: unknown[]): boolean {
   if (!search) return true;
   return values.some((value) =>
-    String(value ?? "").trim().toLowerCase().includes(search),
+    String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .includes(search),
   );
 }
 
@@ -2360,7 +1894,9 @@ function withoutDemoGeoFilter(filters: DemoQueryFilters): DemoQueryFilters {
   return { ...filters, geo: undefined };
 }
 
-function parseDemoGeoFilterValue(value: string | undefined): ParsedDemoGeoFilter | null {
+function parseDemoGeoFilterValue(
+  value: string | undefined,
+): ParsedDemoGeoFilter | null {
   const normalized = String(value ?? "").trim();
   if (!normalized) return null;
   const segments = normalized
@@ -2379,9 +1915,10 @@ function parseDemoGeoFilterValue(value: string | undefined): ParsedDemoGeoFilter
 
   const regionCode = segments[1] || "";
   const regionName = segments[2] || "";
-  const city = segments.length >= 4
-    ? segments.slice(3).join(DEMO_GEO_SEGMENT_SEPARATOR).trim()
-    : "";
+  const city =
+    segments.length >= 4
+      ? segments.slice(3).join(DEMO_GEO_SEGMENT_SEPARATOR).trim()
+      : "";
 
   return {
     country,
@@ -2391,7 +1928,10 @@ function parseDemoGeoFilterValue(value: string | undefined): ParsedDemoGeoFilter
   };
 }
 
-function parseDemoNumber(value: string | number | undefined, fallback: number): number {
+function parseDemoNumber(
+  value: string | number | undefined,
+  fallback: number,
+): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -2410,37 +1950,55 @@ function parseDemoLimit(
 
 function parseDemoBoolean(value: string | number | undefined): boolean {
   if (typeof value === "number") return value === 1;
-  const normalized = String(value ?? "").trim().toLowerCase();
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
-function parseDemoInterval(value: string | number | undefined): "minute" | "hour" | "day" | "week" | "month" {
-  const normalized = String(value ?? "day").trim().toLowerCase();
+function parseDemoInterval(
+  value: string | number | undefined,
+): "minute" | "hour" | "day" | "week" | "month" {
+  const normalized = String(value ?? "day")
+    .trim()
+    .toLowerCase();
   if (DEMO_INTERVALS.has(normalized)) {
     return normalized as "minute" | "hour" | "day" | "week" | "month";
   }
   return "day";
 }
 
-function pickFromList<T>(rng: () => number, values: readonly T[], fallback: T): T {
+function pickFromList<T>(
+  rng: () => number,
+  values: readonly T[],
+  fallback: T,
+): T {
   if (!values.length) return fallback;
   return values[Math.floor(rng() * values.length)] ?? fallback;
 }
 
 function isMobileBrowserLabel(label: string): boolean {
   return (
-    label.includes("Mobile")
-    || label.includes("Samsung")
-    || label.includes("UC")
-    || label.includes("QQ")
-    || label.includes("Huawei")
-    || label.includes("Mi")
+    label.includes("Mobile") ||
+    label.includes("Samsung") ||
+    label.includes("UC") ||
+    label.includes("QQ") ||
+    label.includes("Huawei") ||
+    label.includes("Mi")
   );
 }
 
-function pickDemoDeviceType(rng: () => number, profile: DemoSiteProfile): string {
-  const entries = Object.entries(profile.deviceWeights).map(([label, weight]) => ({ label, weight }));
-  const index = weightedPickIndex(rng, entries.map((entry) => entry.weight));
+function pickDemoDeviceType(
+  rng: () => number,
+  profile: DemoSiteProfile,
+): string {
+  const entries = Object.entries(profile.deviceWeights).map(
+    ([label, weight]) => ({ label, weight }),
+  );
+  const index = weightedPickIndex(
+    rng,
+    entries.map((entry) => entry.weight),
+  );
   return entries[index]?.label ?? "Desktop";
 }
 
@@ -2490,7 +2048,8 @@ function pickDemoBrowserVersion(rng: () => number, browser: string): string {
 }
 
 function pickDemoOsVersion(rng: () => number, deviceType: string): string {
-  if (deviceType === "Mobile") return pickFromList(rng, DEMO_MOBILE_OS, "Android 15");
+  if (deviceType === "Mobile")
+    return pickFromList(rng, DEMO_MOBILE_OS, "Android 15");
   if (deviceType === "Tablet") {
     return rng() < 0.5
       ? pickFromList(rng, DEMO_MOBILE_OS, "iOS 18")
@@ -2500,28 +2059,42 @@ function pickDemoOsVersion(rng: () => number, deviceType: string): string {
 }
 
 function pickDemoScreenSize(rng: () => number, deviceType: string): string {
-  if (deviceType === "Mobile") return pickFromList(rng, DEMO_MOBILE_SCREENS, "390x844");
-  if (deviceType === "Tablet") return pickFromList(rng, DEMO_TABLET_SCREENS, "834x1194");
+  if (deviceType === "Mobile")
+    return pickFromList(rng, DEMO_MOBILE_SCREENS, "390x844");
+  if (deviceType === "Tablet")
+    return pickFromList(rng, DEMO_TABLET_SCREENS, "834x1194");
   return pickFromList(rng, DEMO_DESKTOP_SCREENS, "1920x1080");
 }
 
 function pickDemoLanguage(rng: () => number, country: string): string {
   const candidates = DEMO_COUNTRY_TO_LANGUAGES[country] ?? [];
-  return pickFromList(rng, candidates.length > 0 ? candidates : ALL_LANGUAGES, ALL_LANGUAGES[0]);
+  return pickFromList(
+    rng,
+    candidates.length > 0 ? candidates : ALL_LANGUAGES,
+    ALL_LANGUAGES[0],
+  );
 }
 
 function pickDemoTimezone(rng: () => number, country: string): string {
   const candidates = DEMO_COUNTRY_TO_TIMEZONES[country] ?? [];
-  return pickFromList(rng, candidates.length > 0 ? candidates : ALL_TIMEZONES, ALL_TIMEZONES[0]);
+  return pickFromList(
+    rng,
+    candidates.length > 0 ? candidates : ALL_TIMEZONES,
+    ALL_TIMEZONES[0],
+  );
 }
 
 function pickDemoContinent(rng: () => number, country: string): string {
-  return DEMO_COUNTRY_TO_CONTINENT[country] ?? pickFromList(rng, ALL_CONTINENTS, "North America");
+  return (
+    DEMO_COUNTRY_TO_CONTINENT[country] ??
+    pickFromList(rng, ALL_CONTINENTS, "North America")
+  );
 }
 
 function pickDemoOrganization(rng: () => number, country: string): string {
   const offset = fnv1a(country || "US") % ALL_ORGS.length;
-  const index = (offset + sInt(rng, 0, Math.min(4, ALL_ORGS.length - 1))) % ALL_ORGS.length;
+  const index =
+    (offset + sInt(rng, 0, Math.min(4, ALL_ORGS.length - 1))) % ALL_ORGS.length;
   return ALL_ORGS[index];
 }
 
@@ -2599,7 +2172,9 @@ function pickDemoGeoContext(
   let cityName = "";
   let city = "";
 
-  const preferCity = cityCandidates.length > 0 && (regionCandidates.length === 0 || rng() < 0.72);
+  const preferCity =
+    cityCandidates.length > 0 &&
+    (regionCandidates.length === 0 || rng() < 0.72);
   if (preferCity) {
     const parsedCity = parseDemoCityLabel(
       pickFromList(rng, cityCandidates, cityCandidates[0] || ""),
@@ -2639,7 +2214,10 @@ function pickDemoGeoContext(
   };
 }
 
-function buildDemoPathTitleMap(profile: DemoSiteProfile, expandedPaths: string[]): Map<string, string> {
+function buildDemoPathTitleMap(
+  profile: DemoSiteProfile,
+  expandedPaths: string[],
+): Map<string, string> {
   const map = new Map<string, string>();
   for (let index = 0; index < profile.paths.length; index += 1) {
     const path = normalizePath(profile.paths[index] || "");
@@ -2666,7 +2244,11 @@ function emptyDemoFactDataset(from: number, to: number): DemoFactDataset {
   };
 }
 
-function buildDemoFactDataset(siteId: string, from: number, to: number): DemoFactDataset {
+function buildDemoFactDataset(
+  siteId: string,
+  from: number,
+  to: number,
+): DemoFactDataset {
   if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) {
     return emptyDemoFactDataset(from, to);
   }
@@ -2685,12 +2267,25 @@ function buildDemoFactDataset(siteId: string, from: number, to: number): DemoFac
   }
 
   const rng = createDemoRng(siteId, `facts:${from}:${to}`);
-  const sampledViewsTarget = Math.max(320, Math.min(12_000, Math.round(Math.sqrt(metrics.views + 1) * 46)));
+  const sampledViewsTarget = Math.max(
+    320,
+    Math.min(12_000, Math.round(Math.sqrt(metrics.views + 1) * 46)),
+  );
   const sampledViews = Math.max(1, Math.min(metrics.views, sampledViewsTarget));
-  const sampledSessionsRaw = Math.round((metrics.sessions / Math.max(metrics.views, 1)) * sampledViews);
-  const sampledSessions = Math.max(1, Math.min(sampledViews, sampledSessionsRaw));
-  const sampledVisitorsRaw = Math.round((metrics.visitors / Math.max(metrics.sessions, 1)) * sampledSessions);
-  const sampledVisitors = Math.max(1, Math.min(sampledSessions, sampledVisitorsRaw));
+  const sampledSessionsRaw = Math.round(
+    (metrics.sessions / Math.max(metrics.views, 1)) * sampledViews,
+  );
+  const sampledSessions = Math.max(
+    1,
+    Math.min(sampledViews, sampledSessionsRaw),
+  );
+  const sampledVisitorsRaw = Math.round(
+    (metrics.visitors / Math.max(metrics.sessions, 1)) * sampledSessions,
+  );
+  const sampledVisitors = Math.max(
+    1,
+    Math.min(sampledSessions, sampledVisitorsRaw),
+  );
 
   const viewWeight = metrics.views / sampledViews;
   const sessionWeight = metrics.sessions / sampledSessions;
@@ -2698,7 +2293,10 @@ function buildDemoFactDataset(siteId: string, from: number, to: number): DemoFac
 
   let sampledBounces = Math.max(
     0,
-    Math.min(sampledSessions, Math.round(metrics.bounces / Math.max(sessionWeight, Number.EPSILON))),
+    Math.min(
+      sampledSessions,
+      Math.round(metrics.bounces / Math.max(sessionWeight, Number.EPSILON)),
+    ),
   );
   const availableIncrements = sampledViews - sampledSessions;
   const requiredIncrementsForNonBounce = sampledSessions - sampledBounces;
@@ -2707,15 +2305,23 @@ function buildDemoFactDataset(siteId: string, from: number, to: number): DemoFac
   }
 
   const sessionViewCounts = new Array(sampledSessions).fill(1);
-  const sessionIndexes = sShuffle(rng, Array.from({ length: sampledSessions }, (_, index) => index));
-  const nonBounceIndexes = sessionIndexes.slice(0, Math.max(0, sampledSessions - sampledBounces));
+  const sessionIndexes = sShuffle(
+    rng,
+    Array.from({ length: sampledSessions }, (_, index) => index),
+  );
+  const nonBounceIndexes = sessionIndexes.slice(
+    0,
+    Math.max(0, sampledSessions - sampledBounces),
+  );
   for (const sessionIndex of nonBounceIndexes) {
     sessionViewCounts[sessionIndex] += 1;
   }
   let remaining = sampledViews - sampledSessions - nonBounceIndexes.length;
   while (remaining > 0) {
-    const pool = nonBounceIndexes.length > 0 ? nonBounceIndexes : sessionIndexes;
-    const pickIndex = pool[Math.floor(Math.pow(rng(), 1.25) * pool.length)] ?? pool[0] ?? 0;
+    const pool =
+      nonBounceIndexes.length > 0 ? nonBounceIndexes : sessionIndexes;
+    const pickIndex =
+      pool[Math.floor(Math.pow(rng(), 1.25) * pool.length)] ?? pool[0] ?? 0;
     sessionViewCounts[pickIndex] += 1;
     remaining -= 1;
   }
@@ -2740,11 +2346,15 @@ function buildDemoFactDataset(siteId: string, from: number, to: number): DemoFac
   const pathTitleMap = buildDemoPathTitleMap(profile, expandedPaths);
   const eventPool = ["pageview", ...profile.eventNames];
   const span = Math.max(1, to - from);
-  const fallbackAvgDuration = Math.max(4_000, Math.round(siteRatios(siteId).avgDurationMs));
+  const fallbackAvgDuration = Math.max(
+    4_000,
+    Math.round(siteRatios(siteId).avgDurationMs),
+  );
 
   const visitorIds = Array.from(
     { length: sampledVisitors },
-    (_, index) => `v-${siteId.slice(-3)}-${index.toString(36).padStart(4, "0")}`,
+    (_, index) =>
+      `v-${siteId.slice(-3)}-${index.toString(36).padStart(4, "0")}`,
   );
   const visitorOrder = sShuffle(rng, [...visitorIds]);
   const visitors = new Map<string, DemoVisitorFact>();
@@ -2755,10 +2365,17 @@ function buildDemoFactDataset(siteId: string, from: number, to: number): DemoFac
   const sessions = new Map<string, DemoSessionFact>();
   const visits: DemoVisitFact[] = [];
 
-  for (let sessionIndex = 0; sessionIndex < sampledSessions; sessionIndex += 1) {
+  for (
+    let sessionIndex = 0;
+    sessionIndex < sampledSessions;
+    sessionIndex += 1
+  ) {
     const viewCount = Math.max(1, sessionViewCounts[sessionIndex] ?? 1);
     const sessionId = `${siteId}-s-${sessionIndex.toString(36).padStart(5, "0")}`;
-    const visitorId = visitorOrder[sessionIndex % visitorOrder.length] ?? visitorOrder[0] ?? `${siteId}-v-0`;
+    const visitorId =
+      visitorOrder[sessionIndex % visitorOrder.length] ??
+      visitorOrder[0] ??
+      `${siteId}-v-0`;
     const country = weightedPickCountry(rng, countryPool);
     const geo = pickDemoGeoContext(rng, country);
     const deviceType = pickDemoDeviceType(rng, profile);
@@ -2788,23 +2405,32 @@ function buildDemoFactDataset(siteId: string, from: number, to: number): DemoFac
     let previousPath = "";
     let entryPath = "/";
     let exitPath = "/";
-    const avgSessionDuration = metrics.avgDurationMs > 0 ? metrics.avgDurationMs : fallbackAvgDuration;
-    const sessionDuration = Math.max(1200, Math.round(avgSessionDuration * (0.56 + rng() * 1.24)));
+    const avgSessionDuration =
+      metrics.avgDurationMs > 0 ? metrics.avgDurationMs : fallbackAvgDuration;
+    const sessionDuration = Math.max(
+      1200,
+      Math.round(avgSessionDuration * (0.56 + rng() * 1.24)),
+    );
 
     for (let visitIndex = 0; visitIndex < viewCount; visitIndex += 1) {
       const pathIndex = weightedPickIndex(rng, pathWeights);
       const pickedPath = expandedPaths[pathIndex] ?? expandedPaths[0] ?? "/";
-      const pathname = visitIndex > 0 && previousPath && rng() < 0.28 ? previousPath : pickedPath;
+      const pathname =
+        visitIndex > 0 && previousPath && rng() < 0.28
+          ? previousPath
+          : pickedPath;
       const title = pathTitleMap.get(pathname) ?? titleFromPath(pathname);
-      const increment = visitIndex === 0 ? sInt(rng, 0, 12_000) : sInt(rng, 8_000, 160_000);
+      const increment =
+        visitIndex === 0 ? sInt(rng, 0, 12_000) : sInt(rng, 8_000, 160_000);
       cursor = Math.min(to - 1, Math.max(from, cursor + increment));
       previousPath = pathname;
       if (visitIndex === 0) entryPath = pathname;
       exitPath = pathname;
 
-      const eventType = visitIndex === 0 || rng() < 0.7
-        ? eventPool[0]
-        : pickFromList(rng, eventPool.slice(1), eventPool[0]);
+      const eventType =
+        visitIndex === 0 || rng() < 0.7
+          ? eventPool[0]
+          : pickFromList(rng, eventPool.slice(1), eventPool[0]);
       const durationMs = Math.max(
         0,
         Math.round((sessionDuration / viewCount) * (0.74 + rng() * 0.62)),
@@ -2851,9 +2477,16 @@ function buildDemoFactDataset(siteId: string, from: number, to: number): DemoFac
     });
   }
 
-  visits.sort((left, right) => left.startedAt - right.startedAt || left.visitId.localeCompare(right.visitId));
+  visits.sort(
+    (left, right) =>
+      left.startedAt - right.startedAt ||
+      left.visitId.localeCompare(right.visitId),
+  );
 
-  const weightedDuration = visits.reduce((sum, visit) => sum + visit.durationMs * viewWeight, 0);
+  const weightedDuration = visits.reduce(
+    (sum, visit) => sum + visit.durationMs * viewWeight,
+    0,
+  );
   if (metrics.totalDurationMs > 0 && weightedDuration > 0) {
     const scale = metrics.totalDurationMs / weightedDuration;
     for (const visit of visits) {
@@ -2874,7 +2507,10 @@ function buildDemoFactDataset(siteId: string, from: number, to: number): DemoFac
   return dataset;
 }
 
-function weightedSessionCount(dataset: DemoFactDataset, sessionIds: Iterable<string>): number {
+function weightedSessionCount(
+  dataset: DemoFactDataset,
+  sessionIds: Iterable<string>,
+): number {
   let total = 0;
   for (const sessionId of sessionIds) {
     total += dataset.sessions.get(sessionId)?.weight ?? 0;
@@ -2882,7 +2518,10 @@ function weightedSessionCount(dataset: DemoFactDataset, sessionIds: Iterable<str
   return total;
 }
 
-function weightedVisitorCount(dataset: DemoFactDataset, visitorIds: Iterable<string>): number {
+function weightedVisitorCount(
+  dataset: DemoFactDataset,
+  visitorIds: Iterable<string>,
+): number {
   let total = 0;
   for (const visitorId of visitorIds) {
     total += dataset.visitors.get(visitorId)?.weight ?? 0;
@@ -2903,24 +2542,44 @@ function applyDemoFilters(
   const parsedGeo = parseDemoGeoFilterValue(filters.geo);
   const regionTokens = new Set(
     [parsedGeo?.regionCode, parsedGeo?.regionName]
-      .map((value) => String(value ?? "").trim().toUpperCase())
+      .map((value) =>
+        String(value ?? "")
+          .trim()
+          .toUpperCase(),
+      )
       .filter(Boolean),
   );
   const equalsTrimmed = (left: string, right: string) => left.trim() === right;
-  const equalsCaseInsensitive = (left: string, right: string) => left.trim().toLowerCase() === right.toLowerCase();
+  const equalsCaseInsensitive = (left: string, right: string) =>
+    left.trim().toLowerCase() === right.toLowerCase();
 
   for (const visit of dataset.visits) {
-    if (filters.country && !equalsCaseInsensitive(visit.country, filters.country)) continue;
-    if (filters.device && !equalsTrimmed(visit.deviceType, filters.device)) continue;
-    if (filters.browser && !equalsTrimmed(visit.browser, filters.browser)) continue;
+    if (
+      filters.country &&
+      !equalsCaseInsensitive(visit.country, filters.country)
+    )
+      continue;
+    if (filters.device && !equalsTrimmed(visit.deviceType, filters.device))
+      continue;
+    if (filters.browser && !equalsTrimmed(visit.browser, filters.browser))
+      continue;
     if (filters.path && !equalsTrimmed(visit.pathname, filters.path)) continue;
-    if (filters.query && !equalsTrimmed(demoQueryStringForVisit(visit), filters.query)) continue;
+    if (
+      filters.query &&
+      !equalsTrimmed(demoQueryStringForVisit(visit), filters.query)
+    )
+      continue;
     if (filters.title && !equalsTrimmed(visit.title, filters.title)) continue;
-    if (filters.hostname && !equalsCaseInsensitive(visit.hostname, filters.hostname)) continue;
+    if (
+      filters.hostname &&
+      !equalsCaseInsensitive(visit.hostname, filters.hostname)
+    )
+      continue;
 
     if (filters.entry) {
       const session = dataset.sessions.get(visit.sessionId);
-      if (!session || !equalsTrimmed(session.entryPath, filters.entry)) continue;
+      if (!session || !equalsTrimmed(session.entryPath, filters.entry))
+        continue;
     }
     if (filters.exit) {
       const session = dataset.sessions.get(visit.sessionId);
@@ -2930,7 +2589,9 @@ function applyDemoFilters(
     if (filters.sourceDomain) {
       if (filters.sourceDomain === DEMO_DIRECT_REFERRER_FILTER_VALUE) {
         if (visit.referrerHost.trim()) continue;
-      } else if (!equalsCaseInsensitive(visit.referrerHost, filters.sourceDomain)) {
+      } else if (
+        !equalsCaseInsensitive(visit.referrerHost, filters.sourceDomain)
+      ) {
         continue;
       }
     }
@@ -2938,12 +2599,16 @@ function applyDemoFilters(
       if (filters.sourceLink === DEMO_DIRECT_REFERRER_FILTER_VALUE) {
         if (visit.referrerUrl.trim()) continue;
       } else {
-        let sourceLinkMatch = equalsCaseInsensitive(visit.referrerUrl, filters.sourceLink)
-          || equalsCaseInsensitive(visit.referrerHost, filters.sourceLink);
+        let sourceLinkMatch =
+          equalsCaseInsensitive(visit.referrerUrl, filters.sourceLink) ||
+          equalsCaseInsensitive(visit.referrerHost, filters.sourceLink);
         if (!sourceLinkMatch) {
           try {
             const hostname = new URL(filters.sourceLink).hostname;
-            sourceLinkMatch = equalsCaseInsensitive(visit.referrerHost, hostname);
+            sourceLinkMatch = equalsCaseInsensitive(
+              visit.referrerHost,
+              hostname,
+            );
           } catch {
             // ignore invalid URL parse and keep fallback matching result
           }
@@ -2952,34 +2617,80 @@ function applyDemoFilters(
       }
     }
 
-    if (filters.clientBrowser && !equalsTrimmed(visit.browser, filters.clientBrowser)) continue;
-    if (filters.clientOsVersion && !equalsTrimmed(visit.osVersion, filters.clientOsVersion)) continue;
-    if (filters.clientDeviceType && !equalsTrimmed(visit.deviceType, filters.clientDeviceType)) continue;
-    if (filters.clientLanguage && !equalsTrimmed(visit.language, filters.clientLanguage)) continue;
-    if (filters.clientScreenSize && !equalsTrimmed(visit.screenSize, filters.clientScreenSize)) continue;
-    if (filters.geoContinent && !equalsTrimmed(visit.continent, filters.geoContinent)) continue;
-    if (filters.geoTimezone && !equalsTrimmed(visit.timezone, filters.geoTimezone)) continue;
-    if (filters.geoOrganization && !equalsTrimmed(visit.organization, filters.geoOrganization)) continue;
+    if (
+      filters.clientBrowser &&
+      !equalsTrimmed(visit.browser, filters.clientBrowser)
+    )
+      continue;
+    if (
+      filters.clientOsVersion &&
+      !equalsTrimmed(visit.osVersion, filters.clientOsVersion)
+    )
+      continue;
+    if (
+      filters.clientDeviceType &&
+      !equalsTrimmed(visit.deviceType, filters.clientDeviceType)
+    )
+      continue;
+    if (
+      filters.clientLanguage &&
+      !equalsTrimmed(visit.language, filters.clientLanguage)
+    )
+      continue;
+    if (
+      filters.clientScreenSize &&
+      !equalsTrimmed(visit.screenSize, filters.clientScreenSize)
+    )
+      continue;
+    if (
+      filters.geoContinent &&
+      !equalsTrimmed(visit.continent, filters.geoContinent)
+    )
+      continue;
+    if (
+      filters.geoTimezone &&
+      !equalsTrimmed(visit.timezone, filters.geoTimezone)
+    )
+      continue;
+    if (
+      filters.geoOrganization &&
+      !equalsTrimmed(visit.organization, filters.geoOrganization)
+    )
+      continue;
 
-    if (parsedGeo?.country && !equalsCaseInsensitive(visit.country, parsedGeo.country)) continue;
+    if (
+      parsedGeo?.country &&
+      !equalsCaseInsensitive(visit.country, parsedGeo.country)
+    )
+      continue;
     if (regionTokens.size > 0) {
       const visitRegionTokens = [visit.regionCode, visit.regionName]
         .map((value) => value.trim().toUpperCase())
         .filter(Boolean);
       if (!visitRegionTokens.some((token) => regionTokens.has(token))) continue;
     }
-    if (parsedGeo?.city && !equalsCaseInsensitive(visit.cityName, parsedGeo.city)) continue;
+    if (
+      parsedGeo?.city &&
+      !equalsCaseInsensitive(visit.cityName, parsedGeo.city)
+    )
+      continue;
 
     result.visits.push(visit);
     result.sessions.add(visit.sessionId);
     result.visitors.add(visit.visitorId);
-    result.visitsBySession.set(visit.sessionId, (result.visitsBySession.get(visit.sessionId) ?? 0) + 1);
+    result.visitsBySession.set(
+      visit.sessionId,
+      (result.visitsBySession.get(visit.sessionId) ?? 0) + 1,
+    );
   }
 
   return result;
 }
 
-function aggregateOverviewMetrics(dataset: DemoFactDataset, filtered: DemoFilteredFacts) {
+function aggregateOverviewMetrics(
+  dataset: DemoFactDataset,
+  filtered: DemoFilteredFacts,
+) {
   const views = Math.round(filtered.visits.length * dataset.viewWeight);
   const sessions = Math.round(weightedSessionCount(dataset, filtered.sessions));
   const visitors = Math.round(weightedVisitorCount(dataset, filtered.visitors));
@@ -2991,10 +2702,15 @@ function aggregateOverviewMetrics(dataset: DemoFactDataset, filtered: DemoFilter
   }
   const bounces = Math.min(sessions, Math.round(bouncesWeighted));
   const totalDurationMs = Math.round(
-    filtered.visits.reduce((sum, visit) => sum + visit.durationMs * dataset.viewWeight, 0),
+    filtered.visits.reduce(
+      (sum, visit) => sum + visit.durationMs * dataset.viewWeight,
+      0,
+    ),
   );
-  const avgDurationMs = sessions > 0 ? Math.round(totalDurationMs / sessions) : 0;
-  const bounceRate = sessions > 0 ? Math.round((bounces / sessions) * 10000) / 10000 : 0;
+  const avgDurationMs =
+    sessions > 0 ? Math.round(totalDurationMs / sessions) : 0;
+  const bounceRate =
+    sessions > 0 ? Math.round((bounces / sessions) * 10000) / 10000 : 0;
   return {
     views,
     sessions,
@@ -3035,14 +2751,21 @@ function aggregateDimensionRowsFromVisits(
     .map(([label, bucket]) => ({
       label,
       views: Math.max(0, Math.round(bucket.views)),
-      visitors: Math.max(0, Math.round(weightedVisitorCount(dataset, bucket.visitors))),
-      sessions: Math.max(0, Math.round(weightedSessionCount(dataset, bucket.sessions))),
+      visitors: Math.max(
+        0,
+        Math.round(weightedVisitorCount(dataset, bucket.visitors)),
+      ),
+      sessions: Math.max(
+        0,
+        Math.round(weightedSessionCount(dataset, bucket.sessions)),
+      ),
     }))
-    .sort((left, right) =>
-      right[sortMetric] - left[sortMetric]
-      || right.views - left.views
-      || right.sessions - left.sessions
-      || left.label.localeCompare(right.label)
+    .sort(
+      (left, right) =>
+        right[sortMetric] - left[sortMetric] ||
+        right.views - left.views ||
+        right.sessions - left.sessions ||
+        left.label.localeCompare(right.label),
     )
     .slice(0, limit);
 }
@@ -3057,13 +2780,22 @@ function aggregateSessionEdgeRows(
   for (const visit of filtered.visits) {
     const existing = edges.get(visit.sessionId);
     if (!existing) {
-      edges.set(visit.sessionId, { at: visit.startedAt, value: visit.pathname });
+      edges.set(visit.sessionId, {
+        at: visit.startedAt,
+        value: visit.pathname,
+      });
       continue;
     }
     if (kind === "entry" && visit.startedAt < existing.at) {
-      edges.set(visit.sessionId, { at: visit.startedAt, value: visit.pathname });
+      edges.set(visit.sessionId, {
+        at: visit.startedAt,
+        value: visit.pathname,
+      });
     } else if (kind === "exit" && visit.startedAt >= existing.at) {
-      edges.set(visit.sessionId, { at: visit.startedAt, value: visit.pathname });
+      edges.set(visit.sessionId, {
+        at: visit.startedAt,
+        value: visit.pathname,
+      });
     }
   }
   const buckets = new Map<
@@ -3088,10 +2820,21 @@ function aggregateSessionEdgeRows(
     .map(([label, bucket]) => ({
       label,
       views: Math.max(0, Math.round(bucket.views)),
-      visitors: Math.max(0, Math.round(weightedVisitorCount(dataset, bucket.visitors))),
-      sessions: Math.max(0, Math.round(weightedSessionCount(dataset, bucket.sessions))),
+      visitors: Math.max(
+        0,
+        Math.round(weightedVisitorCount(dataset, bucket.visitors)),
+      ),
+      sessions: Math.max(
+        0,
+        Math.round(weightedSessionCount(dataset, bucket.sessions)),
+      ),
     }))
-    .sort((left, right) => right.views - left.views || right.sessions - left.sessions || left.label.localeCompare(right.label))
+    .sort(
+      (left, right) =>
+        right.views - left.views ||
+        right.sessions - left.sessions ||
+        left.label.localeCompare(right.label),
+    )
     .slice(0, limit);
 }
 
@@ -3102,16 +2845,56 @@ function collectPageDataAndTabs(
 ): {
   data: Array<{ pathname: string; views: number; sessions: number }>;
   tabs: {
-    path: Array<{ label: string; views: number; sessions: number; visitors: number }>;
-    title: Array<{ label: string; views: number; sessions: number; visitors: number }>;
-    hostname: Array<{ label: string; views: number; sessions: number; visitors: number }>;
-    entry: Array<{ label: string; views: number; sessions: number; visitors: number }>;
-    exit: Array<{ label: string; views: number; sessions: number; visitors: number }>;
+    path: Array<{
+      label: string;
+      views: number;
+      sessions: number;
+      visitors: number;
+    }>;
+    title: Array<{
+      label: string;
+      views: number;
+      sessions: number;
+      visitors: number;
+    }>;
+    hostname: Array<{
+      label: string;
+      views: number;
+      sessions: number;
+      visitors: number;
+    }>;
+    entry: Array<{
+      label: string;
+      views: number;
+      sessions: number;
+      visitors: number;
+    }>;
+    exit: Array<{
+      label: string;
+      views: number;
+      sessions: number;
+      visitors: number;
+    }>;
   };
 } {
-  const pathRows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.pathname);
-  const titleRows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.title);
-  const hostRows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.hostname);
+  const pathRows = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    limit,
+    (visit) => visit.pathname,
+  );
+  const titleRows = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    limit,
+    (visit) => visit.title,
+  );
+  const hostRows = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    limit,
+    (visit) => visit.hostname,
+  );
   const entryRows = aggregateSessionEdgeRows(dataset, filtered, "entry", limit);
   const exitRows = aggregateSessionEdgeRows(dataset, filtered, "exit", limit);
 
@@ -3122,11 +2905,36 @@ function collectPageDataAndTabs(
       sessions: row.sessions,
     })),
     tabs: {
-      path: pathRows.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
-      title: titleRows.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
-      hostname: hostRows.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
-      entry: entryRows.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
-      exit: exitRows.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
+      path: pathRows.map((row) => ({
+        label: row.label,
+        views: row.views,
+        sessions: row.sessions,
+        visitors: row.visitors,
+      })),
+      title: titleRows.map((row) => ({
+        label: row.label,
+        views: row.views,
+        sessions: row.sessions,
+        visitors: row.visitors,
+      })),
+      hostname: hostRows.map((row) => ({
+        label: row.label,
+        views: row.views,
+        sessions: row.sessions,
+        visitors: row.visitors,
+      })),
+      entry: entryRows.map((row) => ({
+        label: row.label,
+        views: row.views,
+        sessions: row.sessions,
+        visitors: row.visitors,
+      })),
+      exit: exitRows.map((row) => ({
+        label: row.label,
+        views: row.views,
+        sessions: row.sessions,
+        visitors: row.visitors,
+      })),
     },
   };
 }
@@ -3139,15 +2947,25 @@ function collectReferrerRows(
     includeFullUrl?: boolean;
     directValue?: string;
   },
-): Array<{ referrer: string; views: number; sessions: number; visitors: number }> {
+): Array<{
+  referrer: string;
+  views: number;
+  sessions: number;
+  visitors: number;
+}> {
   const includeFullUrl = options?.includeFullUrl ?? false;
   const directValue = options?.directValue ?? "(direct)";
-  const rows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => {
-    const referrer = includeFullUrl
-      ? visit.referrerUrl.trim()
-      : visit.referrerHost.trim();
-    return referrer || directValue;
-  });
+  const rows = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    limit,
+    (visit) => {
+      const referrer = includeFullUrl
+        ? visit.referrerUrl.trim()
+        : visit.referrerHost.trim();
+      return referrer || directValue;
+    },
+  );
   return rows.map((row) => ({
     referrer: row.label,
     views: row.views,
@@ -3161,23 +2979,98 @@ function collectClientTabs(
   filtered: DemoFilteredFacts,
   limit: number,
 ): {
-  browser: Array<{ label: string; views: number; sessions: number; visitors: number }>;
-  osVersion: Array<{ label: string; views: number; sessions: number; visitors: number }>;
-  deviceType: Array<{ label: string; views: number; sessions: number; visitors: number }>;
-  language: Array<{ label: string; views: number; sessions: number; visitors: number }>;
-  screenSize: Array<{ label: string; views: number; sessions: number; visitors: number }>;
+  browser: Array<{
+    label: string;
+    views: number;
+    sessions: number;
+    visitors: number;
+  }>;
+  osVersion: Array<{
+    label: string;
+    views: number;
+    sessions: number;
+    visitors: number;
+  }>;
+  deviceType: Array<{
+    label: string;
+    views: number;
+    sessions: number;
+    visitors: number;
+  }>;
+  language: Array<{
+    label: string;
+    views: number;
+    sessions: number;
+    visitors: number;
+  }>;
+  screenSize: Array<{
+    label: string;
+    views: number;
+    sessions: number;
+    visitors: number;
+  }>;
 } {
-  const browser = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.browser);
-  const osVersion = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.osVersion);
-  const deviceType = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.deviceType);
-  const language = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.language);
-  const screenSize = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.screenSize);
+  const browser = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    limit,
+    (visit) => visit.browser,
+  );
+  const osVersion = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    limit,
+    (visit) => visit.osVersion,
+  );
+  const deviceType = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    limit,
+    (visit) => visit.deviceType,
+  );
+  const language = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    limit,
+    (visit) => visit.language,
+  );
+  const screenSize = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    limit,
+    (visit) => visit.screenSize,
+  );
   return {
-    browser: browser.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
-    osVersion: osVersion.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
-    deviceType: deviceType.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
-    language: language.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
-    screenSize: screenSize.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
+    browser: browser.map((row) => ({
+      label: row.label,
+      views: row.views,
+      sessions: row.sessions,
+      visitors: row.visitors,
+    })),
+    osVersion: osVersion.map((row) => ({
+      label: row.label,
+      views: row.views,
+      sessions: row.sessions,
+      visitors: row.visitors,
+    })),
+    deviceType: deviceType.map((row) => ({
+      label: row.label,
+      views: row.views,
+      sessions: row.sessions,
+      visitors: row.visitors,
+    })),
+    language: language.map((row) => ({
+      label: row.label,
+      views: row.views,
+      sessions: row.sessions,
+      visitors: row.visitors,
+    })),
+    screenSize: screenSize.map((row) => ({
+      label: row.label,
+      views: row.views,
+      sessions: row.sessions,
+      visitors: row.visitors,
+    })),
   };
 }
 
@@ -3186,26 +3079,116 @@ function collectGeoTabs(
   filtered: DemoFilteredFacts,
   limit: number,
 ): {
-  country: Array<{ label: string; views: number; sessions: number; visitors: number }>;
-  region: Array<{ label: string; views: number; sessions: number; visitors: number }>;
-  city: Array<{ label: string; views: number; sessions: number; visitors: number }>;
-  continent: Array<{ label: string; views: number; sessions: number; visitors: number }>;
-  timezone: Array<{ label: string; views: number; sessions: number; visitors: number }>;
-  organization: Array<{ label: string; views: number; sessions: number; visitors: number }>;
+  country: Array<{
+    label: string;
+    views: number;
+    sessions: number;
+    visitors: number;
+  }>;
+  region: Array<{
+    label: string;
+    views: number;
+    sessions: number;
+    visitors: number;
+  }>;
+  city: Array<{
+    label: string;
+    views: number;
+    sessions: number;
+    visitors: number;
+  }>;
+  continent: Array<{
+    label: string;
+    views: number;
+    sessions: number;
+    visitors: number;
+  }>;
+  timezone: Array<{
+    label: string;
+    views: number;
+    sessions: number;
+    visitors: number;
+  }>;
+  organization: Array<{
+    label: string;
+    views: number;
+    sessions: number;
+    visitors: number;
+  }>;
 } {
-  const country = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.country);
-  const region = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.region);
-  const city = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.city);
-  const continent = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.continent);
-  const timezone = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.timezone);
-  const organization = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.organization);
+  const country = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    limit,
+    (visit) => visit.country,
+  );
+  const region = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    limit,
+    (visit) => visit.region,
+  );
+  const city = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    limit,
+    (visit) => visit.city,
+  );
+  const continent = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    limit,
+    (visit) => visit.continent,
+  );
+  const timezone = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    limit,
+    (visit) => visit.timezone,
+  );
+  const organization = aggregateDimensionRowsFromVisits(
+    dataset,
+    filtered.visits,
+    limit,
+    (visit) => visit.organization,
+  );
   return {
-    country: country.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
-    region: region.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
-    city: city.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
-    continent: continent.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
-    timezone: timezone.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
-    organization: organization.map((row) => ({ label: row.label, views: row.views, sessions: row.sessions, visitors: row.visitors })),
+    country: country.map((row) => ({
+      label: row.label,
+      views: row.views,
+      sessions: row.sessions,
+      visitors: row.visitors,
+    })),
+    region: region.map((row) => ({
+      label: row.label,
+      views: row.views,
+      sessions: row.sessions,
+      visitors: row.visitors,
+    })),
+    city: city.map((row) => ({
+      label: row.label,
+      views: row.views,
+      sessions: row.sessions,
+      visitors: row.visitors,
+    })),
+    continent: continent.map((row) => ({
+      label: row.label,
+      views: row.views,
+      sessions: row.sessions,
+      visitors: row.visitors,
+    })),
+    timezone: timezone.map((row) => ({
+      label: row.label,
+      views: row.views,
+      sessions: row.sessions,
+      visitors: row.visitors,
+    })),
+    organization: organization.map((row) => ({
+      label: row.label,
+      views: row.views,
+      sessions: row.sessions,
+      visitors: row.visitors,
+    })),
   };
 }
 
@@ -3219,13 +3202,16 @@ function buildDemoTrendBuckets(
   const stepMs = demoIntervalStepMs(interval);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
-  const bucketStats = new Map<number, {
-    views: number;
-    totalDurationMs: number;
-    visitors: Set<string>;
-    sessions: number;
-    bounces: number;
-  }>();
+  const bucketStats = new Map<
+    number,
+    {
+      views: number;
+      totalDurationMs: number;
+      visitors: Set<string>;
+      sessions: number;
+      bounces: number;
+    }
+  >();
   const sessionFirstTs = new Map<string, number>();
 
   const ensureBucket = (bucket: number) => {
@@ -3284,7 +3270,10 @@ function buildDemoTrendBuckets(
       Math.round(agg ? weightedVisitorCount(dataset, agg.visitors) : 0),
     );
     const sessions = Math.max(0, Math.round(agg?.sessions ?? 0));
-    const bounces = Math.min(sessions, Math.max(0, Math.round(agg?.bounces ?? 0)));
+    const bounces = Math.min(
+      sessions,
+      Math.max(0, Math.round(agg?.bounces ?? 0)),
+    );
     const totalDurationMs = Math.max(0, Math.round(agg?.totalDurationMs ?? 0));
     rows.push({
       bucket,
@@ -3305,11 +3294,14 @@ const DEMO_SHARE_TREND_OTHER_KEY = "other";
 const DEMO_SHARE_TREND_OTHER_LABEL = "Other";
 const DEMO_BROWSER_VERSION_UNKNOWN_TOKEN = "__browser_version_unknown__";
 const DEMO_BROWSER_CROSS_UNKNOWN_TOKEN = "__browser_cross_unknown__";
-const DEMO_BROWSER_CROSS_OTHER_BROWSER_TOKEN = "__browser_cross_other_browser__";
-const DEMO_BROWSER_CROSS_OTHER_DIMENSION_TOKEN = "__browser_cross_other_dimension__";
+const DEMO_BROWSER_CROSS_OTHER_BROWSER_TOKEN =
+  "__browser_cross_other_browser__";
+const DEMO_BROWSER_CROSS_OTHER_DIMENSION_TOKEN =
+  "__browser_cross_other_dimension__";
 const DEMO_CLIENT_CROSS_UNKNOWN_TOKEN = "__client_cross_unknown__";
 const DEMO_CLIENT_CROSS_OTHER_PRIMARY_TOKEN = "__client_cross_other_primary__";
-const DEMO_CLIENT_CROSS_OTHER_SECONDARY_TOKEN = "__client_cross_other_secondary__";
+const DEMO_CLIENT_CROSS_OTHER_SECONDARY_TOKEN =
+  "__client_cross_other_secondary__";
 
 type DemoClientDimensionKey =
   | "browser"
@@ -3356,7 +3348,9 @@ function demoOperatingSystemLabel(osVersion: string): string {
     "macOS",
     "iOS",
   ];
-  return knownLabels.find((label) => normalized.startsWith(label)) ?? normalized;
+  return (
+    knownLabels.find((label) => normalized.startsWith(label)) ?? normalized
+  );
 }
 
 function parseDemoClientDimensionKey(
@@ -3364,21 +3358,19 @@ function parseDemoClientDimensionKey(
 ): DemoClientDimensionKey | null {
   const normalized = String(value ?? "").trim();
   if (
-    normalized === "browser"
-    || normalized === "operatingSystem"
-    || normalized === "osVersion"
-    || normalized === "deviceType"
-    || normalized === "language"
-    || normalized === "screenSize"
+    normalized === "browser" ||
+    normalized === "operatingSystem" ||
+    normalized === "osVersion" ||
+    normalized === "deviceType" ||
+    normalized === "language" ||
+    normalized === "screenSize"
   ) {
     return normalized as DemoClientDimensionKey;
   }
   return null;
 }
 
-function demoClientDimensionMeta(
-  dimension: DemoClientDimensionKey,
-): {
+function demoClientDimensionMeta(dimension: DemoClientDimensionKey): {
   fallbackKeyBase: string;
   getLabel: (visit: DemoVisitFact) => string;
 } {
@@ -3444,7 +3436,8 @@ function generateDemoShareTrend(
     visitorLabels.set(visit.visitorId, label);
 
     const bucket = Math.floor(visit.startedAt / stepMs);
-    const labelsForBucket = bucketVisitorLabels.get(bucket) ?? new Map<string, string>();
+    const labelsForBucket =
+      bucketVisitorLabels.get(bucket) ?? new Map<string, string>();
     labelsForBucket.set(visit.visitorId, label);
     bucketVisitorLabels.set(bucket, labelsForBucket);
   }
@@ -3472,14 +3465,21 @@ function generateDemoShareTrend(
     .map(([label, bucket]) => ({
       label,
       views: Math.max(0, Math.round(bucket.views)),
-      visitors: Math.max(0, Math.round(weightedVisitorCount(dataset, bucket.visitors))),
-      sessions: Math.max(0, Math.round(weightedSessionCount(dataset, bucket.sessions))),
+      visitors: Math.max(
+        0,
+        Math.round(weightedVisitorCount(dataset, bucket.visitors)),
+      ),
+      sessions: Math.max(
+        0,
+        Math.round(weightedSessionCount(dataset, bucket.sessions)),
+      ),
     }))
-    .sort((left, right) =>
-      right.visitors - left.visitors
-      || right.views - left.views
-      || right.sessions - left.sessions
-      || left.label.localeCompare(right.label)
+    .sort(
+      (left, right) =>
+        right.visitors - left.visitors ||
+        right.views - left.views ||
+        right.sessions - left.sessions ||
+        left.label.localeCompare(right.label),
     )
     .slice(0, limit);
   const topLabels = topRows.map((row) => row.label);
@@ -3537,8 +3537,14 @@ function generateDemoShareTrend(
       key: DEMO_SHARE_TREND_OTHER_KEY,
       label: DEMO_SHARE_TREND_OTHER_LABEL,
       views: Math.max(0, Math.round(otherViews)),
-      visitors: Math.max(0, Math.round(weightedVisitorCount(dataset, otherVisitors))),
-      sessions: Math.max(0, Math.round(weightedSessionCount(dataset, otherSessions))),
+      visitors: Math.max(
+        0,
+        Math.round(weightedVisitorCount(dataset, otherVisitors)),
+      ),
+      sessions: Math.max(
+        0,
+        Math.round(weightedSessionCount(dataset, otherSessions)),
+      ),
       isOther: true,
     });
   }
@@ -3573,10 +3579,12 @@ function generateDemoShareTrend(
 
   for (const visit of filtered.visits) {
     const bucket = Math.floor(visit.startedAt / stepMs);
-    const bucketLabel = bucketVisitorLabels.get(bucket)?.get(visit.visitorId) ?? "";
-    const label = bucketLabel && topLabelSet.has(bucketLabel)
-      ? bucketLabel
-      : DEMO_SHARE_TREND_OTHER_LABEL;
+    const bucketLabel =
+      bucketVisitorLabels.get(bucket)?.get(visit.visitorId) ?? "";
+    const label =
+      bucketLabel && topLabelSet.has(bucketLabel)
+        ? bucketLabel
+        : DEMO_SHARE_TREND_OTHER_LABEL;
     const key = keyByLabel.get(label);
     if (!key) continue;
 
@@ -3599,12 +3607,14 @@ function generateDemoShareTrend(
   for (const point of bucketMap.values()) {
     let totalVisitors = 0;
     for (const seriesItem of series) {
-      const visitorSet = point.visitorSets.get(seriesItem.key) ?? new Set<string>();
+      const visitorSet =
+        point.visitorSets.get(seriesItem.key) ?? new Set<string>();
       const visitors = Math.max(
         0,
         Math.round(weightedVisitorCount(dataset, visitorSet)),
       );
-      const sessionSet = point.sessionSets.get(seriesItem.key) ?? new Set<string>();
+      const sessionSet =
+        point.sessionSets.get(seriesItem.key) ?? new Set<string>();
       const sessions = Math.max(
         0,
         Math.round(weightedSessionCount(dataset, sessionSet)),
@@ -3688,7 +3698,8 @@ function generateDemoReferrerTrend(
   const interval = parseDemoInterval(params.interval);
   return generateDemoShareTrend(siteId, params, {
     fallbackKeyBase: "referrer-domain",
-    getLabel: (visit) => visit.referrerHost.trim() || DEMO_DIRECT_REFERRER_FILTER_VALUE,
+    getLabel: (visit) =>
+      visit.referrerHost.trim() || DEMO_DIRECT_REFERRER_FILTER_VALUE,
   });
 }
 
@@ -3699,9 +3710,10 @@ function generateDemoBrowserVersionBreakdown(
   const from = parseDemoNumber(params.from, 0);
   const to = parseDemoNumber(params.to, Date.now());
   const rawBrowserLimit = parseDemoNumber(params.browserLimit, 0);
-  const browserLimit = Number.isFinite(rawBrowserLimit) && rawBrowserLimit > 0
-    ? Math.max(1, Math.floor(rawBrowserLimit))
-    : Number.MAX_SAFE_INTEGER;
+  const browserLimit =
+    Number.isFinite(rawBrowserLimit) && rawBrowserLimit > 0
+      ? Math.max(1, Math.floor(rawBrowserLimit))
+      : Number.MAX_SAFE_INTEGER;
   const versionLimit = parseDemoLimit(params.versionLimit, 5, 1, 8);
   const filters = parseDemoFilters(params);
   const dataset = buildDemoFactDataset(siteId, from, to);
@@ -3729,14 +3741,23 @@ function generateDemoBrowserVersionBreakdown(
       const row = versionRows[index];
       if (index < versionLimit) {
         versions.push({
-          key: row.label === DEMO_BROWSER_VERSION_UNKNOWN_TOKEN
-            ? "unknown"
-            : createDemoShareTrendSeriesKey(row.label, new Set(["other", "unknown"]), "version"),
-          label: row.label === DEMO_BROWSER_VERSION_UNKNOWN_TOKEN ? "Unknown" : row.label,
+          key:
+            row.label === DEMO_BROWSER_VERSION_UNKNOWN_TOKEN
+              ? "unknown"
+              : createDemoShareTrendSeriesKey(
+                  row.label,
+                  new Set(["other", "unknown"]),
+                  "version",
+                ),
+          label:
+            row.label === DEMO_BROWSER_VERSION_UNKNOWN_TOKEN
+              ? "Unknown"
+              : row.label,
           views: row.views,
           visitors: row.visitors,
           sessions: row.sessions,
-          isUnknown: row.label === DEMO_BROWSER_VERSION_UNKNOWN_TOKEN || undefined,
+          isUnknown:
+            row.label === DEMO_BROWSER_VERSION_UNKNOWN_TOKEN || undefined,
         });
       } else {
         otherViews += row.views;
@@ -3825,7 +3846,9 @@ function generateDemoBrowserCrossDimension(
 
   const topDimensions = aggregateDimensionRowsFromVisits(
     dataset,
-    filtered.visits.filter((visit) => String(visit.browser || "").trim().length > 0),
+    filtered.visits.filter(
+      (visit) => String(visit.browser || "").trim().length > 0,
+    ),
     dimensionLimit,
     (visit) => {
       const label = String(getDimension(visit) || "").trim();
@@ -3850,7 +3873,10 @@ function generateDemoBrowserCrossDimension(
       views: number;
       visitors: Set<string>;
       sessions: Set<string>;
-      cells: Map<string, { views: number; visitors: Set<string>; sessions: Set<string> }>;
+      cells: Map<
+        string,
+        { views: number; visitors: Set<string>; sessions: Set<string> }
+      >;
     }
   >();
   const columnBuckets = new Map<
@@ -3875,7 +3901,10 @@ function generateDemoBrowserCrossDimension(
       views: 0,
       visitors: new Set<string>(),
       sessions: new Set<string>(),
-      cells: new Map<string, { views: number; visitors: Set<string>; sessions: Set<string> }>(),
+      cells: new Map<
+        string,
+        { views: number; visitors: Set<string>; sessions: Set<string> }
+      >(),
     };
     rowBucket.views += dataset.viewWeight;
     rowBucket.visitors.add(visit.visitorId);
@@ -3932,7 +3961,11 @@ function generateDemoBrowserCrossDimension(
     return {
       bucket: row.label,
       item: {
-        key: createDemoShareTrendSeriesKey(row.label, columnKeySet, fallbackKeyBase),
+        key: createDemoShareTrendSeriesKey(
+          row.label,
+          columnKeySet,
+          fallbackKeyBase,
+        ),
         label: row.label,
         views: row.views,
         visitors: row.visitors,
@@ -3942,7 +3975,9 @@ function generateDemoBrowserCrossDimension(
   });
 
   if (columnBuckets.has(DEMO_BROWSER_CROSS_OTHER_DIMENSION_TOKEN)) {
-    const otherColumn = columnBuckets.get(DEMO_BROWSER_CROSS_OTHER_DIMENSION_TOKEN) ?? {
+    const otherColumn = columnBuckets.get(
+      DEMO_BROWSER_CROSS_OTHER_DIMENSION_TOKEN,
+    ) ?? {
       views: 0,
       visitors: new Set<string>(),
       sessions: new Set<string>(),
@@ -3957,7 +3992,10 @@ function generateDemoBrowserCrossDimension(
           0,
           Math.round(weightedVisitorCount(dataset, otherColumn.visitors)),
         ),
-        sessions: Math.max(0, Math.round(weightedSessionCount(dataset, otherColumn.sessions))),
+        sessions: Math.max(
+          0,
+          Math.round(weightedSessionCount(dataset, otherColumn.sessions)),
+        ),
         isOther: true,
       },
     });
@@ -3990,7 +4028,10 @@ function generateDemoBrowserCrossDimension(
       views: 0,
       visitors: new Set<string>(),
       sessions: new Set<string>(),
-      cells: new Map<string, { views: number; visitors: Set<string>; sessions: Set<string> }>(),
+      cells: new Map<
+        string,
+        { views: number; visitors: Set<string>; sessions: Set<string> }
+      >(),
     };
     rowDescriptors.push({
       bucket: DEMO_BROWSER_CROSS_OTHER_BROWSER_TOKEN,
@@ -3998,8 +4039,14 @@ function generateDemoBrowserCrossDimension(
         key: "other",
         label: DEMO_SHARE_TREND_OTHER_LABEL,
         views: Math.max(0, Math.round(otherRow.views)),
-        visitors: Math.max(0, Math.round(weightedVisitorCount(dataset, otherRow.visitors))),
-        sessions: Math.max(0, Math.round(weightedSessionCount(dataset, otherRow.sessions))),
+        visitors: Math.max(
+          0,
+          Math.round(weightedVisitorCount(dataset, otherRow.visitors)),
+        ),
+        sessions: Math.max(
+          0,
+          Math.round(weightedSessionCount(dataset, otherRow.sessions)),
+        ),
         isOther: true,
       },
     });
@@ -4017,11 +4064,21 @@ function generateDemoBrowserCrossDimension(
           views: Math.max(0, Math.round(cell?.views ?? 0)),
           visitors: Math.max(
             0,
-            Math.round(weightedVisitorCount(dataset, cell?.visitors ?? new Set<string>())),
+            Math.round(
+              weightedVisitorCount(
+                dataset,
+                cell?.visitors ?? new Set<string>(),
+              ),
+            ),
           ),
           sessions: Math.max(
             0,
-            Math.round(weightedSessionCount(dataset, cell?.sessions ?? new Set<string>())),
+            Math.round(
+              weightedSessionCount(
+                dataset,
+                cell?.sessions ?? new Set<string>(),
+              ),
+            ),
           ),
           ...(column.item.isOther ? { isOther: true } : {}),
           ...(column.item.isUnknown ? { isUnknown: true } : {}),
@@ -4032,10 +4089,16 @@ function generateDemoBrowserCrossDimension(
         ...row.item,
         views: Math.max(0, Math.round(rowBucket?.views ?? row.item.views)),
         visitors: rowBucket
-          ? Math.max(0, Math.round(weightedVisitorCount(dataset, rowBucket.visitors)))
+          ? Math.max(
+              0,
+              Math.round(weightedVisitorCount(dataset, rowBucket.visitors)),
+            )
           : row.item.visitors,
         sessions: rowBucket
-          ? Math.max(0, Math.round(weightedSessionCount(dataset, rowBucket.sessions)))
+          ? Math.max(
+              0,
+              Math.round(weightedSessionCount(dataset, rowBucket.sessions)),
+            )
           : row.item.sessions,
         cells,
       };
@@ -4157,20 +4220,17 @@ function generateDemoBrowserRadar(
 
     const avgDuration = sessions > 0 ? totalDuration / sessions : 0;
     const engagement =
-      sessions > 0
-        ? Number(((sessions - bounces) / sessions).toFixed(6))
-        : 0;
+      sessions > 0 ? Number(((sessions - bounces) / sessions).toFixed(6)) : 0;
     const depth = sessions > 0 ? totalPages / sessions : 0;
     const loyalty =
-      visitors > 0
-        ? Number((returningVisitors / visitors).toFixed(6))
-        : 0;
+      visitors > 0 ? Number((returningVisitors / visitors).toFixed(6)) : 0;
     // Use site-wide frequency ratio as base with per-browser deterministic
     // variation: demo assigns random browsers per session so per-browser
     // raw frequency is always ~1.  Real data does not have this problem.
     let nameHash = 0;
     for (let i = 0; i < browserRow.label.length; i++) {
-      nameHash = ((nameHash << 5) - nameHash + browserRow.label.charCodeAt(i)) | 0;
+      nameHash =
+        ((nameHash << 5) - nameHash + browserRow.label.charCodeAt(i)) | 0;
     }
     const variation = 0.75 + (Math.abs(nameHash) % 100) / 200; // 0.75 – 1.25
     const frequency = globalFrequency * variation;
@@ -4218,7 +4278,10 @@ function generateDemoReferrerRadar(
   }
 
   const selectedReferrers = topReferrers.slice(0, limit);
-  const totalVisitors = topReferrers.reduce((sum, row) => sum + row.visitors, 0);
+  const totalVisitors = topReferrers.reduce(
+    (sum, row) => sum + row.visitors,
+    0,
+  );
   const globalFrequency =
     filtered.visitors.size > 0
       ? filtered.sessions.size / filtered.visitors.size
@@ -4269,17 +4332,14 @@ function generateDemoReferrerRadar(
 
     const avgDuration = sessions > 0 ? totalDuration / sessions : 0;
     const engagement =
-      sessions > 0
-        ? Number(((sessions - bounces) / sessions).toFixed(6))
-        : 0;
+      sessions > 0 ? Number(((sessions - bounces) / sessions).toFixed(6)) : 0;
     const depth = sessions > 0 ? totalPages / sessions : 0;
     const loyalty =
-      visitors > 0
-        ? Number((returningVisitors / visitors).toFixed(6))
-        : 0;
+      visitors > 0 ? Number((returningVisitors / visitors).toFixed(6)) : 0;
     let nameHash = 0;
     for (let i = 0; i < referrerRow.referrer.length; i++) {
-      nameHash = ((nameHash << 5) - nameHash + referrerRow.referrer.charCodeAt(i)) | 0;
+      nameHash =
+        ((nameHash << 5) - nameHash + referrerRow.referrer.charCodeAt(i)) | 0;
     }
     const variation = 0.75 + (Math.abs(nameHash) % 100) / 200;
     const frequency = globalFrequency * variation;
@@ -4362,7 +4422,9 @@ function generateDemoClientCrossDimensionData(
 
   const topSecondary = aggregateDimensionRowsFromVisits(
     dataset,
-    filtered.visits.filter((visit) => String(primaryMeta.getLabel(visit) || "").trim().length > 0),
+    filtered.visits.filter(
+      (visit) => String(primaryMeta.getLabel(visit) || "").trim().length > 0,
+    ),
     secondaryLimit,
     (visit) => {
       const label = String(secondaryMeta.getLabel(visit) || "").trim();
@@ -4387,7 +4449,10 @@ function generateDemoClientCrossDimensionData(
       views: number;
       visitors: Set<string>;
       sessions: Set<string>;
-      cells: Map<string, { views: number; visitors: Set<string>; sessions: Set<string> }>;
+      cells: Map<
+        string,
+        { views: number; visitors: Set<string>; sessions: Set<string> }
+      >;
     }
   >();
   const columnBuckets = new Map<
@@ -4412,7 +4477,10 @@ function generateDemoClientCrossDimensionData(
       views: 0,
       visitors: new Set<string>(),
       sessions: new Set<string>(),
-      cells: new Map<string, { views: number; visitors: Set<string>; sessions: Set<string> }>(),
+      cells: new Map<
+        string,
+        { views: number; visitors: Set<string>; sessions: Set<string> }
+      >(),
     };
     rowBucket.views += dataset.viewWeight;
     rowBucket.visitors.add(visit.visitorId);
@@ -4483,7 +4551,9 @@ function generateDemoClientCrossDimensionData(
   });
 
   if (columnBuckets.has(DEMO_CLIENT_CROSS_OTHER_SECONDARY_TOKEN)) {
-    const otherColumn = columnBuckets.get(DEMO_CLIENT_CROSS_OTHER_SECONDARY_TOKEN) ?? {
+    const otherColumn = columnBuckets.get(
+      DEMO_CLIENT_CROSS_OTHER_SECONDARY_TOKEN,
+    ) ?? {
       views: 0,
       visitors: new Set<string>(),
       sessions: new Set<string>(),
@@ -4498,7 +4568,10 @@ function generateDemoClientCrossDimensionData(
           0,
           Math.round(weightedVisitorCount(dataset, otherColumn.visitors)),
         ),
-        sessions: Math.max(0, Math.round(weightedSessionCount(dataset, otherColumn.sessions))),
+        sessions: Math.max(
+          0,
+          Math.round(weightedSessionCount(dataset, otherColumn.sessions)),
+        ),
         isOther: true,
       },
     });
@@ -4535,7 +4608,10 @@ function generateDemoClientCrossDimensionData(
       views: 0,
       visitors: new Set<string>(),
       sessions: new Set<string>(),
-      cells: new Map<string, { views: number; visitors: Set<string>; sessions: Set<string> }>(),
+      cells: new Map<
+        string,
+        { views: number; visitors: Set<string>; sessions: Set<string> }
+      >(),
     };
     rowDescriptors.push({
       bucket: DEMO_CLIENT_CROSS_OTHER_PRIMARY_TOKEN,
@@ -4543,8 +4619,14 @@ function generateDemoClientCrossDimensionData(
         key: "other",
         label: DEMO_SHARE_TREND_OTHER_LABEL,
         views: Math.max(0, Math.round(otherRow.views)),
-        visitors: Math.max(0, Math.round(weightedVisitorCount(dataset, otherRow.visitors))),
-        sessions: Math.max(0, Math.round(weightedSessionCount(dataset, otherRow.sessions))),
+        visitors: Math.max(
+          0,
+          Math.round(weightedVisitorCount(dataset, otherRow.visitors)),
+        ),
+        sessions: Math.max(
+          0,
+          Math.round(weightedSessionCount(dataset, otherRow.sessions)),
+        ),
         isOther: true,
       },
     });
@@ -4562,11 +4644,21 @@ function generateDemoClientCrossDimensionData(
           views: Math.max(0, Math.round(cell?.views ?? 0)),
           visitors: Math.max(
             0,
-            Math.round(weightedVisitorCount(dataset, cell?.visitors ?? new Set<string>())),
+            Math.round(
+              weightedVisitorCount(
+                dataset,
+                cell?.visitors ?? new Set<string>(),
+              ),
+            ),
           ),
           sessions: Math.max(
             0,
-            Math.round(weightedSessionCount(dataset, cell?.sessions ?? new Set<string>())),
+            Math.round(
+              weightedSessionCount(
+                dataset,
+                cell?.sessions ?? new Set<string>(),
+              ),
+            ),
           ),
           ...(column.item.isOther ? { isOther: true } : {}),
           ...(column.item.isUnknown ? { isUnknown: true } : {}),
@@ -4577,10 +4669,16 @@ function generateDemoClientCrossDimensionData(
         ...row.item,
         views: Math.max(0, Math.round(rowBucket?.views ?? row.item.views)),
         visitors: rowBucket
-          ? Math.max(0, Math.round(weightedVisitorCount(dataset, rowBucket.visitors)))
+          ? Math.max(
+              0,
+              Math.round(weightedVisitorCount(dataset, rowBucket.visitors)),
+            )
           : row.item.visitors,
         sessions: rowBucket
-          ? Math.max(0, Math.round(weightedSessionCount(dataset, rowBucket.sessions)))
+          ? Math.max(
+              0,
+              Math.round(weightedSessionCount(dataset, rowBucket.sessions)),
+            )
           : row.item.sessions,
         cells,
       };
@@ -4599,8 +4697,14 @@ function generateDemoClientCrossBreakdown(
   params: Record<string, string | number>,
 ): Record<string, unknown> {
   const primaryDimension = parseDemoClientDimensionKey(params.primaryDimension);
-  const secondaryDimension = parseDemoClientDimensionKey(params.secondaryDimension);
-  if (!primaryDimension || !secondaryDimension || primaryDimension === secondaryDimension) {
+  const secondaryDimension = parseDemoClientDimensionKey(
+    params.secondaryDimension,
+  );
+  if (
+    !primaryDimension ||
+    !secondaryDimension ||
+    primaryDimension === secondaryDimension
+  ) {
     return {
       columns: [],
       rows: [],
@@ -4647,7 +4751,10 @@ function generateDemoOverview(
     const previousFrom = Math.max(0, from - span);
     const previousDataset = buildDemoFactDataset(siteId, previousFrom, from);
     const previousFiltered = applyDemoFilters(previousDataset, filters);
-    const previousData = aggregateOverviewMetrics(previousDataset, previousFiltered);
+    const previousData = aggregateOverviewMetrics(
+      previousDataset,
+      previousFiltered,
+    );
     result.previousData = previousData;
     const cr = (cur: number, prev: number) =>
       prev === 0 ? null : Math.round(((cur - prev) / prev) * 10000) / 10000;
@@ -4687,12 +4794,7 @@ function generateDemoTrend(
   };
 }
 
-type DemoPerformanceMetricKey =
-  | "ttfb"
-  | "fcp"
-  | "lcp"
-  | "cls"
-  | "inp";
+type DemoPerformanceMetricKey = "ttfb" | "fcp" | "lcp" | "cls" | "inp";
 
 function roundDemoPerformanceValue(value: number): number {
   return Math.round(value * 1000) / 1000;
@@ -4704,16 +4806,18 @@ function demoPerformanceMetricValue(
   metric: DemoPerformanceMetricKey,
 ): number {
   const rng = mulberry32(fnv1a(`${siteId}:${visit.visitId}:${metric}`));
-  const mobileFactor = visit.deviceType === "Mobile"
-    ? 1.18
-    : visit.deviceType === "Tablet"
-      ? 1.09
+  const mobileFactor =
+    visit.deviceType === "Mobile"
+      ? 1.18
+      : visit.deviceType === "Tablet"
+        ? 1.09
+        : 1;
+  const articleFactor =
+    visit.pathname.includes("/blog") ||
+    visit.pathname.includes("/news") ||
+    visit.pathname.includes("/posts")
+      ? 1.08
       : 1;
-  const articleFactor = visit.pathname.includes("/blog")
-    || visit.pathname.includes("/news")
-    || visit.pathname.includes("/posts")
-    ? 1.08
-    : 1;
   const browserFactor = visit.browser.includes("Safari")
     ? 1.04
     : visit.browser.includes("Firefox")
@@ -4721,7 +4825,8 @@ function demoPerformanceMetricValue(
       : 1;
 
   if (metric === "cls") {
-    const value = (0.025 + rng() * 0.12) * Math.min(1.35, mobileFactor * articleFactor);
+    const value =
+      (0.025 + rng() * 0.12) * Math.min(1.35, mobileFactor * articleFactor);
     return roundDemoPerformanceValue(Math.min(0.35, value));
   }
 
@@ -4734,7 +4839,12 @@ function demoPerformanceMetricValue(
   const durationFactor = 1 + Math.min(visit.durationMs, 180_000) / 600_000;
   const variability = 0.78 + rng() * 0.68;
   return roundDemoPerformanceValue(
-    base[metric] * mobileFactor * articleFactor * browserFactor * durationFactor * variability,
+    base[metric] *
+      mobileFactor *
+      articleFactor *
+      browserFactor *
+      durationFactor *
+      variability,
   );
 }
 
@@ -4766,7 +4876,9 @@ function demoPerformanceBandValue(
 ): number {
   const band = demoPerformanceBandForIndex(index);
   const target = DEMO_PERFORMANCE_BAND_VALUES[metric][band];
-  const rng = mulberry32(fnv1a(`${siteId}:${visit.visitId}:${metric}:${band}:${index}`));
+  const rng = mulberry32(
+    fnv1a(`${siteId}:${visit.visitId}:${metric}:${band}:${index}`),
+  );
   const jitter = 0.86 + rng() * 0.28;
   return roundDemoPerformanceValue(target * jitter);
 }
@@ -4774,7 +4886,9 @@ function demoPerformanceBandValue(
 function demoPercentile(values: number[], ratio: number): number | null {
   if (values.length === 0) return null;
   const rank = Math.max(0, Math.ceil(values.length * ratio) - 1);
-  return roundDemoPerformanceValue(values[Math.min(rank, values.length - 1)] ?? 0);
+  return roundDemoPerformanceValue(
+    values[Math.min(rank, values.length - 1)] ?? 0,
+  );
 }
 
 function generateDemoPerformance(
@@ -4817,13 +4931,19 @@ function generateDemoPerformance(
 
   const summaries = Object.fromEntries(
     metrics.map((metric) => {
-      const values = [...summaryValues[metric]].sort((left, right) => left - right);
-      const avg = values.length > 0
-        ? roundDemoPerformanceValue(
-            values.reduce((sum, value) => sum + value, 0) / values.length,
-          )
-        : null;
-      const samples = Math.max(0, Math.round(values.length * dataset.viewWeight));
+      const values = [...summaryValues[metric]].sort(
+        (left, right) => left - right,
+      );
+      const avg =
+        values.length > 0
+          ? roundDemoPerformanceValue(
+              values.reduce((sum, value) => sum + value, 0) / values.length,
+            )
+          : null;
+      const samples = Math.max(
+        0,
+        Math.round(values.length * dataset.viewWeight),
+      );
       return [
         metric,
         {
@@ -4851,12 +4971,15 @@ function generateDemoPerformance(
 
       for (let ts = from; ts < to; ts += stepMs) {
         const bucket = Math.floor(ts / stepMs);
-        const values = [...(bucketValues[metric].get(bucket) ?? [])].sort((left, right) => left - right);
-        const avg = values.length > 0
-          ? roundDemoPerformanceValue(
-              values.reduce((sum, value) => sum + value, 0) / values.length,
-            )
-          : null;
+        const values = [...(bucketValues[metric].get(bucket) ?? [])].sort(
+          (left, right) => left - right,
+        );
+        const avg =
+          values.length > 0
+            ? roundDemoPerformanceValue(
+                values.reduce((sum, value) => sum + value, 0) / values.length,
+              )
+            : null;
         rows.push({
           bucket,
           timestampMs: ts,
@@ -4890,11 +5013,12 @@ function generateDemoPerformance(
             demoPerformanceBandValue(siteId, visit, metric, routeIndex),
           )
           .sort((left, right) => left - right);
-        const avg = values.length > 0
-          ? roundDemoPerformanceValue(
-              values.reduce((sum, value) => sum + value, 0) / values.length,
-            )
-          : null;
+        const avg =
+          values.length > 0
+            ? roundDemoPerformanceValue(
+                values.reduce((sum, value) => sum + value, 0) / values.length,
+              )
+            : null;
         return [
           metric,
           {
@@ -4902,7 +5026,10 @@ function generateDemoPerformance(
             p50: demoPercentile(values, 0.5),
             p75: demoPercentile(values, 0.75),
             p95: demoPercentile(values, 0.95),
-            samples: Math.max(0, Math.round(values.length * dataset.viewWeight)),
+            samples: Math.max(
+              0,
+              Math.round(values.length * dataset.viewWeight),
+            ),
           },
         ];
       }),
@@ -4932,11 +5059,12 @@ function generateDemoPerformance(
             demoPerformanceBandValue(siteId, visit, metric, countryIndex),
           )
           .sort((left, right) => left - right);
-        const avg = values.length > 0
-          ? roundDemoPerformanceValue(
-              values.reduce((sum, value) => sum + value, 0) / values.length,
-            )
-          : null;
+        const avg =
+          values.length > 0
+            ? roundDemoPerformanceValue(
+                values.reduce((sum, value) => sum + value, 0) / values.length,
+              )
+            : null;
         return [
           metric,
           {
@@ -4944,7 +5072,10 @@ function generateDemoPerformance(
             p50: demoPercentile(values, 0.5),
             p75: demoPercentile(values, 0.75),
             p95: demoPercentile(values, 0.95),
-            samples: Math.max(0, Math.round(values.length * dataset.viewWeight)),
+            samples: Math.max(
+              0,
+              Math.round(values.length * dataset.viewWeight),
+            ),
           },
         ];
       }),
@@ -5011,7 +5142,11 @@ function generateDemoPagesDashboard(
   const span = Math.max(0, to - from);
   const previousFrom = Math.max(0, from - span);
   const previousTo = Math.max(previousFrom, from);
-  const previousDataset = buildDemoFactDataset(siteId, previousFrom, previousTo);
+  const previousDataset = buildDemoFactDataset(
+    siteId,
+    previousFrom,
+    previousTo,
+  );
 
   const percentDelta = (current: number, previous: number) =>
     previous <= 0 ? null : ((current - previous) / previous) * 100;
@@ -5043,13 +5178,10 @@ function generateDemoPagesDashboard(
         3,
         (visit) => visit.title,
       ).map((titleRow) => titleRow.label);
-      const trend = buildDemoTrendBuckets(
-        siteId,
-        from,
-        to,
-        interval,
-        { ...filters, path: pathname },
-      ).map((point) => ({
+      const trend = buildDemoTrendBuckets(siteId, from, to, interval, {
+        ...filters,
+        path: pathname,
+      }).map((point) => ({
         timestampMs: point.timestampMs,
         views: point.views,
         visitors: point.visitors,
@@ -5136,8 +5268,10 @@ function createDemoJourneySession(
   visits: DemoVisitFact[],
 ): Record<string, unknown> | null {
   if (visits.length === 0) return null;
-  const ordered = [...visits].sort((left, right) =>
-    left.startedAt - right.startedAt || left.visitId.localeCompare(right.visitId)
+  const ordered = [...visits].sort(
+    (left, right) =>
+      left.startedAt - right.startedAt ||
+      left.visitId.localeCompare(right.visitId),
   );
   const first = ordered[0];
   const last = ordered[ordered.length - 1];
@@ -5179,7 +5313,9 @@ function createDemoJourneySession(
   };
 }
 
-function demoVisitsBySession(visits: DemoVisitFact[]): Map<string, DemoVisitFact[]> {
+function demoVisitsBySession(
+  visits: DemoVisitFact[],
+): Map<string, DemoVisitFact[]> {
   const bySession = new Map<string, DemoVisitFact[]>();
   for (const visit of visits) {
     const bucket = bySession.get(visit.sessionId) ?? [];
@@ -5262,14 +5398,18 @@ function createDemoJourneyEvents(
         id: `${visit.visitId}:${visit.eventType}`,
         kind: "custom",
         eventType: visit.eventType,
-        occurredAt: Math.min(visit.startedAt + 1000, visit.startedAt + Math.max(1000, visit.durationMs)),
+        occurredAt: Math.min(
+          visit.startedAt + 1000,
+          visit.startedAt + Math.max(1000, visit.durationMs),
+        ),
       });
     }
   }
 
-  return events.sort((left, right) =>
-    Number(right.occurredAt ?? 0) - Number(left.occurredAt ?? 0)
-    || String(right.id ?? "").localeCompare(String(left.id ?? ""))
+  return events.sort(
+    (left, right) =>
+      Number(right.occurredAt ?? 0) - Number(left.occurredAt ?? 0) ||
+      String(right.id ?? "").localeCompare(String(left.id ?? "")),
   );
 }
 
@@ -5282,11 +5422,16 @@ function summarizeDemoVisitedPages(events: Array<Record<string, unknown>>) {
   }
   return Array.from(pages.entries())
     .map(([pathname, views]) => ({ pathname, views }))
-    .sort((left, right) => right.views - left.views || left.pathname.localeCompare(right.pathname))
+    .sort(
+      (left, right) =>
+        right.views - left.views || left.pathname.localeCompare(right.pathname),
+    )
     .slice(0, 50);
 }
 
-function summarizeDemoEventDistribution(events: Array<Record<string, unknown>>) {
+function summarizeDemoEventDistribution(
+  events: Array<Record<string, unknown>>,
+) {
   const counts = new Map<string, number>();
   for (const event of events) {
     const eventType = String(event.eventType || event.kind || "event");
@@ -5294,7 +5439,11 @@ function summarizeDemoEventDistribution(events: Array<Record<string, unknown>>) 
   }
   return Array.from(counts.entries())
     .map(([eventType, count]) => ({ eventType, count }))
-    .sort((left, right) => right.count - left.count || left.eventType.localeCompare(right.eventType))
+    .sort(
+      (left, right) =>
+        right.count - left.count ||
+        left.eventType.localeCompare(right.eventType),
+    )
     .slice(0, 50);
 }
 
@@ -5311,7 +5460,10 @@ function summarizeDemoActivity(events: Array<Record<string, unknown>>) {
     .sort((left, right) => left.date.localeCompare(right.date));
 }
 
-function demoJourneyPercentile(values: number[], percentileValue: number): number {
+function demoJourneyPercentile(
+  values: number[],
+  percentileValue: number,
+): number {
   const sorted = values
     .filter((value) => Number.isFinite(value) && value >= 0)
     .sort((left, right) => left - right);
@@ -5339,8 +5491,14 @@ type DemoSortDirection = "asc" | "desc";
 type DemoVisitorSortKey = "firstSeenAt" | "lastSeenAt" | "sessions" | "views";
 type DemoSessionSortKey = "startedAt" | "durationMs" | "views";
 
-function parseDemoSortDirection(value: string | number | undefined): DemoSortDirection {
-  return String(value ?? "").trim().toLowerCase() === "asc" ? "asc" : "desc";
+function parseDemoSortDirection(
+  value: string | number | undefined,
+): DemoSortDirection {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase() === "asc"
+    ? "asc"
+    : "desc";
 }
 
 function parseDemoVisitorSort(params: Record<string, string | number>): {
@@ -5400,7 +5558,9 @@ function generateDemoVisitors(
   const matchedVisitorIds = search
     ? new Set(
         filtered.visits
-          .filter((visit) => demoVisitMatchesJourneySearch(dataset, visit, search))
+          .filter((visit) =>
+            demoVisitMatchesJourneySearch(dataset, visit, search),
+          )
           .map((visit) => visit.visitorId),
       )
     : null;
@@ -5439,33 +5599,39 @@ function generateDemoVisitors(
 
   const requestedRows = Array.from(buckets.entries())
     .map(([visitorId, bucket]) => ({
-        visitorId,
-        sessionId: bucket.latestVisit.sessionId,
-        firstSeenAt: bucket.firstSeenAt,
-        lastSeenAt: bucket.lastSeenAt,
-        views: Math.max(0, Math.round(bucket.views)),
-        sessions: Math.max(0, Math.round(weightedSessionCount(dataset, bucket.sessions))),
-        events: bucket.events,
-        country: bucket.latestVisit.country,
-        region: bucket.latestVisit.regionName || bucket.latestVisit.region,
-        regionCode: bucket.latestVisit.regionCode,
-        city: bucket.latestVisit.cityName || bucket.latestVisit.city,
-        referrerHost: bucket.latestVisit.referrerHost,
-        referrerUrl: bucket.latestVisit.referrerUrl,
-        browser: bucket.latestVisit.browser,
-        browserVersion: bucket.latestVisit.browserVersion,
-        os: demoOperatingSystemLabel(bucket.latestVisit.osVersion),
-        osVersion: bucket.latestVisit.osVersion,
-        deviceType: bucket.latestVisit.deviceType,
-        screenWidth: parseDemoScreenSize(bucket.latestVisit.screenSize).screenWidth,
-        screenHeight: parseDemoScreenSize(bucket.latestVisit.screenSize).screenHeight,
-      }))
-    .sort((left, right) => (
-        compareDemoNumericField(left, right, sort.key, sort.direction)
-        || right.lastSeenAt - left.lastSeenAt
-        || right.views - left.views
-        || left.visitorId.localeCompare(right.visitorId)
-      ))
+      visitorId,
+      sessionId: bucket.latestVisit.sessionId,
+      firstSeenAt: bucket.firstSeenAt,
+      lastSeenAt: bucket.lastSeenAt,
+      views: Math.max(0, Math.round(bucket.views)),
+      sessions: Math.max(
+        0,
+        Math.round(weightedSessionCount(dataset, bucket.sessions)),
+      ),
+      events: bucket.events,
+      country: bucket.latestVisit.country,
+      region: bucket.latestVisit.regionName || bucket.latestVisit.region,
+      regionCode: bucket.latestVisit.regionCode,
+      city: bucket.latestVisit.cityName || bucket.latestVisit.city,
+      referrerHost: bucket.latestVisit.referrerHost,
+      referrerUrl: bucket.latestVisit.referrerUrl,
+      browser: bucket.latestVisit.browser,
+      browserVersion: bucket.latestVisit.browserVersion,
+      os: demoOperatingSystemLabel(bucket.latestVisit.osVersion),
+      osVersion: bucket.latestVisit.osVersion,
+      deviceType: bucket.latestVisit.deviceType,
+      screenWidth: parseDemoScreenSize(bucket.latestVisit.screenSize)
+        .screenWidth,
+      screenHeight: parseDemoScreenSize(bucket.latestVisit.screenSize)
+        .screenHeight,
+    }))
+    .sort(
+      (left, right) =>
+        compareDemoNumericField(left, right, sort.key, sort.direction) ||
+        right.lastSeenAt - left.lastSeenAt ||
+        right.views - left.views ||
+        left.visitorId.localeCompare(right.visitorId),
+    )
     .slice(offset, offset + pageSize + (paged ? 1 : 0));
   const hasMore = paged && requestedRows.length > pageSize;
   const rows = hasMore ? requestedRows.slice(0, pageSize) : requestedRows;
@@ -5503,21 +5669,28 @@ function generateDemoSessions(
   const matchedSessionIds = search
     ? new Set(
         filtered.visits
-          .filter((visit) => demoVisitMatchesJourneySearch(dataset, visit, search))
+          .filter((visit) =>
+            demoVisitMatchesJourneySearch(dataset, visit, search),
+          )
           .map((visit) => visit.sessionId),
       )
     : null;
-  const requestedRows = Array.from(demoVisitsBySession(filtered.visits).entries())
+  const requestedRows = Array.from(
+    demoVisitsBySession(filtered.visits).entries(),
+  )
     .filter(([sessionId]) =>
       matchedSessionIds ? matchedSessionIds.has(sessionId) : true,
     )
     .map(([sessionId, visits]) => createDemoJourneySession(sessionId, visits))
     .filter((row): row is Record<string, unknown> => Boolean(row))
-    .sort((left, right) => (
-      compareDemoNumericField(left, right, sort.key, sort.direction)
-      || Number(right.startedAt ?? 0) - Number(left.startedAt ?? 0)
-      || String(left.sessionId ?? "").localeCompare(String(right.sessionId ?? ""))
-    ))
+    .sort(
+      (left, right) =>
+        compareDemoNumericField(left, right, sort.key, sort.direction) ||
+        Number(right.startedAt ?? 0) - Number(left.startedAt ?? 0) ||
+        String(left.sessionId ?? "").localeCompare(
+          String(right.sessionId ?? ""),
+        ),
+    )
     .slice(offset, offset + pageSize + (paged ? 1 : 0));
   const hasMore = paged && requestedRows.length > pageSize;
   const rows = hasMore ? requestedRows.slice(0, pageSize) : requestedRows;
@@ -5546,19 +5719,30 @@ function generateDemoVisitorDetail(
   const filters = parseDemoFilters(params);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
-  const visits = filtered.visits.filter((visit) => visit.visitorId === visitorId);
+  const visits = filtered.visits.filter(
+    (visit) => visit.visitorId === visitorId,
+  );
   if (visits.length === 0) return { ok: true, data: null };
 
   const sessions = Array.from(demoVisitsBySession(visits).entries())
-    .map(([sessionId, sessionVisits]) => createDemoJourneySession(sessionId, sessionVisits))
+    .map(([sessionId, sessionVisits]) =>
+      createDemoJourneySession(sessionId, sessionVisits),
+    )
     .filter((row): row is Record<string, unknown> => Boolean(row))
-    .sort((left, right) => Number(right.startedAt ?? 0) - Number(left.startedAt ?? 0));
+    .sort(
+      (left, right) =>
+        Number(right.startedAt ?? 0) - Number(left.startedAt ?? 0),
+    );
   const events = createDemoJourneyEvents(visits, { includeSessionStart: true });
-  const latest = [...visits].sort((left, right) => right.startedAt - left.startedAt)[0] ?? visits[0];
+  const latest =
+    [...visits].sort((left, right) => right.startedAt - left.startedAt)[0] ??
+    visits[0];
   const firstSeenAt = Math.min(...visits.map((visit) => visit.startedAt));
   const lastSeenAt = Math.max(...visits.map((visit) => visit.startedAt));
   const screen = parseDemoScreenSize(latest.screenSize);
-  const durationValues = sessions.map((session) => Number(session.durationMs ?? 0));
+  const durationValues = sessions.map((session) =>
+    Number(session.durationMs ?? 0),
+  );
   const totalDuration = durationValues.reduce((sum, value) => sum + value, 0);
   const daysActive = new Set(
     events
@@ -5595,16 +5779,21 @@ function generateDemoVisitorDetail(
         totalEvents: events.length,
         sessions: sessions.length,
         views: visits.length,
-        avgEventsPerSession: sessions.length > 0 ? events.length / sessions.length : 0,
-        bounceRate: sessions.length > 0
-          ? sessions.filter((session) => Boolean(session.bounce)).length / sessions.length
-          : 0,
-        avgDurationMs: sessions.length > 0 ? Math.round(totalDuration / sessions.length) : 0,
+        avgEventsPerSession:
+          sessions.length > 0 ? events.length / sessions.length : 0,
+        bounceRate:
+          sessions.length > 0
+            ? sessions.filter((session) => Boolean(session.bounce)).length /
+              sessions.length
+            : 0,
+        avgDurationMs:
+          sessions.length > 0 ? Math.round(totalDuration / sessions.length) : 0,
         p90DurationMs: demoJourneyPercentile(durationValues, 90),
         firstSeenAt,
         lastSeenAt,
         daysActive,
-        conversionEvents: events.filter((event) => event.kind === "custom").length,
+        conversionEvents: events.filter((event) => event.kind === "custom")
+          .length,
         avgTimeBetweenSessionsMs: demoAverageGapMs(
           sessions.map((session) => Number(session.startedAt ?? 0)),
         ),
@@ -5629,7 +5818,9 @@ function generateDemoSessionDetail(
   const filters = parseDemoFilters(params);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
-  const visits = filtered.visits.filter((visit) => visit.sessionId === sessionId);
+  const visits = filtered.visits.filter(
+    (visit) => visit.sessionId === sessionId,
+  );
   const session = createDemoJourneySession(sessionId, visits);
   if (!session) return { ok: true, data: null };
   const events = createDemoJourneyEvents(visits, { includeSessionStart: true });
@@ -5662,13 +5853,28 @@ function demoQueryStringForVisit(visit: DemoVisitFact): string {
   const magnitude = demoStringHash(seed);
   if (magnitude % 100 < 42) return "";
 
-  let choices = ["?utm_source=newsletter", "?ref=nav", "?variant=a", "?theme=dark"];
+  let choices = [
+    "?utm_source=newsletter",
+    "?ref=nav",
+    "?variant=a",
+    "?theme=dark",
+  ];
   if (pathname.includes("/pricing")) {
-    choices = ["?plan=pro", "?billing=annual", "?utm_campaign=pricing", "?seat=team"];
+    choices = [
+      "?plan=pro",
+      "?billing=annual",
+      "?utm_campaign=pricing",
+      "?seat=team",
+    ];
   } else if (pathname.includes("/docs") || pathname.includes("/guide")) {
     choices = ["?q=install", "?version=latest", "?tab=examples", "?lang=js"];
   } else if (pathname.includes("/news") || pathname.includes("/blog")) {
-    choices = ["?utm_source=rss", "?comment=1", "?share=twitter", "?ref=homepage"];
+    choices = [
+      "?utm_source=rss",
+      "?comment=1",
+      "?share=twitter",
+      "?ref=homepage",
+    ];
   } else if (pathname.includes("/product")) {
     choices = ["?sku=core", "?variant=trial", "?demo=1", "?review=latest"];
   }
@@ -5715,34 +5921,56 @@ function generateDemoDimension(
 
   let rows: DemoDimensionRow[] = [];
   if (dimensionType === "countries") {
-    rows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.country);
+    rows = aggregateDimensionRowsFromVisits(
+      dataset,
+      filtered.visits,
+      limit,
+      (visit) => visit.country,
+    );
   } else if (dimensionType === "devices") {
-    rows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => visit.deviceType);
+    rows = aggregateDimensionRowsFromVisits(
+      dataset,
+      filtered.visits,
+      limit,
+      (visit) => visit.deviceType,
+    );
   } else if (dimensionType === "page-hash") {
-    rows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => (
-      demoHashFragmentForVisit(visit) || DEMO_EMPTY_HASH_VALUE
-    ));
+    rows = aggregateDimensionRowsFromVisits(
+      dataset,
+      filtered.visits,
+      limit,
+      (visit) => demoHashFragmentForVisit(visit) || DEMO_EMPTY_HASH_VALUE,
+    );
   } else if (dimensionType === "page-query") {
-    rows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => (
-      demoQueryStringForVisit(visit) || DEMO_EMPTY_QUERY_VALUE
-    ));
+    rows = aggregateDimensionRowsFromVisits(
+      dataset,
+      filtered.visits,
+      limit,
+      (visit) => demoQueryStringForVisit(visit) || DEMO_EMPTY_QUERY_VALUE,
+    );
   } else if (dimensionType === "event-types") {
-    rows = aggregateDimensionRowsFromVisits(dataset, filtered.visits, limit, (visit) => (
-      visit.eventType === "pageview" ? "" : visit.eventType
-    ));
+    rows = aggregateDimensionRowsFromVisits(
+      dataset,
+      filtered.visits,
+      limit,
+      (visit) => (visit.eventType === "pageview" ? "" : visit.eventType),
+    );
   }
 
   return {
     ok: true,
-    data: rows.map((row) => ({
-      value:
-        row.label === DEMO_EMPTY_HASH_VALUE || row.label === DEMO_EMPTY_QUERY_VALUE
-          ? ""
-          : row.label,
-      views: row.views,
-      sessions: row.sessions,
-      visitors: row.visitors,
-    })).sort((a, b) => b.views - a.views),
+    data: rows
+      .map((row) => ({
+        value:
+          row.label === DEMO_EMPTY_HASH_VALUE ||
+          row.label === DEMO_EMPTY_QUERY_VALUE
+            ? ""
+            : row.label,
+        views: row.views,
+        sessions: row.sessions,
+        visitors: row.visitors,
+      }))
+      .sort((a, b) => b.views - a.views),
   };
 }
 
@@ -5884,11 +6112,11 @@ function parseDemoUtmDimensionKey(
 ): DemoUtmDimensionKey | null {
   const normalized = String(value ?? "").trim();
   if (
-    normalized === "source"
-    || normalized === "medium"
-    || normalized === "campaign"
-    || normalized === "term"
-    || normalized === "content"
+    normalized === "source" ||
+    normalized === "medium" ||
+    normalized === "campaign" ||
+    normalized === "term" ||
+    normalized === "content"
   ) {
     return normalized as DemoUtmDimensionKey;
   }
@@ -5958,11 +6186,12 @@ function buildDemoUtmRows(
         ),
       ),
     }))
-    .sort((left, right) =>
-      right.views - left.views
-      || right.sessions - left.sessions
-      || right.visitors - left.visitors
-      || left.label.localeCompare(right.label)
+    .sort(
+      (left, right) =>
+        right.views - left.views ||
+        right.sessions - left.sessions ||
+        right.visitors - left.visitors ||
+        left.label.localeCompare(right.label),
     );
 }
 
@@ -5980,8 +6209,9 @@ function generateDemoUtmDimension(
         views: row.views,
         sessions: row.sessions,
       }))
-      .sort((left, right) =>
-        right.views - left.views || right.sessions - left.sessions
+      .sort(
+        (left, right) =>
+          right.views - left.views || right.sessions - left.sessions,
       ),
   };
 }
@@ -6005,7 +6235,12 @@ function generateDemoUtmTrend(
   const to = parseDemoNumber(params.to, Date.now());
   const limit = parseDemoLimit(params.limit, 5, 1, 12);
   const filters = parseDemoFilters(params);
-  const rows = buildDemoUtmRows(siteId, dimension, params, Math.min(limit + 6, 24));
+  const rows = buildDemoUtmRows(
+    siteId,
+    dimension,
+    params,
+    Math.min(limit + 6, 24),
+  );
   const topRows = rows.slice(0, limit);
   const otherRows = rows.slice(limit);
 
@@ -6063,7 +6298,10 @@ function generateDemoUtmTrend(
     let remainder = total - base.reduce((sum, value) => sum + value, 0);
     const order = raw
       .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
-      .sort((left, right) => right.fraction - left.fraction || left.index - right.index);
+      .sort(
+        (left, right) =>
+          right.fraction - left.fraction || left.index - right.index,
+      );
 
     let cursor = 0;
     while (remainder > 0 && order.length > 0) {
@@ -6080,7 +6318,9 @@ function generateDemoUtmTrend(
   const data = bucketRows.map((bucketRow) => {
     const weights = series.map((item, index) => {
       const base = Math.max(1, item.visitors || item.sessions || item.views);
-      const sine = Math.sin((bucketRow.bucket + 1) * (index + 1) * 0.71 + dimensionOffset);
+      const sine = Math.sin(
+        (bucketRow.bucket + 1) * (index + 1) * 0.71 + dimensionOffset,
+      );
       const cosine = Math.cos((bucketRow.bucket + 2) * 0.37 + index * 0.63);
       const variance = item.isOther
         ? 0.92 + sine * 0.04 + cosine * 0.03
@@ -6138,7 +6378,9 @@ function generateDemoGeoDimensionTabs(
   const from = parseDemoNumber(params.from, 0);
   const to = parseDemoNumber(params.to, Date.now());
   const rawFilters = parseDemoFilters(params);
-  const filters = options?.ignoreGeo ? withoutDemoGeoFilter(rawFilters) : rawFilters;
+  const filters = options?.ignoreGeo
+    ? withoutDemoGeoFilter(rawFilters)
+    : rawFilters;
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
   const tabs = collectGeoTabs(dataset, filtered, limit);
@@ -6154,7 +6396,10 @@ function generateDemoGeoPoints(
   params: Record<string, string | number>,
 ): Record<string, unknown> {
   const limit = parseDemoLimit(params.limit, 5000, 50, 20_000);
-  const from = parseDemoNumber(params.from, Math.max(0, Date.now() - 24 * 3600 * 1000));
+  const from = parseDemoNumber(
+    params.from,
+    Math.max(0, Date.now() - 24 * 3600 * 1000),
+  );
   const to = parseDemoNumber(params.to, Date.now());
   const rawFilters = parseDemoFilters(params);
   const filters = parseDemoBoolean(params.applyGeoFilter)
@@ -6163,7 +6408,9 @@ function generateDemoGeoPoints(
   const parsedGeo = parseDemoGeoFilterValue(filters.geo);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
-  const orderedVisits = [...filtered.visits].sort((left, right) => right.startedAt - left.startedAt);
+  const orderedVisits = [...filtered.visits].sort(
+    (left, right) => right.startedAt - left.startedAt,
+  );
 
   const countryBuckets = new Map<
     string,
@@ -6185,18 +6432,37 @@ function generateDemoGeoPoints(
     .map(([country, bucket]) => ({
       country,
       views: Math.max(0, Math.round(bucket.views)),
-      sessions: Math.max(0, Math.round(weightedSessionCount(dataset, bucket.sessions))),
-      visitors: Math.max(0, Math.round(weightedVisitorCount(dataset, bucket.visitors))),
+      sessions: Math.max(
+        0,
+        Math.round(weightedSessionCount(dataset, bucket.sessions)),
+      ),
+      visitors: Math.max(
+        0,
+        Math.round(weightedVisitorCount(dataset, bucket.visitors)),
+      ),
     }))
-    .sort((left, right) => right.views - left.views || left.country.localeCompare(right.country));
+    .sort(
+      (left, right) =>
+        right.views - left.views || left.country.localeCompare(right.country),
+    );
 
   const regionBuckets = new Map<
     string,
-    { label: string; views: number; sessions: Set<string>; visitors: Set<string> }
+    {
+      label: string;
+      views: number;
+      sessions: Set<string>;
+      visitors: Set<string>;
+    }
   >();
   const cityBuckets = new Map<
     string,
-    { label: string; views: number; sessions: Set<string>; visitors: Set<string> }
+    {
+      label: string;
+      views: number;
+      sessions: Set<string>;
+      visitors: Set<string>;
+    }
   >();
 
   for (const visit of filtered.visits) {
@@ -6234,10 +6500,19 @@ function generateDemoGeoPoints(
             value,
             label: bucket.label,
             views: Math.max(0, Math.round(bucket.views)),
-            sessions: Math.max(0, Math.round(weightedSessionCount(dataset, bucket.sessions))),
-            visitors: Math.max(0, Math.round(weightedVisitorCount(dataset, bucket.visitors))),
+            sessions: Math.max(
+              0,
+              Math.round(weightedSessionCount(dataset, bucket.sessions)),
+            ),
+            visitors: Math.max(
+              0,
+              Math.round(weightedVisitorCount(dataset, bucket.visitors)),
+            ),
           }))
-          .sort((left, right) => right.views - left.views || left.label.localeCompare(right.label))
+          .sort(
+            (left, right) =>
+              right.views - left.views || left.label.localeCompare(right.label),
+          )
       : [];
 
   const cityCounts =
@@ -6247,10 +6522,19 @@ function generateDemoGeoPoints(
             value,
             label: bucket.label,
             views: Math.max(0, Math.round(bucket.views)),
-            sessions: Math.max(0, Math.round(weightedSessionCount(dataset, bucket.sessions))),
-            visitors: Math.max(0, Math.round(weightedVisitorCount(dataset, bucket.visitors))),
+            sessions: Math.max(
+              0,
+              Math.round(weightedSessionCount(dataset, bucket.sessions)),
+            ),
+            visitors: Math.max(
+              0,
+              Math.round(weightedVisitorCount(dataset, bucket.visitors)),
+            ),
           }))
-          .sort((left, right) => right.views - left.views || left.label.localeCompare(right.label))
+          .sort(
+            (left, right) =>
+              right.views - left.views || left.label.localeCompare(right.label),
+          )
       : [];
 
   return {
@@ -6358,7 +6642,11 @@ function dedupeDemoFilterOptions(
     label: string;
     group?: "country" | "region" | "city";
   }>,
-): Array<{ value: string; label: string; group?: "country" | "region" | "city" }> {
+): Array<{
+  value: string;
+  label: string;
+  group?: "country" | "region" | "city";
+}> {
   const seen = new Set<string>();
   const deduped: Array<{
     value: string;
@@ -6444,10 +6732,12 @@ function generateDemoFilterOptions(
     );
     return {
       ok: true,
-      data: dedupeDemoFilterOptions(rows.map((row) => ({
-        value: row.label,
-        label: row.label,
-      }))),
+      data: dedupeDemoFilterOptions(
+        rows.map((row) => ({
+          value: row.label,
+          label: row.label,
+        })),
+      ),
     };
   }
   if (filterKey === "device") {
@@ -6459,10 +6749,12 @@ function generateDemoFilterOptions(
     );
     return {
       ok: true,
-      data: dedupeDemoFilterOptions(rows.map((row) => ({
-        value: row.label,
-        label: row.label,
-      }))),
+      data: dedupeDemoFilterOptions(
+        rows.map((row) => ({
+          value: row.label,
+          label: row.label,
+        })),
+      ),
     };
   }
   if (filterKey === "browser") {
@@ -6474,10 +6766,12 @@ function generateDemoFilterOptions(
     );
     return {
       ok: true,
-      data: dedupeDemoFilterOptions(rows.map((row) => ({
-        value: row.label,
-        label: row.label,
-      }))),
+      data: dedupeDemoFilterOptions(
+        rows.map((row) => ({
+          value: row.label,
+          label: row.label,
+        })),
+      ),
     };
   }
   if (
@@ -6505,15 +6799,17 @@ function generateDemoFilterOptions(
     });
     return {
       ok: true,
-      data: dedupeDemoFilterOptions(rows.map((row) => {
-        const value = String(row.referrer ?? "").trim();
-        return value
-          ? { value, label: value }
-          : {
-              value: DEMO_DIRECT_REFERRER_FILTER_VALUE,
-              label: DEMO_DIRECT_REFERRER_FILTER_VALUE,
-            };
-      })),
+      data: dedupeDemoFilterOptions(
+        rows.map((row) => {
+          const value = String(row.referrer ?? "").trim();
+          return value
+            ? { value, label: value }
+            : {
+                value: DEMO_DIRECT_REFERRER_FILTER_VALUE,
+                label: DEMO_DIRECT_REFERRER_FILTER_VALUE,
+              };
+        }),
+      ),
     };
   }
 
@@ -6535,10 +6831,12 @@ function generateDemoFilterOptions(
     const rows = clientTabs[keyMap[filterKey]] ?? [];
     return {
       ok: true,
-      data: dedupeDemoFilterOptions(rows.map((row) => ({
-        value: String(row.label ?? "").trim(),
-        label: String(row.label ?? "").trim(),
-      }))),
+      data: dedupeDemoFilterOptions(
+        rows.map((row) => ({
+          value: String(row.label ?? "").trim(),
+          label: String(row.label ?? "").trim(),
+        })),
+      ),
     };
   }
 
@@ -6566,7 +6864,8 @@ function generateDemoFilterOptions(
           const segments = value.split("::").map((segment) => segment.trim());
           return {
             value,
-            label: segments[3] || segments[2] || segments[1] || segments[0] || value,
+            label:
+              segments[3] || segments[2] || segments[1] || segments[0] || value,
             group: "city" as const,
           };
         }),
@@ -6587,10 +6886,12 @@ function generateDemoFilterOptions(
     const rows = geoTabs[keyMap[filterKey]] ?? [];
     return {
       ok: true,
-      data: dedupeDemoFilterOptions(rows.map((row) => ({
-        value: String(row.label ?? "").trim(),
-        label: String(row.label ?? "").trim(),
-      }))),
+      data: dedupeDemoFilterOptions(
+        rows.map((row) => ({
+          value: String(row.label ?? "").trim(),
+          label: String(row.label ?? "").trim(),
+        })),
+      ),
     };
   }
 
@@ -6621,7 +6922,8 @@ function generateDemoTeamDashboard(
       publicEnabled: 0,
       publicSlug: null,
       createdAt: now - 180 * 24 * 3600 * 1000,
-      updatedAt: now - sInt(mulberry32(fnv1a(site.id)), 1, 14) * 24 * 3600 * 1000,
+      updatedAt:
+        now - sInt(mulberry32(fnv1a(site.id)), 1, 14) * 24 * 3600 * 1000,
       overview: metrics,
       changeRates: {
         views: cr(metrics.views, prevMetrics.views),
@@ -6635,16 +6937,27 @@ function generateDemoTeamDashboard(
   });
 
   const stepMs = demoIntervalStepMs(interval);
-  const trend: Array<{ bucket: number; timestampMs: number; sites: Array<{ siteId: string; views: number; visitors: number }> }> = [];
+  const trend: Array<{
+    bucket: number;
+    timestampMs: number;
+    sites: Array<{ siteId: string; views: number; visitors: number }>;
+  }> = [];
   for (let ts = from; ts < to; ts += stepMs) {
     const end = Math.min(ts + stepMs, to);
     const sitesForBucket = teamSites.map((site) => {
       const views = integrateViews(site.id, ts, end);
       const r = siteRatios(site.id);
-      const visitors = Math.max(views > 0 ? 1 : 0, Math.round(views * r.sessionsPerView * r.visitorsPerSession));
+      const visitors = Math.max(
+        views > 0 ? 1 : 0,
+        Math.round(views * r.sessionsPerView * r.visitorsPerSession),
+      );
       return { siteId: site.id, views, visitors };
     });
-    trend.push({ bucket: Math.floor(ts / stepMs), timestampMs: ts, sites: sitesForBucket });
+    trend.push({
+      bucket: Math.floor(ts / stepMs),
+      timestampMs: ts,
+      sites: sitesForBucket,
+    });
   }
 
   return { ok: true, data: { sites, trend } };
@@ -6688,18 +7001,16 @@ function getDemoTeams() {
 
 function getDemoSites(teamId: string) {
   const now = Date.now();
-  return DEMO_SITE_PROFILES
-    .filter((s) => s.teamId === teamId)
-    .map((s) => ({
-      id: s.id,
-      teamId: s.teamId,
-      name: s.name,
-      domain: s.domain,
-      publicEnabled: 0,
-      publicSlug: null,
-      createdAt: now - 180 * 24 * 3600 * 1000,
-      updatedAt: now - sInt(mulberry32(fnv1a(s.id)), 1, 14) * 24 * 3600 * 1000,
-    }));
+  return DEMO_SITE_PROFILES.filter((s) => s.teamId === teamId).map((s) => ({
+    id: s.id,
+    teamId: s.teamId,
+    name: s.name,
+    domain: s.domain,
+    publicEnabled: 0,
+    publicSlug: null,
+    createdAt: now - 180 * 24 * 3600 * 1000,
+    updatedAt: now - sInt(mulberry32(fnv1a(s.id)), 1, 14) * 24 * 3600 * 1000,
+  }));
 }
 
 function getDemoMembers(teamId: string) {
@@ -6730,8 +7041,11 @@ function getDemoSiteConfig() {
 }
 
 function getDemoScriptSnippet(siteId: string) {
-  const edgeBase = process.env.NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL
-    || (typeof window !== "undefined" ? window.location.origin : "https://localhost:3000");
+  const edgeBase =
+    process.env.NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL ||
+    (typeof window !== "undefined"
+      ? window.location.origin
+      : "https://localhost:3000");
   const src = `${edgeBase.replace(/\/$/, "")}/script.js?siteId=${encodeURIComponent(siteId)}`;
   return {
     siteId,
@@ -6755,8 +7069,13 @@ export function handleDemoRequest(options: {
   const teamId = String(params.teamId || "");
 
   // Write operations → read-only stub
-    if (method === "POST" || method === "PATCH" || method === "PUT" || method === "DELETE") {
-      // Special cases that need real-looking responses
+  if (
+    method === "POST" ||
+    method === "PATCH" ||
+    method === "PUT" ||
+    method === "DELETE"
+  ) {
+    // Special cases that need real-looking responses
     if (path.includes("/auth/login")) {
       const user = getDemoUser();
       return { ok: true, data: { user, teams: getDemoTeams() } };
@@ -6768,23 +7087,23 @@ export function handleDemoRequest(options: {
     if (path.includes("/profile")) {
       return { ok: true, data: getDemoUser() };
     }
-      if (path.includes("/site-config")) {
-        const config =
-          options.body &&
-          typeof options.body === "object" &&
-          "config" in options.body &&
-          options.body.config &&
-          typeof options.body.config === "object"
-            ? (options.body.config as Record<string, unknown>)
-            : {};
-        return {
-          ok: true,
-          data: {
-            ...getDemoSiteConfig(),
-            ...config,
-          },
-        };
-      }
+    if (path.includes("/site-config")) {
+      const config =
+        options.body &&
+        typeof options.body === "object" &&
+        "config" in options.body &&
+        options.body.config &&
+        typeof options.body.config === "object"
+          ? (options.body.config as Record<string, unknown>)
+          : {};
+      return {
+        ok: true,
+        data: {
+          ...getDemoSiteConfig(),
+          ...config,
+        },
+      };
+    }
     // Generic write → return empty success
     return { ok: true, data: {} };
   }
@@ -6906,20 +7225,20 @@ export function handleDemoRequest(options: {
   if (path.includes("/browser-trend")) {
     return generateDemoBrowserTrend(siteId, params);
   }
-    if (path.includes("/browser-engine-trend")) {
-      return generateDemoBrowserEngineTrend(siteId, params);
-    }
-    if (path.includes("/client-dimension-trend")) {
-      return generateDemoClientDimensionTrend(siteId, params);
-    }
-    if (path.includes("/utm-dimension-trend")) {
-      return generateDemoUtmTrend(siteId, params);
-    }
-    if (path.includes("/client-cross-breakdown")) {
-      return generateDemoClientCrossBreakdown(siteId, params);
-    }
-    if (path.includes("/trend")) {
-      return generateDemoTrend(siteId, params);
+  if (path.includes("/browser-engine-trend")) {
+    return generateDemoBrowserEngineTrend(siteId, params);
+  }
+  if (path.includes("/client-dimension-trend")) {
+    return generateDemoClientDimensionTrend(siteId, params);
+  }
+  if (path.includes("/utm-dimension-trend")) {
+    return generateDemoUtmTrend(siteId, params);
+  }
+  if (path.includes("/client-cross-breakdown")) {
+    return generateDemoClientCrossBreakdown(siteId, params);
+  }
+  if (path.includes("/trend")) {
+    return generateDemoTrend(siteId, params);
   }
   if (path.includes("/session-detail")) {
     return generateDemoSessionDetail(siteId, params);

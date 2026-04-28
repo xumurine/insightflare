@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion } from "motion/react";
-import { toast } from "sonner";
 import {
   RiAddLine,
   RiArrowDownLine,
@@ -14,28 +12,16 @@ import {
   RiArrowUpSLine,
   RiDeleteBinLine,
 } from "@remixicon/react";
-import { Badge } from "@/components/ui/badge";
+import { motion } from "motion/react";
+import { toast } from "sonner";
+
+import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
+import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { PageHeading } from "@/components/dashboard/page-heading";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
-import { AutoTransition } from "@/components/ui/auto-transition";
-import { Clickable } from "@/components/ui/clickable";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  SiteTrafficStackChart,
+  TrafficPairBarChart,
+} from "@/components/dashboard/site-traffic-charts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,14 +33,29 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { TableCell, TableHead, TableRow } from "@/components/ui/table";
-import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { AutoTransition } from "@/components/ui/auto-transition";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
-  SiteTrafficStackChart,
-  TrafficPairBarChart,
-} from "@/components/dashboard/site-traffic-charts";
-import { PageHeading } from "@/components/dashboard/page-heading";
-import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Clickable } from "@/components/ui/clickable";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import {
   durationFormat,
   intlLocale,
@@ -1259,7 +1260,10 @@ export function TeamManagementClient({
                                   {messages.common.avgDuration}
                                 </p>
                                 <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                  {durationFormat(locale, overview.avgDurationMs)}
+                                  {durationFormat(
+                                    locale,
+                                    overview.avgDurationMs,
+                                  )}
                                   <ChangeRateInline
                                     value={changeRates.avgDurationMs}
                                   />

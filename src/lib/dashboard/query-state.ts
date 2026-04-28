@@ -85,7 +85,9 @@ const WEEK_MS = 7 * DAY_MS;
 const YEAR_MS = 366 * DAY_MS;
 const NINETY_DAYS_MS = 90 * DAY_MS;
 
-function normalizeFilterValue(value: string | null | undefined): string | undefined {
+function normalizeFilterValue(
+  value: string | null | undefined,
+): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim().slice(0, 120);
   return normalized.length > 0 ? normalized : undefined;
@@ -95,7 +97,9 @@ function isRangePreset(value: string): value is RangePreset {
   return RANGE_PRESETS.includes(value as RangePreset);
 }
 
-function isValidCustomRange(value: CustomTimeRange | null | undefined): value is CustomTimeRange {
+function isValidCustomRange(
+  value: CustomTimeRange | null | undefined,
+): value is CustomTimeRange {
   if (!value) return false;
   return (
     Number.isFinite(value.from) &&
@@ -212,12 +216,17 @@ function spanMs(from: number, to: number): number {
   return Math.max(1, to - from);
 }
 
-export function resolveRangePreset(value: string | null | undefined): RangePreset {
+export function resolveRangePreset(
+  value: string | null | undefined,
+): RangePreset {
   if (!value) return "7d";
   return isRangePreset(value) ? value : "7d";
 }
 
-export function allowedIntervalsForRange(from: number, to: number): DashboardInterval[] {
+export function allowedIntervalsForRange(
+  from: number,
+  to: number,
+): DashboardInterval[] {
   const span = spanMs(from, to);
   const allowed = INTERVAL_ORDER.filter((interval) => {
     if (interval === "minute") return span <= HOUR_MS;
@@ -230,7 +239,10 @@ export function allowedIntervalsForRange(from: number, to: number): DashboardInt
   return allowed.length > 0 ? [...allowed] : ["month"];
 }
 
-export function finestIntervalForRange(from: number, to: number): DashboardInterval {
+export function finestIntervalForRange(
+  from: number,
+  to: number,
+): DashboardInterval {
   const span = spanMs(from, to);
   if (span <= HOUR_MS) return "minute";
   if (span <= DAY_MS) return "hour";
@@ -259,7 +271,11 @@ export function resolveTimeWindow(
 ): TimeWindow {
   const preset = resolveRangePreset(range);
   const bounds = rangeBounds(preset, now, options?.customRange);
-  const interval = clampIntervalForRange(options?.interval, bounds.from, bounds.to);
+  const interval = clampIntervalForRange(
+    options?.interval,
+    bounds.from,
+    bounds.to,
+  );
   return {
     preset,
     from: bounds.from,
@@ -268,7 +284,9 @@ export function resolveTimeWindow(
   };
 }
 
-export function parseDashboardFiltersFromSearchParams(searchParams: URLSearchParams): DashboardFilters {
+export function parseDashboardFiltersFromSearchParams(
+  searchParams: URLSearchParams,
+): DashboardFilters {
   return {
     country: normalizeFilterValue(searchParams.get("country")),
     device: normalizeFilterValue(searchParams.get("device")),
@@ -283,9 +301,13 @@ export function parseDashboardFiltersFromSearchParams(searchParams: URLSearchPar
     sourceLink: normalizeFilterValue(searchParams.get("sourceLink")),
     clientBrowser: normalizeFilterValue(searchParams.get("clientBrowser")),
     clientOsVersion: normalizeFilterValue(searchParams.get("clientOsVersion")),
-    clientDeviceType: normalizeFilterValue(searchParams.get("clientDeviceType")),
+    clientDeviceType: normalizeFilterValue(
+      searchParams.get("clientDeviceType"),
+    ),
     clientLanguage: normalizeFilterValue(searchParams.get("clientLanguage")),
-    clientScreenSize: normalizeFilterValue(searchParams.get("clientScreenSize")),
+    clientScreenSize: normalizeFilterValue(
+      searchParams.get("clientScreenSize"),
+    ),
     geo: normalizeFilterValue(searchParams.get("geo")),
     geoContinent: normalizeFilterValue(searchParams.get("geoContinent")),
     geoTimezone: normalizeFilterValue(searchParams.get("geoTimezone")),
@@ -293,7 +315,10 @@ export function parseDashboardFiltersFromSearchParams(searchParams: URLSearchPar
   };
 }
 
-function applyFiltersToParams(params: URLSearchParams, filters?: DashboardFilters): URLSearchParams {
+function applyFiltersToParams(
+  params: URLSearchParams,
+  filters?: DashboardFilters,
+): URLSearchParams {
   if (!filters) return params;
   if (filters.country) params.set("country", filters.country);
   if (filters.device) params.set("device", filters.device);
@@ -307,24 +332,35 @@ function applyFiltersToParams(params: URLSearchParams, filters?: DashboardFilter
   if (filters.sourceDomain) params.set("sourceDomain", filters.sourceDomain);
   if (filters.sourceLink) params.set("sourceLink", filters.sourceLink);
   if (filters.clientBrowser) params.set("clientBrowser", filters.clientBrowser);
-  if (filters.clientOsVersion) params.set("clientOsVersion", filters.clientOsVersion);
-  if (filters.clientDeviceType) params.set("clientDeviceType", filters.clientDeviceType);
-  if (filters.clientLanguage) params.set("clientLanguage", filters.clientLanguage);
-  if (filters.clientScreenSize) params.set("clientScreenSize", filters.clientScreenSize);
+  if (filters.clientOsVersion)
+    params.set("clientOsVersion", filters.clientOsVersion);
+  if (filters.clientDeviceType)
+    params.set("clientDeviceType", filters.clientDeviceType);
+  if (filters.clientLanguage)
+    params.set("clientLanguage", filters.clientLanguage);
+  if (filters.clientScreenSize)
+    params.set("clientScreenSize", filters.clientScreenSize);
   if (filters.geo) params.set("geo", filters.geo);
   if (filters.geoContinent) params.set("geoContinent", filters.geoContinent);
   if (filters.geoTimezone) params.set("geoTimezone", filters.geoTimezone);
-  if (filters.geoOrganization) params.set("geoOrganization", filters.geoOrganization);
+  if (filters.geoOrganization)
+    params.set("geoOrganization", filters.geoOrganization);
   return params;
 }
 
-export function withRangeAndFilters(pathname: string, range: RangePreset, filters?: DashboardFilters): string {
+export function withRangeAndFilters(
+  pathname: string,
+  range: RangePreset,
+  filters?: DashboardFilters,
+): string {
   const params = applyFiltersToParams(new URLSearchParams(), filters);
   params.set("range", range);
   return `${pathname}?${params.toString()}`;
 }
 
-export function normalizeCustomDateRange(range: { from?: Date; to?: Date } | null | undefined): CustomTimeRange | null {
+export function normalizeCustomDateRange(
+  range: { from?: Date; to?: Date } | null | undefined,
+): CustomTimeRange | null {
   if (!range?.from || !range?.to) return null;
   const from = startOfDay(range.from);
   const to = endOfDay(range.to);

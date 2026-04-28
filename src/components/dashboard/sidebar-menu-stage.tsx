@@ -1,7 +1,11 @@
 "use client";
 
-import { useRef, type ReactNode } from "react";
-import { AutoTransition, type AutoTransitionProps } from "@/components/ui/auto-transition";
+import { type ReactNode, useRef } from "react";
+
+import {
+  AutoTransition,
+  type AutoTransitionProps,
+} from "@/components/ui/auto-transition";
 import { cn } from "@/lib/utils";
 
 type SidebarMenuMode = "team" | "site";

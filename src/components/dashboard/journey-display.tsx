@@ -1,14 +1,13 @@
 "use client";
 
 import {
-  useEffect,
-  useRef,
-  useState,
   type MutableRefObject,
   type ReactNode,
   type SyntheticEvent,
+  useEffect,
+  useRef,
+  useState,
 } from "react";
-import Avatar from "boring-avatars";
 import { Icon } from "@iconify/react";
 import {
   RiCellphoneLine,
@@ -17,13 +16,8 @@ import {
   RiGlobalLine,
   RiTabletLine,
 } from "@remixicon/react";
-import {
-  durationFormat,
-  intlLocale,
-  shortDateTime,
-} from "@/lib/dashboard/format";
-import { parseGeoLocationValue } from "@/lib/dashboard/geo-location";
-import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
+import Avatar from "boring-avatars";
+
 import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   Breadcrumb,
@@ -31,6 +25,13 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb";
+import {
+  durationFormat,
+  intlLocale,
+  shortDateTime,
+} from "@/lib/dashboard/format";
+import { parseGeoLocationValue } from "@/lib/dashboard/geo-location";
+import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import {
   resolveCountryFlagCode,
   resolveCountryLabel,

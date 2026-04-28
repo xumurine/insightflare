@@ -1,12 +1,12 @@
 "use client";
 
 import {
+  type KeyboardEvent,
   useEffect,
   useEffectEvent,
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
 } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -14,8 +14,7 @@ import {
   RiArrowUpSLine,
   RiSearchLine,
 } from "@remixicon/react";
-import { PageHeading } from "@/components/dashboard/page-heading";
-import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+
 import {
   BrowserMeta,
   CountryRegionMeta,
@@ -27,10 +26,12 @@ import {
   ReferrerMeta,
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
+import { PageHeading } from "@/components/dashboard/page-heading";
+import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   Table,
   TableBody,
@@ -39,12 +40,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { numberFormat } from "@/lib/dashboard/format";
 import { fetchSessions } from "@/lib/dashboard/client-data";
+import { numberFormat } from "@/lib/dashboard/format";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { JourneySession, SessionsMeta } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
-import type { JourneySession, SessionsMeta } from "@/lib/edge-client";
 import { navigateWithTransition } from "@/lib/page-transition";
 import { cn } from "@/lib/utils";
 
@@ -297,8 +298,9 @@ export function SessionsClientPage({
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState<SessionSortState>(DEFAULT_SESSION_SORT);
   const [now, setNow] = useState(() => Date.now());
-  const [sentinelNode, setSentinelNode] =
-    useState<HTMLTableRowElement | null>(null);
+  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
+    null,
+  );
   const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const requestKey = useMemo(
@@ -380,11 +382,12 @@ export function SessionsClientPage({
           setAppendError(true);
         }
       } finally {
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        if (mode === "replace") {
-          setLoadingInitial(false);
-        } else {
-          setLoadingMore(false);
+        if (latestRequestKeyRef.current === capturedRequestKey) {
+          if (mode === "replace") {
+            setLoadingInitial(false);
+          } else {
+            setLoadingMore(false);
+          }
         }
       }
     },
@@ -587,7 +590,9 @@ export function SessionsClientPage({
                           data-session-row=""
                           className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
                           onClick={() => openSession(href)}
-                          onKeyDown={(event) => handleSessionKeyDown(event, href)}
+                          onKeyDown={(event) =>
+                            handleSessionKeyDown(event, href)
+                          }
                         >
                           <TableCell className="w-32 pl-4">
                             <div className="flex w-28 items-center gap-2">
@@ -595,7 +600,9 @@ export function SessionsClientPage({
                                 seed={row.visitorId}
                                 className="size-6"
                               />
-                              <span className="truncate">{labels.anonymous}</span>
+                              <span className="truncate">
+                                {labels.anonymous}
+                              </span>
                             </div>
                           </TableCell>
                           <TableCell>

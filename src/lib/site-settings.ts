@@ -43,7 +43,9 @@ function normalizeBoolean(input: unknown, fallback: boolean): boolean {
 }
 
 function normalizeTrackingStrength(input: unknown): TrackingStrength {
-  const normalized = String(input ?? "").trim().toLowerCase();
+  const normalized = String(input ?? "")
+    .trim()
+    .toLowerCase();
   if (normalized === "strong") return "strong";
   if (normalized === "weak") return "weak";
   return "smart";
@@ -158,7 +160,9 @@ export function formatListInput(values: string[]): string {
   return values.join("\n");
 }
 
-export function normalizeSiteScriptSettings(input: unknown): SiteScriptSettings {
+export function normalizeSiteScriptSettings(
+  input: unknown,
+): SiteScriptSettings {
   const source =
     input && typeof input === "object"
       ? (input as Record<string, unknown>)
@@ -212,13 +216,17 @@ export function buildAllowedHostnames(
   );
 }
 
-export function normalizeSiteTrackingConfig(input: unknown): SiteTrackingConfig {
+export function normalizeSiteTrackingConfig(
+  input: unknown,
+): SiteTrackingConfig {
   const source =
     input && typeof input === "object"
       ? (input as Record<string, unknown>)
       : {};
   const settings = normalizeSiteScriptSettings(source);
-  const siteId = String(source.siteId ?? "").trim().slice(0, 120);
+  const siteId = String(source.siteId ?? "")
+    .trim()
+    .slice(0, 120);
   const siteDomain = normalizeSiteDomain(
     source.siteDomain ?? source.domain ?? source.primaryDomain,
   );
@@ -226,7 +234,10 @@ export function normalizeSiteTrackingConfig(input: unknown): SiteTrackingConfig 
   return {
     siteId,
     siteDomain,
-    allowedHostnames: buildAllowedHostnames(siteDomain, settings.domainWhitelist),
+    allowedHostnames: buildAllowedHostnames(
+      siteDomain,
+      settings.domainWhitelist,
+    ),
     ...settings,
   };
 }

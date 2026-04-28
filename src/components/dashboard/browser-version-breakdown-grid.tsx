@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Cell, Pie, PieChart } from "recharts";
+
+import { ContentSwitch } from "@/components/dashboard/content-switch";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   Card,
   CardContent,
@@ -10,23 +13,21 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  type ChartConfig,
   ChartContainer,
   ChartTooltip,
-  type ChartConfig,
 } from "@/components/ui/chart";
-import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { Spinner } from "@/components/ui/spinner";
 import { fetchBrowserVersionBreakdown } from "@/lib/dashboard/client-data";
 import { numberFormat, percentFormat } from "@/lib/dashboard/format";
+import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type {
   BrowserVersionBreakdownBrowser,
   BrowserVersionBreakdownData,
   BrowserVersionSlice,
 } from "@/lib/edge-client";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
-import { AutoTransition } from "@/components/ui/auto-transition";
 import { cn } from "@/lib/utils";
 
 const DONUT_COLORS = [
@@ -142,7 +143,8 @@ function BrowserVersionDonutCard({
                         <div className="font-medium">{item.displayLabel}</div>
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-muted-foreground">
-                            {numberFormat(locale, item.visitors)} {messages.common.visitors}
+                            {numberFormat(locale, item.visitors)}{" "}
+                            {messages.common.visitors}
                           </span>
                           <span className="font-mono font-medium tabular-nums text-foreground">
                             {percentFormat(locale, item.share)}
@@ -184,7 +186,10 @@ function BrowserVersionDonutCard({
           <div className="grid grid-cols-[minmax(0,1fr)_max-content_max-content] items-center gap-x-3 gap-y-2">
             {browser.versions.map((version) => (
               <>
-                <div key={version.key} className="inline-flex min-w-0 items-center gap-2 overflow-hidden">
+                <div
+                  key={version.key}
+                  className="inline-flex min-w-0 items-center gap-2 overflow-hidden"
+                >
                   <span
                     className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
                     style={{ backgroundColor: version.color }}
@@ -220,9 +225,8 @@ export function BrowserVersionBreakdownGrid({
 }: BrowserVersionBreakdownGridProps) {
   const [loading, setLoading] = useState(true);
   const [hydrated, setHydrated] = useState(false);
-  const [breakdownData, setBreakdownData] = useState<BrowserVersionBreakdownData>(
-    () => emptyBrowserVersionBreakdown(),
-  );
+  const [breakdownData, setBreakdownData] =
+    useState<BrowserVersionBreakdownData>(() => emptyBrowserVersionBreakdown());
 
   useEffect(() => {
     let active = true;
@@ -246,12 +250,7 @@ export function BrowserVersionBreakdownGrid({
     return () => {
       active = false;
     };
-  }, [
-    filters,
-    siteId,
-    window.from,
-    window.to,
-  ]);
+  }, [filters, siteId, window.from, window.to]);
 
   const browsers = useMemo(
     () => buildVersionCardData(breakdownData, messages),

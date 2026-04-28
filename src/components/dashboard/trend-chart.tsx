@@ -1,18 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+
 import {
+  type ChartConfig,
   ChartContainer,
   ChartLegend,
   ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
-  type ChartConfig,
 } from "@/components/ui/chart";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { intlLocale } from "@/lib/dashboard/format";
 import type { DashboardInterval } from "@/lib/dashboard/query-state";
 import type { Locale } from "@/lib/i18n/config";
-import { intlLocale } from "@/lib/dashboard/format";
 
 interface TrendChartPoint {
   timestampMs: number;
@@ -98,7 +99,10 @@ function useAnimationOnChartSwitch({
   return animationEnabledRef.current;
 }
 
-function tickDateFormat(localeCode: string, interval: DashboardInterval): Intl.DateTimeFormat {
+function tickDateFormat(
+  localeCode: string,
+  interval: DashboardInterval,
+): Intl.DateTimeFormat {
   if (interval === "minute" || interval === "hour") {
     return new Intl.DateTimeFormat(localeCode, {
       hour: "2-digit",
@@ -117,7 +121,10 @@ function tickDateFormat(localeCode: string, interval: DashboardInterval): Intl.D
   });
 }
 
-function tooltipDateFormat(localeCode: string, interval: DashboardInterval): Intl.DateTimeFormat {
+function tooltipDateFormat(
+  localeCode: string,
+  interval: DashboardInterval,
+): Intl.DateTimeFormat {
   if (interval === "minute" || interval === "hour") {
     return new Intl.DateTimeFormat(localeCode, {
       month: "short",
@@ -162,18 +169,20 @@ export function TrendChart({
     },
   } satisfies ChartConfig;
 
-  const chartData = data.map((point) => ({
-    timestampMs: point.timestampMs,
-    sessions: Math.max(0, Math.round(point.sessions)),
-    views: Math.max(0, Math.round(point.views)),
-  })).map((point) => {
-    const sessions = Math.min(point.sessions, point.views);
-    return {
-      ...point,
-      sessions,
-      nonSessionViews: Math.max(0, point.views - sessions),
-    };
-  });
+  const chartData = data
+    .map((point) => ({
+      timestampMs: point.timestampMs,
+      sessions: Math.max(0, Math.round(point.sessions)),
+      views: Math.max(0, Math.round(point.views)),
+    }))
+    .map((point) => {
+      const sessions = Math.min(point.sessions, point.views);
+      return {
+        ...point,
+        sessions,
+        nonSessionViews: Math.max(0, point.views - sessions),
+      };
+    });
   const chartDataKey = useMemo(() => {
     const firstTimestamp = chartData[0]?.timestampMs ?? 0;
     const lastTimestamp = chartData[chartData.length - 1]?.timestampMs ?? 0;
@@ -226,9 +235,10 @@ export function TrendChart({
                 formatter={(value, name, _item, _index, payload) => {
                   const isViews = name === "nonSessionViews";
                   const label = isViews ? viewsLabel : sessionsLabel;
-                  const row = (payload ?? null) as
-                    | { views?: number; sessions?: number }
-                    | null;
+                  const row = (payload ?? null) as {
+                    views?: number;
+                    sessions?: number;
+                  } | null;
                   const numeric = isViews
                     ? Number(row?.views ?? 0)
                     : typeof value === "number"

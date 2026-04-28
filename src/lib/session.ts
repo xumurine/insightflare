@@ -18,9 +18,7 @@ function sessionSecret(): string {
 
 export function configuredSessionSecret(): string | null {
   const fromEnv =
-    process.env.DASHBOARD_SESSION_SECRET ||
-    process.env.SESSION_SECRET ||
-    "";
+    process.env.DASHBOARD_SESSION_SECRET || process.env.SESSION_SECRET || "";
   if (fromEnv.length > 0) {
     return fromEnv;
   }
@@ -44,11 +42,16 @@ function base64UrlEncode(input: Uint8Array): string {
   for (let i = 0; i < input.length; i += 1) {
     binary += String.fromCharCode(input[i]);
   }
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
 }
 
 function base64UrlDecode(input: string): Uint8Array {
-  const padded = input.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((input.length + 3) % 4);
+  const padded =
+    input.replace(/-/g, "+").replace(/_/g, "/") +
+    "===".slice((input.length + 3) % 4);
   const binary = atob(padded);
   const out = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) {
@@ -66,7 +69,10 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return diff === 0;
 }
 
-async function hmacSha256(message: string, secret: string): Promise<Uint8Array> {
+async function hmacSha256(
+  message: string,
+  secret: string,
+): Promise<Uint8Array> {
   const secretBuffer = toArrayBuffer(bytes(secret));
   const messageBuffer = toArrayBuffer(bytes(message));
   const key = await crypto.subtle.importKey(
@@ -105,7 +111,10 @@ export async function verifySessionToken(
     return null;
   }
 
-  const expectedSig = await hmacSha256(payloadPart, secretOverride || sessionSecret());
+  const expectedSig = await hmacSha256(
+    payloadPart,
+    secretOverride || sessionSecret(),
+  );
   let actualSig: Uint8Array;
   try {
     actualSig = base64UrlDecode(signaturePart);

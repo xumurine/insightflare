@@ -1,19 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import { RiDeleteBinLine } from "@remixicon/react";
-import type { AccountUserData } from "@/lib/edge-client";
-import type { Locale } from "@/lib/i18n/config";
-import type { AppMessages } from "@/lib/i18n/messages";
-import { shortDateTime } from "@/lib/dashboard/format";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Spinner } from "@/components/ui/spinner";
-import { AutoTransition } from "@/components/ui/auto-transition";
-import { Clickable } from "@/components/ui/clickable";
+import { toast } from "sonner";
+
+import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +15,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { AutoTransition } from "@/components/ui/auto-transition";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Clickable } from "@/components/ui/clickable";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -31,12 +34,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  TableCell,
-  TableHead,
-  TableRow,
-} from "@/components/ui/table";
-import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { Spinner } from "@/components/ui/spinner";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { shortDateTime } from "@/lib/dashboard/format";
+import type { AccountUserData } from "@/lib/edge-client";
+import type { Locale } from "@/lib/i18n/config";
+import type { AppMessages } from "@/lib/i18n/messages";
 
 interface AdminUsersManagementClientProps {
   locale: Locale;
@@ -86,7 +89,9 @@ export function AdminUsersManagementClient({
   const [password, setPassword] = useState("");
   const [systemRole, setSystemRole] = useState<"admin" | "user">("user");
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
-  const [pendingDeleteUserId, setPendingDeleteUserId] = useState<string | null>(null);
+  const [pendingDeleteUserId, setPendingDeleteUserId] = useState<string | null>(
+    null,
+  );
   const [deleteUserDialogOpen, setDeleteUserDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -179,7 +184,10 @@ export function AdminUsersManagementClient({
           userId,
         }),
       });
-      const payload = (await response.json()) as ApiResponse<{ userId: string; removed: boolean }>;
+      const payload = (await response.json()) as ApiResponse<{
+        userId: string;
+        removed: boolean;
+      }>;
       if (!response.ok || !payload.ok) {
         throw new Error(payload.message || payload.error || t.deleteFailed);
       }
@@ -276,7 +284,10 @@ export function AdminUsersManagementClient({
               <Button type="submit" disabled={submitting}>
                 <AutoTransition className="inline-flex items-center gap-2">
                   {submitting ? (
-                    <span key="creating" className="inline-flex items-center gap-2">
+                    <span
+                      key="creating"
+                      className="inline-flex items-center gap-2"
+                    >
                       <Spinner className="size-4" />
                       {t.creating}
                     </span>
@@ -302,7 +313,7 @@ export function AdminUsersManagementClient({
             loadingLabel={messages.common.loading}
             emptyLabel={noDataText}
             colSpan={7}
-            header={(
+            header={
               <TableRow>
                 <TableHead>{t.columns.name}</TableHead>
                 <TableHead>{t.columns.username}</TableHead>
@@ -312,10 +323,12 @@ export function AdminUsersManagementClient({
                 <TableHead>{t.columns.created}</TableHead>
                 <TableHead className="text-right">{t.columns.action}</TableHead>
               </TableRow>
-            )}
+            }
             rows={users.map((user) => (
               <TableRow key={user.id}>
-                <TableCell className="font-medium">{user.name || user.username}</TableCell>
+                <TableCell className="font-medium">
+                  {user.name || user.username}
+                </TableCell>
                 <TableCell>{user.username}</TableCell>
                 <TableCell>{user.email}</TableCell>
                 <TableCell>
@@ -339,18 +352,26 @@ export function AdminUsersManagementClient({
                       setPendingDeleteUserId(user.id);
                       setDeleteUserDialogOpen(true);
                     }}
-                    disabled={deletingUserId !== null || user.id === currentUserId}
+                    disabled={
+                      deletingUserId !== null || user.id === currentUserId
+                    }
                     className="size-6 text-destructive/80 hover:text-destructive"
                     aria-label={t.delete}
                     title={t.delete}
                   >
                     <AutoTransition className="inline-flex items-center justify-center">
                       {deletingUserId === user.id ? (
-                        <span key="deleting" className="inline-flex items-center justify-center">
+                        <span
+                          key="deleting"
+                          className="inline-flex items-center justify-center"
+                        >
                           <Spinner className="size-3.5" />
                         </span>
                       ) : (
-                        <span key="delete" className="inline-flex items-center justify-center">
+                        <span
+                          key="delete"
+                          className="inline-flex items-center justify-center"
+                        >
                           <RiDeleteBinLine className="size-4" />
                         </span>
                       )}
@@ -393,7 +414,10 @@ export function AdminUsersManagementClient({
             >
               <AutoTransition className="inline-flex items-center gap-2">
                 {deletingUserId !== null ? (
-                  <span key="deleting-confirm" className="inline-flex items-center gap-2">
+                  <span
+                    key="deleting-confirm"
+                    className="inline-flex items-center gap-2"
+                  >
                     <Spinner className="size-4" />
                     {t.deleting}
                   </span>

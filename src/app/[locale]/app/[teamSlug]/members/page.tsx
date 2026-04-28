@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+
 import { TeamManagementClient } from "@/components/dashboard/team-management-client";
 import { getDashboardProfile } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
@@ -11,7 +12,9 @@ interface TeamMembersPageProps {
   }>;
 }
 
-export default async function TeamMembersPage({ params }: TeamMembersPageProps) {
+export default async function TeamMembersPage({
+  params,
+}: TeamMembersPageProps) {
   const { locale, teamSlug } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);

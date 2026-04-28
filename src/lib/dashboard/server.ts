@@ -1,5 +1,7 @@
 import "server-only";
+
 import { cache } from "react";
+
 import {
   fetchAdminMe,
   fetchAdminSites,
@@ -63,7 +65,10 @@ function withSiteSlug(site: SiteData): SiteWithSlug {
   };
 }
 
-function findSiteBySlug(sites: SiteWithSlug[], siteSlug: string): SiteWithSlug | null {
+function findSiteBySlug(
+  sites: SiteWithSlug[],
+  siteSlug: string,
+): SiteWithSlug | null {
   const bySlug = sites.find((site) => site.slug === siteSlug);
   if (bySlug) return bySlug;
   const byId = sites.find((site) => site.id === siteSlug);
@@ -82,14 +87,16 @@ export const getDashboardProfile = cache(async () => {
   return getMe();
 });
 
-const getSitesForTeam = cache(async (teamId: string): Promise<SiteWithSlug[]> => {
-  try {
-    const sites = await fetchAdminSites(teamId);
-    return sites.map(withSiteSlug);
-  } catch {
-    return [];
-  }
-});
+const getSitesForTeam = cache(
+  async (teamId: string): Promise<SiteWithSlug[]> => {
+    try {
+      const sites = await fetchAdminSites(teamId);
+      return sites.map(withSiteSlug);
+    } catch {
+      return [];
+    }
+  },
+);
 
 export const getDashboardTeamContext = cache(
   async (teamSlug: string): Promise<DashboardTeamContext | null> => {
@@ -110,53 +117,64 @@ export const getDashboardTeamContext = cache(
   },
 );
 
-export const getTeamSiteContext = cache(async (teamSlug: string, siteSlug: string): Promise<DashboardContext | null> => {
-  const teamContext = await getDashboardTeamContext(teamSlug);
-  if (!teamContext) return null;
+export const getTeamSiteContext = cache(
+  async (
+    teamSlug: string,
+    siteSlug: string,
+  ): Promise<DashboardContext | null> => {
+    const teamContext = await getDashboardTeamContext(teamSlug);
+    if (!teamContext) return null;
 
-  const activeSite = findSiteBySlug(teamContext.sites, siteSlug);
-  if (!activeSite) return null;
+    const activeSite = findSiteBySlug(teamContext.sites, siteSlug);
+    if (!activeSite) return null;
 
-  return {
-    user: teamContext.user,
-    teams: teamContext.teams,
-    activeTeam: teamContext.activeTeam,
-    sites: teamContext.sites,
-    activeSite,
-  };
-});
+    return {
+      user: teamContext.user,
+      teams: teamContext.teams,
+      activeTeam: teamContext.activeTeam,
+      sites: teamContext.sites,
+      activeSite,
+    };
+  },
+);
 
-export const getDefaultTeamSite = cache(async (): Promise<{ teamSlug: string; siteSlug: string } | null> => {
-  const me = await getMe();
-  if (!me || me.teams.length === 0) return null;
+export const getDefaultTeamSite = cache(
+  async (): Promise<{ teamSlug: string; siteSlug: string } | null> => {
+    const me = await getMe();
+    if (!me || me.teams.length === 0) return null;
 
-  const firstTeam = me.teams[0];
-  const sites = await getSitesForTeam(firstTeam.id);
-  if (sites.length === 0) {
-    return null;
-  }
+    const firstTeam = me.teams[0];
+    const sites = await getSitesForTeam(firstTeam.id);
+    if (sites.length === 0) {
+      return null;
+    }
 
-  return {
-    teamSlug: firstTeam.slug,
-    siteSlug: sites[0].slug,
-  };
-});
+    return {
+      teamSlug: firstTeam.slug,
+      siteSlug: sites[0].slug,
+    };
+  },
+);
 
-export const getTeamDefaultSite = cache(async (teamSlug: string): Promise<{ teamSlug: string; siteSlug: string } | null> => {
-  const me = await getMe();
-  if (!me) return null;
+export const getTeamDefaultSite = cache(
+  async (
+    teamSlug: string,
+  ): Promise<{ teamSlug: string; siteSlug: string } | null> => {
+    const me = await getMe();
+    if (!me) return null;
 
-  const activeTeam = me.teams.find((team) => team.slug === teamSlug);
-  if (!activeTeam) return null;
+    const activeTeam = me.teams.find((team) => team.slug === teamSlug);
+    if (!activeTeam) return null;
 
-  const sites = await getSitesForTeam(activeTeam.id);
-  if (sites.length === 0) return null;
+    const sites = await getSitesForTeam(activeTeam.id);
+    if (sites.length === 0) return null;
 
-  return {
-    teamSlug: activeTeam.slug,
-    siteSlug: sites[0].slug,
-  };
-});
+    return {
+      teamSlug: activeTeam.slug,
+      siteSlug: sites[0].slug,
+    };
+  },
+);
 
 export function buildSitePath(
   locale: Locale,

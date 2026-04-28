@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -7,8 +8,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getMessages } from "@/lib/i18n/messages";
 import { resolveLocale } from "@/lib/i18n/config";
+import { getMessages } from "@/lib/i18n/messages";
 
 function localeFromPathname(pathname: string | null): string | undefined {
   if (!pathname) return undefined;

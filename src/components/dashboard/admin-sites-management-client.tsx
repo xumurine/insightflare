@@ -2,19 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { RiLineChartLine } from "@remixicon/react";
-import type { SiteData, TeamData } from "@/lib/edge-client";
-import type { Locale } from "@/lib/i18n/config";
-import type { AppMessages } from "@/lib/i18n/messages";
-import { shortDateTime } from "@/lib/dashboard/format";
+import { toast } from "sonner";
+
+import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Clickable } from "@/components/ui/clickable";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Spinner } from "@/components/ui/spinner";
-import { AutoTransition } from "@/components/ui/auto-transition";
-import { Clickable } from "@/components/ui/clickable";
 import {
   Select,
   SelectContent,
@@ -22,12 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  TableCell,
-  TableHead,
-  TableRow,
-} from "@/components/ui/table";
-import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { Spinner } from "@/components/ui/spinner";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { shortDateTime } from "@/lib/dashboard/format";
+import type { SiteData, TeamData } from "@/lib/edge-client";
+import type { Locale } from "@/lib/i18n/config";
+import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
 
 interface AdminSitesManagementClientProps {
@@ -70,11 +73,14 @@ async function fetchSites(teamId: string): Promise<SiteData[]> {
     }) as ApiResponse<SiteData[]>;
     return Array.isArray(result.data) ? result.data : [];
   }
-  const response = await fetch(`/api/private/admin/sites?teamId=${encodeURIComponent(teamId)}`, {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
-  });
+  const response = await fetch(
+    `/api/private/admin/sites?teamId=${encodeURIComponent(teamId)}`,
+    {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    },
+  );
   const payload = (await response.json()) as ApiResponse<SiteData[]>;
   if (!response.ok || !payload.ok || !Array.isArray(payload.data)) {
     throw new Error(payload.message || payload.error || "load_sites_failed");
@@ -246,7 +252,10 @@ export function AdminSitesManagementClient({
               <Button type="submit" disabled={submitting || !selectedTeam}>
                 <AutoTransition className="inline-flex items-center gap-2">
                   {submitting ? (
-                    <span key="creating" className="inline-flex items-center gap-2">
+                    <span
+                      key="creating"
+                      className="inline-flex items-center gap-2"
+                    >
                       <Spinner className="size-4" />
                       {t.creating}
                     </span>
@@ -272,7 +281,7 @@ export function AdminSitesManagementClient({
             loadingLabel={messages.common.loading}
             emptyLabel={noDataText}
             colSpan={5}
-            header={(
+            header={
               <TableRow>
                 <TableHead>{t.columns.name}</TableHead>
                 <TableHead>{t.columns.domain}</TableHead>
@@ -280,7 +289,7 @@ export function AdminSitesManagementClient({
                 <TableHead>{t.columns.created}</TableHead>
                 <TableHead className="text-right">{t.columns.action}</TableHead>
               </TableRow>
-            )}
+            }
             rows={sites.map((site) => (
               <TableRow key={site.id}>
                 <TableCell className="font-medium">{site.name}</TableCell>

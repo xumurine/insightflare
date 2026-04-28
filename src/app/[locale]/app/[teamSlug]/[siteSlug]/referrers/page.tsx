@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+
 import { ReferrersClientPage } from "@/components/dashboard/site-pages/referrers-client-page";
 import { buildSitePath, getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";

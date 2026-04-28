@@ -4,11 +4,12 @@ const COUNTRY_CODE_ALIAS: Record<string, string> = {
   UK: "GB",
 };
 
-const COUNTRY_LABEL_OVERRIDES: Partial<Record<Locale, Record<string, string>>> = {
-  zh: {
-    TW: "中国台湾",
-  },
-};
+const COUNTRY_LABEL_OVERRIDES: Partial<Record<Locale, Record<string, string>>> =
+  {
+    zh: {
+      TW: "中国台湾",
+    },
+  };
 
 export const COUNTRY_PRIMARY_LANGUAGE_CODE: Record<string, string> = {
   CN: "zh",

@@ -50,7 +50,10 @@ async function openEdgeCache(name: string): Promise<Cache | null> {
   }
 }
 
-function determineEuMode(trackingStrength: "strong" | "smart" | "weak", requestEuMode: boolean): boolean {
+function determineEuMode(
+  trackingStrength: "strong" | "smart" | "weak",
+  requestEuMode: boolean,
+): boolean {
   if (trackingStrength === "strong") return false;
   if (trackingStrength === "weak") return true;
   return requestEuMode;
@@ -76,7 +79,11 @@ function settingsFingerprint(input: {
   ].join("|");
 }
 
-function scriptCacheKeyRequest(siteId: string, euMode: boolean, fingerprint: string): Request {
+function scriptCacheKeyRequest(
+  siteId: string,
+  euMode: boolean,
+  fingerprint: string,
+): Request {
   const encodedSiteId = encodeURIComponent(siteId);
   const encodedFingerprint = encodeURIComponent(fingerprint);
   return new Request(
@@ -84,13 +91,18 @@ function scriptCacheKeyRequest(siteId: string, euMode: boolean, fingerprint: str
   );
 }
 
-export async function handleTrackerScriptRequest(request: Request, env: Env): Promise<Response> {
+export async function handleTrackerScriptRequest(
+  request: Request,
+  env: Env,
+): Promise<Response> {
   if (request.method !== "GET") {
     return responseMethodNotAllowed();
   }
 
   const incomingUrl = new URL(request.url);
-  const siteId = normalizeSiteSettingsKey(incomingUrl.searchParams.get("siteId"));
+  const siteId = normalizeSiteSettingsKey(
+    incomingUrl.searchParams.get("siteId"),
+  );
   if (!siteId) {
     return responseBadRequest("Missing siteId");
   }
@@ -99,7 +111,8 @@ export async function handleTrackerScriptRequest(request: Request, env: Env): Pr
   try {
     settings = await readSiteTrackingConfig(env, siteId);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "site_settings_unavailable";
+    const message =
+      error instanceof Error ? error.message : "site_settings_unavailable";
     return responseInternalServerError(message);
   }
   if (!settings?.siteDomain) {

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+
 import { VisitorDetailClientPage } from "@/components/dashboard/site-pages/visitor-detail-client-page";
 import { buildSitePath, getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
@@ -12,7 +13,9 @@ interface VisitorDetailPageProps {
   }>;
 }
 
-export default async function VisitorDetailPage({ params }: VisitorDetailPageProps) {
+export default async function VisitorDetailPage({
+  params,
+}: VisitorDetailPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
@@ -36,4 +39,3 @@ export default async function VisitorDetailPage({ params }: VisitorDetailPagePro
     />
   );
 }
-

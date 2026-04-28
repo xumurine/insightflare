@@ -2,25 +2,28 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { RiArrowRightLine, RiSettings3Line } from "@remixicon/react";
-import type { TeamData } from "@/lib/edge-client";
-import type { Locale } from "@/lib/i18n/config";
-import type { AppMessages } from "@/lib/i18n/messages";
-import { shortDateTime } from "@/lib/dashboard/format";
+import { toast } from "sonner";
+
+import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Clickable } from "@/components/ui/clickable";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { AutoTransition } from "@/components/ui/auto-transition";
-import { Clickable } from "@/components/ui/clickable";
-import {
-  TableCell,
-  TableHead,
-  TableRow,
-} from "@/components/ui/table";
-import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { shortDateTime } from "@/lib/dashboard/format";
+import type { TeamData } from "@/lib/edge-client";
+import type { Locale } from "@/lib/i18n/config";
+import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
 
 interface AdminTeamsManagementClientProps {
@@ -173,7 +176,10 @@ export function AdminTeamsManagementClient({
               <Button type="submit" disabled={submitting}>
                 <AutoTransition className="inline-flex items-center gap-2">
                   {submitting ? (
-                    <span key="creating" className="inline-flex items-center gap-2">
+                    <span
+                      key="creating"
+                      className="inline-flex items-center gap-2"
+                    >
                       <Spinner className="size-4" />
                       {t.creating}
                     </span>
@@ -199,16 +205,18 @@ export function AdminTeamsManagementClient({
             loadingLabel={messages.common.loading}
             emptyLabel={noDataText}
             colSpan={6}
-            header={(
+            header={
               <TableRow>
                 <TableHead>{t.columns.name}</TableHead>
                 <TableHead>{t.columns.slug}</TableHead>
                 <TableHead className="text-right">{t.columns.sites}</TableHead>
-                <TableHead className="text-right">{t.columns.members}</TableHead>
+                <TableHead className="text-right">
+                  {t.columns.members}
+                </TableHead>
                 <TableHead>{t.columns.created}</TableHead>
                 <TableHead className="text-right">{t.columns.action}</TableHead>
               </TableRow>
-            )}
+            }
             rows={teams.map((team) => (
               <TableRow key={team.id}>
                 <TableCell className="font-medium">{team.name}</TableCell>
@@ -220,7 +228,10 @@ export function AdminTeamsManagementClient({
                   <div className="inline-flex items-center justify-end gap-2">
                     <Clickable
                       onClick={() => {
-                        navigateWithTransition(router, `/${locale}/app/${team.slug}`);
+                        navigateWithTransition(
+                          router,
+                          `/${locale}/app/${team.slug}`,
+                        );
                       }}
                       className="size-6 text-muted-foreground hover:text-foreground"
                       aria-label={t.open}

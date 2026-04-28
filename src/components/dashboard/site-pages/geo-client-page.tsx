@@ -2,47 +2,51 @@
 
 import {
   memo,
+  type ReactNode,
   startTransition,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
+import Map, { type MapRef, useControl } from "react-map-gl/maplibre";
+import { useTheme } from "next-themes";
 import type { MapViewState } from "@deck.gl/core";
 import { GeoJsonLayer, ScatterplotLayer } from "@deck.gl/layers";
 import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
-import isoCountries from "i18n-iso-countries";
 import type { Feature, GeoJSON, Geometry } from "geojson";
-import { AnimatePresence, animate, motion } from "motion/react";
-import { useTheme } from "next-themes";
+import isoCountries from "i18n-iso-countries";
 import type { StyleSpecification } from "maplibre-gl";
-import Map, { type MapRef, useControl } from "react-map-gl/maplibre";
+import { animate, AnimatePresence, motion } from "motion/react";
+
 import { GeoCountryStatsPanel } from "@/components/dashboard/geo-country-stats-panel";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { pushUrlWithoutNavigation, useLiveSearchParams } from "@/lib/client-history";
+import {
+  pushUrlWithoutNavigation,
+  useLiveSearchParams,
+} from "@/lib/client-history";
 import {
   fetchOverviewGeoDimensionTab,
   fetchOverviewGeoPoints,
   type OverviewGeoTabRows,
 } from "@/lib/dashboard/client-data";
+import { intlLocale, numberFormat } from "@/lib/dashboard/format";
 import {
   buildLocalityLocationValue,
   buildRegionLocationValue,
-  normalizeGeoNameToken,
-  parseGeoLocationValue,
-  parentGeoLocationValue,
   type GeoLocationLevel,
+  normalizeGeoNameToken,
+  parentGeoLocationValue,
   type ParsedGeoLocation,
+  parseGeoLocationValue,
 } from "@/lib/dashboard/geo-location";
-import { intlLocale, numberFormat } from "@/lib/dashboard/format";
 import type { DashboardFilters } from "@/lib/dashboard/query-state";
 import type { OverviewGeoPointsData } from "@/lib/edge-client";
-import type { Locale } from "@/lib/i18n/config";
 import { resolveCountryLabel } from "@/lib/i18n/code-labels";
+import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
 
@@ -370,7 +374,9 @@ function computeInitialViewState(points: GeoPoint[]): MapViewState {
 
   return {
     ...DEFAULT_VIEW_STATE,
-    latitude: Number.isFinite(centerLat) ? centerLat : DEFAULT_VIEW_STATE.latitude,
+    latitude: Number.isFinite(centerLat)
+      ? centerLat
+      : DEFAULT_VIEW_STATE.latitude,
     longitude: Number.isFinite(centerLon)
       ? centerLon
       : DEFAULT_VIEW_STATE.longitude,
@@ -394,9 +400,10 @@ function focusZoomForLevel(level: GeoLocationLevel, childCount = 0): number {
   return 9.7;
 }
 
-function focusZoomRangeForLevel(
-  level: GeoLocationLevel,
-): { min: number; max: number } {
+function focusZoomRangeForLevel(level: GeoLocationLevel): {
+  min: number;
+  max: number;
+} {
   if (level === "country") {
     return { min: 2.45, max: 5.15 };
   }
@@ -414,7 +421,11 @@ function resolveAdaptiveFocusZoom(
   const pointViewState = computeInitialViewState(points);
   const fallbackZoom = focusZoomForLevel(level, childCount);
   const { min, max } = focusZoomRangeForLevel(level);
-  const pointZoom = clamp(Number(pointViewState.zoom ?? fallbackZoom), min, max);
+  const pointZoom = clamp(
+    Number(pointViewState.zoom ?? fallbackZoom),
+    min,
+    max,
+  );
 
   if (points.length === 0) return fallbackZoom;
   if (points.length === 1) {
@@ -434,7 +445,11 @@ function resolveFocusedViewState(
   const pointViewState = computeInitialViewState(points);
   if (!location) return pointViewState;
 
-  const adaptiveZoom = resolveAdaptiveFocusZoom(points, location.level, childCount);
+  const adaptiveZoom = resolveAdaptiveFocusZoom(
+    points,
+    location.level,
+    childCount,
+  );
 
   if (focus?.center) {
     return {
@@ -445,12 +460,8 @@ function resolveFocusedViewState(
     };
   }
 
-  const latitude =
-    pointViewState.latitude ??
-    DEFAULT_VIEW_STATE.latitude;
-  const longitude =
-    pointViewState.longitude ??
-    DEFAULT_VIEW_STATE.longitude;
+  const latitude = pointViewState.latitude ?? DEFAULT_VIEW_STATE.latitude;
+  const longitude = pointViewState.longitude ?? DEFAULT_VIEW_STATE.longitude;
 
   return {
     ...DEFAULT_VIEW_STATE,
@@ -468,7 +479,9 @@ function resolveGeoPoints(
     .map((item) => ({
       latitude: Number(item.latitude),
       longitude: Number(item.longitude),
-      country: String(item.country ?? "").trim().toUpperCase(),
+      country: String(item.country ?? "")
+        .trim()
+        .toUpperCase(),
       region: String((item as { region?: unknown }).region ?? "").trim(),
       regionCode: String((item as { regionCode?: unknown }).regionCode ?? "")
         .trim()
@@ -570,7 +583,9 @@ function isAncestorLocation(
   if (currentLocation.countryCode !== nextLocation.countryCode) return false;
 
   if (nextLocation.level === "country") {
-    return currentLocation.level === "region" || currentLocation.level === "locality";
+    return (
+      currentLocation.level === "region" || currentLocation.level === "locality"
+    );
   }
 
   if (nextLocation.level === "region") {
@@ -616,7 +631,9 @@ function resolveCountryFeatureKey(
 }
 
 function normalizeCountryCode(value: string | null | undefined): string | null {
-  const normalized = String(value ?? "").trim().toUpperCase();
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase();
   if (!/^[A-Z]{2}$/.test(normalized)) return null;
   return normalized;
 }
@@ -661,7 +678,9 @@ function resolveCountryCodeFromFeature(
   ];
 
   for (const candidate of alpha3Candidates) {
-    const normalizedAlpha3 = String(candidate ?? "").trim().toUpperCase();
+    const normalizedAlpha3 = String(candidate ?? "")
+      .trim()
+      .toUpperCase();
     if (!/^[A-Z]{3}$/.test(normalizedAlpha3)) continue;
     const alpha2 = isoCountries.alpha3ToAlpha2(normalizedAlpha3);
     const code = normalizeCountryCode(alpha2 ?? "");
@@ -712,7 +731,8 @@ function projectLatitudeToWorldY(latitude: number, zoom: number): number {
   const rad = (lat * Math.PI) / 180;
   const scale = 256 * 2 ** zoom;
   return (
-    (0.5 - Math.log((1 + Math.sin(rad)) / (1 - Math.sin(rad))) / (4 * Math.PI)) *
+    (0.5 -
+      Math.log((1 + Math.sin(rad)) / (1 - Math.sin(rad))) / (4 * Math.PI)) *
     scale
   );
 }
@@ -727,7 +747,10 @@ function normalizeClusterZoom(zoom: number): number {
   );
 }
 
-function clusterGeoPoints(points: GeoPoint[], zoom: number): ClusteredGeoPoint[] {
+function clusterGeoPoints(
+  points: GeoPoint[],
+  zoom: number,
+): ClusteredGeoPoint[] {
   if (points.length === 0) return [];
 
   const buckets = new globalThis.Map<
@@ -878,14 +901,20 @@ function formatGeoGdpPerCapita(
     return formatI18nTemplate(labels.gdpPerCapitaValue, { value: formatted });
   }
 
-  const deltaPercent = ((value - WORLD_GDP_PER_CAPITA_USD_2024) / WORLD_GDP_PER_CAPITA_USD_2024) * 100;
+  const deltaPercent =
+    ((value - WORLD_GDP_PER_CAPITA_USD_2024) / WORLD_GDP_PER_CAPITA_USD_2024) *
+    100;
   if (Math.abs(deltaPercent) < 0.5) {
-    return formatI18nTemplate(labels.gdpPerCapitaNearAverage, { value: formatted });
+    return formatI18nTemplate(labels.gdpPerCapitaNearAverage, {
+      value: formatted,
+    });
   }
 
   const percentText = numberFormat(locale, Math.round(Math.abs(deltaPercent)));
   return formatI18nTemplate(
-    deltaPercent > 0 ? labels.gdpPerCapitaAboveAverage : labels.gdpPerCapitaBelowAverage,
+    deltaPercent > 0
+      ? labels.gdpPerCapitaAboveAverage
+      : labels.gdpPerCapitaBelowAverage,
     { value: formatted, percent: percentText },
   );
 }
@@ -903,7 +932,8 @@ function formatGeoMarketPenetration(
   population: number | null | undefined,
   labels: GeoInvestigationMessages,
 ): ReactNode {
-  if (!Number.isFinite(population) || !population || population <= 0) return labels.unavailable;
+  if (!Number.isFinite(population) || !population || population <= 0)
+    return labels.unavailable;
 
   const perMille = (Math.max(0, visitors) / population) * 1000;
   const formatted = new Intl.NumberFormat(intlLocale(locale), {
@@ -968,7 +998,8 @@ function formatGeoRegion(
 ): string {
   const region = String(country.region ?? "").trim();
   const subregion = String(country.subregion ?? "").trim();
-  if (region && subregion && region !== subregion) return `${region} / ${subregion}`;
+  if (region && subregion && region !== subregion)
+    return `${region} / ${subregion}`;
   if (region) return region;
   if (subregion) return subregion;
   return labels.unavailable;
@@ -978,7 +1009,9 @@ function formatGeoType(
   value: string | null | undefined,
   labels: GeoInvestigationMessages,
 ): string {
-  const normalized = String(value ?? "").trim().toLowerCase();
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
   if (!normalized) return labels.unavailable;
 
   const fromTable = labels.typeLabels[normalized];
@@ -1033,8 +1066,11 @@ function buildCountryGeoInvestigation(
   const population = parseGeoMetricNumber(country.population);
   const headline =
     pickLocaleGeoLabel(locale, country) ||
-    resolveCountryLabel(String(country.code ?? "").trim(), locale, labels.unavailable)
-      .label;
+    resolveCountryLabel(
+      String(country.code ?? "").trim(),
+      locale,
+      labels.unavailable,
+    ).label;
 
   return {
     headline,
@@ -1054,7 +1090,10 @@ function buildCountryGeoInvestigation(
         labels.population,
         formatGeoPopulation(locale, country.population, labels),
       ),
-      buildGeoInvestigationRow(labels.gdp, formatGeoGdp(locale, country.gdp, labels)),
+      buildGeoInvestigationRow(
+        labels.gdp,
+        formatGeoGdp(locale, country.gdp, labels),
+      ),
       buildGeoInvestigationRow(
         labels.gdpPerCapita,
         formatGeoGdpPerCapita(locale, country.gdp, country.population, labels),
@@ -1083,14 +1122,13 @@ function buildStateGeoInvestigation(
   const labels = geoMessages.investigation;
   return {
     headline: pickLocaleGeoLabel(locale, state) || labels.unavailable,
-    context: payload?.country ? pickLocaleGeoLabel(locale, payload.country) : null,
+    context: payload?.country
+      ? pickLocaleGeoLabel(locale, payload.country)
+      : null,
     population: parseGeoMetricNumber(state.population),
     wikidataId: String(state.wikiDataId ?? "").trim() || null,
     rows: [
-      buildGeoInvestigationRow(
-        labels.type,
-        formatGeoType(state.type, labels),
-      ),
+      buildGeoInvestigationRow(labels.type, formatGeoType(state.type, labels)),
       buildGeoInvestigationRow(
         labels.population,
         formatGeoPopulation(locale, state.population, labels),
@@ -1240,7 +1278,9 @@ async function fetchGeoWikiSummary(
   wikidataId: string,
   locale: Locale,
 ): Promise<GeoWikiSummary | null> {
-  const normalizedId = String(wikidataId ?? "").trim().toUpperCase();
+  const normalizedId = String(wikidataId ?? "")
+    .trim()
+    .toUpperCase();
   if (!/^Q\d+$/.test(normalizedId)) return null;
 
   const cacheKey = `${locale}:${normalizedId}`;
@@ -1312,7 +1352,9 @@ function resolveCountryLocationFocus(
     ok: true,
     center: { latitude, longitude },
     country: {
-      code: String(payload.country.code ?? "").trim().toUpperCase(),
+      code: String(payload.country.code ?? "")
+        .trim()
+        .toUpperCase(),
       label: pickLocaleGeoLabel(locale, payload.country),
     },
     region: null,
@@ -1349,7 +1391,9 @@ function resolveStateLocationFocus(
       center: { latitude, longitude },
       country: payload.country
         ? {
-            code: String(payload.country.code ?? "").trim().toUpperCase(),
+            code: String(payload.country.code ?? "")
+              .trim()
+              .toUpperCase(),
             label: pickLocaleGeoLabel(locale, payload.country),
           }
         : null,
@@ -1378,7 +1422,9 @@ function resolveStateLocationFocus(
     center: { latitude, longitude },
     country: payload.country
       ? {
-          code: String(payload.country.code ?? "").trim().toUpperCase(),
+          code: String(payload.country.code ?? "")
+            .trim()
+            .toUpperCase(),
           label: pickLocaleGeoLabel(locale, payload.country),
         }
       : null,
@@ -1417,10 +1463,16 @@ async function fetchGeoLocaleBundle(
   }
 
   if (location.level === "country") {
-    const countryPayload = await fetchLocaleCountryPayload(location.countryCode);
+    const countryPayload = await fetchLocaleCountryPayload(
+      location.countryCode,
+    );
     const stateCodes = Array.isArray(countryPayload?.states)
       ? countryPayload.states
-          .map((value) => String(value ?? "").trim().toUpperCase())
+          .map((value) =>
+            String(value ?? "")
+              .trim()
+              .toUpperCase(),
+          )
           .filter((value) => value.length > 0)
       : [];
     const statePayloads = await Promise.all(
@@ -1452,7 +1504,11 @@ async function fetchGeoLocaleBundle(
           };
         }),
       ),
-      investigation: buildCountryGeoInvestigation(countryPayload, locale, geoMessages),
+      investigation: buildCountryGeoInvestigation(
+        countryPayload,
+        locale,
+        geoMessages,
+      ),
     };
   }
 
@@ -1483,8 +1539,9 @@ async function fetchGeoLocaleBundle(
       Array.isArray(statePayload?.cities)
         ? statePayload.cities.map((city) => {
             const canonicalLocalityName =
-              String(city.name_default ?? city.name ?? city.native ?? "").trim() ||
-              unknownLabel;
+              String(
+                city.name_default ?? city.name ?? city.native ?? "",
+              ).trim() || unknownLabel;
 
             return {
               key: buildLocalityLocationValue(
@@ -1500,7 +1557,12 @@ async function fetchGeoLocaleBundle(
     ),
     investigation:
       location.level === "locality"
-        ? buildLocalityGeoInvestigation(statePayload, location, locale, geoMessages)
+        ? buildLocalityGeoInvestigation(
+            statePayload,
+            location,
+            locale,
+            geoMessages,
+          )
         : buildStateGeoInvestigation(statePayload, locale, geoMessages),
   };
 }
@@ -1527,14 +1589,22 @@ function matchesRegionPoint(
 ): boolean {
   const expectedTokens = new Set(
     [location.regionCode, location.regionName]
-      .map((value) => String(value ?? "").trim().toUpperCase())
+      .map((value) =>
+        String(value ?? "")
+          .trim()
+          .toUpperCase(),
+      )
       .filter((value) => value.length > 0),
   );
   if (expectedTokens.size === 0) return true;
 
   const actualTokens = new Set(
     [point.regionCode, point.region]
-      .map((value) => String(value ?? "").trim().toUpperCase())
+      .map((value) =>
+        String(value ?? "")
+          .trim()
+          .toUpperCase(),
+      )
       .filter((value) => value.length > 0),
   );
   if (actualTokens.size === 0) return false;
@@ -1551,7 +1621,9 @@ function matchesLocationPoint(
 ): boolean {
   if (!location) return true;
 
-  const pointCountry = String(point.country ?? "").trim().toUpperCase();
+  const pointCountry = String(point.country ?? "")
+    .trim()
+    .toUpperCase();
   if (pointCountry !== location.countryCode) {
     return false;
   }
@@ -1602,7 +1674,9 @@ export function GeoClientPage({
   const requestFilters = useMemo<DashboardFilters>(
     () => ({
       ...filters,
-      ...(requestedLocation?.canonical ? { geo: requestedLocation.canonical } : {}),
+      ...(requestedLocation?.canonical
+        ? { geo: requestedLocation.canonical }
+        : {}),
     }),
     [filters, requestedLocation?.canonical],
   );
@@ -1618,19 +1692,25 @@ export function GeoClientPage({
   );
   const [geoTabRows, setGeoTabRows] = useState<OverviewGeoTabRows>([]);
   const [countryGeoJson, setCountryGeoJson] = useState<GeoJSON | null>(null);
-  const [hoveredCountryKey, setHoveredCountryKey] = useState<string | null>(null);
-  const [hoveredCountryCode, setHoveredCountryCode] = useState<string | null>(null);
+  const [hoveredCountryKey, setHoveredCountryKey] = useState<string | null>(
+    null,
+  );
+  const [hoveredCountryCode, setHoveredCountryCode] = useState<string | null>(
+    null,
+  );
   const [hoveredCountryName, setHoveredCountryName] = useState("");
   const [currentZoom, setCurrentZoom] = useState(
     normalizeClusterZoom(DEFAULT_VIEW_STATE.zoom),
   );
-  const [activeLocation, setActiveLocation] = useState<ParsedGeoLocation | null>(null);
-  const [locationFocus, setLocationFocus] = useState<GeoLocationFocusResponse | null>(
-    null,
-  );
+  const [activeLocation, setActiveLocation] =
+    useState<ParsedGeoLocation | null>(null);
+  const [locationFocus, setLocationFocus] =
+    useState<GeoLocationFocusResponse | null>(null);
   const [geoInvestigation, setGeoInvestigation] =
     useState<GeoInvestigationInfo | null>(null);
-  const [geoWikiSummary, setGeoWikiSummary] = useState<GeoWikiSummary | null>(null);
+  const [geoWikiSummary, setGeoWikiSummary] = useState<GeoWikiSummary | null>(
+    null,
+  );
   const [geoDirectoryEntries, setGeoDirectoryEntries] = useState<
     GeoDirectoryEntry[] | null
   >(null);
@@ -1671,11 +1751,7 @@ export function GeoClientPage({
     let active = true;
     const wikidataId = geoInvestigation?.wikidataId ?? null;
 
-    if (
-      !wikidataId ||
-      !activeLocation ||
-      activeLocation.level === "country"
-    ) {
+    if (!wikidataId || !activeLocation || activeLocation.level === "country") {
       setGeoWikiSummary(null);
       return () => {
         active = false;
@@ -1739,11 +1815,22 @@ export function GeoClientPage({
         applyGeoFilter: Boolean(requestedLocation?.canonical),
       }),
       dimensionTab
-        ? fetchOverviewGeoDimensionTab(siteId, window, dimensionTab, requestFilters, {
-            limit: dimensionTab === "city" ? 600 : 400,
-          })
+        ? fetchOverviewGeoDimensionTab(
+            siteId,
+            window,
+            dimensionTab,
+            requestFilters,
+            {
+              limit: dimensionTab === "city" ? 600 : 400,
+            },
+          )
         : Promise.resolve([] as OverviewGeoTabRows),
-      fetchGeoLocaleBundle(requestedLocation, locale, messages.common.unknown, geoMessages),
+      fetchGeoLocaleBundle(
+        requestedLocation,
+        locale,
+        messages.common.unknown,
+        geoMessages,
+      ),
     ])
       .then(([nextGeoPoints, nextGeoTabRows, nextGeoLocaleBundle]) => {
         if (!active) return;
@@ -1802,7 +1889,7 @@ export function GeoClientPage({
         if (!active) return;
         setIsMapMoving(false);
         setLoading(false);
-      })
+      });
 
     return () => {
       active = false;
@@ -1850,7 +1937,9 @@ export function GeoClientPage({
   const [incomingClusters, setIncomingClusters] = useState<ClusteredGeoPoint[]>(
     () => clusteredPoints,
   );
-  const [outgoingClusters, setOutgoingClusters] = useState<ClusteredGeoPoint[]>([]);
+  const [outgoingClusters, setOutgoingClusters] = useState<ClusteredGeoPoint[]>(
+    [],
+  );
   const [clusterFadeProgress, setClusterFadeProgress] = useState(1);
   const incomingClustersRef = useRef<ClusteredGeoPoint[]>(clusteredPoints);
   useEffect(() => {
@@ -1885,8 +1974,12 @@ export function GeoClientPage({
       controls.stop();
     };
   }, [clusteredPoints]);
-  const incomingAlpha = Math.round(MAP_POINT_ALPHA_VISIBLE * clusterFadeProgress);
-  const outgoingAlpha = Math.round(MAP_POINT_ALPHA_VISIBLE * (1 - clusterFadeProgress));
+  const incomingAlpha = Math.round(
+    MAP_POINT_ALPHA_VISIBLE * clusterFadeProgress,
+  );
+  const outgoingAlpha = Math.round(
+    MAP_POINT_ALPHA_VISIBLE * (1 - clusterFadeProgress),
+  );
   const countryCountMap = useMemo(() => {
     const map = new globalThis.Map<string, CountryCount>();
     for (const row of geoPointsData.countryCounts) {
@@ -1905,7 +1998,8 @@ export function GeoClientPage({
   const showCountryHover = !activeLocation && !isMapMoving;
   const layers = useMemo(() => {
     const nextLayers: Array<
-      ScatterplotLayer<ClusteredGeoPoint> | GeoJsonLayer<Record<string, unknown>>
+      | ScatterplotLayer<ClusteredGeoPoint>
+      | GeoJsonLayer<Record<string, unknown>>
     > = [];
 
     const createPointLayer = (
@@ -2014,8 +2108,9 @@ export function GeoClientPage({
     }
     return messages.common.unknown;
   }, [hoveredCountryCode, locale, messages.common.unknown]);
-  const hoveredCountryCounts =
-    hoveredCountryCode ? countryCountMap.get(hoveredCountryCode) : null;
+  const hoveredCountryCounts = hoveredCountryCode
+    ? countryCountMap.get(hoveredCountryCode)
+    : null;
   const hoveredViewsText = numberFormat(
     locale,
     hoveredCountryCounts?.views ?? 0,
@@ -2045,27 +2140,23 @@ export function GeoClientPage({
       if (!country) continue;
       sourceMap.set(country, {
         key: country,
-        label: resolveCountryLabel(
-          country,
-          locale,
-          messages.common.unknown,
-        ).label,
+        label: resolveCountryLabel(country, locale, messages.common.unknown)
+          .label,
         views: Number(row.views ?? 0),
         sessions: Number(row.sessions ?? 0),
         visitors: Number(row.visitors ?? 0),
       });
     }
 
-    const dimensionSourceRows = geoTabRows.length > 0 ? geoTabRows : fallbackRows;
+    const dimensionSourceRows =
+      geoTabRows.length > 0 ? geoTabRows : fallbackRows;
     for (const row of dimensionSourceRows) {
       const key = String(row.value ?? "").trim();
       if (!key) continue;
       const fallback = fallbackMap.get(key);
       sourceMap.set(key, {
         key,
-        label:
-          String(row.label ?? "").trim() ||
-          messages.common.unknown,
+        label: String(row.label ?? "").trim() || messages.common.unknown,
         views: Number(row.views ?? 0) || Number(fallback?.views ?? 0),
         sessions: Number(row.sessions ?? 0) || Number(fallback?.sessions ?? 0),
         visitors:
@@ -2120,8 +2211,9 @@ export function GeoClientPage({
         ? Math.max(
             0,
             Number(
-              statsEntries.find((entry) => entry.key === activeLocation.canonical)
-                ?.visitors ?? 0,
+              statsEntries.find(
+                (entry) => entry.key === activeLocation.canonical,
+              )?.visitors ?? 0,
             ),
           )
         : statsEntries.reduce(
@@ -2175,7 +2267,10 @@ export function GeoClientPage({
     ].filter((value, index, array): value is string => {
       const normalized = String(value ?? "").trim();
       if (!normalized) return false;
-      return array.findIndex((item) => String(item ?? "").trim() === normalized) === index;
+      return (
+        array.findIndex((item) => String(item ?? "").trim() === normalized) ===
+        index
+      );
     });
 
     return {
@@ -2246,7 +2341,9 @@ export function GeoClientPage({
           onLoad={(event) => {
             event.target.setPadding(resolveGeoMapPadding(isMobile));
             setCurrentZoom(
-              normalizeClusterZoom(event.target.getZoom() ?? DEFAULT_VIEW_STATE.zoom),
+              normalizeClusterZoom(
+                event.target.getZoom() ?? DEFAULT_VIEW_STATE.zoom,
+              ),
             );
             setIsMapMoving(false);
           }}
@@ -2332,7 +2429,9 @@ export function GeoClientPage({
                       exit: { opacity: 0 },
                     }}
                   >
-                    <span key={`views-${hoveredViewsText}`}>{hoveredViewsText}</span>
+                    <span key={`views-${hoveredViewsText}`}>
+                      {hoveredViewsText}
+                    </span>
                   </AutoTransition>
                 </AutoResizer>
               </span>

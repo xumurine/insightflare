@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+
 import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { ShareRadialCard } from "@/components/dashboard/share-radial-card";
 import {
-  fetchBrowserTrend,
   fetchBrowserEngineTrend,
+  fetchBrowserTrend,
 } from "@/lib/dashboard/client-data";
-import type { BrowserTrendData } from "@/lib/edge-client";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { BrowserTrendData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 

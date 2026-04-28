@@ -1,24 +1,25 @@
 "use client";
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import NumberFlow, { continuous } from "@number-flow/react";
-import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
-import { ScatterplotLayer } from "@deck.gl/layers";
-import type { StyleSpecification } from "maplibre-gl";
 import Map, { useControl } from "react-map-gl/maplibre";
 import { useTheme } from "next-themes";
-import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
+import { ScatterplotLayer } from "@deck.gl/layers";
+import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
+import NumberFlow, { continuous } from "@number-flow/react";
+import type { StyleSpecification } from "maplibre-gl";
+
+import { RealtimeLogStreamCard } from "@/components/dashboard/realtime-log-stream-card";
 import {
   RealtimeStatusDot,
   realtimeStatusText,
 } from "@/components/dashboard/realtime-status-indicator";
-import {
-  RealtimeSummaryCardsSection,
-  parseRealtimeCardFilters,
-} from "@/components/dashboard/site-pages/realtime-summary-cards-section";
-import { RealtimeLogStreamCard } from "@/components/dashboard/realtime-log-stream-card";
 import { RealtimeTrafficTrendCard } from "@/components/dashboard/realtime-traffic-trend-card";
+import {
+  parseRealtimeCardFilters,
+  RealtimeSummaryCardsSection,
+} from "@/components/dashboard/site-pages/realtime-summary-cards-section";
 import { AutoTransition } from "@/components/ui/auto-transition";
+import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 import { useLiveSearchParams } from "@/lib/client-history";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -159,7 +160,9 @@ function resolveRippleOpacity(progress: number): number {
   return 0.34 * ((1 - progress) / 0.75);
 }
 
-function resolveRealtimeFillColor(opacity: number): [number, number, number, number] {
+function resolveRealtimeFillColor(
+  opacity: number,
+): [number, number, number, number] {
   return [
     REALTIME_POINT_RGB[0],
     REALTIME_POINT_RGB[1],
@@ -519,7 +522,11 @@ export function RealtimeClientPage({
                     >
                       <NumberFlow
                         value={realtime.activeNow}
-                        plugins={enableRollingNumber ? CONTINUOUS_NUMBER_FLOW_PLUGINS : undefined}
+                        plugins={
+                          enableRollingNumber
+                            ? CONTINUOUS_NUMBER_FLOW_PLUGINS
+                            : undefined
+                        }
                         className="font-mono text-3xl leading-none tabular-nums md:text-4xl"
                         style={NUMBER_FLOW_BASELINE_STYLE}
                       />
@@ -528,7 +535,11 @@ export function RealtimeClientPage({
                       </span>
                       <NumberFlow
                         value={realtime.visitorsLast30m}
-                        plugins={enableRollingNumber ? CONTINUOUS_NUMBER_FLOW_PLUGINS : undefined}
+                        plugins={
+                          enableRollingNumber
+                            ? CONTINUOUS_NUMBER_FLOW_PLUGINS
+                            : undefined
+                        }
                         className="font-mono text-3xl leading-none tabular-nums md:text-4xl"
                         style={NUMBER_FLOW_BASELINE_STYLE}
                       />
@@ -537,7 +548,11 @@ export function RealtimeClientPage({
                       </span>
                       <NumberFlow
                         value={realtime.viewsLast30m}
-                        plugins={enableRollingNumber ? CONTINUOUS_NUMBER_FLOW_PLUGINS : undefined}
+                        plugins={
+                          enableRollingNumber
+                            ? CONTINUOUS_NUMBER_FLOW_PLUGINS
+                            : undefined
+                        }
                         className="font-mono text-3xl leading-none tabular-nums md:text-4xl"
                         style={NUMBER_FLOW_BASELINE_STYLE}
                       />
@@ -582,13 +597,13 @@ export function RealtimeClientPage({
             hasConnected={realtime.hasConnected}
             events={realtime.events}
           />
-              <RealtimeLogStreamCard
-                locale={locale}
-                messages={messages}
-                hasConnected={realtime.hasConnected}
-                events={realtime.events}
-                visits={realtime.visits}
-              />
+          <RealtimeLogStreamCard
+            locale={locale}
+            messages={messages}
+            hasConnected={realtime.hasConnected}
+            events={realtime.events}
+            visits={realtime.visits}
+          />
           <RealtimeSummaryCardsSection
             locale={locale}
             messages={messages}

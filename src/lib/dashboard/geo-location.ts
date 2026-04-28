@@ -20,7 +20,9 @@ function upperSegment(value: string | null | undefined): string {
   return cleanSegment(value).toUpperCase();
 }
 
-export function normalizeGeoNameToken(value: string | null | undefined): string {
+export function normalizeGeoNameToken(
+  value: string | null | undefined,
+): string {
   return cleanSegment(value)
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -36,9 +38,9 @@ export function buildRegionLocationValue(
   const country = upperSegment(countryCode);
   const code = upperSegment(regionCode) || upperSegment(regionName);
   const name = cleanSegment(regionName) || cleanSegment(regionCode);
-  return [country, code, name].filter((segment) => segment.length > 0).join(
-    GEO_LOCATION_SEPARATOR,
-  );
+  return [country, code, name]
+    .filter((segment) => segment.length > 0)
+    .join(GEO_LOCATION_SEPARATOR);
 }
 
 export function buildLocalityLocationValue(

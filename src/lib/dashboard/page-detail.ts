@@ -1,6 +1,8 @@
 export const PAGE_DETAIL_QUERY_PARAM = "pagePath";
 
-export function normalizePagePath(value: string | null | undefined): string | null {
+export function normalizePagePath(
+  value: string | null | undefined,
+): string | null {
   const raw = String(value ?? "").trim();
   if (!raw.startsWith("/")) return null;
 
@@ -26,7 +28,10 @@ export function slugifyPagePath(value: string): string {
   return slug || "page";
 }
 
-export function buildPageDetailHref(basePath: string, pagePath: string): string {
+export function buildPageDetailHref(
+  basePath: string,
+  pagePath: string,
+): string {
   const normalizedPath = normalizePagePath(pagePath) ?? "/";
   const normalizedBasePath = basePath.replace(/\/+$/, "");
   const params = new URLSearchParams();

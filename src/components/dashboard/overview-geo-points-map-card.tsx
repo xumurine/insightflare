@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { RiCopyrightLine } from "@remixicon/react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import {
   GeoPointsMap,
   type GeoPointsMapCountryCount,
   type GeoPointsMapPoint,
 } from "@/components/dashboard/geo-points-map";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   emptyOverviewGeoPointsData,
   fetchOverviewGeoPoints,
@@ -44,7 +45,9 @@ export function OverviewGeoPointsMapCard({
   onCountrySelect,
 }: OverviewGeoPointsMapCardProps) {
   const [loading, setLoading] = useState(true);
-  const [geoPointsData, setGeoPointsData] = useState(emptyOverviewGeoPointsData());
+  const [geoPointsData, setGeoPointsData] = useState(
+    emptyOverviewGeoPointsData(),
+  );
   const requestFilters = useMemo<DashboardFilters>(
     () => ({
       ...filters,
@@ -65,12 +68,7 @@ export function OverviewGeoPointsMapCard({
     let active = true;
     setLoading(true);
 
-    fetchOverviewGeoPoints(
-      siteId,
-      window,
-      requestFilters,
-      { limit: 5000 },
-    )
+    fetchOverviewGeoPoints(siteId, window, requestFilters, { limit: 5000 })
       .then((next) => {
         if (!active) return;
         setGeoPointsData(next);
@@ -87,13 +85,7 @@ export function OverviewGeoPointsMapCard({
     return () => {
       active = false;
     };
-  }, [
-    requestFiltersKey,
-    siteId,
-    window.from,
-    window.interval,
-    window.to,
-  ]);
+  }, [requestFiltersKey, siteId, window.from, window.interval, window.to]);
 
   const points = useMemo<GeoPointsMapPoint[]>(
     () =>

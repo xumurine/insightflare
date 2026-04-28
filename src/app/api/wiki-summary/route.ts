@@ -4,8 +4,7 @@ const WIKIDATA_API_ENDPOINT = "https://www.wikidata.org/w/api.php";
 const DEFAULT_WIKI_LANGUAGE = "en";
 const CACHE_CONTROL_HEADER =
   "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800";
-const WIKIMEDIA_USER_AGENT =
-  "InsightFlare/0.1 (+https://insight.ravelloh.com)";
+const WIKIMEDIA_USER_AGENT = "InsightFlare/0.1 (+https://insight.ravelloh.com)";
 
 interface WikidataTerm {
   value?: string;
@@ -59,10 +58,10 @@ function isValidWikidataId(value: string): boolean {
   return /^Q\d+$/i.test(value);
 }
 
-function normalizeWikiLanguage(
-  rawLanguage: string | null | undefined,
-): string {
-  const normalized = String(rawLanguage ?? "").trim().toLowerCase();
+function normalizeWikiLanguage(rawLanguage: string | null | undefined): string {
+  const normalized = String(rawLanguage ?? "")
+    .trim()
+    .toLowerCase();
   if (!normalized) return DEFAULT_WIKI_LANGUAGE;
   const [base] = normalized.split("-");
   return /^[a-z]{2,12}$/.test(base) ? base : DEFAULT_WIKI_LANGUAGE;
@@ -247,17 +246,15 @@ export async function GET(request: Request): Promise<Response> {
       preferredLanguages,
     );
 
-    let wikipedia:
-      | {
-          language: string;
-          title: string;
-          description: string | null;
-          extract: string | null;
-          extractHtml: string | null;
-          thumbnailUrl: string | null;
-          pageUrl: string | null;
-        }
-      | null = null;
+    let wikipedia: {
+      language: string;
+      title: string;
+      description: string | null;
+      extract: string | null;
+      extractHtml: string | null;
+      thumbnailUrl: string | null;
+      pageUrl: string | null;
+    } | null = null;
 
     if (sitelink) {
       const summary = await fetchWikipediaSummary(
@@ -273,15 +270,13 @@ export async function GET(request: Request): Promise<Response> {
 
       wikipedia = {
         language: sitelink.language,
-        title: String(summary?.title ?? sitelink.title).trim() || sitelink.title,
+        title:
+          String(summary?.title ?? sitelink.title).trim() || sitelink.title,
         description:
-          String(summary?.description ?? "").trim() ||
-          description ||
-          null,
+          String(summary?.description ?? "").trim() || description || null,
         extract: String(summary?.extract ?? "").trim() || null,
         extractHtml: String(summary?.extract_html ?? "").trim() || null,
-        thumbnailUrl:
-          String(summary?.thumbnail?.source ?? "").trim() || null,
+        thumbnailUrl: String(summary?.thumbnail?.source ?? "").trim() || null,
         pageUrl: applyWikipediaVariantToUrl(resolvedPageUrl, acceptLanguage),
       };
     }

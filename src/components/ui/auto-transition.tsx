@@ -112,7 +112,9 @@ export function AutoTransition({
 
   const selectedVariants = customVariants || transitionVariants[type];
   const shouldAnimate = initial || hasRendered;
-  const MotionComponent = (as === "g" ? motion.g : motion.div) as typeof motion.div;
+  const MotionComponent = (
+    as === "g" ? motion.g : motion.div
+  ) as typeof motion.div;
 
   return (
     <AnimatePresence mode={presenceMode} custom={custom}>

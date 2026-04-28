@@ -1,11 +1,18 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { redirect } from "next/navigation";
+
 import { LogoutActionButton } from "@/components/auth/logout-action-button";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { getDashboardProfile } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
-import { getDashboardProfile } from "@/lib/dashboard/server";
 
 interface AppRootPageProps {
   params: Promise<{ locale: string }>;
@@ -55,7 +62,9 @@ export default async function AppRootPage({ params }: AppRootPageProps) {
       <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle>{t.appName}</CardTitle>
-          <CardDescription>{noTeams ? t.empty.noTeams : t.empty.noSites}</CardDescription>
+          <CardDescription>
+            {noTeams ? t.empty.noTeams : t.empty.noSites}
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex items-center gap-2">
           <Button asChild>

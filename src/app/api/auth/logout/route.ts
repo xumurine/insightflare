@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { SESSION_COOKIE } from "@/lib/constants";
 
 export async function POST(): Promise<NextResponse> {

@@ -1,44 +1,39 @@
 "use client";
 
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
-import { usePathname } from "next/navigation";
 import { type DateRange } from "react-day-picker";
+import { usePathname } from "next/navigation";
 import NumberFlow, { continuous } from "@number-flow/react";
-import { OverlayScrollbars } from "overlayscrollbars";
-import type { PartialOptions } from "overlayscrollbars";
 import {
+  RiArrowDownSLine,
   RiArrowLeftSLine,
   RiArrowRightSLine,
-  RiArrowDownSLine,
-  RiCloseLine,
   RiCalendarLine,
+  RiCloseLine,
   RiFilter3Line,
   RiTimeLine,
 } from "@remixicon/react";
+import type { PartialOptions } from "overlayscrollbars";
+import { OverlayScrollbars } from "overlayscrollbars";
+
+import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
+import {
+  RealtimeStatusDot,
+  realtimeStatusText,
+} from "@/components/dashboard/realtime-status-indicator";
+import { AutoResizer } from "@/components/ui/auto-resizer";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Calendar } from "@/components/ui/calendar";
 import { Clickable } from "@/components/ui/clickable";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Spinner } from "@/components/ui/spinner";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -58,6 +53,18 @@ import {
   DrawerTrigger,
 } from "@/components/ui/drawer";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -65,49 +72,43 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { AutoResizer } from "@/components/ui/auto-resizer";
-import { AutoTransition } from "@/components/ui/auto-transition";
-import {
-  RealtimeStatusDot,
-  realtimeStatusText,
-} from "@/components/dashboard/realtime-status-indicator";
-import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
-import {
-  fetchDashboardFilterOptions,
-  type DashboardFilterOptionData,
-} from "@/lib/dashboard/client-data";
 import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
-import { intlLocale } from "@/lib/dashboard/format";
 import {
-  normalizeCustomDateRange,
+  replaceUrlWithoutNavigation,
+  useLiveSearchParams,
+} from "@/lib/client-history";
+import {
+  type DashboardFilterOptionData,
+  fetchDashboardFilterOptions,
+} from "@/lib/dashboard/client-data";
+import { intlLocale } from "@/lib/dashboard/format";
+import { parseGeoLocationValue } from "@/lib/dashboard/geo-location";
+import {
   type CustomTimeRange,
   type DashboardFilters,
   type DashboardInterval,
+  normalizeCustomDateRange,
   type RangePreset,
   type TimeWindow,
 } from "@/lib/dashboard/query-state";
-import { parseGeoLocationValue } from "@/lib/dashboard/geo-location";
 import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import {
   resolveContinentLabel,
   resolveCountryLabel,
   resolveLanguageLabel,
 } from "@/lib/i18n/code-labels";
-import { isRealtimeMockEnabled } from "@/lib/realtime/client";
-import type { RealtimeConnectionState } from "@/lib/realtime/types";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
+import { isRealtimeMockEnabled } from "@/lib/realtime/client";
+import type { RealtimeConnectionState } from "@/lib/realtime/types";
 import { cn } from "@/lib/utils";
-import {
-  replaceUrlWithoutNavigation,
-  useLiveSearchParams,
-} from "@/lib/client-history";
 
 interface DashboardHeaderControlsProps {
   locale: Locale;
@@ -141,7 +142,9 @@ const FILTER_QUERY_KEYS = [
 
 type FilterQueryKey = (typeof FILTER_QUERY_KEYS)[number];
 
-function normalizeFilterInputValue(raw: string | null | undefined): string | undefined {
+function normalizeFilterInputValue(
+  raw: string | null | undefined,
+): string | undefined {
   if (typeof raw !== "string") return undefined;
   const normalized = raw.trim().slice(0, 160);
   if (!normalized) return undefined;
@@ -152,7 +155,9 @@ function normalizeFilterInputValue(raw: string | null | undefined): string | und
   return normalized;
 }
 
-function parseFiltersFromSearchParams(searchParams: URLSearchParams): DashboardFilters {
+function parseFiltersFromSearchParams(
+  searchParams: URLSearchParams,
+): DashboardFilters {
   const next: DashboardFilters = {};
   for (const key of FILTER_QUERY_KEYS) {
     const normalized = normalizeFilterInputValue(searchParams.get(key));
@@ -370,7 +375,11 @@ function RealtimeActiveBadge({
                 />
               </span>
             ) : (
-              <span key="active-now-empty" className="inline-flex w-0 overflow-hidden" aria-hidden />
+              <span
+                key="active-now-empty"
+                className="inline-flex w-0 overflow-hidden"
+                aria-hidden
+              />
             )}
           </AutoTransition>
           <span className={showValue ? "ml-2" : ""}>
@@ -539,9 +548,7 @@ function buildSyntheticFilterOption(
   return {
     value,
     label: value,
-    ...(key === "geo"
-      ? { group: inferGeoOptionGroup(value) }
-      : {}),
+    ...(key === "geo" ? { group: inferGeoOptionGroup(value) } : {}),
   };
 }
 
@@ -694,14 +701,7 @@ function DashboardFilterSelectField({
     return () => {
       active = false;
     };
-  }, [
-    filterKey,
-    open,
-    requestFilters,
-    requestSignature,
-    siteId,
-    window,
-  ]);
+  }, [filterKey, open, requestFilters, requestSignature, siteId, window]);
 
   useEffect(() => {
     if (!open) return;
@@ -728,9 +728,10 @@ function DashboardFilterSelectField({
   }, [open]);
 
   const resolvedOptions = useMemo(() => {
-    const base = optionState.signature === requestSignature
-      ? optionState.options ?? []
-      : [];
+    const base =
+      optionState.signature === requestSignature
+        ? (optionState.options ?? [])
+        : [];
     if (!currentValue) return base;
     return base.some((option) => option.value === currentValue)
       ? base
@@ -775,8 +776,8 @@ function DashboardFilterSelectField({
   const selectedOption = useMemo(
     () =>
       currentValue
-        ? resolvedOptions.find((option) => option.value === currentValue) ??
-          buildSyntheticFilterOption(filterKey, currentValue)
+        ? (resolvedOptions.find((option) => option.value === currentValue) ??
+          buildSyntheticFilterOption(filterKey, currentValue))
         : null,
     [currentValue, filterKey, resolvedOptions],
   );
@@ -852,7 +853,8 @@ function DashboardFilterSelectField({
               role="listbox"
               aria-label={filterFieldLabel(messages, filterKey)}
             >
-              {optionState.loading && optionState.signature === requestSignature ? (
+              {optionState.loading &&
+              optionState.signature === requestSignature ? (
                 <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
                   <Spinner className="size-3.5" />
                   <span>{messages.common.loading}</span>
@@ -902,7 +904,12 @@ function DashboardFilterSelectField({
                                 "bg-accent text-accent-foreground",
                             )}
                           >
-                            {formatFilterOptionLabel(filterKey, option, locale, messages)}
+                            {formatFilterOptionLabel(
+                              filterKey,
+                              option,
+                              locale,
+                              messages,
+                            )}
                           </button>
                         ))}
                       </div>
@@ -1020,14 +1027,16 @@ export function DashboardHeaderControls({
   const [periodForwardStack, setPeriodForwardStack] = useState<
     CustomTimeRange[]
   >([]);
-  const openCustomDialogTimeoutRef = useRef<
-    ReturnType<typeof globalThis.setTimeout> | null
-  >(null);
+  const openCustomDialogTimeoutRef = useRef<ReturnType<
+    typeof globalThis.setTimeout
+  > | null>(null);
   const [pendingCustomRange, setPendingCustomRange] = useState<
     DateRange | undefined
   >(selectedDateRange);
-  const realtimeSiteId = siteId || (USE_REALTIME_MOCK ? "local-mock-site" : undefined);
-  const showRealtimeBadge = showFilterSheet && (Boolean(siteId) || USE_REALTIME_MOCK);
+  const realtimeSiteId =
+    siteId || (USE_REALTIME_MOCK ? "local-mock-site" : undefined);
+  const showRealtimeBadge =
+    showFilterSheet && (Boolean(siteId) || USE_REALTIME_MOCK);
   const realtime = useRealtimeChannel(realtimeSiteId, {
     enabled: showControls && showRealtimeBadge,
   });
@@ -1046,7 +1055,11 @@ export function DashboardHeaderControls({
     window.to,
     "previous",
   );
-  const inferredNextPeriodRange = shiftTimeWindow(window.from, window.to, "next");
+  const inferredNextPeriodRange = shiftTimeWindow(
+    window.from,
+    window.to,
+    "next",
+  );
   const nextPeriodRange = periodForwardStack[0] ?? inferredNextPeriodRange;
   const previousPeriodLabel = messages.dashboardHeader.previousPeriod;
   const nextPeriodLabel = messages.dashboardHeader.nextPeriod;
@@ -1075,14 +1088,11 @@ export function DashboardHeaderControls({
         (pendingNormalized.to - pendingNormalized.from) / (24 * 60 * 60 * 1000),
       ),
     );
-    return formatI18nTemplate(
-      messages.dashboardHeader.customSelectionSummary,
-      {
-        from: formatter.format(new Date(pendingNormalized.from)),
-        to: formatter.format(new Date(pendingNormalized.to)),
-        days: dayCount,
-      },
-    );
+    return formatI18nTemplate(messages.dashboardHeader.customSelectionSummary, {
+      from: formatter.format(new Date(pendingNormalized.from)),
+      to: formatter.format(new Date(pendingNormalized.to)),
+      days: dayCount,
+    });
   }, [
     locale,
     messages.dashboardHeader.customSelectionSummary,
@@ -1109,19 +1119,22 @@ export function DashboardHeaderControls({
     setPeriodForwardStack([]);
   }, [siteId]);
 
-  const setFilterQueryValue = useCallback((key: FilterQueryKey, rawValue: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    const normalized = normalizeFilterInputValue(rawValue);
-    if (normalized) params.set(key, normalized);
-    else params.delete(key);
+  const setFilterQueryValue = useCallback(
+    (key: FilterQueryKey, rawValue: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      const normalized = normalizeFilterInputValue(rawValue);
+      if (normalized) params.set(key, normalized);
+      else params.delete(key);
 
-    const updated = params.toString();
-    const current = searchParams.toString();
-    if (updated !== current) {
-      const target = updated ? `${livePathname}?${updated}` : livePathname;
-      replaceUrlWithoutNavigation(target);
-    }
-  }, [livePathname, searchParams]);
+      const updated = params.toString();
+      const current = searchParams.toString();
+      if (updated !== current) {
+        const target = updated ? `${livePathname}?${updated}` : livePathname;
+        replaceUrlWithoutNavigation(target);
+      }
+    },
+    [livePathname, searchParams],
+  );
 
   const clearAllFilterQueryValues = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -1199,14 +1212,14 @@ export function DashboardHeaderControls({
       <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
         <div className="flex items-center justify-end gap-2 lg:hidden">
           {showRealtimeBadge ? (
-                <RealtimeActiveBadge
-                  activeNow={activeNow}
-                  status={realtimeStatus}
-                  showValue={hasRealtimeConnected}
-                  label={messages.realtime.activeNow}
-                  messages={messages}
-                />
-              ) : null}
+            <RealtimeActiveBadge
+              activeNow={activeNow}
+              status={realtimeStatus}
+              showValue={hasRealtimeConnected}
+              label={messages.realtime.activeNow}
+              messages={messages}
+            />
+          ) : null}
           <Drawer
             open={mobileFilterDrawerOpen}
             onOpenChange={setMobileFilterDrawerOpen}
@@ -1224,13 +1237,18 @@ export function DashboardHeaderControls({
             </DrawerTrigger>
             <DrawerContent className="max-h-[90vh] flex flex-col">
               <DrawerHeader>
-                <DrawerTitle>{messages.dashboardHeader.filterTitle}</DrawerTitle>
+                <DrawerTitle>
+                  {messages.dashboardHeader.filterTitle}
+                </DrawerTitle>
                 <DrawerDescription>
                   {messages.dashboardHeader.filterSubtitle}
                 </DrawerDescription>
               </DrawerHeader>
 
-              <PanelScrollbar className="min-h-0 flex-1" syncKey={searchParamsKey}>
+              <PanelScrollbar
+                className="min-h-0 flex-1"
+                syncKey={searchParamsKey}
+              >
                 <div className="space-y-4 px-4 pb-2">
                   <DashboardFilterFields
                     locale={locale}
@@ -1336,7 +1354,9 @@ export function DashboardHeaderControls({
                           key={item}
                           type="button"
                           size="sm"
-                          variant={window.interval === item ? "default" : "outline"}
+                          variant={
+                            window.interval === item ? "default" : "outline"
+                          }
                           className="justify-start px-2"
                           disabled={!enabled}
                           title={
@@ -1367,14 +1387,14 @@ export function DashboardHeaderControls({
 
         <div className="hidden min-w-0 max-w-full flex-wrap items-center justify-end gap-2 lg:flex">
           {showRealtimeBadge ? (
-                <RealtimeActiveBadge
-                  activeNow={activeNow}
-                  status={realtimeStatus}
-                  showValue={hasRealtimeConnected}
-                  label={messages.realtime.activeNow}
-                  messages={messages}
-                />
-              ) : null}
+            <RealtimeActiveBadge
+              activeNow={activeNow}
+              status={realtimeStatus}
+              showValue={hasRealtimeConnected}
+              label={messages.realtime.activeNow}
+              messages={messages}
+            />
+          ) : null}
           <Sheet modal={false}>
             <SheetTrigger asChild disabled={!showFilterSheet}>
               <Button
@@ -1398,7 +1418,10 @@ export function DashboardHeaderControls({
                 </SheetDescription>
               </SheetHeader>
 
-              <PanelScrollbar className="min-h-0 flex-1" syncKey={searchParamsKey}>
+              <PanelScrollbar
+                className="min-h-0 flex-1"
+                syncKey={searchParamsKey}
+              >
                 <div className="space-y-4 px-4 pb-4">
                   <DashboardFilterFields
                     locale={locale}
@@ -1431,7 +1454,9 @@ export function DashboardHeaderControls({
                   <RiArrowLeftSLine className="size-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">{previousPeriodLabel}</TooltipContent>
+              <TooltipContent side="bottom">
+                {previousPeriodLabel}
+              </TooltipContent>
             </Tooltip>
 
             <Tooltip>

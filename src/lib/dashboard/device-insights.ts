@@ -24,11 +24,18 @@ export interface ParsedScreenSize {
 }
 
 export function parseScreenSizeLabel(label: string): ParsedScreenSize | null {
-  const match = String(label ?? "").trim().match(/^(\d{2,5})x(\d{2,5})$/i);
+  const match = String(label ?? "")
+    .trim()
+    .match(/^(\d{2,5})x(\d{2,5})$/i);
   if (!match) return null;
   const width = Number(match[1]);
   const height = Number(match[2]);
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
     return null;
   }
   return {
@@ -48,9 +55,7 @@ export function classifyScreenBucket(label: string): ScreenBucketKey {
   return "desktopWide";
 }
 
-export function aggregateScreenBuckets(
-  series: BrowserTrendSeries[],
-): {
+export function aggregateScreenBuckets(series: BrowserTrendSeries[]): {
   buckets: ScreenBucketSummary[];
   totalVisitors: number;
   classifiedVisitors: number;
@@ -66,7 +71,9 @@ export function aggregateScreenBuckets(
   const totalVisitors = series.reduce((sum, item) => sum + item.visitors, 0);
 
   for (const item of series) {
-    const bucket = item.isOther ? "unclassified" : classifyScreenBucket(item.label);
+    const bucket = item.isOther
+      ? "unclassified"
+      : classifyScreenBucket(item.label);
     totals.set(bucket, (totals.get(bucket) ?? 0) + item.visitors);
   }
 
@@ -100,21 +107,17 @@ export function pickTopVisibleSeries(
   }, null);
 }
 
-export function pickTopCrossCell(
-  data: BrowserCrossBreakdownDimensionData,
-): {
+export function pickTopCrossCell(data: BrowserCrossBreakdownDimensionData): {
   primaryLabel: string;
   secondaryLabel: string;
   visitors: number;
   share: number;
 } | null {
-  let top:
-    | {
-        primaryLabel: string;
-        secondaryLabel: string;
-        visitors: number;
-      }
-    | null = null;
+  let top: {
+    primaryLabel: string;
+    secondaryLabel: string;
+    visitors: number;
+  } | null = null;
 
   for (const row of data.rows) {
     for (const cell of row.cells) {

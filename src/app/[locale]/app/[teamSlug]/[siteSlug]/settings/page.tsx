@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+
 import { SettingsClientPage } from "@/components/dashboard/site-pages/settings-client-page";
 import { getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
@@ -12,7 +13,9 @@ interface SiteSettingsPageProps {
   }>;
 }
 
-export default async function SiteSettingsPage({ params }: SiteSettingsPageProps) {
+export default async function SiteSettingsPage({
+  params,
+}: SiteSettingsPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);

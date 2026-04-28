@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+
 import { upsertAdminSiteConfig } from "@/lib/edge-client";
-import { parseFormBool, parseRequestBody, bodyStr } from "@/lib/form-helpers";
+import { bodyStr, parseFormBool, parseRequestBody } from "@/lib/form-helpers";
 
 function normalizeErrorMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
@@ -8,9 +9,14 @@ function normalizeErrorMessage(error: unknown): string {
   if (jsonStart >= 0) {
     const maybeJson = raw.slice(jsonStart).trim();
     try {
-      const parsed = JSON.parse(maybeJson) as { message?: unknown; error?: unknown };
-      if (typeof parsed.message === "string" && parsed.message.trim()) return parsed.message.trim();
-      if (typeof parsed.error === "string" && parsed.error.trim()) return parsed.error.trim();
+      const parsed = JSON.parse(maybeJson) as {
+        message?: unknown;
+        error?: unknown;
+      };
+      if (typeof parsed.message === "string" && parsed.message.trim())
+        return parsed.message.trim();
+      if (typeof parsed.error === "string" && parsed.error.trim())
+        return parsed.error.trim();
     } catch {
       // fall through to raw
     }
@@ -18,12 +24,17 @@ function normalizeErrorMessage(error: unknown): string {
   return raw;
 }
 
-function buildLegacyConfig(body: Record<string, unknown>): Record<string, unknown> {
+function buildLegacyConfig(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
   return {
     privacy: {
       maskQueryHashDetails: parseFormBool(body.maskQueryHashDetails, true),
       maskVisitorTrajectory: parseFormBool(body.maskVisitorTrajectory, true),
-      maskDetailedReferrerUrl: parseFormBool(body.maskDetailedReferrerUrl, true),
+      maskDetailedReferrerUrl: parseFormBool(
+        body.maskDetailedReferrerUrl,
+        true,
+      ),
     },
   };
 }
@@ -33,7 +44,10 @@ export async function POST(request: Request): Promise<NextResponse> {
   const siteId = bodyStr(body, "siteId");
 
   if (siteId.length === 0) {
-    return NextResponse.json({ ok: false, error: "missing_site_id" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "missing_site_id" },
+      { status: 400 },
+    );
   }
 
   const config =

@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
-import { AnimatePresence, useReducedMotion } from "motion/react";
+import { type MouseEvent, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
   RiArrowDownSLine,
@@ -9,15 +8,18 @@ import {
   RiArrowUpSLine,
   RiSearchLine,
 } from "@remixicon/react";
+import { AnimatePresence, useReducedMotion } from "motion/react";
+
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import {
-  REFERRER_QUERY_PARAM_BY_TAB,
   LabelWithOptionalIcon,
+  REFERRER_QUERY_PARAM_BY_TAB,
   type ReferrerRowsByTab,
   type ReferrerTab,
 } from "@/components/dashboard/referrer-utils";
 import { TabbedScrollMaskCard } from "@/components/dashboard/tabbed-scroll-mask-card";
+import { Clickable } from "@/components/ui/clickable";
 import {
   Dialog,
   DialogContent,
@@ -30,15 +32,14 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { Clickable } from "@/components/ui/clickable";
 import { Input } from "@/components/ui/input";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { numberFormat } from "@/lib/dashboard/format";
 import {
   replaceUrlWithoutNavigation,
   useLiveSearchParams,
 } from "@/lib/client-history";
+import { numberFormat } from "@/lib/dashboard/format";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
@@ -81,9 +82,9 @@ export function ReferrerBreakdownCard({
   const livePathname = usePathname() || pathname;
   const isMobile = useIsMobile();
   const reduceDataRowMotion = useReducedMotion() ?? false;
-  const [sortByTab, setSortByTab] = useState<Record<ReferrerTab, ReferrerSortState>>(
-    createInitialSortByTab,
-  );
+  const [sortByTab, setSortByTab] = useState<
+    Record<ReferrerTab, ReferrerSortState>
+  >(createInitialSortByTab);
   const [searchTab, setSearchTab] = useState<ReferrerTab | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -111,8 +112,12 @@ export function ReferrerBreakdownCard({
 
   const activeQueryValueByTab = useMemo(
     () => ({
-      domain: normalizeQueryValue(searchParams.get(REFERRER_QUERY_PARAM_BY_TAB.domain)),
-      link: normalizeQueryValue(searchParams.get(REFERRER_QUERY_PARAM_BY_TAB.link)),
+      domain: normalizeQueryValue(
+        searchParams.get(REFERRER_QUERY_PARAM_BY_TAB.domain),
+      ),
+      link: normalizeQueryValue(
+        searchParams.get(REFERRER_QUERY_PARAM_BY_TAB.link),
+      ),
     }),
     [searchParams],
   );
@@ -127,7 +132,8 @@ export function ReferrerBreakdownCard({
         const primary = (left[sort.key] - right[sort.key]) * direction;
         if (primary !== 0) return primary;
         if (right.views !== left.views) return right.views - left.views;
-        if (right.visitors !== left.visitors) return right.visitors - left.visitors;
+        if (right.visitors !== left.visitors)
+          return right.visitors - left.visitors;
         return (left.displayLabel ?? left.label).localeCompare(
           right.displayLabel ?? right.label,
         );
@@ -143,7 +149,9 @@ export function ReferrerBreakdownCard({
     for (const tab of ["domain", "link"] as const) {
       const activeQueryValue = activeQueryValueByTab[tab];
       next[tab] = activeQueryValue
-        ? sortedRowsByTab[tab].filter((row) => row.filterValue === activeQueryValue)
+        ? sortedRowsByTab[tab].filter(
+            (row) => row.filterValue === activeQueryValue,
+          )
         : sortedRowsByTab[tab];
     }
 
@@ -262,7 +270,9 @@ export function ReferrerBreakdownCard({
               type="button"
               className={cn(
                 "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-                sort.key === "views" ? "text-foreground" : "text-muted-foreground",
+                sort.key === "views"
+                  ? "text-foreground"
+                  : "text-muted-foreground",
               )}
               onClick={() => toggleSort(tab, "views")}
             >
@@ -387,7 +397,11 @@ export function ReferrerBreakdownCard({
           emptyLabel={messages.common.noData}
           colSpan={3}
           header={renderTableHeader(activeSearchTab)}
-          rows={renderRows(activeSearchTab, searchedRows, `search-${activeSearchTab}`)}
+          rows={renderRows(
+            activeSearchTab,
+            searchedRows,
+            `search-${activeSearchTab}`,
+          )}
           contentKey={`search-${activeSearchTab}-${searchTerm}-${searchedRows.length}`}
         />
       </div>

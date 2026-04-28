@@ -1,5 +1,5 @@
-import { DEFAULT_EDGE_BASE_URL } from "./constants";
 import { getSessionToken } from "./auth";
+import { DEFAULT_EDGE_BASE_URL } from "./constants";
 
 export function resolveEdgeBaseUrl(requestUrl?: string): string {
   const configured = (process.env.INSIGHTFLARE_EDGE_URL || "").trim();
@@ -19,7 +19,10 @@ export function resolveEdgeBaseUrl(requestUrl?: string): string {
   return DEFAULT_EDGE_BASE_URL;
 }
 
-export function buildEdgeUrl(pathname: string, params?: Record<string, string>): string {
+export function buildEdgeUrl(
+  pathname: string,
+  params?: Record<string, string>,
+): string {
   return buildEdgeUrlWithBase(resolveEdgeBaseUrl(), pathname, params);
 }
 
@@ -46,7 +49,11 @@ export async function fetchEdgeForServer(input: {
   body?: unknown;
 }): Promise<Response> {
   const method = input.method || "GET";
-  const url = buildEdgeUrlWithBase(input.baseUrl || resolveEdgeBaseUrl(), input.pathname, input.params);
+  const url = buildEdgeUrlWithBase(
+    input.baseUrl || resolveEdgeBaseUrl(),
+    input.pathname,
+    input.params,
+  );
   const headers = new Headers();
 
   try {
@@ -71,7 +78,10 @@ export async function fetchEdgeForServer(input: {
   return fetch(url, {
     method,
     headers,
-    body: method === "POST" || method === "PATCH" ? JSON.stringify(input.body ?? {}) : undefined,
+    body:
+      method === "POST" || method === "PATCH"
+        ? JSON.stringify(input.body ?? {})
+        : undefined,
     cache: "no-store",
   });
 }

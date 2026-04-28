@@ -4,7 +4,11 @@ import { handlePrivateQuery } from "@/lib/edge/query";
 import { resolveEdgeRuntime } from "@/lib/edge/runtime";
 import type { Env } from "@/lib/edge/types";
 
-function routePrivateRequest(request: Request, env: Env, url: URL): Promise<Response> {
+function routePrivateRequest(
+  request: Request,
+  env: Env,
+  url: URL,
+): Promise<Response> {
   if (url.pathname.startsWith("/api/private/admin/")) {
     return handlePrivateAdmin(request, env, url);
   }
@@ -15,16 +19,28 @@ function routePrivateRequest(request: Request, env: Env, url: URL): Promise<Resp
 }
 
 export async function GET(request: Request): Promise<Response> {
-  const { request: requestWithCf, env, url } = await resolveEdgeRuntime(request);
+  const {
+    request: requestWithCf,
+    env,
+    url,
+  } = await resolveEdgeRuntime(request);
   return routePrivateRequest(requestWithCf, env, url);
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const { request: requestWithCf, env, url } = await resolveEdgeRuntime(request);
+  const {
+    request: requestWithCf,
+    env,
+    url,
+  } = await resolveEdgeRuntime(request);
   return routePrivateRequest(requestWithCf, env, url);
 }
 
 export async function PATCH(request: Request): Promise<Response> {
-  const { request: requestWithCf, env, url } = await resolveEdgeRuntime(request);
+  const {
+    request: requestWithCf,
+    env,
+    url,
+  } = await resolveEdgeRuntime(request);
   return routePrivateRequest(requestWithCf, env, url);
 }

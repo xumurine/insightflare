@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { ReferrerBreakdownCard } from "@/components/dashboard/referrer-breakdown-card";
 import { ReferrerPerformanceRadarCard } from "@/components/dashboard/referrer-performance-radar-card";
@@ -8,7 +9,10 @@ import { ReferrerShareTrendCard } from "@/components/dashboard/referrer-share-tr
 import { ReferrerSummarySection } from "@/components/dashboard/referrer-summary-section";
 import { buildReferrerRowsByTab } from "@/components/dashboard/referrer-utils";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
-import { fetchOverviewSourceCardTab, type OverviewTabRows } from "@/lib/dashboard/client-data";
+import {
+  fetchOverviewSourceCardTab,
+  type OverviewTabRows,
+} from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -57,12 +61,24 @@ export function ReferrersClientPage({
     setLoading(true);
 
     Promise.all([
-      fetchOverviewSourceCardTab(siteId, requestWindow, "domain", requestFilters, {
-        limit: 100,
-      }).catch(() => EMPTY_ROWS),
-      fetchOverviewSourceCardTab(siteId, requestWindow, "link", requestFilters, {
-        limit: 100,
-      }).catch(() => EMPTY_ROWS),
+      fetchOverviewSourceCardTab(
+        siteId,
+        requestWindow,
+        "domain",
+        requestFilters,
+        {
+          limit: 100,
+        },
+      ).catch(() => EMPTY_ROWS),
+      fetchOverviewSourceCardTab(
+        siteId,
+        requestWindow,
+        "link",
+        requestFilters,
+        {
+          limit: 100,
+        },
+      ).catch(() => EMPTY_ROWS),
     ])
       .then(([domain, link]) => {
         if (!active) return;

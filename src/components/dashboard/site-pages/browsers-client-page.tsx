@@ -1,13 +1,13 @@
 "use client";
 
-import { PageHeading } from "@/components/dashboard/page-heading";
-import { BrowserShareOverview } from "@/components/dashboard/browser-share-overview";
-import { BrowserPerformanceRadarCard } from "@/components/dashboard/browser-performance-radar-card";
-import { BrowserShareTrendCard } from "@/components/dashboard/browser-share-trend-card";
-import { BrowserEngineShareTrendCard } from "@/components/dashboard/browser-engine-share-trend-card";
 import { BrowserCrossBreakdownGrid } from "@/components/dashboard/browser-cross-breakdown-grid";
-import { CanIUseCompatCard } from "@/components/dashboard/caniuse-compat-card";
+import { BrowserEngineShareTrendCard } from "@/components/dashboard/browser-engine-share-trend-card";
+import { BrowserPerformanceRadarCard } from "@/components/dashboard/browser-performance-radar-card";
+import { BrowserShareOverview } from "@/components/dashboard/browser-share-overview";
+import { BrowserShareTrendCard } from "@/components/dashboard/browser-share-trend-card";
 import { BrowserVersionBreakdownGrid } from "@/components/dashboard/browser-version-breakdown-grid";
+import { CanIUseCompatCard } from "@/components/dashboard/caniuse-compat-card";
+import { PageHeading } from "@/components/dashboard/page-heading";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type { Locale } from "@/lib/i18n/config";

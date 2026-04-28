@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
+
 import { ContentSwitch } from "@/components/dashboard/content-switch";
-import { ShareRadialCard } from "@/components/dashboard/share-radial-card";
 import type { ReferrerRowsByTab } from "@/components/dashboard/referrer-utils";
+import { ShareRadialCard } from "@/components/dashboard/share-radial-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { numberFormat, percentFormat } from "@/lib/dashboard/format";
 import type { Locale } from "@/lib/i18n/config";
@@ -17,13 +18,7 @@ interface ReferrerSummarySectionProps {
   hideSummaryCard?: boolean;
 }
 
-function SummaryMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function SummaryMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-none border border-border/70 bg-muted/15 p-3">
       <p className="text-xs text-muted-foreground">{label}</p>
@@ -74,14 +69,10 @@ export function ReferrerSummarySection({
     () => externalRows.reduce((sum, row) => sum + row.views, 0),
     [externalRows],
   );
-  const topSourceShare = totalViews > 0 && topSource
-    ? topSource.views / totalViews
-    : 0;
+  const topSourceShare =
+    totalViews > 0 && topSource ? topSource.views / totalViews : 0;
   const nextFourViews = useMemo(
-    () =>
-      externalRows
-        .slice(1, 5)
-        .reduce((sum, row) => sum + row.views, 0),
+    () => externalRows.slice(1, 5).reduce((sum, row) => sum + row.views, 0),
     [externalRows],
   );
   const longTailViews = Math.max(

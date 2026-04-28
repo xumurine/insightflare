@@ -1,10 +1,10 @@
 "use client";
 
+import { ShareTrendCard } from "@/components/dashboard/share-trend-card";
 import { fetchBrowserTrend } from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
-import { ShareTrendCard } from "@/components/dashboard/share-trend-card";
 
 interface BrowserShareTrendCardProps {
   locale: Locale;

@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
+
 import { PageDetailClientPage } from "@/components/dashboard/site-pages/page-detail-client-page";
-import { buildSitePath, getTeamSiteContext } from "@/lib/dashboard/server";
 import {
-  PAGE_DETAIL_QUERY_PARAM,
   normalizePagePath,
+  PAGE_DETAIL_QUERY_PARAM,
 } from "@/lib/dashboard/page-detail";
+import { buildSitePath, getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 

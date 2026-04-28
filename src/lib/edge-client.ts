@@ -1,6 +1,7 @@
-import { DEFAULT_EDGE_BASE_URL } from "./constants";
-import { getSessionToken } from "./auth";
 import type { SiteScriptSettings } from "@/lib/site-settings";
+
+import { getSessionToken } from "./auth";
+import { DEFAULT_EDGE_BASE_URL } from "./constants";
 
 type HttpMethod = "GET" | "POST" | "PATCH";
 
@@ -48,7 +49,9 @@ async function edgeBaseUrl(): Promise<string> {
     if (host) {
       const proto =
         h.get("x-forwarded-proto") ||
-        (host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
+        (host.startsWith("localhost") || host.startsWith("127.0.0.1")
+          ? "http"
+          : "https");
       return `${proto}://${host}`;
     }
   } catch {
@@ -85,9 +88,11 @@ function withFilters(
   if (filters.sourceLink) next.sourceLink = filters.sourceLink;
   if (filters.clientBrowser) next.clientBrowser = filters.clientBrowser;
   if (filters.clientOsVersion) next.clientOsVersion = filters.clientOsVersion;
-  if (filters.clientDeviceType) next.clientDeviceType = filters.clientDeviceType;
+  if (filters.clientDeviceType)
+    next.clientDeviceType = filters.clientDeviceType;
   if (filters.clientLanguage) next.clientLanguage = filters.clientLanguage;
-  if (filters.clientScreenSize) next.clientScreenSize = filters.clientScreenSize;
+  if (filters.clientScreenSize)
+    next.clientScreenSize = filters.clientScreenSize;
   if (filters.geo) next.geo = filters.geo;
   if (filters.geoContinent) next.geoContinent = filters.geoContinent;
   if (filters.geoTimezone) next.geoTimezone = filters.geoTimezone;
@@ -133,7 +138,9 @@ async function fetchEdgeJson<T>(options: FetchEdgeOptions): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Edge API failed (${res.status} ${method} ${url.pathname}): ${text}`);
+    throw new Error(
+      `Edge API failed (${res.status} ${method} ${url.pathname}): ${text}`,
+    );
   }
 
   return (await res.json()) as T;
@@ -233,12 +240,7 @@ export interface BrowserTrendData {
   data: BrowserTrendPoint[];
 }
 
-export type PerformanceMetricKey =
-  | "ttfb"
-  | "fcp"
-  | "lcp"
-  | "cls"
-  | "inp";
+export type PerformanceMetricKey = "ttfb" | "fcp" | "lcp" | "cls" | "inp";
 
 export interface PerformanceSummary {
   avg: number | null;
@@ -935,7 +937,10 @@ export async function updateAdminTeam(input: {
 export async function removeAdminTeam(input: {
   teamId: string;
 }): Promise<{ teamId: string; removed: boolean }> {
-  const res = await fetchEdgeJson<{ ok: boolean; data: { teamId: string; removed: boolean } }>({
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: { teamId: string; removed: boolean };
+  }>({
     method: "PATCH",
     path: "/api/private/admin/teams",
     body: {
@@ -1027,7 +1032,10 @@ export async function removeAdminMember(input: {
   teamId: string;
   userId: string;
 }): Promise<{ teamId: string; userId: string; removed: boolean }> {
-  const res = await fetchEdgeJson<{ ok: boolean; data: { teamId: string; userId: string; removed: boolean } }>({
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: { teamId: string; userId: string; removed: boolean };
+  }>({
     method: "PATCH",
     path: "/api/private/admin/members",
     body: input,
@@ -1035,7 +1043,9 @@ export async function removeAdminMember(input: {
   return res.data;
 }
 
-export async function fetchAdminSiteConfig(siteId: string): Promise<SiteScriptSettings> {
+export async function fetchAdminSiteConfig(
+  siteId: string,
+): Promise<SiteScriptSettings> {
   const res = await fetchEdgeJson<SiteConfigData>({
     path: "/api/private/admin/site-config",
     params: { siteId },
@@ -1055,7 +1065,9 @@ export async function upsertAdminSiteConfig(input: {
   return res.data;
 }
 
-export async function fetchAdminScriptSnippet(siteId: string): Promise<ScriptSnippetData["data"]> {
+export async function fetchAdminScriptSnippet(
+  siteId: string,
+): Promise<ScriptSnippetData["data"]> {
   const res = await fetchEdgeJson<ScriptSnippetData>({
     path: "/api/private/admin/script-snippet",
     params: { siteId },
@@ -1141,7 +1153,10 @@ export async function updateAdminUser(input: {
 export async function removeAdminUser(input: {
   userId: string;
 }): Promise<{ userId: string; removed: boolean }> {
-  const res = await fetchEdgeJson<{ ok: boolean; data: { userId: string; removed: boolean } }>({
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: { userId: string; removed: boolean };
+  }>({
     method: "PATCH",
     path: "/api/private/admin/users",
     body: {

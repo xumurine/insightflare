@@ -1,18 +1,22 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { TrafficPairBarChart } from "@/components/dashboard/site-traffic-charts";
+import Link from "next/link";
+
 import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
+import { TrafficPairBarChart } from "@/components/dashboard/site-traffic-charts";
 import { AutoTransition } from "@/components/ui/auto-transition";
-import type { DashboardInterval, TimeWindow } from "@/lib/dashboard/query-state";
-import type { Locale } from "@/lib/i18n/config";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import type {
+  DashboardInterval,
+  TimeWindow,
+} from "@/lib/dashboard/query-state";
+import type { Locale } from "@/lib/i18n/config";
 
 interface SiteOverviewMetrics {
   views: number;
@@ -75,7 +79,11 @@ interface SiteIconProps {
 
 const SIDEBAR_EXPAND_CHART_DELAY_MS = 220;
 
-function buildSitePath(locale: Locale, teamSlug: string, siteSlug: string): string {
+function buildSitePath(
+  locale: Locale,
+  teamSlug: string,
+  siteSlug: string,
+): string {
   return `/${locale}/app/${teamSlug}/${siteSlug}`;
 }
 
@@ -83,7 +91,9 @@ function resolveFaviconUrl(domain: string): string | null {
   const trimmed = domain.trim();
   if (!trimmed) return null;
   try {
-    const parsed = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
+    const parsed = new URL(
+      trimmed.includes("://") ? trimmed : `https://${trimmed}`,
+    );
     return `${parsed.origin}/favicon.ico`;
   } catch {
     return null;
@@ -160,7 +170,9 @@ function intervalStepMs(interval: DashboardInterval): number {
   return 30 * 24 * 60 * 60 * 1000;
 }
 
-function buildZeroTrend(window: Pick<TimeWindow, "from" | "to" | "interval">): SiteTrendPoint[] {
+function buildZeroTrend(
+  window: Pick<TimeWindow, "from" | "to" | "interval">,
+): SiteTrendPoint[] {
   const stepMs = intervalStepMs(window.interval);
   if (!Number.isFinite(stepMs) || stepMs <= 0) return [];
 
@@ -188,8 +200,19 @@ async function fetchTeamDashboard(
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: "/api/private/team-dashboard",
-      params: { teamId, from: window.from, to: window.to, interval: window.interval },
-    }) as { ok: boolean; data?: { sites?: Array<{ id: string; overview?: SiteOverviewMetrics }>; trend?: TeamDashboardTrendPoint[] } };
+      params: {
+        teamId,
+        from: window.from,
+        to: window.to,
+        interval: window.interval,
+      },
+    }) as {
+      ok: boolean;
+      data?: {
+        sites?: Array<{ id: string; overview?: SiteOverviewMetrics }>;
+        trend?: TeamDashboardTrendPoint[];
+      };
+    };
     return {
       sites: Array.isArray(result.data?.sites) ? result.data.sites : [],
       trend: Array.isArray(result.data?.trend) ? result.data.trend : [],
@@ -201,11 +224,14 @@ async function fetchTeamDashboard(
     to: String(window.to),
     interval: window.interval,
   });
-  const response = await fetch(`/api/private/team-dashboard?${params.toString()}`, {
-    method: "GET",
-    credentials: "include",
-    signal,
-  });
+  const response = await fetch(
+    `/api/private/team-dashboard?${params.toString()}`,
+    {
+      method: "GET",
+      credentials: "include",
+      signal,
+    },
+  );
   if (!response.ok) throw new Error("fetch_team_dashboard_failed");
   const payload = (await response.json()) as {
     ok: boolean;
@@ -309,7 +335,14 @@ export function SidebarSiteDetails({
       active = false;
       controller.abort();
     };
-  }, [teamId, sites.length, shouldRenderCharts, window.from, window.to, window.interval]);
+  }, [
+    teamId,
+    sites.length,
+    shouldRenderCharts,
+    window.from,
+    window.to,
+    window.interval,
+  ]);
 
   const siteTrendById = useMemo(() => {
     const stepMs = intervalStepMs(chartWindow.interval);
@@ -387,7 +420,8 @@ export function SidebarSiteDetails({
     <SidebarMenu>
       {cards.map(({ site, trend }) => {
         const isActive = Boolean(
-          activeSiteSlug && (site.slug === activeSiteSlug || site.id === activeSiteSlug),
+          activeSiteSlug &&
+          (site.slug === activeSiteSlug || site.id === activeSiteSlug),
         );
 
         return (

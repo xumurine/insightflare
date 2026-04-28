@@ -1,21 +1,17 @@
 "use client";
 
-import {
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { AnimatePresence, useReducedMotion } from "motion/react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   RiArrowDownSLine,
   RiArrowUpSLine,
   RiSearchLine,
 } from "@remixicon/react";
+import { AnimatePresence, useReducedMotion } from "motion/react";
+
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { TabbedScrollMaskCard } from "@/components/dashboard/tabbed-scroll-mask-card";
+import { Clickable } from "@/components/ui/clickable";
 import {
   Dialog,
   DialogContent,
@@ -28,7 +24,6 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { Clickable } from "@/components/ui/clickable";
 import { Input } from "@/components/ui/input";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -78,13 +73,18 @@ function createRecord<T extends string, TValue>(
   tabs: readonly AsyncDimensionBreakdownTab<T>[],
   createValue: () => TValue,
 ): Record<T, TValue> {
-  return tabs.reduce((acc, tab) => {
-    acc[tab.value] = createValue();
-    return acc;
-  }, {} as Record<T, TValue>);
+  return tabs.reduce(
+    (acc, tab) => {
+      acc[tab.value] = createValue();
+      return acc;
+    },
+    {} as Record<T, TValue>,
+  );
 }
 
-function normalizeRows(rows: AsyncDimensionBreakdownRow[]): AsyncDimensionBreakdownRow[] {
+function normalizeRows(
+  rows: AsyncDimensionBreakdownRow[],
+): AsyncDimensionBreakdownRow[] {
   return rows.map((row, index) => ({
     ...row,
     key: row.key || `${row.label}-${index}`,
@@ -106,14 +106,14 @@ export function AsyncDimensionBreakdownCard<T extends string>({
   const isMobile = useIsMobile();
   const reduceDataRowMotion = useReducedMotion() ?? false;
   const [activeTab, setActiveTab] = useState<T>(tabs[0].value);
-  const [rowsByTab, setRowsByTab] = useState<Record<T, AsyncDimensionBreakdownRow[] | null>>(
-    () => createRecord(tabs, () => null),
+  const [rowsByTab, setRowsByTab] = useState<
+    Record<T, AsyncDimensionBreakdownRow[] | null>
+  >(() => createRecord(tabs, () => null));
+  const [loadingByTab, setLoadingByTab] = useState<Record<T, boolean>>(() =>
+    createRecord(tabs, () => false),
   );
-  const [loadingByTab, setLoadingByTab] = useState<Record<T, boolean>>(
-    () => createRecord(tabs, () => false),
-  );
-  const [sortByTab, setSortByTab] = useState<Record<T, SortState>>(
-    () => createRecord(tabs, () => ({ ...DEFAULT_SORT })),
+  const [sortByTab, setSortByTab] = useState<Record<T, SortState>>(() =>
+    createRecord(tabs, () => ({ ...DEFAULT_SORT })),
   );
   const [searchTab, setSearchTab] = useState<T | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -146,7 +146,8 @@ export function AsyncDimensionBreakdownCard<T extends string>({
       [activeTab]: true,
     }));
 
-    latestLoadRowsRef.current(activeTab)
+    latestLoadRowsRef
+      .current(activeTab)
       .then((nextRows) => normalizeRows(nextRows))
       .then((nextRows) => {
         if (!active) return;
@@ -182,14 +183,20 @@ export function AsyncDimensionBreakdownCard<T extends string>({
 
   const tabMeta = useMemo(
     () =>
-      tabs.reduce((acc, tab) => {
-        acc[tab.value] = {
-          label: tab.label,
-          columnLabel: tab.columnLabel ?? tab.label,
-          primaryMetricLabel: tab.primaryMetricLabel ?? messages.common.views,
-        };
-        return acc;
-      }, {} as Record<T, { label: string; columnLabel: string; primaryMetricLabel: string }>),
+      tabs.reduce(
+        (acc, tab) => {
+          acc[tab.value] = {
+            label: tab.label,
+            columnLabel: tab.columnLabel ?? tab.label,
+            primaryMetricLabel: tab.primaryMetricLabel ?? messages.common.views,
+          };
+          return acc;
+        },
+        {} as Record<
+          T,
+          { label: string; columnLabel: string; primaryMetricLabel: string }
+        >,
+      ),
     [messages.common.views, tabs],
   );
 
@@ -205,7 +212,8 @@ export function AsyncDimensionBreakdownCard<T extends string>({
         const primary = (left[sort.key] - right[sort.key]) * direction;
         if (primary !== 0) return primary;
         if (right.views !== left.views) return right.views - left.views;
-        if (right.visitors !== left.visitors) return right.visitors - left.visitors;
+        if (right.visitors !== left.visitors)
+          return right.visitors - left.visitors;
         return left.label.localeCompare(right.label);
       });
     }
@@ -290,7 +298,9 @@ export function AsyncDimensionBreakdownCard<T extends string>({
               type="button"
               className={cn(
                 "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-                sort.key === "views" ? "text-foreground" : "text-muted-foreground",
+                sort.key === "views"
+                  ? "text-foreground"
+                  : "text-muted-foreground",
               )}
               onClick={() => toggleSort(tab, "views")}
             >
@@ -320,7 +330,11 @@ export function AsyncDimensionBreakdownCard<T extends string>({
     );
   }
 
-  function renderRows(tab: T, rows: AsyncDimensionBreakdownRow[], contentKeyPrefix: string) {
+  function renderRows(
+    tab: T,
+    rows: AsyncDimensionBreakdownRow[],
+    contentKeyPrefix: string,
+  ) {
     const sort = sortByTab[tab];
     const progressTotal = progressTotalByTab[tab];
 
@@ -329,7 +343,9 @@ export function AsyncDimensionBreakdownCard<T extends string>({
         {rows.map((row) => {
           const rowValue = Math.max(0, Number(row[sort.key] ?? 0));
           const progressPercent =
-            progressTotal > 0 ? Math.min(100, (rowValue / progressTotal) * 100) : 0;
+            progressTotal > 0
+              ? Math.min(100, (rowValue / progressTotal) * 100)
+              : 0;
 
           return (
             <AnimatedDataTableRow
@@ -379,13 +395,19 @@ export function AsyncDimensionBreakdownCard<T extends string>({
       />
       <div className="max-h-[60vh] overflow-auto pr-1">
         <DataTableSwitch
-          loading={loadingByTab[activeSearchTab] || rowsByTab[activeSearchTab] === null}
+          loading={
+            loadingByTab[activeSearchTab] || rowsByTab[activeSearchTab] === null
+          }
           hasContent={searchedRows.length > 0}
           loadingLabel={messages.common.loading}
           emptyLabel={messages.common.noData}
           colSpan={3}
           header={renderTableHeader(activeSearchTab)}
-          rows={renderRows(activeSearchTab, searchedRows, `search-${activeSearchTab}`)}
+          rows={renderRows(
+            activeSearchTab,
+            searchedRows,
+            `search-${activeSearchTab}`,
+          )}
           contentKey={`search-${activeSearchTab}-${searchTerm}-${searchedRows.length}`}
         />
       </div>
@@ -437,7 +459,7 @@ export function AsyncDimensionBreakdownCard<T extends string>({
         value={activeTab}
         onValueChange={(value) => setActiveTab(value)}
         tabs={[...tabs]}
-        headerRight={(
+        headerRight={
           <Clickable
             className="size-6 text-muted-foreground hover:text-foreground"
             onClick={() => setSearchTab(activeTab)}
@@ -446,7 +468,7 @@ export function AsyncDimensionBreakdownCard<T extends string>({
           >
             <RiSearchLine className="size-4" />
           </Clickable>
-        )}
+        }
         className={className}
         syncKey={syncKey}
       >

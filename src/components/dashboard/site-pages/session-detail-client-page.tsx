@@ -8,6 +8,7 @@ import {
   RiCalendarEventLine,
   RiPulseLine,
 } from "@remixicon/react";
+
 import {
   BrowserMeta,
   DeviceMeta,
@@ -19,20 +20,12 @@ import {
   OsMeta,
   ReferrerMeta,
 } from "@/components/dashboard/journey-display";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { numberFormat } from "@/lib/dashboard/format";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchSessionDetail } from "@/lib/dashboard/client-data";
+import { numberFormat } from "@/lib/dashboard/format";
+import type { JourneyEvent, SessionDetailData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
-import type {
-  JourneyEvent,
-  SessionDetailData,
-} from "@/lib/edge-client";
 
 interface SessionDetailClientPageProps {
   locale: Locale;
@@ -115,8 +108,14 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 function EventIcon({ event }: { event: JourneyEvent }) {
   const isCustom = event.kind === "custom";
   return (
-    <span className={`inline-flex size-7 shrink-0 items-center justify-center rounded-sm ${isCustom ? "bg-sky-500/15 text-sky-500" : "bg-emerald-500/15 text-emerald-500"}`}>
-      {isCustom ? <RiPulseLine className="size-4" /> : <RiCalendarEventLine className="size-4" />}
+    <span
+      className={`inline-flex size-7 shrink-0 items-center justify-center rounded-sm ${isCustom ? "bg-sky-500/15 text-sky-500" : "bg-emerald-500/15 text-emerald-500"}`}
+    >
+      {isCustom ? (
+        <RiPulseLine className="size-4" />
+      ) : (
+        <RiCalendarEventLine className="size-4" />
+      )}
     </span>
   );
 }
@@ -144,7 +143,9 @@ function EventsPanel({
             <EventIcon event={event} />
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">
-                {event.kind === "pageview" ? formatPath(event.pathname) : event.eventType}
+                {event.kind === "pageview"
+                  ? formatPath(event.pathname)
+                  : event.eventType}
               </p>
               <p className="truncate text-[11px] text-muted-foreground">
                 {event.title || event.hostname || event.visitId}
@@ -203,8 +204,16 @@ function DetailContent({
               locale={locale}
               unknownLabel={messages.common.unknown}
             />
-            <OsMeta os={session.os} version={session.osVersion} unknownLabel={messages.common.unknown} />
-            <BrowserMeta browser={session.browser} version={session.browserVersion} unknownLabel={messages.common.unknown} />
+            <OsMeta
+              os={session.os}
+              version={session.osVersion}
+              unknownLabel={messages.common.unknown}
+            />
+            <BrowserMeta
+              browser={session.browser}
+              version={session.browserVersion}
+              unknownLabel={messages.common.unknown}
+            />
           </div>
         </div>
       </div>
@@ -216,24 +225,75 @@ function DetailContent({
               <CardTitle>{labels.sessionInfo}</CardTitle>
             </CardHeader>
             <CardContent className="px-0">
-              <InfoRow label={labels.duration} value={formatDuration(locale, session.durationMs)} />
-              <InfoRow label={labels.createdAt} value={formatShortDateTime(locale, session.startedAt)} />
-              <InfoRow label={labels.endedAt} value={formatShortDateTime(locale, session.endedAt)} />
-              <InfoRow label={labels.screenViews} value={numberFormat(locale, session.views)} />
-              <InfoRow label={labels.events} value={numberFormat(locale, session.events)} />
-              <InfoRow label={labels.bounce} value={session.bounce ? labels.yes : labels.no} />
-              <InfoRow label={labels.entryPath} value={formatPath(session.entryPath)} />
-              <InfoRow label={labels.exitPath} value={formatPath(session.exitPath)} />
+              <InfoRow
+                label={labels.duration}
+                value={formatDuration(locale, session.durationMs)}
+              />
+              <InfoRow
+                label={labels.createdAt}
+                value={formatShortDateTime(locale, session.startedAt)}
+              />
+              <InfoRow
+                label={labels.endedAt}
+                value={formatShortDateTime(locale, session.endedAt)}
+              />
+              <InfoRow
+                label={labels.screenViews}
+                value={numberFormat(locale, session.views)}
+              />
+              <InfoRow
+                label={labels.events}
+                value={numberFormat(locale, session.events)}
+              />
+              <InfoRow
+                label={labels.bounce}
+                value={session.bounce ? labels.yes : labels.no}
+              />
+              <InfoRow
+                label={labels.entryPath}
+                value={formatPath(session.entryPath)}
+              />
+              <InfoRow
+                label={labels.exitPath}
+                value={formatPath(session.exitPath)}
+              />
               <InfoRow
                 label={labels.referrerName}
-                value={<ReferrerMeta referrerHost={session.referrerHost} referrerUrl={session.referrerUrl} directLabel={messages.overview.direct} className="justify-end" />}
+                value={
+                  <ReferrerMeta
+                    referrerHost={session.referrerHost}
+                    referrerUrl={session.referrerUrl}
+                    directLabel={messages.overview.direct}
+                    className="justify-end"
+                  />
+                }
               />
-              <InfoRow label={labels.country} value={session.country || messages.common.unknown} />
-              <InfoRow label={labels.city} value={session.city || messages.common.unknown} />
-              <InfoRow label={labels.os} value={session.osVersion || session.os || messages.common.unknown} />
-              <InfoRow label={labels.browser} value={session.browser || messages.common.unknown} />
-              <InfoRow label={labels.device} value={session.deviceType || messages.common.unknown} />
-              <InfoRow label={labels.screen} value={formatScreen(session.screenWidth, session.screenHeight)} />
+              <InfoRow
+                label={labels.country}
+                value={session.country || messages.common.unknown}
+              />
+              <InfoRow
+                label={labels.city}
+                value={session.city || messages.common.unknown}
+              />
+              <InfoRow
+                label={labels.os}
+                value={
+                  session.osVersion || session.os || messages.common.unknown
+                }
+              />
+              <InfoRow
+                label={labels.browser}
+                value={session.browser || messages.common.unknown}
+              />
+              <InfoRow
+                label={labels.device}
+                value={session.deviceType || messages.common.unknown}
+              />
+              <InfoRow
+                label={labels.screen}
+                value={formatScreen(session.screenWidth, session.screenHeight)}
+              />
             </CardContent>
           </Card>
 
@@ -243,9 +303,16 @@ function DetailContent({
             </CardHeader>
             <CardContent className="space-y-2">
               {detail.visitedPages.map((page) => (
-                <div key={page.pathname} className="flex items-center justify-between gap-4 bg-muted/35 px-3 py-2">
-                  <span className="min-w-0 truncate font-mono">{formatPath(page.pathname)}</span>
-                  <span className="font-mono">{numberFormat(locale, page.views)}</span>
+                <div
+                  key={page.pathname}
+                  className="flex items-center justify-between gap-4 bg-muted/35 px-3 py-2"
+                >
+                  <span className="min-w-0 truncate font-mono">
+                    {formatPath(page.pathname)}
+                  </span>
+                  <span className="font-mono">
+                    {numberFormat(locale, page.views)}
+                  </span>
                 </div>
               ))}
             </CardContent>
@@ -257,16 +324,25 @@ function DetailContent({
             </CardHeader>
             <CardContent className="space-y-2">
               {detail.eventDistribution.map((event) => (
-                <div key={event.eventType} className="flex items-center justify-between gap-4 bg-muted/35 px-3 py-2">
+                <div
+                  key={event.eventType}
+                  className="flex items-center justify-between gap-4 bg-muted/35 px-3 py-2"
+                >
                   <span className="min-w-0 truncate">{event.eventType}</span>
-                  <span className="font-mono">{numberFormat(locale, event.count)}</span>
+                  <span className="font-mono">
+                    {numberFormat(locale, event.count)}
+                  </span>
                 </div>
               ))}
             </CardContent>
           </Card>
         </div>
 
-        <EventsPanel locale={locale} title={labels.events} events={detail.events} />
+        <EventsPanel
+          locale={locale}
+          title={labels.events}
+          events={detail.events}
+        />
       </div>
     </div>
   );

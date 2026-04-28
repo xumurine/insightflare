@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
+
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { getDashboardTeamContext } from "@/lib/dashboard/server";
 import {
@@ -17,7 +18,10 @@ interface TeamLayoutProps {
   }>;
 }
 
-export default async function TeamLayout({ children, params }: TeamLayoutProps) {
+export default async function TeamLayout({
+  children,
+  params,
+}: TeamLayoutProps) {
   const { locale, teamSlug } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
@@ -30,7 +34,11 @@ export default async function TeamLayout({ children, params }: TeamLayoutProps) 
 
   const managementSections =
     context.user.systemRole === "admin"
-      ? buildManagementSections(resolvedLocale, context.activeTeam.slug, messages)
+      ? buildManagementSections(
+          resolvedLocale,
+          context.activeTeam.slug,
+          messages,
+        )
       : undefined;
 
   return (
@@ -42,7 +50,11 @@ export default async function TeamLayout({ children, params }: TeamLayoutProps) 
       teams={context.teams}
       activeTeamSlug={context.activeTeam.slug}
       sites={context.sites}
-      teamSections={buildTeamSections(resolvedLocale, context.activeTeam.slug, messages)}
+      teamSections={buildTeamSections(
+        resolvedLocale,
+        context.activeTeam.slug,
+        messages,
+      )}
       managementSections={managementSections}
     >
       {children}

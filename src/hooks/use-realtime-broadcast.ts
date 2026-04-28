@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+
 import {
   registerRealtimeBroadcastCallback,
   unregisterRealtimeBroadcastCallback,
@@ -13,7 +14,9 @@ export function useRealtimeBroadcast(
 
   useEffect(() => {
     const id = Symbol("realtime-broadcast-callback");
-    registerRealtimeBroadcastCallback(id, (message) => callbackRef.current(message));
+    registerRealtimeBroadcastCallback(id, (message) =>
+      callbackRef.current(message),
+    );
     return () => {
       unregisterRealtimeBroadcastCallback(id);
     };

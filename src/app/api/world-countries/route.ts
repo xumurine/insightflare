@@ -6,7 +6,9 @@ const COUNTRIES_GEOJSON_UPSTREAMS = [
 function isFeatureCollection(payload: unknown): boolean {
   if (!payload || typeof payload !== "object") return false;
   const candidate = payload as { type?: unknown; features?: unknown };
-  return candidate.type === "FeatureCollection" && Array.isArray(candidate.features);
+  return (
+    candidate.type === "FeatureCollection" && Array.isArray(candidate.features)
+  );
 }
 
 async function proxyCountriesGeoJson(): Promise<Response> {

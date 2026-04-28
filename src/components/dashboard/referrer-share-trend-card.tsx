@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+
 import { DIRECT_REFERRER_FILTER_VALUE } from "@/components/dashboard/referrer-utils";
 import {
   ShareTrendCard,
@@ -28,7 +29,12 @@ function ReferrerTrendPanel({
 }: ReferrerShareTrendCardProps) {
   const fetchTrend = useMemo<ShareTrendFetcher>(() => {
     return async (nextSiteId, nextWindow, nextFilters, options) => {
-      const payload = await fetchReferrerTrend(nextSiteId, nextWindow, nextFilters, options);
+      const payload = await fetchReferrerTrend(
+        nextSiteId,
+        nextWindow,
+        nextFilters,
+        options,
+      );
 
       return {
         ...payload,

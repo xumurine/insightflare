@@ -2,11 +2,12 @@
 
 import { useMemo } from "react";
 import { Label, PolarRadiusAxis, RadialBar, RadialBarChart } from "recharts";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  type ChartConfig,
   ChartContainer,
   ChartTooltip,
-  type ChartConfig,
 } from "@/components/ui/chart";
 import { numberFormat, percentFormat } from "@/lib/dashboard/format";
 import type { Locale } from "@/lib/i18n/config";
@@ -173,7 +174,10 @@ export function ShareRadialCard({
             {resolvedItems.map((item) => {
               const share = totalValue > 0 ? item.value / totalValue : 0;
               return (
-                <div key={item.key} className="flex items-center gap-1.5 text-xs">
+                <div
+                  key={item.key}
+                  className="flex items-center gap-1.5 text-xs"
+                >
                   <span
                     className="size-2.5 shrink-0 rounded-[2px]"
                     style={{ backgroundColor: item.color }}

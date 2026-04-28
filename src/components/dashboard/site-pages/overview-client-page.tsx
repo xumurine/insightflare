@@ -1,35 +1,48 @@
 "use client";
 
 import {
+  type MouseEvent,
+  type MutableRefObject,
+  type ReactNode,
   useCallback,
   useEffect,
   useId,
   useMemo,
   useRef,
   useState,
-  type MutableRefObject,
-  type MouseEvent,
-  type ReactNode,
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  AnimatePresence,
-  motion,
-  useReducedMotion,
-} from "motion/react";
+import { Icon } from "@iconify/react";
 import {
   RiArrowDownLine,
-  RiArrowRightUpLine,
-  RiSearchLine,
   RiArrowDownSLine,
+  RiArrowRightUpLine,
   RiArrowUpLine,
   RiArrowUpSLine,
+  RiSearchLine,
 } from "@remixicon/react";
-import { Icon } from "@iconify/react";
-import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
-import { OverlayScrollbars } from "overlayscrollbars";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { PartialOptions } from "overlayscrollbars";
+import { OverlayScrollbars } from "overlayscrollbars";
+import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
+
+import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
+import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
+import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { OverviewGeoPointsMapCard } from "@/components/dashboard/overview-geo-points-map-card";
+import { PageHeading } from "@/components/dashboard/page-heading";
+import { TabbedScrollMaskCard } from "@/components/dashboard/tabbed-scroll-mask-card";
+import { TrendChart } from "@/components/dashboard/trend-chart";
+import { AutoResizer } from "@/components/ui/auto-resizer";
+import { AutoTransition } from "@/components/ui/auto-transition";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+} from "@/components/ui/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Clickable } from "@/components/ui/clickable";
 import {
   Dialog,
   DialogContent,
@@ -43,30 +56,13 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-} from "@/components/ui/breadcrumb";
-import { TableCell, TableHead, TableRow } from "@/components/ui/table";
-import { PageHeading } from "@/components/dashboard/page-heading";
-import { TrendChart } from "@/components/dashboard/trend-chart";
-import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
-import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
-import { TabbedScrollMaskCard } from "@/components/dashboard/tabbed-scroll-mask-card";
-import { OverviewGeoPointsMapCard } from "@/components/dashboard/overview-geo-points-map-card";
 import { Spinner } from "@/components/ui/spinner";
-import { AutoResizer } from "@/components/ui/auto-resizer";
-import { AutoTransition } from "@/components/ui/auto-transition";
-import { Clickable } from "@/components/ui/clickable";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
-  durationFormat,
-  intlLocale,
-  numberFormat,
-  percentFormat,
-  shortDateTime,
-} from "@/lib/dashboard/format";
+  replaceUrlWithoutNavigation,
+  useLiveSearchParams,
+} from "@/lib/client-history";
 import {
   fetchOverview,
   fetchOverviewClientDimensionTab,
@@ -77,35 +73,34 @@ import {
   type OverviewTabRows,
 } from "@/lib/dashboard/client-data";
 import {
+  durationFormat,
+  intlLocale,
+  numberFormat,
+  percentFormat,
+  shortDateTime,
+} from "@/lib/dashboard/format";
+import {
   buildLocalityLocationValue,
   buildRegionLocationValue,
   canonicalizeGeoLocationValue,
 } from "@/lib/dashboard/geo-location";
-import type { OverviewData, TrendData } from "@/lib/edge-client";
+import {
+  buildPageDetailHref,
+  normalizePagePath,
+} from "@/lib/dashboard/page-detail";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
-import type { Locale } from "@/lib/i18n/config";
-import type { AppMessages } from "@/lib/i18n/messages";
-import { formatI18nTemplate } from "@/lib/i18n/template";
+import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
+import type { OverviewData, TrendData } from "@/lib/edge-client";
 import {
   resolveContinentLabel,
   resolveCountryFlagCode,
   resolveCountryLabel,
   resolveLanguageLabel,
 } from "@/lib/i18n/code-labels";
-import {
-  useDashboardQuery,
-} from "@/components/dashboard/dashboard-query-provider";
-import { useIsMobile } from "@/hooks/use-mobile";
+import type { Locale } from "@/lib/i18n/config";
+import type { AppMessages } from "@/lib/i18n/messages";
+import { formatI18nTemplate } from "@/lib/i18n/template";
 import { cn } from "@/lib/utils";
-import {
-  replaceUrlWithoutNavigation,
-  useLiveSearchParams,
-} from "@/lib/client-history";
-import {
-  buildPageDetailHref,
-  normalizePagePath,
-} from "@/lib/dashboard/page-detail";
-import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 
 interface OverviewClientPageProps {
   locale: Locale;
@@ -312,7 +307,10 @@ type GeoDimensionCardTab =
   | "continent"
   | "timezone"
   | "organization";
-type GeoLocationTab = Extract<GeoDimensionCardTab, "country" | "region" | "city">;
+type GeoLocationTab = Extract<
+  GeoDimensionCardTab,
+  "country" | "region" | "city"
+>;
 type OverviewCardTabCache<T extends string> = Record<T, OverviewTabRows | null>;
 
 export interface OverviewPagesSectionCardData {
@@ -422,10 +420,7 @@ const PAGE_CARD_TABS: PageCardTab[] = [
   "entry",
   "exit",
 ];
-const SOURCE_CARD_TABS: SourceCardTab[] = [
-  "domain",
-  "link",
-];
+const SOURCE_CARD_TABS: SourceCardTab[] = ["domain", "link"];
 const PAGE_CARD_NAVIGABLE_TAB_LIST: PageCardNavigableTab[] = [
   "path",
   "hostname",
@@ -535,10 +530,13 @@ function createOverviewCardTabCache<T extends string>(
 function createOverviewCardTabFlightState<T extends string>(
   tabs: readonly T[],
 ): Record<T, boolean> {
-  return tabs.reduce((acc, tab) => {
-    acc[tab] = false;
-    return acc;
-  }, {} as Record<T, boolean>);
+  return tabs.reduce(
+    (acc, tab) => {
+      acc[tab] = false;
+      return acc;
+    },
+    {} as Record<T, boolean>,
+  );
 }
 
 function resolveGeoTranslationApiLocale(locale: Locale): string | null {
@@ -805,14 +803,20 @@ interface SearchParamsLike {
   get: (name: string) => string | null;
 }
 
-function normalizeOverviewFilterValue(value: string | null | undefined): string | undefined {
+function normalizeOverviewFilterValue(
+  value: string | null | undefined,
+): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim().slice(0, 160);
   return normalized.length > 0 ? normalized : undefined;
 }
 
-function resolveGeoQueryValueFromSearchParams(searchParams: SearchParamsLike): string | undefined {
-  const primary = normalizeOverviewFilterValue(searchParams.get(GEO_QUERY_PARAM));
+function resolveGeoQueryValueFromSearchParams(
+  searchParams: SearchParamsLike,
+): string | undefined {
+  const primary = normalizeOverviewFilterValue(
+    searchParams.get(GEO_QUERY_PARAM),
+  );
   if (primary) return primary;
   for (const key of LEGACY_GEO_QUERY_PARAMS) {
     const fallback = normalizeOverviewFilterValue(searchParams.get(key));
@@ -827,7 +831,9 @@ function clearLegacyGeoQueryParams(params: URLSearchParams): void {
   }
 }
 
-function extractGeoCountryCodeFromFilterValue(value: string | null | undefined): string | null {
+function extractGeoCountryCodeFromFilterValue(
+  value: string | null | undefined,
+): string | null {
   const normalized = String(value ?? "").trim();
   if (!normalized) return null;
   const country = normalized
@@ -838,19 +844,37 @@ function extractGeoCountryCodeFromFilterValue(value: string | null | undefined):
   return /^[A-Z]{2}$/.test(country) ? country : null;
 }
 
-export function parseOverviewCardFilters(searchParams: SearchParamsLike): DashboardFilters {
+export function parseOverviewCardFilters(
+  searchParams: SearchParamsLike,
+): DashboardFilters {
   return {
     country: normalizeOverviewFilterValue(searchParams.get("country")),
     device: normalizeOverviewFilterValue(searchParams.get("device")),
     browser: normalizeOverviewFilterValue(searchParams.get("browser")),
-    path: normalizeOverviewFilterValue(searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.path)),
-    query: normalizeOverviewFilterValue(searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.query)),
-    title: normalizeOverviewFilterValue(searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.title)),
-    hostname: normalizeOverviewFilterValue(searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.hostname)),
-    entry: normalizeOverviewFilterValue(searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.entry)),
-    exit: normalizeOverviewFilterValue(searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.exit)),
-    sourceDomain: normalizeOverviewFilterValue(searchParams.get(SOURCE_CARD_QUERY_PARAM_BY_TAB.domain)),
-    sourceLink: normalizeOverviewFilterValue(searchParams.get(SOURCE_CARD_QUERY_PARAM_BY_TAB.link)),
+    path: normalizeOverviewFilterValue(
+      searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.path),
+    ),
+    query: normalizeOverviewFilterValue(
+      searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.query),
+    ),
+    title: normalizeOverviewFilterValue(
+      searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.title),
+    ),
+    hostname: normalizeOverviewFilterValue(
+      searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.hostname),
+    ),
+    entry: normalizeOverviewFilterValue(
+      searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.entry),
+    ),
+    exit: normalizeOverviewFilterValue(
+      searchParams.get(PAGE_CARD_QUERY_PARAM_BY_TAB.exit),
+    ),
+    sourceDomain: normalizeOverviewFilterValue(
+      searchParams.get(SOURCE_CARD_QUERY_PARAM_BY_TAB.domain),
+    ),
+    sourceLink: normalizeOverviewFilterValue(
+      searchParams.get(SOURCE_CARD_QUERY_PARAM_BY_TAB.link),
+    ),
     clientBrowser: normalizeOverviewFilterValue(
       searchParams.get(CLIENT_DIMENSION_CARD_QUERY_PARAM_BY_TAB.browser),
     ),
@@ -886,11 +910,16 @@ function isGeoLocationTab(tab: GeoDimensionCardTab): tab is GeoLocationTab {
   return tab === "country" || tab === "region" || tab === "city";
 }
 
-function canonicalizeGeoFilterValue(raw: string | null | undefined): string | null {
+function canonicalizeGeoFilterValue(
+  raw: string | null | undefined,
+): string | null {
   return canonicalizeGeoLocationValue(raw);
 }
 
-function resolveGeoLocationHighlightValue(tab: GeoLocationTab, geoFilterValue: string | null): string | null {
+function resolveGeoLocationHighlightValue(
+  tab: GeoLocationTab,
+  geoFilterValue: string | null,
+): string | null {
   if (!geoFilterValue) return null;
   const normalized = canonicalizeGeoFilterValue(geoFilterValue);
   if (!normalized) return null;
@@ -1128,7 +1157,10 @@ function resolveGeoLocationQueryValue(
 
   if (tab === "region") {
     if (segments.length >= 3) {
-      const regionName = segments.slice(2).join(GEO_REGION_VALUE_SEPARATOR).trim();
+      const regionName = segments
+        .slice(2)
+        .join(GEO_REGION_VALUE_SEPARATOR)
+        .trim();
       return (
         buildRegionLocationValue(
           segments[0] || "",
@@ -1182,12 +1214,8 @@ function resolveGeoLocationQueryValue(
     }
     if (breadcrumb.hideCity) return country;
     return (
-      buildLocalityLocationValue(
-        country,
-        "",
-        "",
-        breadcrumb.cityNameDefault,
-      ) || country
+      buildLocalityLocationValue(country, "", "", breadcrumb.cityNameDefault) ||
+      country
     );
   }
   if (
@@ -1270,7 +1298,10 @@ function resolveBrowserLogoIconName(value: string): string | null {
     iconKey = "opera";
   } else if (normalized.includes("samsung")) {
     iconKey = "samsung";
-  } else if (normalized.includes("ucbrowser") || normalized.includes("uc browser")) {
+  } else if (
+    normalized.includes("ucbrowser") ||
+    normalized.includes("uc browser")
+  ) {
     iconKey = "uc";
   } else if (
     normalized.includes("qqbrowser") ||
@@ -1553,7 +1584,10 @@ function RegionBreadcrumbLabel({
           </BreadcrumbItem>
           {hideRegion ? null : (
             <BreadcrumbItem className="min-w-0">
-              <span className="shrink-0 text-muted-foreground" aria-hidden="true">
+              <span
+                className="shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              >
                 {">"}
               </span>
               <BreadcrumbPage className="block truncate leading-5">
@@ -2143,7 +2177,10 @@ function MetricAreaMap({
     <div ref={containerRef} className="h-full w-full">
       <div className="relative h-full w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 12, right: 0, left: 0, bottom: 0 }}>
+          <AreaChart
+            data={chartData}
+            margin={{ top: 12, right: 0, left: 0, bottom: 0 }}
+          >
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={color} stopOpacity={0.36} />
@@ -2195,7 +2232,9 @@ interface OverviewPagesSectionProps extends OverviewClientPageProps {
   filters: DashboardFilters;
   cardDataOverride?: OverviewPagesSectionCardData | null;
   pageCardTabs?: readonly PageCardTab[];
-  pageCardTabMetaOverride?: Partial<Record<PageCardTab, Partial<PageCardTabMeta>>>;
+  pageCardTabMetaOverride?: Partial<
+    Record<PageCardTab, Partial<PageCardTabMeta>>
+  >;
   pageCardQueryParamOverride?: Partial<Record<PageCardTab, string | null>>;
   pageCardNavigableTabs?: readonly PageCardNavigableTab[];
   pageCardDetailTabs?: readonly PageCardDetailTab[];
@@ -2250,9 +2289,9 @@ export function OverviewPagesSection({
   const clientDimensionCardInFlightRef = useRef<
     Record<ClientDimensionCardTab, boolean>
   >(createOverviewCardTabFlightState(CLIENT_DIMENSION_CARD_TABS));
-  const geoDimensionCardInFlightRef = useRef<Record<GeoDimensionCardTab, boolean>>(
-    createOverviewCardTabFlightState(GEO_DIMENSION_CARD_TABS),
-  );
+  const geoDimensionCardInFlightRef = useRef<
+    Record<GeoDimensionCardTab, boolean>
+  >(createOverviewCardTabFlightState(GEO_DIMENSION_CARD_TABS));
   const [pageCardTabData, setPageCardTabData] = useState<
     OverviewCardTabCache<PageCardTab>
   >(() => createOverviewCardTabCache(ALL_PAGE_CARD_TABS));
@@ -2313,7 +2352,8 @@ export function OverviewPagesSection({
     useState("");
   const hasCardDataOverride = Boolean(cardDataOverride);
   const resolvedPageCardTabData = cardDataOverride?.page ?? pageCardTabData;
-  const resolvedSourceCardTabData = cardDataOverride?.source ?? sourceCardTabData;
+  const resolvedSourceCardTabData =
+    cardDataOverride?.source ?? sourceCardTabData;
   const resolvedClientDimensionCardTabData =
     cardDataOverride?.client ?? clientDimensionCardTabData;
   const resolvedGeoDimensionCardTabData =
@@ -2355,9 +2395,8 @@ export function OverviewPagesSection({
     if (hasCardDataOverride) return;
     pageCardInFlightRef.current =
       createOverviewCardTabFlightState(ALL_PAGE_CARD_TABS);
-    sourceCardInFlightRef.current = createOverviewCardTabFlightState(
-      SOURCE_CARD_TABS,
-    );
+    sourceCardInFlightRef.current =
+      createOverviewCardTabFlightState(SOURCE_CARD_TABS);
     clientDimensionCardInFlightRef.current = createOverviewCardTabFlightState(
       CLIENT_DIMENSION_CARD_TABS,
     );
@@ -2369,7 +2408,9 @@ export function OverviewPagesSection({
     setClientDimensionCardTabData(
       createOverviewCardTabCache(CLIENT_DIMENSION_CARD_TABS),
     );
-    setGeoDimensionCardTabData(createOverviewCardTabCache(GEO_DIMENSION_CARD_TABS));
+    setGeoDimensionCardTabData(
+      createOverviewCardTabCache(GEO_DIMENSION_CARD_TABS),
+    );
   }, [
     filtersKey,
     siteId,
@@ -2388,7 +2429,11 @@ export function OverviewPagesSection({
 
     const loadPageCardTab =
       pageCardFetchers?.[pageCardTab] ??
-      ((requestedSiteId: string, requestedWindow: TimeWindow, requestedFilters: DashboardFilters) =>
+      ((
+        requestedSiteId: string,
+        requestedWindow: TimeWindow,
+        requestedFilters: DashboardFilters,
+      ) =>
         fetchOverviewPageCardTab(
           requestedSiteId,
           requestedWindow,
@@ -2558,8 +2603,10 @@ export function OverviewPagesSection({
     }
   }, [geoDimensionCardSearchOpen]);
 
-  const pageCardLoading = !hasCardDataOverride && activePageCardTabData === null;
-  const sourceCardLoading = !hasCardDataOverride && activeSourceCardTabData === null;
+  const pageCardLoading =
+    !hasCardDataOverride && activePageCardTabData === null;
+  const sourceCardLoading =
+    !hasCardDataOverride && activeSourceCardTabData === null;
   const clientDimensionCardLoading =
     !hasCardDataOverride && activeClientDimensionCardTabData === null;
   const geoDimensionCardLoading =
@@ -2775,7 +2822,8 @@ export function OverviewPagesSection({
     () =>
       activePageCardQueryValue
         ? sortedPageCardRows.filter(
-            (row) => (row.filterValue ?? row.label) === activePageCardQueryValue,
+            (row) =>
+              (row.filterValue ?? row.label) === activePageCardQueryValue,
           )
         : sortedPageCardRows,
     [activePageCardQueryValue, sortedPageCardRows],
@@ -3006,7 +3054,10 @@ export function OverviewPagesSection({
         screenSize?: boolean;
         transformLabel?: (value: string) => string;
         resolveIconName?: (value: string) => string | null;
-        resolveFilterValue?: (rawValue: string, normalizedLabel: string) => string;
+        resolveFilterValue?: (
+          rawValue: string,
+          normalizedLabel: string,
+        ) => string;
       },
     ): PageCardRow[] =>
       rows.map((item, index) => {
@@ -3019,7 +3070,8 @@ export function OverviewPagesSection({
         const label = options?.transformLabel
           ? options.transformLabel(rawLabel)
           : rawLabel;
-        const filterValue = options?.resolveFilterValue?.(rawValue, rawLabel) ?? rawLabel;
+        const filterValue =
+          options?.resolveFilterValue?.(rawValue, rawLabel) ?? rawLabel;
         return {
           key: `${label}-${index}`,
           label,
@@ -3084,50 +3136,50 @@ export function OverviewPagesSection({
         };
       });
 
-    const regionRows: PageCardRow[] = (resolvedGeoDimensionCardTabData.region ?? []).map(
-      (item, index) => {
-        const value = resolveGeoDimensionRowRawValue(item);
-        const regionData = resolveGeoRegionBreadcrumbData(
-          value,
-          locale,
-          messages.common.unknown,
-        );
+    const regionRows: PageCardRow[] = (
+      resolvedGeoDimensionCardTabData.region ?? []
+    ).map((item, index) => {
+      const value = resolveGeoDimensionRowRawValue(item);
+      const regionData = resolveGeoRegionBreadcrumbData(
+        value,
+        locale,
+        messages.common.unknown,
+      );
 
-        return {
-          key: `${regionData.displayLabel}-${index}`,
-          label: regionData.displayLabel,
-          rawLabel: value.trim() || regionData.filterValue,
-          views: Math.max(0, Number(item.views || 0)),
-          visitors: Math.max(0, Number(item.visitors || 0)),
-          mono: false,
-          iconName: null,
-          filterValue: regionData.filterValue,
-          regionBreadcrumb: regionData.breadcrumb,
-        };
-      },
-    );
-    const cityRows: PageCardRow[] = (resolvedGeoDimensionCardTabData.city ?? []).map(
-      (item, index) => {
-        const value = resolveGeoDimensionRowRawValue(item);
-        const cityData = resolveGeoCityBreadcrumbData(
-          value,
-          locale,
-          messages.common.unknown,
-        );
+      return {
+        key: `${regionData.displayLabel}-${index}`,
+        label: regionData.displayLabel,
+        rawLabel: value.trim() || regionData.filterValue,
+        views: Math.max(0, Number(item.views || 0)),
+        visitors: Math.max(0, Number(item.visitors || 0)),
+        mono: false,
+        iconName: null,
+        filterValue: regionData.filterValue,
+        regionBreadcrumb: regionData.breadcrumb,
+      };
+    });
+    const cityRows: PageCardRow[] = (
+      resolvedGeoDimensionCardTabData.city ?? []
+    ).map((item, index) => {
+      const value = resolveGeoDimensionRowRawValue(item);
+      const cityData = resolveGeoCityBreadcrumbData(
+        value,
+        locale,
+        messages.common.unknown,
+      );
 
-        return {
-          key: `${cityData.displayLabel}-${index}`,
-          label: cityData.displayLabel,
-          rawLabel: value.trim() || cityData.filterValue,
-          views: Math.max(0, Number(item.views || 0)),
-          visitors: Math.max(0, Number(item.visitors || 0)),
-          mono: false,
-          iconName: null,
-          filterValue: cityData.filterValue,
-          cityBreadcrumb: cityData.breadcrumb ?? undefined,
-        };
-      },
-    );
+      return {
+        key: `${cityData.displayLabel}-${index}`,
+        label: cityData.displayLabel,
+        rawLabel: value.trim() || cityData.filterValue,
+        views: Math.max(0, Number(item.views || 0)),
+        visitors: Math.max(0, Number(item.visitors || 0)),
+        mono: false,
+        iconName: null,
+        filterValue: cityData.filterValue,
+        cityBreadcrumb: cityData.breadcrumb ?? undefined,
+      };
+    });
 
     return {
       country: toRows(resolvedGeoDimensionCardTabData.country ?? [], {
@@ -3251,23 +3303,23 @@ export function OverviewPagesSection({
         : sortedClientDimensionCardRows,
     [activeClientDimensionCardQueryValue, sortedClientDimensionCardRows],
   );
-  const visibleGeoDimensionCardRows = useMemo(
-    () => {
-      if (!activeGeoDimensionCardQueryValue) return sortedGeoDimensionCardRows;
-      const activeGeoQueryValue = isGeoLocationTab(geoDimensionCardTab)
-        ? resolveGeoLocationHighlightValue(
-            geoDimensionCardTab,
-            activeGeoDimensionCardQueryValue,
-          )
-        : activeGeoDimensionCardQueryValue;
-      if (!activeGeoQueryValue) return sortedGeoDimensionCardRows;
-      return sortedGeoDimensionCardRows.filter(
-        (row) =>
-          (row.filterValue ?? row.label) === activeGeoQueryValue,
-      );
-    },
-    [activeGeoDimensionCardQueryValue, geoDimensionCardTab, sortedGeoDimensionCardRows],
-  );
+  const visibleGeoDimensionCardRows = useMemo(() => {
+    if (!activeGeoDimensionCardQueryValue) return sortedGeoDimensionCardRows;
+    const activeGeoQueryValue = isGeoLocationTab(geoDimensionCardTab)
+      ? resolveGeoLocationHighlightValue(
+          geoDimensionCardTab,
+          activeGeoDimensionCardQueryValue,
+        )
+      : activeGeoDimensionCardQueryValue;
+    if (!activeGeoQueryValue) return sortedGeoDimensionCardRows;
+    return sortedGeoDimensionCardRows.filter(
+      (row) => (row.filterValue ?? row.label) === activeGeoQueryValue,
+    );
+  }, [
+    activeGeoDimensionCardQueryValue,
+    geoDimensionCardTab,
+    sortedGeoDimensionCardRows,
+  ]);
   const normalizedClientDimensionCardSearchTerm = clientDimensionCardSearchTerm
     .trim()
     .toLocaleLowerCase();
@@ -3606,133 +3658,134 @@ export function OverviewPagesSection({
       </TableHead>
     </TableRow>
   );
-  const renderPageCardRows = (rows: PageCardRow[]) =>
-    (
-      <AnimatePresence initial={false} mode="popLayout">
-        {rows.map((item) => {
-          const displayLabel = item.displayLabel ?? item.label;
-          const rowFilterValue = item.filterValue ?? item.label;
-          const rowValue = Math.max(0, Number(item[pageCardSort.key] ?? 0));
-          const progressPercent =
-            pageCardProgressTotal > 0
-              ? Math.min(100, (rowValue / pageCardProgressTotal) * 100)
-              : 0;
-          const progressWidth = `${progressPercent.toFixed(2)}%`;
-          const rowFilterEnabled = Boolean(pageCardQueryParamByTab[pageCardTab]);
-          const rowTargetUrl = resolvedPageCardNavigableTabs.has(
-            pageCardTab as PageCardNavigableTab,
-          )
-            ? (
-                pageCardTargetUrlResolvers?.[pageCardTab] ??
-                resolvePageCardTargetUrl
-              )({
-                tab: pageCardTab,
+  const renderPageCardRows = (rows: PageCardRow[]) => (
+    <AnimatePresence initial={false} mode="popLayout">
+      {rows.map((item) => {
+        const displayLabel = item.displayLabel ?? item.label;
+        const rowFilterValue = item.filterValue ?? item.label;
+        const rowValue = Math.max(0, Number(item[pageCardSort.key] ?? 0));
+        const progressPercent =
+          pageCardProgressTotal > 0
+            ? Math.min(100, (rowValue / pageCardProgressTotal) * 100)
+            : 0;
+        const progressWidth = `${progressPercent.toFixed(2)}%`;
+        const rowFilterEnabled = Boolean(pageCardQueryParamByTab[pageCardTab]);
+        const rowTargetUrl = resolvedPageCardNavigableTabs.has(
+          pageCardTab as PageCardNavigableTab,
+        )
+          ? (
+              pageCardTargetUrlResolvers?.[pageCardTab] ??
+              resolvePageCardTargetUrl
+            )({
+              tab: pageCardTab,
+              value: item.label,
+              unknownLabel: messages.common.unknown,
+              fallbackHostname: pageCardDefaultHostname,
+            })
+          : null;
+        const rowDetailHref =
+          isPageCardDetailTab(pageCardTab) &&
+          resolvedPageCardDetailTabs.has(pageCardTab)
+            ? resolvePageCardDetailHref({
+                basePath: pageDetailBasePath,
                 value: item.label,
                 unknownLabel: messages.common.unknown,
-                fallbackHostname: pageCardDefaultHostname,
               })
             : null;
-          const rowDetailHref =
-            isPageCardDetailTab(pageCardTab) &&
-            resolvedPageCardDetailTabs.has(pageCardTab)
-              ? resolvePageCardDetailHref({
-                  basePath: pageDetailBasePath,
-                  value: item.label,
-                  unknownLabel: messages.common.unknown,
-                })
-              : null;
-          const rowFilterActive = activePageCardQueryValue === rowFilterValue;
-          const rowInteractive =
-            rowFilterEnabled || Boolean(rowTargetUrl) || Boolean(rowDetailHref);
+        const rowFilterActive = activePageCardQueryValue === rowFilterValue;
+        const rowInteractive =
+          rowFilterEnabled || Boolean(rowTargetUrl) || Boolean(rowDetailHref);
 
-          return (
-            <AnimatedDataTableRow
-              key={`${pageCardTab}-${item.key}`}
-              reduceMotion={reduceDataRowMotion}
-              className={cn(
-                "group/row bg-no-repeat transition-[background-size,filter] duration-300 ease-out",
-                rowInteractive ? "cursor-pointer hover:brightness-95" : "cursor-default",
-                rowFilterActive && "brightness-95",
-              )}
-              style={{
-                backgroundImage:
-                  "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
-                backgroundSize: `${progressWidth} 100%`,
-                backgroundPosition: "left top",
-              }}
-              onClick={() => {
-                if (rowFilterEnabled) {
-                  togglePageCardRowFilter(rowFilterValue);
-                  return;
-                }
-                if (rowTargetUrl) {
-                  globalThis.window.open(
-                    rowTargetUrl,
-                    "_blank",
-                    "noopener,noreferrer",
-                  );
-                  return;
-                }
-                if (rowDetailHref) {
-                  router.push(rowDetailHref);
-                }
-              }}
-            >
-              <TableCell className="p-0 whitespace-normal align-top">
-                <div
-                  className={cn(
-                    "px-4 py-2 leading-5 whitespace-normal break-words",
-                    activePageTabMeta.mono && "font-mono",
-                  )}
-                >
-                  <span className="inline-flex items-center gap-2 break-words">
-                    <LabelWithOptionalIcon
-                      label={displayLabel}
-                      showIcon={activePageTabMeta.showIcon}
-                      unknownLabel={messages.common.unknown}
-                    />
-                    {rowTargetUrl ? (
-                      <Clickable
-                        className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-                        onClick={(event) =>
-                          openPageCardRowTarget(rowTargetUrl, event)
-                        }
-                        aria-label={displayLabel}
-                        title={displayLabel}
-                      >
-                        <RiArrowRightUpLine size="1.4em" />
-                      </Clickable>
-                    ) : null}
-                    {rowDetailHref ? (
-                      <Clickable
-                        className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-                        onClick={(event) =>
-                          openPageCardRowDetail(rowDetailHref, event)
-                        }
-                        aria-label={messages.common.search}
-                        title={messages.common.search}
-                      >
-                        <RiSearchLine size="1.2em" />
-                      </Clickable>
-                    ) : null}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell className="p-0">
-                <div className="px-2 py-2 text-right">
-                  {numberFormat(locale, item.views)}
-                </div>
-              </TableCell>
-              <TableCell className="p-0">
-                <div className="px-4 py-2 text-right">
-                  {numberFormat(locale, item.visitors)}
-                </div>
-              </TableCell>
-            </AnimatedDataTableRow>
-          );
-        })}
-      </AnimatePresence>
-    );
+        return (
+          <AnimatedDataTableRow
+            key={`${pageCardTab}-${item.key}`}
+            reduceMotion={reduceDataRowMotion}
+            className={cn(
+              "group/row bg-no-repeat transition-[background-size,filter] duration-300 ease-out",
+              rowInteractive
+                ? "cursor-pointer hover:brightness-95"
+                : "cursor-default",
+              rowFilterActive && "brightness-95",
+            )}
+            style={{
+              backgroundImage:
+                "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
+              backgroundSize: `${progressWidth} 100%`,
+              backgroundPosition: "left top",
+            }}
+            onClick={() => {
+              if (rowFilterEnabled) {
+                togglePageCardRowFilter(rowFilterValue);
+                return;
+              }
+              if (rowTargetUrl) {
+                globalThis.window.open(
+                  rowTargetUrl,
+                  "_blank",
+                  "noopener,noreferrer",
+                );
+                return;
+              }
+              if (rowDetailHref) {
+                router.push(rowDetailHref);
+              }
+            }}
+          >
+            <TableCell className="p-0 whitespace-normal align-top">
+              <div
+                className={cn(
+                  "px-4 py-2 leading-5 whitespace-normal break-words",
+                  activePageTabMeta.mono && "font-mono",
+                )}
+              >
+                <span className="inline-flex items-center gap-2 break-words">
+                  <LabelWithOptionalIcon
+                    label={displayLabel}
+                    showIcon={activePageTabMeta.showIcon}
+                    unknownLabel={messages.common.unknown}
+                  />
+                  {rowTargetUrl ? (
+                    <Clickable
+                      className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                      onClick={(event) =>
+                        openPageCardRowTarget(rowTargetUrl, event)
+                      }
+                      aria-label={displayLabel}
+                      title={displayLabel}
+                    >
+                      <RiArrowRightUpLine size="1.4em" />
+                    </Clickable>
+                  ) : null}
+                  {rowDetailHref ? (
+                    <Clickable
+                      className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                      onClick={(event) =>
+                        openPageCardRowDetail(rowDetailHref, event)
+                      }
+                      aria-label={messages.common.search}
+                      title={messages.common.search}
+                    >
+                      <RiSearchLine size="1.2em" />
+                    </Clickable>
+                  ) : null}
+                </span>
+              </div>
+            </TableCell>
+            <TableCell className="p-0">
+              <div className="px-2 py-2 text-right">
+                {numberFormat(locale, item.views)}
+              </div>
+            </TableCell>
+            <TableCell className="p-0">
+              <div className="px-4 py-2 text-right">
+                {numberFormat(locale, item.visitors)}
+              </div>
+            </TableCell>
+          </AnimatedDataTableRow>
+        );
+      })}
+    </AnimatePresence>
+  );
   const sourceCardTableHeader = (
     <TableRow className="hover:bg-transparent">
       <TableHead className="h-8 p-0">
@@ -3774,77 +3827,78 @@ export function OverviewPagesSection({
       </TableHead>
     </TableRow>
   );
-  const renderSourceCardRows = (rows: SourceCardRow[]) =>
-    (
-      <AnimatePresence initial={false} mode="popLayout">
-        {rows.map((item) => {
-          const displayLabel = item.displayLabel ?? item.label;
-          const rowValue = Math.max(0, Number(item[sourceCardSort.key] ?? 0));
-          const progressPercent =
-            sourceCardProgressTotal > 0
-              ? Math.min(100, (rowValue / sourceCardProgressTotal) * 100)
-              : 0;
-          const progressWidth = `${progressPercent.toFixed(2)}%`;
-          const targetUrl = item.targetUrl;
-          const rowFilterActive = activeSourceCardQueryValue === item.filterValue;
+  const renderSourceCardRows = (rows: SourceCardRow[]) => (
+    <AnimatePresence initial={false} mode="popLayout">
+      {rows.map((item) => {
+        const displayLabel = item.displayLabel ?? item.label;
+        const rowValue = Math.max(0, Number(item[sourceCardSort.key] ?? 0));
+        const progressPercent =
+          sourceCardProgressTotal > 0
+            ? Math.min(100, (rowValue / sourceCardProgressTotal) * 100)
+            : 0;
+        const progressWidth = `${progressPercent.toFixed(2)}%`;
+        const targetUrl = item.targetUrl;
+        const rowFilterActive = activeSourceCardQueryValue === item.filterValue;
 
-          return (
-            <AnimatedDataTableRow
-              key={item.key}
-              reduceMotion={reduceDataRowMotion}
-              className={cn(
-                "group/row cursor-pointer bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-95",
-                rowFilterActive && "brightness-95",
-              )}
-              style={{
-                backgroundImage:
-                  "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
-                backgroundSize: `${progressWidth} 100%`,
-                backgroundPosition: "left top",
-              }}
-              onClick={() => toggleSourceCardRowFilter(item.filterValue)}
-            >
-              <TableCell className="p-0 whitespace-normal align-top">
-                <div
-                  className={cn(
-                    "px-4 py-2 leading-5 whitespace-normal break-words",
-                    item.mono && "font-mono",
-                  )}
-                >
-                  <span className="inline-flex items-center gap-2 break-words">
-                    <LabelWithOptionalIcon
-                      label={displayLabel}
-                      showIcon={activeSourceTabMeta.showIcon}
-                      unknownLabel={sourceCardDirectLabel}
-                    />
-                    {targetUrl ? (
-                      <Clickable
-                        className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-                        onClick={(event) => openPageCardRowTarget(targetUrl, event)}
-                        aria-label={displayLabel}
-                        title={displayLabel}
-                      >
-                        <RiArrowRightUpLine size="1.4em" />
-                      </Clickable>
-                    ) : null}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell className="p-0">
-                <div className="px-2 py-2 text-right">
-                  {numberFormat(locale, item.views)}
-                </div>
-              </TableCell>
-              <TableCell className="p-0">
-                <div className="px-4 py-2 text-right">
-                  {numberFormat(locale, item.visitors)}
-                </div>
-              </TableCell>
-            </AnimatedDataTableRow>
-          );
-        })}
-      </AnimatePresence>
-    );
+        return (
+          <AnimatedDataTableRow
+            key={item.key}
+            reduceMotion={reduceDataRowMotion}
+            className={cn(
+              "group/row cursor-pointer bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-95",
+              rowFilterActive && "brightness-95",
+            )}
+            style={{
+              backgroundImage:
+                "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
+              backgroundSize: `${progressWidth} 100%`,
+              backgroundPosition: "left top",
+            }}
+            onClick={() => toggleSourceCardRowFilter(item.filterValue)}
+          >
+            <TableCell className="p-0 whitespace-normal align-top">
+              <div
+                className={cn(
+                  "px-4 py-2 leading-5 whitespace-normal break-words",
+                  item.mono && "font-mono",
+                )}
+              >
+                <span className="inline-flex items-center gap-2 break-words">
+                  <LabelWithOptionalIcon
+                    label={displayLabel}
+                    showIcon={activeSourceTabMeta.showIcon}
+                    unknownLabel={sourceCardDirectLabel}
+                  />
+                  {targetUrl ? (
+                    <Clickable
+                      className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                      onClick={(event) =>
+                        openPageCardRowTarget(targetUrl, event)
+                      }
+                      aria-label={displayLabel}
+                      title={displayLabel}
+                    >
+                      <RiArrowRightUpLine size="1.4em" />
+                    </Clickable>
+                  ) : null}
+                </span>
+              </div>
+            </TableCell>
+            <TableCell className="p-0">
+              <div className="px-2 py-2 text-right">
+                {numberFormat(locale, item.views)}
+              </div>
+            </TableCell>
+            <TableCell className="p-0">
+              <div className="px-4 py-2 text-right">
+                {numberFormat(locale, item.visitors)}
+              </div>
+            </TableCell>
+          </AnimatedDataTableRow>
+        );
+      })}
+    </AnimatePresence>
+  );
   const sourceCardSearchContent = (
     <div className="space-y-3">
       <Input
@@ -3938,69 +3992,68 @@ export function OverviewPagesSection({
       </TableHead>
     </TableRow>
   );
-  const renderClientDimensionCardRows = (rows: PageCardRow[]) =>
-    (
-      <AnimatePresence initial={false} mode="popLayout">
-        {rows.map((item) => {
-          const rowValue = Math.max(
-            0,
-            Number(item[clientDimensionCardSort.key] ?? 0),
-          );
-          const progressPercent =
-            clientDimensionCardProgressTotal > 0
-              ? Math.min(100, (rowValue / clientDimensionCardProgressTotal) * 100)
-              : 0;
-          const progressWidth = `${progressPercent.toFixed(2)}%`;
-          const rowFilterActive =
-            activeClientDimensionCardQueryValue ===
-            (item.filterValue ?? item.label);
+  const renderClientDimensionCardRows = (rows: PageCardRow[]) => (
+    <AnimatePresence initial={false} mode="popLayout">
+      {rows.map((item) => {
+        const rowValue = Math.max(
+          0,
+          Number(item[clientDimensionCardSort.key] ?? 0),
+        );
+        const progressPercent =
+          clientDimensionCardProgressTotal > 0
+            ? Math.min(100, (rowValue / clientDimensionCardProgressTotal) * 100)
+            : 0;
+        const progressWidth = `${progressPercent.toFixed(2)}%`;
+        const rowFilterActive =
+          activeClientDimensionCardQueryValue ===
+          (item.filterValue ?? item.label);
 
-          return (
-            <AnimatedDataTableRow
-              key={item.key}
-              reduceMotion={reduceDataRowMotion}
-              className={cn(
-                "group/row cursor-pointer bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-95",
-                rowFilterActive && "brightness-95",
-              )}
-              style={{
-                backgroundImage:
-                  "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
-                backgroundSize: `${progressWidth} 100%`,
-                backgroundPosition: "left top",
-              }}
-              onClick={() =>
-                toggleClientDimensionCardRowFilter(item.filterValue ?? item.label)
-              }
-            >
-              <TableCell className="p-0 whitespace-normal align-top">
-                <div
-                  className={cn(
-                    "px-4 py-2 leading-5 whitespace-normal break-words",
-                    item.mono && "font-mono",
-                  )}
-                >
-                  <LabelWithLeadingIcon
-                    label={item.label}
-                    iconName={item.iconName}
-                  />
-                </div>
-              </TableCell>
-              <TableCell className="p-0">
-                <div className="px-2 py-2 text-right">
-                  {numberFormat(locale, item.views)}
-                </div>
-              </TableCell>
-              <TableCell className="p-0">
-                <div className="px-4 py-2 text-right">
-                  {numberFormat(locale, item.visitors)}
-                </div>
-              </TableCell>
-            </AnimatedDataTableRow>
-          );
-        })}
-      </AnimatePresence>
-    );
+        return (
+          <AnimatedDataTableRow
+            key={item.key}
+            reduceMotion={reduceDataRowMotion}
+            className={cn(
+              "group/row cursor-pointer bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-95",
+              rowFilterActive && "brightness-95",
+            )}
+            style={{
+              backgroundImage:
+                "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
+              backgroundSize: `${progressWidth} 100%`,
+              backgroundPosition: "left top",
+            }}
+            onClick={() =>
+              toggleClientDimensionCardRowFilter(item.filterValue ?? item.label)
+            }
+          >
+            <TableCell className="p-0 whitespace-normal align-top">
+              <div
+                className={cn(
+                  "px-4 py-2 leading-5 whitespace-normal break-words",
+                  item.mono && "font-mono",
+                )}
+              >
+                <LabelWithLeadingIcon
+                  label={item.label}
+                  iconName={item.iconName}
+                />
+              </div>
+            </TableCell>
+            <TableCell className="p-0">
+              <div className="px-2 py-2 text-right">
+                {numberFormat(locale, item.views)}
+              </div>
+            </TableCell>
+            <TableCell className="p-0">
+              <div className="px-4 py-2 text-right">
+                {numberFormat(locale, item.visitors)}
+              </div>
+            </TableCell>
+          </AnimatedDataTableRow>
+        );
+      })}
+    </AnimatePresence>
+  );
   const clientDimensionCardSearchContent = (
     <div className="space-y-3">
       <Input
@@ -4107,135 +4160,140 @@ export function OverviewPagesSection({
     options?: {
       showRawLabel?: boolean;
     },
-  ) =>
-    (
-      <AnimatePresence initial={false} mode="popLayout">
-        {rows.map((item) => {
-          const showRawLabel = options?.showRawLabel ?? false;
-          const rowValue = Math.max(0, Number(item[geoDimensionCardSort.key] ?? 0));
-          const progressPercent =
-            geoDimensionCardProgressTotal > 0
-              ? Math.min(100, (rowValue / geoDimensionCardProgressTotal) * 100)
-              : 0;
-          const progressWidth = `${progressPercent.toFixed(2)}%`;
-          const rowFilterValue = item.filterValue ?? item.label;
-          const activeGeoHighlightValue = isGeoLocationTab(geoDimensionCardTab)
-            ? resolveGeoLocationHighlightValue(
-                geoDimensionCardTab,
-                activeGeoDimensionCardQueryValue,
-              )
-            : activeGeoDimensionCardQueryValue;
-          const rowFilterActive = activeGeoHighlightValue === rowFilterValue;
-          const rowLocationValue = resolveGeoLocationQueryValue(
-            geoDimensionCardTab,
-            item,
-            messages.common.unknown,
-          );
-          const rowLocationTarget = rowLocationValue
-            ? `${buildGeoPagePath(geoPageBasePathname ?? livePathname)}?${new URLSearchParams({
+  ) => (
+    <AnimatePresence initial={false} mode="popLayout">
+      {rows.map((item) => {
+        const showRawLabel = options?.showRawLabel ?? false;
+        const rowValue = Math.max(
+          0,
+          Number(item[geoDimensionCardSort.key] ?? 0),
+        );
+        const progressPercent =
+          geoDimensionCardProgressTotal > 0
+            ? Math.min(100, (rowValue / geoDimensionCardProgressTotal) * 100)
+            : 0;
+        const progressWidth = `${progressPercent.toFixed(2)}%`;
+        const rowFilterValue = item.filterValue ?? item.label;
+        const activeGeoHighlightValue = isGeoLocationTab(geoDimensionCardTab)
+          ? resolveGeoLocationHighlightValue(
+              geoDimensionCardTab,
+              activeGeoDimensionCardQueryValue,
+            )
+          : activeGeoDimensionCardQueryValue;
+        const rowFilterActive = activeGeoHighlightValue === rowFilterValue;
+        const rowLocationValue = resolveGeoLocationQueryValue(
+          geoDimensionCardTab,
+          item,
+          messages.common.unknown,
+        );
+        const rowLocationTarget = rowLocationValue
+          ? `${buildGeoPagePath(geoPageBasePathname ?? livePathname)}?${new URLSearchParams(
+              {
                 location: rowLocationValue,
-              }).toString()}`
-            : null;
+              },
+            ).toString()}`
+          : null;
 
-          return (
-            <AnimatedDataTableRow
-              key={item.key}
-              reduceMotion={reduceDataRowMotion}
+        return (
+          <AnimatedDataTableRow
+            key={item.key}
+            reduceMotion={reduceDataRowMotion}
+            className={cn(
+              "group/row cursor-pointer bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-95",
+              rowFilterActive && "brightness-95",
+            )}
+            style={{
+              backgroundImage:
+                "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
+              backgroundSize: `${progressWidth} 100%`,
+              backgroundPosition: "left top",
+            }}
+            onClick={() => toggleGeoDimensionCardRowFilter(rowFilterValue)}
+          >
+            <TableCell
               className={cn(
-                "group/row cursor-pointer bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-95",
-                rowFilterActive && "brightness-95",
+                "p-0 whitespace-normal",
+                geoDimensionCardTab === "region" ||
+                  geoDimensionCardTab === "city"
+                  ? "align-middle"
+                  : "align-top",
               )}
-              style={{
-                backgroundImage:
-                  "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
-                backgroundSize: `${progressWidth} 100%`,
-                backgroundPosition: "left top",
-              }}
-              onClick={() => toggleGeoDimensionCardRowFilter(rowFilterValue)}
             >
-              <TableCell
+              <div
                 className={cn(
-                  "p-0 whitespace-normal",
-                  geoDimensionCardTab === "region" || geoDimensionCardTab === "city"
-                    ? "align-middle"
-                    : "align-top",
+                  "px-4 py-2 leading-5 whitespace-normal break-words",
+                  (geoDimensionCardTab === "region" ||
+                    geoDimensionCardTab === "city") &&
+                    "flex min-h-8 items-center",
+                  item.mono && "font-mono",
                 )}
               >
-                <div
-                  className={cn(
-                    "px-4 py-2 leading-5 whitespace-normal break-words",
-                    (geoDimensionCardTab === "region" ||
-                      geoDimensionCardTab === "city") &&
-                      "flex min-h-8 items-center",
-                    item.mono && "font-mono",
+                <span className="inline-flex items-center gap-2 break-words">
+                  {showRawLabel ? (
+                    <LabelWithLeadingIcon
+                      label={item.rawLabel?.trim() || item.label}
+                      iconName={item.iconName}
+                    />
+                  ) : geoDimensionCardTab === "region" &&
+                    item.regionBreadcrumb ? (
+                    <RegionBreadcrumbLabel
+                      locale={locale}
+                      countryLabel={item.regionBreadcrumb.countryLabel}
+                      countryIconName={item.regionBreadcrumb.countryIconName}
+                      regionLabel={item.regionBreadcrumb.regionLabel}
+                      countryCode={item.regionBreadcrumb.countryCode}
+                      stateCode={item.regionBreadcrumb.stateCode}
+                      hideRegion={item.regionBreadcrumb.hideRegion}
+                    />
+                  ) : geoDimensionCardTab === "city" && item.cityBreadcrumb ? (
+                    <CityBreadcrumbLabel
+                      locale={locale}
+                      countryLabel={item.cityBreadcrumb.countryLabel}
+                      countryIconName={item.cityBreadcrumb.countryIconName}
+                      regionLabel={item.cityBreadcrumb.regionLabel}
+                      cityLabel={item.cityBreadcrumb.cityLabel}
+                      countryCode={item.cityBreadcrumb.countryCode}
+                      stateCode={item.cityBreadcrumb.stateCode}
+                      cityNameDefault={item.cityBreadcrumb.cityNameDefault}
+                      hideRegion={item.cityBreadcrumb.hideRegion}
+                      hideCity={item.cityBreadcrumb.hideCity}
+                    />
+                  ) : (
+                    <LabelWithLeadingIcon
+                      label={item.label}
+                      iconName={item.iconName}
+                    />
                   )}
-                >
-                  <span className="inline-flex items-center gap-2 break-words">
-                    {showRawLabel ? (
-                      <LabelWithLeadingIcon
-                        label={item.rawLabel?.trim() || item.label}
-                        iconName={item.iconName}
-                      />
-                    ) : geoDimensionCardTab === "region" &&
-                      item.regionBreadcrumb ? (
-                      <RegionBreadcrumbLabel
-                        locale={locale}
-                        countryLabel={item.regionBreadcrumb.countryLabel}
-                        countryIconName={item.regionBreadcrumb.countryIconName}
-                        regionLabel={item.regionBreadcrumb.regionLabel}
-                        countryCode={item.regionBreadcrumb.countryCode}
-                        stateCode={item.regionBreadcrumb.stateCode}
-                        hideRegion={item.regionBreadcrumb.hideRegion}
-                      />
-                    ) : geoDimensionCardTab === "city" && item.cityBreadcrumb ? (
-                      <CityBreadcrumbLabel
-                        locale={locale}
-                        countryLabel={item.cityBreadcrumb.countryLabel}
-                        countryIconName={item.cityBreadcrumb.countryIconName}
-                        regionLabel={item.cityBreadcrumb.regionLabel}
-                        cityLabel={item.cityBreadcrumb.cityLabel}
-                        countryCode={item.cityBreadcrumb.countryCode}
-                        stateCode={item.cityBreadcrumb.stateCode}
-                        cityNameDefault={item.cityBreadcrumb.cityNameDefault}
-                        hideRegion={item.cityBreadcrumb.hideRegion}
-                        hideCity={item.cityBreadcrumb.hideCity}
-                      />
-                    ) : (
-                      <LabelWithLeadingIcon
-                        label={item.label}
-                        iconName={item.iconName}
-                      />
-                    )}
-                    {rowLocationTarget ? (
-                      <Clickable
-                        className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-                        onClick={(event) =>
-                          openGeoDimensionLocationTarget(rowLocationTarget, event)
-                        }
-                        aria-label={messages.common.search}
-                        title={messages.common.search}
-                      >
-                        <RiSearchLine size="1.2em" />
-                      </Clickable>
-                    ) : null}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell className="p-0">
-                <div className="px-2 py-2 text-right">
-                  {numberFormat(locale, item.views)}
-                </div>
-              </TableCell>
-              <TableCell className="p-0">
-                <div className="px-4 py-2 text-right">
-                  {numberFormat(locale, item.visitors)}
-                </div>
-              </TableCell>
-            </AnimatedDataTableRow>
-          );
-        })}
-      </AnimatePresence>
-    );
+                  {rowLocationTarget ? (
+                    <Clickable
+                      className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                      onClick={(event) =>
+                        openGeoDimensionLocationTarget(rowLocationTarget, event)
+                      }
+                      aria-label={messages.common.search}
+                      title={messages.common.search}
+                    >
+                      <RiSearchLine size="1.2em" />
+                    </Clickable>
+                  ) : null}
+                </span>
+              </div>
+            </TableCell>
+            <TableCell className="p-0">
+              <div className="px-2 py-2 text-right">
+                {numberFormat(locale, item.views)}
+              </div>
+            </TableCell>
+            <TableCell className="p-0">
+              <div className="px-4 py-2 text-right">
+                {numberFormat(locale, item.visitors)}
+              </div>
+            </TableCell>
+          </AnimatedDataTableRow>
+        );
+      })}
+    </AnimatePresence>
+  );
   const geoDimensionCardSearchContent = (
     <div className="space-y-3">
       <Input
@@ -4381,12 +4439,10 @@ export function OverviewPagesSection({
           <TabbedScrollMaskCard
             value={sourceCardTab}
             onValueChange={(value) => setSourceCardTab(value)}
-            tabs={SOURCE_CARD_TABS.map(
-              (tab) => ({
-                value: tab,
-                label: sourceCardTabMeta[tab].label,
-              }),
-            )}
+            tabs={SOURCE_CARD_TABS.map((tab) => ({
+              value: tab,
+              label: sourceCardTabMeta[tab].label,
+            }))}
             headerRight={sourceCardSearchAction}
             className="h-full"
             syncKey={`${sourceCardLoading}-${sourceCardTab}-${sourceCardSort.key}-${sourceCardSort.direction}-${sortedSourceCardRows.length}-${activeSourceCardQueryValue ?? "all"}-${visibleSourceCardRows.length}`}
@@ -4538,13 +4594,7 @@ export function OverviewMetricsSection({
     return () => {
       active = false;
     };
-  }, [
-    filters,
-    siteId,
-    window.from,
-    window.interval,
-    window.to,
-  ]);
+  }, [filters, siteId, window.from, window.interval, window.to]);
 
   const pagesPerSessionFormatter = useMemo(
     () =>
@@ -4593,7 +4643,8 @@ export function OverviewMetricsSection({
     }));
   const metricChartAnimationKey = useMemo(() => {
     const firstTimestamp = detailSeries[0]?.timestampMs ?? 0;
-    const lastTimestamp = detailSeries[detailSeries.length - 1]?.timestampMs ?? 0;
+    const lastTimestamp =
+      detailSeries[detailSeries.length - 1]?.timestampMs ?? 0;
     return `${detailSeries.length}:${firstTimestamp}:${lastTimestamp}`;
   }, [detailSeries]);
 
@@ -4758,13 +4809,7 @@ export function OverviewTrendSection({
     return () => {
       active = false;
     };
-  }, [
-    filters,
-    siteId,
-    window.from,
-    window.interval,
-    window.to,
-  ]);
+  }, [filters, siteId, window.from, window.interval, window.to]);
 
   const trendDisplayData = useMemo(() => {
     if (!trendHydrated && loading) {
@@ -4859,7 +4904,9 @@ export function OverviewClientPage({
       const normalizedCurrent = String(selectedGeoCountry ?? "")
         .trim()
         .toUpperCase();
-      const normalizedNext = String(countryCode ?? "").trim().toUpperCase();
+      const normalizedNext = String(countryCode ?? "")
+        .trim()
+        .toUpperCase();
       const nextCountry =
         normalizedNext.length > 0 && normalizedNext !== normalizedCurrent
           ? normalizedNext
@@ -4920,4 +4967,3 @@ export function OverviewClientPage({
     </div>
   );
 }
-

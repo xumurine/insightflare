@@ -1,8 +1,8 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
 import {
   RiArrowLeftLine,
   RiFolderLine,
@@ -11,19 +11,17 @@ import {
   RiTeamLine,
   RiUser3Line,
 } from "@remixicon/react";
-import type { TeamData } from "@/lib/edge-client";
-import type { Locale } from "@/lib/i18n/config";
-import type { AppMessages } from "@/lib/i18n/messages";
-import { PageTransition } from "@/components/page-transition";
+
 import { AnalyticsTabs } from "@/components/dashboard/analytics-tabs";
-import { SidebarMenuStage } from "@/components/dashboard/sidebar-menu-stage";
-import { SidebarFooterMenus } from "@/components/dashboard/sidebar-footer-menus";
-import { TeamSelect } from "@/components/dashboard/team-select";
-import { DashboardQueryProvider } from "@/components/dashboard/dashboard-query-provider";
 import { DashboardHeaderControls } from "@/components/dashboard/dashboard-header-controls";
+import { DashboardQueryProvider } from "@/components/dashboard/dashboard-query-provider";
+import { SidebarFooterMenus } from "@/components/dashboard/sidebar-footer-menus";
+import { SidebarMenuStage } from "@/components/dashboard/sidebar-menu-stage";
 import { SidebarSiteDetails } from "@/components/dashboard/sidebar-site-details";
-import { AutoTransition } from "@/components/ui/auto-transition";
+import { TeamSelect } from "@/components/dashboard/team-select";
+import { PageTransition } from "@/components/page-transition";
 import { AutoResizer } from "@/components/ui/auto-resizer";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -48,6 +46,9 @@ import {
   SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import type { TeamData } from "@/lib/edge-client";
+import type { Locale } from "@/lib/i18n/config";
+import type { AppMessages } from "@/lib/i18n/messages";
 
 interface TeamSectionNavItem {
   key: string;
@@ -125,7 +126,7 @@ function buildSitePath(
     | "browsers"
     | "performance"
     | "settings",
-  ): string {
+): string {
   const base = `/${locale}/app/${teamSlug}/${siteSlug}`;
   if (!section) return base;
   return `${base}/${section}`;
@@ -252,14 +253,14 @@ export function DashboardShell({
           { key: "events", href: `${activeSiteBase}/events` },
           { key: "funnels", href: `${activeSiteBase}/funnels` },
           { key: "visitors", href: `${activeSiteBase}/visitors` },
-            { key: "retention", href: `${activeSiteBase}/retention` },
-            { key: "geo", href: `${activeSiteBase}/geo` },
-            { key: "devices", href: `${activeSiteBase}/devices` },
-            { key: "browsers", href: `${activeSiteBase}/browsers` },
-            { key: "performance", href: `${activeSiteBase}/performance` },
-            { key: "settings", href: `${activeSiteBase}/settings` },
-          ]
-        : [];
+          { key: "retention", href: `${activeSiteBase}/retention` },
+          { key: "geo", href: `${activeSiteBase}/geo` },
+          { key: "devices", href: `${activeSiteBase}/devices` },
+          { key: "browsers", href: `${activeSiteBase}/browsers` },
+          { key: "performance", href: `${activeSiteBase}/performance` },
+          { key: "settings", href: `${activeSiteBase}/settings` },
+        ]
+      : [];
 
   const localeSuffix = normalizeLocalePath(livePathname);
   const switchToEn = `/en${localeSuffix}`;
@@ -277,19 +278,15 @@ export function DashboardShell({
     : "";
   const isRealtimeRoute = Boolean(
     hasActiveSite &&
-      activeSiteBase &&
-      (
-        livePathname === `${activeSiteBase}/realtime` ||
-        livePathname.startsWith(`${activeSiteBase}/realtime/`)
-      ),
+    activeSiteBase &&
+    (livePathname === `${activeSiteBase}/realtime` ||
+      livePathname.startsWith(`${activeSiteBase}/realtime/`)),
   );
   const isGeoRoute = Boolean(
     hasActiveSite &&
-      activeSiteBase &&
-      (
-        livePathname === `${activeSiteBase}/geo` ||
-        livePathname.startsWith(`${activeSiteBase}/geo/`)
-      ),
+    activeSiteBase &&
+    (livePathname === `${activeSiteBase}/geo` ||
+      livePathname.startsWith(`${activeSiteBase}/geo/`)),
   );
   const contentContainerClassName = isGeoRoute
     ? "flex min-h-0 flex-1 min-w-0 w-full flex-col [&>[data-page-transition]]:h-full"

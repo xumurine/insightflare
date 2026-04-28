@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import { motion, type Easing } from "motion/react";
+import { type Easing, motion } from "motion/react";
 
 export interface AutoResizerProps {
   children: ReactNode;
@@ -59,7 +59,8 @@ export function AutoResizer({
   }, [animateHeight, animateWidth]);
 
   const shouldAnimate = initial || updateCount > 1;
-  const animateTarget: { height?: number | "auto"; width?: number | "auto" } = {};
+  const animateTarget: { height?: number | "auto"; width?: number | "auto" } =
+    {};
   if (animateHeight) {
     animateTarget.height = height;
   }

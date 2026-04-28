@@ -4,7 +4,10 @@ import { ONE_HOUR_MS } from "./utils";
 const RETENTION_DAYS = 365;
 const ARCHIVE_BATCH_SIZE = 5_000;
 
-async function moveVisitsToArchive(env: Env, cutoffMs: number): Promise<number> {
+async function moveVisitsToArchive(
+  env: Env,
+  cutoffMs: number,
+): Promise<number> {
   const rows = await env.DB.prepare(
     `
       SELECT *
@@ -95,7 +98,10 @@ async function moveVisitsToArchive(env: Env, cutoffMs: number): Promise<number> 
   return rows.results.length;
 }
 
-async function moveCustomEventsToArchive(env: Env, cutoffMs: number): Promise<number> {
+async function moveCustomEventsToArchive(
+  env: Env,
+  cutoffMs: number,
+): Promise<number> {
   const rows = await env.DB.prepare(
     `
       SELECT *
@@ -126,15 +132,23 @@ async function moveCustomEventsToArchive(env: Env, cutoffMs: number): Promise<nu
       row.event_data_json,
       row.ae_synced_at,
     ),
-    env.DB.prepare("DELETE FROM custom_events WHERE event_id = ?").bind(row.event_id),
+    env.DB.prepare("DELETE FROM custom_events WHERE event_id = ?").bind(
+      row.event_id,
+    ),
   ]);
 
   await env.DB.batch(statements);
   return rows.results.length;
 }
 
-export async function runHourlyArchive(env: Env, scheduledTime?: number): Promise<void> {
-  const nowMs = typeof scheduledTime === "number" && Number.isFinite(scheduledTime) ? scheduledTime : Date.now();
+export async function runHourlyArchive(
+  env: Env,
+  scheduledTime?: number,
+): Promise<void> {
+  const nowMs =
+    typeof scheduledTime === "number" && Number.isFinite(scheduledTime)
+      ? scheduledTime
+      : Date.now();
   const cutoffMs = nowMs - RETENTION_DAYS * 24 * ONE_HOUR_MS;
 
   while (true) {

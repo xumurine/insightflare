@@ -1,25 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   RiArrowDownSLine,
-  RiExternalLinkLine,
   RiArrowLeftLine,
-  RiInformationLine,
   RiArrowUpSLine,
+  RiExternalLinkLine,
+  RiInformationLine,
 } from "@remixicon/react";
-import { OverlayScrollbars } from "overlayscrollbars";
 import type { PartialOptions } from "overlayscrollbars";
+import { OverlayScrollbars } from "overlayscrollbars";
+
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card } from "@/components/ui/card";
 import { Clickable } from "@/components/ui/clickable";
-import {
-  TableCell,
-  TableHead,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { numberFormat } from "@/lib/dashboard/format";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -93,7 +90,9 @@ export function GeoCountryStatsPanel({
     direction: "desc",
   });
   const scrollHostRef = useRef<HTMLDivElement | null>(null);
-  const scrollbarsRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(null);
+  const scrollbarsRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
+    null,
+  );
 
   useEffect(() => {
     if (stacked) {
@@ -106,7 +105,8 @@ export function GeoCountryStatsPanel({
     if (!host) return;
 
     const existing = OverlayScrollbars(host);
-    const instance = existing ?? OverlayScrollbars(host, PANEL_SCROLLBAR_OPTIONS);
+    const instance =
+      existing ?? OverlayScrollbars(host, PANEL_SCROLLBAR_OPTIONS);
     scrollbarsRef.current = instance;
 
     instance.options(PANEL_SCROLLBAR_OPTIONS);
@@ -153,14 +153,14 @@ export function GeoCountryStatsPanel({
   };
 
   const sortedEntries = useMemo(() => {
-    return [...entries]
-      .sort((left, right) => {
-        const direction = sort.direction === "asc" ? 1 : -1;
-        const delta =
-          (Number(left[sort.key] ?? 0) - Number(right[sort.key] ?? 0)) * direction;
-        if (delta !== 0) return delta;
-        return String(left.label).localeCompare(String(right.label), locale);
-      });
+    return [...entries].sort((left, right) => {
+      const direction = sort.direction === "asc" ? 1 : -1;
+      const delta =
+        (Number(left[sort.key] ?? 0) - Number(right[sort.key] ?? 0)) *
+        direction;
+      if (delta !== 0) return delta;
+      return String(left.label).localeCompare(String(right.label), locale);
+    });
   }, [entries, locale, sort.direction, sort.key]);
 
   const progressTotal = useMemo(
@@ -219,7 +219,9 @@ export function GeoCountryStatsPanel({
             type="button"
             className={cn(
               "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              sort.key === "visitors" ? "text-foreground" : "text-muted-foreground",
+              sort.key === "visitors"
+                ? "text-foreground"
+                : "text-muted-foreground",
             )}
             onClick={() => toggleSort("visitors")}
           >
@@ -234,7 +236,9 @@ export function GeoCountryStatsPanel({
             type="button"
             className={cn(
               "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              sort.key === "views" ? "text-foreground" : "text-muted-foreground",
+              sort.key === "views"
+                ? "text-foreground"
+                : "text-muted-foreground",
             )}
             onClick={() => toggleSort("views")}
           >
@@ -335,33 +339,38 @@ export function GeoCountryStatsPanel({
                       </div>
                     ) : null}
 
-                    {currentLocationInfo && currentLocationInfo.lines.length > 0 ? (
+                    {currentLocationInfo &&
+                    currentLocationInfo.lines.length > 0 ? (
                       <div className="border-y border-border/70 px-4 py-3">
-                      <div className="space-y-1">
-                        {currentLocationInfo.lines.map((line) => (
-                          <div
-                            key={line}
-                            className="text-2xl leading-tight font-semibold tracking-tight text-foreground sm:text-[1.9rem]"
+                        <div className="space-y-1">
+                          {currentLocationInfo.lines.map((line) => (
+                            <div
+                              key={line}
+                              className="text-2xl leading-tight font-semibold tracking-tight text-foreground sm:text-[1.9rem]"
                             >
                               {line}
-                          </div>
-                        ))}
-                      </div>
-                      {wikiSummary?.description ? (
-                        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                          {wikiSummary.description}
-                        </p>
-                      ) : null}
-                        {((investigationRows && investigationRows.length > 0) ||
-                          wikiSummary?.extract ||
-                          wikiSummary?.pageUrl) ? (
+                            </div>
+                          ))}
+                        </div>
+                        {wikiSummary?.description ? (
+                          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                            {wikiSummary.description}
+                          </p>
+                        ) : null}
+                        {(investigationRows && investigationRows.length > 0) ||
+                        wikiSummary?.extract ||
+                        wikiSummary?.pageUrl ? (
                           <div className="mt-3 space-y-3">
-                            {investigationRows && investigationRows.length > 0 ? (
+                            {investigationRows &&
+                            investigationRows.length > 0 ? (
                               <dl className="grid grid-cols-1 gap-x-5 gap-y-2.5 sm:grid-cols-2">
                                 {investigationRows.map((row, index) => (
                                   <div
                                     key={`${row.label}-${index}`}
-                                    className={cn("min-w-0", row.fullWidth && "sm:col-span-2")}
+                                    className={cn(
+                                      "min-w-0",
+                                      row.fullWidth && "sm:col-span-2",
+                                    )}
                                   >
                                     <dt className="text-[11px] leading-4 text-muted-foreground">
                                       {row.label}

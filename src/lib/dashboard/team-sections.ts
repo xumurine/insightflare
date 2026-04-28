@@ -22,19 +22,30 @@ function teamTabLabel(messages: AppMessages, tab: TeamTab): string {
   return messages.teamManagement.members.title;
 }
 
-function managementLabel(messages: AppMessages, key: ManagementSectionKey): string {
+function managementLabel(
+  messages: AppMessages,
+  key: ManagementSectionKey,
+): string {
   if (key === "manage-users") return messages.managementNav.users;
   if (key === "manage-sites") return messages.managementNav.sites;
   return messages.managementNav.teams;
 }
 
-function buildTeamTabPath(locale: Locale, teamSlug: string, tab: TeamTab): string {
+function buildTeamTabPath(
+  locale: Locale,
+  teamSlug: string,
+  tab: TeamTab,
+): string {
   const base = `/${locale}/app/${teamSlug}`;
   if (tab === "sites") return base;
   return `${base}/${tab}`;
 }
 
-function buildManagementPath(locale: Locale, teamSlug: string, key: ManagementSectionKey): string {
+function buildManagementPath(
+  locale: Locale,
+  teamSlug: string,
+  key: ManagementSectionKey,
+): string {
   if (key === "manage-users") return `/${locale}/app/${teamSlug}/manage/users`;
   if (key === "manage-sites") return `/${locale}/app/${teamSlug}/manage/sites`;
   return `/${locale}/app/${teamSlug}/manage/teams`;

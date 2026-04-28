@@ -4,13 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RiAddLine } from "@remixicon/react";
 import { toast } from "sonner";
-import type { TeamData } from "@/lib/edge-client";
-import type { Locale } from "@/lib/i18n/config";
-import type { AppMessages } from "@/lib/i18n/messages";
-import { navigateWithTransition } from "@/lib/page-transition";
-import { Spinner } from "@/components/ui/spinner";
-import { AutoTransition } from "@/components/ui/auto-transition";
+
 import { AutoResizer } from "@/components/ui/auto-resizer";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,6 +28,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
+import type { TeamData } from "@/lib/edge-client";
+import type { Locale } from "@/lib/i18n/config";
+import type { AppMessages } from "@/lib/i18n/messages";
+import { navigateWithTransition } from "@/lib/page-transition";
 
 interface TeamSelectOption {
   slug: string;
@@ -68,9 +69,9 @@ export function TeamSelect({
   const [teamSlug, setTeamSlug] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const openCreateDialogTimeoutRef = useRef<
-    ReturnType<typeof globalThis.setTimeout> | null
-  >(null);
+  const openCreateDialogTimeoutRef = useRef<ReturnType<
+    typeof globalThis.setTimeout
+  > | null>(null);
 
   const selectedSlug = useMemo(
     () =>
@@ -130,7 +131,9 @@ export function TeamSelect({
       });
       const payload = (await response.json()) as CreateTeamResponse;
       if (!response.ok || !payload.ok || !payload.data) {
-        throw new Error(payload.message || payload.error || "create_team_failed");
+        throw new Error(
+          payload.message || payload.error || "create_team_failed",
+        );
       }
       setOpenCreateDialog(false);
       setTeamName("");
@@ -138,7 +141,8 @@ export function TeamSelect({
       toast.success(copy.createSuccess);
       navigateWithTransition(router, `/${locale}/app/${payload.data.slug}`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : copy.createFailed;
+      const message =
+        error instanceof Error ? error.message : copy.createFailed;
       setSubmitError(message || copy.createFailed);
       toast.error(message || copy.createFailed);
     } finally {
@@ -212,7 +216,10 @@ export function TeamSelect({
             <Button type="submit" disabled={submitting}>
               <AutoTransition className="inline-flex items-center gap-2">
                 {submitting ? (
-                  <span key="creating" className="inline-flex items-center gap-2">
+                  <span
+                    key="creating"
+                    className="inline-flex items-center gap-2"
+                  >
                     <Spinner className="size-4" />
                     {copy.creating}
                   </span>

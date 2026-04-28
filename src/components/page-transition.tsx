@@ -1,10 +1,11 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+
 import {
-  registerPageTransitionHandler,
   type NavigateRequest,
+  registerPageTransitionHandler,
 } from "@/lib/page-transition";
 
 interface PageTransitionProps {
@@ -101,7 +102,8 @@ export function PageTransition({ children }: PageTransitionProps) {
 
     const handleClick = (event: MouseEvent) => {
       if (event.button !== 0) return;
-      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+        return;
 
       const target = event.target as HTMLElement | null;
       const link = target?.closest("a[href]") as HTMLAnchorElement | null;
@@ -185,10 +187,7 @@ export function PageTransition({ children }: PageTransitionProps) {
   }, [pathname]);
 
   return (
-    <div
-      data-page-transition
-      data-transition={transitionState}
-    >
+    <div data-page-transition data-transition={transitionState}>
       {children}
     </div>
   );

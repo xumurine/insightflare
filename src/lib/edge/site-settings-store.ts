@@ -1,10 +1,11 @@
 import {
   DEFAULT_SITE_SCRIPT_SETTINGS,
-  normalizeSiteTrackingConfig,
   normalizeSiteScriptSettings,
-  type SiteTrackingConfig,
+  normalizeSiteTrackingConfig,
   type SiteScriptSettings,
+  type SiteTrackingConfig,
 } from "@/lib/site-settings";
+
 import type { Env } from "./types";
 
 const SITE_SETTINGS_CACHE_NAME = "insightflare-site-settings-cache";
@@ -33,7 +34,9 @@ async function openEdgeCache(name: string): Promise<Cache | null> {
 }
 
 function cacheRequestForSiteSettings(siteId: string): Request {
-  return new Request(`https://insightflare.internal/__site-settings/${encodeURIComponent(siteId)}`);
+  return new Request(
+    `https://insightflare.internal/__site-settings/${encodeURIComponent(siteId)}`,
+  );
 }
 
 function cacheResponseForSiteSettings(settings: SiteTrackingConfig): Response {
@@ -46,7 +49,9 @@ function cacheResponseForSiteSettings(settings: SiteTrackingConfig): Response {
   });
 }
 
-async function readSettingsFromCache(siteId: string): Promise<SiteTrackingConfig | null> {
+async function readSettingsFromCache(
+  siteId: string,
+): Promise<SiteTrackingConfig | null> {
   const cache = await openEdgeCache(SITE_SETTINGS_CACHE_NAME);
   if (!cache) return null;
   const hit = await cache.match(cacheRequestForSiteSettings(siteId));
@@ -58,10 +63,16 @@ async function readSettingsFromCache(siteId: string): Promise<SiteTrackingConfig
   }
 }
 
-async function writeSettingsToCache(siteId: string, settings: SiteTrackingConfig): Promise<void> {
+async function writeSettingsToCache(
+  siteId: string,
+  settings: SiteTrackingConfig,
+): Promise<void> {
   const cache = await openEdgeCache(SITE_SETTINGS_CACHE_NAME);
   if (!cache) return;
-  await cache.put(cacheRequestForSiteSettings(siteId), cacheResponseForSiteSettings(settings));
+  await cache.put(
+    cacheRequestForSiteSettings(siteId),
+    cacheResponseForSiteSettings(settings),
+  );
 }
 
 async function deleteSettingsFromCache(siteId: string): Promise<void> {
@@ -83,7 +94,9 @@ export function normalizeSiteSettingsKey(input: unknown): string {
   return value.slice(0, SITE_SETTINGS_MAX_ID_LENGTH);
 }
 
-function serializeSiteTrackingConfig(settings: SiteTrackingConfig): Record<string, unknown> {
+function serializeSiteTrackingConfig(
+  settings: SiteTrackingConfig,
+): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     siteId: settings.siteId,
     siteDomain: settings.siteDomain,
@@ -136,7 +149,9 @@ export async function readSiteTrackingConfig(
   }
 
   const normalized = normalizeSiteTrackingConfig({
-    ...(parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {}),
+    ...(parsed && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : {}),
     siteId: normalizedSiteId,
   });
   await writeSettingsToCache(normalizedSiteId, normalized);
@@ -169,7 +184,10 @@ export async function upsertSiteTrackingConfig(
     throw new Error("siteDomain is required");
   }
   const kv = siteSettingsBinding(env);
-  await kv.put(normalizedSiteId, JSON.stringify(serializeSiteTrackingConfig(normalized)));
+  await kv.put(
+    normalizedSiteId,
+    JSON.stringify(serializeSiteTrackingConfig(normalized)),
+  );
   await writeSettingsToCache(normalizedSiteId, normalized);
   return normalized;
 }
@@ -186,7 +204,10 @@ export async function upsertSiteScriptSettings(
   return normalizeSiteScriptSettings(normalized);
 }
 
-export async function deleteSiteScriptSettings(env: Env, siteId: string): Promise<void> {
+export async function deleteSiteScriptSettings(
+  env: Env,
+  siteId: string,
+): Promise<void> {
   const normalizedSiteId = normalizeSiteSettingsKey(siteId);
   if (!normalizedSiteId) return;
   const kv = siteSettingsBinding(env);

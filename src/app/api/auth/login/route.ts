@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { SESSION_COOKIE, SESSION_DURATION_SECONDS } from "@/lib/constants";
 import { loginAdminAccount } from "@/lib/edge-client";
 import { bodyStr, parseRequestBody } from "@/lib/form-helpers";
@@ -10,7 +11,11 @@ export async function POST(request: Request): Promise<NextResponse> {
   const password = String(body.password ?? "");
   const nextPathRaw = bodyStr(body, "next") || "/app";
   const nextPathClean = nextPathRaw.split("?")[0].replace(/\/+$/, "");
-  const isUnsafe = !nextPathRaw.startsWith("/") || nextPathRaw.startsWith("//") || nextPathClean === "/login" || nextPathClean.endsWith("/login");
+  const isUnsafe =
+    !nextPathRaw.startsWith("/") ||
+    nextPathRaw.startsWith("//") ||
+    nextPathClean === "/login" ||
+    nextPathClean.endsWith("/login");
   const nextPath = isUnsafe ? "/app" : nextPathRaw;
 
   if (username.length < 2 || password.length < 1) {

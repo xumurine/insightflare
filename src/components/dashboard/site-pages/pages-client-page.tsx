@@ -1,32 +1,26 @@
 "use client";
 
-import {
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { motion } from "motion/react";
 import {
   RiArrowDownLine,
   RiArrowRightSLine,
   RiArrowUpLine,
 } from "@remixicon/react";
+import { motion } from "motion/react";
+
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { PagesShareTrendCard } from "@/components/dashboard/pages-share-trend-card";
-import { TrafficPairBarChart } from "@/components/dashboard/site-traffic-charts";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+import { TrafficPairBarChart } from "@/components/dashboard/site-traffic-charts";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  fetchPagesDashboard,
+  type PagesDashboardRow,
+} from "@/lib/dashboard/client-data";
 import {
   durationFormat,
   intlLocale,
@@ -34,12 +28,8 @@ import {
   percentFormat,
 } from "@/lib/dashboard/format";
 import { buildPageDetailHref } from "@/lib/dashboard/page-detail";
-import {
-  fetchPagesDashboard,
-  type PagesDashboardRow,
-} from "@/lib/dashboard/client-data";
-import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
@@ -211,7 +201,9 @@ function PageTrafficCard({
               />
               <PageMetricField
                 label={messages.pages.pagesPerSession}
-                value={pagesPerSessionFormatter.format(item.metrics.pagesPerSession)}
+                value={pagesPerSessionFormatter.format(
+                  item.metrics.pagesPerSession,
+                )}
                 change={item.changeRates.pagesPerSession}
               />
               <PageMetricField
@@ -272,13 +264,7 @@ export function PagesClientPage({
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const requestKey = useMemo(
     () =>
-      [
-        siteId,
-        window.from,
-        window.to,
-        window.interval,
-        filtersKey,
-      ].join(":"),
+      [siteId, window.from, window.to, window.interval, filtersKey].join(":"),
     [siteId, window.from, window.to, window.interval, filtersKey],
   );
   const pagesPerSessionFormatter = useMemo(
@@ -326,11 +312,12 @@ export function PagesClientPage({
           setAppendError(messages.pages.loadMoreError);
         }
       } finally {
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        if (mode === "replace") {
-          setLoadingInitial(false);
-        } else {
-          setLoadingMore(false);
+        if (latestRequestKeyRef.current === capturedRequestKey) {
+          if (mode === "replace") {
+            setLoadingInitial(false);
+          } else {
+            setLoadingMore(false);
+          }
         }
       }
     },

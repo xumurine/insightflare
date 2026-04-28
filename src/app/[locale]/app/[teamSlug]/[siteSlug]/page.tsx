@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+
 import { OverviewClientPage } from "@/components/dashboard/site-pages/overview-client-page";
 import { buildSitePath, getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";

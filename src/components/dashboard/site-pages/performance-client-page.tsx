@@ -1,21 +1,7 @@
 "use client";
 
-import {
-  startTransition,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import { AnimatePresence, motion } from "motion/react";
-import {
-  CartesianGrid,
-  Customized,
-  Line,
-  LineChart,
-  ReferenceLine,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { startTransition, useEffect, useMemo, useState } from "react";
+import { Icon } from "@iconify/react";
 import {
   RiArrowDownSLine,
   RiArrowUpSLine,
@@ -26,22 +12,42 @@ import {
   RiRouteLine,
   RiSpeedUpLine,
 } from "@remixicon/react";
-import { Icon } from "@iconify/react";
-import isoCountries from "i18n-iso-countries";
-import type { Feature, FeatureCollection, Geometry, Position } from "geojson";
+import { AnimatePresence, motion } from "motion/react";
+import {
+  CartesianGrid,
+  Customized,
+  Line,
+  LineChart,
+  ReferenceLine,
+  XAxis,
+  YAxis,
+} from "recharts";
+
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { PageHeading } from "@/components/dashboard/page-heading";
+import {
+  type CountriesFeatureCollection,
+  type CountryFeature,
+  countryFillOpacity,
+  geometryToPath,
+  normalizeCountryCode,
+  resolveCountryCodeFromFeature,
+  resolveCountryLabelFromFeature,
+  WORLD_MAP_HEIGHT,
+  WORLD_MAP_WIDTH,
+} from "@/components/dashboard/site-pages/performance-map-utils";
+import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  type ChartConfig,
   ChartContainer,
   ChartLegend,
   ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
-  type ChartConfig,
 } from "@/components/ui/chart";
 import { Clickable } from "@/components/ui/clickable";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -59,15 +65,14 @@ import type {
   PerformanceSummary,
   PerformanceTrendPoint,
 } from "@/lib/edge-client";
-import type { Locale } from "@/lib/i18n/config";
 import {
   resolveCountryFlagCode,
   resolveCountryLabel,
 } from "@/lib/i18n/code-labels";
+import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
 import { cn } from "@/lib/utils";
-import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 
 interface PerformanceClientPageProps {
   locale: Locale;
@@ -218,8 +223,7 @@ const STATUS_STYLE: Record<
   },
   "needs-improvement": {
     labelClassName: "text-[oklch(0.75_0.16_80)]",
-    softClassName:
-      "bg-[oklch(0.75_0.16_80_/_0.12)] text-[oklch(0.75_0.16_80)]",
+    softClassName: "bg-[oklch(0.75_0.16_80_/_0.12)] text-[oklch(0.75_0.16_80)]",
     icon: RiErrorWarningFill,
   },
   poor: {
@@ -284,7 +288,10 @@ function tickDateFormat(localeCode: string, interval: TimeWindow["interval"]) {
   });
 }
 
-function tooltipDateFormat(localeCode: string, interval: TimeWindow["interval"]) {
+function tooltipDateFormat(
+  localeCode: string,
+  interval: TimeWindow["interval"],
+) {
   if (interval === "minute" || interval === "hour") {
     return new Intl.DateTimeFormat(localeCode, {
       month: "short",
@@ -313,11 +320,10 @@ function metricLabel(
   return messages.performance[metric];
 }
 
-function panelLabel(
-  messages: AppMessages,
-  key: PerformancePanelKey,
-): string {
-  return key === "score" ? messages.performance.score : metricLabel(messages, key);
+function panelLabel(messages: AppMessages, key: PerformancePanelKey): string {
+  return key === "score"
+    ? messages.performance.score
+    : metricLabel(messages, key);
 }
 
 function metricDescription(
@@ -560,13 +566,15 @@ function chartDomain(
   if (key === "cls") {
     return [0, Math.max(0.3, Math.ceil(observedMax * 120) / 100)];
   }
-  return [0, Math.max(thresholds.poor * 1.2, Math.ceil(observedMax * 1.2 / 100) * 100)];
+  return [
+    0,
+    Math.max(thresholds.poor * 1.2, Math.ceil((observedMax * 1.2) / 100) * 100),
+  ];
 }
 
 function zoneBackground(key: PerformancePanelKey, domainMax: number): string {
   const great = "color-mix(in oklch, var(--color-chart-4) 26%, transparent)";
-  const needs =
-    "color-mix(in oklch, oklch(0.75 0.16 80) 24%, transparent)";
+  const needs = "color-mix(in oklch, oklch(0.75 0.16 80) 24%, transparent)";
   const poor = "color-mix(in oklch, var(--color-destructive) 24%, transparent)";
 
   if (key === "score") {
@@ -631,12 +639,14 @@ function percentileAtThreshold(
     const max = Math.max(previous.value, current.value);
     if (threshold < min || threshold > max) continue;
     if (previous.value === current.value) return current.percentile;
-    const ratio = (threshold - previous.value) / (current.value - previous.value);
+    const ratio =
+      (threshold - previous.value) / (current.value - previous.value);
     return Math.max(
       0,
       Math.min(
         100,
-        previous.percentile + ratio * (current.percentile - previous.percentile),
+        previous.percentile +
+          ratio * (current.percentile - previous.percentile),
       ),
     );
   }
@@ -755,18 +765,29 @@ function buildScoreTrend(
     rows.push({
       timestampMs: bucket * stepMs,
       p50: averageScore(
-        metricPoints.map(({ metric, point }) => metricScore(metric, point?.p50)),
+        metricPoints.map(({ metric, point }) =>
+          metricScore(metric, point?.p50),
+        ),
       ),
       p75: averageScore(
-        metricPoints.map(({ metric, point }) => metricScore(metric, point?.p75)),
+        metricPoints.map(({ metric, point }) =>
+          metricScore(metric, point?.p75),
+        ),
       ),
       p95: averageScore(
-        metricPoints.map(({ metric, point }) => metricScore(metric, point?.p95)),
+        metricPoints.map(({ metric, point }) =>
+          metricScore(metric, point?.p95),
+        ),
       ),
       avg: averageScore(
-        metricPoints.map(({ metric, point }) => metricScore(metric, point?.avg)),
+        metricPoints.map(({ metric, point }) =>
+          metricScore(metric, point?.avg),
+        ),
       ),
-      samples: Math.max(0, ...metricPoints.map(({ point }) => point?.samples ?? 0)),
+      samples: Math.max(
+        0,
+        ...metricPoints.map(({ point }) => point?.samples ?? 0),
+      ),
     });
   }
 
@@ -781,10 +802,7 @@ function buildMetricTrend(
   const rows = performanceData.trends[key] ?? [];
   const stepMs = intervalStepMs(dataWindow.interval);
   const byBucket = new Map(
-    rows.map((row) => [
-      Math.floor(Number(row.timestampMs ?? 0) / stepMs),
-      row,
-    ]),
+    rows.map((row) => [Math.floor(Number(row.timestampMs ?? 0) / stepMs), row]),
   );
   const startBucket = Math.floor(dataWindow.from / stepMs);
   const endBucketExclusive = Math.ceil(dataWindow.to / stepMs);
@@ -805,11 +823,7 @@ function buildMetricTrend(
   return filled;
 }
 
-function TrendZones({
-  activePanel,
-}: {
-  activePanel: PerformancePanelKey;
-}) {
+function TrendZones({ activePanel }: { activePanel: PerformancePanelKey }) {
   if (activePanel === "score") {
     return (
       <>
@@ -900,14 +914,7 @@ function createIsolatedTrendDot(
       return <g />;
     }
 
-    return (
-      <circle
-        cx={cx}
-        cy={cy}
-        r={3.2}
-        fill={color}
-      />
-    );
+    return <circle cx={cx} cy={cy} r={3.2} fill={color} />;
   };
 }
 
@@ -967,20 +974,19 @@ function TrendGapConnectorOverlay({
   formattedGraphicalItems?: TrendFormattedGraphicalItem[];
 }) {
   const connectorPaths =
-    formattedGraphicalItems
-      ?.flatMap((item) => {
-        const seriesKey = item.item?.props?.dataKey;
-        if (!isPerformanceSeriesKey(seriesKey)) {
-          return [];
-        }
+    formattedGraphicalItems?.flatMap((item) => {
+      const seriesKey = item.item?.props?.dataKey;
+      if (!isPerformanceSeriesKey(seriesKey)) {
+        return [];
+      }
 
-        const points = item.props?.points ?? [];
-        return gapConnectorPaths(points, seriesKey).map((path, index) => ({
-          key: `${seriesKey}-${index}`,
-          path,
-          seriesKey,
-        }));
-      }) ?? [];
+      const points = item.props?.points ?? [];
+      return gapConnectorPaths(points, seriesKey).map((path, index) => ({
+        key: `${seriesKey}-${index}`,
+        path,
+        seriesKey,
+      }));
+    }) ?? [];
 
   return (
     <AutoTransition
@@ -1019,7 +1025,10 @@ function PerformanceSkeleton() {
     <div className="grid items-start gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
       <div className="space-y-3 self-start">
         {Array.from({ length: 6 }, (_, index) => (
-          <Card key={`performance-rail-skeleton-${index}`} className="overflow-hidden">
+          <Card
+            key={`performance-rail-skeleton-${index}`}
+            className="overflow-hidden"
+          >
             <CardContent className="space-y-3 p-4">
               <Skeleton className="h-3 w-32" />
               <Skeleton className="h-8 w-24" />
@@ -1330,7 +1339,12 @@ function MetricSummaryCard({
       ? activeValue
       : metricScore(activePanel, activeValue);
   const scoreValue = roundedScore(score);
-  const displayValue = formatPanelValue(locale, messages, activePanel, activeValue);
+  const displayValue = formatPanelValue(
+    locale,
+    messages,
+    activePanel,
+    activeValue,
+  );
   const description = metricDescription(messages, activePanel);
   const thresholdText =
     activePanel === "score"
@@ -1359,7 +1373,8 @@ function MetricSummaryCard({
           status: statusLabel(messages, activeStatus),
         })
       : messages.common.noData;
-  const ringPercent = scoreValue == null ? 0 : Math.max(0, Math.min(100, scoreValue));
+  const ringPercent =
+    scoreValue == null ? 0 : Math.max(0, Math.min(100, scoreValue));
   const ringColor = statusColor(activeStatus);
 
   return (
@@ -1380,7 +1395,9 @@ function MetricSummaryCard({
                     <StatusIcon
                       className={cn("size-5", statusStyle.labelClassName)}
                     />
-                    <span className={cn("font-medium", statusStyle.labelClassName)}>
+                    <span
+                      className={cn("font-medium", statusStyle.labelClassName)}
+                    >
                       {statusLabel(messages, activeStatus)}
                     </span>
                   </div>
@@ -1441,7 +1458,9 @@ function MetricSummaryCard({
               <RiSpeedUpLine className="size-4 text-muted-foreground" />
               {messages.performance.datasetTitle}
             </div>
-            <p className="text-sm leading-6 text-muted-foreground">{thresholdText}</p>
+            <p className="text-sm leading-6 text-muted-foreground">
+              {thresholdText}
+            </p>
           </div>
 
           <div className="mt-auto grid gap-3 sm:grid-cols-3">
@@ -1454,7 +1473,9 @@ function MetricSummaryCard({
                 key={key as string}
                 className="flex min-h-[4.75rem] flex-col justify-between rounded-none bg-muted/45 p-3"
               >
-                <div className="text-xs text-muted-foreground">{label as string}</div>
+                <div className="text-xs text-muted-foreground">
+                  {label as string}
+                </div>
                 <div className="font-mono text-sm font-medium tabular-nums">
                   {formatPanelValue(
                     locale,
@@ -1544,21 +1565,9 @@ function PerformanceTrendCard({
   const [showGapConnectors, setShowGapConnectors] = useState(false);
   const isolatedDots = useMemo(
     () => ({
-      p50: createIsolatedTrendDot(
-        points,
-        "p50",
-        PERFORMANCE_SERIES_COLORS.p50,
-      ),
-      p75: createIsolatedTrendDot(
-        points,
-        "p75",
-        PERFORMANCE_SERIES_COLORS.p75,
-      ),
-      p95: createIsolatedTrendDot(
-        points,
-        "p95",
-        PERFORMANCE_SERIES_COLORS.p95,
-      ),
+      p50: createIsolatedTrendDot(points, "p50", PERFORMANCE_SERIES_COLORS.p50),
+      p75: createIsolatedTrendDot(points, "p75", PERFORMANCE_SERIES_COLORS.p75),
+      p95: createIsolatedTrendDot(points, "p95", PERFORMANCE_SERIES_COLORS.p95),
     }),
     [points],
   );
@@ -1592,247 +1601,128 @@ function PerformanceTrendCard({
             className="pointer-events-none absolute top-3 right-3 bottom-16 left-20 rounded-none"
             style={{ background: zoneBackground(activePanel, domainMax) }}
           />
-        <ChartContainer className="relative z-10 h-[360px] w-full aspect-auto" config={chartConfig}>
-          <LineChart
-            accessibilityLayer
-            data={points}
-            margin={{ left: 12, right: 12, top: 12, bottom: 4 }}
+          <ChartContainer
+            className="relative z-10 h-[360px] w-full aspect-auto"
+            config={chartConfig}
           >
-            <TrendZones activePanel={activePanel} />
-            <CartesianGrid vertical={false} strokeDasharray="3 3" />
-            <XAxis
-              type="number"
-              dataKey="timestampMs"
-              domain={[xStart, xEnd]}
-              tickFormatter={(value) =>
-                axisTickFormatter.format(new Date(Number(value ?? 0)))
-              }
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-              minTickGap={12}
-            />
-            <YAxis
-              domain={[0, domainMax]}
-              tickFormatter={(value) =>
-                formatPanelValue(
-                  locale,
-                  messages,
-                  activePanel,
-                  Number(value ?? 0),
-                )
-              }
-              tickLine={false}
-              axisLine={false}
-              width={activePanel === "cls" ? 64 : 80}
-            />
-            <ChartTooltip
-              cursor={false}
-              content={
-                <ChartTooltipContent
-                  className="min-w-[14rem]"
-                  indicator="line"
-                  labelFormatter={(value, payload) => {
-                    const timestamp = Number(
-                      payload?.[0]?.payload?.timestampMs ?? value ?? 0,
-                    );
-                    return tooltipFormatter.format(new Date(timestamp));
-                  }}
-                  formatter={(value, name) => (
-                    <div className="flex w-full items-center justify-between gap-3">
-                      <span className="text-muted-foreground">
-                        {String(name ?? "")}
-                      </span>
-                      <span className="font-mono text-foreground tabular-nums">
-                        {formatPanelValue(
-                          locale,
-                          messages,
-                          activePanel,
-                          Number(value ?? 0),
-                        )}
-                      </span>
-                    </div>
-                  )}
-                />
-              }
-            />
-            <ChartLegend
-              content={
-                <ChartLegendContent className="pt-6 flex-wrap justify-center gap-x-4 gap-y-2" />
-              }
-            />
-            <Line
-              type="monotone"
-              dataKey="p50"
-              name={messages.performance.p50Label}
-              stroke={PERFORMANCE_SERIES_COLORS.p50}
-              strokeWidth={2}
-              dot={isolatedDots.p50}
-              activeDot={{ r: 4 }}
-              connectNulls={false}
-              isAnimationActive
-              animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
-            />
-            <Line
-              type="monotone"
-              dataKey="p75"
-              name={messages.performance.p75Label}
-              stroke={PERFORMANCE_SERIES_COLORS.p75}
-              strokeWidth={2.4}
-              dot={isolatedDots.p75}
-              activeDot={{ r: 4 }}
-              connectNulls={false}
-              isAnimationActive
-              animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
-            />
-            <Line
-              type="monotone"
-              dataKey="p95"
-              name={messages.performance.p95Label}
-              stroke={PERFORMANCE_SERIES_COLORS.p95}
-              strokeWidth={2}
-              dot={isolatedDots.p95}
-              activeDot={{ r: 4 }}
-              connectNulls={false}
-              isAnimationActive
-              animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
-            />
-            <Customized
-              component={
-                <TrendGapConnectorOverlay
-                  visible={showGapConnectors}
-                  renderKey={trendRenderKey}
-                />
-              }
-            />
-          </LineChart>
-        </ChartContainer>
+            <LineChart
+              accessibilityLayer
+              data={points}
+              margin={{ left: 12, right: 12, top: 12, bottom: 4 }}
+            >
+              <TrendZones activePanel={activePanel} />
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis
+                type="number"
+                dataKey="timestampMs"
+                domain={[xStart, xEnd]}
+                tickFormatter={(value) =>
+                  axisTickFormatter.format(new Date(Number(value ?? 0)))
+                }
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                minTickGap={12}
+              />
+              <YAxis
+                domain={[0, domainMax]}
+                tickFormatter={(value) =>
+                  formatPanelValue(
+                    locale,
+                    messages,
+                    activePanel,
+                    Number(value ?? 0),
+                  )
+                }
+                tickLine={false}
+                axisLine={false}
+                width={activePanel === "cls" ? 64 : 80}
+              />
+              <ChartTooltip
+                cursor={false}
+                content={
+                  <ChartTooltipContent
+                    className="min-w-[14rem]"
+                    indicator="line"
+                    labelFormatter={(value, payload) => {
+                      const timestamp = Number(
+                        payload?.[0]?.payload?.timestampMs ?? value ?? 0,
+                      );
+                      return tooltipFormatter.format(new Date(timestamp));
+                    }}
+                    formatter={(value, name) => (
+                      <div className="flex w-full items-center justify-between gap-3">
+                        <span className="text-muted-foreground">
+                          {String(name ?? "")}
+                        </span>
+                        <span className="font-mono text-foreground tabular-nums">
+                          {formatPanelValue(
+                            locale,
+                            messages,
+                            activePanel,
+                            Number(value ?? 0),
+                          )}
+                        </span>
+                      </div>
+                    )}
+                  />
+                }
+              />
+              <ChartLegend
+                content={
+                  <ChartLegendContent className="pt-6 flex-wrap justify-center gap-x-4 gap-y-2" />
+                }
+              />
+              <Line
+                type="monotone"
+                dataKey="p50"
+                name={messages.performance.p50Label}
+                stroke={PERFORMANCE_SERIES_COLORS.p50}
+                strokeWidth={2}
+                dot={isolatedDots.p50}
+                activeDot={{ r: 4 }}
+                connectNulls={false}
+                isAnimationActive
+                animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
+              />
+              <Line
+                type="monotone"
+                dataKey="p75"
+                name={messages.performance.p75Label}
+                stroke={PERFORMANCE_SERIES_COLORS.p75}
+                strokeWidth={2.4}
+                dot={isolatedDots.p75}
+                activeDot={{ r: 4 }}
+                connectNulls={false}
+                isAnimationActive
+                animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
+              />
+              <Line
+                type="monotone"
+                dataKey="p95"
+                name={messages.performance.p95Label}
+                stroke={PERFORMANCE_SERIES_COLORS.p95}
+                strokeWidth={2}
+                dot={isolatedDots.p95}
+                activeDot={{ r: 4 }}
+                connectNulls={false}
+                isAnimationActive
+                animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
+              />
+              <Customized
+                component={
+                  <TrendGapConnectorOverlay
+                    visible={showGapConnectors}
+                    renderKey={trendRenderKey}
+                  />
+                }
+              />
+            </LineChart>
+          </ChartContainer>
         </div>
       </CardContent>
     </Card>
   );
-}
-
-type CountryFeature = Feature<Geometry, Record<string, unknown>>;
-type CountriesFeatureCollection = FeatureCollection<Geometry, Record<string, unknown>>;
-
-const WORLD_MAP_WIDTH = 960;
-const WORLD_MAP_HEIGHT = 500;
-const WORLD_MAP_PADDING = 16;
-
-function normalizeCountryCode(value: string | null | undefined): string | null {
-  const normalized = String(value ?? "").trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
-}
-
-function resolveCountryCodeFromFeature(
-  feature: CountryFeature | null | undefined,
-): string | null {
-  if (!feature) return null;
-  const props = feature.properties ?? {};
-  const alpha2Candidates = [
-    props.ISO_A2,
-    props.iso_a2,
-    props.ADM0_A2,
-    props.adm0_a2,
-    props.WB_A2,
-    props.wb_a2,
-  ];
-
-  for (const candidate of alpha2Candidates) {
-    const code = normalizeCountryCode(String(candidate ?? ""));
-    if (code) return code;
-  }
-
-  const alpha3Candidates = [
-    props.ISO_A3,
-    props.iso_a3,
-    props.ADM0_A3,
-    props.adm0_a3,
-    props.WB_A3,
-    props.wb_a3,
-    props.SOV_A3,
-    props.sov_a3,
-    typeof feature.id === "string" ? feature.id : null,
-  ];
-  for (const candidate of alpha3Candidates) {
-    const alpha3 = String(candidate ?? "").trim().toUpperCase();
-    if (!/^[A-Z]{3}$/.test(alpha3)) continue;
-    const code = normalizeCountryCode(isoCountries.alpha3ToAlpha2(alpha3) ?? "");
-    if (code) return code;
-  }
-
-  const nameCandidates = [props.name, props.NAME, props.admin, props.ADMIN];
-  for (const candidate of nameCandidates) {
-    const name = String(candidate ?? "").trim();
-    if (!name) continue;
-    const code = normalizeCountryCode(isoCountries.getAlpha2Code(name, "en") ?? "");
-    if (code) return code;
-  }
-
-  return null;
-}
-
-function resolveCountryLabelFromFeature(
-  feature: CountryFeature,
-  code: string | null,
-  locale: Locale,
-  unknownLabel: string,
-): string {
-  if (code) return resolveCountryLabel(code, locale, unknownLabel).label;
-  const props = feature.properties ?? {};
-  const labelCandidates = [props.name, props.NAME, props.admin, props.ADMIN];
-  for (const candidate of labelCandidates) {
-    const label = String(candidate ?? "").trim();
-    if (label) return label;
-  }
-  return unknownLabel;
-}
-
-function clampMapCoordinate(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function projectWorldPosition(position: Position): [number, number] {
-  const longitude = clampMapCoordinate(Number(position[0] ?? 0), -180, 180);
-  const latitude = clampMapCoordinate(Number(position[1] ?? 0), -90, 90);
-  const mapWidth = WORLD_MAP_WIDTH - WORLD_MAP_PADDING * 2;
-  const mapHeight = WORLD_MAP_HEIGHT - WORLD_MAP_PADDING * 2;
-  return [
-    WORLD_MAP_PADDING + ((longitude + 180) / 360) * mapWidth,
-    WORLD_MAP_PADDING + ((90 - latitude) / 180) * mapHeight,
-  ];
-}
-
-function ringToPath(ring: Position[]): string {
-  return ring
-    .map((position, index) => {
-      const [x, y] = projectWorldPosition(position);
-      return `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
-    })
-    .join(" ");
-}
-
-function geometryToPath(geometry: Geometry | null | undefined): string {
-  if (!geometry) return "";
-  if (geometry.type === "Polygon") {
-    return geometry.coordinates
-      .map((ring) => `${ringToPath(ring)} Z`)
-      .join(" ");
-  }
-  if (geometry.type === "MultiPolygon") {
-    return geometry.coordinates
-      .flatMap((polygon) => polygon.map((ring) => `${ringToPath(ring)} Z`))
-      .join(" ");
-  }
-  return "";
-}
-
-function countryFillOpacity(status: PerformanceStatus, samples: number): number {
-  if (samples <= 0 || status === "none") return 0.07;
-  if (status === "great") return 0.48;
-  if (status === "needs-improvement") return 0.42;
-  return 0.46;
 }
 
 function CountryLabelWithFlag({
@@ -1871,8 +1761,9 @@ function PerformanceHealthMapCard({
 }) {
   const [featureCollection, setFeatureCollection] =
     useState<CountriesFeatureCollection | null>(null);
-  const [hoveredCountry, setHoveredCountry] =
-    useState<CountryMapHover | null>(null);
+  const [hoveredCountry, setHoveredCountry] = useState<CountryMapHover | null>(
+    null,
+  );
 
   useEffect(() => {
     let active = true;
@@ -1909,7 +1800,10 @@ function PerformanceHealthMapCard({
     }
     return map;
   }, [countries]);
-  const [sort, setSort] = useState<{ key: PathSortKey; direction: SortDirection }>({
+  const [sort, setSort] = useState<{
+    key: PathSortKey;
+    direction: SortDirection;
+  }>({
     key: "samples",
     direction: "desc",
   });
@@ -2025,8 +1919,10 @@ function PerformanceHealthMapCard({
                         isHovered
                           ? Math.min(
                               0.82,
-                              countryFillOpacity(status, country?.samples ?? 0) +
-                                0.22,
+                              countryFillOpacity(
+                                status,
+                                country?.samples ?? 0,
+                              ) + 0.22,
                             )
                           : countryFillOpacity(status, country?.samples ?? 0)
                       }
@@ -2093,7 +1989,9 @@ function PerformanceHealthMapCard({
                             <span
                               className="size-2 rounded-full"
                               style={{
-                                backgroundColor: statusColor(hoveredCountry.status),
+                                backgroundColor: statusColor(
+                                  hoveredCountry.status,
+                                ),
                               }}
                             />
                             {hoveredCountry.label}
@@ -2447,7 +2345,12 @@ function PathStatusColumn({
     <div className="min-w-0">
       <div className="flex items-start justify-between gap-3 px-4 py-4">
         <div className="min-w-0 space-y-1">
-          <div className={cn("flex items-center gap-2 font-medium", statusStyle.labelClassName)}>
+          <div
+            className={cn(
+              "flex items-center gap-2 font-medium",
+              statusStyle.labelClassName,
+            )}
+          >
             <StatusIcon className="size-4" />
             {statusLabel(messages, status)}
           </div>
@@ -2486,7 +2389,10 @@ function PathPerformanceTable({
   activePanel: PerformancePanelKey;
   rows: PathPerformanceRow[];
 }) {
-  const [sort, setSort] = useState<{ key: PathSortKey; direction: SortDirection }>({
+  const [sort, setSort] = useState<{
+    key: PathSortKey;
+    direction: SortDirection;
+  }>({
     key: "samples",
     direction: "desc",
   });
@@ -2641,7 +2547,8 @@ export function PerformanceClientPage({
       const summary = summaryByPanel.get(key) ?? EMPTY_SUMMARY;
       const value = summary.p75 ?? summary.avg;
       const score = key === "score" ? value : metricScore(key, value);
-      const status = key === "score" ? scoreStatus(value) : metricStatus(key, value);
+      const status =
+        key === "score" ? scoreStatus(value) : metricStatus(key, value);
       return {
         key,
         label: panelLabel(messages, key),
@@ -2677,7 +2584,9 @@ export function PerformanceClientPage({
           const value = countryValue(country, activePanel);
           const score =
             activePanel === "score" ? value : metricScore(activePanel, value);
-          const normalizedCountry = String(country.country ?? "").trim().toUpperCase();
+          const normalizedCountry = String(country.country ?? "")
+            .trim()
+            .toUpperCase();
           const { label, code } = resolveCountryLabel(
             normalizedCountry,
             locale,

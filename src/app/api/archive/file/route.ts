@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
+
 import { fetchEdgeForServer } from "@/lib/edge-proxy";
 
 async function proxyArchiveFile(request: Request): Promise<Response> {
   const incomingUrl = new URL(request.url);
   const key = incomingUrl.searchParams.get("key") || "";
   if (key.length === 0) {
-    return NextResponse.json({ ok: false, error: "Missing key" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Missing key" },
+      { status: 400 },
+    );
   }
 
   const rangeHeader = request.headers.get("range") || undefined;

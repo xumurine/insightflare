@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+
 import { updateMyProfile } from "@/lib/edge-client";
-import { parseRequestBody, bodyStr } from "@/lib/form-helpers";
+import { bodyStr, parseRequestBody } from "@/lib/form-helpers";
 
 export async function POST(request: Request): Promise<NextResponse> {
   const body = await parseRequestBody(request);

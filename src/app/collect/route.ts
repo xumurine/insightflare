@@ -1,10 +1,18 @@
+import { isBot } from "ua-parser-js/bot-detection";
+
 import { resolveEdgeRuntime } from "@/lib/edge/runtime";
-import { normalizeSiteSettingsKey, readSiteTrackingConfig } from "@/lib/edge/site-settings-store";
-import type { SiteTrackingConfig } from "@/lib/site-settings";
-import type { IngestEnvelopePayload, SerializedRequestPayload, TrackerClientPayload } from "@/lib/edge/types";
+import {
+  normalizeSiteSettingsKey,
+  readSiteTrackingConfig,
+} from "@/lib/edge/site-settings-store";
+import type {
+  IngestEnvelopePayload,
+  SerializedRequestPayload,
+  TrackerClientPayload,
+} from "@/lib/edge/types";
 import type { TrackerPayloadKind } from "@/lib/edge/types";
 import { jsonCloneRecord } from "@/lib/edge/utils";
-import { isBot } from "ua-parser-js/bot-detection";
+import type { SiteTrackingConfig } from "@/lib/site-settings";
 
 const CORS_BASE_HEADERS = {
   "access-control-allow-methods": "GET, POST, PATCH, OPTIONS",
@@ -12,9 +20,16 @@ const CORS_BASE_HEADERS = {
   "access-control-max-age": "86400",
 };
 
-const SUPPORTED_KINDS = new Set<TrackerPayloadKind>(["pageview", "leave", "custom_event"]);
+const SUPPORTED_KINDS = new Set<TrackerPayloadKind>([
+  "pageview",
+  "leave",
+  "custom_event",
+]);
 
-function pickSiteIdFromPayload(payload: TrackerClientPayload, requestUrl: URL): string {
+function pickSiteIdFromPayload(
+  payload: TrackerClientPayload,
+  requestUrl: URL,
+): string {
   if (typeof payload.siteId === "string" && payload.siteId.length > 0) {
     return payload.siteId;
   }
@@ -38,11 +53,16 @@ function coerceTrimmedString(input: unknown, maxLength: number): string {
 }
 
 function isSupportedKind(input: unknown): input is TrackerPayloadKind {
-  return typeof input === "string" && SUPPORTED_KINDS.has(input as TrackerPayloadKind);
+  return (
+    typeof input === "string" &&
+    SUPPORTED_KINDS.has(input as TrackerPayloadKind)
+  );
 }
 
 function normalizeClientHostname(input: unknown): string {
-  const value = coerceTrimmedString(input, 255).toLowerCase().replace(/\.+$/, "");
+  const value = coerceTrimmedString(input, 255)
+    .toLowerCase()
+    .replace(/\.+$/, "");
   if (!value || value.includes("/") || value.includes(":")) return "";
   return value;
 }
@@ -85,7 +105,10 @@ function serializeHeaders(request: Request): Record<string, string> {
   return headers;
 }
 
-function serializeRequestPayload(request: Request, body: string): SerializedRequestPayload {
+function serializeRequestPayload(
+  request: Request,
+  body: string,
+): SerializedRequestPayload {
   return {
     method: request.method,
     url: request.url,
@@ -178,7 +201,9 @@ async function decideCollectionPolicy(
     };
   }
 
-  const siteId = normalizeSiteSettingsKey(pickSiteIdFromPayload(payload, requestUrl));
+  const siteId = normalizeSiteSettingsKey(
+    pickSiteIdFromPayload(payload, requestUrl),
+  );
   if (!siteId) {
     return {
       shouldForward: false,
@@ -205,10 +230,14 @@ async function decideCollectionPolicy(
     };
   }
 
-  const hasWhitelist = Array.isArray(settings.domainWhitelist) && settings.domainWhitelist.length > 0;
+  const hasWhitelist =
+    Array.isArray(settings.domainWhitelist) &&
+    settings.domainWhitelist.length > 0;
   if (
-    hasWhitelist
-    && !settings.allowedHostnames.some((hostname) => hostname.trim().toLowerCase() === originHostname)
+    hasWhitelist &&
+    !settings.allowedHostnames.some(
+      (hostname) => hostname.trim().toLowerCase() === originHostname,
+    )
   ) {
     return {
       shouldForward: false,
@@ -218,7 +247,12 @@ async function decideCollectionPolicy(
     };
   }
 
-  const normalizedPayload = normalizeForwardPayload(payload, siteId, kind, settings);
+  const normalizedPayload = normalizeForwardPayload(
+    payload,
+    siteId,
+    kind,
+    settings,
+  );
   if (!normalizedPayload) {
     return {
       shouldForward: false,
@@ -253,9 +287,10 @@ function normalizeForwardPayload(
   };
 
   const canCheckPath =
-    kind === "pageview"
-    || kind === "custom_event"
-    || (kind === "leave" && coerceTrimmedString(payload.pathname, 4096).length > 0);
+    kind === "pageview" ||
+    kind === "custom_event" ||
+    (kind === "leave" &&
+      coerceTrimmedString(payload.pathname, 4096).length > 0);
 
   if (canCheckPath) {
     const pathname = normalizePayloadPathname(payload.pathname);
@@ -289,7 +324,12 @@ export async function OPTIONS(request: Request): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const { env, ctx, request: requestWithCf, url } = await resolveEdgeRuntime(request);
+  const {
+    env,
+    ctx,
+    request: requestWithCf,
+    url,
+  } = await resolveEdgeRuntime(request);
   const origin = parseOrigin(requestWithCf);
 
   if (isBotRequest(requestWithCf)) {
@@ -306,7 +346,12 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
-  const decision = await decideCollectionPolicy(requestWithCf, env, payload, url);
+  const decision = await decideCollectionPolicy(
+    requestWithCf,
+    env,
+    payload,
+    url,
+  );
   if (!decision.shouldForward) {
     return noContent(decision.allowOrigin);
   }

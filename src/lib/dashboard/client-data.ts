@@ -1,21 +1,22 @@
+import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type {
   BrowserCrossBreakdownData,
   BrowserCrossBreakdownDimensionData,
   BrowserRadarData,
-  BrowserVersionBreakdownData,
   BrowserTrendData,
+  BrowserVersionBreakdownData,
   ClientDimensionKey,
   DashboardFilterOption,
   DashboardFilterOptionsData,
   DimensionData,
-  OverviewData,
-  OverviewGeoTabData,
-  OverviewTabData,
   OverviewClientDimensionTabsData as OverviewClientDimensionTabsResponse,
+  OverviewData,
   OverviewGeoDimensionTabsData as OverviewGeoDimensionTabsResponse,
   OverviewGeoPointsData,
-  PagesData,
+  OverviewGeoTabData,
+  OverviewTabData,
   PagesDashboardData,
+  PagesData,
   PerformanceData,
   PerformanceMetricKey,
   ReferrerRadarData,
@@ -26,14 +27,14 @@ import type {
   VisitorDetailData,
   VisitorsData,
 } from "@/lib/edge-client";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 
 export type DashboardFilterOptionData = DashboardFilterOption;
 
 export type PageCardTabsData = NonNullable<PagesData["tabs"]>;
 export type OverviewClientDimensionTabsData =
   OverviewClientDimensionTabsResponse["tabs"];
-export type OverviewGeoDimensionTabsData = OverviewGeoDimensionTabsResponse["tabs"];
+export type OverviewGeoDimensionTabsData =
+  OverviewGeoDimensionTabsResponse["tabs"];
 export type OverviewTabRows = OverviewTabData["data"];
 export type OverviewGeoTabRows = Array<{
   value: string;
@@ -187,11 +188,11 @@ function emptyPerformance(interval: TimeWindow["interval"]): PerformanceData {
       lcp: [...emptyTrend],
       cls: [...emptyTrend],
       inp: [...emptyTrend],
-      },
-      routes: [],
-      countries: [],
-    };
-  }
+    },
+    routes: [],
+    countries: [],
+  };
+}
 
 function emptyOverviewTab(): OverviewTabData {
   return { ok: true, data: [] };
@@ -268,9 +269,11 @@ function withFilters(
   if (filters.sourceLink) next.sourceLink = filters.sourceLink;
   if (filters.clientBrowser) next.clientBrowser = filters.clientBrowser;
   if (filters.clientOsVersion) next.clientOsVersion = filters.clientOsVersion;
-  if (filters.clientDeviceType) next.clientDeviceType = filters.clientDeviceType;
+  if (filters.clientDeviceType)
+    next.clientDeviceType = filters.clientDeviceType;
   if (filters.clientLanguage) next.clientLanguage = filters.clientLanguage;
-  if (filters.clientScreenSize) next.clientScreenSize = filters.clientScreenSize;
+  if (filters.clientScreenSize)
+    next.clientScreenSize = filters.clientScreenSize;
   if (filters.geo) next.geo = filters.geo;
   if (filters.geoContinent) next.geoContinent = filters.geoContinent;
   if (filters.geoTimezone) next.geoTimezone = filters.geoTimezone;
@@ -288,7 +291,10 @@ function toQueryString(params?: Record<string, string | number>): string {
   return encoded.length > 0 ? `?${encoded}` : "";
 }
 
-async function fetchPrivateJson<T>(path: string, params?: Record<string, string | number>): Promise<T> {
+async function fetchPrivateJson<T>(
+  path: string,
+  params?: Record<string, string | number>,
+): Promise<T> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     return handleDemoRequest({ path, params }) as T;
@@ -316,10 +322,12 @@ async function fetchPrivateJsonMutate<T>(
     method,
     credentials: "include",
     cache: "no-store",
-    ...(body != null ? {
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    } : {}),
+    ...(body != null
+      ? {
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      : {}),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -337,13 +345,21 @@ export async function fetchOverview(
     includeDetail?: boolean;
   },
 ): Promise<OverviewData> {
-  return fetchPrivateJson<OverviewData>("/api/private/overview", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    ...(options?.includeChange ? { includeChange: 1 } : {}),
-    ...(options?.includeDetail ? { includeDetail: 1, interval: window.interval } : {}),
-  }, filters));
+  return fetchPrivateJson<OverviewData>(
+    "/api/private/overview",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        ...(options?.includeChange ? { includeChange: 1 } : {}),
+        ...(options?.includeDetail
+          ? { includeDetail: 1, interval: window.interval }
+          : {}),
+      },
+      filters,
+    ),
+  );
 }
 
 export async function fetchTrend(
@@ -351,22 +367,38 @@ export async function fetchTrend(
   window: TimeWindow,
   filters?: DashboardFilters,
 ): Promise<TrendData> {
-  return fetchPrivateJson<TrendData>("/api/private/trend", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    interval: window.interval,
-  }, filters));
+  return fetchPrivateJson<TrendData>(
+    "/api/private/trend",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        interval: window.interval,
+      },
+      filters,
+    ),
+  );
 }
 
-export async function fetchPages(siteId: string, window: TimeWindow, filters?: DashboardFilters): Promise<PagesData> {
-  return fetchPrivateJson<PagesData>("/api/private/pages", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    limit: 100,
-    details: 1,
-  }, filters));
+export async function fetchPages(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+): Promise<PagesData> {
+  return fetchPrivateJson<PagesData>(
+    "/api/private/pages",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        limit: 100,
+        details: 1,
+      },
+      filters,
+    ),
+  );
 }
 
 export async function fetchVisitors(
@@ -398,9 +430,15 @@ export async function fetchVisitors(
   if (options?.sortDir) params.sortDir = options.sortDir;
   const search = options?.search?.trim();
   if (search) params.search = search;
-  return fetchPrivateJson<VisitorsData>("/api/private/visitors", withFilters({
-    ...params,
-  }, filters)).catch(emptyVisitors);
+  return fetchPrivateJson<VisitorsData>(
+    "/api/private/visitors",
+    withFilters(
+      {
+        ...params,
+      },
+      filters,
+    ),
+  ).catch(emptyVisitors);
 }
 
 export async function fetchVisitorDetail(
@@ -444,9 +482,15 @@ export async function fetchSessions(
   if (options?.sortDir) params.sortDir = options.sortDir;
   const search = options?.search?.trim();
   if (search) params.search = search;
-  return fetchPrivateJson<SessionsData>("/api/private/sessions", withFilters({
-    ...params,
-  }, filters)).catch(emptySessions);
+  return fetchPrivateJson<SessionsData>(
+    "/api/private/sessions",
+    withFilters(
+      {
+        ...params,
+      },
+      filters,
+    ),
+  ).catch(emptySessions);
 }
 
 export async function fetchSessionDetail(
@@ -466,12 +510,18 @@ export async function fetchPerformance(
   window: TimeWindow,
   filters?: DashboardFilters,
 ): Promise<PerformanceData> {
-  return fetchPrivateJson<PerformanceData>("/api/private/performance", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    interval: window.interval,
-  }, filters)).catch(() => emptyPerformance(window.interval));
+  return fetchPrivateJson<PerformanceData>(
+    "/api/private/performance",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        interval: window.interval,
+      },
+      filters,
+    ),
+  ).catch(() => emptyPerformance(window.interval));
 }
 
 export async function fetchPagesDashboard(
@@ -512,28 +562,35 @@ export async function fetchPagesShareTrend(
     fetchPagesDashboard(siteId, window, filters, {
       page: 1,
       pageSize: limit,
-    }).catch(() => ({
-      ok: true,
-      interval: window.interval,
-      data: [],
-      meta: {
-        page: 1,
-        pageSize: limit,
-        returned: 0,
-        hasMore: false,
-        nextPage: null,
-      },
-    } satisfies PagesDashboardData)),
-    fetchTrend(siteId, window, filters).catch(() => emptyTrend(window.interval)),
+    }).catch(
+      () =>
+        ({
+          ok: true,
+          interval: window.interval,
+          data: [],
+          meta: {
+            page: 1,
+            pageSize: limit,
+            returned: 0,
+            hasMore: false,
+            nextPage: null,
+          },
+        }) satisfies PagesDashboardData,
+    ),
+    fetchTrend(siteId, window, filters).catch(() =>
+      emptyTrend(window.interval),
+    ),
   ]);
 
-  const series: BrowserTrendData["series"] = payload.data.map((item, index) => ({
-    key: `page_${index}`,
-    label: item.pathname,
-    views: item.metrics.views,
-    visitors: item.metrics.views,
-    sessions: item.metrics.sessions,
-  }));
+  const series: BrowserTrendData["series"] = payload.data.map(
+    (item, index) => ({
+      key: `page_${index}`,
+      label: item.pathname,
+      views: item.metrics.views,
+      visitors: item.metrics.views,
+      sessions: item.metrics.sessions,
+    }),
+  );
 
   const pointByTimestamp = new Map<
     number,
@@ -622,12 +679,18 @@ export async function fetchPageCardTabs(
   window: TimeWindow,
   filters?: DashboardFilters,
 ): Promise<PageCardTabsData> {
-  const payload = await fetchPrivateJson<PagesData>("/api/private/pages", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    limit: 100,
-  }, filters));
+  const payload = await fetchPrivateJson<PagesData>(
+    "/api/private/pages",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        limit: 100,
+      },
+      filters,
+    ),
+  );
   return payload.tabs ?? emptyPageCardTabs();
 }
 
@@ -655,7 +718,12 @@ export async function fetchReferrers(
   );
 }
 
-export type UtmDimensionTab = "source" | "medium" | "campaign" | "term" | "content";
+export type UtmDimensionTab =
+  | "source"
+  | "medium"
+  | "campaign"
+  | "term"
+  | "content";
 
 const utmPathMap: Record<UtmDimensionTab, string> = {
   source: "utm-source",
@@ -671,12 +739,18 @@ export async function fetchUtmDimension(
   tab: UtmDimensionTab,
   filters?: DashboardFilters,
 ): Promise<DimensionData> {
-  return fetchPrivateJson<DimensionData>(`/api/private/${utmPathMap[tab]}`, withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    limit: 100,
-  }, filters));
+  return fetchPrivateJson<DimensionData>(
+    `/api/private/${utmPathMap[tab]}`,
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        limit: 100,
+      },
+      filters,
+    ),
+  );
 }
 
 export async function fetchUtmTrend(
@@ -732,10 +806,14 @@ export async function fetchOverviewGeoPoints(
         ? payload.data.map((row) => ({
             latitude: Number((row as { latitude?: unknown }).latitude ?? 0),
             longitude: Number((row as { longitude?: unknown }).longitude ?? 0),
-            timestampMs: Number((row as { timestampMs?: unknown }).timestampMs ?? 0),
+            timestampMs: Number(
+              (row as { timestampMs?: unknown }).timestampMs ?? 0,
+            ),
             country: String((row as { country?: unknown }).country ?? ""),
             region: String((row as { region?: unknown }).region ?? ""),
-            regionCode: String((row as { regionCode?: unknown }).regionCode ?? ""),
+            regionCode: String(
+              (row as { regionCode?: unknown }).regionCode ?? "",
+            ),
             city: String((row as { city?: unknown }).city ?? ""),
           }))
         : [],
@@ -779,7 +857,9 @@ export async function fetchOverviewPageCardTab(
   },
 ): Promise<OverviewTabRows> {
   const endpoint =
-    tab === "query" ? "/api/private/page-query" : `/api/private/overview-page-${tab}`;
+    tab === "query"
+      ? "/api/private/page-query"
+      : `/api/private/overview-page-${tab}`;
   const payload = await fetchPrivateJson<OverviewTabData>(
     endpoint,
     withFilters(
@@ -1035,14 +1115,20 @@ export async function fetchClientDimensionTrend(
     limit?: number;
   },
 ): Promise<BrowserTrendData> {
-  return fetchPrivateJson<BrowserTrendData>("/api/private/client-dimension-trend", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    interval: window.interval,
-    dimension,
-    limit: options?.limit ?? 5,
-  }, filters));
+  return fetchPrivateJson<BrowserTrendData>(
+    "/api/private/client-dimension-trend",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        interval: window.interval,
+        dimension,
+        limit: options?.limit ?? 5,
+      },
+      filters,
+    ),
+  );
 }
 
 export async function fetchClientCrossBreakdown(
@@ -1081,13 +1167,19 @@ export async function fetchBrowserTrend(
     limit?: number;
   },
 ): Promise<BrowserTrendData> {
-  return fetchPrivateJson<BrowserTrendData>("/api/private/browser-trend", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    interval: window.interval,
-    limit: options?.limit ?? 5,
-  }, filters));
+  return fetchPrivateJson<BrowserTrendData>(
+    "/api/private/browser-trend",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        interval: window.interval,
+        limit: options?.limit ?? 5,
+      },
+      filters,
+    ),
+  );
 }
 
 export async function fetchBrowserEngineTrend(
@@ -1098,13 +1190,19 @@ export async function fetchBrowserEngineTrend(
     limit?: number;
   },
 ): Promise<BrowserTrendData> {
-  return fetchPrivateJson<BrowserTrendData>("/api/private/browser-engine-trend", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    interval: window.interval,
-    limit: options?.limit ?? 5,
-  }, filters));
+  return fetchPrivateJson<BrowserTrendData>(
+    "/api/private/browser-engine-trend",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        interval: window.interval,
+        limit: options?.limit ?? 5,
+      },
+      filters,
+    ),
+  );
 }
 
 export async function fetchBrowserVersionBreakdown(
@@ -1116,13 +1214,19 @@ export async function fetchBrowserVersionBreakdown(
     versionLimit?: number;
   },
 ): Promise<BrowserVersionBreakdownData> {
-  return fetchPrivateJson<BrowserVersionBreakdownData>("/api/private/browser-version-breakdown", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    browserLimit: options?.browserLimit ?? 0,
-    versionLimit: options?.versionLimit ?? 5,
-  }, filters));
+  return fetchPrivateJson<BrowserVersionBreakdownData>(
+    "/api/private/browser-version-breakdown",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        browserLimit: options?.browserLimit ?? 0,
+        versionLimit: options?.versionLimit ?? 5,
+      },
+      filters,
+    ),
+  );
 }
 
 export async function fetchBrowserCrossBreakdown(
@@ -1135,14 +1239,20 @@ export async function fetchBrowserCrossBreakdown(
     deviceTypeLimit?: number;
   },
 ): Promise<BrowserCrossBreakdownData> {
-  return fetchPrivateJson<BrowserCrossBreakdownData>("/api/private/browser-cross-breakdown", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    browserLimit: options?.browserLimit ?? 8,
-    osLimit: options?.osLimit ?? 6,
-    deviceTypeLimit: options?.deviceTypeLimit ?? 5,
-  }, filters));
+  return fetchPrivateJson<BrowserCrossBreakdownData>(
+    "/api/private/browser-cross-breakdown",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        browserLimit: options?.browserLimit ?? 8,
+        osLimit: options?.osLimit ?? 6,
+        deviceTypeLimit: options?.deviceTypeLimit ?? 5,
+      },
+      filters,
+    ),
+  );
 }
 
 export async function fetchBrowserRadar(
@@ -1150,11 +1260,17 @@ export async function fetchBrowserRadar(
   window: TimeWindow,
   filters?: DashboardFilters,
 ): Promise<BrowserRadarData> {
-  return fetchPrivateJson<BrowserRadarData>("/api/private/browser-radar", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-  }, filters));
+  return fetchPrivateJson<BrowserRadarData>(
+    "/api/private/browser-radar",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+      },
+      filters,
+    ),
+  );
 }
 
 export async function fetchReferrerRadar(
@@ -1165,12 +1281,18 @@ export async function fetchReferrerRadar(
     limit?: number;
   },
 ): Promise<ReferrerRadarData> {
-  return fetchPrivateJson<ReferrerRadarData>("/api/private/referrer-radar", withFilters({
-    siteId,
-    from: window.from,
-    to: window.to,
-    limit: options?.limit ?? 24,
-  }, filters));
+  return fetchPrivateJson<ReferrerRadarData>(
+    "/api/private/referrer-radar",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        limit: options?.limit ?? 24,
+      },
+      filters,
+    ),
+  );
 }
 
 export const emptyOverviewClientDimensionTabsData =

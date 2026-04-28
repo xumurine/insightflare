@@ -9,7 +9,10 @@ export function coerceString(input: unknown, fallback = ""): string {
   return input;
 }
 
-export function coerceNumber(input: unknown, fallback: number | null = null): number | null {
+export function coerceNumber(
+  input: unknown,
+  fallback: number | null = null,
+): number | null {
   if (typeof input === "number" && Number.isFinite(input)) {
     return input;
   }
@@ -22,7 +25,9 @@ export function coerceNumber(input: unknown, fallback: number | null = null): nu
   return fallback;
 }
 
-export function jsonCloneRecord(input: unknown): Record<string, unknown> | null {
+export function jsonCloneRecord(
+  input: unknown,
+): Record<string, unknown> | null {
   if (!input || typeof input !== "object") {
     return null;
   }
@@ -68,7 +73,10 @@ export async function sha256Hex(input: string): Promise<string> {
     .join("");
 }
 
-export async function deriveDailySalt(secret: string, eventAtMs: number): Promise<string> {
+export async function deriveDailySalt(
+  secret: string,
+  eventAtMs: number,
+): Promise<string> {
   const dayStamp = new Date(eventAtMs).toISOString().slice(0, 10);
   return sha256Hex(`${secret}:${dayStamp}`);
 }
@@ -96,4 +104,3 @@ export async function deriveSessionId(input: {
 export function nowEpochSeconds(): number {
   return Math.floor(Date.now() / 1000);
 }
-

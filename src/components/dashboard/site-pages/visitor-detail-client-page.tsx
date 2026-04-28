@@ -8,6 +8,7 @@ import {
   RiCalendarEventLine,
   RiPulseLine,
 } from "@remixicon/react";
+
 import {
   BrowserMeta,
   DeviceMeta,
@@ -21,18 +22,7 @@ import {
   ReferrerMeta,
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -41,20 +31,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { fetchVisitorDetail } from "@/lib/dashboard/client-data";
 import {
   durationFormat,
   numberFormat,
   percentFormat,
 } from "@/lib/dashboard/format";
-import { fetchVisitorDetail } from "@/lib/dashboard/client-data";
-import type { Locale } from "@/lib/i18n/config";
-import type { AppMessages } from "@/lib/i18n/messages";
 import type {
   JourneyEvent,
   JourneySession,
   VisitorActivityDay,
   VisitorDetailData,
 } from "@/lib/edge-client";
+import type { Locale } from "@/lib/i18n/config";
+import type { AppMessages } from "@/lib/i18n/messages";
 
 interface VisitorDetailClientPageProps {
   locale: Locale;
@@ -138,7 +129,13 @@ function MetricTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
   return (
     <div className="grid min-h-9 grid-cols-[10rem_1fr] items-center gap-4 border-t border-border/70 px-4 py-2 first:border-t-0">
       <p className="text-[11px] text-muted-foreground">{label}</p>
@@ -163,7 +160,11 @@ function ActivityGrid({
     const start = new Date(end);
     start.setDate(start.getDate() - 83);
     const next: Array<{ date: string; count: number }> = [];
-    for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+    for (
+      let cursor = new Date(start);
+      cursor <= end;
+      cursor.setDate(cursor.getDate() + 1)
+    ) {
       const date = cursor.toISOString().slice(0, 10);
       next.push({ date, count: byDate.get(date) ?? 0 });
     }
@@ -194,8 +195,14 @@ function ActivityGrid({
 function EventIcon({ event }: { event: JourneyEvent }) {
   const isCustom = event.kind === "custom";
   return (
-    <span className={`inline-flex size-7 shrink-0 items-center justify-center rounded-sm ${isCustom ? "bg-sky-500/15 text-sky-500" : "bg-emerald-500/15 text-emerald-500"}`}>
-      {isCustom ? <RiPulseLine className="size-4" /> : <RiCalendarEventLine className="size-4" />}
+    <span
+      className={`inline-flex size-7 shrink-0 items-center justify-center rounded-sm ${isCustom ? "bg-sky-500/15 text-sky-500" : "bg-emerald-500/15 text-emerald-500"}`}
+    >
+      {isCustom ? (
+        <RiPulseLine className="size-4" />
+      ) : (
+        <RiCalendarEventLine className="size-4" />
+      )}
     </span>
   );
 }
@@ -221,7 +228,9 @@ function EventList({
           <EventIcon event={event} />
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium">
-              {event.kind === "pageview" ? formatPath(event.pathname) : event.eventType}
+              {event.kind === "pageview"
+                ? formatPath(event.pathname)
+                : event.eventType}
             </p>
             {!compact ? (
               <p className="truncate text-[11px] text-muted-foreground">
@@ -282,10 +291,18 @@ function SessionsTable({
                 {session.sessionId.slice(0, 12)}...
               </Link>
             </TableCell>
-            <TableCell className="max-w-72 truncate font-mono">{formatPath(session.entryPath)}</TableCell>
-            <TableCell className="max-w-72 truncate font-mono">{formatPath(session.exitPath)}</TableCell>
-            <TableCell className="font-mono">{formatDuration(locale, session.durationMs)}</TableCell>
-            <TableCell className="text-right font-mono">{numberFormat(locale, session.views)}</TableCell>
+            <TableCell className="max-w-72 truncate font-mono">
+              {formatPath(session.entryPath)}
+            </TableCell>
+            <TableCell className="max-w-72 truncate font-mono">
+              {formatPath(session.exitPath)}
+            </TableCell>
+            <TableCell className="font-mono">
+              {formatDuration(locale, session.durationMs)}
+            </TableCell>
+            <TableCell className="text-right font-mono">
+              {numberFormat(locale, session.views)}
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -340,8 +357,16 @@ function DetailContent({
                   locale={locale}
                   unknownLabel={messages.common.unknown}
                 />
-                <OsMeta os={visitor.os || ""} version={visitor.osVersion} unknownLabel={messages.common.unknown} />
-                <BrowserMeta browser={visitor.browser || ""} version={visitor.browserVersion} unknownLabel={messages.common.unknown} />
+                <OsMeta
+                  os={visitor.os || ""}
+                  version={visitor.osVersion}
+                  unknownLabel={messages.common.unknown}
+                />
+                <BrowserMeta
+                  browser={visitor.browser || ""}
+                  version={visitor.browserVersion}
+                  unknownLabel={messages.common.unknown}
+                />
               </div>
             </div>
           </div>
@@ -357,18 +382,58 @@ function DetailContent({
 
         <TabsContent value="overview" className="space-y-6">
           <div className="grid overflow-hidden md:grid-cols-3 xl:grid-cols-6">
-            <MetricTile label={labels.totalEvents} value={numberFormat(locale, metrics.totalEvents)} />
-            <MetricTile label={labels.sessions} value={numberFormat(locale, metrics.sessions)} />
-            <MetricTile label={messages.common.views} value={numberFormat(locale, metrics.views)} />
-            <MetricTile label={labels.avgEventsPerSession} value={metrics.avgEventsPerSession.toFixed(1)} />
-            <MetricTile label={messages.common.bounceRate} value={percentFormat(locale, metrics.bounceRate)} />
-            <MetricTile label={messages.common.avgDuration} value={durationFormat(locale, metrics.avgDurationMs)} />
-            <MetricTile label={labels.p90Duration} value={durationFormat(locale, metrics.p90DurationMs)} />
-            <MetricTile label={labels.firstSeen} value={formatRelativeTime(locale, metrics.firstSeenAt, Date.now())} />
-            <MetricTile label={labels.lastSeen} value={formatRelativeTime(locale, metrics.lastSeenAt, Date.now())} />
-            <MetricTile label={labels.daysActive} value={numberFormat(locale, metrics.daysActive)} />
-            <MetricTile label={labels.conversionEvents} value={numberFormat(locale, metrics.conversionEvents)} />
-            <MetricTile label={labels.avgTimeBetweenSessions} value={durationFormat(locale, metrics.avgTimeBetweenSessionsMs)} />
+            <MetricTile
+              label={labels.totalEvents}
+              value={numberFormat(locale, metrics.totalEvents)}
+            />
+            <MetricTile
+              label={labels.sessions}
+              value={numberFormat(locale, metrics.sessions)}
+            />
+            <MetricTile
+              label={messages.common.views}
+              value={numberFormat(locale, metrics.views)}
+            />
+            <MetricTile
+              label={labels.avgEventsPerSession}
+              value={metrics.avgEventsPerSession.toFixed(1)}
+            />
+            <MetricTile
+              label={messages.common.bounceRate}
+              value={percentFormat(locale, metrics.bounceRate)}
+            />
+            <MetricTile
+              label={messages.common.avgDuration}
+              value={durationFormat(locale, metrics.avgDurationMs)}
+            />
+            <MetricTile
+              label={labels.p90Duration}
+              value={durationFormat(locale, metrics.p90DurationMs)}
+            />
+            <MetricTile
+              label={labels.firstSeen}
+              value={formatRelativeTime(
+                locale,
+                metrics.firstSeenAt,
+                Date.now(),
+              )}
+            />
+            <MetricTile
+              label={labels.lastSeen}
+              value={formatRelativeTime(locale, metrics.lastSeenAt, Date.now())}
+            />
+            <MetricTile
+              label={labels.daysActive}
+              value={numberFormat(locale, metrics.daysActive)}
+            />
+            <MetricTile
+              label={labels.conversionEvents}
+              value={numberFormat(locale, metrics.conversionEvents)}
+            />
+            <MetricTile
+              label={labels.avgTimeBetweenSessions}
+              value={durationFormat(locale, metrics.avgTimeBetweenSessionsMs)}
+            />
           </div>
 
           <Card>
@@ -377,17 +442,53 @@ function DetailContent({
             </CardHeader>
             <CardContent className="px-0">
               <div className="grid md:grid-cols-2 xl:grid-cols-3">
-                <DetailRow label={messages.common.id} value={visitor.visitorId} />
-                <DetailRow label={messages.common.country} value={visitor.country || messages.common.unknown} />
-                <DetailRow label={messages.common.region} value={visitor.region || messages.common.unknown} />
-                <DetailRow label={messages.common.city} value={visitor.city || messages.common.unknown} />
-                <DetailRow label={messages.common.browser} value={visitor.browser || messages.common.unknown} />
-                <DetailRow label={messages.common.operatingSystem} value={visitor.osVersion || visitor.os || messages.common.unknown} />
-                <DetailRow label={messages.common.deviceType} value={visitor.deviceType || messages.common.unknown} />
-                <DetailRow label={labels.screen} value={formatScreen(visitor.screenWidth, visitor.screenHeight)} />
+                <DetailRow
+                  label={messages.common.id}
+                  value={visitor.visitorId}
+                />
+                <DetailRow
+                  label={messages.common.country}
+                  value={visitor.country || messages.common.unknown}
+                />
+                <DetailRow
+                  label={messages.common.region}
+                  value={visitor.region || messages.common.unknown}
+                />
+                <DetailRow
+                  label={messages.common.city}
+                  value={visitor.city || messages.common.unknown}
+                />
+                <DetailRow
+                  label={messages.common.browser}
+                  value={visitor.browser || messages.common.unknown}
+                />
+                <DetailRow
+                  label={messages.common.operatingSystem}
+                  value={
+                    visitor.osVersion || visitor.os || messages.common.unknown
+                  }
+                />
+                <DetailRow
+                  label={messages.common.deviceType}
+                  value={visitor.deviceType || messages.common.unknown}
+                />
+                <DetailRow
+                  label={labels.screen}
+                  value={formatScreen(
+                    visitor.screenWidth,
+                    visitor.screenHeight,
+                  )}
+                />
                 <DetailRow
                   label={messages.common.referrer}
-                  value={<ReferrerMeta referrerHost={visitor.referrerHost || ""} referrerUrl={visitor.referrerUrl} directLabel={messages.overview.direct} className="justify-end" />}
+                  value={
+                    <ReferrerMeta
+                      referrerHost={visitor.referrerHost || ""}
+                      referrerUrl={visitor.referrerUrl}
+                      directLabel={messages.overview.direct}
+                      className="justify-end"
+                    />
+                  }
                 />
               </div>
             </CardContent>
@@ -408,7 +509,12 @@ function DetailContent({
                 <CardTitle>{labels.latestEvents}</CardTitle>
               </CardHeader>
               <CardContent>
-                <EventList locale={locale} labels={labels} events={detail.events.slice(0, 8)} compact />
+                <EventList
+                  locale={locale}
+                  labels={labels}
+                  events={detail.events.slice(0, 8)}
+                  compact
+                />
               </CardContent>
             </Card>
           </div>
@@ -420,9 +526,16 @@ function DetailContent({
               </CardHeader>
               <CardContent className="space-y-2">
                 {detail.visitedPages.map((page) => (
-                  <div key={page.pathname} className="flex items-center justify-between gap-4 bg-muted/35 px-3 py-2">
-                    <span className="min-w-0 truncate font-mono">{formatPath(page.pathname)}</span>
-                    <span className="font-mono">{numberFormat(locale, page.views)}</span>
+                  <div
+                    key={page.pathname}
+                    className="flex items-center justify-between gap-4 bg-muted/35 px-3 py-2"
+                  >
+                    <span className="min-w-0 truncate font-mono">
+                      {formatPath(page.pathname)}
+                    </span>
+                    <span className="font-mono">
+                      {numberFormat(locale, page.views)}
+                    </span>
                   </div>
                 ))}
               </CardContent>
@@ -433,9 +546,14 @@ function DetailContent({
               </CardHeader>
               <CardContent className="space-y-2">
                 {detail.eventDistribution.map((event) => (
-                  <div key={event.eventType} className="flex items-center justify-between gap-4 bg-muted/35 px-3 py-2">
+                  <div
+                    key={event.eventType}
+                    className="flex items-center justify-between gap-4 bg-muted/35 px-3 py-2"
+                  >
                     <span className="min-w-0 truncate">{event.eventType}</span>
-                    <span className="font-mono">{numberFormat(locale, event.count)}</span>
+                    <span className="font-mono">
+                      {numberFormat(locale, event.count)}
+                    </span>
                   </div>
                 ))}
               </CardContent>
@@ -446,7 +564,11 @@ function DetailContent({
         <TabsContent value="events">
           <Card>
             <CardContent className="py-4">
-              <EventList locale={locale} labels={labels} events={detail.events} />
+              <EventList
+                locale={locale}
+                labels={labels}
+                events={detail.events}
+              />
             </CardContent>
           </Card>
         </TabsContent>

@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useTheme } from "next-themes";
 import {
   RiCheckLine,
   RiComputerLine,
@@ -11,12 +12,8 @@ import {
   RiMoonLine,
   RiSunLine,
 } from "@remixicon/react";
-import { useTheme } from "next-themes";
 import { toast } from "sonner";
-import type { Locale } from "@/lib/i18n/config";
-import type { AppMessages } from "@/lib/i18n/messages";
-import { navigateWithTransition } from "@/lib/page-transition";
-import { Spinner } from "@/components/ui/spinner";
+
 import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   DropdownMenu,
@@ -28,6 +25,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Spinner } from "@/components/ui/spinner";
+import type { Locale } from "@/lib/i18n/config";
+import type { AppMessages } from "@/lib/i18n/messages";
+import { navigateWithTransition } from "@/lib/page-transition";
 import { cn } from "@/lib/utils";
 
 interface SidebarFooterMenusProps {
@@ -169,21 +170,23 @@ export function SidebarFooterMenus({
         >
           <RiGlobalLine className="size-4" />
         </DropdownMenuTrigger>
-          <DropdownMenuContent sideOffset={8} className="!w-44 !min-w-44">
-            <DropdownMenuLabel>{messages.common.language}</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {languageOptions.map((item) => (
-              <DropdownMenuItem key={item.locale} asChild>
-                <Link href={item.href}>
-                  <span className="inline-flex w-4 justify-center">
-                    {locale === item.locale ? <RiCheckLine className="size-4" /> : null}
-                  </span>
-                  <span>{item.label}</span>
-                </Link>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <DropdownMenuContent sideOffset={8} className="!w-44 !min-w-44">
+          <DropdownMenuLabel>{messages.common.language}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {languageOptions.map((item) => (
+            <DropdownMenuItem key={item.locale} asChild>
+              <Link href={item.href}>
+                <span className="inline-flex w-4 justify-center">
+                  {locale === item.locale ? (
+                    <RiCheckLine className="size-4" />
+                  ) : null}
+                </span>
+                <span>{item.label}</span>
+              </Link>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -194,10 +197,7 @@ export function SidebarFooterMenus({
             {initial}
           </span>
         </DropdownMenuTrigger>
-        <DropdownMenuContent
-          sideOffset={8}
-          className="!w-64 !min-w-64"
-        >
+        <DropdownMenuContent sideOffset={8} className="!w-64 !min-w-64">
           <DropdownMenuLabel className="space-y-1">
             <div className="text-sm font-semibold text-foreground">
               {displayName}
@@ -225,7 +225,10 @@ export function SidebarFooterMenus({
             <RiLogoutBoxRLine />
             <AutoTransition className="inline-flex items-center gap-2">
               {loggingOut ? (
-                <span key="logging-out" className="inline-flex items-center gap-2">
+                <span
+                  key="logging-out"
+                  className="inline-flex items-center gap-2"
+                >
                   <Spinner className="size-4" />
                   {messages.sidebarFooter.loggingOut}
                 </span>

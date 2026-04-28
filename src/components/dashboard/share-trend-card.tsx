@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+
+import { ContentSwitch } from "@/components/dashboard/content-switch";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  type ChartConfig,
   ChartContainer,
   ChartLegend,
   ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
-  type ChartConfig,
 } from "@/components/ui/chart";
-import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -20,13 +22,13 @@ import {
   percentFormat,
 } from "@/lib/dashboard/format";
 import type {
-  BrowserTrendData,
-  BrowserTrendSeries,
-} from "@/lib/edge-client";
-import type { DashboardFilters, DashboardInterval, TimeWindow } from "@/lib/dashboard/query-state";
+  DashboardFilters,
+  DashboardInterval,
+  TimeWindow,
+} from "@/lib/dashboard/query-state";
+import type { BrowserTrendData, BrowserTrendSeries } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
-import { AutoTransition } from "@/components/ui/auto-transition";
 
 const CHART_COLORS = [
   "var(--color-chart-1)",
@@ -68,7 +70,10 @@ function emptyTrendData(interval: DashboardInterval): BrowserTrendData {
   };
 }
 
-function tickDateFormat(localeCode: string, interval: DashboardInterval): Intl.DateTimeFormat {
+function tickDateFormat(
+  localeCode: string,
+  interval: DashboardInterval,
+): Intl.DateTimeFormat {
   if (interval === "minute" || interval === "hour") {
     return new Intl.DateTimeFormat(localeCode, {
       hour: "2-digit",
@@ -87,7 +92,10 @@ function tickDateFormat(localeCode: string, interval: DashboardInterval): Intl.D
   });
 }
 
-function tooltipDateFormat(localeCode: string, interval: DashboardInterval): Intl.DateTimeFormat {
+function tooltipDateFormat(
+  localeCode: string,
+  interval: DashboardInterval,
+): Intl.DateTimeFormat {
   if (interval === "minute" || interval === "hour") {
     return new Intl.DateTimeFormat(localeCode, {
       month: "short",
@@ -302,7 +310,7 @@ export function ShareTrendCard({
                 />
                 <ChartTooltip
                   cursor={false}
-                  content={(
+                  content={
                     <ChartTooltipContent
                       className="min-w-[16rem]"
                       indicator="line"
@@ -313,18 +321,32 @@ export function ShareTrendCard({
                         return tooltipFormatter.format(new Date(timestamp));
                       }}
                       formatter={(value, name, _item, _index, payload) => {
-                        const row = payload as unknown as Record<string, number>;
+                        const row = payload as unknown as Record<
+                          string,
+                          number
+                        >;
                         const seriesKey = String(name ?? "");
-                        const numeric = Math.max(0, Number(row[seriesKey] ?? value ?? 0));
-                        const totalVisitors = Math.max(0, Number(row.totalVisitors ?? 0));
-                        const share = totalVisitors > 0 ? numeric / totalVisitors : 0;
-                        const currentSeries = chartSeries.find((item) => item.key === seriesKey);
+                        const numeric = Math.max(
+                          0,
+                          Number(row[seriesKey] ?? value ?? 0),
+                        );
+                        const totalVisitors = Math.max(
+                          0,
+                          Number(row.totalVisitors ?? 0),
+                        );
+                        const share =
+                          totalVisitors > 0 ? numeric / totalVisitors : 0;
+                        const currentSeries = chartSeries.find(
+                          (item) => item.key === seriesKey,
+                        );
                         return (
                           <div className="flex w-full items-center gap-3">
                             <span className="inline-flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
                               <span
                                 className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
-                                style={{ backgroundColor: currentSeries?.color }}
+                                style={{
+                                  backgroundColor: currentSeries?.color,
+                                }}
                               />
                               <span
                                 className="truncate text-muted-foreground"
@@ -334,18 +356,19 @@ export function ShareTrendCard({
                               </span>
                             </span>
                             <span className="ml-auto min-w-[7.5rem] shrink-0 whitespace-nowrap text-right font-mono text-foreground tabular-nums">
-                              {numberFormat(locale, numeric)} · {percentFormat(locale, share)}
+                              {numberFormat(locale, numeric)} ·{" "}
+                              {percentFormat(locale, share)}
                             </span>
                           </div>
                         );
                       }}
                     />
-                  )}
+                  }
                 />
                 <ChartLegend
-                  content={(
+                  content={
                     <ChartLegendContent className="pt-6 flex-wrap justify-center gap-x-4 gap-y-2" />
-                  )}
+                  }
                 />
                 {chartSeries.map((series) => (
                   <Area

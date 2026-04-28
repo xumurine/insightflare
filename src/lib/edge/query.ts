@@ -1,12 +1,13 @@
-import type { Env } from "./types";
-import { ONE_DAY_MS, ONE_HOUR_MS, coerceNumber } from "./utils";
-import { requireSession } from "./session-auth";
+import { browserEngineCaseSql } from "@/lib/browser-engine";
 import {
   buildLocalityLocationValue,
   buildRegionLocationValue,
   parseGeoLocationValue,
 } from "@/lib/dashboard/geo-location";
-import { browserEngineCaseSql } from "@/lib/browser-engine";
+
+import { requireSession } from "./session-auth";
+import type { Env } from "./types";
+import { coerceNumber, ONE_DAY_MS, ONE_HOUR_MS } from "./utils";
 
 const RETENTION_DAYS = 365;
 const PRIVATE_CACHE_HEADERS = {
@@ -417,12 +418,7 @@ type ClientDimensionKey =
   | "language"
   | "screenSize";
 
-type UtmDimensionKey =
-  | "source"
-  | "medium"
-  | "campaign"
-  | "term"
-  | "content";
+type UtmDimensionKey = "source" | "medium" | "campaign" | "term" | "content";
 
 interface ClientDimensionTabs {
   browser: DimensionRow[];
@@ -465,7 +461,11 @@ interface DashboardFilterOption {
   group?: "country" | "region" | "city";
 }
 
-const jsonResponse = (payload: unknown, status = 200, extraHeaders?: Record<string, string>) =>
+const jsonResponse = (
+  payload: unknown,
+  status = 200,
+  extraHeaders?: Record<string, string>,
+) =>
   new Response(JSON.stringify(payload), {
     status,
     headers: {
@@ -476,33 +476,49 @@ const jsonResponse = (payload: unknown, status = 200, extraHeaders?: Record<stri
 
 const badRequest = (message: string, extraHeaders?: Record<string, string>) =>
   jsonResponse({ ok: false, error: message }, 400, extraHeaders);
-const unauthorized = (message = "Unauthorized", extraHeaders?: Record<string, string>) =>
-  jsonResponse({ ok: false, error: message }, 401, extraHeaders);
-const notFound = (message = "Not Found", extraHeaders?: Record<string, string>) =>
-  jsonResponse({ ok: false, error: message }, 404, extraHeaders);
+const unauthorized = (
+  message = "Unauthorized",
+  extraHeaders?: Record<string, string>,
+) => jsonResponse({ ok: false, error: message }, 401, extraHeaders);
+const notFound = (
+  message = "Not Found",
+  extraHeaders?: Record<string, string>,
+) => jsonResponse({ ok: false, error: message }, 404, extraHeaders);
 const notAllowed = (extraHeaders?: Record<string, string>) =>
   jsonResponse({ ok: false, error: "Method Not Allowed" }, 405, extraHeaders);
 
 function parseWindow(url: URL): QueryWindow | null {
   const nowMs = Date.now();
   const defaultFrom = nowMs - ONE_DAY_MS;
-  const fromMs = Math.floor(coerceNumber(url.searchParams.get("from"), defaultFrom) ?? defaultFrom);
-  const toMs = Math.floor(coerceNumber(url.searchParams.get("to"), nowMs) ?? nowMs);
-  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs < 0 || toMs < fromMs) {
+  const fromMs = Math.floor(
+    coerceNumber(url.searchParams.get("from"), defaultFrom) ?? defaultFrom,
+  );
+  const toMs = Math.floor(
+    coerceNumber(url.searchParams.get("to"), nowMs) ?? nowMs,
+  );
+  if (
+    !Number.isFinite(fromMs) ||
+    !Number.isFinite(toMs) ||
+    fromMs < 0 ||
+    toMs < fromMs
+  ) {
     return null;
   }
   return { fromMs, toMs, nowMs };
 }
 
 function parseLimit(url: URL, fallback = 20, max = 500): number {
-  const value = Math.floor(coerceNumber(url.searchParams.get("limit"), fallback) ?? fallback);
+  const value = Math.floor(
+    coerceNumber(url.searchParams.get("limit"), fallback) ?? fallback,
+  );
   if (!Number.isFinite(value) || value <= 0) return fallback;
   return Math.min(max, value);
 }
 
 function parseInterval(url: URL): Interval {
   const raw = (url.searchParams.get("interval") || "day").toLowerCase();
-  if (raw === "minute" || raw === "hour" || raw === "week" || raw === "month") return raw;
+  if (raw === "minute" || raw === "hour" || raw === "week" || raw === "month")
+    return raw;
   return "day";
 }
 
@@ -518,7 +534,9 @@ function parseQueryLimit(
   min: number,
   max: number,
 ): number {
-  const value = Math.floor(coerceNumber(url.searchParams.get(key), fallback) ?? fallback);
+  const value = Math.floor(
+    coerceNumber(url.searchParams.get(key), fallback) ?? fallback,
+  );
   if (!Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, value));
 }
@@ -582,14 +600,24 @@ function parseFilters(url: URL): DashboardFilters {
     sourceDomain: normalizeFilterValue(url.searchParams.get("sourceDomain")),
     sourceLink: normalizeFilterValue(url.searchParams.get("sourceLink")),
     clientBrowser: normalizeFilterValue(url.searchParams.get("clientBrowser")),
-    clientOsVersion: normalizeFilterValue(url.searchParams.get("clientOsVersion")),
-    clientDeviceType: normalizeFilterValue(url.searchParams.get("clientDeviceType")),
-    clientLanguage: normalizeFilterValue(url.searchParams.get("clientLanguage")),
-    clientScreenSize: normalizeFilterValue(url.searchParams.get("clientScreenSize")),
+    clientOsVersion: normalizeFilterValue(
+      url.searchParams.get("clientOsVersion"),
+    ),
+    clientDeviceType: normalizeFilterValue(
+      url.searchParams.get("clientDeviceType"),
+    ),
+    clientLanguage: normalizeFilterValue(
+      url.searchParams.get("clientLanguage"),
+    ),
+    clientScreenSize: normalizeFilterValue(
+      url.searchParams.get("clientScreenSize"),
+    ),
     geo,
     geoContinent: normalizeFilterValue(url.searchParams.get("geoContinent")),
     geoTimezone: normalizeFilterValue(url.searchParams.get("geoTimezone")),
-    geoOrganization: normalizeFilterValue(url.searchParams.get("geoOrganization")),
+    geoOrganization: normalizeFilterValue(
+      url.searchParams.get("geoOrganization"),
+    ),
   };
 }
 
@@ -660,7 +688,8 @@ function bounceRate(bounces: number, sessions: number): number {
 }
 
 function percentChange(current: number, previous: number): number | null {
-  if (!Number.isFinite(current) || !Number.isFinite(previous) || previous <= 0) return null;
+  if (!Number.isFinite(current) || !Number.isFinite(previous) || previous <= 0)
+    return null;
   return ((current - previous) / previous) * 100;
 }
 
@@ -719,7 +748,12 @@ function normalizePathname(pathname: string): string {
   return normalized.length > 0 ? normalized : "/";
 }
 
-function formatPageLabel(pathname: string, query = "", hash = "", includeDetails = false): string {
+function formatPageLabel(
+  pathname: string,
+  query = "",
+  hash = "",
+  includeDetails = false,
+): string {
   const base = normalizePathname(pathname);
   if (!includeDetails) return base;
   return `${base}${query || ""}${hash || ""}`;
@@ -817,9 +851,10 @@ function utmDimensionDefinition(
   };
 }
 
-function referrerDomainDimensionDefinition(
-  alias = "",
-): { labelExpr: string; fallbackKeyBase: string } {
+function referrerDomainDimensionDefinition(alias = ""): {
+  labelExpr: string;
+  fallbackKeyBase: string;
+} {
   const prefix = alias ? `${alias}.` : "";
 
   return {
@@ -828,11 +863,17 @@ function referrerDomainDimensionDefinition(
   };
 }
 
-function siteQueryHeaders(options: SiteQueryResponseOptions): Record<string, string> {
+function siteQueryHeaders(
+  options: SiteQueryResponseOptions,
+): Record<string, string> {
   return options.publicSite ? PUBLIC_CACHE_HEADERS : PRIVATE_CACHE_HEADERS;
 }
 
-function siteQueryResponse(siteId: string, payload: Record<string, unknown>, options: SiteQueryResponseOptions = {}): Response {
+function siteQueryResponse(
+  siteId: string,
+  payload: Record<string, unknown>,
+  options: SiteQueryResponseOptions = {},
+): Response {
   const body = options.publicSite
     ? { ...payload, site: options.publicSite, privacy: PUBLIC_PRIVACY }
     : { ...payload, siteId };
@@ -982,7 +1023,9 @@ function dedupeFilterOptions(
   return deduped;
 }
 
-function mapDimensionRowsToFilterOptions(rows: DimensionRow[]): DashboardFilterOption[] {
+function mapDimensionRowsToFilterOptions(
+  rows: DimensionRow[],
+): DashboardFilterOption[] {
   return dedupeFilterOptions(
     rows.map((row) => {
       const value = String(row.value ?? "").trim();
@@ -994,7 +1037,9 @@ function mapDimensionRowsToFilterOptions(rows: DimensionRow[]): DashboardFilterO
   );
 }
 
-function mapReferrerRowsToFilterOptions(rows: ReferrerRow[]): DashboardFilterOption[] {
+function mapReferrerRowsToFilterOptions(
+  rows: ReferrerRow[],
+): DashboardFilterOption[] {
   return dedupeFilterOptions(
     rows.map((row) => {
       const value = String(row.referrer ?? "").trim();
@@ -1037,7 +1082,11 @@ function mapGeoRowsToFilterOptions(
       if (group === "region") {
         return {
           value,
-          label: parsed?.regionName || parsed?.regionCode || parsed?.country || value,
+          label:
+            parsed?.regionName ||
+            parsed?.regionCode ||
+            parsed?.country ||
+            value,
           group,
         };
       }
@@ -1073,7 +1122,11 @@ function addDimensionValue(
 ): void {
   const value = rawValue.trim();
   if (!value) return;
-  const bucket = buckets.get(value) ?? { views: 0, sessions: new Set<string>(), visitors: new Set<string>() };
+  const bucket = buckets.get(value) ?? {
+    views: 0,
+    sessions: new Set<string>(),
+    visitors: new Set<string>(),
+  };
   bucket.views += 1;
   if (sessionId) bucket.sessions.add(sessionId);
   if (visitorId) bucket.visitors.add(visitorId);
@@ -1091,7 +1144,12 @@ function finalizeDimensionBuckets(
       sessions: bucket.sessions.size,
       visitors: bucket.visitors.size,
     }))
-    .sort((left, right) => right.views - left.views || right.sessions - left.sessions || left.value.localeCompare(right.value))
+    .sort(
+      (left, right) =>
+        right.views - left.views ||
+        right.sessions - left.sessions ||
+        left.value.localeCompare(right.value),
+    )
     .slice(0, limit);
 }
 
@@ -1127,11 +1185,12 @@ function finalizeGeoDimensionBuckets(
       sessions: bucket.sessions.size,
       visitors: bucket.visitors.size,
     }))
-    .sort((left, right) =>
-      right.views - left.views ||
-      right.sessions - left.sessions ||
-      right.visitors - left.visitors ||
-      left.label.localeCompare(right.label),
+    .sort(
+      (left, right) =>
+        right.views - left.views ||
+        right.sessions - left.sessions ||
+        right.visitors - left.visitors ||
+        left.label.localeCompare(right.label),
     )
     .slice(0, limit);
 }
@@ -1223,7 +1282,10 @@ async function resolvePrivateTeam(
   return team ?? notFound("Team not found", PRIVATE_CACHE_HEADERS);
 }
 
-async function fetchPublicSite(env: Env, url: URL): Promise<SiteRow | Response> {
+async function fetchPublicSite(
+  env: Env,
+  url: URL,
+): Promise<SiteRow | Response> {
   const segments = url.pathname.split("/").filter(Boolean);
   const slug = decodeURIComponent(segments[2] || "").trim();
   if (!slug) return notFound("Public site not found", PUBLIC_CACHE_HEADERS);
@@ -1290,7 +1352,9 @@ event_source AS (
 )`;
 }
 
-function buildTargetVisitSourceCte(targetColumn: "session_id" | "visitor_id"): string {
+function buildTargetVisitSourceCte(
+  targetColumn: "session_id" | "visitor_id",
+): string {
   return `
 visit_source AS (
   SELECT ${VISIT_SOURCE_COLUMNS}
@@ -1332,19 +1396,44 @@ event_source AS (
 )`;
 }
 
-function visitSourceBindings(siteId: string, window: QueryWindow): Array<string | number> {
-  return [siteId, window.fromMs, window.toMs, siteId, window.fromMs, window.toMs];
+function visitSourceBindings(
+  siteId: string,
+  window: QueryWindow,
+): Array<string | number> {
+  return [
+    siteId,
+    window.fromMs,
+    window.toMs,
+    siteId,
+    window.fromMs,
+    window.toMs,
+  ];
 }
 
-function eventSourceBindings(siteId: string, window: QueryWindow): Array<string | number> {
-  return [siteId, window.fromMs, window.toMs, siteId, window.fromMs, window.toMs];
+function eventSourceBindings(
+  siteId: string,
+  window: QueryWindow,
+): Array<string | number> {
+  return [
+    siteId,
+    window.fromMs,
+    window.toMs,
+    siteId,
+    window.fromMs,
+    window.toMs,
+  ];
 }
 
-function targetVisitSourceBindings(siteId: string, targetValue: string): Array<string | number> {
+function targetVisitSourceBindings(
+  siteId: string,
+  targetValue: string,
+): Array<string | number> {
   return [siteId, targetValue, siteId, targetValue];
 }
 
-function detailCustomEventSourceBindings(siteId: string): Array<string | number> {
+function detailCustomEventSourceBindings(
+  siteId: string,
+): Array<string | number> {
   return [siteId, siteId];
 }
 
@@ -1362,8 +1451,18 @@ visit_source AS (
 )`;
 }
 
-function visitSourceBindingsForSites(siteIds: string[], window: QueryWindow): Array<string | number> {
-  return [...siteIds, window.fromMs, window.toMs, ...siteIds, window.fromMs, window.toMs];
+function visitSourceBindingsForSites(
+  siteIds: string[],
+  window: QueryWindow,
+): Array<string | number> {
+  return [
+    ...siteIds,
+    window.fromMs,
+    window.toMs,
+    ...siteIds,
+    window.fromMs,
+    window.toMs,
+  ];
 }
 
 const DIRECT_REFERRER_FILTER_VALUE = "__direct__";
@@ -1375,7 +1474,9 @@ interface ParsedGeoFilter {
   city?: string;
 }
 
-function parseGeoFilterValue(value: string | undefined): ParsedGeoFilter | null {
+function parseGeoFilterValue(
+  value: string | undefined,
+): ParsedGeoFilter | null {
   const parsed = parseGeoLocationValue(value);
   if (!parsed) return null;
 
@@ -1396,7 +1497,10 @@ function withoutGeoFilter(filters: DashboardFilters): DashboardFilters {
   };
 }
 
-function buildVisitFilterSql(filters: DashboardFilters, alias = ""): { clause: string; bindings: string[] } {
+function buildVisitFilterSql(
+  filters: DashboardFilters,
+  alias = "",
+): { clause: string; bindings: string[] } {
   const prefix = alias ? `${alias}.` : "";
   const clauses: string[] = [];
   const bindings: string[] = [];
@@ -1492,7 +1596,11 @@ function buildVisitFilterSql(filters: DashboardFilters, alias = ""): { clause: s
     const geoRegionTokens = Array.from(
       new Set(
         [parsedGeo.regionCode, parsedGeo.regionName]
-          .map((value) => String(value ?? "").trim().toUpperCase())
+          .map((value) =>
+            String(value ?? "")
+              .trim()
+              .toUpperCase(),
+          )
           .filter((value) => value.length > 0),
       ),
     );
@@ -1507,7 +1615,9 @@ function buildVisitFilterSql(filters: DashboardFilters, alias = ""): { clause: s
     equalsCaseInsensitive(`${prefix}city`, parsedGeo.city);
   }
 
-  return clauses.length > 0 ? { clause: `WHERE ${clauses.join(" AND ")}`, bindings } : { clause: "", bindings: [] };
+  return clauses.length > 0
+    ? { clause: `WHERE ${clauses.join(" AND ")}`, bindings }
+    : { clause: "", bindings: [] };
 }
 
 async function queryD1All<T extends Record<string, unknown>>(
@@ -1515,7 +1625,9 @@ async function queryD1All<T extends Record<string, unknown>>(
   sql: string,
   bindings: Array<string | number | null>,
 ): Promise<T[]> {
-  const result = await env.DB.prepare(sql).bind(...bindings).all<T>();
+  const result = await env.DB.prepare(sql)
+    .bind(...bindings)
+    .all<T>();
   return result.results;
 }
 
@@ -1539,7 +1651,10 @@ function emptyPerformanceRouteMetric(): PerformanceRouteMetricRow {
   };
 }
 
-function emptyPerformanceRouteMetrics(): Record<PerformanceMetricKey, PerformanceRouteMetricRow> {
+function emptyPerformanceRouteMetrics(): Record<
+  PerformanceMetricKey,
+  PerformanceRouteMetricRow
+> {
   return {
     ttfb: emptyPerformanceRouteMetric(),
     fcp: emptyPerformanceRouteMetric(),
@@ -1623,11 +1738,10 @@ GROUP BY thresholds.metric, thresholds.sampleCount, thresholds.avgValue
     cls: { avg: null, p50: null, p75: null, p95: null, samples: 0 },
     inp: { avg: null, p50: null, p75: null, p95: null, samples: 0 },
   };
-  const rows = await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings],
-  );
+  const rows = await queryD1All<Record<string, unknown>>(env, sql, [
+    ...visitSourceBindings(siteId, window),
+    ...filter.bindings,
+  ]);
   for (const row of rows) {
     const metric = String(row.metric ?? "") as PerformanceMetricKey;
     if (!(metric in PERFORMANCE_METRIC_COLUMNS)) continue;
@@ -1700,11 +1814,10 @@ ORDER BY thresholds.bucket ASC
 `;
   const bucketMs = intervalBucketMs(interval);
   return (
-    await queryD1All<Record<string, unknown>>(
-      env,
-      sql,
-      [...visitSourceBindings(siteId, window), ...filter.bindings],
-    )
+    await queryD1All<Record<string, unknown>>(env, sql, [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+    ])
   ).map((row) => ({
     bucket: Number(row.bucket ?? 0),
     timestampMs: Number(row.bucket ?? 0) * bucketMs,
@@ -1811,11 +1924,11 @@ GROUP BY
   thresholds.avgValue
 ORDER BY path_views.views DESC, thresholds.pathname ASC, thresholds.metric ASC
 `;
-  const rows = await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings, limit],
-  );
+  const rows = await queryD1All<Record<string, unknown>>(env, sql, [
+    ...visitSourceBindings(siteId, window),
+    ...filter.bindings,
+    limit,
+  ]);
   const byPath = new Map<string, PerformanceRouteRow>();
 
   for (const row of rows) {
@@ -1929,15 +2042,16 @@ GROUP BY
   thresholds.avgValue
 ORDER BY country_views.views DESC, thresholds.country ASC, thresholds.metric ASC
 `;
-  const rows = await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings],
-  );
+  const rows = await queryD1All<Record<string, unknown>>(env, sql, [
+    ...visitSourceBindings(siteId, window),
+    ...filter.bindings,
+  ]);
   const byCountry = new Map<string, PerformanceCountryRow>();
 
   for (const row of rows) {
-    const country = String(row.country ?? "").trim().toUpperCase();
+    const country = String(row.country ?? "")
+      .trim()
+      .toUpperCase();
     const metric = String(row.metric ?? "") as PerformanceMetricKey;
     if (!country || !(metric in PERFORMANCE_METRIC_COLUMNS)) continue;
 
@@ -1989,11 +2103,13 @@ SELECT
   COALESCE(sum(CASE WHEN duration_ms IS NOT NULL AND duration_ms >= 0 THEN 1 ELSE 0 END), 0) AS durationViews
 FROM filtered_visits
 `;
-  const row = (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings],
-  ))[0] ?? {};
+  const row =
+    (
+      await queryD1All<Record<string, unknown>>(env, sql, [
+        ...visitSourceBindings(siteId, window),
+        ...filter.bindings,
+      ])
+    )[0] ?? {};
   return {
     views: Number(row.views ?? 0),
     sessions: Number(row.sessions ?? 0),
@@ -2065,11 +2181,12 @@ FROM combined
 GROUP BY bucket
 ORDER BY bucket ASC
 `;
-  return (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings],
-  )).map((row) => ({
+  return (
+    await queryD1All<Record<string, unknown>>(env, sql, [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+    ])
+  ).map((row) => ({
     bucket: Number(row.bucket ?? 0),
     views: Number(row.views ?? 0),
     visitors: Number(row.visitors ?? 0),
@@ -2135,9 +2252,10 @@ async function queryBrowserVersionBreakdownFromD1(
   versionLimit: number,
 ): Promise<BrowserVersionBreakdownRow[]> {
   const filter = buildVisitFilterSql(filters);
-  const normalizedBrowserLimit = Number.isFinite(browserLimit) && browserLimit > 0
-    ? Math.max(1, Math.floor(browserLimit))
-    : null;
+  const normalizedBrowserLimit =
+    Number.isFinite(browserLimit) && browserLimit > 0
+      ? Math.max(1, Math.floor(browserLimit))
+      : null;
   const normalizedVersionLimit = Math.min(Math.max(1, versionLimit), 8);
   const topBrowsersSql = `
 WITH
@@ -2161,20 +2279,20 @@ GROUP BY browser
 ORDER BY visitors DESC, views DESC, sessions DESC, browser ASC
 ${normalizedBrowserLimit ? "LIMIT ?" : ""}
 `;
-  const topBrowsers = (await queryD1All<Record<string, unknown>>(
-    env,
-    topBrowsersSql,
-    [
+  const topBrowsers = (
+    await queryD1All<Record<string, unknown>>(env, topBrowsersSql, [
       ...visitSourceBindings(siteId, window),
       ...filter.bindings,
       ...(normalizedBrowserLimit ? [normalizedBrowserLimit] : []),
-    ],
-  )).map((row) => ({
-    browser: String(row.browser ?? "").trim(),
-    views: Number(row.views ?? 0),
-    visitors: Number(row.visitors ?? 0),
-    sessions: Number(row.sessions ?? 0),
-  })).filter((row) => row.browser.length > 0 && row.visitors > 0);
+    ])
+  )
+    .map((row) => ({
+      browser: String(row.browser ?? "").trim(),
+      views: Number(row.views ?? 0),
+      visitors: Number(row.visitors ?? 0),
+      sessions: Number(row.sessions ?? 0),
+    }))
+    .filter((row) => row.browser.length > 0 && row.visitors > 0);
 
   if (topBrowsers.length === 0) {
     return [];
@@ -2208,19 +2326,24 @@ WHERE browser != '' AND browser IN (${topBrowserPlaceholders})
 GROUP BY browser, version
 ORDER BY browser ASC, visitors DESC, views DESC, sessions DESC, version ASC
 `;
-  const versionRows = (await queryD1All<Record<string, unknown>>(
-    env,
-    versionsSql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings, ...topBrowserLabels],
-  )).map((row) => ({
-    browser: String(row.browser ?? "").trim(),
-    version: String(row.version ?? "").trim(),
-    views: Number(row.views ?? 0),
-    visitors: Number(row.visitors ?? 0),
-    sessions: Number(row.sessions ?? 0),
-  } satisfies BrowserVersionAggregateRow)).filter((row) =>
-    row.browser.length > 0 && row.visitors > 0
-  );
+  const versionRows = (
+    await queryD1All<Record<string, unknown>>(env, versionsSql, [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      ...topBrowserLabels,
+    ])
+  )
+    .map(
+      (row) =>
+        ({
+          browser: String(row.browser ?? "").trim(),
+          version: String(row.version ?? "").trim(),
+          views: Number(row.views ?? 0),
+          visitors: Number(row.visitors ?? 0),
+          sessions: Number(row.sessions ?? 0),
+        }) satisfies BrowserVersionAggregateRow,
+    )
+    .filter((row) => row.browser.length > 0 && row.visitors > 0);
 
   const versionsByBrowser = new Map<string, BrowserVersionAggregateRow[]>();
   for (const row of versionRows) {
@@ -2324,16 +2447,20 @@ GROUP BY browser
 ORDER BY visitors DESC, views DESC, sessions DESC, browser ASC
 LIMIT ?
 `;
-  const topBrowsers = (await queryD1All<Record<string, unknown>>(
-    env,
-    topBrowsersSql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings, normalizedBrowserLimit],
-  )).map((row) => ({
-    browser: String(row.browser ?? "").trim(),
-    views: Number(row.views ?? 0),
-    visitors: Number(row.visitors ?? 0),
-    sessions: Number(row.sessions ?? 0),
-  })).filter((row) => row.browser.length > 0 && row.visitors > 0);
+  const topBrowsers = (
+    await queryD1All<Record<string, unknown>>(env, topBrowsersSql, [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      normalizedBrowserLimit,
+    ])
+  )
+    .map((row) => ({
+      browser: String(row.browser ?? "").trim(),
+      views: Number(row.views ?? 0),
+      visitors: Number(row.visitors ?? 0),
+      sessions: Number(row.sessions ?? 0),
+    }))
+    .filter((row) => row.browser.length > 0 && row.visitors > 0);
 
   if (topBrowsers.length === 0) {
     return {
@@ -2366,16 +2493,21 @@ GROUP BY dimension
 ORDER BY visitors DESC, views DESC, sessions DESC, dimension ASC
 LIMIT ?
 `;
-  const topDimensions = (await queryD1All<Record<string, unknown>>(
-    env,
-    topDimensionsSql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings, normalizedDimensionLimit],
-  )).map((row) => ({
-    dimension: String(row.dimension ?? "").trim() || BROWSER_CROSS_UNKNOWN_TOKEN,
-    views: Number(row.views ?? 0),
-    visitors: Number(row.visitors ?? 0),
-    sessions: Number(row.sessions ?? 0),
-  })).filter((row) => row.visitors > 0);
+  const topDimensions = (
+    await queryD1All<Record<string, unknown>>(env, topDimensionsSql, [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      normalizedDimensionLimit,
+    ])
+  )
+    .map((row) => ({
+      dimension:
+        String(row.dimension ?? "").trim() || BROWSER_CROSS_UNKNOWN_TOKEN,
+      views: Number(row.views ?? 0),
+      visitors: Number(row.visitors ?? 0),
+      sessions: Number(row.sessions ?? 0),
+    }))
+    .filter((row) => row.visitors > 0);
 
   if (topDimensions.length === 0) {
     return {
@@ -2426,24 +2558,28 @@ FROM normalized_visits
 GROUP BY browserBucket, dimensionBucket
 ORDER BY browser ASC, dimension ASC
 `;
-  const pairRows = (await queryD1All<Record<string, unknown>>(
-    env,
-    pairsSql,
-    [
+  const pairRows = (
+    await queryD1All<Record<string, unknown>>(env, pairsSql, [
       ...visitSourceBindings(siteId, window),
       ...filter.bindings,
       ...topBrowserLabels,
       ...topDimensionLabels,
-    ],
-  )).map((row) => ({
-    browser: String(row.browser ?? "").trim(),
-    dimension: String(row.dimension ?? "").trim(),
-    views: Number(row.views ?? 0),
-    visitors: Number(row.visitors ?? 0),
-    sessions: Number(row.sessions ?? 0),
-  } satisfies BrowserCrossAggregateRow)).filter((row) =>
-    row.browser.length > 0 && row.dimension.length > 0 && row.visitors > 0
-  );
+    ])
+  )
+    .map(
+      (row) =>
+        ({
+          browser: String(row.browser ?? "").trim(),
+          dimension: String(row.dimension ?? "").trim(),
+          views: Number(row.views ?? 0),
+          visitors: Number(row.visitors ?? 0),
+          sessions: Number(row.sessions ?? 0),
+        }) satisfies BrowserCrossAggregateRow,
+    )
+    .filter(
+      (row) =>
+        row.browser.length > 0 && row.dimension.length > 0 && row.visitors > 0,
+    );
 
   const rowBuckets = new Map<
     string,
@@ -2464,7 +2600,10 @@ ORDER BY browser ASC, dimension ASC
       views: 0,
       visitors: 0,
       sessions: 0,
-      cells: new Map<string, { views: number; visitors: number; sessions: number }>(),
+      cells: new Map<
+        string,
+        { views: number; visitors: number; sessions: number }
+      >(),
     };
     rowBucket.views += row.views;
     rowBucket.visitors += row.visitors;
@@ -2523,7 +2662,9 @@ ORDER BY browser ASC, dimension ASC
   });
 
   if (columnBuckets.has(BROWSER_CROSS_OTHER_DIMENSION_TOKEN)) {
-    const otherColumn = columnBuckets.get(BROWSER_CROSS_OTHER_DIMENSION_TOKEN) ?? {
+    const otherColumn = columnBuckets.get(
+      BROWSER_CROSS_OTHER_DIMENSION_TOKEN,
+    ) ?? {
       views: 0,
       visitors: 0,
       sessions: 0,
@@ -2561,7 +2702,10 @@ ORDER BY browser ASC, dimension ASC
       views: 0,
       visitors: 0,
       sessions: 0,
-      cells: new Map<string, { views: number; visitors: number; sessions: number }>(),
+      cells: new Map<
+        string,
+        { views: number; visitors: number; sessions: number }
+      >(),
     };
     rowDescriptors.push({
       bucket: BROWSER_CROSS_OTHER_BROWSER_TOKEN,
@@ -2583,7 +2727,10 @@ ORDER BY browser ASC, dimension ASC
         views: row.item.views,
         visitors: row.item.visitors,
         sessions: row.item.sessions,
-        cells: new Map<string, { views: number; visitors: number; sessions: number }>(),
+        cells: new Map<
+          string,
+          { views: number; visitors: number; sessions: number }
+        >(),
       };
       const cells = columnDescriptors.map((column) => {
         const cell = bucket.cells.get(column.bucket) ?? {
@@ -2728,22 +2875,27 @@ GROUP BY label
 ORDER BY visitors DESC, views DESC, sessions DESC, label ASC
 LIMIT ?
 `;
-  const topRows = (await queryD1All<Record<string, unknown>>(
-    env,
-    topSql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings, normalizedLimit],
-  )).map((row) => ({
-    label: String(row.label ?? "").trim(),
-    views: Number(row.views ?? 0),
-    visitors: Number(row.visitors ?? 0),
-    sessions: Number(row.sessions ?? 0),
-  })).filter((row) => row.label.length > 0 && row.visitors > 0);
+  const topRows = (
+    await queryD1All<Record<string, unknown>>(env, topSql, [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      normalizedLimit,
+    ])
+  )
+    .map((row) => ({
+      label: String(row.label ?? "").trim(),
+      views: Number(row.views ?? 0),
+      visitors: Number(row.visitors ?? 0),
+      sessions: Number(row.sessions ?? 0),
+    }))
+    .filter((row) => row.label.length > 0 && row.visitors > 0);
 
   const topLabels = topRows.map((row) => row.label);
   const topLabelPlaceholders = topLabels.map(() => "?").join(", ");
-  const assignmentCaseExpr = topLabels.length > 0
-    ? `CASE WHEN assignedLabel != '' AND assignedLabel IN (${topLabelPlaceholders}) THEN assignedLabel ELSE '${SHARE_TREND_OTHER_TOKEN}' END`
-    : `'${SHARE_TREND_OTHER_TOKEN}'`;
+  const assignmentCaseExpr =
+    topLabels.length > 0
+      ? `CASE WHEN assignedLabel != '' AND assignedLabel IN (${topLabelPlaceholders}) THEN assignedLabel ELSE '${SHARE_TREND_OTHER_TOKEN}' END`
+      : `'${SHARE_TREND_OTHER_TOKEN}'`;
 
   const seriesSql = `
 WITH
@@ -2795,16 +2947,20 @@ FROM assigned_visits
 GROUP BY label
 ORDER BY visitors DESC, views DESC, sessions DESC, label ASC
 `;
-  const seriesRows = (await queryD1All<Record<string, unknown>>(
-    env,
-    seriesSql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings, ...topLabels],
-  )).map((row) => ({
-    label: String(row.label ?? "").trim(),
-    views: Number(row.views ?? 0),
-    visitors: Number(row.visitors ?? 0),
-    sessions: Number(row.sessions ?? 0),
-  })).filter((row) => row.label.length > 0 && row.visitors > 0);
+  const seriesRows = (
+    await queryD1All<Record<string, unknown>>(env, seriesSql, [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      ...topLabels,
+    ])
+  )
+    .map((row) => ({
+      label: String(row.label ?? "").trim(),
+      views: Number(row.views ?? 0),
+      visitors: Number(row.visitors ?? 0),
+      sessions: Number(row.sessions ?? 0),
+    }))
+    .filter((row) => row.label.length > 0 && row.visitors > 0);
 
   if (seriesRows.length === 0) {
     return {
@@ -2869,17 +3025,22 @@ FROM assigned_visits
 GROUP BY bucket, label
 ORDER BY bucket ASC, label ASC
 `;
-  const bucketRows = (await queryD1All<Record<string, unknown>>(
-    env,
-    bucketSql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings, ...topLabels],
-  )).map((row) => ({
-    bucket: Number(row.bucket ?? 0),
-    label: String(row.label ?? "").trim(),
-    views: Number(row.views ?? 0),
-    visitors: Number(row.visitors ?? 0),
-    sessions: Number(row.sessions ?? 0),
-  } satisfies BrowserTrendBucketRow));
+  const bucketRows = (
+    await queryD1All<Record<string, unknown>>(env, bucketSql, [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      ...topLabels,
+    ])
+  ).map(
+    (row) =>
+      ({
+        bucket: Number(row.bucket ?? 0),
+        label: String(row.label ?? "").trim(),
+        views: Number(row.views ?? 0),
+        visitors: Number(row.visitors ?? 0),
+        sessions: Number(row.sessions ?? 0),
+      }) satisfies BrowserTrendBucketRow,
+  );
 
   const seriesByLabel = new Map(
     seriesRows.map((row) => [row.label, row] as const),
@@ -2915,8 +3076,8 @@ ORDER BY bucket ASC, label ASC
     });
   }
 
-  const hasBucketOther = bucketRows.some((row) =>
-    row.label === SHARE_TREND_OTHER_TOKEN && row.visitors > 0
+  const hasBucketOther = bucketRows.some(
+    (row) => row.label === SHARE_TREND_OTHER_TOKEN && row.visitors > 0,
   );
   if (!otherRow && hasBucketOther) {
     keyByLabel.set(SHARE_TREND_OTHER_TOKEN, SHARE_TREND_OTHER_KEY);
@@ -2948,14 +3109,18 @@ ORDER BY bucket ASC, label ASC
   for (const row of bucketRows) {
     const key = keyByLabel.get(row.label);
     if (!key) continue;
-    const point = pointsByBucket.get(row.bucket) ?? createEmptyPoint(row.bucket);
+    const point =
+      pointsByBucket.get(row.bucket) ?? createEmptyPoint(row.bucket);
     point.visitorsBySeries[key] = row.visitors;
     point.totalVisitors += row.visitors;
     pointsByBucket.set(row.bucket, point);
   }
 
   const fromBucket = Math.floor(window.fromMs / bucketDivisor);
-  const toBucket = Math.max(fromBucket, Math.floor(window.toMs / bucketDivisor));
+  const toBucket = Math.max(
+    fromBucket,
+    Math.floor(window.toMs / bucketDivisor),
+  );
   const data: BrowserTrendPointRow[] = [];
   for (let bucket = fromBucket; bucket <= toBucket; bucket += 1) {
     data.push(pointsByBucket.get(bucket) ?? createEmptyPoint(bucket));
@@ -3081,16 +3246,20 @@ GROUP BY primaryValue
 ORDER BY visitors DESC, views DESC, sessions DESC, primaryValue ASC
 LIMIT ?
 `;
-  const topPrimaryRows = (await queryD1All<Record<string, unknown>>(
-    env,
-    topPrimarySql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings, normalizedPrimaryLimit],
-  )).map((row) => ({
-    value: String(row.primaryValue ?? "").trim(),
-    views: Number(row.views ?? 0),
-    visitors: Number(row.visitors ?? 0),
-    sessions: Number(row.sessions ?? 0),
-  })).filter((row) => row.value.length > 0 && row.visitors > 0);
+  const topPrimaryRows = (
+    await queryD1All<Record<string, unknown>>(env, topPrimarySql, [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      normalizedPrimaryLimit,
+    ])
+  )
+    .map((row) => ({
+      value: String(row.primaryValue ?? "").trim(),
+      views: Number(row.views ?? 0),
+      visitors: Number(row.visitors ?? 0),
+      sessions: Number(row.sessions ?? 0),
+    }))
+    .filter((row) => row.value.length > 0 && row.visitors > 0);
 
   if (topPrimaryRows.length === 0) {
     return {
@@ -3123,16 +3292,21 @@ GROUP BY secondaryValue
 ORDER BY visitors DESC, views DESC, sessions DESC, secondaryValue ASC
 LIMIT ?
 `;
-  const topSecondaryRows = (await queryD1All<Record<string, unknown>>(
-    env,
-    topSecondarySql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings, normalizedSecondaryLimit],
-  )).map((row) => ({
-    value: String(row.secondaryValue ?? "").trim() || CLIENT_CROSS_UNKNOWN_TOKEN,
-    views: Number(row.views ?? 0),
-    visitors: Number(row.visitors ?? 0),
-    sessions: Number(row.sessions ?? 0),
-  })).filter((row) => row.visitors > 0);
+  const topSecondaryRows = (
+    await queryD1All<Record<string, unknown>>(env, topSecondarySql, [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      normalizedSecondaryLimit,
+    ])
+  )
+    .map((row) => ({
+      value:
+        String(row.secondaryValue ?? "").trim() || CLIENT_CROSS_UNKNOWN_TOKEN,
+      views: Number(row.views ?? 0),
+      visitors: Number(row.visitors ?? 0),
+      sessions: Number(row.sessions ?? 0),
+    }))
+    .filter((row) => row.visitors > 0);
 
   if (topSecondaryRows.length === 0) {
     return {
@@ -3183,24 +3357,28 @@ FROM normalized_visits
 GROUP BY primaryBucket, secondaryBucket
 ORDER BY primaryValue ASC, secondaryValue ASC
 `;
-  const pairRows = (await queryD1All<Record<string, unknown>>(
-    env,
-    pairsSql,
-    [
+  const pairRows = (
+    await queryD1All<Record<string, unknown>>(env, pairsSql, [
       ...visitSourceBindings(siteId, window),
       ...filter.bindings,
       ...topPrimaryLabels,
       ...topSecondaryLabels,
-    ],
-  )).map((row) => ({
-    primary: String(row.primaryValue ?? "").trim(),
-    secondary: String(row.secondaryValue ?? "").trim(),
-    views: Number(row.views ?? 0),
-    visitors: Number(row.visitors ?? 0),
-    sessions: Number(row.sessions ?? 0),
-  } satisfies ClientCrossAggregateRow)).filter((row) =>
-    row.primary.length > 0 && row.secondary.length > 0 && row.visitors > 0
-  );
+    ])
+  )
+    .map(
+      (row) =>
+        ({
+          primary: String(row.primaryValue ?? "").trim(),
+          secondary: String(row.secondaryValue ?? "").trim(),
+          views: Number(row.views ?? 0),
+          visitors: Number(row.visitors ?? 0),
+          sessions: Number(row.sessions ?? 0),
+        }) satisfies ClientCrossAggregateRow,
+    )
+    .filter(
+      (row) =>
+        row.primary.length > 0 && row.secondary.length > 0 && row.visitors > 0,
+    );
 
   const rowBuckets = new Map<
     string,
@@ -3221,7 +3399,10 @@ ORDER BY primaryValue ASC, secondaryValue ASC
       views: 0,
       visitors: 0,
       sessions: 0,
-      cells: new Map<string, { views: number; visitors: number; sessions: number }>(),
+      cells: new Map<
+        string,
+        { views: number; visitors: number; sessions: number }
+      >(),
     };
     rowBucket.views += row.views;
     rowBucket.visitors += row.visitors;
@@ -3284,7 +3465,9 @@ ORDER BY primaryValue ASC, secondaryValue ASC
   });
 
   if (columnBuckets.has(CLIENT_CROSS_OTHER_SECONDARY_TOKEN)) {
-    const otherColumn = columnBuckets.get(CLIENT_CROSS_OTHER_SECONDARY_TOKEN) ?? {
+    const otherColumn = columnBuckets.get(
+      CLIENT_CROSS_OTHER_SECONDARY_TOKEN,
+    ) ?? {
       views: 0,
       visitors: 0,
       sessions: 0,
@@ -3326,7 +3509,10 @@ ORDER BY primaryValue ASC, secondaryValue ASC
       views: 0,
       visitors: 0,
       sessions: 0,
-      cells: new Map<string, { views: number; visitors: number; sessions: number }>(),
+      cells: new Map<
+        string,
+        { views: number; visitors: number; sessions: number }
+      >(),
     };
     rowDescriptors.push({
       bucket: CLIENT_CROSS_OTHER_PRIMARY_TOKEN,
@@ -3348,7 +3534,10 @@ ORDER BY primaryValue ASC, secondaryValue ASC
         views: row.item.views,
         visitors: row.item.visitors,
         sessions: row.item.sessions,
-        cells: new Map<string, { views: number; visitors: number; sessions: number }>(),
+        cells: new Map<
+          string,
+          { views: number; visitors: number; sessions: number }
+        >(),
       };
       const cells = columnDescriptors.map((column) => {
         const cell = bucket.cells.get(column.bucket) ?? {
@@ -3480,11 +3669,13 @@ FROM visit_source
 GROUP BY siteId, bucket
 ORDER BY bucket ASC, siteId ASC
 `;
-  return (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    visitSourceBindingsForSites(siteIds, window),
-  )).map((row) => ({
+  return (
+    await queryD1All<Record<string, unknown>>(
+      env,
+      sql,
+      visitSourceBindingsForSites(siteIds, window),
+    )
+  ).map((row) => ({
     siteId: String(row.siteId ?? ""),
     bucket: Number(row.bucket ?? 0),
     views: Number(row.views ?? 0),
@@ -3522,11 +3713,13 @@ GROUP BY pathname, queryValue, hashValue
 ORDER BY views DESC, pathname ASC
 LIMIT ?
 `;
-  return (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings, limit],
-  )).map((row) => ({
+  return (
+    await queryD1All<Record<string, unknown>>(env, sql, [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      limit,
+    ])
+  ).map((row) => ({
     pathname: String(row.pathname ?? ""),
     query: String(row.queryValue ?? ""),
     hash: String(row.hashValue ?? ""),
@@ -3543,7 +3736,14 @@ async function queryPagesFromD1(
   limit: number,
   includeDetails: boolean,
 ): Promise<PageRow[]> {
-  return queryTopPagesFromD1(env, siteId, window, limit, includeDetails, filters);
+  return queryTopPagesFromD1(
+    env,
+    siteId,
+    window,
+    limit,
+    includeDetails,
+    filters,
+  );
 }
 async function queryOverviewAggregate(
   env: Env,
@@ -3678,18 +3878,16 @@ LEFT JOIN path_bounce_rollup pb ON pb.pathname = pr.pathname
 ORDER BY pr.views DESC, pr.sessions DESC, pr.pathname ASC
 ${hasLimit ? "LIMIT ? OFFSET ?" : ""}
 `;
-  return (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [
+  return (
+    await queryD1All<Record<string, unknown>>(env, sql, [
       ...visitSourceBindings(siteId, window),
       ...filter.bindings,
       ...requestedPathnames,
       ...(hasLimit
         ? [options?.limit ?? 0, Math.max(0, options?.offset ?? 0)]
         : []),
-    ],
-  )).map((row) => ({
+    ])
+  ).map((row) => ({
     pathname: String(row.pathname ?? ""),
     views: Number(row.views ?? 0),
     sessions: Number(row.sessions ?? 0),
@@ -3754,16 +3952,14 @@ FROM ranked_titles
 WHERE titleRank <= ?
 ORDER BY pathname ASC, titleRank ASC
 `;
-  return (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [
+  return (
+    await queryD1All<Record<string, unknown>>(env, sql, [
       ...visitSourceBindings(siteId, window),
       ...filter.bindings,
       ...requestedPathnames,
       titleLimit,
-    ],
-  )).map((row) => ({
+    ])
+  ).map((row) => ({
     pathname: String(row.pathname ?? ""),
     title: String(row.title ?? ""),
     views: Number(row.views ?? 0),
@@ -3812,15 +4008,13 @@ FROM filtered_visits
 GROUP BY pathname, bucket
 ORDER BY pathname ASC, bucket ASC
 `;
-  return (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [
+  return (
+    await queryD1All<Record<string, unknown>>(env, sql, [
       ...visitSourceBindings(siteId, window),
       ...filter.bindings,
       ...requestedPathnames,
-    ],
-  )).map((row) => ({
+    ])
+  ).map((row) => ({
     pathname: String(row.pathname ?? ""),
     bucket: Number(row.bucket ?? 0),
     views: Number(row.views ?? 0),
@@ -3907,7 +4101,13 @@ async function buildOverviewClientDimensionTabs(
   filters: DashboardFilters,
   limit: number,
 ) {
-  return queryOverviewClientDimensionsFromD1(env, siteId, window, filters, limit);
+  return queryOverviewClientDimensionsFromD1(
+    env,
+    siteId,
+    window,
+    filters,
+    limit,
+  );
 }
 
 async function buildOverviewGeoDimensionTabs(
@@ -3942,7 +4142,10 @@ async function handleOverview(
 
   if (includeChange) {
     const previousTo = Math.max(window.fromMs - 1, 0);
-    const previousFrom = Math.max(previousTo - (window.toMs - window.fromMs), 0);
+    const previousFrom = Math.max(
+      previousTo - (window.toMs - window.fromMs),
+      0,
+    );
     const previousWindow: QueryWindow = {
       fromMs: previousFrom,
       toMs: previousTo,
@@ -3960,8 +4163,14 @@ async function handleOverview(
     payload.previousData = previousMetrics;
     payload.changeRates = {
       views: percentChange(currentMetrics.views, previousMetrics.views),
-      sessions: percentChange(currentMetrics.sessions, previousMetrics.sessions),
-      visitors: percentChange(currentMetrics.visitors, previousMetrics.visitors),
+      sessions: percentChange(
+        currentMetrics.sessions,
+        previousMetrics.sessions,
+      ),
+      visitors: percentChange(
+        currentMetrics.visitors,
+        previousMetrics.visitors,
+      ),
       bounces: percentChange(currentMetrics.bounces, previousMetrics.bounces),
       bounceRate: percentChange(
         currentMetrics.bounceRate,
@@ -3975,7 +4184,13 @@ async function handleOverview(
   }
 
   if (includeDetail) {
-    const detail = await queryTrendAggregate(env, siteId, window, interval, filters);
+    const detail = await queryTrendAggregate(
+      env,
+      siteId,
+      window,
+      interval,
+      filters,
+    );
     payload.detail = {
       interval,
       data: mapTrendRows(
@@ -3989,12 +4204,22 @@ async function handleOverview(
   return jsonResponse(payload);
 }
 
-async function handleTrend(env: Env, siteId: string, url: URL): Promise<Response> {
+async function handleTrend(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
   const filters = parseFilters(url);
   const interval = parseInterval(url);
-  const trend = await queryTrendAggregate(env, siteId, window, interval, filters);
+  const trend = await queryTrendAggregate(
+    env,
+    siteId,
+    window,
+    interval,
+    filters,
+  );
   return jsonResponse({
     ok: true,
     interval,
@@ -4016,16 +4241,52 @@ async function handlePerformance(
   const filters = parseFilters(url);
   const interval = parseInterval(url);
   const routeLimit = parseLimit(url, 18, 50);
-  const [summaries, ttfb, fcp, lcp, cls, inp, routes, countries] = await Promise.all([
-    queryPerformanceSummariesFromD1(env, siteId, window, filters),
-    queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "ttfb"),
-    queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "fcp"),
-    queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "lcp"),
-    queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "cls"),
-    queryPerformanceTrendFromD1(env, siteId, window, interval, filters, "inp"),
-    queryPerformanceRoutesFromD1(env, siteId, window, filters, routeLimit),
-    queryPerformanceCountriesFromD1(env, siteId, window, filters),
-  ]);
+  const [summaries, ttfb, fcp, lcp, cls, inp, routes, countries] =
+    await Promise.all([
+      queryPerformanceSummariesFromD1(env, siteId, window, filters),
+      queryPerformanceTrendFromD1(
+        env,
+        siteId,
+        window,
+        interval,
+        filters,
+        "ttfb",
+      ),
+      queryPerformanceTrendFromD1(
+        env,
+        siteId,
+        window,
+        interval,
+        filters,
+        "fcp",
+      ),
+      queryPerformanceTrendFromD1(
+        env,
+        siteId,
+        window,
+        interval,
+        filters,
+        "lcp",
+      ),
+      queryPerformanceTrendFromD1(
+        env,
+        siteId,
+        window,
+        interval,
+        filters,
+        "cls",
+      ),
+      queryPerformanceTrendFromD1(
+        env,
+        siteId,
+        window,
+        interval,
+        filters,
+        "inp",
+      ),
+      queryPerformanceRoutesFromD1(env, siteId, window, filters, routeLimit),
+      queryPerformanceCountriesFromD1(env, siteId, window, filters),
+    ]);
 
   return jsonResponse({
     ok: true,
@@ -4104,9 +4365,10 @@ async function handleBrowserVersionBreakdown(
   if (!window) return badRequest("Invalid time window");
   const filters = parseFilters(url);
   const rawBrowserLimit = coerceNumber(url.searchParams.get("browserLimit"), 0);
-  const browserLimit = Number.isFinite(rawBrowserLimit ?? NaN) && (rawBrowserLimit ?? 0) > 0
-    ? Math.max(1, Math.floor(rawBrowserLimit ?? 0))
-    : 0;
+  const browserLimit =
+    Number.isFinite(rawBrowserLimit ?? NaN) && (rawBrowserLimit ?? 0) > 0
+      ? Math.max(1, Math.floor(rawBrowserLimit ?? 0))
+      : 0;
   const versionLimit = Math.min(
     8,
     Math.max(
@@ -4263,11 +4525,10 @@ CROSS JOIN total_visitors tv
 ORDER BY bva.visitors DESC
 `;
 
-  const rows = await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings],
-  );
+  const rows = await queryD1All<Record<string, unknown>>(env, sql, [
+    ...visitSourceBindings(siteId, window),
+    ...filter.bindings,
+  ]);
 
   return rows
     .map((row) => ({
@@ -4412,11 +4673,11 @@ ORDER BY rva.visitors DESC, rsa.sessions DESC, rsa.referrer ASC
 LIMIT ?
 `;
 
-  const rows = await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings, limit],
-  );
+  const rows = await queryD1All<Record<string, unknown>>(env, sql, [
+    ...visitSourceBindings(siteId, window),
+    ...filter.bindings,
+    limit,
+  ]);
 
   return rows
     .map((row) => ({
@@ -4442,7 +4703,13 @@ async function handleReferrerRadar(
   if (!window) return badRequest("Invalid time window");
   const filters = parseFilters(url);
   const limit = parseLimit(url, 24, 48);
-  const rows = await queryReferrerRadarFromD1(env, siteId, window, filters, limit);
+  const rows = await queryReferrerRadarFromD1(
+    env,
+    siteId,
+    window,
+    filters,
+    limit,
+  );
   const data = rows.map((row) => ({
     referrer: row.referrer,
     visitors: row.visitors,
@@ -4607,7 +4874,13 @@ async function handlePages(
     data: mapPages(pages),
   };
   if (includeTabs) {
-    const tabs = await queryPageTabsAggregate(env, siteId, window, filters, limit);
+    const tabs = await queryPageTabsAggregate(
+      env,
+      siteId,
+      window,
+      filters,
+      limit,
+    );
     payload.tabs = {
       path: mapTabs(tabs.path),
       title: mapTabs(tabs.title),
@@ -4643,7 +4916,9 @@ async function handlePagesDashboard(
     },
   );
   const hasMore = requestedRows.length > pageSize;
-  const currentRows = hasMore ? requestedRows.slice(0, pageSize) : requestedRows;
+  const currentRows = hasMore
+    ? requestedRows.slice(0, pageSize)
+    : requestedRows;
   if (currentRows.length === 0) {
     return jsonResponse({
       ok: true,
@@ -4865,11 +5140,7 @@ async function handleVisitorDetail(
 ): Promise<Response> {
   const visitorId = (url.searchParams.get("visitorId") || "").trim();
   if (!visitorId) return badRequest("Missing visitorId");
-  const detail = await queryVisitorDetailFromD1(
-    env,
-    siteId,
-    visitorId,
-  );
+  const detail = await queryVisitorDetailFromD1(env, siteId, visitorId);
   return jsonResponse({ ok: true, data: detail });
 }
 
@@ -4880,11 +5151,7 @@ async function handleSessionDetail(
 ): Promise<Response> {
   const sessionId = (url.searchParams.get("sessionId") || "").trim();
   if (!sessionId) return badRequest("Missing sessionId");
-  const detail = await querySessionDetailFromD1(
-    env,
-    siteId,
-    sessionId,
-  );
+  const detail = await querySessionDetailFromD1(env, siteId, sessionId);
   return jsonResponse({ ok: true, data: detail });
 }
 
@@ -4896,7 +5163,10 @@ async function handleRetention(
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
   const filters = parseFilters(url);
-  const granularity = (url.searchParams.get("granularity") || "week") as "day" | "week" | "month";
+  const granularity = (url.searchParams.get("granularity") || "week") as
+    | "day"
+    | "week"
+    | "month";
 
   const bucketExpr =
     granularity === "day"
@@ -4942,13 +5212,15 @@ GROUP BY cohort_bucket, visit_bucket
 ORDER BY cohort_bucket ASC, visit_bucket ASC
 `;
 
-  const rows = await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings],
-  );
+  const rows = await queryD1All<Record<string, unknown>>(env, sql, [
+    ...visitSourceBindings(siteId, window),
+    ...filter.bindings,
+  ]);
 
-  const cohortMap = new Map<number, { size: number; periods: Map<number, number> }>();
+  const cohortMap = new Map<
+    number,
+    { size: number; periods: Map<number, number> }
+  >();
   for (const row of rows) {
     const cb = Number(row.cohortBucket ?? 0);
     const vb = Number(row.visitBucket ?? 0);
@@ -4965,8 +5237,10 @@ ORDER BY cohort_bucket ASC, visit_bucket ASC
   }
 
   const divisor =
-    granularity === "day" ? 86400000
-      : granularity === "month" ? 2592000000
+    granularity === "day"
+      ? 86400000
+      : granularity === "month"
+        ? 2592000000
         : 604800000;
 
   const cohorts = Array.from(cohortMap.entries())
@@ -5026,20 +5300,27 @@ async function handleFunnelCreate(
   const steps = Array.isArray(body.steps) ? body.steps : [];
   if (steps.length < 2) return badRequest("At least 2 steps are required");
   for (const step of steps) {
-    if (!step.type || !step.value) return badRequest("Each step needs type and value");
-    if (step.type !== "pageview" && step.type !== "event") return badRequest("Step type must be pageview or event");
+    if (!step.type || !step.value)
+      return badRequest("Each step needs type and value");
+    if (step.type !== "pageview" && step.type !== "event")
+      return badRequest("Step type must be pageview or event");
   }
 
   const id = crypto.randomUUID();
   const now = Math.floor(Date.now() / 1000);
   await env.DB.prepare(
     "INSERT INTO widgets (id, site_id, type, name, config_json, created_at, updated_at) VALUES (?, ?, 'funnel', ?, ?, ?, ?)",
-  ).bind(id, siteId, name, JSON.stringify(steps), now, now).run();
+  )
+    .bind(id, siteId, name, JSON.stringify(steps), now, now)
+    .run();
 
-  return jsonResponse({
-    ok: true,
-    funnel: { id, siteId, name, steps, createdAt: now, updatedAt: now },
-  }, 201);
+  return jsonResponse(
+    {
+      ok: true,
+      funnel: { id, siteId, name, steps, createdAt: now, updatedAt: now },
+    },
+    201,
+  );
 }
 
 async function handleFunnelDelete(
@@ -5051,7 +5332,9 @@ async function handleFunnelDelete(
   if (!funnelId) return badRequest("Funnel id is required");
   await env.DB.prepare(
     "DELETE FROM widgets WHERE id = ? AND site_id = ? AND type = 'funnel'",
-  ).bind(funnelId, siteId).run();
+  )
+    .bind(funnelId, siteId)
+    .run();
   return jsonResponse({ ok: true });
 }
 
@@ -5082,7 +5365,10 @@ async function handleFunnelAnalysis(
   const pageviewSteps = steps.filter((s) => s.type === "pageview");
   const eventSteps = steps.filter((s) => s.type === "event");
 
-  let sessionData: Map<string, Array<{ type: string; value: string; ts: number }>> = new Map();
+  const sessionData: Map<
+    string,
+    Array<{ type: string; value: string; ts: number }>
+  > = new Map();
 
   if (pageviewSteps.length > 0) {
     const pvFilter = filter.clause
@@ -5105,7 +5391,11 @@ ORDER BY ts ASC
       ...filter.bindings,
       ...pageviewSteps.map((s) => s.value),
     ];
-    const pvRows = await queryD1All<Record<string, unknown>>(env, pvSql, pvBindings);
+    const pvRows = await queryD1All<Record<string, unknown>>(
+      env,
+      pvSql,
+      pvBindings,
+    );
     for (const row of pvRows) {
       const sid = String(row.sessionId ?? "");
       if (!sid) continue;
@@ -5135,7 +5425,11 @@ ORDER BY ts ASC
       ...eventSourceBindings(siteId, window),
       ...eventSteps.map((s) => s.value),
     ];
-    const evRows = await queryD1All<Record<string, unknown>>(env, evSql, evBindings);
+    const evRows = await queryD1All<Record<string, unknown>>(
+      env,
+      evSql,
+      evBindings,
+    );
     for (const row of evRows) {
       const sid = String(row.sessionId ?? "");
       if (!sid) continue;
@@ -5181,17 +5475,19 @@ ORDER BY ts ASC
   const totalSessions = stepResults[0].sessions || 1;
   for (let i = 0; i < stepResults.length; i++) {
     stepResults[i].conversionRate = stepResults[i].sessions / totalSessions;
-    stepResults[i].dropOffRate = i === 0
-      ? 0
-      : 1 - (stepResults[i].sessions / (stepResults[i - 1].sessions || 1));
+    stepResults[i].dropOffRate =
+      i === 0
+        ? 0
+        : 1 - stepResults[i].sessions / (stepResults[i - 1].sessions || 1);
   }
 
   return jsonResponse({
     ok: true,
     steps: stepResults,
-    overallConversionRate: stepResults.length > 0
-      ? (stepResults[stepResults.length - 1].sessions / totalSessions)
-      : 0,
+    overallConversionRate:
+      stepResults.length > 0
+        ? stepResults[stepResults.length - 1].sessions / totalSessions
+        : 0,
   });
 }
 
@@ -5207,7 +5503,9 @@ async function handleDimension(
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
   const rawFilters = parseFilters(url);
-  const filters = options?.ignoreGeo ? withoutGeoFilter(rawFilters) : rawFilters;
+  const filters = options?.ignoreGeo
+    ? withoutGeoFilter(rawFilters)
+    : rawFilters;
   const limit = parseLimit(url, 20, 200);
   const rows = await queryDimensionAggregate(
     env,
@@ -5229,7 +5527,13 @@ async function handleEventTypes(
   if (!window) return badRequest("Invalid time window");
   const filters = parseFilters(url);
   const limit = parseLimit(url, 20, 200);
-  const rows = await queryEventTypeAggregate(env, siteId, window, filters, limit);
+  const rows = await queryEventTypeAggregate(
+    env,
+    siteId,
+    window,
+    filters,
+    limit,
+  );
   return jsonResponse({ ok: true, data: mapTabs(rows) });
 }
 
@@ -5244,15 +5548,17 @@ type OverviewGeoTabKey =
   | "timezone"
   | "organization";
 
-function parseClientDimensionKey(value: string | null): ClientDimensionKey | null {
+function parseClientDimensionKey(
+  value: string | null,
+): ClientDimensionKey | null {
   const normalized = String(value ?? "").trim();
   if (
-    normalized === "browser"
-    || normalized === "operatingSystem"
-    || normalized === "osVersion"
-    || normalized === "deviceType"
-    || normalized === "language"
-    || normalized === "screenSize"
+    normalized === "browser" ||
+    normalized === "operatingSystem" ||
+    normalized === "osVersion" ||
+    normalized === "deviceType" ||
+    normalized === "language" ||
+    normalized === "screenSize"
   ) {
     return normalized as ClientDimensionKey;
   }
@@ -5262,11 +5568,11 @@ function parseClientDimensionKey(value: string | null): ClientDimensionKey | nul
 function parseUtmDimensionKey(value: string | null): UtmDimensionKey | null {
   const normalized = String(value ?? "").trim();
   if (
-    normalized === "source"
-    || normalized === "medium"
-    || normalized === "campaign"
-    || normalized === "term"
-    || normalized === "content"
+    normalized === "source" ||
+    normalized === "medium" ||
+    normalized === "campaign" ||
+    normalized === "term" ||
+    normalized === "content"
   ) {
     return normalized as UtmDimensionKey;
   }
@@ -5283,7 +5589,13 @@ async function handleOverviewPageTab(
   if (!window) return badRequest("Invalid time window");
   const filters = parseFilters(url);
   const limit = parseLimit(url, 100, 200);
-  const tabs = await queryPageTabsAggregate(env, siteId, window, filters, limit);
+  const tabs = await queryPageTabsAggregate(
+    env,
+    siteId,
+    window,
+    filters,
+    limit,
+  );
   return jsonResponse({
     ok: true,
     data: mapTabs(tabs[tab]),
@@ -5417,7 +5729,13 @@ async function handleFilterOptions(
     filterKey === "entry" ||
     filterKey === "exit"
   ) {
-    const tabs = await queryPageTabsAggregate(env, siteId, window, filters, limit);
+    const tabs = await queryPageTabsAggregate(
+      env,
+      siteId,
+      window,
+      filters,
+      limit,
+    );
     data = mapDimensionRowsToFilterOptions(tabs[filterKey]);
   } else if (filterKey === "sourceDomain" || filterKey === "sourceLink") {
     const rows = await queryReferrerAggregate(
@@ -5577,24 +5895,30 @@ async function handleTeamDashboard(
   ]);
 
   const sitePayload = sites.map((site, index) => {
-    const overview = mapOverviewAggregate(currentOverview.get(site.id) ?? {
-      views: 0,
-      sessions: 0,
-      visitors: 0,
-      bounces: 0,
-      totalDuration: 0,
-      durationViews: 0,
-    });
-    const previous = mapOverviewAggregate(previousOverview.get(site.id) ?? {
-      views: 0,
-      sessions: 0,
-      visitors: 0,
-      bounces: 0,
-      totalDuration: 0,
-      durationViews: 0,
-    });
-    const currentPagesPerSession = overview.sessions > 0 ? overview.views / overview.sessions : 0;
-    const previousPagesPerSession = previous.sessions > 0 ? previous.views / previous.sessions : 0;
+    const overview = mapOverviewAggregate(
+      currentOverview.get(site.id) ?? {
+        views: 0,
+        sessions: 0,
+        visitors: 0,
+        bounces: 0,
+        totalDuration: 0,
+        durationViews: 0,
+      },
+    );
+    const previous = mapOverviewAggregate(
+      previousOverview.get(site.id) ?? {
+        views: 0,
+        sessions: 0,
+        visitors: 0,
+        bounces: 0,
+        totalDuration: 0,
+        durationViews: 0,
+      },
+    );
+    const currentPagesPerSession =
+      overview.sessions > 0 ? overview.views / overview.sessions : 0;
+    const previousPagesPerSession =
+      previous.sessions > 0 ? previous.views / previous.sessions : 0;
 
     return {
       ...site,
@@ -5604,8 +5928,14 @@ async function handleTeamDashboard(
         visitors: percentChange(overview.visitors, previous.visitors),
         sessions: percentChange(overview.sessions, previous.sessions),
         bounceRate: percentChange(overview.bounceRate, previous.bounceRate),
-        avgDurationMs: percentChange(overview.avgDurationMs, previous.avgDurationMs),
-        pagesPerSession: percentChange(currentPagesPerSession, previousPagesPerSession),
+        avgDurationMs: percentChange(
+          overview.avgDurationMs,
+          previous.avgDurationMs,
+        ),
+        pagesPerSession: percentChange(
+          currentPagesPerSession,
+          previousPagesPerSession,
+        ),
       },
     };
   });
@@ -5640,7 +5970,9 @@ async function handleTeamDashboard(
       ok: true,
       data: {
         sites: sitePayload,
-        trend: [...trendByBucket.values()].sort((left, right) => left.bucket - right.bucket),
+        trend: [...trendByBucket.values()].sort(
+          (left, right) => left.bucket - right.bucket,
+        ),
       },
     },
     200,
@@ -5756,7 +6088,8 @@ async function routeQuery(
   if (pathname === "countries") {
     return handleDimension(env, siteId, url, "country", { ignoreGeo: true });
   }
-  if (pathname === "filter-options") return handleFilterOptions(env, siteId, url);
+  if (pathname === "filter-options")
+    return handleFilterOptions(env, siteId, url);
   if (pathname === "overview-page-path") {
     return handleOverviewPageTab(env, siteId, url, "path");
   }
@@ -5875,11 +6208,13 @@ FROM dimension_rollup
 ORDER BY views DESC, sessions DESC, value ASC
 LIMIT ?
 `;
-  return (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings, limit],
-  )).map((row) => ({
+  return (
+    await queryD1All<Record<string, unknown>>(env, sql, [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      limit,
+    ])
+  ).map((row) => ({
     value: String(row.value ?? ""),
     views: Number(row.views ?? 0),
     sessions: Number(row.sessions ?? 0),
@@ -5935,11 +6270,13 @@ GROUP BY value
 ORDER BY views DESC, value ASC
 LIMIT ?
 `;
-  return (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings, limit],
-  )).map((row) => ({
+  return (
+    await queryD1All<Record<string, unknown>>(env, sql, [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      limit,
+    ])
+  ).map((row) => ({
     value: String(row.value ?? ""),
     views: Number(row.views ?? 0),
     sessions: Number(row.sessions ?? 0),
@@ -5966,7 +6303,14 @@ async function querySessionBoundaryDimensionFromD1(
   limit: number,
   kind: "entry" | "exit",
 ): Promise<DimensionRow[]> {
-  return querySessionPathDimensionFromD1(env, siteId, window, filters, limit, kind);
+  return querySessionPathDimensionFromD1(
+    env,
+    siteId,
+    window,
+    filters,
+    limit,
+    kind,
+  );
 }
 
 async function queryPageTabsFromD1(
@@ -6000,11 +6344,10 @@ filtered_visits AS (
 SELECT visitorId, sessionId, startedAt, pathname, title, hostname
 FROM filtered_visits
 `;
-  const rows = await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings],
-  );
+  const rows = await queryD1All<Record<string, unknown>>(env, sql, [
+    ...visitSourceBindings(siteId, window),
+    ...filter.bindings,
+  ]);
 
   const path = new Map<string, DimensionAccumulator>();
   const title = new Map<string, DimensionAccumulator>();
@@ -6019,7 +6362,12 @@ FROM filtered_visits
     const startedAt = Number(row.startedAt ?? 0);
     addDimensionValue(path, String(row.pathname ?? ""), sessionId, visitorId);
     addDimensionValue(title, String(row.title ?? ""), sessionId, visitorId);
-    addDimensionValue(hostname, String(row.hostname ?? ""), sessionId, visitorId);
+    addDimensionValue(
+      hostname,
+      String(row.hostname ?? ""),
+      sessionId,
+      visitorId,
+    );
     if (!sessionId) continue;
     if (visitorId) visitorBySession.set(sessionId, visitorId);
     const pathname = String(row.pathname ?? "").trim();
@@ -6037,10 +6385,20 @@ FROM filtered_visits
   const entry = new Map<string, DimensionAccumulator>();
   const exit = new Map<string, DimensionAccumulator>();
   for (const [sessionId, edge] of entryBySession.entries()) {
-    addDimensionValue(entry, edge.value, sessionId, visitorBySession.get(sessionId));
+    addDimensionValue(
+      entry,
+      edge.value,
+      sessionId,
+      visitorBySession.get(sessionId),
+    );
   }
   for (const [sessionId, edge] of exitBySession.entries()) {
-    addDimensionValue(exit, edge.value, sessionId, visitorBySession.get(sessionId));
+    addDimensionValue(
+      exit,
+      edge.value,
+      sessionId,
+      visitorBySession.get(sessionId),
+    );
   }
 
   return {
@@ -6080,11 +6438,13 @@ GROUP BY referrer
 ORDER BY views DESC, sessions DESC, referrer ASC
 LIMIT ?
 `;
-  return (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings, limit],
-  )).map((row) => ({
+  return (
+    await queryD1All<Record<string, unknown>>(env, sql, [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      limit,
+    ])
+  ).map((row) => ({
     referrer: String(row.referrer ?? ""),
     views: Number(row.views ?? 0),
     sessions: Number(row.sessions ?? 0),
@@ -6248,10 +6608,8 @@ GROUP BY fv.visitor_id
 ORDER BY ${visitorListOrderBy(sort)}
 LIMIT ? OFFSET ?
 `;
-  return (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [
+  return (
+    await queryD1All<Record<string, unknown>>(env, sql, [
       ...visitSourceBindings(siteId, window),
       ...eventSourceBindings(siteId, window),
       ...(targetVisitorId ? [targetVisitorId] : []),
@@ -6259,8 +6617,8 @@ LIMIT ? OFFSET ?
       ...(searchSql?.bindings ?? []),
       limit,
       offset,
-    ],
-  )).map((row) => ({
+    ])
+  ).map((row) => ({
     visitorId: String(row.visitorId ?? ""),
     sessionId: String(row.sessionId ?? ""),
     firstSeenAt: Number(row.firstSeenAt ?? 0),
@@ -6279,8 +6637,10 @@ LIMIT ? OFFSET ?
     os: String(row.os ?? ""),
     osVersion: String(row.osVersion ?? ""),
     deviceType: String(row.deviceType ?? ""),
-    screenWidth: row.screenWidth === null ? null : Number(row.screenWidth ?? 0) || null,
-    screenHeight: row.screenHeight === null ? null : Number(row.screenHeight ?? 0) || null,
+    screenWidth:
+      row.screenWidth === null ? null : Number(row.screenWidth ?? 0) || null,
+    screenHeight:
+      row.screenHeight === null ? null : Number(row.screenHeight ?? 0) || null,
   }));
 }
 
@@ -6299,7 +6659,11 @@ function sessionDurationMs(
   if (hasDurationAggregate && Number.isFinite(totalDurationMs)) {
     return Math.max(0, Math.round(totalDurationMs));
   }
-  if (Number.isFinite(startedAt) && Number.isFinite(endedAt) && endedAt > startedAt) {
+  if (
+    Number.isFinite(startedAt) &&
+    Number.isFinite(endedAt) &&
+    endedAt > startedAt
+  ) {
     return Math.max(0, Math.round(endedAt - startedAt));
   }
   return Math.max(0, Math.round(totalDurationMs || 0));
@@ -6350,9 +6714,10 @@ function buildJourneySearchSql(
     `${prefix}os_version`,
     `TRIM(COALESCE(${prefix}os, '') || ' ' || COALESCE(${prefix}os_version, ''))`,
     `${prefix}device_type`,
-  ].map((expression) => (
-    `LOWER(TRIM(COALESCE(${expression}, ''))) LIKE ? ESCAPE '\\'`
-  ));
+  ].map(
+    (expression) =>
+      `LOWER(TRIM(COALESCE(${expression}, ''))) LIKE ? ESCAPE '\\'`,
+  );
 
   return {
     condition: `(${expressions.join(" OR ")})`,
@@ -6444,11 +6809,12 @@ matched_sessions AS (
   const searchWhere = searchSql
     ? "AND fv.session_id IN (SELECT session_id FROM matched_sessions)"
     : "";
-  const targetColumn = target?.type === "visitor"
-    ? "visitor_id"
-    : target?.type === "session"
-      ? "session_id"
-      : "";
+  const targetColumn =
+    target?.type === "visitor"
+      ? "visitor_id"
+      : target?.type === "session"
+        ? "session_id"
+        : "";
   const targetClause = target
     ? whereClauseWithTarget(filter.clause, {
         column: targetColumn,
@@ -6597,10 +6963,8 @@ GROUP BY fv.session_id
 ORDER BY ${sessionListOrderBy(sort)}
 LIMIT ? OFFSET ?
 `;
-  return (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [
+  return (
+    await queryD1All<Record<string, unknown>>(env, sql, [
       ...visitSourceBindings(siteId, window),
       ...eventSourceBindings(siteId, window),
       ...(target ? [target.value] : []),
@@ -6608,18 +6972,19 @@ LIMIT ? OFFSET ?
       ...(searchSql?.bindings ?? []),
       limit,
       offset,
-    ],
-  )).map(mapSessionRow);
+    ])
+  ).map(mapSessionRow);
 }
 
 function mapJourneyEventRow(row: Record<string, unknown>): JourneyEventRow {
   return {
     id: String(row.id ?? ""),
-    kind: String(row.kind ?? "pageview") === "custom"
-      ? "custom"
-      : String(row.kind ?? "pageview") === "session_start"
-        ? "session_start"
-        : "pageview",
+    kind:
+      String(row.kind ?? "pageview") === "custom"
+        ? "custom"
+        : String(row.kind ?? "pageview") === "session_start"
+          ? "session_start"
+          : "pageview",
     eventType: String(row.eventType ?? ""),
     occurredAt: Number(row.occurredAt ?? 0),
     visitId: String(row.visitId ?? ""),
@@ -6756,20 +7121,20 @@ FROM (
 ORDER BY occurredAt DESC, id DESC
 LIMIT ?
 `;
-  return (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [
+  return (
+    await queryD1All<Record<string, unknown>>(env, sql, [
       ...visitSourceBindings(siteId, window),
       ...eventSourceBindings(siteId, window),
       target.value,
       ...filter.bindings,
       limit,
-    ],
-  )).map(mapJourneyEventRow);
+    ])
+  ).map(mapJourneyEventRow);
 }
 
-function summarizeVisitedPages(events: JourneyEventRow[]): JourneyPageCountRow[] {
+function summarizeVisitedPages(
+  events: JourneyEventRow[],
+): JourneyPageCountRow[] {
   const pages = new Map<string, number>();
   for (const event of events) {
     if (event.kind !== "pageview") continue;
@@ -6778,11 +7143,16 @@ function summarizeVisitedPages(events: JourneyEventRow[]): JourneyPageCountRow[]
   }
   return Array.from(pages.entries())
     .map(([pathname, views]) => ({ pathname, views }))
-    .sort((left, right) => right.views - left.views || left.pathname.localeCompare(right.pathname))
+    .sort(
+      (left, right) =>
+        right.views - left.views || left.pathname.localeCompare(right.pathname),
+    )
     .slice(0, 50);
 }
 
-function summarizeEventDistribution(events: JourneyEventRow[]): JourneyEventCountRow[] {
+function summarizeEventDistribution(
+  events: JourneyEventRow[],
+): JourneyEventCountRow[] {
   const counts = new Map<string, number>();
   for (const event of events) {
     const label = event.eventType.trim() || event.kind;
@@ -6790,7 +7160,11 @@ function summarizeEventDistribution(events: JourneyEventRow[]): JourneyEventCoun
   }
   return Array.from(counts.entries())
     .map(([eventType, count]) => ({ eventType, count }))
-    .sort((left, right) => right.count - left.count || left.eventType.localeCompare(right.eventType))
+    .sort(
+      (left, right) =>
+        right.count - left.count ||
+        left.eventType.localeCompare(right.eventType),
+    )
     .slice(0, 50);
 }
 
@@ -6856,8 +7230,10 @@ function mapVisitorRow(row: Record<string, unknown>): VisitorRow {
     os: String(row.os ?? ""),
     osVersion: String(row.osVersion ?? ""),
     deviceType: String(row.deviceType ?? ""),
-    screenWidth: row.screenWidth === null ? null : Number(row.screenWidth ?? 0) || null,
-    screenHeight: row.screenHeight === null ? null : Number(row.screenHeight ?? 0) || null,
+    screenWidth:
+      row.screenWidth === null ? null : Number(row.screenWidth ?? 0) || null,
+    screenHeight:
+      row.screenHeight === null ? null : Number(row.screenHeight ?? 0) || null,
   };
 }
 
@@ -6988,14 +7364,10 @@ WHERE fv.visitor_id != ''
 GROUP BY fv.visitor_id
 LIMIT 1
 `;
-  const rows = await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [
-      ...targetVisitSourceBindings(siteId, visitorId),
-      ...detailCustomEventSourceBindings(siteId),
-    ],
-  );
+  const rows = await queryD1All<Record<string, unknown>>(env, sql, [
+    ...targetVisitSourceBindings(siteId, visitorId),
+    ...detailCustomEventSourceBindings(siteId),
+  ]);
   return rows[0] ? mapVisitorRow(rows[0]) : null;
 }
 
@@ -7142,14 +7514,12 @@ WHERE fv.session_id != ''
 GROUP BY fv.session_id
 ORDER BY startedAt DESC, sessionId ASC
 `;
-  return (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [
+  return (
+    await queryD1All<Record<string, unknown>>(env, sql, [
       ...targetVisitSourceBindings(siteId, target.value),
       ...detailCustomEventSourceBindings(siteId),
-    ],
-  )).map(mapSessionRow);
+    ])
+  ).map(mapSessionRow);
 }
 
 async function queryJourneyEventsForDetailFromD1(
@@ -7225,14 +7595,12 @@ FROM (
 )
 ORDER BY occurredAt DESC, id DESC
 `;
-  return (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [
+  return (
+    await queryD1All<Record<string, unknown>>(env, sql, [
       ...targetVisitSourceBindings(siteId, target.value),
       ...detailCustomEventSourceBindings(siteId),
-    ],
-  )).map(mapJourneyEventRow);
+    ])
+  ).map(mapJourneyEventRow);
 }
 
 async function queryVisitorDetailFromD1(
@@ -7253,10 +7621,10 @@ async function queryVisitorDetailFromD1(
   ]);
   if (!visitor) return null;
 
-  const events = [
-    ...sessions.map(sessionStartEvent),
-    ...baseEvents,
-  ].sort((left, right) => right.occurredAt - left.occurredAt || right.id.localeCompare(left.id));
+  const events = [...sessions.map(sessionStartEvent), ...baseEvents].sort(
+    (left, right) =>
+      right.occurredAt - left.occurredAt || right.id.localeCompare(left.id),
+  );
   const totalEvents = events.length;
   const sessionCount = sessions.length;
   const views = baseEvents.filter((event) => event.kind === "pageview").length;
@@ -7277,13 +7645,17 @@ async function queryVisitorDetailFromD1(
       views,
       avgEventsPerSession: sessionCount > 0 ? totalEvents / sessionCount : 0,
       bounceRate: sessionCount > 0 ? bounces / sessionCount : 0,
-      avgDurationMs: sessionCount > 0 ? Math.round(durationTotal / sessionCount) : 0,
+      avgDurationMs:
+        sessionCount > 0 ? Math.round(durationTotal / sessionCount) : 0,
       p90DurationMs: percentile(durationValues, 90),
       firstSeenAt: visitor.firstSeenAt,
       lastSeenAt: visitor.lastSeenAt,
       daysActive,
-      conversionEvents: events.filter((event) => event.kind === "custom").length,
-      avgTimeBetweenSessionsMs: averageGapMs(sessions.map((session) => session.startedAt)),
+      conversionEvents: events.filter((event) => event.kind === "custom")
+        .length,
+      avgTimeBetweenSessionsMs: averageGapMs(
+        sessions.map((session) => session.startedAt),
+      ),
     },
     sessions,
     events,
@@ -7311,10 +7683,10 @@ async function querySessionDetailFromD1(
   const session = sessions.find((item) => item.sessionId === sessionId);
   if (!session) return null;
 
-  const events = [
-    sessionStartEvent(session),
-    ...baseEvents,
-  ].sort((left, right) => right.occurredAt - left.occurredAt || right.id.localeCompare(left.id));
+  const events = [sessionStartEvent(session), ...baseEvents].sort(
+    (left, right) =>
+      right.occurredAt - left.occurredAt || right.id.localeCompare(left.id),
+  );
 
   return {
     session,
@@ -7358,11 +7730,13 @@ WHERE
 ORDER BY timestampMs DESC
 LIMIT ?
 `;
-  const points = (await queryD1All<Record<string, unknown>>(
-    env,
-    pointsSql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings, limit],
-  )).map((row) => ({
+  const points = (
+    await queryD1All<Record<string, unknown>>(env, pointsSql, [
+      ...visitSourceBindings(siteId, window),
+      ...filter.bindings,
+      limit,
+    ])
+  ).map((row) => ({
     latitude: Number(row.latitude ?? 0),
     longitude: Number(row.longitude ?? 0),
     timestampMs: Number(row.timestampMs ?? 0),
@@ -7399,11 +7773,12 @@ ORDER BY views DESC, sessions DESC, country ASC
 LIMIT 300
 `;
     countryCounts.push(
-      ...(await queryD1All<Record<string, unknown>>(
-        env,
-        countrySql,
-        [...visitSourceBindings(siteId, window), ...filter.bindings],
-      )).map((row) => ({
+      ...(
+        await queryD1All<Record<string, unknown>>(env, countrySql, [
+          ...visitSourceBindings(siteId, window),
+          ...filter.bindings,
+        ])
+      ).map((row) => ({
         country: String(row.country ?? ""),
         views: Number(row.views ?? 0),
         sessions: Number(row.sessions ?? 0),
@@ -7443,14 +7818,19 @@ ORDER BY views DESC, sessions DESC, region ASC, regionCode ASC
 LIMIT 400
 `;
     regionCounts.push(
-      ...(await queryD1All<Record<string, unknown>>(
-        env,
-        regionSql,
-        [...visitSourceBindings(siteId, window), ...filter.bindings],
-      ))
+      ...(
+        await queryD1All<Record<string, unknown>>(env, regionSql, [
+          ...visitSourceBindings(siteId, window),
+          ...filter.bindings,
+        ])
+      )
         .map((row) => {
-          const country = String(row.country ?? "").trim().toUpperCase();
-          const regionCode = String(row.regionCode ?? "").trim().toUpperCase();
+          const country = String(row.country ?? "")
+            .trim()
+            .toUpperCase();
+          const regionCode = String(row.regionCode ?? "")
+            .trim()
+            .toUpperCase();
           const regionName = String(row.region ?? "").trim() || regionCode;
           const value = buildRegionLocationValue(
             country,
@@ -7500,14 +7880,19 @@ ORDER BY views DESC, sessions DESC, city ASC
 LIMIT 600
 `;
     cityCounts.push(
-      ...(await queryD1All<Record<string, unknown>>(
-        env,
-        citySql,
-        [...visitSourceBindings(siteId, window), ...filter.bindings],
-      ))
+      ...(
+        await queryD1All<Record<string, unknown>>(env, citySql, [
+          ...visitSourceBindings(siteId, window),
+          ...filter.bindings,
+        ])
+      )
         .map((row) => {
-          const country = String(row.country ?? "").trim().toUpperCase();
-          const regionCode = String(row.regionCode ?? "").trim().toUpperCase();
+          const country = String(row.country ?? "")
+            .trim()
+            .toUpperCase();
+          const regionCode = String(row.regionCode ?? "")
+            .trim()
+            .toUpperCase();
           const regionName = String(row.region ?? "").trim() || regionCode;
           const city = String(row.city ?? "").trim();
           const value = buildLocalityLocationValue(
@@ -7596,11 +7981,14 @@ WHERE TRIM(value) != ''
 ORDER BY views DESC, sessions DESC, value ASC
 LIMIT ?
 `;
-  return (await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...eventSourceBindings(siteId, window), ...filter.bindings, limit],
-  )).map((row) => ({
+  return (
+    await queryD1All<Record<string, unknown>>(env, sql, [
+      ...visitSourceBindings(siteId, window),
+      ...eventSourceBindings(siteId, window),
+      ...filter.bindings,
+      limit,
+    ])
+  ).map((row) => ({
     value: String(row.value ?? ""),
     views: Number(row.views ?? 0),
     sessions: Number(row.sessions ?? 0),
@@ -7635,11 +8023,10 @@ filtered_visits AS (
 SELECT sessionId, browser, os, osVersion, deviceType, language, screenWidth, screenHeight
 FROM filtered_visits
 `;
-  const rows = await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings],
-  );
+  const rows = await queryD1All<Record<string, unknown>>(env, sql, [
+    ...visitSourceBindings(siteId, window),
+    ...filter.bindings,
+  ]);
 
   const browser = new Map<string, DimensionAccumulator>();
   const osVersion = new Map<string, DimensionAccumulator>();
@@ -7654,11 +8041,24 @@ FROM filtered_visits
     addDimensionValue(language, String(row.language ?? ""), sessionId);
     const os = String(row.os ?? "").trim();
     const version = String(row.osVersion ?? "").trim();
-    addDimensionValue(osVersion, os && version ? `${os} ${version}` : os || version, sessionId);
+    addDimensionValue(
+      osVersion,
+      os && version ? `${os} ${version}` : os || version,
+      sessionId,
+    );
     const width = Number(row.screenWidth ?? 0);
     const height = Number(row.screenHeight ?? 0);
-    if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
-      addDimensionValue(screenSize, `${Math.trunc(width)}x${Math.trunc(height)}`, sessionId);
+    if (
+      Number.isFinite(width) &&
+      width > 0 &&
+      Number.isFinite(height) &&
+      height > 0
+    ) {
+      addDimensionValue(
+        screenSize,
+        `${Math.trunc(width)}x${Math.trunc(height)}`,
+        sessionId,
+      );
     }
   }
 
@@ -7698,11 +8098,10 @@ filtered_visits AS (
 SELECT sessionId, visitorId, country, region, city, continent, timezone, asOrganization
 FROM filtered_visits
 `;
-  const rows = await queryD1All<Record<string, unknown>>(
-    env,
-    sql,
-    [...visitSourceBindings(siteId, window), ...filter.bindings],
-  );
+  const rows = await queryD1All<Record<string, unknown>>(env, sql, [
+    ...visitSourceBindings(siteId, window),
+    ...filter.bindings,
+  ]);
 
   const country = new Map<string, GeoDimensionAccumulator>();
   const region = new Map<string, GeoDimensionAccumulator>();
@@ -7714,11 +8113,31 @@ FROM filtered_visits
   for (const row of rows) {
     const sessionId = String(row.sessionId ?? "");
     const visitorId = String(row.visitorId ?? "");
-    addGeoDimensionValue(country, String(row.country ?? ""), sessionId, visitorId);
-    addGeoDimensionValue(region, String(row.region ?? ""), sessionId, visitorId);
+    addGeoDimensionValue(
+      country,
+      String(row.country ?? ""),
+      sessionId,
+      visitorId,
+    );
+    addGeoDimensionValue(
+      region,
+      String(row.region ?? ""),
+      sessionId,
+      visitorId,
+    );
     addGeoDimensionValue(city, String(row.city ?? ""), sessionId, visitorId);
-    addGeoDimensionValue(continent, String(row.continent ?? ""), sessionId, visitorId);
-    addGeoDimensionValue(timezone, String(row.timezone ?? ""), sessionId, visitorId);
+    addGeoDimensionValue(
+      continent,
+      String(row.continent ?? ""),
+      sessionId,
+      visitorId,
+    );
+    addGeoDimensionValue(
+      timezone,
+      String(row.timezone ?? ""),
+      sessionId,
+      visitorId,
+    );
     addGeoDimensionValue(
       organization,
       String(row.asOrganization ?? ""),

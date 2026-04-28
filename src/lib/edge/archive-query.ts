@@ -1,8 +1,12 @@
-import type { Env } from "./types";
-import { ONE_HOUR_MS, coerceNumber } from "./utils";
 import { requireSession } from "./session-auth";
+import type { Env } from "./types";
+import { coerceNumber, ONE_HOUR_MS } from "./utils";
 
-function jsonResponse(payload: unknown, status = 200, extraHeaders?: Record<string, string>): Response {
+function jsonResponse(
+  payload: unknown,
+  status = 200,
+  extraHeaders?: Record<string, string>,
+): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
@@ -47,14 +51,21 @@ function normalizeRange(
 
   const start = Math.max(0, Math.floor(range.offset ?? 0));
   const maxLength = Math.max(0, size - start);
-  const requestedLength = range.length === undefined ? maxLength : Math.max(0, Math.floor(range.length));
+  const requestedLength =
+    range.length === undefined
+      ? maxLength
+      : Math.max(0, Math.floor(range.length));
   const length = Math.min(maxLength, requestedLength);
   if (length <= 0) return null;
   const end = start + length - 1;
   return { start, end, length };
 }
 
-async function assertSiteMembership(env: Env, siteId: string, userId: string): Promise<boolean> {
+async function assertSiteMembership(
+  env: Env,
+  siteId: string,
+  userId: string,
+): Promise<boolean> {
   const row = await env.DB.prepare(
     `
       SELECT 1 AS ok
@@ -69,11 +80,17 @@ async function assertSiteMembership(env: Env, siteId: string, userId: string): P
   return Boolean(row?.ok);
 }
 
-function parseWindowHours(url: URL): { fromHour: number; toHour: number } | null {
+function parseWindowHours(
+  url: URL,
+): { fromHour: number; toHour: number } | null {
   const nowMs = Date.now();
   const defaultFrom = nowMs - 365 * 24 * ONE_HOUR_MS;
-  const fromMs = Math.floor(coerceNumber(url.searchParams.get("from"), defaultFrom) ?? defaultFrom);
-  const toMs = Math.floor(coerceNumber(url.searchParams.get("to"), nowMs) ?? nowMs);
+  const fromMs = Math.floor(
+    coerceNumber(url.searchParams.get("from"), defaultFrom) ?? defaultFrom,
+  );
+  const toMs = Math.floor(
+    coerceNumber(url.searchParams.get("to"), nowMs) ?? nowMs,
+  );
   if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs < fromMs) {
     return null;
   }
@@ -83,7 +100,11 @@ function parseWindowHours(url: URL): { fromHour: number; toHour: number } | null
   };
 }
 
-async function handleManifest(request: Request, env: Env, url: URL): Promise<Response> {
+async function handleManifest(
+  request: Request,
+  env: Env,
+  url: URL,
+): Promise<Response> {
   if (request.method !== "GET") {
     return notAllowed();
   }
@@ -97,7 +118,10 @@ async function handleManifest(request: Request, env: Env, url: URL): Promise<Res
     return unauthorized();
   }
 
-  const allowed = session.systemRole === "admin" ? true : await assertSiteMembership(env, siteId, session.userId);
+  const allowed =
+    session.systemRole === "admin"
+      ? true
+      : await assertSiteMembership(env, siteId, session.userId);
   if (!allowed) {
     return unauthorized("Site access denied for current user");
   }
@@ -153,7 +177,11 @@ async function handleManifest(request: Request, env: Env, url: URL): Promise<Res
   });
 }
 
-async function handleFile(request: Request, env: Env, url: URL): Promise<Response> {
+async function handleFile(
+  request: Request,
+  env: Env,
+  url: URL,
+): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return notAllowed();
   }
@@ -188,7 +216,10 @@ async function handleFile(request: Request, env: Env, url: URL): Promise<Respons
     return notFound("Archive object is not queryable in precise mode");
   }
 
-  const allowed = session.systemRole === "admin" ? true : await assertSiteMembership(env, row.siteId, session.userId);
+  const allowed =
+    session.systemRole === "admin"
+      ? true
+      : await assertSiteMembership(env, row.siteId, session.userId);
   if (!allowed) {
     return unauthorized("Site access denied for current user");
   }
@@ -203,7 +234,10 @@ async function handleFile(request: Request, env: Env, url: URL): Promise<Respons
   }
 
   const headers = new Headers();
-  headers.set("content-type", object.httpMetadata?.contentType || "application/vnd.apache.parquet");
+  headers.set(
+    "content-type",
+    object.httpMetadata?.contentType || "application/vnd.apache.parquet",
+  );
   headers.set("cache-control", "private, max-age=120");
   headers.set("accept-ranges", "bytes");
   headers.set("etag", object.httpEtag);
@@ -214,7 +248,10 @@ async function handleFile(request: Request, env: Env, url: URL): Promise<Respons
   if (rangeHeader && normalizedRange) {
     status = 206;
     contentLength = normalizedRange.length;
-    headers.set("content-range", `bytes ${normalizedRange.start}-${normalizedRange.end}/${object.size}`);
+    headers.set(
+      "content-range",
+      `bytes ${normalizedRange.start}-${normalizedRange.end}/${object.size}`,
+    );
   }
 
   headers.set("content-length", String(contentLength));
@@ -226,7 +263,11 @@ async function handleFile(request: Request, env: Env, url: URL): Promise<Respons
   return new Response(object.body, { status, headers });
 }
 
-export async function handlePrivateArchive(request: Request, env: Env, url: URL): Promise<Response> {
+export async function handlePrivateArchive(
+  request: Request,
+  env: Env,
+  url: URL,
+): Promise<Response> {
   const pathname = url.pathname;
   if (pathname === "/api/private/archive/manifest") {
     return handleManifest(request, env, url);

@@ -8,21 +8,22 @@ import {
   Radar,
   RadarChart,
 } from "recharts";
+
+import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  type ChartConfig,
   ChartContainer,
   ChartTooltip,
-  type ChartConfig,
 } from "@/components/ui/chart";
-import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { fetchBrowserRadar } from "@/lib/dashboard/client-data";
 import {
   durationFormat,
   numberFormat,
   percentFormat,
 } from "@/lib/dashboard/format";
-import type { BrowserRadarData, BrowserRadarItem } from "@/lib/edge-client";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { BrowserRadarData, BrowserRadarItem } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 

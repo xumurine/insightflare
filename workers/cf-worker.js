@@ -1,6 +1,6 @@
-import { IngestDurableObject as BaseIngestDurableObject } from "../src/lib/edge/ingest-do";
-import { runHourlyArchive } from "../src/lib/edge/archive";
 import nextWorker from "../.open-next/worker.js";
+import { runHourlyArchive } from "../src/lib/edge/archive";
+import { IngestDurableObject as BaseIngestDurableObject } from "../src/lib/edge/ingest-do";
 
 async function handleAdminWs(request, env) {
   const incomingUrl = new URL(request.url);
@@ -27,4 +27,3 @@ export default {
     ctx.waitUntil(runHourlyArchive(env, controller.scheduledTime));
   },
 };
-

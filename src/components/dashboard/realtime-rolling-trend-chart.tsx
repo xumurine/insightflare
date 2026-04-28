@@ -2,13 +2,14 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+
 import {
+  type ChartConfig,
   ChartContainer,
   ChartLegend,
   ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
-  type ChartConfig,
 } from "@/components/ui/chart";
 import { intlLocale, numberFormat } from "@/lib/dashboard/format";
 import type { Locale } from "@/lib/i18n/config";
@@ -28,7 +29,7 @@ interface RealtimeRollingTrendChartProps {
   className?: string;
 }
 
-interface AnimatedTrendPoint extends RealtimeRollingTrendPoint {}
+type AnimatedTrendPoint = RealtimeRollingTrendPoint;
 
 const ANIMATION_DURATION_MS = 300;
 
@@ -122,11 +123,7 @@ export function RealtimeRollingTrendChart({
 
     const startedAt = performance.now();
     const tick = (now: number) => {
-      const progress = clamp(
-        (now - startedAt) / ANIMATION_DURATION_MS,
-        0,
-        1,
-      );
+      const progress = clamp((now - startedAt) / ANIMATION_DURATION_MS, 0, 1);
       const eased = easeOutCubic(progress);
       const next = target.map((point, index) => {
         const base = from[index];
@@ -178,7 +175,8 @@ export function RealtimeRollingTrendChart({
     [localeCode],
   );
   const yAxisTickFormatter = useMemo(
-    () => (value: number | string) => numberFormat(locale, Math.round(Number(value ?? 0))),
+    () => (value: number | string) =>
+      numberFormat(locale, Math.round(Number(value ?? 0))),
     [locale],
   );
   const chartConfig = useMemo(
@@ -286,9 +284,10 @@ export function RealtimeRollingTrendChart({
               formatter={(value, name, _item, _index, payload) => {
                 const isViews = name === "nonSessionViews";
                 const label = isViews ? viewsLabel : sessionsLabel;
-                const row = (payload ?? null) as
-                  | { views?: number; sessions?: number }
-                  | null;
+                const row = (payload ?? null) as {
+                  views?: number;
+                  sessions?: number;
+                } | null;
                 const numeric = isViews
                   ? Number(row?.views ?? 0)
                   : Number(row?.sessions ?? value ?? 0);

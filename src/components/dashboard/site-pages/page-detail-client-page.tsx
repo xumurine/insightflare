@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+
 import { AsyncDimensionBreakdownCard } from "@/components/dashboard/async-dimension-breakdown-card";
 import {
   OverviewMetricsSection,
@@ -127,10 +128,7 @@ export function PageDetailClientPage({
     () => ["path", "query", "hostname", "entry", "exit"] as const,
     [],
   );
-  const pageCardDetailTabs = useMemo(
-    () => ["entry", "exit"] as const,
-    [],
-  );
+  const pageCardDetailTabs = useMemo(() => ["entry", "exit"] as const, []);
   const pageCardTargetUrlResolvers = useMemo(
     () => ({
       path: ({
@@ -209,15 +207,20 @@ export function PageDetailClientPage({
     [messages.pages.noHash, messages.pages.noQuery, pagePath, siteDomain],
   );
   const eventTabs = useMemo(
-    () => [
-      {
-        value: "event",
-        label: messages.pages.eventTab,
-        columnLabel: messages.common.event,
-        primaryMetricLabel: messages.pages.eventsMetric,
-      },
-    ] as const,
-    [messages.common.event, messages.pages.eventTab, messages.pages.eventsMetric],
+    () =>
+      [
+        {
+          value: "event",
+          label: messages.pages.eventTab,
+          columnLabel: messages.common.event,
+          primaryMetricLabel: messages.pages.eventsMetric,
+        },
+      ] as const,
+    [
+      messages.common.event,
+      messages.pages.eventTab,
+      messages.pages.eventsMetric,
+    ],
   );
 
   useEffect(() => {
@@ -362,7 +365,8 @@ export function PageDetailClientPage({
             }),
             messages.common.unknown,
             { mono: true },
-          )}
+          )
+        }
       />
     </div>
   );
