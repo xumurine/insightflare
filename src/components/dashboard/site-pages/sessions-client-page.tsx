@@ -9,7 +9,11 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useRouter } from "next/navigation";
-import { RiSearchLine } from "@remixicon/react";
+import {
+  RiArrowDownSLine,
+  RiArrowUpSLine,
+  RiSearchLine,
+} from "@remixicon/react";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import {
@@ -26,6 +30,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   Table,
   TableBody,
@@ -40,6 +45,7 @@ import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import type { JourneySession, SessionsMeta } from "@/lib/edge-client";
+import { navigateWithTransition } from "@/lib/page-transition";
 import { cn } from "@/lib/utils";
 
 interface SessionsClientPageProps {
@@ -51,6 +57,19 @@ interface SessionsClientPageProps {
 
 const SESSION_PAGE_SIZE = 80;
 const SESSION_SKELETON_ROWS = 8;
+
+type SortDirection = "asc" | "desc";
+type SessionSortKey = "startedAt" | "durationMs" | "views";
+
+interface SessionSortState {
+  key: SessionSortKey;
+  direction: SortDirection;
+}
+
+const DEFAULT_SESSION_SORT: SessionSortState = {
+  key: "startedAt",
+  direction: "desc",
+};
 
 const INITIAL_SESSION_META: SessionsMeta = {
   page: 1,
@@ -109,27 +128,6 @@ function copy(locale: Locale) {
 function shortId(value: string): string {
   if (value.length <= 12) return value;
   return `${value.slice(0, 9)}...`;
-}
-
-function matchesSession(row: JourneySession, query: string): boolean {
-  if (!query) return true;
-  const target = [
-    row.sessionId,
-    row.visitorId,
-    row.entryPath,
-    row.exitPath,
-    row.referrerHost,
-    row.referrerUrl,
-    row.country,
-    row.region,
-    row.city,
-    row.browser,
-    row.os,
-    row.deviceType,
-  ]
-    .join(" ")
-    .toLocaleLowerCase();
-  return target.includes(query.toLocaleLowerCase());
 }
 
 function SessionRowSkeleton({
@@ -194,6 +192,74 @@ function PageViewsValue({ locale, views }: { locale: Locale; views: number }) {
   return <span className="font-mono tabular-nums">{value}</span>;
 }
 
+function SortIndicator({
+  active,
+  direction,
+}: {
+  active: boolean;
+  direction: SortDirection;
+}) {
+  if (active) {
+    return direction === "desc" ? (
+      <RiArrowDownSLine className="size-3.5" />
+    ) : (
+      <RiArrowUpSLine className="size-3.5" />
+    );
+  }
+
+  return (
+    <span className="inline-flex flex-col leading-none text-muted-foreground">
+      <RiArrowUpSLine className="-mb-1 size-3.5" />
+      <RiArrowDownSLine className="-mt-1 size-3.5" />
+    </span>
+  );
+}
+
+function SortHeader({
+  label,
+  active,
+  direction,
+  onClick,
+  align = "left",
+  className,
+}: {
+  label: string;
+  active: boolean;
+  direction: SortDirection;
+  onClick: () => void;
+  align?: "left" | "center" | "right";
+  className?: string;
+}) {
+  return (
+    <TableHead
+      aria-sort={
+        active ? (direction === "asc" ? "ascending" : "descending") : "none"
+      }
+      className={className}
+    >
+      <div
+        className={cn(
+          "flex",
+          align === "center" && "justify-center",
+          align === "right" && "justify-end",
+        )}
+      >
+        <button
+          type="button"
+          className={cn(
+            "inline-flex items-center gap-1 whitespace-nowrap transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+            active ? "text-foreground" : "text-muted-foreground",
+          )}
+          onClick={onClick}
+        >
+          {label}
+          <SortIndicator active={active} direction={direction} />
+        </button>
+      </div>
+    </TableHead>
+  );
+}
+
 function appendUniqueSessions(
   current: JourneySession[],
   incoming: JourneySession[],
@@ -228,19 +294,49 @@ export function SessionsClientPage({
   const [error, setError] = useState(false);
   const [appendError, setAppendError] = useState(false);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [sort, setSort] = useState<SessionSortState>(DEFAULT_SESSION_SORT);
   const [now, setNow] = useState(() => Date.now());
-  const sentinelRef = useRef<HTMLTableRowElement | null>(null);
+  const [sentinelNode, setSentinelNode] =
+    useState<HTMLTableRowElement | null>(null);
   const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const requestKey = useMemo(
-    () => [siteId, timeWindow.from, timeWindow.to, filtersKey].join(":"),
-    [filtersKey, siteId, timeWindow.from, timeWindow.to],
+    () =>
+      [
+        siteId,
+        timeWindow.from,
+        timeWindow.to,
+        filtersKey,
+        debouncedQuery,
+        sort.key,
+        sort.direction,
+      ].join(":"),
+    [
+      debouncedQuery,
+      filtersKey,
+      siteId,
+      sort.direction,
+      sort.key,
+      timeWindow.from,
+      timeWindow.to,
+    ],
   );
+  const tableTransitionKey = `sessions-table-${debouncedQuery || "all"}`;
+  const replacingRows =
+    loadingInitial || latestRequestKeyRef.current !== requestKey;
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedQuery(query.trim());
+    }, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [query]);
 
   const loadPage = useEffectEvent(
     async (page: number, mode: "replace" | "append") => {
@@ -259,6 +355,9 @@ export function SessionsClientPage({
         const payload = await fetchSessions(siteId, timeWindow, filters, {
           page,
           pageSize: SESSION_PAGE_SIZE,
+          sortBy: sort.key,
+          sortDir: sort.direction,
+          search: debouncedQuery,
         });
         if (latestRequestKeyRef.current !== capturedRequestKey) return;
 
@@ -313,13 +412,8 @@ export function SessionsClientPage({
     void loadPage(1, "replace");
   }, [requestKey]);
 
-  const filteredRows = useMemo(
-    () => rows.filter((row) => matchesSession(row, query.trim())),
-    [query, rows],
-  );
-
   useEffect(() => {
-    const target = sentinelRef.current;
+    const target = sentinelNode;
     if (
       !target ||
       loadingInitial ||
@@ -365,10 +459,22 @@ export function SessionsClientPage({
     loadingMore,
     meta.hasMore,
     meta.nextPage,
+    sentinelNode,
   ]);
 
   const openSession = (href: string) => {
-    router.push(href);
+    navigateWithTransition(router, href);
+  };
+
+  const toggleSort = (key: SessionSortKey) => {
+    setSort((current) =>
+      current.key === key
+        ? {
+            key,
+            direction: current.direction === "desc" ? "asc" : "desc",
+          }
+        : { key, direction: "desc" },
+    );
   };
 
   const handleSessionKeyDown = (
@@ -397,176 +503,198 @@ export function SessionsClientPage({
         />
       </div>
 
-      <Card className="py-0">
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-32 pl-4">{labels.visitor}</TableHead>
-                <TableHead>{labels.sessionId}</TableHead>
-                <TableHead>{labels.started}</TableHead>
-                <TableHead className="text-center">{labels.duration}</TableHead>
-                <TableHead className="text-center">
-                  {labels.pageViews}
-                </TableHead>
-                <TableHead>{labels.referrer}</TableHead>
-                <TableHead>{labels.location}</TableHead>
-                <TableHead>{labels.os}</TableHead>
-                <TableHead>{labels.browser}</TableHead>
-                <TableHead>{labels.device}</TableHead>
-                <TableHead>{labels.entryPage}</TableHead>
-                <TableHead>{labels.exitPage}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody aria-busy={loadingInitial || loadingMore}>
-              {loadingInitial ? (
-                Array.from({ length: SESSION_SKELETON_ROWS }, (_, index) => (
-                  <SessionRowSkeleton
-                    key={`initial-skeleton-${index}`}
-                    index={index}
+      <AutoTransition
+        type="fade"
+        duration={0.18}
+        initial={false}
+        className="w-full"
+      >
+        <Card key={tableTransitionKey} className="py-0">
+          <CardContent className="px-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-32 pl-4">{labels.visitor}</TableHead>
+                  <TableHead>{labels.sessionId}</TableHead>
+                  <SortHeader
+                    label={labels.started}
+                    active={sort.key === "startedAt"}
+                    direction={sort.direction}
+                    onClick={() => toggleSort("startedAt")}
                   />
-                ))
-              ) : error ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={12}
-                    className="h-28 text-center text-muted-foreground"
-                  >
-                    {labels.loadError}
-                  </TableCell>
+                  <SortHeader
+                    label={labels.duration}
+                    active={sort.key === "durationMs"}
+                    direction={sort.direction}
+                    onClick={() => toggleSort("durationMs")}
+                    align="center"
+                    className="text-center"
+                  />
+                  <SortHeader
+                    label={labels.pageViews}
+                    active={sort.key === "views"}
+                    direction={sort.direction}
+                    onClick={() => toggleSort("views")}
+                    align="center"
+                    className="text-center"
+                  />
+                  <TableHead>{labels.referrer}</TableHead>
+                  <TableHead>{labels.location}</TableHead>
+                  <TableHead>{labels.os}</TableHead>
+                  <TableHead>{labels.browser}</TableHead>
+                  <TableHead>{labels.device}</TableHead>
+                  <TableHead>{labels.entryPage}</TableHead>
+                  <TableHead>{labels.exitPage}</TableHead>
                 </TableRow>
-              ) : filteredRows.length === 0 && !meta.hasMore ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={12}
-                    className="h-28 text-center text-muted-foreground"
-                  >
-                    {labels.empty}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                <>
-                  {filteredRows.map((row) => {
-                    const href = `${pathname}/detail?sessionId=${encodeURIComponent(row.sessionId)}`;
-                    const active = isSessionActive(row, now);
-                    return (
-                      <TableRow
-                        key={row.sessionId}
-                        role="link"
-                        tabIndex={0}
-                        aria-label={`${labels.sessionId}: ${row.sessionId}`}
-                        data-session-row=""
-                        className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-                        onClick={() => openSession(href)}
-                        onKeyDown={(event) => handleSessionKeyDown(event, href)}
-                      >
-                        <TableCell className="w-32 pl-4">
-                          <div className="flex w-28 items-center gap-2">
-                            <VisitorAvatar
-                              seed={row.visitorId}
-                              className="size-6"
-                            />
-                            <span className="truncate">{labels.anonymous}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="font-mono font-medium">
-                            {shortId(row.sessionId)}
-                          </span>
-                        </TableCell>
-                        <TableCell
-                          className={cn(
-                            "font-mono",
-                            active ? "text-foreground" : "text-muted-foreground",
-                          )}
+              </TableHeader>
+              <TableBody aria-busy={replacingRows || loadingMore}>
+                {replacingRows ? (
+                  Array.from({ length: SESSION_SKELETON_ROWS }, (_, index) => (
+                    <SessionRowSkeleton
+                      key={`initial-skeleton-${index}`}
+                      index={index}
+                    />
+                  ))
+                ) : error ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={12}
+                      className="h-28 text-center text-muted-foreground"
+                    >
+                      {labels.loadError}
+                    </TableCell>
+                  </TableRow>
+                ) : rows.length === 0 && !meta.hasMore ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={12}
+                      className="h-28 text-center text-muted-foreground"
+                    >
+                      {labels.empty}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  <>
+                    {rows.map((row) => {
+                      const href = `${pathname}/detail?sessionId=${encodeURIComponent(row.sessionId)}`;
+                      const active = isSessionActive(row, now);
+                      return (
+                        <TableRow
+                          key={row.sessionId}
+                          role="link"
+                          tabIndex={0}
+                          aria-label={`${labels.sessionId}: ${row.sessionId}`}
+                          data-session-row=""
+                          className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                          onClick={() => openSession(href)}
+                          onKeyDown={(event) => handleSessionKeyDown(event, href)}
                         >
-                          {formatRelativeTime(locale, row.startedAt, now)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono tabular-nums">
-                          {formatDuration(locale, row.durationMs)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <PageViewsValue locale={locale} views={row.views} />
-                        </TableCell>
-                        <TableCell className="max-w-48">
-                          <ReferrerMeta
-                            referrerHost={row.referrerHost}
-                            referrerUrl={row.referrerUrl}
-                            directLabel={messages.overview.direct}
-                          />
-                        </TableCell>
-                        <TableCell className="max-w-52">
-                          <CountryRegionMeta
-                            locale={locale}
-                            messages={messages}
-                            country={row.country}
-                            region={row.region}
-                            regionCode={row.regionCode}
-                          />
-                        </TableCell>
-                        <TableCell className="max-w-40">
-                          <OsMeta
-                            os={row.os}
-                            version={row.osVersion}
-                            unknownLabel={messages.common.unknown}
-                          />
-                        </TableCell>
-                        <TableCell className="max-w-40">
-                          <BrowserMeta
-                            browser={row.browser}
-                            version={row.browserVersion}
-                            unknownLabel={messages.common.unknown}
-                          />
-                        </TableCell>
-                        <TableCell className="max-w-36">
-                          <DeviceMeta
-                            deviceType={row.deviceType}
-                            locale={locale}
-                            unknownLabel={messages.common.unknown}
-                          />
-                        </TableCell>
-                        <TableCell className="max-w-56 truncate font-mono">
-                          {formatPath(row.entryPath)}
-                        </TableCell>
-                        <TableCell className="max-w-56 truncate pr-4 font-mono">
-                          {formatPath(row.exitPath)}
+                          <TableCell className="w-32 pl-4">
+                            <div className="flex w-28 items-center gap-2">
+                              <VisitorAvatar
+                                seed={row.visitorId}
+                                className="size-6"
+                              />
+                              <span className="truncate">{labels.anonymous}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-mono font-medium">
+                              {shortId(row.sessionId)}
+                            </span>
+                          </TableCell>
+                          <TableCell
+                            className={cn(
+                              "font-mono",
+                              active
+                                ? "text-foreground"
+                                : "text-muted-foreground",
+                            )}
+                          >
+                            {formatRelativeTime(locale, row.startedAt, now)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono tabular-nums">
+                            {formatDuration(locale, row.durationMs)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <PageViewsValue locale={locale} views={row.views} />
+                          </TableCell>
+                          <TableCell className="max-w-48">
+                            <ReferrerMeta
+                              referrerHost={row.referrerHost}
+                              referrerUrl={row.referrerUrl}
+                              directLabel={messages.overview.direct}
+                            />
+                          </TableCell>
+                          <TableCell className="max-w-52">
+                            <CountryRegionMeta
+                              locale={locale}
+                              messages={messages}
+                              country={row.country}
+                              region={row.region}
+                              regionCode={row.regionCode}
+                            />
+                          </TableCell>
+                          <TableCell className="max-w-40">
+                            <OsMeta
+                              os={row.os}
+                              version={row.osVersion}
+                              unknownLabel={messages.common.unknown}
+                            />
+                          </TableCell>
+                          <TableCell className="max-w-40">
+                            <BrowserMeta
+                              browser={row.browser}
+                              version={row.browserVersion}
+                              unknownLabel={messages.common.unknown}
+                            />
+                          </TableCell>
+                          <TableCell className="max-w-36">
+                            <DeviceMeta
+                              deviceType={row.deviceType}
+                              locale={locale}
+                              unknownLabel={messages.common.unknown}
+                            />
+                          </TableCell>
+                          <TableCell className="max-w-56 truncate font-mono">
+                            {formatPath(row.entryPath)}
+                          </TableCell>
+                          <TableCell className="max-w-56 truncate pr-4 font-mono">
+                            {formatPath(row.exitPath)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {appendError ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={12}
+                          className="h-16 text-center text-muted-foreground"
+                        >
+                          {labels.loadError}
                         </TableCell>
                       </TableRow>
-                    );
-                  })}
-                  {appendError ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={12}
-                        className="h-16 text-center text-muted-foreground"
-                      >
-                        {labels.loadError}
-                      </TableCell>
-                    </TableRow>
-                  ) : meta.hasMore ? (
-                    Array.from(
-                      { length: SESSION_SKELETON_ROWS },
-                      (_, index) => (
-                        <SessionRowSkeleton
-                          key={`append-skeleton-${rows.length}-${index}`}
-                          index={index}
-                          sentinelRef={
-                            index === 0
-                              ? (node) => {
-                                  sentinelRef.current = node;
-                                }
-                              : undefined
-                          }
-                        />
-                      ),
-                    )
-                  ) : null}
-                </>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                    ) : meta.hasMore ? (
+                      Array.from(
+                        { length: SESSION_SKELETON_ROWS },
+                        (_, index) => (
+                          <SessionRowSkeleton
+                            key={`append-skeleton-${rows.length}-${index}`}
+                            index={index}
+                            sentinelRef={
+                              index === 0 ? setSentinelNode : undefined
+                            }
+                          />
+                        ),
+                      )
+                    ) : null}
+                  </>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </AutoTransition>
     </div>
   );
 }

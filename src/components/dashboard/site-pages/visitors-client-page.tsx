@@ -9,7 +9,11 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useRouter } from "next/navigation";
-import { RiSearchLine } from "@remixicon/react";
+import {
+  RiArrowDownSLine,
+  RiArrowUpSLine,
+  RiSearchLine,
+} from "@remixicon/react";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import {
@@ -24,6 +28,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   Table,
   TableBody,
@@ -38,6 +43,7 @@ import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import type { VisitorsData, VisitorsMeta } from "@/lib/edge-client";
+import { navigateWithTransition } from "@/lib/page-transition";
 import { cn } from "@/lib/utils";
 
 interface VisitorsClientPageProps {
@@ -51,6 +57,19 @@ type VisitorRow = VisitorsData["data"][number];
 
 const VISITOR_PAGE_SIZE = 80;
 const VISITOR_SKELETON_ROWS = 8;
+
+type SortDirection = "asc" | "desc";
+type VisitorSortKey = "firstSeenAt" | "lastSeenAt" | "sessions" | "views";
+
+interface VisitorSortState {
+  key: VisitorSortKey;
+  direction: SortDirection;
+}
+
+const DEFAULT_VISITOR_SORT: VisitorSortState = {
+  key: "lastSeenAt",
+  direction: "desc",
+};
 
 const INITIAL_VISITOR_META: VisitorsMeta = {
   page: 1,
@@ -103,26 +122,6 @@ function shortId(value: string): string {
   return `${value.slice(0, 9)}...`;
 }
 
-function matchesVisitor(row: VisitorRow, query: string): boolean {
-  if (!query) return true;
-  const target = [
-    row.visitorId,
-    row.sessionId,
-    row.country,
-    row.region,
-    row.regionCode,
-    row.city,
-    row.referrerHost,
-    row.referrerUrl,
-    row.browser,
-    row.os,
-    row.deviceType,
-  ]
-    .join(" ")
-    .toLocaleLowerCase();
-  return target.includes(query.toLocaleLowerCase());
-}
-
 function VisitorRowSkeleton({
   index,
   sentinelRef,
@@ -172,6 +171,74 @@ function VisitorRowSkeleton({
   );
 }
 
+function SortIndicator({
+  active,
+  direction,
+}: {
+  active: boolean;
+  direction: SortDirection;
+}) {
+  if (active) {
+    return direction === "desc" ? (
+      <RiArrowDownSLine className="size-3.5" />
+    ) : (
+      <RiArrowUpSLine className="size-3.5" />
+    );
+  }
+
+  return (
+    <span className="inline-flex flex-col leading-none text-muted-foreground">
+      <RiArrowUpSLine className="-mb-1 size-3.5" />
+      <RiArrowDownSLine className="-mt-1 size-3.5" />
+    </span>
+  );
+}
+
+function SortHeader({
+  label,
+  active,
+  direction,
+  onClick,
+  align = "left",
+  className,
+}: {
+  label: string;
+  active: boolean;
+  direction: SortDirection;
+  onClick: () => void;
+  align?: "left" | "center" | "right";
+  className?: string;
+}) {
+  return (
+    <TableHead
+      aria-sort={
+        active ? (direction === "asc" ? "ascending" : "descending") : "none"
+      }
+      className={className}
+    >
+      <div
+        className={cn(
+          "flex",
+          align === "center" && "justify-center",
+          align === "right" && "justify-end",
+        )}
+      >
+        <button
+          type="button"
+          className={cn(
+            "inline-flex items-center gap-1 whitespace-nowrap transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+            active ? "text-foreground" : "text-muted-foreground",
+          )}
+          onClick={onClick}
+        >
+          {label}
+          <SortIndicator active={active} direction={direction} />
+        </button>
+      </div>
+    </TableHead>
+  );
+}
+
 function appendUniqueVisitors(
   current: VisitorRow[],
   incoming: VisitorRow[],
@@ -209,19 +276,49 @@ export function VisitorsClientPage({
   const [error, setError] = useState(false);
   const [appendError, setAppendError] = useState(false);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [sort, setSort] = useState<VisitorSortState>(DEFAULT_VISITOR_SORT);
   const [now, setNow] = useState(() => Date.now());
-  const sentinelRef = useRef<HTMLTableRowElement | null>(null);
+  const [sentinelNode, setSentinelNode] =
+    useState<HTMLTableRowElement | null>(null);
   const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const requestKey = useMemo(
-    () => [siteId, timeWindow.from, timeWindow.to, filtersKey].join(":"),
-    [filtersKey, siteId, timeWindow.from, timeWindow.to],
+    () =>
+      [
+        siteId,
+        timeWindow.from,
+        timeWindow.to,
+        filtersKey,
+        debouncedQuery,
+        sort.key,
+        sort.direction,
+      ].join(":"),
+    [
+      debouncedQuery,
+      filtersKey,
+      siteId,
+      sort.direction,
+      sort.key,
+      timeWindow.from,
+      timeWindow.to,
+    ],
   );
+  const tableTransitionKey = `visitors-table-${debouncedQuery || "all"}`;
+  const replacingRows =
+    loadingInitial || latestRequestKeyRef.current !== requestKey;
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedQuery(query.trim());
+    }, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [query]);
 
   const loadPage = useEffectEvent(
     async (page: number, mode: "replace" | "append") => {
@@ -240,6 +337,9 @@ export function VisitorsClientPage({
         const payload = await fetchVisitors(siteId, timeWindow, filters, {
           page,
           pageSize: VISITOR_PAGE_SIZE,
+          sortBy: sort.key,
+          sortDir: sort.direction,
+          search: debouncedQuery,
         });
         if (latestRequestKeyRef.current !== capturedRequestKey) return;
 
@@ -294,13 +394,8 @@ export function VisitorsClientPage({
     void loadPage(1, "replace");
   }, [requestKey]);
 
-  const filteredRows = useMemo(
-    () => rows.filter((row) => matchesVisitor(row, query.trim())),
-    [query, rows],
-  );
-
   useEffect(() => {
-    const target = sentinelRef.current;
+    const target = sentinelNode;
     if (
       !target ||
       loadingInitial ||
@@ -346,10 +441,22 @@ export function VisitorsClientPage({
     loadingMore,
     meta.hasMore,
     meta.nextPage,
+    sentinelNode,
   ]);
 
   const openVisitor = (href: string) => {
-    router.push(href);
+    navigateWithTransition(router, href);
+  };
+
+  const toggleSort = (key: VisitorSortKey) => {
+    setSort((current) =>
+      current.key === key
+        ? {
+            key,
+            direction: current.direction === "desc" ? "asc" : "desc",
+          }
+        : { key, direction: "desc" },
+    );
   };
 
   const handleVisitorKeyDown = (
@@ -378,19 +485,47 @@ export function VisitorsClientPage({
         />
       </div>
 
-      <Card className="py-0">
+      <AutoTransition
+        type="fade"
+        duration={0.18}
+        initial={false}
+        className="w-full"
+      >
+      <Card key={tableTransitionKey} className="py-0">
         <CardContent className="px-0">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-32 pl-4">{labels.visitor}</TableHead>
                 <TableHead>{labels.sessionId}</TableHead>
-                <TableHead>{labels.firstSeen}</TableHead>
-                <TableHead>{labels.lastSeen}</TableHead>
-                <TableHead className="text-right">{labels.sessions}</TableHead>
-                <TableHead className="text-center">
-                  {labels.pageViews}
-                </TableHead>
+                <SortHeader
+                  label={labels.firstSeen}
+                  active={sort.key === "firstSeenAt"}
+                  direction={sort.direction}
+                  onClick={() => toggleSort("firstSeenAt")}
+                />
+                <SortHeader
+                  label={labels.lastSeen}
+                  active={sort.key === "lastSeenAt"}
+                  direction={sort.direction}
+                  onClick={() => toggleSort("lastSeenAt")}
+                />
+                <SortHeader
+                  label={labels.sessions}
+                  active={sort.key === "sessions"}
+                  direction={sort.direction}
+                  onClick={() => toggleSort("sessions")}
+                  align="right"
+                  className="text-right"
+                />
+                <SortHeader
+                  label={labels.pageViews}
+                  active={sort.key === "views"}
+                  direction={sort.direction}
+                  onClick={() => toggleSort("views")}
+                  align="center"
+                  className="text-center"
+                />
                 <TableHead>{labels.referrer}</TableHead>
                 <TableHead>{labels.location}</TableHead>
                 <TableHead>{labels.os}</TableHead>
@@ -398,8 +533,8 @@ export function VisitorsClientPage({
                 <TableHead className="pr-4">{labels.device}</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody aria-busy={loadingInitial || loadingMore}>
-              {loadingInitial ? (
+            <TableBody aria-busy={replacingRows || loadingMore}>
+              {replacingRows ? (
                 Array.from({ length: VISITOR_SKELETON_ROWS }, (_, index) => (
                   <VisitorRowSkeleton
                     key={`initial-skeleton-${index}`}
@@ -415,7 +550,7 @@ export function VisitorsClientPage({
                     {labels.loadError}
                   </TableCell>
                 </TableRow>
-              ) : filteredRows.length === 0 && !meta.hasMore ? (
+              ) : rows.length === 0 && !meta.hasMore ? (
                 <TableRow>
                   <TableCell
                     colSpan={11}
@@ -426,7 +561,7 @@ export function VisitorsClientPage({
                 </TableRow>
               ) : (
                 <>
-                  {filteredRows.map((row) => {
+                  {rows.map((row) => {
                     const href = `${pathname}/detail?visitorId=${encodeURIComponent(row.visitorId)}`;
                     return (
                       <TableRow
@@ -521,11 +656,7 @@ export function VisitorsClientPage({
                           key={`append-skeleton-${rows.length}-${index}`}
                           index={index}
                           sentinelRef={
-                            index === 0
-                              ? (node) => {
-                                  sentinelRef.current = node;
-                                }
-                              : undefined
+                            index === 0 ? setSentinelNode : undefined
                           }
                         />
                       ),
@@ -537,6 +668,7 @@ export function VisitorsClientPage({
           </Table>
         </CardContent>
       </Card>
+      </AutoTransition>
     </div>
   );
 }

@@ -71,6 +71,24 @@ interface DashboardFilters {
   geoOrganization?: string;
 }
 
+type SortDirection = "asc" | "desc";
+type VisitorListSortKey = "firstSeenAt" | "lastSeenAt" | "sessions" | "views";
+type SessionListSortKey = "startedAt" | "durationMs" | "views";
+
+interface ListSort<Key extends string> {
+  key: Key;
+  direction: SortDirection;
+}
+
+const DEFAULT_VISITOR_LIST_SORT: ListSort<VisitorListSortKey> = {
+  key: "lastSeenAt",
+  direction: "desc",
+};
+const DEFAULT_SESSION_LIST_SORT: ListSort<SessionListSortKey> = {
+  key: "startedAt",
+  direction: "desc",
+};
+
 interface OverviewAggregateRow {
   views: number;
   sessions: number;
@@ -503,6 +521,40 @@ function parseQueryLimit(
   const value = Math.floor(coerceNumber(url.searchParams.get(key), fallback) ?? fallback);
   if (!Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, value));
+}
+
+function parseSortDirection(url: URL): SortDirection {
+  return (url.searchParams.get("sortDir") || "").trim().toLowerCase() === "asc"
+    ? "asc"
+    : "desc";
+}
+
+function parseVisitorListSort(url: URL): ListSort<VisitorListSortKey> {
+  const key = (url.searchParams.get("sortBy") || "").trim();
+  if (
+    key === "firstSeenAt" ||
+    key === "lastSeenAt" ||
+    key === "sessions" ||
+    key === "views"
+  ) {
+    return { key, direction: parseSortDirection(url) };
+  }
+  return DEFAULT_VISITOR_LIST_SORT;
+}
+
+function parseSessionListSort(url: URL): ListSort<SessionListSortKey> {
+  const key = (url.searchParams.get("sortBy") || "").trim();
+  if (key === "startedAt" || key === "durationMs" || key === "views") {
+    return { key, direction: parseSortDirection(url) };
+  }
+  return DEFAULT_SESSION_LIST_SORT;
+}
+
+function parseListSearch(url: URL): string | undefined {
+  const raw = url.searchParams.get("search") ?? url.searchParams.get("q");
+  if (typeof raw !== "string") return undefined;
+  const normalized = raw.trim().slice(0, 160);
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 function normalizeFilterValue(value: string | null): string | undefined {
@@ -3801,8 +3853,20 @@ async function queryVisitorAggregate(
   filters: DashboardFilters,
   limit: number,
   offset = 0,
+  sort: ListSort<VisitorListSortKey> = DEFAULT_VISITOR_LIST_SORT,
+  search?: string,
 ): Promise<VisitorRow[]> {
-  return queryVisitorsFromD1(env, siteId, window, filters, limit, undefined, offset);
+  return queryVisitorsFromD1(
+    env,
+    siteId,
+    window,
+    filters,
+    limit,
+    undefined,
+    offset,
+    sort,
+    search,
+  );
 }
 
 async function queryGeoPointAggregate(
@@ -4724,6 +4788,8 @@ async function handleVisitors(
     ? parseQueryLimit(url, "pageSize", 80, 1, 120)
     : parseLimit(url, 20, 200);
   const offset = paged ? (page - 1) * pageSize : 0;
+  const sort = parseVisitorListSort(url);
+  const search = parseListSearch(url);
   const requestedRows = await queryVisitorAggregate(
     env,
     siteId,
@@ -4731,6 +4797,8 @@ async function handleVisitors(
     filters,
     paged ? pageSize + 1 : pageSize,
     offset,
+    sort,
+    search,
   );
   const hasMore = paged && requestedRows.length > pageSize;
   const rows = hasMore ? requestedRows.slice(0, pageSize) : requestedRows;
@@ -4762,6 +4830,8 @@ async function handleSessions(
     ? parseQueryLimit(url, "pageSize", 80, 1, 120)
     : parseLimit(url, 100, 500);
   const offset = paged ? (page - 1) * pageSize : 0;
+  const sort = parseSessionListSort(url);
+  const search = parseListSearch(url);
   const requestedRows = await querySessionsFromD1(
     env,
     siteId,
@@ -4770,6 +4840,8 @@ async function handleSessions(
     paged ? pageSize + 1 : pageSize,
     undefined,
     offset,
+    sort,
+    search,
   );
   const hasMore = paged && requestedRows.length > pageSize;
   const rows = hasMore ? requestedRows.slice(0, pageSize) : requestedRows;
@@ -6028,8 +6100,22 @@ async function queryVisitorsFromD1(
   limit: number,
   targetVisitorId?: string,
   offset = 0,
+  sort: ListSort<VisitorListSortKey> = DEFAULT_VISITOR_LIST_SORT,
+  search?: string,
 ): Promise<VisitorRow[]> {
   const filter = buildVisitFilterSql(filters);
+  const searchSql = buildJourneySearchSql(search);
+  const searchCte = searchSql
+    ? `,
+matched_visitors AS (
+  SELECT DISTINCT visitor_id
+  FROM filtered_visits
+  WHERE visitor_id != '' AND ${searchSql.condition}
+)`
+    : "";
+  const searchWhere = searchSql
+    ? "AND fv.visitor_id IN (SELECT visitor_id FROM matched_visitors)"
+    : "";
   const targetClause = targetVisitorId
     ? whereClauseWithTarget(filter.clause, {
         column: "visitor_id",
@@ -6045,6 +6131,7 @@ filtered_visits AS (
   FROM visit_source
   ${targetClause}
 )
+${searchCte}
 SELECT
   fv.visitor_id AS visitorId,
   COALESCE((
@@ -6156,8 +6243,9 @@ SELECT
   ) AS screenHeight
 FROM filtered_visits fv
 WHERE fv.visitor_id != ''
+  ${searchWhere}
 GROUP BY fv.visitor_id
-ORDER BY lastSeenAt DESC, visitorId ASC
+ORDER BY ${visitorListOrderBy(sort)}
 LIMIT ? OFFSET ?
 `;
   return (await queryD1All<Record<string, unknown>>(
@@ -6168,6 +6256,7 @@ LIMIT ? OFFSET ?
       ...eventSourceBindings(siteId, window),
       ...(targetVisitorId ? [targetVisitorId] : []),
       ...filter.bindings,
+      ...(searchSql?.bindings ?? []),
       limit,
       offset,
     ],
@@ -6227,6 +6316,73 @@ function whereClauseWithTarget(
   return `WHERE ${target.column} = ? ${filterAndClause}`;
 }
 
+function escapeLikeSearch(value: string): string {
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+}
+
+function buildJourneySearchSql(
+  search: string | undefined,
+  alias = "",
+): { condition: string; bindings: string[] } | null {
+  const normalized = search?.trim();
+  if (!normalized) return null;
+  const prefix = alias ? `${alias}.` : "";
+  const pattern = `%${escapeLikeSearch(normalized.toLowerCase())}%`;
+  const expressions = [
+    `${prefix}visitor_id`,
+    `${prefix}session_id`,
+    `${prefix}pathname`,
+    `${prefix}query_string`,
+    `${prefix}hash_fragment`,
+    `${prefix}hostname`,
+    `${prefix}title`,
+    `${prefix}referrer_host`,
+    `${prefix}referrer_url`,
+    `CASE WHEN TRIM(COALESCE(${prefix}referrer_host, '')) = '' THEN 'direct' ELSE ${prefix}referrer_host END`,
+    `${prefix}country`,
+    `${prefix}region`,
+    `${prefix}region_code`,
+    `${prefix}city`,
+    `${prefix}browser`,
+    `${prefix}browser_version`,
+    `TRIM(COALESCE(${prefix}browser, '') || ' ' || COALESCE(${prefix}browser_version, ''))`,
+    `${prefix}os`,
+    `${prefix}os_version`,
+    `TRIM(COALESCE(${prefix}os, '') || ' ' || COALESCE(${prefix}os_version, ''))`,
+    `${prefix}device_type`,
+  ].map((expression) => (
+    `LOWER(TRIM(COALESCE(${expression}, ''))) LIKE ? ESCAPE '\\'`
+  ));
+
+  return {
+    condition: `(${expressions.join(" OR ")})`,
+    bindings: Array.from({ length: expressions.length }, () => pattern),
+  };
+}
+
+function directionSql(direction: SortDirection): "ASC" | "DESC" {
+  return direction === "asc" ? "ASC" : "DESC";
+}
+
+function visitorListOrderBy(sort: ListSort<VisitorListSortKey>): string {
+  const column: Record<VisitorListSortKey, string> = {
+    firstSeenAt: "firstSeenAt",
+    lastSeenAt: "lastSeenAt",
+    sessions: "sessions",
+    views: "views",
+  };
+  return `${column[sort.key]} ${directionSql(sort.direction)}, lastSeenAt DESC, visitorId ASC`;
+}
+
+function sessionListOrderBy(sort: ListSort<SessionListSortKey>): string {
+  const column: Record<SessionListSortKey, string> = {
+    startedAt: "startedAt",
+    durationMs: "totalDurationMs",
+    views: "views",
+  };
+  return `${column[sort.key]} ${directionSql(sort.direction)}, startedAt DESC, sessionId ASC`;
+}
+
 function mapSessionRow(row: Record<string, unknown>): SessionRow {
   const startedAt = Number(row.startedAt ?? 0);
   const endedAt = Number(row.endedAt ?? startedAt);
@@ -6272,8 +6428,22 @@ async function querySessionsFromD1(
   limit: number,
   target?: { type: "visitor" | "session"; value: string },
   offset = 0,
+  sort: ListSort<SessionListSortKey> = DEFAULT_SESSION_LIST_SORT,
+  search?: string,
 ): Promise<SessionRow[]> {
   const filter = buildVisitFilterSql(filters);
+  const searchSql = buildJourneySearchSql(search);
+  const searchCte = searchSql
+    ? `,
+matched_sessions AS (
+  SELECT DISTINCT session_id
+  FROM filtered_visits
+  WHERE session_id != '' AND ${searchSql.condition}
+)`
+    : "";
+  const searchWhere = searchSql
+    ? "AND fv.session_id IN (SELECT session_id FROM matched_sessions)"
+    : "";
   const targetColumn = target?.type === "visitor"
     ? "visitor_id"
     : target?.type === "session"
@@ -6294,6 +6464,7 @@ filtered_visits AS (
   FROM visit_source
   ${targetClause}
 )
+${searchCte}
 SELECT
   fv.session_id AS sessionId,
   COALESCE((
@@ -6421,8 +6592,9 @@ SELECT
   ) AS screenHeight
 FROM filtered_visits fv
 WHERE fv.session_id != ''
+  ${searchWhere}
 GROUP BY fv.session_id
-ORDER BY startedAt DESC, sessionId ASC
+ORDER BY ${sessionListOrderBy(sort)}
 LIMIT ? OFFSET ?
 `;
   return (await queryD1All<Record<string, unknown>>(
@@ -6433,6 +6605,7 @@ LIMIT ? OFFSET ?
       ...eventSourceBindings(siteId, window),
       ...(target ? [target.value] : []),
       ...filter.bindings,
+      ...(searchSql?.bindings ?? []),
       limit,
       offset,
     ],

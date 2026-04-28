@@ -2311,6 +2311,51 @@ function parseDemoFilters(params: Record<string, string | number>): DemoQueryFil
   };
 }
 
+function normalizeDemoSearch(params: Record<string, string | number>): string {
+  return String(params.search ?? params.q ?? "").trim().toLowerCase();
+}
+
+function demoValuesIncludeSearch(search: string, values: unknown[]): boolean {
+  if (!search) return true;
+  return values.some((value) =>
+    String(value ?? "").trim().toLowerCase().includes(search),
+  );
+}
+
+function demoVisitMatchesJourneySearch(
+  dataset: DemoFactDataset,
+  visit: DemoVisitFact,
+  search: string,
+): boolean {
+  if (!search) return true;
+  const session = dataset.sessions.get(visit.sessionId);
+  return demoValuesIncludeSearch(search, [
+    visit.visitorId,
+    visit.sessionId,
+    visit.pathname,
+    demoQueryStringForVisit(visit),
+    demoHashFragmentForVisit(visit),
+    visit.hostname,
+    visit.title,
+    visit.referrerHost || "direct",
+    visit.referrerUrl || "direct",
+    visit.country,
+    visit.regionName,
+    visit.regionCode,
+    visit.region,
+    visit.cityName,
+    visit.city,
+    visit.browser,
+    visit.browserVersion,
+    `${visit.browser} ${visit.browserVersion}`,
+    demoOperatingSystemLabel(visit.osVersion),
+    visit.osVersion,
+    visit.deviceType,
+    session?.entryPath,
+    session?.exitPath,
+  ]);
+}
+
 function withoutDemoGeoFilter(filters: DemoQueryFilters): DemoQueryFilters {
   return { ...filters, geo: undefined };
 }
@@ -5290,6 +5335,51 @@ function demoAverageGapMs(values: number[]): number {
   return Math.round(total / (sorted.length - 1));
 }
 
+type DemoSortDirection = "asc" | "desc";
+type DemoVisitorSortKey = "firstSeenAt" | "lastSeenAt" | "sessions" | "views";
+type DemoSessionSortKey = "startedAt" | "durationMs" | "views";
+
+function parseDemoSortDirection(value: string | number | undefined): DemoSortDirection {
+  return String(value ?? "").trim().toLowerCase() === "asc" ? "asc" : "desc";
+}
+
+function parseDemoVisitorSort(params: Record<string, string | number>): {
+  key: DemoVisitorSortKey;
+  direction: DemoSortDirection;
+} {
+  const key = String(params.sortBy ?? "").trim();
+  if (
+    key === "firstSeenAt" ||
+    key === "lastSeenAt" ||
+    key === "sessions" ||
+    key === "views"
+  ) {
+    return { key, direction: parseDemoSortDirection(params.sortDir) };
+  }
+  return { key: "lastSeenAt", direction: "desc" };
+}
+
+function parseDemoSessionSort(params: Record<string, string | number>): {
+  key: DemoSessionSortKey;
+  direction: DemoSortDirection;
+} {
+  const key = String(params.sortBy ?? "").trim();
+  if (key === "startedAt" || key === "durationMs" || key === "views") {
+    return { key, direction: parseDemoSortDirection(params.sortDir) };
+  }
+  return { key: "startedAt", direction: "desc" };
+}
+
+function compareDemoNumericField(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+  key: string,
+  direction: DemoSortDirection,
+): number {
+  const diff = Number(left[key] ?? 0) - Number(right[key] ?? 0);
+  return direction === "asc" ? diff : -diff;
+}
+
 function generateDemoVisitors(
   siteId: string,
   params: Record<string, string | number>,
@@ -5303,8 +5393,17 @@ function generateDemoVisitors(
   const from = parseDemoNumber(params.from, Date.now() - 7 * 24 * 3600 * 1000);
   const to = parseDemoNumber(params.to, Date.now());
   const filters = parseDemoFilters(params);
+  const sort = parseDemoVisitorSort(params);
+  const search = normalizeDemoSearch(params);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
+  const matchedVisitorIds = search
+    ? new Set(
+        filtered.visits
+          .filter((visit) => demoVisitMatchesJourneySearch(dataset, visit, search))
+          .map((visit) => visit.visitorId),
+      )
+    : null;
 
   const buckets = new Map<
     string,
@@ -5318,6 +5417,7 @@ function generateDemoVisitors(
     }
   >();
   for (const visit of filtered.visits) {
+    if (matchedVisitorIds && !matchedVisitorIds.has(visit.visitorId)) continue;
     const bucket = buckets.get(visit.visitorId) ?? {
       firstSeenAt: visit.startedAt,
       lastSeenAt: visit.startedAt,
@@ -5361,7 +5461,8 @@ function generateDemoVisitors(
         screenHeight: parseDemoScreenSize(bucket.latestVisit.screenSize).screenHeight,
       }))
     .sort((left, right) => (
-        right.lastSeenAt - left.lastSeenAt
+        compareDemoNumericField(left, right, sort.key, sort.direction)
+        || right.lastSeenAt - left.lastSeenAt
         || right.views - left.views
         || left.visitorId.localeCompare(right.visitorId)
       ))
@@ -5395,13 +5496,26 @@ function generateDemoSessions(
   const from = parseDemoNumber(params.from, Date.now() - 7 * 24 * 3600 * 1000);
   const to = parseDemoNumber(params.to, Date.now());
   const filters = parseDemoFilters(params);
+  const sort = parseDemoSessionSort(params);
+  const search = normalizeDemoSearch(params);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
+  const matchedSessionIds = search
+    ? new Set(
+        filtered.visits
+          .filter((visit) => demoVisitMatchesJourneySearch(dataset, visit, search))
+          .map((visit) => visit.sessionId),
+      )
+    : null;
   const requestedRows = Array.from(demoVisitsBySession(filtered.visits).entries())
+    .filter(([sessionId]) =>
+      matchedSessionIds ? matchedSessionIds.has(sessionId) : true,
+    )
     .map(([sessionId, visits]) => createDemoJourneySession(sessionId, visits))
     .filter((row): row is Record<string, unknown> => Boolean(row))
     .sort((left, right) => (
-      Number(right.startedAt ?? 0) - Number(left.startedAt ?? 0)
+      compareDemoNumericField(left, right, sort.key, sort.direction)
+      || Number(right.startedAt ?? 0) - Number(left.startedAt ?? 0)
       || String(left.sessionId ?? "").localeCompare(String(right.sessionId ?? ""))
     ))
     .slice(offset, offset + pageSize + (paged ? 1 : 0));

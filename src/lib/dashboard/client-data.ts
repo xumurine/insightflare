@@ -45,6 +45,10 @@ export type OverviewGeoTabRows = Array<{
 export type PagesDashboardRows = PagesDashboardData["data"];
 export type PagesDashboardRow = PagesDashboardData["data"][number];
 
+type SortDirection = "asc" | "desc";
+type VisitorListSortKey = "firstSeenAt" | "lastSeenAt" | "sessions" | "views";
+type SessionListSortKey = "startedAt" | "durationMs" | "views";
+
 function emptyOverview(): OverviewData {
   return {
     ok: true,
@@ -373,6 +377,9 @@ export async function fetchVisitors(
     limit?: number;
     page?: number;
     pageSize?: number;
+    sortBy?: VisitorListSortKey;
+    sortDir?: SortDirection;
+    search?: string;
   },
 ): Promise<VisitorsData> {
   const params: Record<string, string | number> = {
@@ -387,6 +394,10 @@ export async function fetchVisitors(
   } else if (options?.pageSize === undefined) {
     params.limit = 100;
   }
+  if (options?.sortBy) params.sortBy = options.sortBy;
+  if (options?.sortDir) params.sortDir = options.sortDir;
+  const search = options?.search?.trim();
+  if (search) params.search = search;
   return fetchPrivateJson<VisitorsData>("/api/private/visitors", withFilters({
     ...params,
   }, filters)).catch(emptyVisitors);
@@ -412,6 +423,9 @@ export async function fetchSessions(
     limit?: number;
     page?: number;
     pageSize?: number;
+    sortBy?: SessionListSortKey;
+    sortDir?: SortDirection;
+    search?: string;
   },
 ): Promise<SessionsData> {
   const params: Record<string, string | number> = {
@@ -426,6 +440,10 @@ export async function fetchSessions(
   } else if (options?.pageSize === undefined) {
     params.limit = 100;
   }
+  if (options?.sortBy) params.sortBy = options.sortBy;
+  if (options?.sortDir) params.sortDir = options.sortDir;
+  const search = options?.search?.trim();
+  if (search) params.search = search;
   return fetchPrivateJson<SessionsData>("/api/private/sessions", withFilters({
     ...params,
   }, filters)).catch(emptySessions);
