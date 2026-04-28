@@ -3298,7 +3298,20 @@ function createDemoShareTrendSeriesKey(
 }
 
 function demoOperatingSystemLabel(osVersion: string): string {
-  return String(osVersion ?? "").trim().split(/\s+/)[0] ?? "";
+  const normalized = String(osVersion ?? "").trim();
+  if (!normalized) return "";
+  const knownLabels = [
+    "Chrome OS",
+    "Windows",
+    "HarmonyOS",
+    "Android",
+    "Ubuntu",
+    "Fedora",
+    "Debian",
+    "macOS",
+    "iOS",
+  ];
+  return knownLabels.find((label) => normalized.startsWith(label)) ?? normalized;
 }
 
 function parseDemoClientDimensionKey(

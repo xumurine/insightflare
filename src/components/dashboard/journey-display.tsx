@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useState, type ReactNode, type SyntheticEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type ReactNode,
+  type SyntheticEvent,
+} from "react";
 import Avatar from "boring-avatars";
 import { Icon } from "@iconify/react";
 import {
@@ -14,7 +21,15 @@ import {
   intlLocale,
   shortDateTime,
 } from "@/lib/dashboard/format";
+import { parseGeoLocationValue } from "@/lib/dashboard/geo-location";
 import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
+import { AutoTransition } from "@/components/ui/auto-transition";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+} from "@/components/ui/breadcrumb";
 import {
   resolveCountryFlagCode,
   resolveCountryLabel,
@@ -36,6 +51,29 @@ const UNKNOWN_ICON_KEY = "unknown";
 const BROWSER_APPLE_ICON_KEYS = new Set(["ios", "ios-webview"]);
 const OS_APPLE_ICON_KEYS = new Set(["ios", "mac-os"]);
 const ABSOLUTE_URL_PATTERN = /^[a-z][a-z\d+\-.]*:\/\//i;
+const GEO_TRANSLATION_API_BASE_URL = "https://locale.ravelloh.com";
+const GEO_TRANSLATION_API_LOCALE_BY_APP_LOCALE: Record<Locale, string | null> =
+  {
+    en: null,
+    zh: "zh-CN",
+  };
+const GEO_STATE_CODE_PATTERN = /^[A-Z0-9-]{1,16}$/;
+
+interface GeoTranslationCity {
+  name: string;
+  nameDefault: string;
+  nativeName: string;
+}
+
+interface GeoStateTranslationBundle {
+  stateName: string;
+  cities: GeoTranslationCity[];
+}
+
+const geoStateTranslationCache = new Map<
+  string,
+  Promise<GeoStateTranslationBundle | null>
+>();
 
 export function VisitorAvatar({
   seed,
@@ -45,12 +83,19 @@ export function VisitorAvatar({
   className?: string;
 }) {
   return (
-    <span className={cn("inline-flex size-7 shrink-0 overflow-hidden rounded-sm", className)}>
+    <span
+      className={cn(
+        "inline-flex size-[34px] shrink-0 items-center justify-center overflow-hidden rounded-full",
+        className,
+      )}
+    >
       <Avatar
+        size="100%"
         name={seed || "anonymous"}
-        variant="marble"
+        variant="ring"
         colors={VISITOR_AVATAR_COLORS}
-        square
+        className="block size-full"
+        aria-hidden="true"
       />
     </span>
   );
@@ -150,7 +195,192 @@ function osLabel(os: string, version?: string | null): string {
   const suffix = String(version || "").trim();
   if (!base) return suffix;
   if (!suffix || base.includes(suffix)) return base;
+  if (suffix.toLocaleLowerCase().startsWith(base.toLocaleLowerCase())) {
+    return suffix;
+  }
   return `${base} ${suffix}`;
+}
+
+function resolveGeoTranslationApiLocale(locale: Locale): string | null {
+  return GEO_TRANSLATION_API_LOCALE_BY_APP_LOCALE[locale] ?? null;
+}
+
+function normalizeGeoTranslationLookupValue(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+function parseGeoStateTranslationBundle(
+  payload: unknown,
+): GeoStateTranslationBundle | null {
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as {
+    state?: unknown;
+    cities?: unknown;
+  };
+
+  const state =
+    record.state && typeof record.state === "object"
+      ? (record.state as Record<string, unknown>)
+      : null;
+  const stateName = typeof state?.name === "string" ? state.name.trim() : "";
+
+  const cities = Array.isArray(record.cities)
+    ? record.cities.flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const city = entry as Record<string, unknown>;
+        const name = typeof city.name === "string" ? city.name.trim() : "";
+        const nameDefault =
+          typeof city.name_default === "string" ? city.name_default.trim() : "";
+        const nativeName =
+          typeof city.native === "string" ? city.native.trim() : "";
+        if (!name && !nameDefault && !nativeName) return [];
+        return [{ name, nameDefault, nativeName }];
+      })
+    : [];
+
+  return {
+    stateName,
+    cities,
+  };
+}
+
+async function fetchGeoStateTranslationBundle(
+  apiLocale: string,
+  countryCode: string,
+  stateCode: string,
+): Promise<GeoStateTranslationBundle | null> {
+  const normalizedCountry = countryCode.trim().toUpperCase();
+  const normalizedState = stateCode.trim().toUpperCase();
+  if (
+    !normalizedCountry ||
+    !normalizedState ||
+    !GEO_STATE_CODE_PATTERN.test(normalizedState)
+  ) {
+    return null;
+  }
+
+  const cacheKey = `${apiLocale}::${normalizedCountry}::${normalizedState}`;
+  const cached = geoStateTranslationCache.get(cacheKey);
+  if (cached) return cached;
+
+  const request = fetch(
+    `${GEO_TRANSLATION_API_BASE_URL}/${encodeURIComponent(apiLocale)}/${encodeURIComponent(normalizedCountry)}/${encodeURIComponent(normalizedState)}/`,
+    {
+      method: "GET",
+      cache: "force-cache",
+    },
+  )
+    .then(async (response) => {
+      if (!response.ok) return null;
+      const payload = (await response.json()) as unknown;
+      return parseGeoStateTranslationBundle(payload);
+    })
+    .catch(() => null);
+
+  geoStateTranslationCache.set(cacheKey, request);
+  return request;
+}
+
+function useInViewOnce(rootMargin = "0px"): {
+  ref: MutableRefObject<HTMLSpanElement | null>;
+  isInView: boolean;
+} {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const [isInView, setIsInView] = useState(false);
+
+  useEffect(() => {
+    if (isInView) return;
+    const target = ref.current;
+    if (!target) return;
+
+    if (typeof IntersectionObserver === "undefined") {
+      setIsInView(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        const visible = Boolean(
+          entry?.isIntersecting || (entry?.intersectionRatio ?? 0) > 0,
+        );
+        if (!visible) return;
+        setIsInView(true);
+        observer.disconnect();
+      },
+      {
+        root: null,
+        rootMargin,
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(target);
+    return () => {
+      observer.disconnect();
+    };
+  }, [isInView, rootMargin]);
+
+  return { ref, isInView };
+}
+
+function useGeoStateTranslationBundle({
+  locale,
+  countryCode,
+  stateCode,
+  enabled,
+}: {
+  locale: Locale;
+  countryCode: string;
+  stateCode: string;
+  enabled: boolean;
+}): GeoStateTranslationBundle | null {
+  const [bundle, setBundle] = useState<GeoStateTranslationBundle | null>(null);
+
+  useEffect(() => {
+    if (!enabled) {
+      setBundle(null);
+      return;
+    }
+
+    const apiLocale = resolveGeoTranslationApiLocale(locale);
+    if (!apiLocale) {
+      setBundle(null);
+      return;
+    }
+
+    const normalizedCountry = countryCode.trim().toUpperCase();
+    const normalizedState = stateCode.trim().toUpperCase();
+    if (
+      !normalizedCountry ||
+      !normalizedState ||
+      !GEO_STATE_CODE_PATTERN.test(normalizedState)
+    ) {
+      setBundle(null);
+      return;
+    }
+
+    let active = true;
+    fetchGeoStateTranslationBundle(
+      apiLocale,
+      normalizedCountry,
+      normalizedState,
+    ).then((nextBundle) => {
+      if (!active) return;
+      setBundle(nextBundle);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [countryCode, enabled, locale, stateCode]);
+
+  return bundle;
+}
+
+function normalizeGeoMetaLabel(value: string, unknownLabel: string): string {
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : unknownLabel;
 }
 
 export function BrowserMeta({
@@ -269,6 +499,144 @@ export function LocationMeta({
       label={label}
       className={className}
     />
+  );
+}
+
+function RegionBreadcrumbLabel({
+  locale,
+  countryLabel,
+  countryIconName,
+  regionLabel,
+  countryCode,
+  stateCode,
+  hideRegion,
+}: {
+  locale: Locale;
+  countryLabel: string;
+  countryIconName: string | null;
+  regionLabel: string;
+  countryCode: string;
+  stateCode: string;
+  hideRegion: boolean;
+}) {
+  const { ref: visibilityRef, isInView } = useInViewOnce();
+  const translationBundle = useGeoStateTranslationBundle({
+    locale,
+    countryCode,
+    stateCode,
+    enabled: isInView && !hideRegion,
+  });
+  const localizedRegionLabel =
+    translationBundle?.stateName.trim() || regionLabel;
+
+  return (
+    <span ref={visibilityRef} className="block">
+      <Breadcrumb className="max-w-full">
+        <BreadcrumbList className="flex-nowrap gap-1">
+          <BreadcrumbItem className="min-w-0">
+            <BreadcrumbPage className="inline-flex min-w-0 items-center gap-2">
+              {countryIconName ? (
+                <Icon
+                  icon={countryIconName}
+                  style={{
+                    width: 16,
+                    height: 12,
+                  }}
+                  className="block shrink-0"
+                />
+              ) : null}
+              <span className="truncate leading-5">{countryLabel}</span>
+            </BreadcrumbPage>
+          </BreadcrumbItem>
+          {hideRegion ? null : (
+            <BreadcrumbItem className="min-w-0">
+              <span className="shrink-0 text-muted-foreground" aria-hidden="true">
+                {">"}
+              </span>
+              <BreadcrumbPage className="block truncate leading-5">
+                <AutoTransition>{localizedRegionLabel}</AutoTransition>
+              </BreadcrumbPage>
+            </BreadcrumbItem>
+          )}
+        </BreadcrumbList>
+      </Breadcrumb>
+    </span>
+  );
+}
+
+function resolveCountryRegionBreadcrumbData({
+  locale,
+  unknownLabel,
+  country,
+  region,
+}: {
+  locale: Locale;
+  unknownLabel: string;
+  country: string;
+  region?: string | null;
+}) {
+  const parsedRegion = parseGeoLocationValue(region || "");
+  const countryValue = country.trim() || parsedRegion?.countryCode || "";
+  const resolved = resolveCountryLabel(countryValue, locale, unknownLabel);
+  const flagCode = resolveCountryFlagCode(resolved.code, locale);
+  const countryIconName = flagCode
+    ? `flagpack:${flagCode.toLowerCase()}`
+    : null;
+  const countryCode = (
+    parsedRegion?.countryCode ||
+    resolved.code ||
+    countryValue
+  ).trim().toUpperCase();
+  const regionCode = parsedRegion?.regionCode ?? "";
+  const rawRegionLabel =
+    parsedRegion?.regionName ||
+    (parsedRegion?.level === "locality" ? parsedRegion.localityName : "") ||
+    String(region || "").trim();
+  const regionLabel = normalizeGeoMetaLabel(rawRegionLabel, unknownLabel);
+  const hideRegion = !String(regionCode || rawRegionLabel).trim();
+
+  return {
+    countryLabel: resolved.label,
+    countryIconName,
+    regionLabel,
+    countryCode,
+    stateCode: regionCode,
+    hideRegion,
+  };
+}
+
+export function CountryRegionMeta({
+  locale,
+  messages,
+  country,
+  region,
+  className,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  country: string;
+  region?: string | null;
+  className?: string;
+}) {
+  const breadcrumb = resolveCountryRegionBreadcrumbData({
+    locale,
+    unknownLabel: messages.common.unknown,
+    country,
+    region,
+  });
+
+  return (
+    <span className={cn("block max-w-full", className)}>
+      <RegionBreadcrumbLabel
+        locale={locale}
+        countryLabel={breadcrumb.countryLabel}
+        countryIconName={breadcrumb.countryIconName}
+        regionLabel={breadcrumb.regionLabel}
+        countryCode={breadcrumb.countryCode}
+        stateCode={breadcrumb.stateCode}
+        hideRegion={breadcrumb.hideRegion}
+      />
+    </span>
   );
 }
 

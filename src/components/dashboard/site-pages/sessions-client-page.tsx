@@ -1,23 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { RiArrowRightSLine, RiSearchLine } from "@remixicon/react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useRouter } from "next/navigation";
+import { RiSearchLine } from "@remixicon/react";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import {
   BrowserMeta,
+  CountryRegionMeta,
   DeviceMeta,
   formatDuration,
   formatPath,
   formatRelativeTime,
-  LocationMeta,
   OsMeta,
   ReferrerMeta,
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -32,6 +33,7 @@ import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import type { JourneySession } from "@/lib/edge-client";
+import { cn } from "@/lib/utils";
 
 interface SessionsClientPageProps {
   locale: Locale;
@@ -41,12 +43,15 @@ interface SessionsClientPageProps {
 }
 
 const SESSION_LIMIT = 250;
+const SESSION_INITIAL_ROWS = 40;
+const SESSION_LOAD_STEP = 40;
+const SESSION_SKELETON_ROWS = 8;
 
 function copy(locale: Locale) {
   return locale === "zh"
     ? {
         search: "搜索会话...",
-        started: "开始",
+        started: "开始时间",
         sessionId: "会话 ID",
         visitor: "访客",
         anonymous: "匿名访客",
@@ -67,7 +72,7 @@ function copy(locale: Locale) {
       }
     : {
         search: "Search sessions...",
-        started: "Started",
+        started: "Start Time",
         sessionId: "Session ID",
         visitor: "Visitor",
         anonymous: "Anonymous",
@@ -112,12 +117,72 @@ function matchesSession(row: JourneySession, query: string): boolean {
   return target.includes(query.toLocaleLowerCase());
 }
 
+function SessionRowSkeleton({
+  index,
+  sentinelRef,
+}: {
+  index: number;
+  sentinelRef?: (node: HTMLTableRowElement | null) => void;
+}) {
+  const widths = [
+    "w-28",
+    "w-24",
+    "w-20",
+    "w-16",
+    "w-10",
+    "w-24",
+    "w-28",
+    "w-24",
+    "w-24",
+    "w-20",
+    "w-36",
+    "w-36",
+  ];
+
+  return (
+    <TableRow ref={sentinelRef} aria-hidden="true">
+      {widths.map((width, cellIndex) => (
+        <TableCell key={`${index}-${cellIndex}`} className={cellIndex === 0 ? "pl-4" : undefined}>
+          {cellIndex === 0 ? (
+            <div className="flex items-center gap-2">
+              <Skeleton className="size-6 shrink-0 rounded-full" />
+              <Skeleton className="h-4 w-20" />
+            </div>
+          ) : (
+            <Skeleton
+              className={cn(
+                "h-4",
+                width,
+                cellIndex === 3 && "ml-auto",
+                cellIndex === 4 && "mx-auto",
+              )}
+            />
+          )}
+        </TableCell>
+      ))}
+    </TableRow>
+  );
+}
+
+function PageViewsValue({ locale, views }: { locale: Locale; views: number }) {
+  const value = numberFormat(locale, views);
+  if (views === 1) {
+    return (
+      <span className="font-mono font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+        {value}
+      </span>
+    );
+  }
+  return <span className="font-mono tabular-nums">{value}</span>;
+}
+
 export function SessionsClientPage({
   locale,
   messages,
   siteId,
   pathname,
 }: SessionsClientPageProps) {
+  const router = useRouter();
   const labels = copy(locale);
   const { filters, window: timeWindow } = useDashboardQuery() as {
     filters: DashboardFilters;
@@ -128,6 +193,8 @@ export function SessionsClientPage({
   const [error, setError] = useState(false);
   const [query, setQuery] = useState("");
   const [now, setNow] = useState(() => Date.now());
+  const [visibleCount, setVisibleCount] = useState(SESSION_INITIAL_ROWS);
+  const sentinelRef = useRef<HTMLTableRowElement | null>(null);
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const requestKey = useMemo(
     () => [siteId, timeWindow.from, timeWindow.to, filtersKey].join(":"),
@@ -143,6 +210,7 @@ export function SessionsClientPage({
     let active = true;
     setLoading(true);
     setError(false);
+    setVisibleCount(SESSION_INITIAL_ROWS);
     fetchSessions(siteId, timeWindow, filters, { limit: SESSION_LIMIT })
       .then((payload) => {
         if (!active) return;
@@ -161,10 +229,65 @@ export function SessionsClientPage({
     };
   }, [requestKey]);
 
+  useEffect(() => {
+    setVisibleCount(SESSION_INITIAL_ROWS);
+  }, [query]);
+
   const filteredRows = useMemo(
     () => rows.filter((row) => matchesSession(row, query.trim())),
     [query, rows],
   );
+  const visibleRows = useMemo(
+    () => filteredRows.slice(0, Math.min(visibleCount, filteredRows.length)),
+    [filteredRows, visibleCount],
+  );
+  const hasMoreRows = visibleRows.length < filteredRows.length;
+
+  useEffect(() => {
+    const target = sentinelRef.current;
+    if (
+      !target ||
+      loading ||
+      error ||
+      !hasMoreRows ||
+      typeof IntersectionObserver === "undefined"
+    ) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+        setVisibleCount((current) =>
+          Math.min(current + SESSION_LOAD_STEP, filteredRows.length),
+        );
+      },
+      {
+        root: null,
+        rootMargin: "360px 0px",
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(target);
+    return () => {
+      observer.disconnect();
+    };
+  }, [error, filteredRows.length, hasMoreRows, loading, visibleRows.length]);
+
+  const openSession = (href: string) => {
+    router.push(href);
+  };
+
+  const handleSessionKeyDown = (
+    event: KeyboardEvent<HTMLTableRowElement>,
+    href: string,
+  ) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    openSession(href);
+  };
 
   return (
     <div className="space-y-6">
@@ -188,71 +311,69 @@ export function SessionsClientPage({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="pl-4">{labels.started}</TableHead>
+                <TableHead className="pl-4">{labels.visitor}</TableHead>
                 <TableHead>{labels.sessionId}</TableHead>
-                <TableHead>{labels.visitor}</TableHead>
-                <TableHead>{labels.entryPage}</TableHead>
-                <TableHead>{labels.exitPage}</TableHead>
-                <TableHead>{labels.duration}</TableHead>
-                <TableHead>{labels.bounce}</TableHead>
+                <TableHead>{labels.started}</TableHead>
+                <TableHead className="text-center">{labels.duration}</TableHead>
+                <TableHead className="text-center">{labels.pageViews}</TableHead>
                 <TableHead>{labels.referrer}</TableHead>
                 <TableHead>{labels.location}</TableHead>
                 <TableHead>{labels.os}</TableHead>
                 <TableHead>{labels.browser}</TableHead>
                 <TableHead>{labels.device}</TableHead>
-                <TableHead className="text-right">{labels.pageViews}</TableHead>
-                <TableHead className="w-8 pr-4" />
+                <TableHead>{labels.entryPage}</TableHead>
+                <TableHead>{labels.exitPage}</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody aria-busy={loading}>
               {loading ? (
-                <TableRow>
-                  <TableCell colSpan={14} className="h-28 text-center text-muted-foreground">
-                    {messages.common.loading}
-                  </TableCell>
-                </TableRow>
+                Array.from({ length: SESSION_SKELETON_ROWS }, (_, index) => (
+                  <SessionRowSkeleton key={`initial-skeleton-${index}`} index={index} />
+                ))
               ) : error ? (
                 <TableRow>
-                  <TableCell colSpan={14} className="h-28 text-center text-muted-foreground">
+                  <TableCell colSpan={12} className="h-28 text-center text-muted-foreground">
                     {labels.loadError}
                   </TableCell>
                 </TableRow>
               ) : filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={14} className="h-28 text-center text-muted-foreground">
+                  <TableCell colSpan={12} className="h-28 text-center text-muted-foreground">
                     {labels.empty}
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredRows.map((row) => {
+                <>
+                  {visibleRows.map((row) => {
                   const href = `${pathname}/detail?sessionId=${encodeURIComponent(row.sessionId)}`;
                   return (
-                    <TableRow key={row.sessionId} className="group">
-                      <TableCell className="pl-4 font-mono text-muted-foreground">
-                        {formatRelativeTime(locale, row.startedAt, now)}
-                      </TableCell>
-                      <TableCell>
-                        <Link href={href} className="font-mono font-medium">
-                          {shortId(row.sessionId)}
-                        </Link>
-                      </TableCell>
-                      <TableCell>
+                    <TableRow
+                      key={row.sessionId}
+                      role="link"
+                      tabIndex={0}
+                      aria-label={`${labels.sessionId}: ${row.sessionId}`}
+                      data-session-row=""
+                      className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                      onClick={() => openSession(href)}
+                      onKeyDown={(event) => handleSessionKeyDown(event, href)}
+                    >
+                      <TableCell className="pl-4">
                         <div className="flex min-w-36 items-center gap-2">
                           <VisitorAvatar seed={row.visitorId} className="size-6" />
                           <span className="truncate">{labels.anonymous}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="max-w-56 truncate font-mono">
-                        {formatPath(row.entryPath)}
+                      <TableCell>
+                        <span className="font-mono font-medium">{shortId(row.sessionId)}</span>
                       </TableCell>
-                      <TableCell className="max-w-56 truncate font-mono">
-                        {formatPath(row.exitPath)}
+                      <TableCell className="font-mono text-muted-foreground">
+                        {formatRelativeTime(locale, row.startedAt, now)}
                       </TableCell>
-                      <TableCell className="font-mono">
+                      <TableCell className="text-right font-mono tabular-nums">
                         {formatDuration(locale, row.durationMs)}
                       </TableCell>
-                      <TableCell className={row.bounce ? "text-amber-600" : "text-emerald-600"}>
-                        {row.bounce ? labels.yes : labels.no}
+                      <TableCell className="text-center">
+                        <PageViewsValue locale={locale} views={row.views} />
                       </TableCell>
                       <TableCell className="max-w-48">
                         <ReferrerMeta
@@ -262,12 +383,11 @@ export function SessionsClientPage({
                         />
                       </TableCell>
                       <TableCell className="max-w-52">
-                        <LocationMeta
+                        <CountryRegionMeta
                           locale={locale}
                           messages={messages}
                           country={row.country}
                           region={row.region}
-                          city={row.city}
                         />
                       </TableCell>
                       <TableCell className="max-w-40">
@@ -290,17 +410,27 @@ export function SessionsClientPage({
                           unknownLabel={messages.common.unknown}
                         />
                       </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {numberFormat(locale, row.views)}
+                      <TableCell className="max-w-56 truncate font-mono">
+                        {formatPath(row.entryPath)}
                       </TableCell>
-                      <TableCell className="pr-4 text-right text-muted-foreground">
-                        <Link href={href} aria-label={labels.sessionId}>
-                          <RiArrowRightSLine className="ml-auto size-4 opacity-0 transition-opacity group-hover:opacity-100" />
-                        </Link>
+                      <TableCell className="max-w-56 truncate pr-4 font-mono">
+                        {formatPath(row.exitPath)}
                       </TableCell>
                     </TableRow>
                   );
-                })
+                  })}
+                  {hasMoreRows
+                    ? Array.from({ length: SESSION_SKELETON_ROWS }, (_, index) => (
+                        <SessionRowSkeleton
+                          key={`append-skeleton-${visibleRows.length}-${index}`}
+                          index={index}
+                          sentinelRef={index === 0 ? (node) => {
+                            sentinelRef.current = node;
+                          } : undefined}
+                        />
+                      ))
+                    : null}
+                </>
               )}
             </TableBody>
           </Table>

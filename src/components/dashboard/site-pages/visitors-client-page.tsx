@@ -213,7 +213,7 @@ export function VisitorsClientPage({
                     <TableRow key={row.visitorId} className="group">
                       <TableCell className="pl-4">
                         <Link href={href} className="flex min-w-44 items-center gap-2">
-                          <VisitorAvatar seed={row.visitorId} />
+                          <VisitorAvatar seed={row.visitorId} className="size-6" />
                           <span className="min-w-0">
                             <span className="block truncate font-medium">{labels.anonymous}</span>
                             <span className="block truncate font-mono text-[11px] text-muted-foreground">
