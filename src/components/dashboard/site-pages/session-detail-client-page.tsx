@@ -8,7 +8,6 @@ import {
   RiCalendarEventLine,
   RiPulseLine,
 } from "@remixicon/react";
-import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import {
   BrowserMeta,
   DeviceMeta,
@@ -28,7 +27,6 @@ import {
 } from "@/components/ui/card";
 import { numberFormat } from "@/lib/dashboard/format";
 import { fetchSessionDetail } from "@/lib/dashboard/client-data";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import type {
@@ -283,17 +281,12 @@ export function SessionDetailClientPage({
   const labels = copy(locale);
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("sessionId")?.trim() || "";
-  const { filters, window } = useDashboardQuery() as {
-    filters: DashboardFilters;
-    window: TimeWindow;
-  };
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [loading, setLoading] = useState(Boolean(sessionId));
   const [error, setError] = useState(false);
-  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const requestKey = useMemo(
-    () => [siteId, sessionId, window.from, window.to, filtersKey].join(":"),
-    [filtersKey, sessionId, siteId, window.from, window.to],
+    () => [siteId, sessionId].join(":"),
+    [sessionId, siteId],
   );
 
   useEffect(() => {
@@ -305,7 +298,7 @@ export function SessionDetailClientPage({
     let active = true;
     setLoading(true);
     setError(false);
-    fetchSessionDetail(siteId, sessionId, window, filters)
+    fetchSessionDetail(siteId, sessionId)
       .then((payload) => {
         if (!active) return;
         setDetail(payload.data);

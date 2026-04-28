@@ -8,7 +8,6 @@ import {
   RiCalendarEventLine,
   RiPulseLine,
 } from "@remixicon/react";
-import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import {
   BrowserMeta,
   DeviceMeta,
@@ -48,7 +47,6 @@ import {
   percentFormat,
 } from "@/lib/dashboard/format";
 import { fetchVisitorDetail } from "@/lib/dashboard/client-data";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import type {
@@ -479,17 +477,12 @@ export function VisitorDetailClientPage({
   const labels = copy(locale);
   const searchParams = useSearchParams();
   const visitorId = searchParams.get("visitorId")?.trim() || "";
-  const { filters, window } = useDashboardQuery() as {
-    filters: DashboardFilters;
-    window: TimeWindow;
-  };
   const [detail, setDetail] = useState<VisitorDetail | null>(null);
   const [loading, setLoading] = useState(Boolean(visitorId));
   const [error, setError] = useState(false);
-  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const requestKey = useMemo(
-    () => [siteId, visitorId, window.from, window.to, filtersKey].join(":"),
-    [filtersKey, siteId, visitorId, window.from, window.to],
+    () => [siteId, visitorId].join(":"),
+    [siteId, visitorId],
   );
 
   useEffect(() => {
@@ -501,7 +494,7 @@ export function VisitorDetailClientPage({
     let active = true;
     setLoading(true);
     setError(false);
-    fetchVisitorDetail(siteId, visitorId, window, filters)
+    fetchVisitorDetail(siteId, visitorId)
       .then((payload) => {
         if (!active) return;
         setDetail(payload.data);

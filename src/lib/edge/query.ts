@@ -1238,12 +1238,62 @@ event_source AS (
 )`;
 }
 
+function buildTargetVisitSourceCte(targetColumn: "session_id" | "visitor_id"): string {
+  return `
+visit_source AS (
+  SELECT ${VISIT_SOURCE_COLUMNS}
+  FROM visits
+  WHERE site_id = ? AND ${targetColumn} = ?
+  UNION ALL
+  SELECT ${VISIT_SOURCE_COLUMNS}
+  FROM visits_archive
+  WHERE site_id = ? AND ${targetColumn} = ?
+)`;
+}
+
+function buildDetailCustomEventSourceCte(): string {
+  return `
+event_source AS (
+  SELECT
+    ce.event_id, ce.site_id, ce.visit_id, fv.visitor_id, fv.session_id,
+    ce.occurred_at, ce.event_name, ce.event_data_json,
+    fv.pathname, fv.query_string, fv.hash_fragment, fv.hostname, fv.title,
+    fv.referrer_url, fv.referrer_host, fv.country, fv.region, fv.city,
+    fv.browser, fv.browser_version, fv.os, fv.os_version, fv.device_type,
+    fv.language, fv.timezone, fv.screen_width, fv.screen_height, ce.ae_synced_at
+  FROM custom_events ce
+  INNER JOIN filtered_visits fv
+    ON fv.site_id = ce.site_id AND fv.visit_id = ce.visit_id
+  WHERE ce.site_id = ?
+  UNION ALL
+  SELECT
+    ce.event_id, ce.site_id, ce.visit_id, fv.visitor_id, fv.session_id,
+    ce.occurred_at, ce.event_name, ce.event_data_json,
+    fv.pathname, fv.query_string, fv.hash_fragment, fv.hostname, fv.title,
+    fv.referrer_url, fv.referrer_host, fv.country, fv.region, fv.city,
+    fv.browser, fv.browser_version, fv.os, fv.os_version, fv.device_type,
+    fv.language, fv.timezone, fv.screen_width, fv.screen_height, ce.ae_synced_at
+  FROM custom_events_archive ce
+  INNER JOIN filtered_visits fv
+    ON fv.site_id = ce.site_id AND fv.visit_id = ce.visit_id
+  WHERE ce.site_id = ?
+)`;
+}
+
 function visitSourceBindings(siteId: string, window: QueryWindow): Array<string | number> {
   return [siteId, window.fromMs, window.toMs, siteId, window.fromMs, window.toMs];
 }
 
 function eventSourceBindings(siteId: string, window: QueryWindow): Array<string | number> {
   return [siteId, window.fromMs, window.toMs, siteId, window.fromMs, window.toMs];
+}
+
+function targetVisitSourceBindings(siteId: string, targetValue: string): Array<string | number> {
+  return [siteId, targetValue, siteId, targetValue];
+}
+
+function detailCustomEventSourceBindings(siteId: string): Array<string | number> {
+  return [siteId, siteId];
 }
 
 function buildVisitSourceCteForSites(siteCount: number): string {
@@ -4741,16 +4791,11 @@ async function handleVisitorDetail(
   siteId: string,
   url: URL,
 ): Promise<Response> {
-  const window = parseWindow(url);
-  if (!window) return badRequest("Invalid time window");
   const visitorId = (url.searchParams.get("visitorId") || "").trim();
   if (!visitorId) return badRequest("Missing visitorId");
-  const filters = parseFilters(url);
   const detail = await queryVisitorDetailFromD1(
     env,
     siteId,
-    window,
-    filters,
     visitorId,
   );
   return jsonResponse({ ok: true, data: detail });
@@ -4761,16 +4806,11 @@ async function handleSessionDetail(
   siteId: string,
   url: URL,
 ): Promise<Response> {
-  const window = parseWindow(url);
-  if (!window) return badRequest("Invalid time window");
   const sessionId = (url.searchParams.get("sessionId") || "").trim();
   if (!sessionId) return badRequest("Missing sessionId");
-  const filters = parseFilters(url);
   const detail = await querySessionDetailFromD1(
     env,
     siteId,
-    window,
-    filters,
     sessionId,
   );
   return jsonResponse({ ok: true, data: detail });
@@ -6617,25 +6657,427 @@ function averageGapMs(values: number[]): number {
   return Math.round(total / (sorted.length - 1));
 }
 
+type DetailTarget = { type: "visitor" | "session"; value: string };
+
+function detailTargetColumn(target: DetailTarget): "visitor_id" | "session_id" {
+  return target.type === "visitor" ? "visitor_id" : "session_id";
+}
+
+function mapVisitorRow(row: Record<string, unknown>): VisitorRow {
+  return {
+    visitorId: String(row.visitorId ?? ""),
+    sessionId: String(row.sessionId ?? ""),
+    firstSeenAt: Number(row.firstSeenAt ?? 0),
+    lastSeenAt: Number(row.lastSeenAt ?? 0),
+    views: Number(row.views ?? 0),
+    sessions: Number(row.sessions ?? 0),
+    events: Number(row.events ?? 0),
+    country: String(row.country ?? ""),
+    region: String(row.region ?? ""),
+    regionCode: String(row.regionCode ?? ""),
+    city: String(row.city ?? ""),
+    referrerHost: String(row.referrerHost ?? ""),
+    referrerUrl: String(row.referrerUrl ?? ""),
+    browser: String(row.browser ?? ""),
+    browserVersion: String(row.browserVersion ?? ""),
+    os: String(row.os ?? ""),
+    osVersion: String(row.osVersion ?? ""),
+    deviceType: String(row.deviceType ?? ""),
+    screenWidth: row.screenWidth === null ? null : Number(row.screenWidth ?? 0) || null,
+    screenHeight: row.screenHeight === null ? null : Number(row.screenHeight ?? 0) || null,
+  };
+}
+
+async function queryVisitorForDetailFromD1(
+  env: Env,
+  siteId: string,
+  visitorId: string,
+): Promise<VisitorRow | null> {
+  const sql = `
+WITH
+${buildTargetVisitSourceCte("visitor_id")},
+filtered_visits AS (
+  SELECT *
+  FROM visit_source
+),
+${buildDetailCustomEventSourceCte()}
+SELECT
+  fv.visitor_id AS visitorId,
+  COALESCE((
+    SELECT latest.session_id
+    FROM filtered_visits latest
+    WHERE latest.visitor_id = fv.visitor_id
+    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    LIMIT 1
+  ), '') AS sessionId,
+  MIN(fv.started_at) AS firstSeenAt,
+  MAX(fv.started_at) AS lastSeenAt,
+  count(*) AS views,
+  count(DISTINCT CASE WHEN fv.session_id != '' THEN fv.session_id ELSE NULL END) AS sessions,
+  (
+    SELECT count(*)
+    FROM event_source es
+    WHERE es.visitor_id = fv.visitor_id
+  ) AS events,
+  COALESCE((
+    SELECT latest.country
+    FROM filtered_visits latest
+    WHERE latest.visitor_id = fv.visitor_id
+    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    LIMIT 1
+  ), '') AS country,
+  COALESCE((
+    SELECT latest.region
+    FROM filtered_visits latest
+    WHERE latest.visitor_id = fv.visitor_id
+    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    LIMIT 1
+  ), '') AS region,
+  COALESCE((
+    SELECT latest.region_code
+    FROM filtered_visits latest
+    WHERE latest.visitor_id = fv.visitor_id
+    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    LIMIT 1
+  ), '') AS regionCode,
+  COALESCE((
+    SELECT latest.city
+    FROM filtered_visits latest
+    WHERE latest.visitor_id = fv.visitor_id
+    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    LIMIT 1
+  ), '') AS city,
+  COALESCE((
+    SELECT latest.referrer_host
+    FROM filtered_visits latest
+    WHERE latest.visitor_id = fv.visitor_id
+    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    LIMIT 1
+  ), '') AS referrerHost,
+  COALESCE((
+    SELECT latest.referrer_url
+    FROM filtered_visits latest
+    WHERE latest.visitor_id = fv.visitor_id
+    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    LIMIT 1
+  ), '') AS referrerUrl,
+  COALESCE((
+    SELECT latest.browser
+    FROM filtered_visits latest
+    WHERE latest.visitor_id = fv.visitor_id
+    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    LIMIT 1
+  ), '') AS browser,
+  COALESCE((
+    SELECT latest.browser_version
+    FROM filtered_visits latest
+    WHERE latest.visitor_id = fv.visitor_id
+    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    LIMIT 1
+  ), '') AS browserVersion,
+  COALESCE((
+    SELECT latest.os
+    FROM filtered_visits latest
+    WHERE latest.visitor_id = fv.visitor_id
+    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    LIMIT 1
+  ), '') AS os,
+  COALESCE((
+    SELECT latest.os_version
+    FROM filtered_visits latest
+    WHERE latest.visitor_id = fv.visitor_id
+    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    LIMIT 1
+  ), '') AS osVersion,
+  COALESCE((
+    SELECT latest.device_type
+    FROM filtered_visits latest
+    WHERE latest.visitor_id = fv.visitor_id
+    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    LIMIT 1
+  ), '') AS deviceType,
+  (
+    SELECT latest.screen_width
+    FROM filtered_visits latest
+    WHERE latest.visitor_id = fv.visitor_id
+    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    LIMIT 1
+  ) AS screenWidth,
+  (
+    SELECT latest.screen_height
+    FROM filtered_visits latest
+    WHERE latest.visitor_id = fv.visitor_id
+    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    LIMIT 1
+  ) AS screenHeight
+FROM filtered_visits fv
+WHERE fv.visitor_id != ''
+GROUP BY fv.visitor_id
+LIMIT 1
+`;
+  const rows = await queryD1All<Record<string, unknown>>(
+    env,
+    sql,
+    [
+      ...targetVisitSourceBindings(siteId, visitorId),
+      ...detailCustomEventSourceBindings(siteId),
+    ],
+  );
+  return rows[0] ? mapVisitorRow(rows[0]) : null;
+}
+
+async function querySessionsForDetailFromD1(
+  env: Env,
+  siteId: string,
+  target: DetailTarget,
+): Promise<SessionRow[]> {
+  const sql = `
+WITH
+${buildTargetVisitSourceCte(detailTargetColumn(target))},
+filtered_visits AS (
+  SELECT *
+  FROM visit_source
+),
+${buildDetailCustomEventSourceCte()}
+SELECT
+  fv.session_id AS sessionId,
+  COALESCE((
+    SELECT edge.visitor_id
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ), '') AS visitorId,
+  MIN(fv.started_at) AS startedAt,
+  MAX(COALESCE(fv.ended_at, fv.last_activity_at, fv.started_at)) AS endedAt,
+  SUM(COALESCE(fv.duration_ms, 0)) AS totalDurationMs,
+  MAX(CASE WHEN LOWER(COALESCE(fv.status, '')) = 'open' THEN 1 ELSE 0 END) AS active,
+  count(*) AS views,
+  (
+    SELECT count(*)
+    FROM event_source es
+    WHERE es.session_id = fv.session_id
+  ) AS events,
+  CASE WHEN count(*) <= 1 THEN 1 ELSE 0 END AS bounce,
+  COALESCE((
+    SELECT edge.pathname
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ), '') AS entryPath,
+  COALESCE((
+    SELECT edge.pathname
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at DESC, edge.visit_id DESC
+    LIMIT 1
+  ), '') AS exitPath,
+  COALESCE((
+    SELECT edge.referrer_host
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ), '') AS referrerHost,
+  COALESCE((
+    SELECT edge.referrer_url
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ), '') AS referrerUrl,
+  COALESCE((
+    SELECT edge.country
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ), '') AS country,
+  COALESCE((
+    SELECT edge.region
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ), '') AS region,
+  COALESCE((
+    SELECT edge.region_code
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ), '') AS regionCode,
+  COALESCE((
+    SELECT edge.city
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ), '') AS city,
+  COALESCE((
+    SELECT edge.browser
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ), '') AS browser,
+  COALESCE((
+    SELECT edge.browser_version
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ), '') AS browserVersion,
+  COALESCE((
+    SELECT edge.os
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ), '') AS os,
+  COALESCE((
+    SELECT edge.os_version
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ), '') AS osVersion,
+  COALESCE((
+    SELECT edge.device_type
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ), '') AS deviceType,
+  (
+    SELECT edge.screen_width
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ) AS screenWidth,
+  (
+    SELECT edge.screen_height
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ) AS screenHeight
+FROM filtered_visits fv
+WHERE fv.session_id != ''
+GROUP BY fv.session_id
+ORDER BY startedAt DESC, sessionId ASC
+`;
+  return (await queryD1All<Record<string, unknown>>(
+    env,
+    sql,
+    [
+      ...targetVisitSourceBindings(siteId, target.value),
+      ...detailCustomEventSourceBindings(siteId),
+    ],
+  )).map(mapSessionRow);
+}
+
+async function queryJourneyEventsForDetailFromD1(
+  env: Env,
+  siteId: string,
+  target: DetailTarget,
+): Promise<JourneyEventRow[]> {
+  const sql = `
+WITH
+${buildTargetVisitSourceCte(detailTargetColumn(target))},
+filtered_visits AS (
+  SELECT *
+  FROM visit_source
+),
+${buildDetailCustomEventSourceCte()},
+page_events AS (
+  SELECT
+    visit_id AS id,
+    'pageview' AS kind,
+    'pageview' AS eventType,
+    started_at AS occurredAt,
+    visit_id AS visitId,
+    session_id AS sessionId,
+    visitor_id AS visitorId,
+    pathname,
+    title,
+    hostname,
+    referrer_host AS referrerHost,
+    referrer_url AS referrerUrl,
+    country,
+    region,
+    city,
+    browser,
+    browser_version AS browserVersion,
+    os,
+    os_version AS osVersion,
+    device_type AS deviceType,
+    screen_width AS screenWidth,
+    screen_height AS screenHeight
+  FROM filtered_visits
+),
+custom_events AS (
+  SELECT
+    event_id AS id,
+    'custom' AS kind,
+    event_name AS eventType,
+    occurred_at AS occurredAt,
+    visit_id AS visitId,
+    session_id AS sessionId,
+    visitor_id AS visitorId,
+    pathname,
+    title,
+    hostname,
+    referrer_host AS referrerHost,
+    referrer_url AS referrerUrl,
+    country,
+    region,
+    city,
+    browser,
+    browser_version AS browserVersion,
+    os,
+    os_version AS osVersion,
+    device_type AS deviceType,
+    screen_width AS screenWidth,
+    screen_height AS screenHeight
+  FROM event_source
+)
+SELECT *
+FROM (
+  SELECT * FROM page_events
+  UNION ALL
+  SELECT * FROM custom_events
+)
+ORDER BY occurredAt DESC, id DESC
+`;
+  return (await queryD1All<Record<string, unknown>>(
+    env,
+    sql,
+    [
+      ...targetVisitSourceBindings(siteId, target.value),
+      ...detailCustomEventSourceBindings(siteId),
+    ],
+  )).map(mapJourneyEventRow);
+}
+
 async function queryVisitorDetailFromD1(
   env: Env,
   siteId: string,
-  window: QueryWindow,
-  filters: DashboardFilters,
   visitorId: string,
 ) {
-  const [visitors, sessions, baseEvents] = await Promise.all([
-    queryVisitorsFromD1(env, siteId, window, filters, 1, visitorId),
-    querySessionsFromD1(env, siteId, window, filters, 500, {
+  const [visitor, sessions, baseEvents] = await Promise.all([
+    queryVisitorForDetailFromD1(env, siteId, visitorId),
+    querySessionsForDetailFromD1(env, siteId, {
       type: "visitor",
       value: visitorId,
     }),
-    queryJourneyEventsFromD1(env, siteId, window, filters, {
+    queryJourneyEventsForDetailFromD1(env, siteId, {
       type: "visitor",
       value: visitorId,
-    }, 1000),
+    }),
   ]);
-  const visitor = visitors.find((item) => item.visitorId === visitorId);
   if (!visitor) return null;
 
   const events = [
@@ -6681,19 +7123,17 @@ async function queryVisitorDetailFromD1(
 async function querySessionDetailFromD1(
   env: Env,
   siteId: string,
-  window: QueryWindow,
-  filters: DashboardFilters,
   sessionId: string,
 ) {
   const [sessions, baseEvents] = await Promise.all([
-    querySessionsFromD1(env, siteId, window, filters, 1, {
+    querySessionsForDetailFromD1(env, siteId, {
       type: "session",
       value: sessionId,
     }),
-    queryJourneyEventsFromD1(env, siteId, window, filters, {
+    queryJourneyEventsForDetailFromD1(env, siteId, {
       type: "session",
       value: sessionId,
-    }, 1000),
+    }),
   ]);
   const session = sessions.find((item) => item.sessionId === sessionId);
   if (!session) return null;

@@ -395,17 +395,13 @@ export async function fetchVisitors(
 export async function fetchVisitorDetail(
   siteId: string,
   visitorId: string,
-  window: TimeWindow,
-  filters?: DashboardFilters,
 ): Promise<VisitorDetailData> {
   const normalizedVisitorId = visitorId.trim();
   if (!normalizedVisitorId) return emptyVisitorDetail();
-  return fetchPrivateJson<VisitorDetailData>("/api/private/visitor-detail", withFilters({
+  return fetchPrivateJson<VisitorDetailData>("/api/private/visitor-detail", {
     siteId,
     visitorId: normalizedVisitorId,
-    from: window.from,
-    to: window.to,
-  }, filters)).catch(emptyVisitorDetail);
+  });
 }
 
 export async function fetchSessions(
@@ -438,17 +434,13 @@ export async function fetchSessions(
 export async function fetchSessionDetail(
   siteId: string,
   sessionId: string,
-  window: TimeWindow,
-  filters?: DashboardFilters,
 ): Promise<SessionDetailData> {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) return emptySessionDetail();
-  return fetchPrivateJson<SessionDetailData>("/api/private/session-detail", withFilters({
+  return fetchPrivateJson<SessionDetailData>("/api/private/session-detail", {
     siteId,
     sessionId: normalizedSessionId,
-    from: window.from,
-    to: window.to,
-  }, filters)).catch(emptySessionDetail);
+  });
 }
 
 export async function fetchPerformance(
