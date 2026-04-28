@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import NumberFlow, { continuous } from "@number-flow/react";
+import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
+import { ScatterplotLayer } from "@deck.gl/layers";
 import type { StyleSpecification } from "maplibre-gl";
-import Map, { type MapRef } from "react-map-gl/maplibre";
+import Map, { useControl } from "react-map-gl/maplibre";
 import { useTheme } from "next-themes";
 import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 import {
@@ -20,6 +22,7 @@ import { AutoTransition } from "@/components/ui/auto-transition";
 import { useLiveSearchParams } from "@/lib/client-history";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import type { RealtimeVisitorPoint } from "@/lib/realtime/types";
 
 interface RealtimeClientPageProps {
   locale: Locale;
@@ -51,6 +54,9 @@ const POINT_TRANSITION_DURATION_MS = 900;
 const RIPPLE_DURATION_MS = 1800;
 const MAX_RIPPLE_QUEUE = 220;
 const MAX_RENDERED_OVERLAY_POINTS = 320;
+const REALTIME_POINT_RGB = [52, 211, 153] as const;
+const REALTIME_POINT_BASE_RADIUS_PX = 4.8;
+const REALTIME_RIPPLE_BASE_RADIUS_PX = 34;
 
 type AnimatedPointPhase = "enter" | "steady" | "exit";
 
@@ -70,18 +76,18 @@ interface RealtimeRipplePoint {
   startedAt: number;
 }
 
-interface PositionedAnimatedPoint {
-  visitorId: string;
-  x: number;
-  y: number;
-  progress: number;
+interface RenderedRealtimePoint {
+  id: string;
+  latitude: number;
+  longitude: number;
+  radius: number;
+  fillColor: [number, number, number, number];
 }
 
-interface PositionedRipplePoint {
-  id: string;
-  x: number;
-  y: number;
-  progress: number;
+interface RealtimeMapStageProps {
+  siteId: string;
+  mapStyle: StyleSpecification;
+  points: RealtimeVisitorPoint[];
 }
 
 function buildRasterStyle(theme: EffectiveMapTheme): StyleSpecification {
@@ -153,6 +159,21 @@ function resolveRippleOpacity(progress: number): number {
   return 0.34 * ((1 - progress) / 0.75);
 }
 
+function resolveRealtimeFillColor(opacity: number): [number, number, number, number] {
+  return [
+    REALTIME_POINT_RGB[0],
+    REALTIME_POINT_RGB[1],
+    REALTIME_POINT_RGB[2],
+    Math.round(Math.max(0, Math.min(1, opacity)) * 255),
+  ];
+}
+
+function getRenderedPointPosition(
+  point: Pick<RenderedRealtimePoint, "longitude" | "latitude">,
+): [number, number] {
+  return [point.longitude, point.latitude];
+}
+
 function hasPointRelocated(
   previous: Pick<AnimatedPoint, "latitude" | "longitude">,
   next: Pick<AnimatedPoint, "latitude" | "longitude">,
@@ -163,64 +184,22 @@ function hasPointRelocated(
   );
 }
 
-function projectToScreen(
-  mapRef: MapRef | null,
-  longitude: number,
-  latitude: number,
-): { x: number; y: number } | null {
-  const map = mapRef?.getMap();
-  if (!map) return null;
-  const projected = map.project({ lng: longitude, lat: latitude });
-  if (!Number.isFinite(projected.x) || !Number.isFinite(projected.y))
-    return null;
-  return { x: projected.x, y: projected.y };
-}
+const DeckOverlay = memo(function DeckOverlay(props: MapboxOverlayProps) {
+  const overlay = useControl<MapboxOverlay>(() => new MapboxOverlay(props));
+  overlay.setProps(props);
+  return null;
+});
 
-export function RealtimeClientPage({
-  locale,
-  messages,
+const RealtimeMapStage = memo(function RealtimeMapStage({
   siteId,
-  siteDomain,
-}: RealtimeClientPageProps) {
-  const searchParams = useLiveSearchParams();
-  const realtime = useRealtimeChannel(siteId, {
-    enabled: Boolean(siteId),
-  });
-  const { resolvedTheme } = useTheme();
-  const searchParamsKey = searchParams.toString();
-
-  const effectiveTheme: EffectiveMapTheme =
-    resolvedTheme === "dark" ? "dark" : "light";
-  const mapStyle = useMemo(
-    () => buildRasterStyle(effectiveTheme),
-    [effectiveTheme],
-  );
-  const requestFilters = useMemo(
-    () => parseRealtimeCardFilters(new URLSearchParams(searchParamsKey)),
-    [searchParamsKey],
-  );
-  const [enableRollingNumber, setEnableRollingNumber] = useState(false);
+  mapStyle,
+  points,
+}: RealtimeMapStageProps) {
   const [animatedPoints, setAnimatedPoints] = useState<AnimatedPoint[]>([]);
   const [ripples, setRipples] = useState<RealtimeRipplePoint[]>([]);
   const [animationNow, setAnimationNow] = useState(() => Date.now());
-  const [mapViewVersion, setMapViewVersion] = useState(0);
-  const mapRef = useRef<MapRef | null>(null);
   const hasInitializedPointStreamRef = useRef(false);
   const animatedPointsRef = useRef<AnimatedPoint[]>([]);
-
-  useEffect(() => {
-    if (!realtime.hasConnected) {
-      setEnableRollingNumber(false);
-      return;
-    }
-
-    const frame = requestAnimationFrame(() => {
-      setEnableRollingNumber(true);
-    });
-    return () => {
-      cancelAnimationFrame(frame);
-    };
-  }, [realtime.hasConnected]);
 
   useEffect(() => {
     hasInitializedPointStreamRef.current = false;
@@ -236,7 +215,7 @@ export function RealtimeClientPage({
   useEffect(() => {
     const isInitial = !hasInitializedPointStreamRef.current;
     const now = Date.now();
-    const incoming = realtime.points
+    const incoming = points
       .filter((point) => hasValidCoordinate(point.latitude, point.longitude))
       .map((point) => ({
         visitorId: point.visitorId,
@@ -318,7 +297,7 @@ export function RealtimeClientPage({
         [...previous, ...rippleCandidates].slice(-MAX_RIPPLE_QUEUE),
       );
     }
-  }, [realtime.points]);
+  }, [points]);
 
   const hasPointTransition = useMemo(
     () => animatedPoints.some((point) => point.phase !== "steady"),
@@ -380,58 +359,118 @@ export function RealtimeClientPage({
     };
   }, [hasActiveAnimations]);
 
-  const positionedPoints = useMemo<PositionedAnimatedPoint[]>(() => {
-    if (!mapRef.current) return [];
-    const next: PositionedAnimatedPoint[] = [];
+  const renderedPoints = useMemo<RenderedRealtimePoint[]>(() => {
+    const next: RenderedRealtimePoint[] = [];
     for (const point of animatedPoints) {
       const progress = resolvePointProgress(point, animationNow);
       if (progress <= 0) continue;
-      const projected = projectToScreen(
-        mapRef.current,
-        point.longitude,
-        point.latitude,
-      );
-      if (!projected) continue;
+      const scale = 0.1 + progress * 0.9;
       next.push({
-        visitorId: point.visitorId,
-        x: projected.x,
-        y: projected.y,
-        progress,
+        id: point.visitorId,
+        latitude: point.latitude,
+        longitude: point.longitude,
+        radius: REALTIME_POINT_BASE_RADIUS_PX * scale,
+        fillColor: resolveRealtimeFillColor(progress * 0.56),
       });
       if (next.length >= MAX_RENDERED_OVERLAY_POINTS) break;
     }
     return next;
-  }, [animatedPoints, animationNow, mapViewVersion]);
-  const positionedRipples = useMemo<PositionedRipplePoint[]>(() => {
-    if (!mapRef.current) return [];
-    const next: PositionedRipplePoint[] = [];
+  }, [animatedPoints, animationNow]);
+  const renderedRipples = useMemo<RenderedRealtimePoint[]>(() => {
+    const next: RenderedRealtimePoint[] = [];
     for (const ripple of ripples) {
       const progress = resolveRippleProgress(ripple, animationNow);
       if (progress <= 0 || progress >= 1) continue;
-      const projected = projectToScreen(
-        mapRef.current,
-        ripple.longitude,
-        ripple.latitude,
-      );
-      if (!projected) continue;
+      const scale = 0.03 + progress * 0.97;
       next.push({
         id: ripple.id,
-        x: projected.x,
-        y: projected.y,
-        progress,
+        latitude: ripple.latitude,
+        longitude: ripple.longitude,
+        radius: REALTIME_RIPPLE_BASE_RADIUS_PX * scale,
+        fillColor: resolveRealtimeFillColor(resolveRippleOpacity(progress)),
       });
     }
     return next;
-  }, [animationNow, mapViewVersion, ripples]);
+  }, [animationNow, ripples]);
+
+  const layers = useMemo(
+    () => [
+      new ScatterplotLayer<RenderedRealtimePoint>({
+        id: "realtime-map-ripples",
+        data: renderedRipples,
+        getFillColor: (point) => point.fillColor,
+        getPosition: getRenderedPointPosition,
+        getRadius: (point) => point.radius,
+        radiusUnits: "pixels",
+        radiusMinPixels: 0,
+        radiusMaxPixels: REALTIME_RIPPLE_BASE_RADIUS_PX,
+        pickable: false,
+      }),
+      new ScatterplotLayer<RenderedRealtimePoint>({
+        id: "realtime-map-points",
+        data: renderedPoints,
+        getFillColor: (point) => point.fillColor,
+        getPosition: getRenderedPointPosition,
+        getRadius: (point) => point.radius,
+        radiusUnits: "pixels",
+        radiusMinPixels: 0,
+        radiusMaxPixels: REALTIME_POINT_BASE_RADIUS_PX,
+        pickable: false,
+      }),
+    ],
+    [renderedPoints, renderedRipples],
+  );
+
+  return (
+    <Map
+      initialViewState={DEFAULT_VIEW_STATE}
+      mapStyle={mapStyle}
+      reuseMaps
+      attributionControl={false}
+    >
+      <DeckOverlay interleaved={false} layers={layers} />
+    </Map>
+  );
+});
+
+export function RealtimeClientPage({
+  locale,
+  messages,
+  siteId,
+  siteDomain,
+}: RealtimeClientPageProps) {
+  const searchParams = useLiveSearchParams();
+  const realtime = useRealtimeChannel(siteId, {
+    enabled: Boolean(siteId),
+  });
+  const { resolvedTheme } = useTheme();
+  const searchParamsKey = searchParams.toString();
+
+  const effectiveTheme: EffectiveMapTheme =
+    resolvedTheme === "dark" ? "dark" : "light";
+  const mapStyle = useMemo(
+    () => buildRasterStyle(effectiveTheme),
+    [effectiveTheme],
+  );
+  const requestFilters = useMemo(
+    () => parseRealtimeCardFilters(new URLSearchParams(searchParamsKey)),
+    [searchParamsKey],
+  );
+  const [enableRollingNumber, setEnableRollingNumber] = useState(false);
 
   useEffect(() => {
-    if (!mapRef.current) return;
-    setMapViewVersion((value) => value + 1);
-  }, [realtime.points.length]);
+    if (!realtime.hasConnected) {
+      setEnableRollingNumber(false);
+      return;
+    }
 
-  const handleMapViewUpdate = () => {
-    setMapViewVersion((value) => value + 1);
-  };
+    const frame = requestAnimationFrame(() => {
+      setEnableRollingNumber(true);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [realtime.hasConnected]);
 
   const showRealtimeMetrics = realtime.hasConnected;
   const statusLabel = realtimeStatusText(messages, realtime.status);
@@ -439,59 +478,11 @@ export function RealtimeClientPage({
   return (
     <div className="space-y-6 pb-6">
       <div className="relative h-[min(72svh,calc(100svh-10.5rem))] min-h-[18rem] sm:min-h-[22rem] overflow-hidden">
-        <Map
-          ref={mapRef}
-          initialViewState={DEFAULT_VIEW_STATE}
+        <RealtimeMapStage
+          siteId={siteId}
           mapStyle={mapStyle}
-          reuseMaps
-          attributionControl={false}
-          onLoad={handleMapViewUpdate}
-          onMove={handleMapViewUpdate}
-          onResize={handleMapViewUpdate}
+          points={realtime.points}
         />
-
-        <div className="pointer-events-none absolute inset-0">
-          {positionedRipples.map((ripple) => {
-            const scale = 0.03 + ripple.progress * 0.97;
-            return (
-              <div
-                key={ripple.id}
-                className="absolute rounded-full"
-                style={{
-                  left: ripple.x,
-                  top: ripple.y,
-                  width: 68,
-                  height: 68,
-                  transform: `translate(-50%, -50%) scale(${scale})`,
-                  transformOrigin: "center",
-                  opacity: resolveRippleOpacity(ripple.progress),
-                  backgroundColor: "#34d399",
-                  willChange: "transform, opacity",
-                }}
-              />
-            );
-          })}
-          {positionedPoints.map((point) => {
-            const scale = 0.1 + point.progress * 0.9;
-            return (
-              <div
-                key={point.visitorId}
-                className="absolute rounded-full"
-                style={{
-                  left: point.x,
-                  top: point.y,
-                  width: 9.6,
-                  height: 9.6,
-                  transform: `translate(-50%, -50%) scale(${scale})`,
-                  transformOrigin: "center",
-                  opacity: point.progress * 0.56,
-                  backgroundColor: "#34d399",
-                  willChange: "transform, opacity",
-                }}
-              />
-            );
-          })}
-        </div>
 
         <div className="pointer-events-none absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-background via-background/65 to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-background via-background/60 to-transparent" />
