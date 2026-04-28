@@ -20,7 +20,11 @@ import type {
   PerformanceMetricKey,
   ReferrerRadarData,
   ReferrersData,
+  SessionDetailData,
+  SessionsData,
   TrendData,
+  VisitorDetailData,
+  VisitorsData,
 } from "@/lib/edge-client";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 
@@ -116,6 +120,22 @@ function emptyReferrers(): ReferrersData {
 
 function emptyDimension(): DimensionData {
   return { ok: true, data: [] };
+}
+
+function emptyVisitors(): VisitorsData {
+  return { ok: true, data: [] };
+}
+
+function emptySessions(): SessionsData {
+  return { ok: true, data: [] };
+}
+
+function emptyVisitorDetail(): VisitorDetailData {
+  return { ok: true, data: null };
+}
+
+function emptySessionDetail(): SessionDetailData {
+  return { ok: true, data: null };
 }
 
 function emptyPerformance(interval: TimeWindow["interval"]): PerformanceData {
@@ -323,6 +343,70 @@ export async function fetchPages(siteId: string, window: TimeWindow, filters?: D
     limit: 100,
     details: 1,
   }, filters));
+}
+
+export async function fetchVisitors(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+  options?: {
+    limit?: number;
+  },
+): Promise<VisitorsData> {
+  return fetchPrivateJson<VisitorsData>("/api/private/visitors", withFilters({
+    siteId,
+    from: window.from,
+    to: window.to,
+    limit: options?.limit ?? 100,
+  }, filters)).catch(emptyVisitors);
+}
+
+export async function fetchVisitorDetail(
+  siteId: string,
+  visitorId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+): Promise<VisitorDetailData> {
+  const normalizedVisitorId = visitorId.trim();
+  if (!normalizedVisitorId) return emptyVisitorDetail();
+  return fetchPrivateJson<VisitorDetailData>("/api/private/visitor-detail", withFilters({
+    siteId,
+    visitorId: normalizedVisitorId,
+    from: window.from,
+    to: window.to,
+  }, filters)).catch(emptyVisitorDetail);
+}
+
+export async function fetchSessions(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+  options?: {
+    limit?: number;
+  },
+): Promise<SessionsData> {
+  return fetchPrivateJson<SessionsData>("/api/private/sessions", withFilters({
+    siteId,
+    from: window.from,
+    to: window.to,
+    limit: options?.limit ?? 100,
+  }, filters)).catch(emptySessions);
+}
+
+export async function fetchSessionDetail(
+  siteId: string,
+  sessionId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+): Promise<SessionDetailData> {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) return emptySessionDetail();
+  return fetchPrivateJson<SessionDetailData>("/api/private/session-detail", withFilters({
+    siteId,
+    sessionId: normalizedSessionId,
+    from: window.from,
+    to: window.to,
+  }, filters)).catch(emptySessionDetail);
 }
 
 export async function fetchPerformance(

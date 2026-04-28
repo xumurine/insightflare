@@ -67,6 +67,7 @@ type AnalyticsNavKey =
   | "realtime"
   | "pages"
   | "referrers"
+  | "sessions"
   | "campaigns"
   | "events"
   | "funnels"
@@ -246,6 +247,7 @@ export function DashboardShell({
           { key: "realtime", href: `${activeSiteBase}/realtime` },
           { key: "pages", href: `${activeSiteBase}/pages` },
           { key: "referrers", href: `${activeSiteBase}/referrers` },
+          { key: "sessions", href: `${activeSiteBase}/sessions` },
           { key: "campaigns", href: `${activeSiteBase}/campaigns` },
           { key: "events", href: `${activeSiteBase}/events` },
           { key: "funnels", href: `${activeSiteBase}/funnels` },

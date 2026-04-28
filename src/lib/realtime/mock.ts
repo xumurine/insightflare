@@ -5061,6 +5061,216 @@ function generateDemoReferrers(
   };
 }
 
+function parseDemoScreenSize(value: string): {
+  screenWidth: number | null;
+  screenHeight: number | null;
+} {
+  const match = String(value || "").match(/^(\d+)\s*x\s*(\d+)$/i);
+  if (!match) return { screenWidth: null, screenHeight: null };
+  return {
+    screenWidth: Number(match[1]) || null,
+    screenHeight: Number(match[2]) || null,
+  };
+}
+
+function createDemoJourneySession(
+  sessionId: string,
+  visits: DemoVisitFact[],
+): Record<string, unknown> | null {
+  if (visits.length === 0) return null;
+  const ordered = [...visits].sort((left, right) =>
+    left.startedAt - right.startedAt || left.visitId.localeCompare(right.visitId)
+  );
+  const first = ordered[0];
+  const last = ordered[ordered.length - 1];
+  if (!first || !last) return null;
+  const endedAt = Math.max(
+    ...ordered.map((visit) => visit.startedAt + Math.max(0, visit.durationMs)),
+    last.startedAt,
+  );
+  const screen = parseDemoScreenSize(first.screenSize);
+  return {
+    sessionId,
+    visitorId: first.visitorId,
+    startedAt: first.startedAt,
+    endedAt,
+    durationMs: Math.max(0, endedAt - first.startedAt),
+    views: ordered.length,
+    events: ordered.filter((visit) => visit.eventType !== "pageview").length,
+    bounce: ordered.length <= 1,
+    entryPath: first.pathname,
+    exitPath: last.pathname,
+    referrerHost: first.referrerHost,
+    referrerUrl: first.referrerUrl,
+    country: first.country,
+    region: first.regionName || first.region,
+    city: first.cityName || first.city,
+    browser: first.browser,
+    browserVersion: first.browserVersion,
+    os: demoOperatingSystemLabel(first.osVersion),
+    osVersion: first.osVersion,
+    deviceType: first.deviceType,
+    screenWidth: screen.screenWidth,
+    screenHeight: screen.screenHeight,
+  };
+}
+
+function demoVisitsBySession(visits: DemoVisitFact[]): Map<string, DemoVisitFact[]> {
+  const bySession = new Map<string, DemoVisitFact[]>();
+  for (const visit of visits) {
+    const bucket = bySession.get(visit.sessionId) ?? [];
+    bucket.push(visit);
+    bySession.set(visit.sessionId, bucket);
+  }
+  return bySession;
+}
+
+function createDemoJourneyEvents(
+  visits: DemoVisitFact[],
+  options?: { includeSessionStart?: boolean },
+): Array<Record<string, unknown>> {
+  const events: Array<Record<string, unknown>> = [];
+  const bySession = demoVisitsBySession(visits);
+
+  if (options?.includeSessionStart) {
+    for (const [sessionId, sessionVisits] of bySession.entries()) {
+      const session = createDemoJourneySession(sessionId, sessionVisits);
+      if (!session) continue;
+      events.push({
+        id: `session-start:${sessionId}`,
+        kind: "session_start",
+        eventType: "session start",
+        occurredAt: session.startedAt,
+        visitId: "",
+        sessionId,
+        visitorId: session.visitorId,
+        pathname: session.entryPath,
+        title: "",
+        hostname: "",
+        referrerHost: session.referrerHost,
+        referrerUrl: session.referrerUrl,
+        country: session.country,
+        region: session.region,
+        city: session.city,
+        browser: session.browser,
+        browserVersion: session.browserVersion,
+        os: session.os,
+        osVersion: session.osVersion,
+        deviceType: session.deviceType,
+        screenWidth: session.screenWidth,
+        screenHeight: session.screenHeight,
+      });
+    }
+  }
+
+  for (const visit of visits) {
+    const screen = parseDemoScreenSize(visit.screenSize);
+    const base = {
+      visitId: visit.visitId,
+      sessionId: visit.sessionId,
+      visitorId: visit.visitorId,
+      pathname: visit.pathname,
+      title: visit.title,
+      hostname: visit.hostname,
+      referrerHost: visit.referrerHost,
+      referrerUrl: visit.referrerUrl,
+      country: visit.country,
+      region: visit.regionName || visit.region,
+      city: visit.cityName || visit.city,
+      browser: visit.browser,
+      browserVersion: visit.browserVersion,
+      os: demoOperatingSystemLabel(visit.osVersion),
+      osVersion: visit.osVersion,
+      deviceType: visit.deviceType,
+      screenWidth: screen.screenWidth,
+      screenHeight: screen.screenHeight,
+    };
+    events.push({
+      ...base,
+      id: visit.visitId,
+      kind: "pageview",
+      eventType: "pageview",
+      occurredAt: visit.startedAt,
+    });
+    if (visit.eventType !== "pageview") {
+      events.push({
+        ...base,
+        id: `${visit.visitId}:${visit.eventType}`,
+        kind: "custom",
+        eventType: visit.eventType,
+        occurredAt: Math.min(visit.startedAt + 1000, visit.startedAt + Math.max(1000, visit.durationMs)),
+      });
+    }
+  }
+
+  return events.sort((left, right) =>
+    Number(right.occurredAt ?? 0) - Number(left.occurredAt ?? 0)
+    || String(right.id ?? "").localeCompare(String(left.id ?? ""))
+  );
+}
+
+function summarizeDemoVisitedPages(events: Array<Record<string, unknown>>) {
+  const pages = new Map<string, number>();
+  for (const event of events) {
+    if (event.kind !== "pageview") continue;
+    const pathname = String(event.pathname || "/").trim() || "/";
+    pages.set(pathname, (pages.get(pathname) ?? 0) + 1);
+  }
+  return Array.from(pages.entries())
+    .map(([pathname, views]) => ({ pathname, views }))
+    .sort((left, right) => right.views - left.views || left.pathname.localeCompare(right.pathname))
+    .slice(0, 50);
+}
+
+function summarizeDemoEventDistribution(events: Array<Record<string, unknown>>) {
+  const counts = new Map<string, number>();
+  for (const event of events) {
+    const eventType = String(event.eventType || event.kind || "event");
+    counts.set(eventType, (counts.get(eventType) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([eventType, count]) => ({ eventType, count }))
+    .sort((left, right) => right.count - left.count || left.eventType.localeCompare(right.eventType))
+    .slice(0, 50);
+}
+
+function summarizeDemoActivity(events: Array<Record<string, unknown>>) {
+  const counts = new Map<string, number>();
+  for (const event of events) {
+    const occurredAt = Number(event.occurredAt ?? 0);
+    if (!Number.isFinite(occurredAt) || occurredAt <= 0) continue;
+    const date = new Date(occurredAt).toISOString().slice(0, 10);
+    counts.set(date, (counts.get(date) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([date, count]) => ({ date, count }))
+    .sort((left, right) => left.date.localeCompare(right.date));
+}
+
+function demoJourneyPercentile(values: number[], percentileValue: number): number {
+  const sorted = values
+    .filter((value) => Number.isFinite(value) && value >= 0)
+    .sort((left, right) => left - right);
+  if (sorted.length === 0) return 0;
+  const index = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil((percentileValue / 100) * sorted.length) - 1),
+  );
+  return sorted[index] ?? 0;
+}
+
+function demoAverageGapMs(values: number[]): number {
+  const sorted = values
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((left, right) => left - right);
+  if (sorted.length < 2) return 0;
+  let total = 0;
+  for (let index = 1; index < sorted.length; index += 1) {
+    total += sorted[index] - sorted[index - 1];
+  }
+  return Math.round(total / (sorted.length - 1));
+}
+
 function generateDemoVisitors(
   siteId: string,
   params: Record<string, string | number>,
@@ -5074,7 +5284,14 @@ function generateDemoVisitors(
 
   const buckets = new Map<
     string,
-    { firstSeenAt: number; lastSeenAt: number; views: number; sessions: Set<string> }
+    {
+      firstSeenAt: number;
+      lastSeenAt: number;
+      views: number;
+      sessions: Set<string>;
+      events: number;
+      latestVisit: DemoVisitFact;
+    }
   >();
   for (const visit of filtered.visits) {
     const bucket = buckets.get(visit.visitorId) ?? {
@@ -5082,11 +5299,17 @@ function generateDemoVisitors(
       lastSeenAt: visit.startedAt,
       views: 0,
       sessions: new Set<string>(),
+      events: 0,
+      latestVisit: visit,
     };
     bucket.firstSeenAt = Math.min(bucket.firstSeenAt, visit.startedAt);
-    bucket.lastSeenAt = Math.max(bucket.lastSeenAt, visit.startedAt);
+    if (visit.startedAt >= bucket.lastSeenAt) {
+      bucket.lastSeenAt = visit.startedAt;
+      bucket.latestVisit = visit;
+    }
     bucket.views += dataset.viewWeight;
     bucket.sessions.add(visit.sessionId);
+    if (visit.eventType !== "pageview") bucket.events += 1;
     buckets.set(visit.visitorId, bucket);
   }
 
@@ -5099,6 +5322,19 @@ function generateDemoVisitors(
         lastSeenAt: bucket.lastSeenAt,
         views: Math.max(0, Math.round(bucket.views)),
         sessions: Math.max(0, Math.round(weightedSessionCount(dataset, bucket.sessions))),
+        events: bucket.events,
+        country: bucket.latestVisit.country,
+        region: bucket.latestVisit.regionName || bucket.latestVisit.region,
+        city: bucket.latestVisit.cityName || bucket.latestVisit.city,
+        referrerHost: bucket.latestVisit.referrerHost,
+        referrerUrl: bucket.latestVisit.referrerUrl,
+        browser: bucket.latestVisit.browser,
+        browserVersion: bucket.latestVisit.browserVersion,
+        os: demoOperatingSystemLabel(bucket.latestVisit.osVersion),
+        osVersion: bucket.latestVisit.osVersion,
+        deviceType: bucket.latestVisit.deviceType,
+        screenWidth: parseDemoScreenSize(bucket.latestVisit.screenSize).screenWidth,
+        screenHeight: parseDemoScreenSize(bucket.latestVisit.screenSize).screenHeight,
       }))
       .sort((left, right) => (
         right.lastSeenAt - left.lastSeenAt
@@ -5106,6 +5342,141 @@ function generateDemoVisitors(
         || left.visitorId.localeCompare(right.visitorId)
       ))
       .slice(0, limit),
+  };
+}
+
+function generateDemoSessions(
+  siteId: string,
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const limit = parseDemoLimit(params.limit, 100, 1, 500);
+  const from = parseDemoNumber(params.from, Date.now() - 7 * 24 * 3600 * 1000);
+  const to = parseDemoNumber(params.to, Date.now());
+  const filters = parseDemoFilters(params);
+  const dataset = buildDemoFactDataset(siteId, from, to);
+  const filtered = applyDemoFilters(dataset, filters);
+  const rows = Array.from(demoVisitsBySession(filtered.visits).entries())
+    .map(([sessionId, visits]) => createDemoJourneySession(sessionId, visits))
+    .filter((row): row is Record<string, unknown> => Boolean(row))
+    .sort((left, right) => (
+      Number(right.startedAt ?? 0) - Number(left.startedAt ?? 0)
+      || String(left.sessionId ?? "").localeCompare(String(right.sessionId ?? ""))
+    ))
+    .slice(0, limit);
+
+  return {
+    ok: true,
+    data: rows,
+  };
+}
+
+function generateDemoVisitorDetail(
+  siteId: string,
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const visitorId = String(params.visitorId || "").trim();
+  if (!visitorId) return { ok: true, data: null };
+  const from = parseDemoNumber(params.from, Date.now() - 7 * 24 * 3600 * 1000);
+  const to = parseDemoNumber(params.to, Date.now());
+  const filters = parseDemoFilters(params);
+  const dataset = buildDemoFactDataset(siteId, from, to);
+  const filtered = applyDemoFilters(dataset, filters);
+  const visits = filtered.visits.filter((visit) => visit.visitorId === visitorId);
+  if (visits.length === 0) return { ok: true, data: null };
+
+  const sessions = Array.from(demoVisitsBySession(visits).entries())
+    .map(([sessionId, sessionVisits]) => createDemoJourneySession(sessionId, sessionVisits))
+    .filter((row): row is Record<string, unknown> => Boolean(row))
+    .sort((left, right) => Number(right.startedAt ?? 0) - Number(left.startedAt ?? 0));
+  const events = createDemoJourneyEvents(visits, { includeSessionStart: true });
+  const latest = [...visits].sort((left, right) => right.startedAt - left.startedAt)[0] ?? visits[0];
+  const firstSeenAt = Math.min(...visits.map((visit) => visit.startedAt));
+  const lastSeenAt = Math.max(...visits.map((visit) => visit.startedAt));
+  const screen = parseDemoScreenSize(latest.screenSize);
+  const durationValues = sessions.map((session) => Number(session.durationMs ?? 0));
+  const totalDuration = durationValues.reduce((sum, value) => sum + value, 0);
+  const daysActive = new Set(
+    events
+      .map((event) => Number(event.occurredAt ?? 0))
+      .filter((value) => value > 0)
+      .map((value) => new Date(value).toISOString().slice(0, 10)),
+  ).size;
+  const visitor = {
+    visitorId,
+    firstSeenAt,
+    lastSeenAt,
+    views: visits.length,
+    sessions: sessions.length,
+    events: events.filter((event) => event.kind === "custom").length,
+    country: latest.country,
+    region: latest.regionName || latest.region,
+    city: latest.cityName || latest.city,
+    referrerHost: latest.referrerHost,
+    referrerUrl: latest.referrerUrl,
+    browser: latest.browser,
+    browserVersion: latest.browserVersion,
+    os: demoOperatingSystemLabel(latest.osVersion),
+    osVersion: latest.osVersion,
+    deviceType: latest.deviceType,
+    screenWidth: screen.screenWidth,
+    screenHeight: screen.screenHeight,
+  };
+
+  return {
+    ok: true,
+    data: {
+      visitor,
+      metrics: {
+        totalEvents: events.length,
+        sessions: sessions.length,
+        views: visits.length,
+        avgEventsPerSession: sessions.length > 0 ? events.length / sessions.length : 0,
+        bounceRate: sessions.length > 0
+          ? sessions.filter((session) => Boolean(session.bounce)).length / sessions.length
+          : 0,
+        avgDurationMs: sessions.length > 0 ? Math.round(totalDuration / sessions.length) : 0,
+        p90DurationMs: demoJourneyPercentile(durationValues, 90),
+        firstSeenAt,
+        lastSeenAt,
+        daysActive,
+        conversionEvents: events.filter((event) => event.kind === "custom").length,
+        avgTimeBetweenSessionsMs: demoAverageGapMs(
+          sessions.map((session) => Number(session.startedAt ?? 0)),
+        ),
+      },
+      sessions,
+      events,
+      visitedPages: summarizeDemoVisitedPages(events),
+      eventDistribution: summarizeDemoEventDistribution(events),
+      activity: summarizeDemoActivity(events),
+    },
+  };
+}
+
+function generateDemoSessionDetail(
+  siteId: string,
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const sessionId = String(params.sessionId || "").trim();
+  if (!sessionId) return { ok: true, data: null };
+  const from = parseDemoNumber(params.from, Date.now() - 7 * 24 * 3600 * 1000);
+  const to = parseDemoNumber(params.to, Date.now());
+  const filters = parseDemoFilters(params);
+  const dataset = buildDemoFactDataset(siteId, from, to);
+  const filtered = applyDemoFilters(dataset, filters);
+  const visits = filtered.visits.filter((visit) => visit.sessionId === sessionId);
+  const session = createDemoJourneySession(sessionId, visits);
+  if (!session) return { ok: true, data: null };
+  const events = createDemoJourneyEvents(visits, { includeSessionStart: true });
+
+  return {
+    ok: true,
+    data: {
+      session,
+      events,
+      visitedPages: summarizeDemoVisitedPages(events),
+      eventDistribution: summarizeDemoEventDistribution(events),
+    },
   };
 }
 
@@ -6384,6 +6755,15 @@ export function handleDemoRequest(options: {
     }
     if (path.includes("/trend")) {
       return generateDemoTrend(siteId, params);
+  }
+  if (path.includes("/session-detail")) {
+    return generateDemoSessionDetail(siteId, params);
+  }
+  if (path.includes("/visitor-detail")) {
+    return generateDemoVisitorDetail(siteId, params);
+  }
+  if (path.includes("/sessions")) {
+    return generateDemoSessions(siteId, params);
   }
   if (path.includes("/pages")) {
     return generateDemoPages(siteId, params);

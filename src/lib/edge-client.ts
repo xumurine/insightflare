@@ -488,7 +488,126 @@ export interface VisitorsData {
     lastSeenAt: number;
     views: number;
     sessions: number;
+    events?: number;
+    country?: string;
+    region?: string;
+    city?: string;
+    referrerHost?: string;
+    referrerUrl?: string;
+    browser?: string;
+    browserVersion?: string;
+    os?: string;
+    osVersion?: string;
+    deviceType?: string;
+    screenWidth?: number | null;
+    screenHeight?: number | null;
   }>;
+}
+
+export interface JourneySession {
+  sessionId: string;
+  visitorId: string;
+  startedAt: number;
+  endedAt: number;
+  durationMs: number;
+  views: number;
+  events: number;
+  bounce: boolean;
+  entryPath: string;
+  exitPath: string;
+  referrerHost: string;
+  referrerUrl: string;
+  country: string;
+  region: string;
+  city: string;
+  browser: string;
+  browserVersion: string;
+  os: string;
+  osVersion: string;
+  deviceType: string;
+  screenWidth: number | null;
+  screenHeight: number | null;
+}
+
+export interface JourneyEvent {
+  id: string;
+  kind: "session_start" | "pageview" | "custom";
+  eventType: string;
+  occurredAt: number;
+  visitId: string;
+  sessionId: string;
+  visitorId: string;
+  pathname: string;
+  title: string;
+  hostname: string;
+  referrerHost: string;
+  referrerUrl: string;
+  country: string;
+  region: string;
+  city: string;
+  browser: string;
+  browserVersion: string;
+  os: string;
+  osVersion: string;
+  deviceType: string;
+  screenWidth: number | null;
+  screenHeight: number | null;
+}
+
+export interface JourneyPageCount {
+  pathname: string;
+  views: number;
+}
+
+export interface JourneyEventCount {
+  eventType: string;
+  count: number;
+}
+
+export interface VisitorActivityDay {
+  date: string;
+  count: number;
+}
+
+export interface VisitorDetailData {
+  ok: boolean;
+  data: {
+    visitor: VisitorsData["data"][number];
+    metrics: {
+      totalEvents: number;
+      sessions: number;
+      views: number;
+      avgEventsPerSession: number;
+      bounceRate: number;
+      avgDurationMs: number;
+      p90DurationMs: number;
+      firstSeenAt: number;
+      lastSeenAt: number;
+      daysActive: number;
+      conversionEvents: number;
+      avgTimeBetweenSessionsMs: number;
+    };
+    sessions: JourneySession[];
+    events: JourneyEvent[];
+    visitedPages: JourneyPageCount[];
+    eventDistribution: JourneyEventCount[];
+    activity: VisitorActivityDay[];
+  } | null;
+}
+
+export interface SessionsData {
+  ok: boolean;
+  data: JourneySession[];
+}
+
+export interface SessionDetailData {
+  ok: boolean;
+  data: {
+    session: JourneySession;
+    events: JourneyEvent[];
+    visitedPages: JourneyPageCount[];
+    eventDistribution: JourneyEventCount[];
+  } | null;
 }
 
 export interface DimensionData {

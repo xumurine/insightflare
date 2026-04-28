@@ -166,6 +166,7 @@ export function buildSitePath(
     | "realtime"
     | "pages"
     | "referrers"
+    | "sessions"
     | "campaigns"
     | "events"
     | "funnels"

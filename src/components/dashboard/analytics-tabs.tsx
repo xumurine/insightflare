@@ -34,6 +34,7 @@ type AnalyticsTabKey =
   | "realtime"
   | "pages"
   | "referrers"
+  | "sessions"
   | "campaigns"
   | "events"
   | "funnels"
@@ -60,6 +61,7 @@ function getAnalyticsSectionIcon(key: AnalyticsTabKey) {
   if (key === "realtime") return RiPulseLine;
   if (key === "pages") return RiFileList3Line;
   if (key === "referrers") return RiShareForwardLine;
+  if (key === "sessions") return RiPulseLine;
   if (key === "campaigns") return RiMegaphoneLine;
   if (key === "events") return RiFlashlightLine;
   if (key === "funnels") return RiFilter2Line;
