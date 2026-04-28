@@ -6546,7 +6546,7 @@ page_events AS (
     screen_height AS screenHeight
   FROM filtered_visits
 ),
-custom_events AS (
+custom_event_rows AS (
   SELECT
     es.event_id AS id,
     'custom' AS kind,
@@ -6578,7 +6578,7 @@ SELECT *
 FROM (
   SELECT * FROM page_events
   UNION ALL
-  SELECT * FROM custom_events
+  SELECT * FROM custom_event_rows
 )
 ORDER BY occurredAt DESC, id DESC
 LIMIT ?
@@ -7018,7 +7018,7 @@ page_events AS (
     screen_height AS screenHeight
   FROM filtered_visits
 ),
-custom_events AS (
+custom_event_rows AS (
   SELECT
     event_id AS id,
     'custom' AS kind,
@@ -7048,7 +7048,7 @@ SELECT *
 FROM (
   SELECT * FROM page_events
   UNION ALL
-  SELECT * FROM custom_events
+  SELECT * FROM custom_event_rows
 )
 ORDER BY occurredAt DESC, id DESC
 `;
