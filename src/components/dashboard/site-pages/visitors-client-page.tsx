@@ -1,21 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { RiArrowRightSLine, RiSearchLine } from "@remixicon/react";
+import {
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
+import { useRouter } from "next/navigation";
+import { RiSearchLine } from "@remixicon/react";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import {
   BrowserMeta,
+  CountryRegionMeta,
   DeviceMeta,
   formatRelativeTime,
-  LocationMeta,
   OsMeta,
   ReferrerMeta,
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -25,13 +33,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { numberFormat } from "@/lib/dashboard/format";
-import {
-  fetchVisitors,
-} from "@/lib/dashboard/client-data";
+import { fetchVisitors } from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
-import type { VisitorsData } from "@/lib/edge-client";
+import type { VisitorsData, VisitorsMeta } from "@/lib/edge-client";
+import { cn } from "@/lib/utils";
 
 interface VisitorsClientPageProps {
   locale: Locale;
@@ -42,35 +49,50 @@ interface VisitorsClientPageProps {
 
 type VisitorRow = VisitorsData["data"][number];
 
-const VISITOR_LIMIT = 200;
+const VISITOR_PAGE_SIZE = 80;
+const VISITOR_SKELETON_ROWS = 8;
+
+const INITIAL_VISITOR_META: VisitorsMeta = {
+  page: 1,
+  pageSize: VISITOR_PAGE_SIZE,
+  returned: 0,
+  hasMore: false,
+  nextPage: null,
+};
 
 function copy(locale: Locale) {
   return locale === "zh"
     ? {
         search: "搜索访客...",
-        name: "访客",
+        visitor: "访客",
+        sessionId: "会话 ID",
         anonymous: "匿名访客",
         referrer: "来源",
         location: "地区",
-        os: "操作系统",
+        os: "系统",
         browser: "浏览器",
         device: "设备",
         firstSeen: "首次出现",
-        activity: "活跃",
+        lastSeen: "上次出现",
+        pageViews: "页面浏览",
+        sessions: "会话数",
         loadError: "无法加载访客数据。",
         empty: "当前时间范围内没有访客。",
       }
     : {
         search: "Search visitors...",
-        name: "Visitor",
+        visitor: "Visitor",
+        sessionId: "Session ID",
         anonymous: "Anonymous",
         referrer: "Referrer",
         location: "Location",
         os: "OS",
         browser: "Browser",
         device: "Device",
-        firstSeen: "First seen",
-        activity: "Activity",
+        firstSeen: "First Seen",
+        lastSeen: "Last Seen",
+        pageViews: "Page Views",
+        sessions: "Sessions",
         loadError: "Unable to load visitors.",
         empty: "No visitors in this time range.",
       };
@@ -85,16 +107,87 @@ function matchesVisitor(row: VisitorRow, query: string): boolean {
   if (!query) return true;
   const target = [
     row.visitorId,
+    row.sessionId,
     row.country,
     row.region,
+    row.regionCode,
     row.city,
     row.referrerHost,
     row.referrerUrl,
     row.browser,
     row.os,
     row.deviceType,
-  ].join(" ").toLocaleLowerCase();
+  ]
+    .join(" ")
+    .toLocaleLowerCase();
   return target.includes(query.toLocaleLowerCase());
+}
+
+function VisitorRowSkeleton({
+  index,
+  sentinelRef,
+}: {
+  index: number;
+  sentinelRef?: (node: HTMLTableRowElement | null) => void;
+}) {
+  const widths = [
+    "w-24",
+    "w-24",
+    "w-20",
+    "w-20",
+    "w-12",
+    "w-10",
+    "w-24",
+    "w-28",
+    "w-24",
+    "w-24",
+    "w-20",
+  ];
+
+  return (
+    <TableRow ref={sentinelRef} aria-hidden="true">
+      {widths.map((width, cellIndex) => (
+        <TableCell
+          key={`${index}-${cellIndex}`}
+          className={cellIndex === 0 ? "pl-4" : undefined}
+        >
+          {cellIndex === 0 ? (
+            <div className="flex items-center gap-2">
+              <Skeleton className="size-6 shrink-0 rounded-full" />
+              <Skeleton className="h-4 w-20" />
+            </div>
+          ) : (
+            <Skeleton
+              className={cn(
+                "h-4",
+                width,
+                cellIndex === 4 && "ml-auto",
+                cellIndex === 5 && "mx-auto",
+              )}
+            />
+          )}
+        </TableCell>
+      ))}
+    </TableRow>
+  );
+}
+
+function appendUniqueVisitors(
+  current: VisitorRow[],
+  incoming: VisitorRow[],
+): VisitorRow[] {
+  if (current.length === 0) return incoming;
+  const seen = new Set(current.map((row) => row.visitorId));
+  const nextRows = incoming.filter((row) => !seen.has(row.visitorId));
+  return nextRows.length > 0 ? [...current, ...nextRows] : current;
+}
+
+function SessionIdValue({ value }: { value?: string }) {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return <span className="font-mono text-muted-foreground">/</span>;
+  }
+  return <span className="font-mono font-medium">{shortId(normalized)}</span>;
 }
 
 export function VisitorsClientPage({
@@ -103,16 +196,22 @@ export function VisitorsClientPage({
   siteId,
   pathname,
 }: VisitorsClientPageProps) {
+  const router = useRouter();
   const labels = copy(locale);
   const { filters, window: timeWindow } = useDashboardQuery() as {
     filters: DashboardFilters;
     window: TimeWindow;
   };
   const [rows, setRows] = useState<VisitorRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [meta, setMeta] = useState<VisitorsMeta>(INITIAL_VISITOR_META);
+  const [loadingInitial, setLoadingInitial] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(false);
+  const [appendError, setAppendError] = useState(false);
   const [query, setQuery] = useState("");
   const [now, setNow] = useState(() => Date.now());
+  const sentinelRef = useRef<HTMLTableRowElement | null>(null);
+  const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const requestKey = useMemo(
     () => [siteId, timeWindow.from, timeWindow.to, filtersKey].join(":"),
@@ -124,32 +223,143 @@ export function VisitorsClientPage({
     return () => window.clearInterval(interval);
   }, []);
 
+  const loadPage = useEffectEvent(
+    async (page: number, mode: "replace" | "append") => {
+      const capturedRequestKey = latestRequestKeyRef.current;
+
+      if (mode === "replace") {
+        setLoadingInitial(true);
+        setError(false);
+        setAppendError(false);
+      } else {
+        setLoadingMore(true);
+        setAppendError(false);
+      }
+
+      try {
+        const payload = await fetchVisitors(siteId, timeWindow, filters, {
+          page,
+          pageSize: VISITOR_PAGE_SIZE,
+        });
+        if (latestRequestKeyRef.current !== capturedRequestKey) return;
+
+        setRows((current) =>
+          mode === "append"
+            ? appendUniqueVisitors(current, payload.data)
+            : payload.data,
+        );
+        setMeta(payload.meta);
+        setError(false);
+        setAppendError(false);
+      } catch {
+        if (latestRequestKeyRef.current !== capturedRequestKey) return;
+        if (mode === "replace") {
+          setRows([]);
+          setMeta(INITIAL_VISITOR_META);
+          setError(true);
+          setAppendError(false);
+        } else {
+          setAppendError(true);
+        }
+      } finally {
+        if (latestRequestKeyRef.current !== capturedRequestKey) return;
+        if (mode === "replace") {
+          setLoadingInitial(false);
+        } else {
+          setLoadingMore(false);
+        }
+      }
+    },
+  );
+
+  const loadNextPage = useEffectEvent(() => {
+    if (
+      loadingInitial ||
+      loadingMore ||
+      appendError ||
+      !meta.hasMore ||
+      meta.nextPage === null
+    ) {
+      return;
+    }
+    void loadPage(meta.nextPage, "append");
+  });
+
   useEffect(() => {
-    let active = true;
-    setLoading(true);
+    latestRequestKeyRef.current = requestKey;
+    setRows([]);
+    setMeta(INITIAL_VISITOR_META);
     setError(false);
-    fetchVisitors(siteId, timeWindow, filters, { limit: VISITOR_LIMIT })
-      .then((payload) => {
-        if (!active) return;
-        setRows(payload.data);
-      })
-      .catch(() => {
-        if (!active) return;
-        setRows([]);
-        setError(true);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+    setAppendError(false);
+    void loadPage(1, "replace");
   }, [requestKey]);
 
   const filteredRows = useMemo(
     () => rows.filter((row) => matchesVisitor(row, query.trim())),
     [query, rows],
   );
+
+  useEffect(() => {
+    const target = sentinelRef.current;
+    if (
+      !target ||
+      loadingInitial ||
+      loadingMore ||
+      appendError ||
+      error ||
+      !meta.hasMore ||
+      typeof IntersectionObserver === "undefined"
+    ) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry?.isIntersecting) {
+          loadNextPage();
+        }
+      },
+      {
+        root: null,
+        rootMargin: "360px 0px",
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(target);
+    const frameId = window.requestAnimationFrame(() => {
+      const rect = target.getBoundingClientRect();
+      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
+        loadNextPage();
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, [
+    appendError,
+    error,
+    loadingInitial,
+    loadingMore,
+    meta.hasMore,
+    meta.nextPage,
+  ]);
+
+  const openVisitor = (href: string) => {
+    router.push(href);
+  };
+
+  const handleVisitorKeyDown = (
+    event: KeyboardEvent<HTMLTableRowElement>,
+    href: string,
+  ) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    openVisitor(href);
+  };
 
   return (
     <div className="space-y-6">
@@ -158,16 +368,14 @@ export function VisitorsClientPage({
         subtitle={messages.visitors.subtitle}
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:max-w-xs">
-          <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={labels.search}
-            className="pl-8"
-          />
-        </div>
+      <div className="relative w-full sm:max-w-xs">
+        <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={labels.search}
+          className="pl-8"
+        />
       </div>
 
       <Card className="py-0">
@@ -175,107 +383,155 @@ export function VisitorsClientPage({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="pl-4">{labels.name}</TableHead>
+                <TableHead className="w-32 pl-4">{labels.visitor}</TableHead>
+                <TableHead>{labels.sessionId}</TableHead>
+                <TableHead>{labels.firstSeen}</TableHead>
+                <TableHead>{labels.lastSeen}</TableHead>
+                <TableHead className="text-right">{labels.sessions}</TableHead>
+                <TableHead className="text-center">
+                  {labels.pageViews}
+                </TableHead>
                 <TableHead>{labels.referrer}</TableHead>
                 <TableHead>{labels.location}</TableHead>
                 <TableHead>{labels.os}</TableHead>
                 <TableHead>{labels.browser}</TableHead>
-                <TableHead>{labels.device}</TableHead>
-                <TableHead>{labels.firstSeen}</TableHead>
-                <TableHead className="text-right">{messages.common.sessions}</TableHead>
-                <TableHead className="text-right">{messages.common.views}</TableHead>
-                <TableHead className="w-8 pr-4" />
+                <TableHead className="pr-4">{labels.device}</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={10} className="h-28 text-center text-muted-foreground">
-                    {messages.common.loading}
-                  </TableCell>
-                </TableRow>
+            <TableBody aria-busy={loadingInitial || loadingMore}>
+              {loadingInitial ? (
+                Array.from({ length: VISITOR_SKELETON_ROWS }, (_, index) => (
+                  <VisitorRowSkeleton
+                    key={`initial-skeleton-${index}`}
+                    index={index}
+                  />
+                ))
               ) : error ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="h-28 text-center text-muted-foreground">
+                  <TableCell
+                    colSpan={11}
+                    className="h-28 text-center text-muted-foreground"
+                  >
                     {labels.loadError}
                   </TableCell>
                 </TableRow>
-              ) : filteredRows.length === 0 ? (
+              ) : filteredRows.length === 0 && !meta.hasMore ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="h-28 text-center text-muted-foreground">
+                  <TableCell
+                    colSpan={11}
+                    className="h-28 text-center text-muted-foreground"
+                  >
                     {labels.empty}
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredRows.map((row) => {
-                  const href = `${pathname}/detail?visitorId=${encodeURIComponent(row.visitorId)}`;
-                  return (
-                    <TableRow key={row.visitorId} className="group">
-                      <TableCell className="pl-4">
-                        <Link href={href} className="flex min-w-44 items-center gap-2">
-                          <VisitorAvatar seed={row.visitorId} className="size-6" />
-                          <span className="min-w-0">
-                            <span className="block truncate font-medium">{labels.anonymous}</span>
-                            <span className="block truncate font-mono text-[11px] text-muted-foreground">
-                              {shortId(row.visitorId)}
-                            </span>
+                <>
+                  {filteredRows.map((row) => {
+                    const href = `${pathname}/detail?visitorId=${encodeURIComponent(row.visitorId)}`;
+                    return (
+                      <TableRow
+                        key={row.visitorId}
+                        role="link"
+                        tabIndex={0}
+                        aria-label={`${labels.visitor}: ${row.visitorId}`}
+                        className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                        onClick={() => openVisitor(href)}
+                        onKeyDown={(event) => handleVisitorKeyDown(event, href)}
+                      >
+                        <TableCell className="w-32 pl-4">
+                          <div className="flex w-28 items-center gap-2">
+                            <VisitorAvatar
+                              seed={row.visitorId}
+                              className="size-6"
+                            />
+                            <span className="truncate">{labels.anonymous}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <SessionIdValue value={row.sessionId} />
+                        </TableCell>
+                        <TableCell className="font-mono text-muted-foreground">
+                          {formatRelativeTime(locale, row.firstSeenAt, now)}
+                        </TableCell>
+                        <TableCell className="font-mono text-muted-foreground">
+                          {formatRelativeTime(locale, row.lastSeenAt, now)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono tabular-nums">
+                          {numberFormat(locale, row.sessions)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="font-mono tabular-nums">
+                            {numberFormat(locale, row.views)}
                           </span>
-                        </Link>
-                      </TableCell>
-                      <TableCell className="max-w-56">
-                        <ReferrerMeta
-                          referrerHost={row.referrerHost || ""}
-                          referrerUrl={row.referrerUrl}
-                          directLabel={messages.overview.direct}
-                        />
-                      </TableCell>
-                      <TableCell className="max-w-56">
-                        <LocationMeta
-                          locale={locale}
-                          messages={messages}
-                          country={row.country || ""}
-                          region={row.region}
-                          city={row.city}
-                        />
-                      </TableCell>
-                      <TableCell className="max-w-44">
-                        <OsMeta
-                          os={row.os || ""}
-                          version={row.osVersion}
-                          unknownLabel={messages.common.unknown}
-                        />
-                      </TableCell>
-                      <TableCell className="max-w-44">
-                        <BrowserMeta
-                          browser={row.browser || ""}
-                          version={row.browserVersion}
-                          unknownLabel={messages.common.unknown}
-                        />
-                      </TableCell>
-                      <TableCell className="max-w-36">
-                        <DeviceMeta
-                          deviceType={row.deviceType || ""}
-                          locale={locale}
-                          unknownLabel={messages.common.unknown}
-                        />
-                      </TableCell>
-                      <TableCell className="font-mono text-muted-foreground">
-                        {formatRelativeTime(locale, row.firstSeenAt, now)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {numberFormat(locale, row.sessions)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {numberFormat(locale, row.views)}
-                      </TableCell>
-                      <TableCell className="pr-4 text-right text-muted-foreground">
-                        <Link href={href} aria-label={labels.activity}>
-                          <RiArrowRightSLine className="ml-auto size-4 opacity-0 transition-opacity group-hover:opacity-100" />
-                        </Link>
+                        </TableCell>
+                        <TableCell className="max-w-48">
+                          <ReferrerMeta
+                            referrerHost={row.referrerHost || ""}
+                            referrerUrl={row.referrerUrl}
+                            directLabel={messages.overview.direct}
+                          />
+                        </TableCell>
+                        <TableCell className="max-w-52">
+                          <CountryRegionMeta
+                            locale={locale}
+                            messages={messages}
+                            country={row.country || ""}
+                            region={row.region}
+                            regionCode={row.regionCode}
+                          />
+                        </TableCell>
+                        <TableCell className="max-w-40">
+                          <OsMeta
+                            os={row.os || ""}
+                            version={row.osVersion}
+                            unknownLabel={messages.common.unknown}
+                          />
+                        </TableCell>
+                        <TableCell className="max-w-40">
+                          <BrowserMeta
+                            browser={row.browser || ""}
+                            version={row.browserVersion}
+                            unknownLabel={messages.common.unknown}
+                          />
+                        </TableCell>
+                        <TableCell className="max-w-36 pr-4">
+                          <DeviceMeta
+                            deviceType={row.deviceType || ""}
+                            locale={locale}
+                            unknownLabel={messages.common.unknown}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {appendError ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={11}
+                        className="h-16 text-center text-muted-foreground"
+                      >
+                        {labels.loadError}
                       </TableCell>
                     </TableRow>
-                  );
-                })
+                  ) : meta.hasMore ? (
+                    Array.from(
+                      { length: VISITOR_SKELETON_ROWS },
+                      (_, index) => (
+                        <VisitorRowSkeleton
+                          key={`append-skeleton-${rows.length}-${index}`}
+                          index={index}
+                          sentinelRef={
+                            index === 0
+                              ? (node) => {
+                                  sentinelRef.current = node;
+                                }
+                              : undefined
+                          }
+                        />
+                      ),
+                    )
+                  ) : null}
+                </>
               )}
             </TableBody>
           </Table>

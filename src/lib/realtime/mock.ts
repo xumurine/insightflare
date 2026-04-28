@@ -5101,13 +5101,17 @@ function createDemoJourneySession(
     ...ordered.map((visit) => visit.startedAt + Math.max(0, visit.durationMs)),
     last.startedAt,
   );
+  const durationMs = ordered.reduce(
+    (sum, visit) => sum + Math.max(0, visit.durationMs),
+    0,
+  );
   const screen = parseDemoScreenSize(first.screenSize);
   return {
     sessionId,
     visitorId: first.visitorId,
     startedAt: first.startedAt,
     endedAt,
-    durationMs: Math.max(0, endedAt - first.startedAt),
+    durationMs,
     active: endedAt > Date.now() - 5 * 60 * 1000,
     views: ordered.length,
     events: ordered.filter((visit) => visit.eventType !== "pageview").length,
@@ -5290,7 +5294,12 @@ function generateDemoVisitors(
   siteId: string,
   params: Record<string, string | number>,
 ): Record<string, unknown> {
-  const limit = parseDemoLimit(params.limit, 100, 1, 500);
+  const paged = params.page !== undefined || params.pageSize !== undefined;
+  const page = paged ? parseDemoLimit(params.page, 1, 1, 10_000) : 1;
+  const pageSize = paged
+    ? parseDemoLimit(params.pageSize, 80, 1, 120)
+    : parseDemoLimit(params.limit, 100, 1, 500);
+  const offset = paged ? (page - 1) * pageSize : 0;
   const from = parseDemoNumber(params.from, Date.now() - 7 * 24 * 3600 * 1000);
   const to = parseDemoNumber(params.to, Date.now());
   const filters = parseDemoFilters(params);
@@ -5328,11 +5337,10 @@ function generateDemoVisitors(
     buckets.set(visit.visitorId, bucket);
   }
 
-  return {
-    ok: true,
-    data: Array.from(buckets.entries())
-      .map(([visitorId, bucket]) => ({
+  const requestedRows = Array.from(buckets.entries())
+    .map(([visitorId, bucket]) => ({
         visitorId,
+        sessionId: bucket.latestVisit.sessionId,
         firstSeenAt: bucket.firstSeenAt,
         lastSeenAt: bucket.lastSeenAt,
         views: Math.max(0, Math.round(bucket.views)),
@@ -5340,6 +5348,7 @@ function generateDemoVisitors(
         events: bucket.events,
         country: bucket.latestVisit.country,
         region: bucket.latestVisit.regionName || bucket.latestVisit.region,
+        regionCode: bucket.latestVisit.regionCode,
         city: bucket.latestVisit.cityName || bucket.latestVisit.city,
         referrerHost: bucket.latestVisit.referrerHost,
         referrerUrl: bucket.latestVisit.referrerUrl,
@@ -5351,12 +5360,25 @@ function generateDemoVisitors(
         screenWidth: parseDemoScreenSize(bucket.latestVisit.screenSize).screenWidth,
         screenHeight: parseDemoScreenSize(bucket.latestVisit.screenSize).screenHeight,
       }))
-      .sort((left, right) => (
+    .sort((left, right) => (
         right.lastSeenAt - left.lastSeenAt
         || right.views - left.views
         || left.visitorId.localeCompare(right.visitorId)
       ))
-      .slice(0, limit),
+    .slice(offset, offset + pageSize + (paged ? 1 : 0));
+  const hasMore = paged && requestedRows.length > pageSize;
+  const rows = hasMore ? requestedRows.slice(0, pageSize) : requestedRows;
+
+  return {
+    ok: true,
+    data: rows,
+    meta: {
+      page,
+      pageSize,
+      returned: rows.length,
+      hasMore,
+      nextPage: hasMore ? page + 1 : null,
+    },
   };
 }
 

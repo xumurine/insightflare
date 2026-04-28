@@ -123,7 +123,17 @@ function emptyDimension(): DimensionData {
 }
 
 function emptyVisitors(): VisitorsData {
-  return { ok: true, data: [] };
+  return {
+    ok: true,
+    data: [],
+    meta: {
+      page: 1,
+      pageSize: 0,
+      returned: 0,
+      hasMore: false,
+      nextPage: null,
+    },
+  };
 }
 
 function emptySessions(): SessionsData {
@@ -361,13 +371,24 @@ export async function fetchVisitors(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    page?: number;
+    pageSize?: number;
   },
 ): Promise<VisitorsData> {
-  return fetchPrivateJson<VisitorsData>("/api/private/visitors", withFilters({
+  const params: Record<string, string | number> = {
     siteId,
     from: window.from,
     to: window.to,
-    limit: options?.limit ?? 100,
+  };
+  if (options?.page !== undefined) params.page = options.page;
+  if (options?.pageSize !== undefined) params.pageSize = options.pageSize;
+  if (options?.limit !== undefined) {
+    params.limit = options.limit;
+  } else if (options?.pageSize === undefined) {
+    params.limit = 100;
+  }
+  return fetchPrivateJson<VisitorsData>("/api/private/visitors", withFilters({
+    ...params,
   }, filters)).catch(emptyVisitors);
 }
 

@@ -480,10 +480,19 @@ export interface ReferrersData {
   }>;
 }
 
+export interface VisitorsMeta {
+  page: number;
+  pageSize: number;
+  returned: number;
+  hasMore: boolean;
+  nextPage: number | null;
+}
+
 export interface VisitorsData {
   ok: boolean;
   data: Array<{
     visitorId: string;
+    sessionId?: string;
     firstSeenAt: number;
     lastSeenAt: number;
     views: number;
@@ -491,6 +500,7 @@ export interface VisitorsData {
     events?: number;
     country?: string;
     region?: string;
+    regionCode?: string;
     city?: string;
     referrerHost?: string;
     referrerUrl?: string;
@@ -502,6 +512,7 @@ export interface VisitorsData {
     screenWidth?: number | null;
     screenHeight?: number | null;
   }>;
+  meta: VisitorsMeta;
 }
 
 export interface JourneySession {
