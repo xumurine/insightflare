@@ -4,6 +4,7 @@ import type { SiteTrackingConfig } from "@/lib/site-settings";
 import type { IngestEnvelopePayload, SerializedRequestPayload, TrackerClientPayload } from "@/lib/edge/types";
 import type { TrackerPayloadKind } from "@/lib/edge/types";
 import { jsonCloneRecord } from "@/lib/edge/utils";
+import { isBot } from "ua-parser-js/bot-detection";
 
 const CORS_BASE_HEADERS = {
   "access-control-allow-methods": "GET, POST, PATCH, OPTIONS",
@@ -127,6 +128,13 @@ function toCorsHeaders(origin: string | null): Record<string, string> {
     "access-control-allow-credentials": "true",
     vary: "Origin",
   };
+}
+
+function isBotRequest(request: Request): boolean {
+  const ua = request.headers.get("user-agent") || "";
+  if (!ua || !isBot(ua)) return false;
+  console.log(`[Bot] UA: ${ua}`);
+  return true;
 }
 
 type CollectionDecision =
@@ -282,6 +290,11 @@ export async function OPTIONS(request: Request): Promise<Response> {
 
 export async function POST(request: Request): Promise<Response> {
   const { env, ctx, request: requestWithCf, url } = await resolveEdgeRuntime(request);
+  const origin = parseOrigin(requestWithCf);
+
+  if (isBotRequest(requestWithCf)) {
+    return noContent(origin);
+  }
 
   const body = await requestWithCf.text();
   let payload: TrackerClientPayload | null = null;
