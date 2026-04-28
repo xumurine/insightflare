@@ -128,7 +128,9 @@ export function ReferrerBreakdownCard({
         if (primary !== 0) return primary;
         if (right.views !== left.views) return right.views - left.views;
         if (right.visitors !== left.visitors) return right.visitors - left.visitors;
-        return left.label.localeCompare(right.label);
+        return (left.displayLabel ?? left.label).localeCompare(
+          right.displayLabel ?? right.label,
+        );
       });
     }
 
@@ -167,9 +169,13 @@ export function ReferrerBreakdownCard({
   const activeSearchRows = sortedRowsByTab[activeSearchTab];
   const searchedRows = useMemo(() => {
     if (!normalizedSearchTerm) return activeSearchRows;
-    return activeSearchRows.filter((row) =>
-      row.label.toLocaleLowerCase().includes(normalizedSearchTerm),
-    );
+    return activeSearchRows.filter((row) => {
+      const displayLabel = row.displayLabel ?? row.label;
+      return (
+        displayLabel.toLocaleLowerCase().includes(normalizedSearchTerm) ||
+        row.label.toLocaleLowerCase().includes(normalizedSearchTerm)
+      );
+    });
   }, [activeSearchRows, normalizedSearchTerm]);
 
   const searchPlaceholder = formatI18nTemplate(messages.overview.searchInTab, {
@@ -299,6 +305,7 @@ export function ReferrerBreakdownCard({
     return (
       <AnimatePresence initial={false} mode="popLayout">
         {rows.map((row) => {
+          const displayLabel = row.displayLabel ?? row.label;
           const rowValue = Math.max(0, Number(row[sort.key] ?? 0));
           const progressPercent =
             progressTotal > 0
@@ -331,7 +338,7 @@ export function ReferrerBreakdownCard({
                 >
                   <span className="inline-flex items-center gap-2 break-words">
                     <LabelWithOptionalIcon
-                      label={row.label}
+                      label={displayLabel}
                       showIcon={meta.showIcon}
                       unknownLabel={messages.overview.direct}
                     />
@@ -339,8 +346,8 @@ export function ReferrerBreakdownCard({
                       <Clickable
                         className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
                         onClick={(event) => openTarget(row.targetUrl!, event)}
-                        aria-label={row.label}
-                        title={row.label}
+                        aria-label={displayLabel}
+                        title={displayLabel}
                       >
                         <RiArrowRightUpLine size="1.4em" />
                       </Clickable>

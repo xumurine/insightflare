@@ -40,6 +40,7 @@ import { Clickable } from "@/components/ui/clickable";
 import { Spinner } from "@/components/ui/spinner";
 import { intlLocale, shortDateTime } from "@/lib/dashboard/format";
 import { parseGeoLocationValue } from "@/lib/dashboard/geo-location";
+import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import {
   resolveContinentLabel,
   resolveCountryFlagCode,
@@ -182,7 +183,7 @@ function formatLogTitle(
   const pathname = event.pathname.trim() || "/";
   const content = kind === "custom"
     ? event.eventType.trim() || messages.common.unknown
-    : pathname;
+    : decodeUrlDisplayValue(pathname);
   return `${prefix}${separator}${content}`;
 }
 
@@ -1109,7 +1110,8 @@ function RealtimeVisitorHistorySection({
                     </p>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                       <span className="truncate">
-                        {messages.common.path}: {visit.pathname}
+                        {messages.common.path}:{" "}
+                        {decodeUrlDisplayValue(visit.pathname || "/")}
                       </span>
                       <span className="truncate">
                         {messages.common.hostname}: {visit.hostname || messages.common.unknown}
@@ -1304,7 +1306,12 @@ function RealtimeLogEventDetailsDialog({
     },
     {
       label: messages.common.path,
-      value: <RealtimeEventDetailValue value={event.pathname.trim() || "/"} mono />,
+      value: (
+        <RealtimeEventDetailValue
+          value={decodeUrlDisplayValue(event.pathname.trim() || "/")}
+          mono
+        />
+      ),
     },
     {
       label: messages.common.hostname,

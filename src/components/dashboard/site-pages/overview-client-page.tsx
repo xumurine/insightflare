@@ -105,6 +105,7 @@ import {
   buildPageDetailHref,
   normalizePagePath,
 } from "@/lib/dashboard/page-detail";
+import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 
 interface OverviewClientPageProps {
   locale: Locale;
@@ -367,6 +368,7 @@ type PageCardTargetUrlResolver = (params: {
 interface PageCardRow {
   key: string;
   label: string;
+  displayLabel?: string;
   rawLabel?: string;
   views: number;
   visitors: number;
@@ -397,6 +399,7 @@ interface PageCardRow {
 interface SourceCardRow {
   key: string;
   label: string;
+  displayLabel?: string;
   filterValue: string;
   targetUrl: string | null;
   views: number;
@@ -2621,14 +2624,16 @@ export function OverviewPagesSection({
   const pathRows = useMemo<PageCardRow[]>(
     () =>
       (resolvedPageCardTabData.path ?? []).map((item, index) => {
-        const label = String(item.label || "").trim();
+        const rawLabel = String(item.label || "").trim();
         const fallbackLabel =
           pageCardTabMeta.path.label === messages.pages.hashTab
             ? messages.pages.noHash
             : "/";
+        const label = rawLabel || fallbackLabel;
         return {
           key: `${label || fallbackLabel}-${index}`,
-          label: label || fallbackLabel,
+          label,
+          displayLabel: decodeUrlDisplayValue(label),
           views: Math.max(0, Number(item.views || 0)),
           visitors: Math.max(0, Number(item.visitors || 0)),
           mono: pageCardTabMeta.path.mono,
@@ -2647,9 +2652,11 @@ export function OverviewPagesSection({
       (resolvedPageCardTabData.query ?? []).map((item, index) => {
         const label = String(item.label || "").trim();
         const fallbackLabel = messages.pages.noQuery;
+        const resolvedLabel = label || fallbackLabel;
         return {
           key: `query-${label || fallbackLabel}-${index}`,
-          label: label || fallbackLabel,
+          label: resolvedLabel,
+          displayLabel: decodeUrlDisplayValue(resolvedLabel),
           views: Math.max(0, Number(item.views || 0)),
           visitors: Math.max(0, Number(item.visitors || 0)),
           mono: pageCardTabMeta.query.mono,
@@ -2700,6 +2707,7 @@ export function OverviewPagesSection({
         return {
           key: label,
           label,
+          displayLabel: decodeUrlDisplayValue(label),
           views: Math.max(0, Number(item.views || 0)),
           visitors: Math.max(0, Number(item.visitors || 0)),
           mono: true,
@@ -2714,6 +2722,7 @@ export function OverviewPagesSection({
         return {
           key: label,
           label,
+          displayLabel: decodeUrlDisplayValue(label),
           views: Math.max(0, Number(item.views || 0)),
           visitors: Math.max(0, Number(item.visitors || 0)),
           mono: true,
@@ -2741,7 +2750,9 @@ export function OverviewPagesSection({
       const primary =
         (left[pageCardSort.key] - right[pageCardSort.key]) * direction;
       if (primary !== 0) return primary;
-      return left.label.localeCompare(right.label);
+      return (left.displayLabel ?? left.label).localeCompare(
+        right.displayLabel ?? right.label,
+      );
     });
   }, [pageCardRows, pageCardSort.direction, pageCardSort.key, pageCardTab]);
   const pageCardProgressTotal = useMemo(
@@ -2764,7 +2775,7 @@ export function OverviewPagesSection({
     () =>
       activePageCardQueryValue
         ? sortedPageCardRows.filter(
-            (row) => row.label === activePageCardQueryValue,
+            (row) => (row.filterValue ?? row.label) === activePageCardQueryValue,
           )
         : sortedPageCardRows,
     [activePageCardQueryValue, sortedPageCardRows],
@@ -2774,9 +2785,15 @@ export function OverviewPagesSection({
     .toLocaleLowerCase();
   const searchedPageCardRows = useMemo(() => {
     if (!normalizedPageCardSearchTerm) return sortedPageCardRows;
-    return sortedPageCardRows.filter((row) =>
-      row.label.toLocaleLowerCase().includes(normalizedPageCardSearchTerm),
-    );
+    return sortedPageCardRows.filter((row) => {
+      const displayLabel = row.displayLabel ?? row.label;
+      return (
+        displayLabel
+          .toLocaleLowerCase()
+          .includes(normalizedPageCardSearchTerm) ||
+        row.label.toLocaleLowerCase().includes(normalizedPageCardSearchTerm)
+      );
+    });
   }, [normalizedPageCardSearchTerm, sortedPageCardRows]);
   const pageCardDefaultHostname = useMemo(() => {
     const filteredHostname = sanitizeHostname(filters.hostname ?? "");
@@ -2835,9 +2852,11 @@ export function OverviewPagesSection({
       const raw = String(item.label || "").trim();
       const targetUrl = raw.length > 0 ? toAbsoluteHttpsUrl(raw) : null;
       const filterValue = raw.length > 0 ? raw : DIRECT_REFERRER_FILTER_VALUE;
+      const label = raw.length > 0 ? (targetUrl ?? raw) : sourceCardDirectLabel;
       return {
         key: `link-${filterValue}-${index}`,
-        label: raw.length > 0 ? (targetUrl ?? raw) : sourceCardDirectLabel,
+        label,
+        displayLabel: decodeUrlDisplayValue(label),
         filterValue,
         targetUrl,
         views: Math.max(0, Number(item.views || 0)),
@@ -2863,7 +2882,9 @@ export function OverviewPagesSection({
       if (right.views !== left.views) return right.views - left.views;
       if (right.visitors !== left.visitors)
         return right.visitors - left.visitors;
-      return left.label.localeCompare(right.label);
+      return (left.displayLabel ?? left.label).localeCompare(
+        right.displayLabel ?? right.label,
+      );
     });
   }, [
     sourceCardRows,
@@ -2892,9 +2913,15 @@ export function OverviewPagesSection({
     .toLocaleLowerCase();
   const searchedSourceCardRows = useMemo(() => {
     if (!normalizedSourceCardSearchTerm) return sortedSourceCardRows;
-    return sortedSourceCardRows.filter((row) =>
-      row.label.toLocaleLowerCase().includes(normalizedSourceCardSearchTerm),
-    );
+    return sortedSourceCardRows.filter((row) => {
+      const displayLabel = row.displayLabel ?? row.label;
+      return (
+        displayLabel
+          .toLocaleLowerCase()
+          .includes(normalizedSourceCardSearchTerm) ||
+        row.label.toLocaleLowerCase().includes(normalizedSourceCardSearchTerm)
+      );
+    });
   }, [normalizedSourceCardSearchTerm, sortedSourceCardRows]);
   const sourceCardProgressTotal = useMemo(
     () =>
@@ -3583,6 +3610,8 @@ export function OverviewPagesSection({
     (
       <AnimatePresence initial={false} mode="popLayout">
         {rows.map((item) => {
+          const displayLabel = item.displayLabel ?? item.label;
+          const rowFilterValue = item.filterValue ?? item.label;
           const rowValue = Math.max(0, Number(item[pageCardSort.key] ?? 0));
           const progressPercent =
             pageCardProgressTotal > 0
@@ -3612,7 +3641,7 @@ export function OverviewPagesSection({
                   unknownLabel: messages.common.unknown,
                 })
               : null;
-          const rowFilterActive = activePageCardQueryValue === item.label;
+          const rowFilterActive = activePageCardQueryValue === rowFilterValue;
           const rowInteractive =
             rowFilterEnabled || Boolean(rowTargetUrl) || Boolean(rowDetailHref);
 
@@ -3633,7 +3662,7 @@ export function OverviewPagesSection({
               }}
               onClick={() => {
                 if (rowFilterEnabled) {
-                  togglePageCardRowFilter(item.label);
+                  togglePageCardRowFilter(rowFilterValue);
                   return;
                 }
                 if (rowTargetUrl) {
@@ -3658,7 +3687,7 @@ export function OverviewPagesSection({
                 >
                   <span className="inline-flex items-center gap-2 break-words">
                     <LabelWithOptionalIcon
-                      label={item.label}
+                      label={displayLabel}
                       showIcon={activePageTabMeta.showIcon}
                       unknownLabel={messages.common.unknown}
                     />
@@ -3668,8 +3697,8 @@ export function OverviewPagesSection({
                         onClick={(event) =>
                           openPageCardRowTarget(rowTargetUrl, event)
                         }
-                        aria-label={item.label}
-                        title={item.label}
+                        aria-label={displayLabel}
+                        title={displayLabel}
                       >
                         <RiArrowRightUpLine size="1.4em" />
                       </Clickable>
@@ -3749,6 +3778,7 @@ export function OverviewPagesSection({
     (
       <AnimatePresence initial={false} mode="popLayout">
         {rows.map((item) => {
+          const displayLabel = item.displayLabel ?? item.label;
           const rowValue = Math.max(0, Number(item[sourceCardSort.key] ?? 0));
           const progressPercent =
             sourceCardProgressTotal > 0
@@ -3783,7 +3813,7 @@ export function OverviewPagesSection({
                 >
                   <span className="inline-flex items-center gap-2 break-words">
                     <LabelWithOptionalIcon
-                      label={item.label}
+                      label={displayLabel}
                       showIcon={activeSourceTabMeta.showIcon}
                       unknownLabel={sourceCardDirectLabel}
                     />
@@ -3791,8 +3821,8 @@ export function OverviewPagesSection({
                       <Clickable
                         className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
                         onClick={(event) => openPageCardRowTarget(targetUrl, event)}
-                        aria-label={item.label}
-                        title={item.label}
+                        aria-label={displayLabel}
+                        title={displayLabel}
                       >
                         <RiArrowRightUpLine size="1.4em" />
                       </Clickable>

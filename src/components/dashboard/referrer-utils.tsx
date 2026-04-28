@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { OverviewTabRows } from "@/lib/dashboard/client-data";
+import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 
 export type ReferrerTab = "domain" | "link";
 
 export interface ReferrerBreakdownRow {
   key: string;
   label: string;
+  displayLabel?: string;
   filterValue: string;
   targetUrl: string | null;
   views: number;
@@ -180,6 +182,7 @@ export function buildReferrerRowsByTab(
       return {
         key: `domain-${filterValue}-${index}`,
         label: domain || directLabel,
+        displayLabel: domain || directLabel,
         filterValue,
         targetUrl: domain ? toAbsoluteHttpsUrl(domain) : null,
         views: Math.max(0, Number(item.views ?? 0)),
@@ -192,9 +195,11 @@ export function buildReferrerRowsByTab(
       const raw = String(item.label ?? "").trim();
       const targetUrl = raw ? toAbsoluteHttpsUrl(raw) : null;
       const filterValue = raw || DIRECT_REFERRER_FILTER_VALUE;
+      const label = raw ? targetUrl ?? raw : directLabel;
       return {
         key: `link-${filterValue}-${index}`,
-        label: raw ? targetUrl ?? raw : directLabel,
+        label,
+        displayLabel: decodeUrlDisplayValue(label),
         filterValue,
         targetUrl,
         views: Math.max(0, Number(item.views ?? 0)),

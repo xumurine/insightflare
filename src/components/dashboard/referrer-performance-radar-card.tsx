@@ -24,6 +24,7 @@ import {
   percentFormat,
 } from "@/lib/dashboard/format";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import type { ReferrerRadarData, ReferrerRadarItem } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -312,7 +313,7 @@ function ReferrerMetadataPanel({
 }) {
   const title = direct
     ? messages.overview.direct
-    : metadata?.title || metadata?.h1 || label;
+    : metadata?.title || metadata?.h1 || decodeUrlDisplayValue(label);
   const description = direct
     ? messages.referrers.directSourceNote
     : metadata?.description || metadata?.firstParagraph || null;
@@ -328,6 +329,9 @@ function ReferrerMetadataPanel({
   const urlTarget = direct
     ? null
     : buildReferrerRequestUrl(label);
+  const displayLabel = direct
+    ? messages.overview.direct
+    : decodeUrlDisplayValue(label);
   const transitionKey = [
     label,
     loading ? "loading" : "ready",
@@ -372,11 +376,11 @@ function ReferrerMetadataPanel({
                   rel="noreferrer"
                   className="block break-all text-sm font-semibold tracking-tight transition-colors hover:text-foreground"
                 >
-                  {label}
+                  {displayLabel}
                 </a>
               ) : (
                 <p className="break-all text-sm font-semibold tracking-tight">
-                  {label}
+                  {displayLabel}
                 </p>
               )}
             </div>

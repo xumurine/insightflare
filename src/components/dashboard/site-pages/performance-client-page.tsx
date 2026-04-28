@@ -49,6 +49,7 @@ import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { fetchPerformance } from "@/lib/dashboard/client-data";
 import { intlLocale, numberFormat } from "@/lib/dashboard/format";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import type {
   PerformanceCountrySummary,
   PerformanceData,
@@ -2411,6 +2412,7 @@ function PathStatusColumn({
 
   const renderedRows = rows.map((row) => {
     const progressWidth = `${Math.max(2, Math.min(100, (row.samples / maxSamples) * 100))}%`;
+    const displayPathname = decodeUrlDisplayValue(row.pathname || "/");
     return (
       <AnimatedDataTableRow
         key={`${status}-${row.pathname}`}
@@ -2424,7 +2426,7 @@ function PathStatusColumn({
       >
         <TableCell className="p-0 whitespace-normal align-top">
           <div className="max-w-[18rem] px-4 py-2 leading-5 whitespace-normal break-words">
-            {row.pathname || "/"}
+            {displayPathname}
           </div>
         </TableCell>
         <TableCell className="p-0 text-right">

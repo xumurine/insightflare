@@ -92,6 +92,7 @@ import {
   type TimeWindow,
 } from "@/lib/dashboard/query-state";
 import { parseGeoLocationValue } from "@/lib/dashboard/geo-location";
+import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import {
   resolveContinentLabel,
   resolveCountryLabel,
@@ -506,6 +507,14 @@ function formatFilterOptionLabel(
     if (value === DIRECT_REFERRER_FILTER_VALUE) {
       return messages.overview.direct;
     }
+  }
+  if (
+    key === "path" ||
+    key === "entry" ||
+    key === "exit" ||
+    key === "sourceLink"
+  ) {
+    return decodeUrlDisplayValue(label || value || messages.common.unknown);
   }
   if (key === "geo") {
     return formatGeoOptionLabel(value || label, locale, messages, option.group);

@@ -19,6 +19,7 @@ import {
   type OverviewTabRows,
 } from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
@@ -250,7 +251,8 @@ export function PageDetailClientPage({
     };
   }, [detailRequestKey]);
 
-  const primaryTitle = titles[0] ?? pagePath;
+  const displayPagePath = decodeUrlDisplayValue(pagePath);
+  const primaryTitle = titles[0] ?? displayPagePath;
   const alternateTitles = titles.slice(1, 3);
 
   return (
@@ -286,7 +288,7 @@ export function PageDetailClientPage({
                     {primaryTitle}
                   </h1>
                   <p className="break-all font-mono text-sm text-muted-foreground">
-                    {pagePath}
+                    {displayPagePath}
                   </p>
                   {alternateTitles.length > 0 ? (
                     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">

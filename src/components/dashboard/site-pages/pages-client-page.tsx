@@ -38,6 +38,7 @@ import {
   fetchPagesDashboard,
   type PagesDashboardRow,
 } from "@/lib/dashboard/client-data";
+import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -129,12 +130,13 @@ function PageTrafficCard({
   href: string;
 }) {
   const titles = item.titles.slice(0, 3);
+  const displayPathname = decodeUrlDisplayValue(item.pathname || "/");
 
   return (
     <Link
       href={href}
       className="group block h-full outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
-      aria-label={`${messages.pages.viewDetails}: ${item.pathname}`}
+      aria-label={`${messages.pages.viewDetails}: ${displayPathname}`}
       title={messages.pages.viewDetails}
     >
       <motion.div
@@ -165,7 +167,7 @@ function PageTrafficCard({
                   </CardTitle>
                 )}
                 <p className="break-all font-mono text-[11px] text-muted-foreground">
-                  {item.pathname}
+                  {displayPathname}
                 </p>
               </div>
               <span className="inline-flex size-6 shrink-0 items-center justify-center text-muted-foreground">
