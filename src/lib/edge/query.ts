@@ -1451,7 +1451,6 @@ async function queryPerformanceSummariesFromD1(
   const sql = `
 WITH
 ${buildVisitSourceCte()},
-${buildCustomEventSourceCte()},
 filtered_visits AS (
   SELECT *
   FROM visit_source
