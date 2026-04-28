@@ -17,6 +17,7 @@ export type TransitionType =
 
 export interface AutoTransitionProps {
   children: React.ReactNode;
+  as?: "div" | "g";
   className?: string;
   duration?: number;
   type?: TransitionType;
@@ -67,6 +68,7 @@ const transitionVariants: Record<
 
 export function AutoTransition({
   children,
+  as = "div",
   className = "",
   duration = 0.3,
   type = "fade",
@@ -110,10 +112,11 @@ export function AutoTransition({
 
   const selectedVariants = customVariants || transitionVariants[type];
   const shouldAnimate = initial || hasRendered;
+  const MotionComponent = (as === "g" ? motion.g : motion.div) as typeof motion.div;
 
   return (
     <AnimatePresence mode={presenceMode} custom={custom}>
-      <motion.div
+      <MotionComponent
         key={key}
         className={className}
         custom={custom}
@@ -124,7 +127,7 @@ export function AutoTransition({
         transition={{ duration }}
       >
         {children}
-      </motion.div>
+      </MotionComponent>
     </AnimatePresence>
   );
 }

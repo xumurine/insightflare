@@ -9,6 +9,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import {
   CartesianGrid,
+  Customized,
   Line,
   LineChart,
   ReferenceLine,
@@ -125,6 +126,24 @@ interface ChartPoint {
   samples: number;
 }
 
+interface TrendConnectorLinePoint {
+  x?: number;
+  y?: number;
+  value?: number | null;
+  payload?: ChartPoint;
+}
+
+interface TrendFormattedGraphicalItem {
+  item?: {
+    props?: {
+      dataKey?: unknown;
+    };
+  };
+  props?: {
+    points?: TrendConnectorLinePoint[];
+  };
+}
+
 const PERFORMANCE_METRICS: PerformanceMetricKey[] = [
   "ttfb",
   "fcp",
@@ -170,6 +189,12 @@ const PERFORMANCE_SERIES_COLORS = {
   p75: "var(--color-chart-4)",
   p95: "var(--color-chart-5)",
 } as const;
+const PERFORMANCE_SERIES_KEYS = ["p50", "p75", "p95"] as const;
+const PERFORMANCE_TREND_ANIMATION_DURATION_MS = 1200;
+const PERFORMANCE_TREND_CONNECTOR_DELAY_MS =
+  PERFORMANCE_TREND_ANIMATION_DURATION_MS + 120;
+
+type PerformanceSeriesKey = (typeof PERFORMANCE_SERIES_KEYS)[number];
 
 const ZONE_COLORS = {
   great: "var(--color-chart-2)",
@@ -822,9 +847,177 @@ function TrendZones({
   );
 }
 
+function hasTrendValue(
+  point: ChartPoint | undefined,
+  seriesKey: PerformanceSeriesKey,
+): boolean {
+  const value = point?.[seriesKey];
+  return value != null && Number.isFinite(value);
+}
+
+function isIsolatedTrendPoint(
+  points: ChartPoint[],
+  seriesKey: PerformanceSeriesKey,
+  index: number,
+): boolean {
+  return (
+    hasTrendValue(points[index], seriesKey) &&
+    !hasTrendValue(points[index - 1], seriesKey) &&
+    !hasTrendValue(points[index + 1], seriesKey)
+  );
+}
+
+function createIsolatedTrendDot(
+  points: ChartPoint[],
+  seriesKey: PerformanceSeriesKey,
+  color: string,
+) {
+  return function IsolatedTrendDot({
+    cx,
+    cy,
+    index,
+    payload,
+  }: {
+    cx?: number;
+    cy?: number;
+    index?: number;
+    payload?: ChartPoint;
+  }) {
+    const pointIndex =
+      typeof index === "number"
+        ? index
+        : points.findIndex(
+            (point) => point.timestampMs === payload?.timestampMs,
+          );
+
+    if (
+      pointIndex < 0 ||
+      !isIsolatedTrendPoint(points, seriesKey, pointIndex) ||
+      !Number.isFinite(cx) ||
+      !Number.isFinite(cy)
+    ) {
+      return <g />;
+    }
+
+    return (
+      <circle
+        cx={cx}
+        cy={cy}
+        r={3.2}
+        fill={color}
+        stroke="var(--background)"
+        strokeWidth={1.5}
+      />
+    );
+  };
+}
+
+function isPerformanceSeriesKey(value: unknown): value is PerformanceSeriesKey {
+  return value === "p50" || value === "p75" || value === "p95";
+}
+
+function isRenderedTrendPoint(
+  point: TrendConnectorLinePoint,
+  seriesKey: PerformanceSeriesKey,
+): point is TrendConnectorLinePoint & { x: number; y: number } {
+  const value = point.value ?? point.payload?.[seriesKey];
+  return (
+    value != null &&
+    Number.isFinite(value) &&
+    Number.isFinite(point.x) &&
+    Number.isFinite(point.y)
+  );
+}
+
+function gapConnectorPaths(
+  points: TrendConnectorLinePoint[],
+  seriesKey: PerformanceSeriesKey,
+): string[] {
+  const paths: string[] = [];
+  let previous:
+    | (TrendConnectorLinePoint & { x: number; y: number; index: number })
+    | null = null;
+
+  points.forEach((point, index) => {
+    if (!isRenderedTrendPoint(point, seriesKey)) return;
+
+    if (previous && index - previous.index > 1) {
+      paths.push(
+        `M${previous.x.toFixed(1)} ${previous.y.toFixed(1)}L${point.x.toFixed(
+          1,
+        )} ${point.y.toFixed(1)}`,
+      );
+    }
+
+    previous = {
+      ...point,
+      index,
+    };
+  });
+
+  return paths;
+}
+
+function TrendGapConnectorOverlay({
+  visible,
+  renderKey,
+  formattedGraphicalItems,
+}: {
+  visible: boolean;
+  renderKey: string;
+  formattedGraphicalItems?: TrendFormattedGraphicalItem[];
+}) {
+  const connectorPaths =
+    formattedGraphicalItems
+      ?.flatMap((item) => {
+        const seriesKey = item.item?.props?.dataKey;
+        if (!isPerformanceSeriesKey(seriesKey)) {
+          return [];
+        }
+
+        const points = item.props?.points ?? [];
+        return gapConnectorPaths(points, seriesKey).map((path, index) => ({
+          key: `${seriesKey}-${index}`,
+          path,
+          seriesKey,
+        }));
+      }) ?? [];
+
+  return (
+    <AutoTransition
+      as="g"
+      className="performance-trend-gap-connectors"
+      duration={0.22}
+      type="fade"
+      initial={false}
+      presenceMode="wait"
+    >
+      {visible && connectorPaths.length > 0 ? (
+        <g key={`gap-connectors-${renderKey}`}>
+          {connectorPaths.map(({ key, path, seriesKey }) => (
+            <path
+              key={key}
+              d={path}
+              fill="none"
+              stroke={PERFORMANCE_SERIES_COLORS[seriesKey]}
+              strokeDasharray="5 6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeOpacity={0.58}
+              strokeWidth={seriesKey === "p75" ? 2 : 1.6}
+            />
+          ))}
+        </g>
+      ) : (
+        <g key={`gap-connectors-empty-${renderKey}`} />
+      )}
+    </AutoTransition>
+  );
+}
+
 function PerformanceSkeleton() {
   return (
-    <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+    <div className="grid items-start gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
       <div className="space-y-3 self-start">
         {Array.from({ length: 6 }, (_, index) => (
           <Card key={`performance-rail-skeleton-${index}`} className="overflow-hidden">
@@ -836,7 +1029,7 @@ function PerformanceSkeleton() {
           </Card>
         ))}
       </div>
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         <Card>
           <CardContent className="grid gap-6 p-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
             <div className="space-y-4">
@@ -857,13 +1050,93 @@ function PerformanceSkeleton() {
           </CardContent>
         </Card>
         <Card>
+          <CardHeader className="pb-3">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-4 w-24" />
+          </CardHeader>
           <CardContent className="p-6">
-            <Skeleton className="h-[340px] w-full" />
+            <Skeleton className="h-[360px] w-full rounded-none" />
+            <div className="mt-4 flex justify-center gap-4">
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-3 w-16" />
+            </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-6">
-            <Skeleton className="h-[260px] w-full" />
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-3">
+            <Skeleton className="h-5 w-44" />
+            <Skeleton className="h-4 w-64 max-w-full" />
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="border-t border-border/70 bg-muted/20 p-3">
+              <Skeleton className="mx-auto aspect-[960/500] w-full rounded-none" />
+            </div>
+            <div className="grid min-h-[18rem] divide-y divide-border/70 border-t border-border/70 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+              {Array.from({ length: 3 }, (_, columnIndex) => (
+                <div
+                  key={`performance-country-table-skeleton-${columnIndex}`}
+                  className="space-y-3 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-3 w-20" />
+                    </div>
+                    <Skeleton className="h-4 w-8" />
+                  </div>
+                  {Array.from({ length: 4 }, (_, rowIndex) => (
+                    <div
+                      key={`performance-country-row-skeleton-${columnIndex}-${rowIndex}`}
+                      className="grid grid-cols-[minmax(0,1fr)_3rem_4rem] gap-3"
+                    >
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-full" />
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-2">
+                <Skeleton className="h-5 w-40" />
+                <Skeleton className="h-4 w-20" />
+              </div>
+              <Skeleton className="h-4 w-32" />
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="grid min-h-[18rem] divide-y divide-border/70 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+              {Array.from({ length: 3 }, (_, columnIndex) => (
+                <div
+                  key={`performance-path-table-skeleton-${columnIndex}`}
+                  className="space-y-3 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-3 w-20" />
+                    </div>
+                    <Skeleton className="h-4 w-8" />
+                  </div>
+                  {Array.from({ length: 4 }, (_, rowIndex) => (
+                    <div
+                      key={`performance-path-row-skeleton-${columnIndex}-${rowIndex}`}
+                      className="grid grid-cols-[minmax(0,1fr)_3rem_4rem] gap-3"
+                    >
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-full" />
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -1200,12 +1473,59 @@ function PerformanceTrendCard({
   const xStart = points[0]?.timestampMs ?? dataWindow.from;
   const rawXEnd = points[points.length - 1]?.timestampMs ?? dataWindow.to;
   const xEnd = rawXEnd > xStart ? rawXEnd : xStart + 1;
-  const visiblePointCount = points.filter(
-    (point) => point.p50 != null || point.p75 != null || point.p95 != null,
-  ).length;
-  const lineDot = visiblePointCount <= 1
-    ? { r: 3.2, strokeWidth: 0 }
-    : false;
+  const trendRenderKey = useMemo(() => {
+    const totals = points.reduce(
+      (acc, point) => ({
+        samples: acc.samples + point.samples,
+        p50: acc.p50 + (point.p50 ?? 0),
+        p75: acc.p75 + (point.p75 ?? 0),
+        p95: acc.p95 + (point.p95 ?? 0),
+      }),
+      { samples: 0, p50: 0, p75: 0, p95: 0 },
+    );
+    return [
+      activePanel,
+      points.length,
+      xStart,
+      rawXEnd,
+      totals.samples,
+      totals.p50.toFixed(3),
+      totals.p75.toFixed(3),
+      totals.p95.toFixed(3),
+    ].join(":");
+  }, [activePanel, points, rawXEnd, xStart]);
+  const [showGapConnectors, setShowGapConnectors] = useState(false);
+  const isolatedDots = useMemo(
+    () => ({
+      p50: createIsolatedTrendDot(
+        points,
+        "p50",
+        PERFORMANCE_SERIES_COLORS.p50,
+      ),
+      p75: createIsolatedTrendDot(
+        points,
+        "p75",
+        PERFORMANCE_SERIES_COLORS.p75,
+      ),
+      p95: createIsolatedTrendDot(
+        points,
+        "p95",
+        PERFORMANCE_SERIES_COLORS.p95,
+      ),
+    }),
+    [points],
+  );
+
+  useEffect(() => {
+    setShowGapConnectors(false);
+    const timeoutId = globalThis.setTimeout(() => {
+      setShowGapConnectors(true);
+    }, PERFORMANCE_TREND_CONNECTOR_DELAY_MS);
+
+    return () => {
+      globalThis.clearTimeout(timeoutId);
+    };
+  }, [trendRenderKey]);
 
   return (
     <Card>
@@ -1300,10 +1620,11 @@ function PerformanceTrendCard({
               name={messages.performance.p50Label}
               stroke={PERFORMANCE_SERIES_COLORS.p50}
               strokeWidth={2}
-              dot={lineDot}
+              dot={isolatedDots.p50}
               activeDot={{ r: 4 }}
               connectNulls={false}
               isAnimationActive
+              animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
             />
             <Line
               type="monotone"
@@ -1311,10 +1632,11 @@ function PerformanceTrendCard({
               name={messages.performance.p75Label}
               stroke={PERFORMANCE_SERIES_COLORS.p75}
               strokeWidth={2.4}
-              dot={lineDot}
+              dot={isolatedDots.p75}
               activeDot={{ r: 4 }}
               connectNulls={false}
               isAnimationActive
+              animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
             />
             <Line
               type="monotone"
@@ -1322,10 +1644,19 @@ function PerformanceTrendCard({
               name={messages.performance.p95Label}
               stroke={PERFORMANCE_SERIES_COLORS.p95}
               strokeWidth={2}
-              dot={lineDot}
+              dot={isolatedDots.p95}
               activeDot={{ r: 4 }}
               connectNulls={false}
               isAnimationActive
+              animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
+            />
+            <Customized
+              component={
+                <TrendGapConnectorOverlay
+                  visible={showGapConnectors}
+                  renderKey={trendRenderKey}
+                />
+              }
             />
           </LineChart>
         </ChartContainer>
@@ -1339,7 +1670,8 @@ type CountryFeature = Feature<Geometry, Record<string, unknown>>;
 type CountriesFeatureCollection = FeatureCollection<Geometry, Record<string, unknown>>;
 
 const WORLD_MAP_WIDTH = 960;
-const WORLD_MAP_HEIGHT = 480;
+const WORLD_MAP_HEIGHT = 500;
+const WORLD_MAP_PADDING = 16;
 
 function normalizeCountryCode(value: string | null | undefined): string | null {
   const normalized = String(value ?? "").trim().toUpperCase();
@@ -1410,12 +1742,18 @@ function resolveCountryLabelFromFeature(
   return unknownLabel;
 }
 
+function clampMapCoordinate(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 function projectWorldPosition(position: Position): [number, number] {
-  const longitude = Number(position[0] ?? 0);
-  const latitude = Number(position[1] ?? 0);
+  const longitude = clampMapCoordinate(Number(position[0] ?? 0), -180, 180);
+  const latitude = clampMapCoordinate(Number(position[1] ?? 0), -90, 90);
+  const mapWidth = WORLD_MAP_WIDTH - WORLD_MAP_PADDING * 2;
+  const mapHeight = WORLD_MAP_HEIGHT - WORLD_MAP_PADDING * 2;
   return [
-    ((longitude + 180) / 360) * WORLD_MAP_WIDTH,
-    ((90 - latitude) / 180) * WORLD_MAP_HEIGHT,
+    WORLD_MAP_PADDING + ((longitude + 180) / 360) * mapWidth,
+    WORLD_MAP_PADDING + ((90 - latitude) / 180) * mapHeight,
   ];
 }
 
@@ -1587,7 +1925,7 @@ function PerformanceHealthMapCard({
   const hoverScore = roundedScore(hoveredCountry?.score);
   const hoveredSamplesText = numberFormat(locale, hoveredCountry?.samples ?? 0);
   const hoveredScoreText =
-    hoverScore == null ? "--" : numberFormat(locale, hoverScore);
+    hoverScore == null ? "-" : numberFormat(locale, hoverScore);
 
   return (
     <Card className="overflow-hidden">
@@ -1607,7 +1945,7 @@ function PerformanceHealthMapCard({
         <div className="relative overflow-hidden border-t border-border/70 bg-muted/20 p-3">
           {featureCollection ? (
             <div
-              className="relative mx-auto aspect-[2/1] w-full"
+              className="relative mx-auto aspect-[960/500] w-full"
               onMouseLeave={() => setHoveredCountry(null)}
             >
               <svg
@@ -1629,21 +1967,13 @@ function PerformanceHealthMapCard({
                   const path = geometryToPath(feature.geometry);
                   const hoverKey = `${code ?? "country"}-${index}`;
                   const isHovered = hoveredCountry?.key === hoverKey;
-                  const label =
-                    country?.label ??
-                    resolveCountryLabelFromFeature(
-                      feature,
-                      code,
-                      locale,
-                      messages.common.unknown,
-                    );
-                  const score = roundedScore(country?.score);
                   if (!path) return null;
                   return (
                     <path
                       key={hoverKey}
                       d={path}
                       fill={statusColor(status)}
+                      fillRule="evenodd"
                       fillOpacity={
                         isHovered
                           ? Math.min(
@@ -1676,16 +2006,7 @@ function PerformanceHealthMapCard({
                           status,
                         )
                       }
-                    >
-                      <title>
-                        {`${label}\n${messages.performance.samplesLabel}: ${numberFormat(
-                          locale,
-                          country?.samples ?? 0,
-                        )}\n${messages.performance.score}: ${
-                          score == null ? "--" : numberFormat(locale, score)
-                        }`}
-                      </title>
-                    </path>
+                    />
                   );
                 })}
               </svg>
@@ -1741,7 +2062,7 @@ function PerformanceHealthMapCard({
                           className="inline-flex shrink-0 items-center"
                         >
                           <AutoTransition
-                            className="inline-block font-mono text-foreground tabular-nums"
+                            className="inline-block whitespace-nowrap font-mono text-foreground tabular-nums"
                             duration={0.2}
                             type="fade"
                             initial={false}
@@ -1767,7 +2088,7 @@ function PerformanceHealthMapCard({
                           className="inline-flex shrink-0 items-center"
                         >
                           <AutoTransition
-                            className="inline-block font-mono text-foreground tabular-nums"
+                            className="inline-block whitespace-nowrap font-mono text-foreground tabular-nums"
                             duration={0.2}
                             type="fade"
                             initial={false}
