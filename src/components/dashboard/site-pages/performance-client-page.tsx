@@ -905,8 +905,6 @@ function createIsolatedTrendDot(
         cy={cy}
         r={3.2}
         fill={color}
-        stroke="var(--background)"
-        strokeWidth={1.5}
       />
     );
   };
