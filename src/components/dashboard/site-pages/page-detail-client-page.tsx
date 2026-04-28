@@ -113,6 +113,10 @@ export function PageDetailClientPage({
     () => ["path", "hostname", "entry", "exit"] as const,
     [],
   );
+  const pageCardDetailTabs = useMemo(
+    () => ["entry", "exit"] as const,
+    [],
+  );
   const pageCardTargetUrlResolvers = useMemo(
     () => ({
       path: ({
@@ -274,6 +278,7 @@ export function PageDetailClientPage({
         filters={detailFilters}
         pageCardFetchers={pageCardFetchers}
         pageCardNavigableTabs={pageCardNavigableTabs}
+        pageCardDetailTabs={pageCardDetailTabs}
         pageCardTargetUrlResolvers={pageCardTargetUrlResolvers}
         pageCardQueryParamOverride={{ path: null }}
         pageCardTabMetaOverride={{

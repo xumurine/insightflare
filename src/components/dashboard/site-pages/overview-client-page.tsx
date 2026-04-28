@@ -101,6 +101,10 @@ import {
   replaceUrlWithoutNavigation,
   useLiveSearchParams,
 } from "@/lib/client-history";
+import {
+  buildPageDetailHref,
+  normalizePagePath,
+} from "@/lib/dashboard/page-detail";
 
 interface OverviewClientPageProps {
   locale: Locale;
@@ -292,6 +296,7 @@ interface MetricAreaPoint {
 type PageCardTab = "path" | "title" | "hostname" | "entry" | "exit";
 type PageCardSortKey = "views" | "visitors";
 type PageCardNavigableTab = "path" | "hostname" | "entry" | "exit";
+type PageCardDetailTab = "path" | "entry" | "exit";
 type SourceCardTab = "domain" | "link";
 type ClientDimensionCardTab =
   | "browser"
@@ -412,6 +417,11 @@ const SOURCE_CARD_TABS: SourceCardTab[] = [
 const PAGE_CARD_NAVIGABLE_TAB_LIST: PageCardNavigableTab[] = [
   "path",
   "hostname",
+  "entry",
+  "exit",
+];
+const PAGE_CARD_DETAIL_TAB_LIST: PageCardDetailTab[] = [
+  "path",
   "entry",
   "exit",
 ];
@@ -1046,6 +1056,34 @@ function buildGeoPagePath(pathname: string): string {
   if (!normalized) return "/geo";
   if (normalized.endsWith("/geo")) return normalized;
   return `${normalized}/geo`;
+}
+
+function buildPagesPagePath(pathname: string): string {
+  const normalized = pathname.trim().replace(/\/+$/, "");
+  if (!normalized) return "/pages";
+  if (normalized.endsWith("/pages")) return normalized;
+  if (normalized.endsWith("/pages/detail")) {
+    return normalized.replace(/\/detail$/, "");
+  }
+  return `${normalized}/pages`;
+}
+
+function isPageCardDetailTab(tab: PageCardTab): tab is PageCardDetailTab {
+  return tab === "path" || tab === "entry" || tab === "exit";
+}
+
+function resolvePageCardDetailHref(params: {
+  basePath: string;
+  value: string;
+  unknownLabel: string;
+}): string | null {
+  const raw = params.value.trim();
+  if (raw.length === 0 || raw === params.unknownLabel) return null;
+
+  const normalizedPath = normalizePagePath(raw);
+  if (!normalizedPath) return null;
+
+  return buildPageDetailHref(params.basePath, normalizedPath);
 }
 
 function resolveGeoLocationQueryValue(
@@ -2145,6 +2183,7 @@ interface OverviewPagesSectionProps extends OverviewClientPageProps {
   pageCardTabMetaOverride?: Partial<Record<PageCardTab, Partial<PageCardTabMeta>>>;
   pageCardQueryParamOverride?: Partial<Record<PageCardTab, string | null>>;
   pageCardNavigableTabs?: readonly PageCardNavigableTab[];
+  pageCardDetailTabs?: readonly PageCardDetailTab[];
   pageCardFetchers?: Partial<Record<PageCardTab, PageCardTabFetcher>>;
   pageCardTargetUrlResolvers?: Partial<
     Record<PageCardTab, PageCardTargetUrlResolver>
@@ -2163,6 +2202,7 @@ export function OverviewPagesSection({
   pageCardTabMetaOverride,
   pageCardQueryParamOverride,
   pageCardNavigableTabs,
+  pageCardDetailTabs,
   pageCardFetchers,
   pageCardTargetUrlResolvers,
   geoPageBasePathname,
@@ -2270,6 +2310,13 @@ export function OverviewPagesSection({
         pageCardNavigableTabs ?? PAGE_CARD_NAVIGABLE_TAB_LIST,
       ),
     [pageCardNavigableTabs],
+  );
+  const resolvedPageCardDetailTabs = useMemo(
+    () =>
+      new Set<PageCardDetailTab>(
+        pageCardDetailTabs ?? PAGE_CARD_DETAIL_TAB_LIST,
+      ),
+    [pageCardDetailTabs],
   );
   const pageCardQueryParamByTab = useMemo<Record<PageCardTab, string | null>>(
     () => ({
@@ -2693,6 +2740,10 @@ export function OverviewPagesSection({
     }
     return "";
   }, [filters.hostname, hostnameRows, siteDomain]);
+  const pageDetailBasePath = useMemo(
+    () => buildPagesPagePath(pathname),
+    [pathname],
+  );
   const sourceCardTabMeta: Record<
     SourceCardTab,
     { label: string; columnLabel: string; mono: boolean; showIcon: boolean }
@@ -3334,6 +3385,13 @@ export function OverviewPagesSection({
     event.stopPropagation();
     globalThis.window.open(targetUrl, "_blank", "noopener,noreferrer");
   };
+  const openPageCardRowDetail = (
+    detailHref: string,
+    event: MouseEvent<HTMLElement>,
+  ) => {
+    event.stopPropagation();
+    router.push(detailHref);
+  };
   const openGeoDimensionLocationTarget = (
     targetUrl: string,
     event: MouseEvent<HTMLElement>,
@@ -3494,8 +3552,18 @@ export function OverviewPagesSection({
                 fallbackHostname: pageCardDefaultHostname,
               })
             : null;
+          const rowDetailHref =
+            isPageCardDetailTab(pageCardTab) &&
+            resolvedPageCardDetailTabs.has(pageCardTab)
+              ? resolvePageCardDetailHref({
+                  basePath: pageDetailBasePath,
+                  value: item.label,
+                  unknownLabel: messages.common.unknown,
+                })
+              : null;
           const rowFilterActive = activePageCardQueryValue === item.label;
-          const rowInteractive = rowFilterEnabled || Boolean(rowTargetUrl);
+          const rowInteractive =
+            rowFilterEnabled || Boolean(rowTargetUrl) || Boolean(rowDetailHref);
 
           return (
             <AnimatedDataTableRow
@@ -3523,6 +3591,10 @@ export function OverviewPagesSection({
                     "_blank",
                     "noopener,noreferrer",
                   );
+                  return;
+                }
+                if (rowDetailHref) {
+                  router.push(rowDetailHref);
                 }
               }}
             >
@@ -3549,6 +3621,18 @@ export function OverviewPagesSection({
                         title={item.label}
                       >
                         <RiArrowRightUpLine size="1.4em" />
+                      </Clickable>
+                    ) : null}
+                    {rowDetailHref ? (
+                      <Clickable
+                        className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                        onClick={(event) =>
+                          openPageCardRowDetail(rowDetailHref, event)
+                        }
+                        aria-label={messages.common.search}
+                        title={messages.common.search}
+                      >
+                        <RiSearchLine size="1.2em" />
                       </Clickable>
                     ) : null}
                   </span>
