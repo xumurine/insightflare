@@ -4522,14 +4522,14 @@ export function OverviewMetricsSection({
                           {loading ? (
                             <div
                               key="loading"
-                              className="inline-flex items-center"
+                              className="inline-flex h-6 items-center"
                             >
                               <Spinner className="size-5" />
                             </div>
                           ) : (
                             <p
                               key="value"
-                              className="inline-flex items-end gap-1.5 font-mono text-2xl font-semibold leading-none tracking-tight"
+                              className="inline-flex h-6 items-end gap-1.5 font-mono text-2xl font-semibold leading-none tracking-tight"
                             >
                               <span>{item.value}</span>
                               <ChangeRateInline value={effectiveDelta} />
