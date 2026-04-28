@@ -127,7 +127,17 @@ function emptyVisitors(): VisitorsData {
 }
 
 function emptySessions(): SessionsData {
-  return { ok: true, data: [] };
+  return {
+    ok: true,
+    data: [],
+    meta: {
+      page: 1,
+      pageSize: 0,
+      returned: 0,
+      hasMore: false,
+      nextPage: null,
+    },
+  };
 }
 
 function emptyVisitorDetail(): VisitorDetailData {
@@ -383,13 +393,24 @@ export async function fetchSessions(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    page?: number;
+    pageSize?: number;
   },
 ): Promise<SessionsData> {
-  return fetchPrivateJson<SessionsData>("/api/private/sessions", withFilters({
+  const params: Record<string, string | number> = {
     siteId,
     from: window.from,
     to: window.to,
-    limit: options?.limit ?? 100,
+  };
+  if (options?.page !== undefined) params.page = options.page;
+  if (options?.pageSize !== undefined) params.pageSize = options.pageSize;
+  if (options?.limit !== undefined) {
+    params.limit = options.limit;
+  } else if (options?.pageSize === undefined) {
+    params.limit = 100;
+  }
+  return fetchPrivateJson<SessionsData>("/api/private/sessions", withFilters({
+    ...params,
   }, filters)).catch(emptySessions);
 }
 

@@ -200,7 +200,11 @@ function DetailContent({
               region={session.region}
               city={session.city}
             />
-            <DeviceMeta deviceType={session.deviceType} unknownLabel={messages.common.unknown} />
+            <DeviceMeta
+              deviceType={session.deviceType}
+              locale={locale}
+              unknownLabel={messages.common.unknown}
+            />
             <OsMeta os={session.os} version={session.osVersion} unknownLabel={messages.common.unknown} />
             <BrowserMeta browser={session.browser} version={session.browserVersion} unknownLabel={messages.common.unknown} />
           </div>

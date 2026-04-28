@@ -11,9 +11,10 @@ import {
 import Avatar from "boring-avatars";
 import { Icon } from "@iconify/react";
 import {
+  RiCellphoneLine,
   RiComputerLine,
+  RiDeviceLine,
   RiGlobalLine,
-  RiSmartphoneLine,
   RiTabletLine,
 } from "@remixicon/react";
 import {
@@ -128,7 +129,11 @@ function LogoIcon({
       alt=""
       width={16}
       height={16}
-      className={cn("block size-4 shrink-0 object-contain", invertInDark && "dark:invert", className)}
+      className={cn(
+        "block size-4 shrink-0 object-contain",
+        invertInDark && "dark:invert",
+        className,
+      )}
       loading="lazy"
       decoding="async"
       onError={(event) => {
@@ -141,12 +146,18 @@ function LogoIcon({
 function resolveBrowserIconKey(value: string): string {
   const normalized = value.trim().toLocaleLowerCase();
   if (!normalized) return UNKNOWN_ICON_KEY;
-  if (normalized.includes("android webview") || normalized.includes("android-webview")) return "android-webview";
+  if (
+    normalized.includes("android webview") ||
+    normalized.includes("android-webview")
+  )
+    return "android-webview";
   if (normalized.includes("chromium-webview")) return "chromium-webview";
   if (normalized.includes("edge ios")) return "edge-ios";
   if (normalized.includes("edge")) return "edge-chromium";
-  if (normalized.includes("chrome ios") || normalized.includes("crios")) return "crios";
-  if (normalized.includes("firefox ios") || normalized.includes("fxios")) return "fxios";
+  if (normalized.includes("chrome ios") || normalized.includes("crios"))
+    return "crios";
+  if (normalized.includes("firefox ios") || normalized.includes("fxios"))
+    return "fxios";
   if (normalized.includes("ios webview")) return "ios-webview";
   if (normalized === "ios") return "ios";
   if (normalized.includes("arc")) return "arc";
@@ -159,13 +170,20 @@ function resolveBrowserIconKey(value: string): string {
   if (normalized.includes("instagram")) return "instagram";
   if (normalized.includes("facebook")) return "facebook";
   if (normalized.includes("huawei")) return "huawei";
-  if (normalized.includes("qqbrowser") || normalized.includes("qq browser") || normalized === "qq") return "qq";
-  if (normalized.includes("ucbrowser") || normalized.includes("uc browser")) return "uc";
+  if (
+    normalized.includes("qqbrowser") ||
+    normalized.includes("qq browser") ||
+    normalized === "qq"
+  )
+    return "qq";
+  if (normalized.includes("ucbrowser") || normalized.includes("uc browser"))
+    return "uc";
   if (normalized.includes("brave")) return "brave";
   if (normalized.includes("miui")) return "miui";
   if (normalized.includes("firefox")) return "firefox";
   if (normalized.includes("safari")) return "safari";
-  if (normalized.includes("chrome") || normalized.includes("chromium")) return "chrome";
+  if (normalized.includes("chrome") || normalized.includes("chromium"))
+    return "chrome";
   if (normalized.includes("android")) return "android";
   return UNKNOWN_ICON_KEY;
 }
@@ -176,11 +194,26 @@ function resolveOsIconKey(value: string): string {
   if (normalized.includes("windows 11")) return "windows-11";
   if (normalized.includes("windows 10")) return "windows-10";
   if (normalized.startsWith("windows")) return "windows-10";
-  if (normalized.startsWith("mac") || normalized.startsWith("os x") || normalized.startsWith("darwin")) return "mac-os";
+  if (
+    normalized.startsWith("mac") ||
+    normalized.startsWith("os x") ||
+    normalized.startsWith("darwin")
+  )
+    return "mac-os";
   if (normalized.startsWith("ios")) return "ios";
   if (normalized.startsWith("android")) return "android-os";
-  if (normalized.startsWith("chrome os") || normalized.startsWith("chromium os")) return "chrome-os";
-  if (normalized.includes("linux") || normalized.startsWith("ubuntu") || normalized.startsWith("debian") || normalized.startsWith("fedora")) return "linux";
+  if (
+    normalized.startsWith("chrome os") ||
+    normalized.startsWith("chromium os")
+  )
+    return "chrome-os";
+  if (
+    normalized.includes("linux") ||
+    normalized.startsWith("ubuntu") ||
+    normalized.startsWith("debian") ||
+    normalized.startsWith("fedora")
+  )
+    return "linux";
   return UNKNOWN_ICON_KEY;
 }
 
@@ -398,13 +431,13 @@ export function BrowserMeta({
   const iconKey = resolveBrowserIconKey(label);
   return (
     <InlineMeta
-      icon={(
+      icon={
         <LogoIcon
           src={`${BROWSER_ICON_DIR}/${iconKey}.svg`}
           fallbackSrc={`${BROWSER_ICON_DIR}/${UNKNOWN_ICON_KEY}.svg`}
           invertInDark={BROWSER_APPLE_ICON_KEYS.has(iconKey)}
         />
-      )}
+      }
       label={label}
       className={className}
     />
@@ -426,13 +459,13 @@ export function OsMeta({
   const iconKey = resolveOsIconKey(label);
   return (
     <InlineMeta
-      icon={(
+      icon={
         <LogoIcon
           src={`${OS_ICON_DIR}/${iconKey}.svg`}
           fallbackSrc={`${OS_ICON_DIR}/${UNKNOWN_ICON_KEY}.svg`}
           invertInDark={OS_APPLE_ICON_KEYS.has(iconKey)}
         />
-      )}
+      }
       label={label}
       className={className}
     />
@@ -441,24 +474,50 @@ export function OsMeta({
 
 export function DeviceMeta({
   deviceType,
+  locale,
   unknownLabel,
   className,
 }: {
   deviceType: string;
+  locale?: Locale;
   unknownLabel: string;
   className?: string;
 }) {
   const normalized = deviceType.trim();
   const lowered = normalized.toLocaleLowerCase();
-  const DeviceIcon = lowered.includes("mobile") || lowered.includes("phone")
-    ? RiSmartphoneLine
-    : lowered.includes("tablet")
-      ? RiTabletLine
-      : RiComputerLine;
+  const isTablet = lowered.includes("tablet");
+  const isMobile =
+    lowered.includes("mobile") ||
+    lowered.includes("phone") ||
+    lowered.includes("cellphone");
+  const isDesktop =
+    lowered.includes("desktop") ||
+    lowered.includes("computer") ||
+    lowered === "pc";
+  const DeviceIcon = isTablet
+    ? RiTabletLine
+    : isMobile
+      ? RiCellphoneLine
+      : isDesktop
+        ? RiComputerLine
+        : RiDeviceLine;
+  const label = isTablet
+    ? locale === "zh"
+      ? "平板"
+      : "Tablet"
+    : isMobile
+      ? locale === "zh"
+        ? "手机"
+        : "Mobile"
+      : isDesktop
+        ? locale === "zh"
+          ? "桌面"
+          : "Desktop"
+        : normalized || unknownLabel;
   return (
     <InlineMeta
       icon={<DeviceIcon className="size-4 text-muted-foreground" />}
-      label={normalized || unknownLabel}
+      label={label}
       className={className}
     />
   );
@@ -479,7 +538,11 @@ export function LocationMeta({
   region?: string | null;
   className?: string;
 }) {
-  const resolved = resolveCountryLabel(country || "", locale, messages.common.unknown);
+  const resolved = resolveCountryLabel(
+    country || "",
+    locale,
+    messages.common.unknown,
+  );
   const flagCode = resolveCountryFlagCode(resolved.code, locale);
   const locality = String(city || region || "").trim();
   const label = locality
@@ -487,15 +550,17 @@ export function LocationMeta({
     : resolved.label;
   return (
     <InlineMeta
-      icon={flagCode ? (
-        <Icon
-          icon={`flagpack:${flagCode.toLowerCase()}`}
-          style={{ width: 16, height: 12 }}
-          className="block shrink-0"
-        />
-      ) : (
-        <RiGlobalLine className="size-4 text-muted-foreground" />
-      )}
+      icon={
+        flagCode ? (
+          <Icon
+            icon={`flagpack:${flagCode.toLowerCase()}`}
+            style={{ width: 16, height: 12 }}
+            className="block shrink-0"
+          />
+        ) : (
+          <RiGlobalLine className="size-4 text-muted-foreground" />
+        )
+      }
       label={label}
       className={className}
     />
@@ -550,7 +615,10 @@ function RegionBreadcrumbLabel({
           </BreadcrumbItem>
           {hideRegion ? null : (
             <BreadcrumbItem className="min-w-0">
-              <span className="shrink-0 text-muted-foreground" aria-hidden="true">
+              <span
+                className="shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              >
                 {">"}
               </span>
               <BreadcrumbPage className="block truncate leading-5">
@@ -569,14 +637,16 @@ function resolveCountryRegionBreadcrumbData({
   unknownLabel,
   country,
   region,
+  regionCode,
 }: {
   locale: Locale;
   unknownLabel: string;
   country: string;
   region?: string | null;
+  regionCode?: string | null;
 }) {
   const parsedRegion = parseGeoLocationValue(region || "");
-  const countryValue = country.trim() || parsedRegion?.countryCode || "";
+  const countryValue = parsedRegion?.countryCode || country.trim() || "";
   const resolved = resolveCountryLabel(countryValue, locale, unknownLabel);
   const flagCode = resolveCountryFlagCode(resolved.code, locale);
   const countryIconName = flagCode
@@ -586,21 +656,25 @@ function resolveCountryRegionBreadcrumbData({
     parsedRegion?.countryCode ||
     resolved.code ||
     countryValue
-  ).trim().toUpperCase();
-  const regionCode = parsedRegion?.regionCode ?? "";
+  )
+    .trim()
+    .toUpperCase();
+  const stateCode = (regionCode || parsedRegion?.regionCode || "")
+    .trim()
+    .toUpperCase();
   const rawRegionLabel =
     parsedRegion?.regionName ||
     (parsedRegion?.level === "locality" ? parsedRegion.localityName : "") ||
     String(region || "").trim();
   const regionLabel = normalizeGeoMetaLabel(rawRegionLabel, unknownLabel);
-  const hideRegion = !String(regionCode || rawRegionLabel).trim();
+  const hideRegion = !String(stateCode || rawRegionLabel).trim();
 
   return {
     countryLabel: resolved.label,
     countryIconName,
     regionLabel,
     countryCode,
-    stateCode: regionCode,
+    stateCode,
     hideRegion,
   };
 }
@@ -610,12 +684,14 @@ export function CountryRegionMeta({
   messages,
   country,
   region,
+  regionCode,
   className,
 }: {
   locale: Locale;
   messages: AppMessages;
   country: string;
   region?: string | null;
+  regionCode?: string | null;
   className?: string;
 }) {
   const breadcrumb = resolveCountryRegionBreadcrumbData({
@@ -623,6 +699,7 @@ export function CountryRegionMeta({
     unknownLabel: messages.common.unknown,
     country,
     region,
+    regionCode,
   });
 
   return (
@@ -651,10 +728,14 @@ function faviconUrl(value: string): string | null {
   const raw = value.trim();
   if (!raw || raw.startsWith("/")) return null;
   try {
-    if (ABSOLUTE_URL_PATTERN.test(raw)) return `${new URL(raw).origin}/favicon.ico`;
-    if (raw.startsWith("//")) return `${new URL(`https:${raw}`).origin}/favicon.ico`;
+    if (ABSOLUTE_URL_PATTERN.test(raw))
+      return `${new URL(raw).origin}/favicon.ico`;
+    if (raw.startsWith("//"))
+      return `${new URL(`https:${raw}`).origin}/favicon.ico`;
     const hostname = sanitizeHostname(raw);
-    return hostname ? `${new URL(`https://${hostname}`).origin}/favicon.ico` : null;
+    return hostname
+      ? `${new URL(`https://${hostname}`).origin}/favicon.ico`
+      : null;
   } catch {
     return null;
   }
@@ -671,7 +752,8 @@ export function ReferrerMeta({
   directLabel: string;
   className?: string;
 }) {
-  const label = referrerHost.trim() || String(referrerUrl || "").trim() || directLabel;
+  const label =
+    referrerHost.trim() || String(referrerUrl || "").trim() || directLabel;
   const src = label === directLabel ? null : faviconUrl(label);
   return (
     <InlineMeta
@@ -744,16 +826,25 @@ export function InlineMeta({
 }) {
   return (
     <span
-      className={cn("inline-flex min-w-0 max-w-full items-center gap-1.5", className)}
+      className={cn(
+        "inline-flex min-h-5 min-w-0 max-w-full items-center gap-1.5 align-middle leading-5",
+        className,
+      )}
       title={label}
     >
-      <span className="inline-flex size-4 shrink-0 items-center justify-center">{icon}</span>
-      <span className="truncate">{label}</span>
+      <span className="inline-flex size-4 shrink-0 items-center justify-center self-center [&>svg]:block">
+        {icon}
+      </span>
+      <span className="truncate leading-5">{label}</span>
     </span>
   );
 }
 
-export function formatRelativeTime(locale: Locale, timestamp: number, now: number): string {
+export function formatRelativeTime(
+  locale: Locale,
+  timestamp: number,
+  now: number,
+): string {
   const formatter = new Intl.RelativeTimeFormat(intlLocale(locale), {
     numeric: "auto",
   });
@@ -761,7 +852,8 @@ export function formatRelativeTime(locale: Locale, timestamp: number, now: numbe
   const absoluteSeconds = Math.abs(diffSeconds);
   if (absoluteSeconds < 60) return formatter.format(diffSeconds, "second");
   const diffMinutes = Math.round(diffSeconds / 60);
-  if (Math.abs(diffMinutes) < 60) return formatter.format(diffMinutes, "minute");
+  if (Math.abs(diffMinutes) < 60)
+    return formatter.format(diffMinutes, "minute");
   const diffHours = Math.round(diffMinutes / 60);
   if (Math.abs(diffHours) < 24) return formatter.format(diffHours, "hour");
   return formatter.format(Math.round(diffHours / 24), "day");

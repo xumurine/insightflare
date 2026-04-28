@@ -337,7 +337,11 @@ function DetailContent({
                   region={visitor.region}
                   city={visitor.city}
                 />
-                <DeviceMeta deviceType={visitor.deviceType || ""} unknownLabel={messages.common.unknown} />
+                <DeviceMeta
+                  deviceType={visitor.deviceType || ""}
+                  locale={locale}
+                  unknownLabel={messages.common.unknown}
+                />
                 <OsMeta os={visitor.os || ""} version={visitor.osVersion} unknownLabel={messages.common.unknown} />
                 <BrowserMeta browser={visitor.browser || ""} version={visitor.browserVersion} unknownLabel={messages.common.unknown} />
               </div>

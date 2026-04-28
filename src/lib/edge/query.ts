@@ -296,6 +296,7 @@ interface SessionRow {
   startedAt: number;
   endedAt: number;
   durationMs: number;
+  active: boolean;
   views: number;
   events: number;
   bounce: boolean;
@@ -305,6 +306,7 @@ interface SessionRow {
   referrerUrl: string;
   country: string;
   region: string;
+  regionCode: string;
   city: string;
   browser: string;
   browserVersion: string;
@@ -4673,9 +4675,35 @@ async function handleSessions(
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
   const filters = parseFilters(url);
-  const limit = parseLimit(url, 100, 500);
-  const rows = await querySessionsFromD1(env, siteId, window, filters, limit);
-  return jsonResponse({ ok: true, data: rows });
+  const paged =
+    url.searchParams.has("page") || url.searchParams.has("pageSize");
+  const page = paged ? parseQueryLimit(url, "page", 1, 1, 10_000) : 1;
+  const pageSize = paged
+    ? parseQueryLimit(url, "pageSize", 80, 1, 120)
+    : parseLimit(url, 100, 500);
+  const offset = paged ? (page - 1) * pageSize : 0;
+  const requestedRows = await querySessionsFromD1(
+    env,
+    siteId,
+    window,
+    filters,
+    paged ? pageSize + 1 : pageSize,
+    undefined,
+    offset,
+  );
+  const hasMore = paged && requestedRows.length > pageSize;
+  const rows = hasMore ? requestedRows.slice(0, pageSize) : requestedRows;
+  return jsonResponse({
+    ok: true,
+    data: rows,
+    meta: {
+      page,
+      pageSize,
+      returned: rows.length,
+      hasMore,
+      nextPage: hasMore ? page + 1 : null,
+    },
+  });
 }
 
 async function handleVisitorDetail(
@@ -6121,6 +6149,7 @@ function mapSessionRow(row: Record<string, unknown>): SessionRow {
       endedAt,
       Number(row.totalDurationMs ?? row.durationMs ?? 0),
     ),
+    active: Boolean(Number(row.active ?? 0)),
     views,
     events: Number(row.events ?? 0),
     bounce: Boolean(Number(row.bounce ?? (views <= 1 ? 1 : 0))),
@@ -6130,6 +6159,7 @@ function mapSessionRow(row: Record<string, unknown>): SessionRow {
     referrerUrl: String(row.referrerUrl ?? ""),
     country: String(row.country ?? ""),
     region: String(row.region ?? ""),
+    regionCode: String(row.regionCode ?? ""),
     city: String(row.city ?? ""),
     browser: String(row.browser ?? ""),
     browserVersion: String(row.browserVersion ?? ""),
@@ -6148,6 +6178,7 @@ async function querySessionsFromD1(
   filters: DashboardFilters,
   limit: number,
   target?: { type: "visitor" | "session"; value: string },
+  offset = 0,
 ): Promise<SessionRow[]> {
   const filter = buildVisitFilterSql(filters);
   const targetColumn = target?.type === "visitor"
@@ -6182,6 +6213,7 @@ SELECT
   MIN(fv.started_at) AS startedAt,
   MAX(COALESCE(fv.ended_at, fv.last_activity_at, fv.started_at)) AS endedAt,
   SUM(COALESCE(fv.duration_ms, 0)) AS totalDurationMs,
+  MAX(CASE WHEN LOWER(COALESCE(fv.status, '')) = 'open' THEN 1 ELSE 0 END) AS active,
   count(*) AS views,
   (
     SELECT count(*)
@@ -6231,6 +6263,13 @@ SELECT
     ORDER BY edge.started_at ASC, edge.visit_id ASC
     LIMIT 1
   ), '') AS region,
+  COALESCE((
+    SELECT edge.region_code
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ), '') AS regionCode,
   COALESCE((
     SELECT edge.city
     FROM filtered_visits edge
@@ -6291,7 +6330,7 @@ FROM filtered_visits fv
 WHERE fv.session_id != ''
 GROUP BY fv.session_id
 ORDER BY startedAt DESC, sessionId ASC
-LIMIT ?
+LIMIT ? OFFSET ?
 `;
   return (await queryD1All<Record<string, unknown>>(
     env,
@@ -6302,6 +6341,7 @@ LIMIT ?
       ...(target ? [target.value] : []),
       ...filter.bindings,
       limit,
+      offset,
     ],
   )).map(mapSessionRow);
 }
@@ -7036,4 +7076,3 @@ FROM filtered_visits
     organization: finalizeGeoDimensionBuckets(organization, limit),
   };
 }
-

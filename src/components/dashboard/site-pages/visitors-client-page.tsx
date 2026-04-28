@@ -255,6 +255,7 @@ export function VisitorsClientPage({
                       <TableCell className="max-w-36">
                         <DeviceMeta
                           deviceType={row.deviceType || ""}
+                          locale={locale}
                           unknownLabel={messages.common.unknown}
                         />
                       </TableCell>

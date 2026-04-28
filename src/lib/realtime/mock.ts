@@ -5108,6 +5108,7 @@ function createDemoJourneySession(
     startedAt: first.startedAt,
     endedAt,
     durationMs: Math.max(0, endedAt - first.startedAt),
+    active: endedAt > Date.now() - 5 * 60 * 1000,
     views: ordered.length,
     events: ordered.filter((visit) => visit.eventType !== "pageview").length,
     bounce: ordered.length <= 1,
@@ -5117,6 +5118,7 @@ function createDemoJourneySession(
     referrerUrl: first.referrerUrl,
     country: first.country,
     region: first.regionName || first.region,
+    regionCode: first.regionCode,
     city: first.cityName || first.city,
     browser: first.browser,
     browserVersion: first.browserVersion,
@@ -5362,24 +5364,38 @@ function generateDemoSessions(
   siteId: string,
   params: Record<string, string | number>,
 ): Record<string, unknown> {
-  const limit = parseDemoLimit(params.limit, 100, 1, 500);
+  const paged = params.page !== undefined || params.pageSize !== undefined;
+  const page = paged ? parseDemoLimit(params.page, 1, 1, 10_000) : 1;
+  const pageSize = paged
+    ? parseDemoLimit(params.pageSize, 80, 1, 120)
+    : parseDemoLimit(params.limit, 100, 1, 500);
+  const offset = paged ? (page - 1) * pageSize : 0;
   const from = parseDemoNumber(params.from, Date.now() - 7 * 24 * 3600 * 1000);
   const to = parseDemoNumber(params.to, Date.now());
   const filters = parseDemoFilters(params);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
-  const rows = Array.from(demoVisitsBySession(filtered.visits).entries())
+  const requestedRows = Array.from(demoVisitsBySession(filtered.visits).entries())
     .map(([sessionId, visits]) => createDemoJourneySession(sessionId, visits))
     .filter((row): row is Record<string, unknown> => Boolean(row))
     .sort((left, right) => (
       Number(right.startedAt ?? 0) - Number(left.startedAt ?? 0)
       || String(left.sessionId ?? "").localeCompare(String(right.sessionId ?? ""))
     ))
-    .slice(0, limit);
+    .slice(offset, offset + pageSize + (paged ? 1 : 0));
+  const hasMore = paged && requestedRows.length > pageSize;
+  const rows = hasMore ? requestedRows.slice(0, pageSize) : requestedRows;
 
   return {
     ok: true,
     data: rows,
+    meta: {
+      page,
+      pageSize,
+      returned: rows.length,
+      hasMore,
+      nextPage: hasMore ? page + 1 : null,
+    },
   };
 }
 

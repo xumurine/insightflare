@@ -510,6 +510,7 @@ export interface JourneySession {
   startedAt: number;
   endedAt: number;
   durationMs: number;
+  active: boolean;
   views: number;
   events: number;
   bounce: boolean;
@@ -519,6 +520,7 @@ export interface JourneySession {
   referrerUrl: string;
   country: string;
   region: string;
+  regionCode: string;
   city: string;
   browser: string;
   browserVersion: string;
@@ -595,9 +597,18 @@ export interface VisitorDetailData {
   } | null;
 }
 
+export interface SessionsMeta {
+  page: number;
+  pageSize: number;
+  returned: number;
+  hasMore: boolean;
+  nextPage: number | null;
+}
+
 export interface SessionsData {
   ok: boolean;
   data: JourneySession[];
+  meta: SessionsMeta;
 }
 
 export interface SessionDetailData {
