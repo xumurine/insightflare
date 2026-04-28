@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogoutActionButton } from "@/components/auth/logout-action-button";
-import { PostLoginTeamPickerCard } from "@/components/dashboard/post-login-team-picker-card";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 import { getDashboardProfile } from "@/lib/dashboard/server";
@@ -24,13 +24,26 @@ export default async function AppRootPage({ params }: AppRootPageProps) {
   if (profile && profile.teams.length > 0) {
     return (
       <main className="grid min-h-svh place-items-center p-4">
-        <PostLoginTeamPickerCard
-          locale={resolvedLocale}
-          teams={profile.teams}
-          title={t.teamEntry.title}
-          description={t.teamEntry.description}
-          loadingLabel={t.common.loading}
-        />
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>{t.teamEntry.title}</CardTitle>
+            <CardDescription>{t.teamEntry.description}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {profile.teams.map((team) => (
+              <Button
+                key={team.id}
+                asChild
+                variant="outline"
+                className="w-full justify-between"
+              >
+                <Link href={`/${resolvedLocale}/app/${team.slug}`}>
+                  <span className="truncate">{team.name}</span>
+                </Link>
+              </Button>
+            ))}
+          </CardContent>
+        </Card>
       </main>
     );
   }
