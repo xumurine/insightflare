@@ -282,6 +282,7 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
     if (!currentVisit || leaveSent) return;
     leaveSent = true;
     const eventAt = Date.now();
+    const url = new URL(currentVisit.href, window.location.href);
     const performancePayload = buildPerformancePayload();
     send(
       {
@@ -291,6 +292,8 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
         sessionId,
         timestamp: eventAt,
         durationMs: Math.max(0, eventAt - currentVisit.startedAt),
+        pathname: url.pathname || "/",
+        hostname: url.hostname || "",
         ...(performancePayload || {}),
       },
       true,

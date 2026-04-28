@@ -12,7 +12,6 @@ import type {
   TrackerPerformancePayload,
   TrackerPayloadKind,
 } from "./types";
-import { readSiteTrackingConfig } from "./site-settings-store";
 import {
   clampString,
   coerceNumber,
@@ -364,16 +363,6 @@ function normalizePerformancePayload(
     ...(cls !== null ? { cls } : {}),
     ...(inp !== null ? { inp } : {}),
   };
-}
-
-function matchesBlockedPath(pathname: string, blockedPaths: string[]): boolean {
-  for (const blockedPath of blockedPaths) {
-    if (!blockedPath) continue;
-    if (pathname === blockedPath || pathname.startsWith(`${blockedPath}/`)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function toEventDataJson(input: unknown): string {
@@ -786,11 +775,7 @@ export class IngestDurableObject extends DurableObject {
     const siteId = clampString(coerceString(client.siteId), 120);
     if (!siteId) return null;
 
-    const config = await readSiteTrackingConfig(this.doEnv, siteId);
-    if (!config?.siteDomain) return null;
-
     const requestHeaders = envelope.request.headers ?? {};
-    const requestUrl = new URL(envelope.request.url);
     const nowMs = Date.now();
     const receivedAt = clampTimestamp(envelope.request.receivedAt, nowMs);
     const eventAt = clampTimestamp(client.timestamp, nowMs);
@@ -843,13 +828,10 @@ export class IngestDurableObject extends DurableObject {
       if (!visitId) return null;
       const pathname = clampString(coerceString(client.pathname || "/"), 2048);
       const hostname = clampString(
-        coerceString(client.hostname || safeHostname(requestUrl.toString())),
+        coerceString(client.hostname || ""),
         255,
       ).toLowerCase();
-      if (!hostname || !config.allowedHostnames.includes(hostname)) {
-        return null;
-      }
-      if (matchesBlockedPath(pathname, config.pathBlacklist)) {
+      if (!hostname) {
         return null;
       }
       const rawReferrerUrl = clampString(coerceString(client.referrerUrl), 2000);

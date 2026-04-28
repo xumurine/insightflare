@@ -205,7 +205,8 @@ export function buildAllowedHostnames(
   domainWhitelist: string[],
 ): string[] {
   return uniqueNonEmpty(
-    [normalizeSiteDomain(siteDomain), ...domainWhitelist.map((value) => normalizeSiteDomain(value))]
+    domainWhitelist
+      .map((value) => normalizeSiteDomain(value))
       .filter((value) => value.length > 0),
   );
 }
