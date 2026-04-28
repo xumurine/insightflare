@@ -11,6 +11,9 @@ const appMono = JetBrains_Mono({
   variable: "--font-mono",
 });
 
+const DEMO_ANALYTICS_SCRIPT_SRC =
+  "https://insight.ravelloh.com/script.js?siteId=04de9d96-fcec-41b1-b259-56e0dbaa2c5e";
+
 export const metadata: Metadata = {
   title: "InsightFlare",
   description: "InsightFlare analytics dashboard",
@@ -32,6 +35,9 @@ export default function RootLayout({
           <TooltipProvider>{children}</TooltipProvider>
           <Toaster />
         </ThemeProvider>
+        {process.env.NEXT_PUBLIC_DEMO_MODE === "1" ? (
+          <script defer src={DEMO_ANALYTICS_SCRIPT_SRC} />
+        ) : null}
       </body>
     </html>
   );

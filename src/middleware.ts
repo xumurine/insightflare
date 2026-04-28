@@ -12,6 +12,8 @@ import { isValidLocale } from "@/lib/i18n/config";
 
 type AuthState = "authenticated" | "unauthenticated" | "unknown";
 
+const DEMO_DEFAULT_TEAM_SLUG = "xeoos-team";
+
 interface RedirectProfile {
   teams: Array<{
     slug: string;
@@ -193,7 +195,15 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       return redirectWithPath(request, `/${demoLocale}/app`, { preserveSearch: true });
     }
     const demoRest = pathname.replace(/^\/[^/]+/, "") || "/";
-    if (demoRest === "/login") {
+    const demoNormalizedRest = normalizePathname(demoRest);
+    if (demoNormalizedRest === "/app") {
+      return redirectWithPath(
+        request,
+        `/${demoLocale}/app/${DEMO_DEFAULT_TEAM_SLUG}`,
+        { preserveSearch: false },
+      );
+    }
+    if (demoNormalizedRest === "/login") {
       return redirectWithPath(request, `/${demoLocale}/app`, { preserveSearch: false });
     }
     const demoResponse = NextResponse.next();
