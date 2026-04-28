@@ -96,12 +96,6 @@ function serializeSiteTrackingConfig(settings: SiteTrackingConfig): Record<strin
   };
 
   if (
-    settings.performanceTrackingEnabled !==
-    DEFAULT_SITE_SCRIPT_SETTINGS.performanceTrackingEnabled
-  ) {
-    payload.performanceTrackingEnabled = settings.performanceTrackingEnabled;
-  }
-  if (
     settings.performanceSampleRate !==
     DEFAULT_SITE_SCRIPT_SETTINGS.performanceSampleRate
   ) {

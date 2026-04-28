@@ -470,7 +470,6 @@ export interface AppMessages {
     ignoreDoNotTrackLabel: string;
     performanceGroupTitle: string;
     performanceGroupDescription: string;
-    performanceTrackingEnabledLabel: string;
     performanceSampleRateLabel: string;
     performanceSampleRateHint: string;
     booleanOn: string;

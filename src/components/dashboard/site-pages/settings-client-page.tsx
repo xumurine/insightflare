@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import { Spinner } from "@/components/ui/spinner";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import {
@@ -111,6 +112,13 @@ function resolveSiteSlug(
   return site.id.slice(0, 8);
 }
 
+function formatSampleRateValue(value: number): string {
+  const formatted = Number.isInteger(value)
+    ? String(value)
+    : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  return `${formatted}%`;
+}
+
 async function postJson<T>(
   url: string,
   body: Record<string, unknown>,
@@ -189,11 +197,9 @@ export function SettingsClientPage({
   const [ignoreDoNotTrack, setIgnoreDoNotTrack] = useState(
     DEFAULT_SITE_SCRIPT_SETTINGS.ignoreDoNotTrack,
   );
-  const [performanceTrackingEnabled, setPerformanceTrackingEnabled] = useState(
-    DEFAULT_SITE_SCRIPT_SETTINGS.performanceTrackingEnabled,
+  const [performanceSampleRate, setPerformanceSampleRate] = useState(
+    DEFAULT_SITE_SCRIPT_SETTINGS.performanceSampleRate,
   );
-  const [performanceSampleRateInput, setPerformanceSampleRateInput] =
-    useState(String(DEFAULT_SITE_SCRIPT_SETTINGS.performanceSampleRate));
   const [domainWhitelistInput, setDomainWhitelistInput] = useState(
     formatListInput(DEFAULT_SITE_SCRIPT_SETTINGS.domainWhitelist),
   );
@@ -233,12 +239,10 @@ export function SettingsClientPage({
     ignoreDoNotTrack !== persistedSettings.ignoreDoNotTrack;
 
   const normalizedPerformanceSampleRate = normalizeSiteScriptSettings({
-    performanceSampleRate: performanceSampleRateInput,
+    performanceSampleRate,
   }).performanceSampleRate;
 
   const hasPerformanceTrackingChanges =
-    performanceTrackingEnabled !==
-      persistedSettings.performanceTrackingEnabled ||
     normalizedPerformanceSampleRate !== persistedSettings.performanceSampleRate;
 
   const hasDomainWhitelistChanges = !equalStringArray(
@@ -258,8 +262,7 @@ export function SettingsClientPage({
     setTrackQueryParams(normalized.trackQueryParams);
     setTrackHash(normalized.trackHash);
     setIgnoreDoNotTrack(normalized.ignoreDoNotTrack);
-    setPerformanceTrackingEnabled(normalized.performanceTrackingEnabled);
-    setPerformanceSampleRateInput(String(normalized.performanceSampleRate));
+    setPerformanceSampleRate(normalized.performanceSampleRate);
     setDomainWhitelistInput(formatListInput(normalized.domainWhitelist));
     setPathBlacklistInput(formatListInput(normalized.pathBlacklist));
   }
@@ -476,8 +479,7 @@ export function SettingsClientPage({
     setSavingPerformanceTracking(true);
     try {
       await persistTrackingSettings({
-        performanceTrackingEnabled,
-        performanceSampleRate: performanceSampleRateInput,
+        performanceSampleRate: normalizedPerformanceSampleRate,
       });
     } catch (error) {
       const message =
@@ -951,49 +953,25 @@ export function SettingsClientPage({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="site-settings-performance-enabled">
-                {copy.performanceTrackingEnabledLabel}
-              </Label>
-              <Select
-                value={performanceTrackingEnabled ? "true" : "false"}
-                onValueChange={(value) => {
-                  setPerformanceTrackingEnabled(value === "true");
-                }}
-                disabled={
-                  saving ||
-                  trackingSaving ||
-                  transferring ||
-                  deleting ||
-                  loadingSettings
-                }
-              >
-                <SelectTrigger
-                  id="site-settings-performance-enabled"
-                  className="w-full"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="true">{copy.booleanOn}</SelectItem>
-                  <SelectItem value="false">{copy.booleanOff}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="site-settings-performance-sample-rate">
-                {copy.performanceSampleRateLabel}
-              </Label>
-              <Input
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="site-settings-performance-sample-rate">
+                  {copy.performanceSampleRateLabel}
+                </Label>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {formatSampleRateValue(normalizedPerformanceSampleRate)}
+                </span>
+              </div>
+              <Slider
                 id="site-settings-performance-sample-rate"
-                type="number"
                 min={0}
                 max={100}
-                step="0.1"
-                value={performanceSampleRateInput}
-                onChange={(event) => {
-                  setPerformanceSampleRateInput(event.target.value);
+                step={1}
+                value={[normalizedPerformanceSampleRate]}
+                onValueChange={(value) => {
+                  setPerformanceSampleRate(value[0] ?? 0);
                 }}
+                aria-label={copy.performanceSampleRateLabel}
                 disabled={
                   saving ||
                   trackingSaving ||
@@ -1002,6 +980,10 @@ export function SettingsClientPage({
                   loadingSettings
                 }
               />
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>0%</span>
+                <span>100%</span>
+              </div>
               <p className="text-xs text-muted-foreground">
                 {copy.performanceSampleRateHint}
               </p>

@@ -7,7 +7,6 @@ export interface SiteScriptSettings {
   domainWhitelist: string[];
   pathBlacklist: string[];
   ignoreDoNotTrack: boolean;
-  performanceTrackingEnabled: boolean;
   performanceSampleRate: number;
 }
 
@@ -24,7 +23,6 @@ export const DEFAULT_SITE_SCRIPT_SETTINGS: SiteScriptSettings = {
   domainWhitelist: [],
   pathBlacklist: [],
   ignoreDoNotTrack: true,
-  performanceTrackingEnabled: true,
   performanceSampleRate: 100,
 };
 
@@ -170,6 +168,11 @@ export function normalizeSiteScriptSettings(input: unknown): SiteScriptSettings 
       ? (source.tracking as Record<string, unknown>)
       : {};
   const record = { ...source, ...nestedTracking };
+  const legacyPerformanceTrackingDisabled =
+    normalizeBoolean(
+      record.performanceTrackingEnabled ?? record.trackPerformance,
+      true,
+    ) === false;
 
   return {
     trackingStrength: normalizeTrackingStrength(
@@ -189,14 +192,12 @@ export function normalizeSiteScriptSettings(input: unknown): SiteScriptSettings 
       record.ignoreDoNotTrack ?? record.ignoreDnt,
       DEFAULT_SITE_SCRIPT_SETTINGS.ignoreDoNotTrack,
     ),
-    performanceTrackingEnabled: normalizeBoolean(
-      record.performanceTrackingEnabled ?? record.trackPerformance,
-      DEFAULT_SITE_SCRIPT_SETTINGS.performanceTrackingEnabled,
-    ),
-    performanceSampleRate: normalizeSampleRate(
-      record.performanceSampleRate ?? record.performanceSamplingRate,
-      DEFAULT_SITE_SCRIPT_SETTINGS.performanceSampleRate,
-    ),
+    performanceSampleRate: legacyPerformanceTrackingDisabled
+      ? 0
+      : normalizeSampleRate(
+          record.performanceSampleRate ?? record.performanceSamplingRate,
+          DEFAULT_SITE_SCRIPT_SETTINGS.performanceSampleRate,
+        ),
   };
 }
 

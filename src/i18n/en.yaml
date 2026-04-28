@@ -477,8 +477,7 @@ siteSettings:
   pathBlacklistHint: Uses startsWith prefix matching; matched paths are not reported.
   ignoreDoNotTrackLabel: Ignore Browser Do Not Track
   performanceGroupTitle: Performance Tracking
-  performanceGroupDescription: Control whether web performance metrics are collected and how often they are sampled.
-  performanceTrackingEnabledLabel: Enable Performance Tracking
+  performanceGroupDescription: Control Web performance metric collection with one sampling rate.
   performanceSampleRateLabel: Performance Sample Rate (%)
   performanceSampleRateHint: A sampled visit records TTFB, FCP, LCP, CLS, and INP on leave. Use 0 to disable sampling or 100 for full coverage.
   booleanOn: On

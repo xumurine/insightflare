@@ -114,9 +114,10 @@ export async function handleTrackerScriptRequest(request: Request, env: Env): Pr
     return Math.max(1, Math.min(24 * 60, Math.floor(raw)));
   })();
   const ttlSeconds = SCRIPT_RESPONSE_CACHE_TTL_SECONDS;
-  const performanceSampleRate = settings.performanceTrackingEnabled
-    ? Math.max(0, Math.min(100, Number(settings.performanceSampleRate || 0)))
-    : 0;
+  const performanceSampleRate = Math.max(
+    0,
+    Math.min(100, Number(settings.performanceSampleRate || 0)),
+  );
   const fingerprint = settingsFingerprint({
     ...settings,
     performanceSampleRate,

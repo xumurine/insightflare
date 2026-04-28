@@ -6189,7 +6189,6 @@ function getDemoSiteConfig() {
     domainWhitelist: [] as string[],
     pathBlacklist: [] as string[],
     ignoreDoNotTrack: true,
-    performanceTrackingEnabled: true,
     performanceSampleRate: 100,
   };
 }

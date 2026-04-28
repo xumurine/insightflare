@@ -477,8 +477,7 @@ siteSettings:
   pathBlacklistHint: 采用 startsWith 前缀匹配；命中后不发送采集事件。
   ignoreDoNotTrackLabel: 忽略浏览器 Do Not Track
   performanceGroupTitle: 性能追踪
-  performanceGroupDescription: 控制是否采集 Web 性能指标，以及采样比例。
-  performanceTrackingEnabledLabel: 开启性能追踪
+  performanceGroupDescription: 通过一个采样率控制 Web 性能指标采集。
   performanceSampleRateLabel: 性能采样率（%）
   performanceSampleRateHint: 被采样的访问会在 leave 时记录 TTFB、FCP、LCP、CLS 和 INP。填 0 表示不采样，100 表示全量采集。
   booleanOn: 开启
