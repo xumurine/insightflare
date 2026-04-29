@@ -1,5 +1,6 @@
 import { isBot } from "ua-parser-js/bot-detection";
 
+import { TRACKER_CLIENT_HINTS } from "@/lib/edge/client-hints";
 import { resolveEdgeRuntime } from "@/lib/edge/runtime";
 import {
   normalizeSiteSettingsKey,
@@ -18,6 +19,7 @@ const CORS_BASE_HEADERS = {
   "access-control-allow-methods": "GET, POST, PATCH, OPTIONS",
   "access-control-allow-headers": "content-type, authorization",
   "access-control-max-age": "86400",
+  "accept-ch": TRACKER_CLIENT_HINTS,
 };
 
 const SUPPORTED_KINDS = new Set<TrackerPayloadKind>([

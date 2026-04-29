@@ -822,8 +822,7 @@ export class IngestDurableObject extends DurableObject {
       coerceString(requestHeaders["user-agent"] ?? ""),
       1024,
     );
-    const parser = new UAParser(uaRaw);
-    const ua = parser.getResult();
+    const ua = await new UAParser(requestHeaders).getResult().withClientHints();
     const isEU = Boolean(cf.isEUCountry);
 
     let visitorId = clampString(coerceString(client.visitorId), 128);

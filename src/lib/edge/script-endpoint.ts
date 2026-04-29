@@ -1,3 +1,4 @@
+import { TRACKER_CLIENT_HINTS } from "./client-hints";
 import { buildTrackerScript } from "./script";
 import {
   normalizeSiteSettingsKey,
@@ -27,6 +28,16 @@ function responseMethodNotAllowed(): Response {
 
 function responseInternalServerError(message: string): Response {
   return new Response(message, { status: 500 });
+}
+
+function withTrackerClientHintHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("accept-ch", TRACKER_CLIENT_HINTS);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function openCacheStorage(): CacheStorage | null {
@@ -141,7 +152,7 @@ export async function handleTrackerScriptRequest(
   if (scriptCache) {
     const cached = await scriptCache.match(cacheKey);
     if (cached) {
-      return cached;
+      return withTrackerClientHintHeaders(cached);
     }
   }
 
@@ -161,6 +172,7 @@ export async function handleTrackerScriptRequest(
       "content-type": "application/javascript; charset=utf-8",
       "cache-control": `public, max-age=${ttlSeconds}, s-maxage=${ttlSeconds}`,
       "access-control-allow-origin": "*",
+      "accept-ch": TRACKER_CLIENT_HINTS,
     },
   });
 
