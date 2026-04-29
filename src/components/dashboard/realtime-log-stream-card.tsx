@@ -21,6 +21,7 @@ import {
   type GeoPointsMapCountryCount,
   type GeoPointsMapPoint,
 } from "@/components/dashboard/geo-points-map";
+import { useGeoStateTranslationBundle } from "@/components/dashboard/lazy-geo-location-label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clickable } from "@/components/ui/clickable";
 import {
@@ -32,6 +33,10 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { intlLocale, shortDateTime } from "@/lib/dashboard/format";
 import { parseGeoLocationValue } from "@/lib/dashboard/geo-location";
+import {
+  formatLocalizedGeoValue,
+  resolveLocalizedCityName,
+} from "@/lib/dashboard/geo-translation";
 import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import {
   resolveContinentLabel,
@@ -82,13 +87,6 @@ const PANEL_SCROLLBAR_OPTIONS = {
     autoHideSuspend: false,
   },
 } satisfies PartialOptions;
-const GEO_TRANSLATION_API_BASE_URL = "https://locale.ravelloh.com";
-const GEO_TRANSLATION_API_LOCALE_BY_APP_LOCALE: Record<Locale, string | null> =
-  {
-    en: null,
-    zh: "zh-CN",
-  };
-const GEO_STATE_CODE_PATTERN = /^[A-Z0-9-]{1,16}$/;
 
 type RealtimeLogEventKind = "enter" | "exit" | "view" | "custom";
 type RealtimeEventDisplayData = {
@@ -113,16 +111,6 @@ type RealtimeVisitorVisitHistory = {
   hostname: string;
   events: RealtimeEvent[];
 };
-type GeoTranslationCity = {
-  name: string;
-  nameDefault: string;
-  nativeName: string;
-};
-type GeoStateTranslationBundle = {
-  stateName: string;
-  cities: GeoTranslationCity[];
-};
-
 const LOG_STREAM_ITEM_LAYOUT_TRANSITION = {
   layout: {
     duration: 0.34,
@@ -133,11 +121,6 @@ const LOG_STREAM_ITEM_LAYOUT_TRANSITION = {
     ease: [0.22, 1, 0.36, 1],
   },
 } as const;
-
-const geoStateTranslationCache = new Map<
-  string,
-  Promise<GeoStateTranslationBundle | null>
->();
 
 function hasValidCoordinate(
   latitude: number | null | undefined,
@@ -553,187 +536,6 @@ function formatCoordinateValue(value: number | null): string {
 function normalizeDetailLabel(value: string, unknownLabel: string): string {
   const normalized = value.trim();
   return normalized || unknownLabel;
-}
-
-function resolveGeoTranslationApiLocale(locale: Locale): string | null {
-  return GEO_TRANSLATION_API_LOCALE_BY_APP_LOCALE[locale] ?? null;
-}
-
-function normalizeGeoTranslationLookupValue(value: string): string {
-  return value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
-}
-
-function isSameGeoLabel(left: string, right: string): boolean {
-  const normalizedLeft = normalizeGeoTranslationLookupValue(left);
-  const normalizedRight = normalizeGeoTranslationLookupValue(right);
-  return Boolean(
-    normalizedLeft && normalizedRight && normalizedLeft === normalizedRight,
-  );
-}
-
-function parseGeoStateTranslationBundle(
-  payload: unknown,
-): GeoStateTranslationBundle | null {
-  if (!payload || typeof payload !== "object") return null;
-  const record = payload as {
-    state?: unknown;
-    cities?: unknown;
-  };
-
-  const state =
-    record.state && typeof record.state === "object"
-      ? (record.state as Record<string, unknown>)
-      : null;
-  const stateName = typeof state?.name === "string" ? state.name.trim() : "";
-
-  const cities = Array.isArray(record.cities)
-    ? record.cities.flatMap((entry) => {
-        if (!entry || typeof entry !== "object") return [];
-        const city = entry as Record<string, unknown>;
-        const name = typeof city.name === "string" ? city.name.trim() : "";
-        const nameDefault =
-          typeof city.name_default === "string" ? city.name_default.trim() : "";
-        const nativeName =
-          typeof city.native === "string" ? city.native.trim() : "";
-        if (!name && !nameDefault && !nativeName) return [];
-        return [{ name, nameDefault, nativeName }];
-      })
-    : [];
-
-  return {
-    stateName,
-    cities,
-  };
-}
-
-async function fetchGeoStateTranslationBundle(
-  apiLocale: string,
-  countryCode: string,
-  stateCode: string,
-): Promise<GeoStateTranslationBundle | null> {
-  const normalizedCountry = countryCode.trim().toUpperCase();
-  const normalizedState = stateCode.trim().toUpperCase();
-  if (
-    !normalizedCountry ||
-    !normalizedState ||
-    !GEO_STATE_CODE_PATTERN.test(normalizedState)
-  ) {
-    return null;
-  }
-
-  const cacheKey = `${apiLocale}::${normalizedCountry}::${normalizedState}`;
-  const cached = geoStateTranslationCache.get(cacheKey);
-  if (cached) return cached;
-
-  const request = fetch(
-    `${GEO_TRANSLATION_API_BASE_URL}/${encodeURIComponent(apiLocale)}/${encodeURIComponent(normalizedCountry)}/${encodeURIComponent(normalizedState)}/`,
-    {
-      method: "GET",
-      cache: "force-cache",
-    },
-  )
-    .then(async (response) => {
-      if (!response.ok) return null;
-      const payload = (await response.json()) as unknown;
-      return parseGeoStateTranslationBundle(payload);
-    })
-    .catch(() => null);
-
-  geoStateTranslationCache.set(cacheKey, request);
-  return request;
-}
-
-function resolveLocalizedCityName(
-  bundle: GeoStateTranslationBundle | null,
-  cityNameDefault: string,
-): string | null {
-  if (!bundle) return null;
-  const target = normalizeGeoTranslationLookupValue(cityNameDefault);
-  if (!target) return null;
-
-  for (const city of bundle.cities) {
-    const localized = normalizeGeoTranslationLookupValue(city.name);
-    const fallback = normalizeGeoTranslationLookupValue(city.nameDefault);
-    const nativeName = normalizeGeoTranslationLookupValue(city.nativeName);
-    if (target === fallback || target === localized || target === nativeName) {
-      return city.name || city.nameDefault || city.nativeName || null;
-    }
-  }
-
-  return null;
-}
-
-function useGeoStateTranslationBundle({
-  locale,
-  countryCode,
-  stateCode,
-  enabled,
-}: {
-  locale: Locale;
-  countryCode: string;
-  stateCode: string;
-  enabled: boolean;
-}): GeoStateTranslationBundle | null {
-  const [bundle, setBundle] = useState<GeoStateTranslationBundle | null>(null);
-
-  useEffect(() => {
-    if (!enabled) {
-      setBundle(null);
-      return;
-    }
-
-    const apiLocale = resolveGeoTranslationApiLocale(locale);
-    if (!apiLocale) {
-      setBundle(null);
-      return;
-    }
-
-    const normalizedCountry = countryCode.trim().toUpperCase();
-    const normalizedState = stateCode.trim().toUpperCase();
-    if (
-      !normalizedCountry ||
-      !normalizedState ||
-      !GEO_STATE_CODE_PATTERN.test(normalizedState)
-    ) {
-      setBundle(null);
-      return;
-    }
-
-    let active = true;
-    fetchGeoStateTranslationBundle(
-      apiLocale,
-      normalizedCountry,
-      normalizedState,
-    ).then((nextBundle) => {
-      if (!active) return;
-      setBundle(nextBundle);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [countryCode, enabled, locale, stateCode]);
-
-  return bundle;
-}
-
-function formatLocalizedGeoValue(
-  localizedValue: string,
-  rawValue: string,
-  unknownLabel: string,
-): string {
-  const normalizedLocalized = normalizeDetailLabel(
-    localizedValue,
-    unknownLabel,
-  );
-  const normalizedRaw = normalizeDetailLabel(rawValue, unknownLabel);
-  if (
-    normalizedRaw === unknownLabel ||
-    isSameGeoLabel(normalizedLocalized, normalizedRaw)
-  ) {
-    return normalizedLocalized;
-  }
-  return `${normalizedLocalized} (${normalizedRaw})`;
 }
 
 function resolveRealtimeRegionLabel(
@@ -1266,14 +1068,24 @@ function RealtimeLogEventDetailsDialog({
   events: RealtimeEvent[];
   visits: RealtimeVisit[];
 }) {
+  const displayData = event
+    ? resolveRealtimeEventDisplayData(locale, messages, event)
+    : null;
+  const regionLabel = event
+    ? resolveRealtimeRegionLabel(event.region, messages)
+    : "";
+  const cityLabel = event ? resolveRealtimeCityLabel(event.city, messages) : "";
   const translationBundle = useGeoStateTranslationBundle({
     locale,
     countryCode: event?.country ?? "",
     stateCode: event?.regionCode ?? "",
+    countryLabel: displayData?.countryLabel ?? "",
+    regionLabel,
+    localityLabel: cityLabel,
     enabled: open && Boolean(event),
   });
 
-  if (!event) return null;
+  if (!event || !displayData) return null;
 
   const {
     browserIconKey,
@@ -1283,14 +1095,12 @@ function RealtimeLogEventDetailsDialog({
     osIconKey,
     osLabel,
     sourceLabel,
-  } = resolveRealtimeEventDisplayData(locale, messages, event);
+  } = displayData;
   const continentLabel = resolveContinentLabel(
     event.continent,
     messages.common.unknown,
     messages.common.continentLabels,
   );
-  const regionLabel = resolveRealtimeRegionLabel(event.region, messages);
-  const cityLabel = resolveRealtimeCityLabel(event.city, messages);
   const localizedRegionLabel =
     translationBundle?.stateName.trim() || regionLabel;
   const localizedCityLabel =

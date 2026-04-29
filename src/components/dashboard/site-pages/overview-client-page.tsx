@@ -2,7 +2,6 @@
 
 import {
   type MouseEvent,
-  type MutableRefObject,
   type ReactNode,
   useCallback,
   useEffect,
@@ -29,18 +28,16 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import {
+  LazyGeoCityBreadcrumbLabel,
+  LazyGeoRegionBreadcrumbLabel,
+} from "@/components/dashboard/lazy-geo-location-label";
 import { OverviewGeoPointsMapCard } from "@/components/dashboard/overview-geo-points-map-card";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { TabbedScrollMaskCard } from "@/components/dashboard/tabbed-scroll-mask-card";
 import { TrendChart } from "@/components/dashboard/trend-chart";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-} from "@/components/ui/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clickable } from "@/components/ui/clickable";
 import {
@@ -84,6 +81,10 @@ import {
   buildRegionLocationValue,
   canonicalizeGeoLocationValue,
 } from "@/lib/dashboard/geo-location";
+import {
+  isSameGeoLabel,
+  normalizeGeoTranslationLookupValue,
+} from "@/lib/dashboard/geo-translation";
 import {
   buildPageDetailHref,
   normalizePagePath,
@@ -494,29 +495,6 @@ const PANEL_SCROLLBAR_OPTIONS = {
   },
 } satisfies PartialOptions;
 const GEO_REGION_VALUE_SEPARATOR = "::";
-const GEO_TRANSLATION_API_BASE_URL = "https://locale.ravelloh.com";
-const GEO_TRANSLATION_API_LOCALE_BY_APP_LOCALE: Record<Locale, string | null> =
-  {
-    en: null,
-    zh: "zh-CN",
-  };
-const GEO_STATE_CODE_PATTERN = /^[A-Z0-9-]{1,16}$/;
-
-interface GeoTranslationCity {
-  name: string;
-  nameDefault: string;
-  nativeName: string;
-}
-
-interface GeoStateTranslationBundle {
-  stateName: string;
-  cities: GeoTranslationCity[];
-}
-
-const geoStateTranslationCache = new Map<
-  string,
-  Promise<GeoStateTranslationBundle | null>
->();
 
 function createOverviewCardTabCache<T extends string>(
   tabs: readonly T[],
@@ -537,216 +515,6 @@ function createOverviewCardTabFlightState<T extends string>(
     },
     {} as Record<T, boolean>,
   );
-}
-
-function resolveGeoTranslationApiLocale(locale: Locale): string | null {
-  return GEO_TRANSLATION_API_LOCALE_BY_APP_LOCALE[locale] ?? null;
-}
-
-function normalizeGeoTranslationLookupValue(value: string): string {
-  return value.trim().toLocaleLowerCase();
-}
-
-function isSameGeoLabel(left: string, right: string): boolean {
-  const normalizedLeft = normalizeGeoTranslationLookupValue(left).replace(
-    /\s+/g,
-    " ",
-  );
-  const normalizedRight = normalizeGeoTranslationLookupValue(right).replace(
-    /\s+/g,
-    " ",
-  );
-  return Boolean(
-    normalizedLeft && normalizedRight && normalizedLeft === normalizedRight,
-  );
-}
-
-function parseGeoStateTranslationBundle(
-  payload: unknown,
-): GeoStateTranslationBundle | null {
-  if (!payload || typeof payload !== "object") return null;
-  const record = payload as {
-    state?: unknown;
-    cities?: unknown;
-  };
-
-  const state =
-    record.state && typeof record.state === "object"
-      ? (record.state as Record<string, unknown>)
-      : null;
-  const stateName = typeof state?.name === "string" ? state.name.trim() : "";
-
-  const cities = Array.isArray(record.cities)
-    ? record.cities.flatMap((entry) => {
-        if (!entry || typeof entry !== "object") return [];
-        const city = entry as Record<string, unknown>;
-        const name = typeof city.name === "string" ? city.name.trim() : "";
-        const nameDefault =
-          typeof city.name_default === "string" ? city.name_default.trim() : "";
-        const nativeName =
-          typeof city.native === "string" ? city.native.trim() : "";
-        if (!name && !nameDefault && !nativeName) return [];
-        return [{ name, nameDefault, nativeName }];
-      })
-    : [];
-
-  return {
-    stateName,
-    cities,
-  };
-}
-
-async function fetchGeoStateTranslationBundle(
-  apiLocale: string,
-  countryCode: string,
-  stateCode: string,
-): Promise<GeoStateTranslationBundle | null> {
-  const normalizedCountry = countryCode.trim().toUpperCase();
-  const normalizedState = stateCode.trim().toUpperCase();
-  if (
-    !normalizedCountry ||
-    !normalizedState ||
-    !GEO_STATE_CODE_PATTERN.test(normalizedState)
-  ) {
-    return null;
-  }
-
-  const cacheKey = `${apiLocale}::${normalizedCountry}::${normalizedState}`;
-  const cached = geoStateTranslationCache.get(cacheKey);
-  if (cached) return cached;
-
-  const request = fetch(
-    `${GEO_TRANSLATION_API_BASE_URL}/${encodeURIComponent(apiLocale)}/${encodeURIComponent(normalizedCountry)}/${encodeURIComponent(normalizedState)}/`,
-    {
-      method: "GET",
-      cache: "force-cache",
-    },
-  )
-    .then(async (response) => {
-      if (!response.ok) return null;
-      const payload = (await response.json()) as unknown;
-      return parseGeoStateTranslationBundle(payload);
-    })
-    .catch(() => null);
-
-  geoStateTranslationCache.set(cacheKey, request);
-  return request;
-}
-
-function resolveLocalizedCityName(
-  bundle: GeoStateTranslationBundle | null,
-  cityNameDefault: string,
-): string | null {
-  if (!bundle) return null;
-  const target = normalizeGeoTranslationLookupValue(cityNameDefault);
-  if (!target) return null;
-
-  for (const city of bundle.cities) {
-    const localized = normalizeGeoTranslationLookupValue(city.name);
-    const fallback = normalizeGeoTranslationLookupValue(city.nameDefault);
-    const nativeName = normalizeGeoTranslationLookupValue(city.nativeName);
-    if (target === fallback || target === localized || target === nativeName) {
-      return city.name || city.nameDefault || city.nativeName || null;
-    }
-  }
-
-  return null;
-}
-
-function useInViewOnce(rootMargin = "0px"): {
-  ref: MutableRefObject<HTMLSpanElement | null>;
-  isInView: boolean;
-} {
-  const ref = useRef<HTMLSpanElement | null>(null);
-  const [isInView, setIsInView] = useState(false);
-
-  useEffect(() => {
-    if (isInView) return;
-    const target = ref.current;
-    if (!target) return;
-
-    if (typeof IntersectionObserver === "undefined") {
-      setIsInView(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        const visible = Boolean(
-          entry?.isIntersecting || (entry?.intersectionRatio ?? 0) > 0,
-        );
-        if (!visible) return;
-        setIsInView(true);
-        observer.disconnect();
-      },
-      {
-        root: null,
-        rootMargin,
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    return () => {
-      observer.disconnect();
-    };
-  }, [isInView, rootMargin]);
-
-  return { ref, isInView };
-}
-
-function useGeoStateTranslationBundle({
-  locale,
-  countryCode,
-  stateCode,
-  enabled,
-}: {
-  locale: Locale;
-  countryCode: string;
-  stateCode: string;
-  enabled: boolean;
-}): GeoStateTranslationBundle | null {
-  const [bundle, setBundle] = useState<GeoStateTranslationBundle | null>(null);
-
-  useEffect(() => {
-    if (!enabled) {
-      setBundle(null);
-      return;
-    }
-    const apiLocale = resolveGeoTranslationApiLocale(locale);
-    if (!apiLocale) {
-      setBundle(null);
-      return;
-    }
-
-    const normalizedCountry = countryCode.trim().toUpperCase();
-    const normalizedState = stateCode.trim().toUpperCase();
-    if (
-      !normalizedCountry ||
-      !normalizedState ||
-      !GEO_STATE_CODE_PATTERN.test(normalizedState)
-    ) {
-      setBundle(null);
-      return;
-    }
-
-    let active = true;
-    fetchGeoStateTranslationBundle(
-      apiLocale,
-      normalizedCountry,
-      normalizedState,
-    ).then((nextBundle) => {
-      if (!active) return;
-      setBundle(nextBundle);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [countryCode, enabled, locale, stateCode]);
-
-  return bundle;
 }
 
 function sanitizeHostname(value: string): string {
@@ -1059,9 +827,16 @@ function resolveGeoCityBreadcrumbData(
   const countryIconName = flagCode
     ? `flagpack:${flagCode.toLowerCase()}`
     : null;
+  const englishCountryLabel = resolveCountryLabel(
+    rawCountry,
+    "en",
+    unknownLabel,
+  ).label;
   const hideCity =
     isSameGeoLabel(rawStateName, rawCity) ||
-    (hideRegion && isSameGeoLabel(countryLabel, cityLabel));
+    (hideRegion &&
+      (isSameGeoLabel(countryLabel, cityLabel) ||
+        isSameGeoLabel(englishCountryLabel, cityLabel)));
 
   return {
     displayLabel: hideRegion
@@ -1532,163 +1307,6 @@ function LabelWithLeadingIcon({
         </span>
       </span>
       <span className="break-words">{label}</span>
-    </span>
-  );
-}
-
-function RegionBreadcrumbLabel({
-  locale,
-  countryLabel,
-  countryIconName,
-  regionLabel,
-  countryCode,
-  stateCode,
-  hideRegion,
-}: {
-  locale: Locale;
-  countryLabel: string;
-  countryIconName: string | null;
-  regionLabel: string;
-  countryCode: string;
-  stateCode: string;
-  hideRegion: boolean;
-}) {
-  const { ref: visibilityRef, isInView } = useInViewOnce();
-  const translationBundle = useGeoStateTranslationBundle({
-    locale,
-    countryCode,
-    stateCode,
-    enabled: isInView && !hideRegion,
-  });
-  const localizedRegionLabel =
-    translationBundle?.stateName.trim() || regionLabel;
-
-  return (
-    <span ref={visibilityRef} className="block">
-      <Breadcrumb className="max-w-full">
-        <BreadcrumbList className="flex-nowrap gap-1">
-          <BreadcrumbItem className="min-w-0">
-            <BreadcrumbPage className="inline-flex min-w-0 items-center gap-2">
-              {countryIconName ? (
-                <Icon
-                  icon={countryIconName}
-                  style={{
-                    width: 16,
-                    height: 12,
-                  }}
-                  className="block shrink-0"
-                />
-              ) : null}
-              <span className="truncate leading-5">{countryLabel}</span>
-            </BreadcrumbPage>
-          </BreadcrumbItem>
-          {hideRegion ? null : (
-            <BreadcrumbItem className="min-w-0">
-              <span
-                className="shrink-0 text-muted-foreground"
-                aria-hidden="true"
-              >
-                {">"}
-              </span>
-              <BreadcrumbPage className="block truncate leading-5">
-                <AutoTransition>{localizedRegionLabel}</AutoTransition>
-              </BreadcrumbPage>
-            </BreadcrumbItem>
-          )}
-        </BreadcrumbList>
-      </Breadcrumb>
-    </span>
-  );
-}
-
-function CityBreadcrumbLabel({
-  locale,
-  countryLabel,
-  countryIconName,
-  regionLabel,
-  cityLabel,
-  countryCode,
-  stateCode,
-  cityNameDefault,
-  hideRegion,
-  hideCity,
-}: {
-  locale: Locale;
-  countryLabel: string;
-  countryIconName: string | null;
-  regionLabel: string;
-  cityLabel: string;
-  countryCode: string;
-  stateCode: string;
-  cityNameDefault: string;
-  hideRegion: boolean;
-  hideCity: boolean;
-}) {
-  const { ref: visibilityRef, isInView } = useInViewOnce();
-  const translationBundle = useGeoStateTranslationBundle({
-    locale,
-    countryCode,
-    stateCode,
-    enabled: isInView && !hideRegion,
-  });
-  const localizedRegionLabel =
-    translationBundle?.stateName.trim() || regionLabel;
-  const localizedCityLabel =
-    resolveLocalizedCityName(translationBundle, cityNameDefault) || cityLabel;
-  const shouldHideCity =
-    hideCity ||
-    (!hideRegion && isSameGeoLabel(localizedRegionLabel, localizedCityLabel)) ||
-    (hideRegion && isSameGeoLabel(countryLabel, localizedCityLabel));
-
-  return (
-    <span ref={visibilityRef} className="block">
-      <Breadcrumb className="max-w-full">
-        <BreadcrumbList className="flex-nowrap gap-1">
-          <BreadcrumbItem className="min-w-0">
-            <BreadcrumbPage className="inline-flex min-w-0 items-center gap-2">
-              {countryIconName ? (
-                <Icon
-                  icon={countryIconName}
-                  style={{
-                    width: 16,
-                    height: 12,
-                  }}
-                  className="block shrink-0"
-                />
-              ) : null}
-              <span className="truncate">{countryLabel}</span>
-            </BreadcrumbPage>
-          </BreadcrumbItem>
-          <AutoTransition className="flex gap-1">
-            {hideRegion ? null : (
-              <BreadcrumbItem className="min-w-0" key={localizedRegionLabel}>
-                <span
-                  className="shrink-0 text-muted-foreground"
-                  aria-hidden="true"
-                >
-                  {">"}
-                </span>
-                <BreadcrumbPage className="block truncate leading-5">
-                  {localizedRegionLabel}
-                </BreadcrumbPage>
-              </BreadcrumbItem>
-            )}
-            {shouldHideCity ? null : (
-              <BreadcrumbItem className="min-w-0">
-                <span
-                  className="shrink-0 text-muted-foreground"
-                  aria-hidden="true"
-                >
-                  {">"}
-                </span>
-                <BreadcrumbPage className="block truncate leading-5">
-                  {localizedCityLabel}
-                </BreadcrumbPage>
-              </BreadcrumbItem>
-            )}
-          </AutoTransition>
-        </BreadcrumbList>
-      </Breadcrumb>
     </span>
   );
 }
@@ -4236,7 +3854,7 @@ export function OverviewPagesSection({
                     />
                   ) : geoDimensionCardTab === "region" &&
                     item.regionBreadcrumb ? (
-                    <RegionBreadcrumbLabel
+                    <LazyGeoRegionBreadcrumbLabel
                       locale={locale}
                       countryLabel={item.regionBreadcrumb.countryLabel}
                       countryIconName={item.regionBreadcrumb.countryIconName}
@@ -4246,7 +3864,7 @@ export function OverviewPagesSection({
                       hideRegion={item.regionBreadcrumb.hideRegion}
                     />
                   ) : geoDimensionCardTab === "city" && item.cityBreadcrumb ? (
-                    <CityBreadcrumbLabel
+                    <LazyGeoCityBreadcrumbLabel
                       locale={locale}
                       countryLabel={item.cityBreadcrumb.countryLabel}
                       countryIconName={item.cityBreadcrumb.countryIconName}
