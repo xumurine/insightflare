@@ -1,4 +1,3 @@
-import { TRACKER_CLIENT_HINTS } from "./client-hints";
 import { buildTrackerScript } from "./script";
 import {
   normalizeSiteSettingsKey,
@@ -8,6 +7,7 @@ import type { Env } from "./types";
 
 const SCRIPT_RESPONSE_CACHE_NAME = "insightflare-script-cache";
 const SCRIPT_RESPONSE_CACHE_TTL_SECONDS = 60 * 60;
+const SCRIPT_CACHE_VERSION = "client-ua-hints-v1";
 
 function isEUCountry(request: Request): boolean {
   const cf = (request as Request & { cf?: { isEUCountry?: boolean } }).cf;
@@ -28,16 +28,6 @@ function responseMethodNotAllowed(): Response {
 
 function responseInternalServerError(message: string): Response {
   return new Response(message, { status: 500 });
-}
-
-function withTrackerClientHintHeaders(response: Response): Response {
-  const headers = new Headers(response.headers);
-  headers.set("accept-ch", TRACKER_CLIENT_HINTS);
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
 }
 
 function openCacheStorage(): CacheStorage | null {
@@ -142,17 +132,20 @@ export async function handleTrackerScriptRequest(
     0,
     Math.min(100, Number(settings.performanceSampleRate || 0)),
   );
-  const fingerprint = settingsFingerprint({
-    ...settings,
-    performanceSampleRate,
-    sessionWindowMinutes,
-  });
+  const fingerprint = [
+    SCRIPT_CACHE_VERSION,
+    settingsFingerprint({
+      ...settings,
+      performanceSampleRate,
+      sessionWindowMinutes,
+    }),
+  ].join("|");
   const cacheKey = scriptCacheKeyRequest(siteId, euMode, fingerprint);
   const scriptCache = await openEdgeCache(SCRIPT_RESPONSE_CACHE_NAME);
   if (scriptCache) {
     const cached = await scriptCache.match(cacheKey);
     if (cached) {
-      return withTrackerClientHintHeaders(cached);
+      return cached;
     }
   }
 
@@ -172,7 +165,6 @@ export async function handleTrackerScriptRequest(
       "content-type": "application/javascript; charset=utf-8",
       "cache-control": `public, max-age=${ttlSeconds}, s-maxage=${ttlSeconds}`,
       "access-control-allow-origin": "*",
-      "accept-ch": TRACKER_CLIENT_HINTS,
     },
   });
 

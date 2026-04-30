@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { UAParser } from "ua-parser-js";
 
+import { mergeUaClientHintsIntoHeaders } from "./client-hints";
 import type {
   Env,
   IngestEnvelopePayload,
@@ -822,7 +823,11 @@ export class IngestDurableObject extends DurableObject {
       coerceString(requestHeaders["user-agent"] ?? ""),
       1024,
     );
-    const ua = await new UAParser(requestHeaders).getResult().withClientHints();
+    const uaHeaders = mergeUaClientHintsIntoHeaders(
+      requestHeaders,
+      client.uaClientHints,
+    );
+    const ua = await new UAParser(uaHeaders).getResult().withClientHints();
     const isEU = Boolean(cf.isEUCountry);
 
     let visitorId = clampString(coerceString(client.visitorId), 128);

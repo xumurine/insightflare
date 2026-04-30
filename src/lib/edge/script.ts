@@ -36,6 +36,8 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
   const SESSION_ACTIVITY_KEY = "__insightflare_session_activity_" + SITE_ID + "__";
   const ROUTE_SETTLE_DELAY_MS = 300;
   const SESSION_WINDOW_MS = ${sessionWindowMsLiteral};
+  const UA_CLIENT_HINT_TIMEOUT_MS = 200;
+  const UA_CLIENT_HINT_KEYS = ["fullVersionList", "platformVersion", "model", "formFactors"];
   const scriptEl = document.currentScript;
   if (!scriptEl || !(scriptEl instanceof HTMLScriptElement) || !scriptEl.src) return;
 
@@ -77,6 +79,65 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
     return sessionId;
   }
 
+  function normalizeUaBrandVersionList(input) {
+    if (!Array.isArray(input)) return [];
+    return input.slice(0, 8).map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+      const brand = String(item.brand || "").trim().slice(0, 80);
+      const version = String(item.version || "").trim().slice(0, 80);
+      if (!brand || !version) return null;
+      return { brand, version };
+    }).filter(Boolean);
+  }
+
+  function normalizeUaStringList(input) {
+    if (!Array.isArray(input)) return [];
+    return input.slice(0, 8).map((item) => String(item || "").trim().slice(0, 40)).filter(Boolean);
+  }
+
+  function normalizeUaClientHints(input) {
+    if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+    const hints = {};
+    const brands = normalizeUaBrandVersionList(input.brands);
+    const fullVersionList = normalizeUaBrandVersionList(input.fullVersionList);
+    const formFactors = normalizeUaStringList(input.formFactors);
+    const platform = String(input.platform || "").trim().slice(0, 80);
+    const platformVersion = String(input.platformVersion || "").trim().slice(0, 80);
+    const model = String(input.model || "").trim().slice(0, 120);
+    if (brands.length > 0) hints.brands = brands;
+    if (fullVersionList.length > 0) hints.fullVersionList = fullVersionList;
+    if (typeof input.mobile === "boolean") hints.mobile = input.mobile;
+    if (platform) hints.platform = platform;
+    if (platformVersion) hints.platformVersion = platformVersion;
+    if (model) hints.model = model;
+    if (formFactors.length > 0) hints.formFactors = formFactors;
+    return Object.keys(hints).length > 0 ? hints : null;
+  }
+
+  function readUaClientHints() {
+    const uaData = navigator.userAgentData;
+    if (!uaData || typeof uaData !== "object") return Promise.resolve(null);
+    const lowEntropy = {
+      brands: uaData.brands,
+      mobile: uaData.mobile,
+      platform: uaData.platform,
+    };
+    if (typeof uaData.getHighEntropyValues !== "function") {
+      return Promise.resolve(normalizeUaClientHints(lowEntropy));
+    }
+    return uaData.getHighEntropyValues(UA_CLIENT_HINT_KEYS)
+      .then((values) => normalizeUaClientHints({ ...lowEntropy, ...values }))
+      .catch(() => normalizeUaClientHints(lowEntropy));
+  }
+
+  function withUaClientHints(payload) {
+    if (!uaClientHints) return payload;
+    return {
+      ...payload,
+      uaClientHints,
+    };
+  }
+
   function routeKey(href) {
     const url = new URL(href, window.location.href);
     return [
@@ -115,7 +176,7 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
   }
 
   function send(payload, useBeacon) {
-    const body = JSON.stringify(payload);
+    const body = JSON.stringify(withUaClientHints(payload));
     if (useBeacon && typeof navigator.sendBeacon === "function") {
       navigator.sendBeacon(collectUrl, new Blob([body], { type: "application/json" }));
       return;
@@ -129,6 +190,22 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
       credentials: "omit",
       keepalive: useBeacon
     }).catch(() => {});
+  }
+
+  function sendWhenUaClientHintsReady(payload, useBeacon) {
+    if (useBeacon || uaClientHintsSettled) {
+      send(payload, useBeacon);
+      return;
+    }
+
+    let sent = false;
+    const flush = () => {
+      if (sent) return;
+      sent = true;
+      send(payload, useBeacon);
+    };
+    uaClientHintsReady.then(flush, flush);
+    window.setTimeout(flush, UA_CLIENT_HINT_TIMEOUT_MS);
   }
 
   function roundMetric(value) {
@@ -264,7 +341,7 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
       startPerformanceCollection(currentVisit.id);
     }
 
-    send(
+    sendWhenUaClientHintsReady(
       {
         ...pagePayloadBase(
           currentVisit.href,
@@ -373,6 +450,8 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
   let pendingRouteChange = null;
   let routeChangeTimer = 0;
   let leaveSent = false;
+  let uaClientHints = null;
+  let uaClientHintsSettled = false;
   let performanceVisitId = "";
   let performanceSampled = false;
   let performanceCollectionStarted = false;
@@ -385,6 +464,17 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
     cls: 0,
     inp: 0,
   };
+  const uaClientHintsReady = readUaClientHints()
+    .then((hints) => {
+      uaClientHints = hints;
+      uaClientHintsSettled = true;
+      return hints;
+    })
+    .catch(() => {
+      uaClientHints = null;
+      uaClientHintsSettled = true;
+      return null;
+    });
 
   startVisit(window.location.href, document.referrer || "", Date.now());
 

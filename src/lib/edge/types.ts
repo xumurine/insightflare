@@ -36,6 +36,21 @@ export interface TrackerPerformancePayload {
   inp?: number;
 }
 
+export interface TrackerUaBrandVersion {
+  brand?: string;
+  version?: string;
+}
+
+export interface TrackerUaClientHints {
+  brands?: TrackerUaBrandVersion[];
+  fullVersionList?: TrackerUaBrandVersion[];
+  mobile?: boolean;
+  platform?: string;
+  platformVersion?: string;
+  model?: string;
+  formFactors?: string[];
+}
+
 export interface TrackerClientPayload {
   siteId?: string;
   kind?: TrackerPayloadKind;
@@ -66,6 +81,7 @@ export interface TrackerClientPayload {
   utmCampaign?: string;
   utmTerm?: string;
   utmContent?: string;
+  uaClientHints?: TrackerUaClientHints;
 }
 
 export interface IngestEnvelope {
