@@ -242,6 +242,26 @@ export interface BrowserTrendData {
 
 export type PerformanceMetricKey = "ttfb" | "fcp" | "lcp" | "cls" | "inp";
 
+export interface VisitPerformanceMetrics {
+  ttfb: number | null;
+  fcp: number | null;
+  lcp: number | null;
+  cls: number | null;
+  inp: number | null;
+}
+
+export interface JourneyPerformanceMetricSummary {
+  avg: number | null;
+  p75: number | null;
+  max: number | null;
+  samples: number;
+}
+
+export type JourneyPerformanceSummary = Record<
+  PerformanceMetricKey,
+  JourneyPerformanceMetricSummary
+>;
+
 export interface PerformanceSummary {
   avg: number | null;
   p50: number | null;
@@ -535,6 +555,8 @@ export interface JourneySession {
   region: string;
   regionCode: string;
   city: string;
+  latitude: number | null;
+  longitude: number | null;
   browser: string;
   browserVersion: string;
   os: string;
@@ -542,6 +564,16 @@ export interface JourneySession {
   deviceType: string;
   screenWidth: number | null;
   screenHeight: number | null;
+}
+
+export interface JourneyLocationPoint {
+  latitude: number;
+  longitude: number;
+  timestampMs: number;
+  country: string;
+  region?: string;
+  regionCode?: string;
+  city?: string;
 }
 
 export interface JourneyEvent {
@@ -567,6 +599,7 @@ export interface JourneyEvent {
   deviceType: string;
   screenWidth: number | null;
   screenHeight: number | null;
+  performance: VisitPerformanceMetrics;
 }
 
 export interface JourneyPageCount {
@@ -607,6 +640,7 @@ export interface VisitorDetailData {
     visitedPages: JourneyPageCount[];
     eventDistribution: JourneyEventCount[];
     activity: VisitorActivityDay[];
+    performance: JourneyPerformanceSummary;
   } | null;
 }
 
@@ -628,9 +662,11 @@ export interface SessionDetailData {
   ok: boolean;
   data: {
     session: JourneySession;
+    locationPoints: JourneyLocationPoint[];
     events: JourneyEvent[];
     visitedPages: JourneyPageCount[];
     eventDistribution: JourneyEventCount[];
+    performance: JourneyPerformanceSummary;
   } | null;
 }
 

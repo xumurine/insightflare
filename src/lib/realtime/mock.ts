@@ -5263,6 +5263,38 @@ function parseDemoScreenSize(value: string): {
   };
 }
 
+function hasValidDemoCoordinate(visit: DemoVisitFact): boolean {
+  return (
+    Number.isFinite(visit.latitude) &&
+    Number.isFinite(visit.longitude) &&
+    visit.latitude >= -90 &&
+    visit.latitude <= 90 &&
+    visit.longitude >= -180 &&
+    visit.longitude <= 180
+  );
+}
+
+function createDemoJourneyLocationPoints(
+  visits: DemoVisitFact[],
+): Array<Record<string, unknown>> {
+  return [...visits]
+    .sort(
+      (left, right) =>
+        left.startedAt - right.startedAt ||
+        left.visitId.localeCompare(right.visitId),
+    )
+    .filter(hasValidDemoCoordinate)
+    .map((visit) => ({
+      latitude: visit.latitude,
+      longitude: visit.longitude,
+      timestampMs: visit.startedAt,
+      country: visit.country,
+      region: visit.regionName || visit.region,
+      regionCode: visit.regionCode,
+      city: visit.cityName || visit.city,
+    }));
+}
+
 function createDemoJourneySession(
   sessionId: string,
   visits: DemoVisitFact[],
@@ -5285,6 +5317,7 @@ function createDemoJourneySession(
     0,
   );
   const screen = parseDemoScreenSize(first.screenSize);
+  const firstGeo = ordered.find(hasValidDemoCoordinate);
   return {
     sessionId,
     visitorId: first.visitorId,
@@ -5303,6 +5336,8 @@ function createDemoJourneySession(
     region: first.regionName || first.region,
     regionCode: first.regionCode,
     city: first.cityName || first.city,
+    latitude: firstGeo?.latitude ?? null,
+    longitude: firstGeo?.longitude ?? null,
     browser: first.browser,
     browserVersion: first.browserVersion,
     os: demoOperatingSystemLabel(first.osVersion),
@@ -5824,11 +5859,13 @@ function generateDemoSessionDetail(
   const session = createDemoJourneySession(sessionId, visits);
   if (!session) return { ok: true, data: null };
   const events = createDemoJourneyEvents(visits, { includeSessionStart: true });
+  const locationPoints = createDemoJourneyLocationPoints(visits);
 
   return {
     ok: true,
     data: {
       session,
+      locationPoints,
       events,
       visitedPages: summarizeDemoVisitedPages(events),
       eventDistribution: summarizeDemoEventDistribution(events),

@@ -288,9 +288,15 @@ export function DashboardShell({
     (livePathname === `${activeSiteBase}/geo` ||
       livePathname.startsWith(`${activeSiteBase}/geo/`)),
   );
+  const isSessionDetailRoute = Boolean(
+    hasActiveSite &&
+    activeSiteBase &&
+    (livePathname === `${activeSiteBase}/sessions/detail` ||
+      livePathname.startsWith(`${activeSiteBase}/sessions/detail/`)),
+  );
   const contentContainerClassName = isGeoRoute
     ? "flex min-h-0 flex-1 min-w-0 w-full flex-col [&>[data-page-transition]]:h-full"
-    : isRealtimeRoute
+    : isRealtimeRoute || isSessionDetailRoute
       ? "min-w-0 w-full"
       : "mx-auto min-w-0 w-full max-w-[1400px] p-4 md:p-6";
   const mobileCurrentLevelName = hasActiveSite

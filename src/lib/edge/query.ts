@@ -129,6 +129,26 @@ interface BrowserTrendPointRow {
 
 type PerformanceMetricKey = "ttfb" | "fcp" | "lcp" | "cls" | "inp";
 
+interface VisitPerformanceMetricsRow {
+  ttfb: number | null;
+  fcp: number | null;
+  lcp: number | null;
+  cls: number | null;
+  inp: number | null;
+}
+
+interface JourneyPerformanceMetricSummaryRow {
+  avg: number | null;
+  p75: number | null;
+  max: number | null;
+  samples: number;
+}
+
+type JourneyPerformanceSummaryRow = Record<
+  PerformanceMetricKey,
+  JourneyPerformanceMetricSummaryRow
+>;
+
 interface PerformanceSummaryRow {
   avg: number | null;
   p50: number | null;
@@ -329,6 +349,8 @@ interface SessionRow {
   region: string;
   regionCode: string;
   city: string;
+  latitude: number | null;
+  longitude: number | null;
   browser: string;
   browserVersion: string;
   os: string;
@@ -336,6 +358,7 @@ interface SessionRow {
   deviceType: string;
   screenWidth: number | null;
   screenHeight: number | null;
+  performance: VisitPerformanceMetricsRow;
 }
 
 interface JourneyEventRow {
@@ -361,6 +384,7 @@ interface JourneyEventRow {
   deviceType: string;
   screenWidth: number | null;
   screenHeight: number | null;
+  performance: VisitPerformanceMetricsRow;
 }
 
 interface JourneyPageCountRow {
@@ -719,6 +743,9 @@ const PERFORMANCE_METRIC_COLUMNS: Record<PerformanceMetricKey, string> = {
   cls: "perf_cls",
   inp: "perf_inp_ms",
 };
+const PERFORMANCE_METRIC_KEYS = Object.keys(
+  PERFORMANCE_METRIC_COLUMNS,
+) as PerformanceMetricKey[];
 
 function shareTrendSeriesKey(
   label: string,
@@ -1376,7 +1403,9 @@ event_source AS (
     fv.pathname, fv.query_string, fv.hash_fragment, fv.hostname, fv.title,
     fv.referrer_url, fv.referrer_host, fv.country, fv.region, fv.city,
     fv.browser, fv.browser_version, fv.os, fv.os_version, fv.device_type,
-    fv.language, fv.timezone, fv.screen_width, fv.screen_height, ce.ae_synced_at
+    fv.language, fv.timezone, fv.screen_width, fv.screen_height,
+    fv.perf_ttfb_ms, fv.perf_fcp_ms, fv.perf_lcp_ms, fv.perf_cls, fv.perf_inp_ms,
+    ce.ae_synced_at
   FROM custom_events ce
   INNER JOIN filtered_visits fv
     ON fv.site_id = ce.site_id AND fv.visit_id = ce.visit_id
@@ -1388,7 +1417,9 @@ event_source AS (
     fv.pathname, fv.query_string, fv.hash_fragment, fv.hostname, fv.title,
     fv.referrer_url, fv.referrer_host, fv.country, fv.region, fv.city,
     fv.browser, fv.browser_version, fv.os, fv.os_version, fv.device_type,
-    fv.language, fv.timezone, fv.screen_width, fv.screen_height, ce.ae_synced_at
+    fv.language, fv.timezone, fv.screen_width, fv.screen_height,
+    fv.perf_ttfb_ms, fv.perf_fcp_ms, fv.perf_lcp_ms, fv.perf_cls, fv.perf_inp_ms,
+    ce.ae_synced_at
   FROM custom_events_archive ce
   INNER JOIN filtered_visits fv
     ON fv.site_id = ce.site_id AND fv.visit_id = ce.visit_id
@@ -1639,6 +1670,35 @@ function roundPerformanceValue(value: unknown): number | null {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return null;
   return Math.round(numeric * 1000) / 1000;
+}
+
+function nullablePerformanceValue(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  return Math.round(numeric * 1000) / 1000;
+}
+
+function emptyVisitPerformanceMetrics(): VisitPerformanceMetricsRow {
+  return {
+    ttfb: null,
+    fcp: null,
+    lcp: null,
+    cls: null,
+    inp: null,
+  };
+}
+
+function mapVisitPerformanceMetrics(
+  row: Record<string, unknown>,
+): VisitPerformanceMetricsRow {
+  return {
+    ttfb: nullablePerformanceValue(row.perfTtfbMs),
+    fcp: nullablePerformanceValue(row.perfFcpMs),
+    lcp: nullablePerformanceValue(row.perfLcpMs),
+    cls: nullablePerformanceValue(row.perfCls),
+    inp: nullablePerformanceValue(row.perfInpMs),
+  };
 }
 
 function emptyPerformanceRouteMetric(): PerformanceRouteMetricRow {
@@ -6650,6 +6710,12 @@ function nullableNumber(value: unknown): number | null {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
 }
 
+function nullableCoordinate(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function sessionDurationMs(
   startedAt: number,
   endedAt: number,
@@ -6775,6 +6841,8 @@ function mapSessionRow(row: Record<string, unknown>): SessionRow {
     region: String(row.region ?? ""),
     regionCode: String(row.regionCode ?? ""),
     city: String(row.city ?? ""),
+    latitude: nullableCoordinate(row.latitude),
+    longitude: nullableCoordinate(row.longitude),
     browser: String(row.browser ?? ""),
     browserVersion: String(row.browserVersion ?? ""),
     os: String(row.os ?? ""),
@@ -6782,6 +6850,19 @@ function mapSessionRow(row: Record<string, unknown>): SessionRow {
     deviceType: String(row.deviceType ?? ""),
     screenWidth: nullableNumber(row.screenWidth),
     screenHeight: nullableNumber(row.screenHeight),
+    performance: mapVisitPerformanceMetrics(row),
+  };
+}
+
+function mapGeoPointRow(row: Record<string, unknown>): GeoPointRow {
+  return {
+    latitude: Number(row.latitude ?? 0),
+    longitude: Number(row.longitude ?? 0),
+    timestampMs: Number(row.timestampMs ?? 0),
+    country: String(row.country ?? ""),
+    region: String(row.region ?? ""),
+    regionCode: String(row.regionCode ?? ""),
+    city: String(row.city ?? ""),
   };
 }
 
@@ -6907,6 +6988,28 @@ SELECT
     ORDER BY edge.started_at ASC, edge.visit_id ASC
     LIMIT 1
   ), '') AS city,
+  (
+    SELECT edge.latitude
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+      AND edge.latitude IS NOT NULL
+      AND edge.longitude IS NOT NULL
+      AND ABS(edge.latitude) <= 90
+      AND ABS(edge.longitude) <= 180
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ) AS latitude,
+  (
+    SELECT edge.longitude
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+      AND edge.latitude IS NOT NULL
+      AND edge.longitude IS NOT NULL
+      AND ABS(edge.latitude) <= 90
+      AND ABS(edge.longitude) <= 180
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ) AS longitude,
   COALESCE((
     SELECT edge.browser
     FROM filtered_visits edge
@@ -7005,6 +7108,7 @@ function mapJourneyEventRow(row: Record<string, unknown>): JourneyEventRow {
     deviceType: String(row.deviceType ?? ""),
     screenWidth: nullableNumber(row.screenWidth),
     screenHeight: nullableNumber(row.screenHeight),
+    performance: mapVisitPerformanceMetrics(row),
   };
 }
 
@@ -7032,6 +7136,7 @@ function sessionStartEvent(session: SessionRow): JourneyEventRow {
     deviceType: session.deviceType,
     screenWidth: session.screenWidth,
     screenHeight: session.screenHeight,
+    performance: emptyVisitPerformanceMetrics(),
   };
 }
 
@@ -7081,7 +7186,12 @@ page_events AS (
     os_version AS osVersion,
     device_type AS deviceType,
     screen_width AS screenWidth,
-    screen_height AS screenHeight
+    screen_height AS screenHeight,
+    perf_ttfb_ms AS perfTtfbMs,
+    perf_fcp_ms AS perfFcpMs,
+    perf_lcp_ms AS perfLcpMs,
+    perf_cls AS perfCls,
+    perf_inp_ms AS perfInpMs
   FROM filtered_visits
 ),
 custom_event_rows AS (
@@ -7107,7 +7217,12 @@ custom_event_rows AS (
     COALESCE(NULLIF(es.os_version, ''), fv.os_version) AS osVersion,
     COALESCE(NULLIF(es.device_type, ''), fv.device_type) AS deviceType,
     COALESCE(es.screen_width, fv.screen_width) AS screenWidth,
-    COALESCE(es.screen_height, fv.screen_height) AS screenHeight
+    COALESCE(es.screen_height, fv.screen_height) AS screenHeight,
+    fv.perf_ttfb_ms AS perfTtfbMs,
+    fv.perf_fcp_ms AS perfFcpMs,
+    fv.perf_lcp_ms AS perfLcpMs,
+    fv.perf_cls AS perfCls,
+    fv.perf_inp_ms AS perfInpMs
   FROM event_source es
   INNER JOIN filtered_visits fv
     ON fv.visit_id = es.visit_id
@@ -7166,6 +7281,51 @@ function summarizeEventDistribution(
         left.eventType.localeCompare(right.eventType),
     )
     .slice(0, 50);
+}
+
+function emptyJourneyPerformanceSummary(): JourneyPerformanceSummaryRow {
+  return Object.fromEntries(
+    PERFORMANCE_METRIC_KEYS.map((metric) => [
+      metric,
+      { avg: null, p75: null, max: null, samples: 0 },
+    ]),
+  ) as JourneyPerformanceSummaryRow;
+}
+
+function summarizeJourneyPerformance(
+  events: JourneyEventRow[],
+): JourneyPerformanceSummaryRow {
+  const valuesByMetric = new Map<PerformanceMetricKey, number[]>(
+    PERFORMANCE_METRIC_KEYS.map((metric) => [metric, []]),
+  );
+  const seenVisits = new Set<string>();
+
+  for (const event of events) {
+    if (event.kind !== "pageview") continue;
+    const visitId = event.visitId.trim();
+    if (visitId && seenVisits.has(visitId)) continue;
+    if (visitId) seenVisits.add(visitId);
+
+    for (const metric of PERFORMANCE_METRIC_KEYS) {
+      const value = event.performance[metric];
+      if (value == null || !Number.isFinite(value)) continue;
+      valuesByMetric.get(metric)?.push(value);
+    }
+  }
+
+  const summary = emptyJourneyPerformanceSummary();
+  for (const metric of PERFORMANCE_METRIC_KEYS) {
+    const values = valuesByMetric.get(metric) ?? [];
+    if (values.length === 0) continue;
+    const total = values.reduce((sum, value) => sum + value, 0);
+    summary[metric] = {
+      avg: roundPerformanceValue(total / values.length),
+      p75: roundPerformanceValue(percentile(values, 75)),
+      max: roundPerformanceValue(Math.max(...values)),
+      samples: values.length,
+    };
+  }
+  return summary;
 }
 
 function summarizeActivity(events: JourneyEventRow[]): VisitorActivityRow[] {
@@ -7460,6 +7620,28 @@ SELECT
     ORDER BY edge.started_at ASC, edge.visit_id ASC
     LIMIT 1
   ), '') AS city,
+  (
+    SELECT edge.latitude
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+      AND edge.latitude IS NOT NULL
+      AND edge.longitude IS NOT NULL
+      AND ABS(edge.latitude) <= 90
+      AND ABS(edge.longitude) <= 180
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ) AS latitude,
+  (
+    SELECT edge.longitude
+    FROM filtered_visits edge
+    WHERE edge.session_id = fv.session_id
+      AND edge.latitude IS NOT NULL
+      AND edge.longitude IS NOT NULL
+      AND ABS(edge.latitude) <= 90
+      AND ABS(edge.longitude) <= 180
+    ORDER BY edge.started_at ASC, edge.visit_id ASC
+    LIMIT 1
+  ) AS longitude,
   COALESCE((
     SELECT edge.browser
     FROM filtered_visits edge
@@ -7558,7 +7740,12 @@ page_events AS (
     os_version AS osVersion,
     device_type AS deviceType,
     screen_width AS screenWidth,
-    screen_height AS screenHeight
+    screen_height AS screenHeight,
+    perf_ttfb_ms AS perfTtfbMs,
+    perf_fcp_ms AS perfFcpMs,
+    perf_lcp_ms AS perfLcpMs,
+    perf_cls AS perfCls,
+    perf_inp_ms AS perfInpMs
   FROM filtered_visits
 ),
 custom_event_rows AS (
@@ -7584,7 +7771,12 @@ custom_event_rows AS (
     os_version AS osVersion,
     device_type AS deviceType,
     screen_width AS screenWidth,
-    screen_height AS screenHeight
+    screen_height AS screenHeight,
+    perf_ttfb_ms AS perfTtfbMs,
+    perf_fcp_ms AS perfFcpMs,
+    perf_lcp_ms AS perfLcpMs,
+    perf_cls AS perfCls,
+    perf_inp_ms AS perfInpMs
   FROM event_source
 )
 SELECT *
@@ -7662,6 +7854,7 @@ async function queryVisitorDetailFromD1(
     visitedPages: summarizeVisitedPages(events),
     eventDistribution: summarizeEventDistribution(events),
     activity: summarizeActivity(events),
+    performance: summarizeJourneyPerformance(events),
   };
 }
 
@@ -7670,7 +7863,7 @@ async function querySessionDetailFromD1(
   siteId: string,
   sessionId: string,
 ) {
-  const [sessions, baseEvents] = await Promise.all([
+  const [sessions, baseEvents, locationPoints] = await Promise.all([
     querySessionsForDetailFromD1(env, siteId, {
       type: "session",
       value: sessionId,
@@ -7679,6 +7872,7 @@ async function querySessionDetailFromD1(
       type: "session",
       value: sessionId,
     }),
+    querySessionLocationPointsFromD1(env, siteId, sessionId),
   ]);
   const session = sessions.find((item) => item.sessionId === sessionId);
   if (!session) return null;
@@ -7690,10 +7884,47 @@ async function querySessionDetailFromD1(
 
   return {
     session,
+    locationPoints,
     events,
     visitedPages: summarizeVisitedPages(events),
     eventDistribution: summarizeEventDistribution(events),
+    performance: summarizeJourneyPerformance(events),
   };
+}
+
+async function querySessionLocationPointsFromD1(
+  env: Env,
+  siteId: string,
+  sessionId: string,
+): Promise<GeoPointRow[]> {
+  const sql = `
+WITH
+${buildTargetVisitSourceCte("session_id")},
+filtered_visits AS (
+  SELECT *
+  FROM visit_source
+)
+SELECT
+  latitude,
+  longitude,
+  started_at AS timestampMs,
+  country,
+  region,
+  region_code AS regionCode,
+  city
+FROM filtered_visits
+WHERE
+  latitude IS NOT NULL
+  AND longitude IS NOT NULL
+  AND ABS(latitude) <= 90
+  AND ABS(longitude) <= 180
+ORDER BY timestampMs ASC, visit_id ASC
+`;
+  return (
+    await queryD1All<Record<string, unknown>>(env, sql, [
+      ...targetVisitSourceBindings(siteId, sessionId),
+    ])
+  ).map(mapGeoPointRow);
 }
 
 async function queryGeoPointsFromD1(
@@ -7736,15 +7967,7 @@ LIMIT ?
       ...filter.bindings,
       limit,
     ])
-  ).map((row) => ({
-    latitude: Number(row.latitude ?? 0),
-    longitude: Number(row.longitude ?? 0),
-    timestampMs: Number(row.timestampMs ?? 0),
-    country: String(row.country ?? ""),
-    region: String(row.region ?? ""),
-    regionCode: String(row.regionCode ?? ""),
-    city: String(row.city ?? ""),
-  }));
+  ).map(mapGeoPointRow);
 
   const countryCounts: GeoCountryCountRow[] = [];
   const regionCounts: GeoDimensionCountRow[] = [];
