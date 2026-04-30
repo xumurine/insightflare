@@ -9,12 +9,9 @@ import { ScatterplotLayer } from "@deck.gl/layers";
 import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
 import {
   RiArrowLeftLine,
-  RiArrowRightLine,
   RiCalendarEventLine,
-  RiFileCopyLine,
   RiPulseLine,
   RiTimeLine,
-  RiUserLine,
 } from "@remixicon/react";
 import type { StyleSpecification } from "maplibre-gl";
 
@@ -32,7 +29,6 @@ import {
 } from "@/components/dashboard/journey-display";
 import { LazyGeoCityBreadcrumbLabel } from "@/components/dashboard/lazy-geo-location-label";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -51,8 +47,6 @@ import { numberFormat } from "@/lib/dashboard/format";
 import { buildPageDetailHref } from "@/lib/dashboard/page-detail";
 import type {
   JourneyEvent,
-  JourneyEventCount,
-  JourneyPageCount,
   JourneySession,
   SessionDetailData,
 } from "@/lib/edge-client";
@@ -260,13 +254,9 @@ function copy(locale: Locale) {
         missing: "缺少 sessionId。",
         notFound: "没有找到这个会话。",
         loadError: "无法加载会话详情。",
-        overview: "总览",
-        journey: "旅程",
-        eventsTab: "事件",
-        properties: "属性",
         active: "进行中",
         inactive: "已结束",
-        engaged: "有效访问",
+        status: "状态",
         duration: "时长",
         createdAt: "创建时间",
         endedAt: "结束时间",
@@ -283,16 +273,8 @@ function copy(locale: Locale) {
         browser: "浏览器",
         device: "设备",
         screen: "屏幕",
-        visitedPages: "访问页面",
-        eventDistribution: "事件分布",
         yes: "是",
         no: "否",
-        copied: "已复制",
-        copySessionId: "复制会话 ID",
-        copyVisitorId: "复制访客 ID",
-        viewVisitor: "查看访客",
-        route: "访问路径",
-        routeSubtitle: "从入口页到退出页的会话边界。",
         uniquePages: "唯一页面",
         pageEvents: "页面事件",
         customEvents: "自定义事件",
@@ -305,10 +287,6 @@ function copy(locale: Locale) {
         timelineSubtitle: "按发生顺序展示该会话内的页面访问和自定义事件。",
         allEventsTitle: "完整事件流",
         allEventsSubtitle: "点击任一事件查看原始上下文。",
-        propertiesTitle: "会话属性",
-        propertiesSubtitle: "身份、来源、设备和地理上下文。",
-        identityTiming: "身份与时间",
-        attribution: "来源",
         client: "客户端",
         location: "位置",
         eventDetails: "事件详情",
@@ -324,9 +302,7 @@ function copy(locale: Locale) {
         path: "路径",
         hostname: "主机名",
         referrerUrl: "来源链接",
-        emptyPages: "没有页面访问记录。",
         emptyEvents: "没有事件记录。",
-        emptyDistribution: "没有事件分布数据。",
         sincePrevious: "距上个事件",
       }
     : {
@@ -336,13 +312,9 @@ function copy(locale: Locale) {
         missing: "Missing sessionId.",
         notFound: "Session not found.",
         loadError: "Unable to load session detail.",
-        overview: "Overview",
-        journey: "Journey",
-        eventsTab: "Events",
-        properties: "Properties",
         active: "Active",
         inactive: "Ended",
-        engaged: "Engaged",
+        status: "Status",
         duration: "Duration",
         createdAt: "Created At",
         endedAt: "Ended At",
@@ -359,16 +331,8 @@ function copy(locale: Locale) {
         browser: "Browser",
         device: "Device",
         screen: "Screen",
-        visitedPages: "Visited pages",
-        eventDistribution: "Event distribution",
         yes: "Yes",
         no: "No",
-        copied: "Copied",
-        copySessionId: "Copy session ID",
-        copyVisitorId: "Copy visitor ID",
-        viewVisitor: "View visitor",
-        route: "Visit route",
-        routeSubtitle: "Session boundary from entry page to exit page.",
         uniquePages: "Unique Pages",
         pageEvents: "Page Events",
         customEvents: "Custom Events",
@@ -382,10 +346,6 @@ function copy(locale: Locale) {
           "Pageviews and custom events in the order they happened.",
         allEventsTitle: "Full event stream",
         allEventsSubtitle: "Select any event to inspect its raw context.",
-        propertiesTitle: "Session properties",
-        propertiesSubtitle: "Identity, source, device, and location context.",
-        identityTiming: "Identity & timing",
-        attribution: "Attribution",
         client: "Client",
         location: "Location",
         eventDetails: "Event details",
@@ -401,9 +361,7 @@ function copy(locale: Locale) {
         path: "Path",
         hostname: "Hostname",
         referrerUrl: "Referrer URL",
-        emptyPages: "No page views recorded.",
         emptyEvents: "No events recorded.",
-        emptyDistribution: "No event distribution data.",
         sincePrevious: "Since previous",
       };
 }
@@ -434,41 +392,6 @@ function eventSubtitle(event: JourneyEvent, unknownLabel: string): string {
   );
 }
 
-function CopyButton({
-  value,
-  label,
-  copiedLabel,
-}: {
-  value: string;
-  label: string;
-  copiedLabel: string;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    const normalized = value.trim();
-    if (!normalized || !navigator.clipboard?.writeText) return;
-
-    void navigator.clipboard.writeText(normalized).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
-    });
-  };
-
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      onClick={handleCopy}
-      disabled={!value.trim()}
-    >
-      <RiFileCopyLine data-icon="inline-start" />
-      {copied ? copiedLabel : label}
-    </Button>
-  );
-}
-
 function EventIcon({ event }: { event: JourneyEvent }) {
   const isCustom = event.kind === "custom";
   const isSessionStart = event.kind === "session_start";
@@ -490,17 +413,6 @@ function EventIcon({ event }: { event: JourneyEvent }) {
         <RiCalendarEventLine className="size-4" />
       )}
     </span>
-  );
-}
-
-function MetricTile({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="min-w-0 border-border/70 p-4 ring-1 ring-foreground/10">
-      <p className="text-[11px] leading-snug text-muted-foreground">{label}</p>
-      <div className="mt-2 min-w-0 break-words font-mono text-xl font-semibold leading-tight text-foreground [overflow-wrap:anywhere]">
-        {value}
-      </div>
-    </div>
   );
 }
 
@@ -536,25 +448,6 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function DetailSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <Card className="py-0">
-      <CardHeader className="border-b py-4">
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="px-0">
-        <div className="divide-y divide-border/70">{children}</div>
-      </CardContent>
-    </Card>
-  );
-}
-
 function EmptyState({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-24 items-center justify-center border border-dashed border-border px-4 py-6 text-center text-[11px] text-muted-foreground">
@@ -563,97 +456,72 @@ function EmptyState({ children }: { children: ReactNode }) {
   );
 }
 
-function PageMetricRows({
-  locale,
-  labels,
-  pages,
-  total,
-  pagesPath,
+function SummaryGridItem({
+  label,
+  value,
+  mono = false,
+  prominent = false,
+  className,
 }: {
-  locale: Locale;
-  labels: Labels;
-  pages: JourneyPageCount[];
-  total: number;
-  pagesPath: string;
+  label: string;
+  value: ReactNode;
+  mono?: boolean;
+  prominent?: boolean;
+  className?: string;
 }) {
-  if (pages.length === 0) {
-    return <EmptyState>{labels.emptyPages}</EmptyState>;
-  }
-
-  const max = Math.max(1, ...pages.map((page) => page.views));
-
   return (
-    <div className="space-y-2">
-      {pages.map((page) => {
-        const percent = total > 0 ? page.views / total : page.views / max;
-        return (
-          <Link
-            key={page.pathname}
-            href={buildPageDetailHref(pagesPath, page.pathname)}
-            className="group block border border-border/70 bg-card px-3 py-2 outline-none transition-colors hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-ring/60"
-          >
-            <div className="flex items-center justify-between gap-4">
-              <span className="min-w-0 truncate font-mono text-foreground">
-                {formatPath(page.pathname)}
-              </span>
-              <span className="shrink-0 font-mono text-muted-foreground">
-                {numberFormat(locale, page.views)}
-              </span>
-            </div>
-            <div className="mt-2 h-1 bg-muted">
-              <div
-                className="h-full bg-emerald-500/70 transition-[width]"
-                style={{ width: `${Math.max(5, Math.round(percent * 100))}%` }}
-              />
-            </div>
-          </Link>
-        );
-      })}
+    <div className={cn("min-w-0 bg-card p-4", className)}>
+      <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </p>
+      <div
+        className={cn(
+          "mt-2 min-w-0 text-foreground [overflow-wrap:anywhere]",
+          mono && "font-mono",
+          prominent
+            ? "text-xl font-semibold leading-tight"
+            : "text-xs leading-relaxed",
+        )}
+      >
+        {value}
+      </div>
     </div>
   );
 }
 
-function EventDistributionRows({
-  locale,
-  labels,
-  events,
+function SummaryText({
+  children,
+  mono = false,
 }: {
-  locale: Locale;
-  labels: Labels;
-  events: JourneyEventCount[];
+  children: ReactNode;
+  mono?: boolean;
 }) {
-  if (events.length === 0) {
-    return <EmptyState>{labels.emptyDistribution}</EmptyState>;
-  }
-
-  const max = Math.max(1, ...events.map((event) => event.count));
-
   return (
-    <div className="space-y-2">
-      {events.map((event) => (
-        <div
-          key={event.eventType}
-          className="border border-border/70 bg-card px-3 py-2"
-        >
-          <div className="flex items-center justify-between gap-4">
-            <span className="min-w-0 truncate text-foreground">
-              {event.eventType}
-            </span>
-            <span className="shrink-0 font-mono text-muted-foreground">
-              {numberFormat(locale, event.count)}
-            </span>
-          </div>
-          <div className="mt-2 h-1 bg-muted">
-            <div
-              className="h-full bg-sky-500/70 transition-[width]"
-              style={{
-                width: `${Math.max(5, Math.round((event.count / max) * 100))}%`,
-              }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
+    <span
+      className={cn(
+        "inline-flex max-w-full min-w-0 items-center gap-2 text-foreground",
+        mono && "font-mono",
+      )}
+    >
+      <span className="min-w-0 break-all">{children}</span>
+    </span>
+  );
+}
+
+function SummaryPathLink({
+  pathname,
+  pagesPath,
+}: {
+  pathname: string;
+  pagesPath: string;
+}) {
+  return (
+    <Link
+      href={buildPageDetailHref(pagesPath, pathname || "/")}
+      className="block min-w-0 truncate font-mono text-xs text-foreground outline-none hover:underline focus-visible:ring-1 focus-visible:ring-ring/60"
+    >
+      {formatPath(pathname)}
+    </Link>
   );
 }
 
@@ -701,11 +569,13 @@ function SessionMapHero({
   session,
   locationPoints,
   backHref,
+  visitorHref,
 }: {
   labels: Labels;
   session: JourneySession;
   locationPoints: SessionDetail["locationPoints"] | undefined;
   backHref: string;
+  visitorHref: string;
 }) {
   const { resolvedTheme } = useTheme();
   const effectiveTheme: EffectiveMapTheme =
@@ -733,17 +603,24 @@ function SessionMapHero({
         {labels.back}
       </Link>
 
-      <div className="absolute bottom-4 left-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-3 sm:bottom-5 sm:left-5">
-        <VisitorAvatar seed={session.visitorId} className="size-12" />
-        <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">
+      {session.visitorId.trim() ? (
+        <Link
+          href={visitorHref}
+          className="absolute bottom-4 left-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-3 outline-none focus-visible:ring-2 focus-visible:ring-ring/70 sm:bottom-5 sm:left-5"
+        >
+          <VisitorAvatar seed={session.visitorId} className="size-12" />
+          <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight text-foreground">
             {labels.anonymous}
           </h1>
-          <p className="mt-1 truncate font-mono text-[11px] text-foreground/70">
-            {labels.sessionId}: {session.sessionId}
-          </p>
+        </Link>
+      ) : (
+        <div className="absolute bottom-4 left-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-3 sm:bottom-5 sm:left-5">
+          <VisitorAvatar seed={session.visitorId} className="size-12" />
+          <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight text-foreground">
+            {labels.anonymous}
+          </h1>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -752,176 +629,16 @@ function MetaPanel({
   locale,
   messages,
   labels,
-  session,
-  visitorHref,
-}: {
-  locale: Locale;
-  messages: AppMessages;
-  labels: Labels;
-  session: JourneySession;
-  visitorHref: string;
-}) {
-  return (
-    <Card className="py-0">
-      <CardContent className="space-y-4 p-4 sm:p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="grid min-w-0 gap-3 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-4">
-            <div className="min-w-0 space-y-1">
-              <p className="text-[11px] uppercase tracking-[0.14em]">
-                {labels.location}
-              </p>
-              <div className="min-w-0 text-foreground">
-                <SessionGeoBreadcrumb
-                  locale={locale}
-                  messages={messages}
-                  session={session}
-                />
-              </div>
-            </div>
-            <div className="min-w-0 space-y-1">
-              <p className="text-[11px] uppercase tracking-[0.14em]">
-                {labels.client}
-              </p>
-              <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1">
-                <BrowserMeta
-                  browser={session.browser}
-                  version={session.browserVersion}
-                  unknownLabel={messages.common.unknown}
-                />
-                <OsMeta
-                  os={session.os}
-                  version={session.osVersion}
-                  unknownLabel={messages.common.unknown}
-                />
-              </div>
-            </div>
-            <div className="min-w-0 space-y-1">
-              <p className="text-[11px] uppercase tracking-[0.14em]">
-                {labels.device}
-              </p>
-              <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1">
-                <DeviceMeta
-                  deviceType={session.deviceType}
-                  locale={locale}
-                  unknownLabel={messages.common.unknown}
-                />
-                <span className="font-mono text-[11px] text-foreground">
-                  {formatScreen(session.screenWidth, session.screenHeight)}
-                </span>
-              </div>
-            </div>
-            <div className="min-w-0 space-y-1">
-              <p className="text-[11px] uppercase tracking-[0.14em]">
-                {labels.referrerName}
-              </p>
-              <ReferrerMeta
-                referrerHost={session.referrerHost}
-                referrerUrl={session.referrerUrl}
-                directLabel={messages.overview.direct}
-              />
-            </div>
-          </div>
-
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <CopyButton
-              value={session.sessionId}
-              label={labels.copySessionId}
-              copiedLabel={labels.copied}
-            />
-            <CopyButton
-              value={session.visitorId}
-              label={labels.copyVisitorId}
-              copiedLabel={labels.copied}
-            />
-            {session.visitorId.trim() ? (
-              <Button variant="default" size="sm" asChild>
-                <Link href={visitorHref}>
-                  <RiUserLine data-icon="inline-start" />
-                  {labels.viewVisitor}
-                </Link>
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function RouteEndpoint({
-  label,
-  pathname,
-  pagesPath,
-}: {
-  label: string;
-  pathname: string;
-  pagesPath: string;
-}) {
-  const displayPath = formatPath(pathname);
-  return (
-    <div className="min-w-0 border border-border/70 bg-muted/20 p-3">
-      <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-        {label}
-      </p>
-      <Link
-        href={buildPageDetailHref(pagesPath, pathname || "/")}
-        className="mt-2 block truncate font-mono text-sm font-medium text-foreground outline-none hover:underline focus-visible:ring-1 focus-visible:ring-ring/60"
-      >
-        {displayPath}
-      </Link>
-    </div>
-  );
-}
-
-function RouteSummaryCard({
-  labels,
-  session,
-  pagesPath,
-}: {
-  labels: Labels;
-  session: JourneySession;
-  pagesPath: string;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{labels.route}</CardTitle>
-        <CardDescription>{labels.routeSubtitle}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-center">
-          <RouteEndpoint
-            label={labels.entryPath}
-            pathname={session.entryPath}
-            pagesPath={pagesPath}
-          />
-          <div className="hidden justify-center text-muted-foreground md:flex">
-            <RiArrowRightLine className="size-4" />
-          </div>
-          <RouteEndpoint
-            label={labels.exitPath}
-            pathname={session.exitPath}
-            pagesPath={pagesPath}
-          />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function OverviewTab({
-  locale,
-  labels,
-  session,
   detail,
   pagesPath,
 }: {
   locale: Locale;
+  messages: AppMessages;
   labels: Labels;
-  session: JourneySession;
   detail: SessionDetail;
   pagesPath: string;
 }) {
+  const session = detail.session;
   const pageEvents = detail.events.filter(
     (event) => event.kind === "pageview",
   ).length;
@@ -940,110 +657,194 @@ function OverviewTab({
   );
 
   return (
-    <div className="space-y-6">
-      <div className="grid overflow-hidden sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <MetricTile
-          label={labels.duration}
-          value={formatDuration(locale, session.durationMs)}
-        />
-        <MetricTile
-          label={labels.screenViews}
-          value={numberFormat(locale, session.views)}
-        />
-        <MetricTile
-          label={labels.events}
-          value={numberFormat(locale, session.events)}
-        />
-        <MetricTile
-          label={labels.uniquePages}
-          value={numberFormat(locale, detail.visitedPages.length)}
-        />
-        <MetricTile
-          label={labels.pageEvents}
-          value={numberFormat(locale, pageEvents)}
-        />
-        <MetricTile
-          label={labels.customEvents}
-          value={numberFormat(locale, customEvents)}
-        />
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1fr_24rem]">
-        <RouteSummaryCard
-          labels={labels}
-          session={session}
-          pagesPath={pagesPath}
-        />
-        <Card>
-          <CardHeader>
-            <CardTitle>{labels.identityTiming}</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2 text-[11px] text-muted-foreground">
-            <div className="flex items-center justify-between gap-4">
-              <span>{labels.createdAt}</span>
-              <span className="font-mono text-foreground">
-                {formatShortDateTime(locale, session.startedAt)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <span>{labels.endedAt}</span>
-              <span className="font-mono text-foreground">
-                {formatShortDateTime(locale, session.endedAt)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <span>{labels.firstEvent}</span>
-              <span className="font-mono text-foreground">
-                {firstEvent
-                  ? formatShortDateTime(locale, firstEvent.occurredAt)
-                  : "--"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <span>{labels.lastEvent}</span>
-              <span className="font-mono text-foreground">
-                {lastEvent
-                  ? formatShortDateTime(locale, lastEvent.occurredAt)
-                  : "--"}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>{labels.visitedPages}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <PageMetricRows
-              locale={locale}
-              labels={labels}
-              pages={detail.visitedPages}
-              total={session.views}
-              pagesPath={pagesPath}
-            />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{labels.eventDistribution}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <EventDistributionRows
-              locale={locale}
-              labels={labels}
-              events={detail.eventDistribution}
-            />
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+    <Card className="py-0">
+      <CardContent className="p-0">
+        <div className="grid gap-px overflow-hidden bg-border/70 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <SummaryGridItem
+            label={labels.sessionId}
+            mono
+            value={<SummaryText mono>{session.sessionId}</SummaryText>}
+          />
+          <SummaryGridItem
+            label={labels.visitorId}
+            mono
+            value={
+              <SummaryText mono>
+                {session.visitorId || messages.common.unknown}
+              </SummaryText>
+            }
+          />
+          <SummaryGridItem
+            label={labels.duration}
+            prominent
+            mono
+            value={formatDuration(locale, session.durationMs)}
+          />
+          <SummaryGridItem
+            label={labels.screenViews}
+            prominent
+            mono
+            value={numberFormat(locale, session.views)}
+          />
+          <SummaryGridItem
+            label={labels.events}
+            prominent
+            mono
+            value={numberFormat(locale, session.events)}
+          />
+          <SummaryGridItem
+            label={labels.uniquePages}
+            prominent
+            mono
+            value={numberFormat(locale, detail.visitedPages.length)}
+          />
+          <SummaryGridItem
+            label={labels.pageEvents}
+            prominent
+            mono
+            value={numberFormat(locale, pageEvents)}
+          />
+          <SummaryGridItem
+            label={labels.customEvents}
+            prominent
+            mono
+            value={numberFormat(locale, customEvents)}
+          />
+          <SummaryGridItem
+            label={labels.createdAt}
+            mono
+            value={formatShortDateTime(locale, session.startedAt)}
+          />
+          <SummaryGridItem
+            label={labels.endedAt}
+            mono
+            value={formatShortDateTime(locale, session.endedAt)}
+          />
+          <SummaryGridItem
+            label={labels.firstEvent}
+            mono
+            value={
+              firstEvent
+                ? formatShortDateTime(locale, firstEvent.occurredAt)
+                : "--"
+            }
+          />
+          <SummaryGridItem
+            label={labels.lastEvent}
+            mono
+            value={
+              lastEvent
+                ? formatShortDateTime(locale, lastEvent.occurredAt)
+                : "--"
+            }
+          />
+          <SummaryGridItem
+            label={labels.entryPath}
+            className="sm:col-span-2"
+            value={
+              <SummaryPathLink
+                pathname={session.entryPath}
+                pagesPath={pagesPath}
+              />
+            }
+          />
+          <SummaryGridItem
+            label={labels.exitPath}
+            className="sm:col-span-2"
+            value={
+              <SummaryPathLink
+                pathname={session.exitPath}
+                pagesPath={pagesPath}
+              />
+            }
+          />
+          <SummaryGridItem
+            label={labels.referrerName}
+            value={
+              <ReferrerMeta
+                referrerHost={session.referrerHost}
+                referrerUrl={session.referrerUrl}
+                directLabel={messages.overview.direct}
+              />
+            }
+          />
+          <SummaryGridItem
+            label={labels.referrerUrl}
+            mono
+            className="sm:col-span-2 lg:col-span-1"
+            value={session.referrerUrl || messages.overview.direct}
+          />
+          <SummaryGridItem
+            label={labels.location}
+            className="sm:col-span-2"
+            value={
+              <SessionGeoBreadcrumb
+                locale={locale}
+                messages={messages}
+                session={session}
+              />
+            }
+          />
+          <SummaryGridItem
+            label={labels.country}
+            value={session.country || messages.common.unknown}
+          />
+          <SummaryGridItem
+            label={labels.region}
+            value={session.region || messages.common.unknown}
+          />
+          <SummaryGridItem
+            label={labels.city}
+            value={session.city || messages.common.unknown}
+          />
+          <SummaryGridItem
+            label={labels.client}
+            className="sm:col-span-2"
+            value={
+              <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1">
+                <BrowserMeta
+                  browser={session.browser}
+                  version={session.browserVersion}
+                  unknownLabel={messages.common.unknown}
+                />
+                <OsMeta
+                  os={session.os}
+                  version={session.osVersion}
+                  unknownLabel={messages.common.unknown}
+                />
+              </div>
+            }
+          />
+          <SummaryGridItem
+            label={labels.device}
+            value={
+              <DeviceMeta
+                deviceType={session.deviceType}
+                locale={locale}
+                unknownLabel={messages.common.unknown}
+              />
+            }
+          />
+          <SummaryGridItem
+            label={labels.screen}
+            mono
+            value={formatScreen(session.screenWidth, session.screenHeight)}
+          />
+          <SummaryGridItem
+            label={labels.bounce}
+            value={session.bounce ? labels.yes : labels.no}
+          />
+          <SummaryGridItem
+            label={labels.status}
+            value={session.active ? labels.active : labels.inactive}
+          />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-function TimelineEventButton({
+function SessionEventCard({
   locale,
   messages,
   labels,
@@ -1058,35 +859,65 @@ function TimelineEventButton({
   deltaMs: number | null;
   onSelect: (event: JourneyEvent) => void;
 }) {
+  const handleSelect = () => onSelect(event);
+
   return (
-    <button
-      type="button"
-      className="group grid w-full grid-cols-[5.75rem_minmax(0,1fr)] gap-3 border-t border-border/70 px-4 py-3 text-left outline-none first:border-t-0 hover:bg-muted/30 focus-visible:ring-1 focus-visible:ring-ring/60 sm:grid-cols-[8rem_minmax(0,1fr)]"
-      onClick={() => onSelect(event)}
+    <Card
+      size="sm"
+      role="button"
+      tabIndex={0}
+      onClick={handleSelect}
+      onKeyDown={(keyboardEvent) => {
+        if (keyboardEvent.key !== "Enter" && keyboardEvent.key !== " ") return;
+        keyboardEvent.preventDefault();
+        handleSelect();
+      }}
+      className="cursor-pointer transition-colors outline-none hover:bg-muted/25 focus-visible:ring-2 focus-visible:ring-ring/70"
     >
-      <div className="pt-1 text-right font-mono text-[11px] text-muted-foreground">
-        {formatShortDateTime(locale, event.occurredAt)}
-      </div>
-      <div className="flex min-w-0 gap-3">
-        <EventIcon event={event} />
-        <div className="min-w-0 flex-1 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="min-w-0 truncate text-sm font-medium text-foreground">
-              {eventTitle(labels, event)}
-            </p>
-            <Badge variant="outline">{eventKindLabel(labels, event)}</Badge>
+      <CardContent className="px-3">
+        <div className="flex items-start gap-3">
+          <div className="shrink-0 self-center">
+            <VisitorAvatar
+              seed={event.visitorId || event.sessionId}
+              className="size-9"
+            />
           </div>
-          <p className="truncate text-[11px] text-muted-foreground">
-            {eventSubtitle(event, messages.common.unknown)}
-          </p>
-          {deltaMs !== null && deltaMs > 0 ? (
-            <p className="font-mono text-[11px] text-muted-foreground">
-              {labels.sincePrevious}: {formatDuration(locale, deltaMs)}
-            </p>
-          ) : null}
+          <div className="flex min-w-0 flex-1 items-stretch justify-between gap-4">
+            <div className="min-w-0 space-y-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <p className="min-w-0 truncate text-sm font-medium text-foreground">
+                  {eventTitle(labels, event)}
+                </p>
+                <Badge variant="outline">{eventKindLabel(labels, event)}</Badge>
+              </div>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
+                <span className="min-w-0 truncate">
+                  {eventSubtitle(event, messages.common.unknown)}
+                </span>
+                {event.visitId.trim() ? (
+                  <span className="font-mono">{shortId(event.visitId)}</span>
+                ) : null}
+                {deltaMs !== null && deltaMs > 0 ? (
+                  <span className="font-mono">
+                    {labels.sincePrevious}: {formatDuration(locale, deltaMs)}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <div className="shrink-0 self-stretch">
+              <div className="flex h-full min-w-[7.5rem] flex-col items-end justify-between text-right">
+                <p className="font-mono text-[11px] text-foreground">
+                  {formatShortDateTime(locale, event.occurredAt)}
+                </p>
+                <p className="font-mono text-[11px] text-muted-foreground">
+                  {event.sessionId ? shortId(event.sessionId) : "--"}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1113,32 +944,33 @@ function JourneyTab({
   );
 
   return (
-    <Card className="py-0">
-      <CardHeader className="border-b py-4">
+    <Card>
+      <CardHeader>
         <CardTitle>{labels.timelineTitle}</CardTitle>
         <CardDescription>{labels.timelineSubtitle}</CardDescription>
       </CardHeader>
-      <CardContent className="px-0">
+      <CardContent>
         {chronologicalEvents.length === 0 ? (
-          <div className="px-4 py-4">
-            <EmptyState>{labels.emptyEvents}</EmptyState>
-          </div>
+          <EmptyState>{labels.emptyEvents}</EmptyState>
         ) : (
-          chronologicalEvents.map((event, index) => (
-            <TimelineEventButton
-              key={event.id}
-              locale={locale}
-              messages={messages}
-              labels={labels}
-              event={event}
-              deltaMs={
-                index > 0
-                  ? event.occurredAt - chronologicalEvents[index - 1].occurredAt
-                  : null
-              }
-              onSelect={onSelect}
-            />
-          ))
+          <div className="space-y-2">
+            {chronologicalEvents.map((event, index) => (
+              <SessionEventCard
+                key={event.id}
+                locale={locale}
+                messages={messages}
+                labels={labels}
+                event={event}
+                deltaMs={
+                  index > 0
+                    ? event.occurredAt -
+                      chronologicalEvents[index - 1].occurredAt
+                    : null
+                }
+                onSelect={onSelect}
+              />
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>
@@ -1159,224 +991,31 @@ function EventListTab({
   onSelect: (event: JourneyEvent) => void;
 }) {
   return (
-    <Card className="py-0">
-      <CardHeader className="border-b py-4">
+    <Card>
+      <CardHeader>
         <CardTitle>{labels.allEventsTitle}</CardTitle>
         <CardDescription>{labels.allEventsSubtitle}</CardDescription>
       </CardHeader>
-      <CardContent className="px-0">
+      <CardContent>
         {events.length === 0 ? (
-          <div className="px-4 py-4">
-            <EmptyState>{labels.emptyEvents}</EmptyState>
-          </div>
+          <EmptyState>{labels.emptyEvents}</EmptyState>
         ) : (
-          events.map((event) => (
-            <button
-              key={event.id}
-              type="button"
-              className="flex w-full items-center gap-3 border-t border-border/70 px-4 py-3 text-left outline-none first:border-t-0 hover:bg-muted/30 focus-visible:ring-1 focus-visible:ring-ring/60"
-              onClick={() => onSelect(event)}
-            >
-              <EventIcon event={event} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-foreground">
-                  {eventTitle(labels, event)}
-                </p>
-                <p className="truncate text-[11px] text-muted-foreground">
-                  {eventSubtitle(event, messages.common.unknown)}
-                </p>
-              </div>
-              <div className="shrink-0 text-right">
-                <p className="font-mono text-[11px] text-muted-foreground">
-                  {formatShortDateTime(locale, event.occurredAt)}
-                </p>
-                <p className="font-mono text-[11px] text-muted-foreground">
-                  {shortId(event.visitId)}
-                </p>
-              </div>
-            </button>
-          ))
+          <div className="space-y-2">
+            {events.map((event) => (
+              <SessionEventCard
+                key={event.id}
+                locale={locale}
+                messages={messages}
+                labels={labels}
+                event={event}
+                deltaMs={null}
+                onSelect={onSelect}
+              />
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function PropertiesTab({
-  locale,
-  messages,
-  labels,
-  session,
-}: {
-  locale: Locale;
-  messages: AppMessages;
-  labels: Labels;
-  session: JourneySession;
-}) {
-  return (
-    <div className="space-y-4">
-      <div className="space-y-1">
-        <h2 className="text-sm font-medium text-foreground">
-          {labels.propertiesTitle}
-        </h2>
-        <p className="text-[11px] text-muted-foreground">
-          {labels.propertiesSubtitle}
-        </p>
-      </div>
-      <div className="grid gap-4 xl:grid-cols-2">
-        <DetailSection title={labels.identityTiming}>
-          <DetailRow
-            label={labels.sessionId}
-            value={<DetailValue mono>{session.sessionId}</DetailValue>}
-          />
-          <DetailRow
-            label={labels.visitorId}
-            value={<DetailValue mono>{session.visitorId}</DetailValue>}
-          />
-          <DetailRow
-            label={labels.createdAt}
-            value={
-              <DetailValue mono>
-                {formatShortDateTime(locale, session.startedAt)}
-              </DetailValue>
-            }
-          />
-          <DetailRow
-            label={labels.endedAt}
-            value={
-              <DetailValue mono>
-                {formatShortDateTime(locale, session.endedAt)}
-              </DetailValue>
-            }
-          />
-          <DetailRow
-            label={labels.duration}
-            value={
-              <DetailValue mono>
-                {formatDuration(locale, session.durationMs)}
-              </DetailValue>
-            }
-          />
-        </DetailSection>
-
-        <DetailSection title={labels.attribution}>
-          <DetailRow
-            label={labels.entryPath}
-            value={
-              <DetailValue mono>{formatPath(session.entryPath)}</DetailValue>
-            }
-          />
-          <DetailRow
-            label={labels.exitPath}
-            value={
-              <DetailValue mono>{formatPath(session.exitPath)}</DetailValue>
-            }
-          />
-          <DetailRow
-            label={labels.referrerName}
-            value={
-              <ReferrerMeta
-                referrerHost={session.referrerHost}
-                referrerUrl={session.referrerUrl}
-                directLabel={messages.overview.direct}
-                className="justify-end"
-              />
-            }
-          />
-          <DetailRow
-            label={labels.referrerUrl}
-            value={
-              <DetailValue mono>
-                {session.referrerUrl || messages.overview.direct}
-              </DetailValue>
-            }
-          />
-        </DetailSection>
-
-        <DetailSection title={labels.client}>
-          <DetailRow
-            label={labels.browser}
-            value={
-              <BrowserMeta
-                browser={session.browser}
-                version={session.browserVersion}
-                unknownLabel={messages.common.unknown}
-                className="justify-end"
-              />
-            }
-          />
-          <DetailRow
-            label={labels.os}
-            value={
-              <OsMeta
-                os={session.os}
-                version={session.osVersion}
-                unknownLabel={messages.common.unknown}
-                className="justify-end"
-              />
-            }
-          />
-          <DetailRow
-            label={labels.device}
-            value={
-              <DeviceMeta
-                deviceType={session.deviceType}
-                locale={locale}
-                unknownLabel={messages.common.unknown}
-                className="justify-end"
-              />
-            }
-          />
-          <DetailRow
-            label={labels.screen}
-            value={
-              <DetailValue mono>
-                {formatScreen(session.screenWidth, session.screenHeight)}
-              </DetailValue>
-            }
-          />
-        </DetailSection>
-
-        <DetailSection title={labels.location}>
-          <DetailRow
-            label={labels.location}
-            value={
-              <div className="flex min-w-0 justify-end text-foreground">
-                <SessionGeoBreadcrumb
-                  locale={locale}
-                  messages={messages}
-                  session={session}
-                />
-              </div>
-            }
-          />
-          <DetailRow
-            label={labels.country}
-            value={
-              <DetailValue>
-                {session.country || messages.common.unknown}
-              </DetailValue>
-            }
-          />
-          <DetailRow
-            label={labels.region}
-            value={
-              <DetailValue>
-                {session.region || messages.common.unknown}
-              </DetailValue>
-            }
-          />
-          <DetailRow
-            label={labels.city}
-            value={
-              <DetailValue>
-                {session.city || messages.common.unknown}
-              </DetailValue>
-            }
-          />
-        </DetailSection>
-      </div>
-    </div>
   );
 }
 
@@ -1611,6 +1250,7 @@ function DetailContent({
         session={session}
         locationPoints={detail.locationPoints}
         backHref={sessionsPath}
+        visitorHref={visitorHref}
       />
 
       <div className="mx-auto mt-6 w-full max-w-[1400px] space-y-6 px-4 md:px-6">
@@ -1618,59 +1258,24 @@ function DetailContent({
           locale={locale}
           messages={messages}
           labels={labels}
-          session={session}
-          visitorHref={visitorHref}
+          detail={detail}
+          pagesPath={pagesPath}
         />
 
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-foreground">
-            {labels.overview}
-          </h2>
-          <OverviewTab
-            locale={locale}
-            labels={labels}
-            session={session}
-            detail={detail}
-            pagesPath={pagesPath}
-          />
-        </section>
-
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.85fr)]">
-          <div className="space-y-3">
-            <h2 className="text-sm font-medium text-foreground">
-              {labels.journey}
-            </h2>
-            <JourneyTab
-              locale={locale}
-              messages={messages}
-              labels={labels}
-              events={detail.events}
-              onSelect={setSelectedEvent}
-            />
-          </div>
-          <div className="space-y-3">
-            <h2 className="text-sm font-medium text-foreground">
-              {labels.eventsTab}
-            </h2>
-            <EventListTab
-              locale={locale}
-              messages={messages}
-              labels={labels}
-              events={detail.events}
-              onSelect={setSelectedEvent}
-            />
-          </div>
-        </section>
-
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-foreground">
-            {labels.properties}
-          </h2>
-          <PropertiesTab
+          <JourneyTab
             locale={locale}
             messages={messages}
             labels={labels}
-            session={session}
+            events={detail.events}
+            onSelect={setSelectedEvent}
+          />
+          <EventListTab
+            locale={locale}
+            messages={messages}
+            labels={labels}
+            events={detail.events}
+            onSelect={setSelectedEvent}
           />
         </section>
       </div>
