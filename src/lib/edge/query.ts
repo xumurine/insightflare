@@ -6620,7 +6620,7 @@ SELECT
     LIMIT 1
   ), '') AS browser,
   COALESCE((
-    SELECT latest.browser_version
+    SELECT ${browserMajorVersionExpr("latest")}
     FROM filtered_visits latest
     WHERE latest.visitor_id = fv.visitor_id
     ORDER BY latest.started_at DESC, latest.visit_id DESC
@@ -7018,7 +7018,7 @@ SELECT
     LIMIT 1
   ), '') AS browser,
   COALESCE((
-    SELECT edge.browser_version
+    SELECT ${browserMajorVersionExpr("edge")}
     FROM filtered_visits edge
     WHERE edge.session_id = fv.session_id
     ORDER BY edge.started_at ASC, edge.visit_id ASC
