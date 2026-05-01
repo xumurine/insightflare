@@ -3,7 +3,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import Map, { useControl } from "react-map-gl/maplibre";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
@@ -16,19 +16,25 @@ import {
 import type { StyleSpecification } from "maplibre-gl";
 
 import {
+  AsyncDimensionBreakdownCard,
+  type AsyncDimensionBreakdownRow,
+} from "@/components/dashboard/async-dimension-breakdown-card";
+import {
   BrowserMeta,
   DeviceMeta,
   formatDuration,
   formatPath,
   formatScreen,
   formatShortDateTime,
-  LocationMeta,
   OsMeta,
   ReferrerMeta,
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
 import { LazyGeoCityBreadcrumbLabel } from "@/components/dashboard/lazy-geo-location-label";
-import { Badge } from "@/components/ui/badge";
+import {
+  OverviewPagesSection,
+  type OverviewPagesSectionCardData,
+} from "@/components/dashboard/site-pages/overview-client-page";
 import {
   Card,
   CardContent,
@@ -36,14 +42,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Clickable } from "@/components/ui/clickable";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { fetchSessionDetail } from "@/lib/dashboard/client-data";
-import { numberFormat } from "@/lib/dashboard/format";
+  fetchSessionDetail,
+  type OverviewTabRows,
+} from "@/lib/dashboard/client-data";
+import { intlLocale, numberFormat } from "@/lib/dashboard/format";
 import { buildPageDetailHref } from "@/lib/dashboard/page-detail";
 import type {
   JourneyEvent,
@@ -258,17 +262,12 @@ function copy(locale: Locale) {
         inactive: "已结束",
         status: "状态",
         duration: "时长",
-        createdAt: "创建时间",
-        endedAt: "结束时间",
         screenViews: "页面浏览",
         events: "事件",
         bounce: "跳出",
         entryPath: "入口路径",
         exitPath: "退出路径",
         referrerName: "来源名称",
-        country: "国家",
-        region: "地区",
-        city: "城市",
         os: "系统",
         browser: "浏览器",
         device: "设备",
@@ -276,31 +275,19 @@ function copy(locale: Locale) {
         yes: "是",
         no: "否",
         uniquePages: "唯一页面",
-        pageEvents: "页面事件",
-        customEvents: "自定义事件",
         firstEvent: "首个事件",
         lastEvent: "最后事件",
         sessionStarted: "会话开始",
         pageview: "访问页面",
         customEvent: "自定义事件",
-        timelineTitle: "会话旅程",
-        timelineSubtitle: "按发生顺序展示该会话内的页面访问和自定义事件。",
-        allEventsTitle: "完整事件流",
-        allEventsSubtitle: "点击任一事件查看原始上下文。",
-        client: "客户端",
+        eventTitleSeparator: "：",
+        visitDetailsTitle: "访问明细",
+        visitDetailsSubtitle: "按发生顺序展示该会话内的页面访问和自定义事件。",
+        path: "路径",
+        title: "标题",
         location: "位置",
-        eventDetails: "事件详情",
-        eventInformation: "事件信息",
-        eventId: "事件 ID",
-        eventType: "事件类型",
-        eventKind: "事件种类",
-        occurredAt: "发生时间",
         visitorId: "访客 ID",
         sessionId: "会话 ID",
-        visitId: "访问 ID",
-        title: "标题",
-        path: "路径",
-        hostname: "主机名",
         referrerUrl: "来源链接",
         emptyEvents: "没有事件记录。",
         sincePrevious: "距上个事件",
@@ -316,17 +303,12 @@ function copy(locale: Locale) {
         inactive: "Ended",
         status: "Status",
         duration: "Duration",
-        createdAt: "Created At",
-        endedAt: "Ended At",
         screenViews: "Screen Views",
         events: "Events",
         bounce: "Bounce",
         entryPath: "Entry Path",
         exitPath: "Exit Path",
         referrerName: "Referrer Name",
-        country: "Country",
-        region: "Region",
-        city: "City",
         os: "OS",
         browser: "Browser",
         device: "Device",
@@ -334,41 +316,24 @@ function copy(locale: Locale) {
         yes: "Yes",
         no: "No",
         uniquePages: "Unique Pages",
-        pageEvents: "Page Events",
-        customEvents: "Custom Events",
         firstEvent: "First Event",
         lastEvent: "Last Event",
         sessionStarted: "Session started",
         pageview: "Pageview",
         customEvent: "Custom event",
-        timelineTitle: "Session journey",
-        timelineSubtitle:
+        eventTitleSeparator: ": ",
+        visitDetailsTitle: "Visit details",
+        visitDetailsSubtitle:
           "Pageviews and custom events in the order they happened.",
-        allEventsTitle: "Full event stream",
-        allEventsSubtitle: "Select any event to inspect its raw context.",
-        client: "Client",
+        path: "Path",
+        title: "Title",
         location: "Location",
-        eventDetails: "Event details",
-        eventInformation: "Event information",
-        eventId: "Event ID",
-        eventType: "Event Type",
-        eventKind: "Event Kind",
-        occurredAt: "Occurred At",
         visitorId: "Visitor ID",
         sessionId: "Session ID",
-        visitId: "Visit ID",
-        title: "Title",
-        path: "Path",
-        hostname: "Hostname",
         referrerUrl: "Referrer URL",
         emptyEvents: "No events recorded.",
         sincePrevious: "Since previous",
       };
-}
-
-function shortId(value: string): string {
-  if (value.length <= 14) return value;
-  return `${value.slice(0, 10)}...`;
 }
 
 function eventKindLabel(labels: Labels, event: JourneyEvent): string {
@@ -383,13 +348,34 @@ function eventTitle(labels: Labels, event: JourneyEvent): string {
   return event.eventType.trim() || labels.customEvent;
 }
 
-function eventSubtitle(event: JourneyEvent, unknownLabel: string): string {
-  return (
-    event.title.trim() ||
-    event.hostname.trim() ||
-    event.visitId.trim() ||
-    unknownLabel
-  );
+function eventDisplayTitle(labels: Labels, event: JourneyEvent): string {
+  const kind = eventKindLabel(labels, event);
+  const title = eventTitle(labels, event);
+  if (!title || title === kind) return kind;
+  return `${kind}${labels.eventTitleSeparator}${title}`;
+}
+
+function formatDetailedDateTime(locale: Locale, timestamp: number): string {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return "--";
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(timestamp));
+}
+
+function eventSubtitle(
+  locale: Locale,
+  event: JourneyEvent,
+  unknownLabel: string,
+): string {
+  if (event.kind === "session_start") {
+    return formatDetailedDateTime(locale, event.occurredAt);
+  }
+  return event.title.trim() || event.hostname.trim() || unknownLabel;
 }
 
 function EventIcon({ event }: { event: JourneyEvent }) {
@@ -398,7 +384,7 @@ function EventIcon({ event }: { event: JourneyEvent }) {
   return (
     <span
       className={cn(
-        "inline-flex size-8 shrink-0 items-center justify-center rounded-none",
+        "inline-flex size-[34px] shrink-0 self-center items-center justify-center rounded-none",
         isSessionStart && "bg-amber-500/15 text-amber-600 dark:text-amber-400",
         event.kind === "pageview" &&
           "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
@@ -413,38 +399,6 @@ function EventIcon({ event }: { event: JourneyEvent }) {
         <RiCalendarEventLine className="size-4" />
       )}
     </span>
-  );
-}
-
-function DetailValue({
-  children,
-  mono = false,
-}: {
-  children: ReactNode;
-  mono?: boolean;
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex max-w-full items-center justify-end gap-2 break-words text-right text-[11px] text-foreground",
-        mono && "font-mono",
-      )}
-    >
-      <span className="min-w-0 break-all">{children}</span>
-    </span>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="grid min-h-10 items-start gap-1 px-4 py-3 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center sm:gap-4">
-      <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-        {label}
-      </p>
-      <div className="min-w-0 text-left text-[11px] text-foreground sm:text-right">
-        {value}
-      </div>
-    </div>
   );
 }
 
@@ -486,25 +440,6 @@ function SummaryGridItem({
         {value}
       </div>
     </div>
-  );
-}
-
-function SummaryText({
-  children,
-  mono = false,
-}: {
-  children: ReactNode;
-  mono?: boolean;
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex max-w-full min-w-0 items-center gap-2 text-foreground",
-        mono && "font-mono",
-      )}
-    >
-      <span className="min-w-0 break-all">{children}</span>
-    </span>
   );
 }
 
@@ -577,6 +512,7 @@ function SessionMapHero({
   backHref: string;
   visitorHref: string;
 }) {
+  const router = useRouter();
   const { resolvedTheme } = useTheme();
   const effectiveTheme: EffectiveMapTheme =
     resolvedTheme === "dark" ? "dark" : "light";
@@ -595,13 +531,22 @@ function SessionMapHero({
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-background via-background/70 to-transparent" />
 
-      <Link
-        href={backHref}
-        className="absolute left-4 top-4 z-10 inline-flex items-center gap-1 text-xs text-foreground/80 hover:text-foreground sm:left-5 sm:top-5"
-      >
-        <RiArrowLeftLine className="size-3.5" />
-        {labels.back}
-      </Link>
+      <div className="absolute inset-x-4 top-4 z-10 flex items-center justify-between gap-4 sm:inset-x-5 sm:top-5">
+        <Clickable
+          className="inline-flex items-center gap-1 text-xs text-foreground/80 hover:text-foreground"
+          enableHoverScale={false}
+          tapScale={0.98}
+          aria-label={labels.back}
+          title={labels.back}
+          onClick={() => router.push(backHref)}
+        >
+          <RiArrowLeftLine className="size-3.5" />
+          {labels.back}
+        </Clickable>
+        <div className="min-w-0 truncate text-right font-mono text-[11px] text-foreground/70">
+          {labels.sessionId}: {session.sessionId}
+        </div>
+      </div>
 
       {session.visitorId.trim() ? (
         <Link
@@ -609,16 +554,26 @@ function SessionMapHero({
           className="absolute bottom-4 left-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-3 outline-none focus-visible:ring-2 focus-visible:ring-ring/70 sm:bottom-5 sm:left-5"
         >
           <VisitorAvatar seed={session.visitorId} className="size-12" />
-          <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight text-foreground">
-            {labels.anonymous}
-          </h1>
+          <div className="min-w-0">
+            <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight text-foreground">
+              {labels.anonymous}
+            </h1>
+            <p className="mt-1 truncate font-mono text-[11px] text-foreground/70">
+              {labels.visitorId}: {session.visitorId}
+            </p>
+          </div>
         </Link>
       ) : (
         <div className="absolute bottom-4 left-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-3 sm:bottom-5 sm:left-5">
           <VisitorAvatar seed={session.visitorId} className="size-12" />
-          <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight text-foreground">
-            {labels.anonymous}
-          </h1>
+          <div className="min-w-0">
+            <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight text-foreground">
+              {labels.anonymous}
+            </h1>
+            <p className="mt-1 truncate font-mono text-[11px] text-foreground/70">
+              {labels.visitorId}: --
+            </p>
+          </div>
         </div>
       )}
     </div>
@@ -639,12 +594,6 @@ function MetaPanel({
   pagesPath: string;
 }) {
   const session = detail.session;
-  const pageEvents = detail.events.filter(
-    (event) => event.kind === "pageview",
-  ).length;
-  const customEvents = detail.events.filter(
-    (event) => event.kind === "custom",
-  ).length;
   const firstEvent = detail.events.reduce<JourneyEvent | null>(
     (earliest, event) =>
       !earliest || event.occurredAt < earliest.occurredAt ? event : earliest,
@@ -659,21 +608,7 @@ function MetaPanel({
   return (
     <Card className="py-0">
       <CardContent className="p-0">
-        <div className="grid gap-px overflow-hidden bg-border/70 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <SummaryGridItem
-            label={labels.sessionId}
-            mono
-            value={<SummaryText mono>{session.sessionId}</SummaryText>}
-          />
-          <SummaryGridItem
-            label={labels.visitorId}
-            mono
-            value={
-              <SummaryText mono>
-                {session.visitorId || messages.common.unknown}
-              </SummaryText>
-            }
-          />
+        <div className="grid grid-cols-2 gap-px overflow-hidden bg-border/70 text-xs text-muted-foreground xl:grid-cols-4">
           <SummaryGridItem
             label={labels.duration}
             prominent
@@ -699,48 +634,8 @@ function MetaPanel({
             value={numberFormat(locale, detail.visitedPages.length)}
           />
           <SummaryGridItem
-            label={labels.pageEvents}
-            prominent
-            mono
-            value={numberFormat(locale, pageEvents)}
-          />
-          <SummaryGridItem
-            label={labels.customEvents}
-            prominent
-            mono
-            value={numberFormat(locale, customEvents)}
-          />
-          <SummaryGridItem
-            label={labels.createdAt}
-            mono
-            value={formatShortDateTime(locale, session.startedAt)}
-          />
-          <SummaryGridItem
-            label={labels.endedAt}
-            mono
-            value={formatShortDateTime(locale, session.endedAt)}
-          />
-          <SummaryGridItem
-            label={labels.firstEvent}
-            mono
-            value={
-              firstEvent
-                ? formatShortDateTime(locale, firstEvent.occurredAt)
-                : "--"
-            }
-          />
-          <SummaryGridItem
-            label={labels.lastEvent}
-            mono
-            value={
-              lastEvent
-                ? formatShortDateTime(locale, lastEvent.occurredAt)
-                : "--"
-            }
-          />
-          <SummaryGridItem
             label={labels.entryPath}
-            className="sm:col-span-2"
+            className="col-span-2"
             value={
               <SummaryPathLink
                 pathname={session.entryPath}
@@ -750,7 +645,7 @@ function MetaPanel({
           />
           <SummaryGridItem
             label={labels.exitPath}
-            className="sm:col-span-2"
+            className="col-span-2"
             value={
               <SummaryPathLink
                 pathname={session.exitPath}
@@ -771,12 +666,11 @@ function MetaPanel({
           <SummaryGridItem
             label={labels.referrerUrl}
             mono
-            className="sm:col-span-2 lg:col-span-1"
             value={session.referrerUrl || messages.overview.direct}
           />
           <SummaryGridItem
             label={labels.location}
-            className="sm:col-span-2"
+            className="col-span-2"
             value={
               <SessionGeoBreadcrumb
                 locale={locale}
@@ -786,33 +680,23 @@ function MetaPanel({
             }
           />
           <SummaryGridItem
-            label={labels.country}
-            value={session.country || messages.common.unknown}
-          />
-          <SummaryGridItem
-            label={labels.region}
-            value={session.region || messages.common.unknown}
-          />
-          <SummaryGridItem
-            label={labels.city}
-            value={session.city || messages.common.unknown}
-          />
-          <SummaryGridItem
-            label={labels.client}
-            className="sm:col-span-2"
+            label={labels.browser}
             value={
-              <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1">
-                <BrowserMeta
-                  browser={session.browser}
-                  version={session.browserVersion}
-                  unknownLabel={messages.common.unknown}
-                />
-                <OsMeta
-                  os={session.os}
-                  version={session.osVersion}
-                  unknownLabel={messages.common.unknown}
-                />
-              </div>
+              <BrowserMeta
+                browser={session.browser}
+                version={session.browserVersion}
+                unknownLabel={messages.common.unknown}
+              />
+            }
+          />
+          <SummaryGridItem
+            label={labels.os}
+            value={
+              <OsMeta
+                os={session.os}
+                version={session.osVersion}
+                unknownLabel={messages.common.unknown}
+              />
             }
           />
           <SummaryGridItem
@@ -829,6 +713,24 @@ function MetaPanel({
             label={labels.screen}
             mono
             value={formatScreen(session.screenWidth, session.screenHeight)}
+          />
+          <SummaryGridItem
+            label={labels.firstEvent}
+            mono
+            value={
+              firstEvent
+                ? formatShortDateTime(locale, firstEvent.occurredAt)
+                : "--"
+            }
+          />
+          <SummaryGridItem
+            label={labels.lastEvent}
+            mono
+            value={
+              lastEvent
+                ? formatShortDateTime(locale, lastEvent.occurredAt)
+                : "--"
+            }
           />
           <SummaryGridItem
             label={labels.bounce}
@@ -850,69 +752,40 @@ function SessionEventCard({
   labels,
   event,
   deltaMs,
-  onSelect,
 }: {
   locale: Locale;
   messages: AppMessages;
   labels: Labels;
   event: JourneyEvent;
   deltaMs: number | null;
-  onSelect: (event: JourneyEvent) => void;
 }) {
-  const handleSelect = () => onSelect(event);
-
   return (
-    <Card
-      size="sm"
-      role="button"
-      tabIndex={0}
-      onClick={handleSelect}
-      onKeyDown={(keyboardEvent) => {
-        if (keyboardEvent.key !== "Enter" && keyboardEvent.key !== " ") return;
-        keyboardEvent.preventDefault();
-        handleSelect();
-      }}
-      className="cursor-pointer transition-colors outline-none hover:bg-muted/25 focus-visible:ring-2 focus-visible:ring-ring/70"
-    >
-      <CardContent className="px-3">
-        <div className="flex items-start gap-3">
-          <div className="shrink-0 self-center">
-            <VisitorAvatar
-              seed={event.visitorId || event.sessionId}
-              className="size-9"
-            />
-          </div>
-          <div className="flex min-w-0 flex-1 items-stretch justify-between gap-4">
-            <div className="min-w-0 space-y-2">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <p className="min-w-0 truncate text-sm font-medium text-foreground">
-                  {eventTitle(labels, event)}
-                </p>
-                <Badge variant="outline">{eventKindLabel(labels, event)}</Badge>
-              </div>
-              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
-                <span className="min-w-0 truncate">
-                  {eventSubtitle(event, messages.common.unknown)}
+    <Card size="sm" className="py-0">
+      <CardContent className="p-0">
+        <div className="flex items-center gap-2 px-2 py-1">
+          <EventIcon event={event} />
+          <div className="flex min-w-0 flex-1 items-stretch justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="min-w-0 truncate text-sm font-medium leading-5 text-foreground">
+                {eventDisplayTitle(labels, event)}
+              </p>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-[11px] leading-[14px] text-muted-foreground">
+                <span className="min-w-0 truncate leading-[14px]">
+                  {eventSubtitle(locale, event, messages.common.unknown)}
                 </span>
-                {event.visitId.trim() ? (
-                  <span className="font-mono">{shortId(event.visitId)}</span>
-                ) : null}
-                {deltaMs !== null && deltaMs > 0 ? (
-                  <span className="font-mono">
-                    {labels.sincePrevious}: {formatDuration(locale, deltaMs)}
-                  </span>
-                ) : null}
               </div>
             </div>
-            <div className="shrink-0 self-stretch">
-              <div className="flex h-full min-w-[7.5rem] flex-col items-end justify-between text-right">
-                <p className="font-mono text-[11px] text-foreground">
-                  {formatShortDateTime(locale, event.occurredAt)}
+            <div className="flex h-[34px] min-w-0 w-[42%] shrink-0 flex-col items-end justify-between text-right sm:w-auto sm:max-w-[24rem]">
+              <p className="font-mono text-[11px] leading-[14px] text-foreground">
+                {formatShortDateTime(locale, event.occurredAt)}
+              </p>
+              {deltaMs !== null && deltaMs > 0 ? (
+                <p className="max-w-full break-words font-mono text-[10px] leading-[13px] text-muted-foreground">
+                  {labels.sincePrevious}: {formatDuration(locale, deltaMs)}
                 </p>
-                <p className="font-mono text-[11px] text-muted-foreground">
-                  {event.sessionId ? shortId(event.sessionId) : "--"}
-                </p>
-              </div>
+              ) : (
+                <span className="h-[13px]" aria-hidden="true" />
+              )}
             </div>
           </div>
         </div>
@@ -921,39 +794,42 @@ function SessionEventCard({
   );
 }
 
-function JourneyTab({
+function VisitDetailsTab({
   locale,
   messages,
   labels,
   events,
-  onSelect,
 }: {
   locale: Locale;
   messages: AppMessages;
   labels: Labels;
   events: JourneyEvent[];
-  onSelect: (event: JourneyEvent) => void;
 }) {
   const chronologicalEvents = useMemo(
     () =>
-      [...events].sort(
-        (left, right) =>
-          left.occurredAt - right.occurredAt || left.id.localeCompare(right.id),
-      ),
+      [...events].sort((left, right) => {
+        const leftRank = left.kind === "session_start" ? 0 : 1;
+        const rightRank = right.kind === "session_start" ? 0 : 1;
+        return (
+          leftRank - rightRank ||
+          left.occurredAt - right.occurredAt ||
+          left.id.localeCompare(right.id)
+        );
+      }),
     [events],
   );
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{labels.timelineTitle}</CardTitle>
-        <CardDescription>{labels.timelineSubtitle}</CardDescription>
+        <CardTitle>{labels.visitDetailsTitle}</CardTitle>
+        <CardDescription>{labels.visitDetailsSubtitle}</CardDescription>
       </CardHeader>
       <CardContent>
         {chronologicalEvents.length === 0 ? (
           <EmptyState>{labels.emptyEvents}</EmptyState>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {chronologicalEvents.map((event, index) => (
               <SessionEventCard
                 key={event.id}
@@ -967,7 +843,6 @@ function JourneyTab({
                       chronologicalEvents[index - 1].occurredAt
                     : null
                 }
-                onSelect={onSelect}
               />
             ))}
           </div>
@@ -977,247 +852,224 @@ function JourneyTab({
   );
 }
 
-function EventListTab({
+const SESSION_DETAIL_OVERVIEW_FILTERS = {};
+const SESSION_OVERVIEW_PAGE_CARD_TABS = [
+  "path",
+  "title",
+  "hostname",
+  "entry",
+  "exit",
+] as const;
+
+interface SessionOverviewRowInput {
+  label: string;
+  views?: number;
+}
+
+function aggregateOverviewRows(
+  rows: SessionOverviewRowInput[],
+  fallbackLabel: string,
+): OverviewTabRows {
+  const rowByLabel = new globalThis.Map<string, OverviewTabRows[number]>();
+
+  for (const row of rows) {
+    const label = row.label.trim() || fallbackLabel;
+    if (!label) continue;
+    const views = Math.max(1, Math.floor(Number(row.views ?? 1)));
+    const existing = rowByLabel.get(label);
+
+    if (existing) {
+      existing.views += views;
+      existing.sessions = Math.max(1, existing.sessions);
+      existing.visitors = Math.max(1, existing.visitors);
+      continue;
+    }
+
+    rowByLabel.set(label, {
+      label,
+      views,
+      sessions: 1,
+      visitors: 1,
+    });
+  }
+
+  return Array.from(rowByLabel.values()).sort(
+    (left, right) =>
+      right.views - left.views || left.label.localeCompare(right.label),
+  );
+}
+
+function buildSessionOverviewPageCardData(
+  detail: SessionDetail,
+  unknownLabel: string,
+): OverviewPagesSectionCardData {
+  const pageviewEvents = detail.events.filter(
+    (event) => event.kind === "pageview",
+  );
+  const pathRows =
+    detail.visitedPages.length > 0
+      ? aggregateOverviewRows(
+          detail.visitedPages.map((page) => ({
+            label: page.pathname || "/",
+            views: page.views,
+          })),
+          "/",
+        )
+      : aggregateOverviewRows(
+          pageviewEvents.map((event) => ({ label: event.pathname || "/" })),
+          "/",
+        );
+
+  return {
+    page: {
+      path: pathRows,
+      query: [],
+      title: aggregateOverviewRows(
+        pageviewEvents.map((event) => ({ label: event.title })),
+        unknownLabel,
+      ),
+      hostname: aggregateOverviewRows(
+        pageviewEvents.map((event) => ({ label: event.hostname })),
+        unknownLabel,
+      ),
+      entry: aggregateOverviewRows(
+        [{ label: detail.session.entryPath || "/", views: 1 }],
+        "/",
+      ),
+      exit: aggregateOverviewRows(
+        [{ label: detail.session.exitPath || "/", views: 1 }],
+        "/",
+      ),
+    },
+    source: {
+      domain: [],
+      link: [],
+    },
+    client: {
+      browser: [],
+      osVersion: [],
+      deviceType: [],
+      language: [],
+      screenSize: [],
+    },
+    geo: {
+      country: [],
+      region: [],
+      city: [],
+      continent: [],
+      timezone: [],
+      organization: [],
+    },
+  };
+}
+
+function resolveSessionSiteDomain(detail: SessionDetail): string {
+  for (const event of detail.events) {
+    const hostname = event.hostname.trim();
+    if (hostname) return hostname;
+  }
+  return "";
+}
+
+function buildSessionEventBreakdownRows(
+  events: JourneyEvent[],
+  labels: Labels,
+): AsyncDimensionBreakdownRow[] {
+  const rowByLabel = new globalThis.Map<string, AsyncDimensionBreakdownRow>();
+
+  for (const event of events) {
+    const label =
+      event.kind === "custom"
+        ? event.eventType.trim() || labels.customEvent
+        : eventKindLabel(labels, event);
+    const existing = rowByLabel.get(label);
+
+    if (existing) {
+      existing.views += 1;
+      continue;
+    }
+
+    rowByLabel.set(label, {
+      key: label,
+      label,
+      views: 1,
+      visitors: 1,
+      mono: event.kind === "custom",
+    });
+  }
+
+  return Array.from(rowByLabel.values()).sort(
+    (left, right) =>
+      right.views - left.views || left.label.localeCompare(right.label),
+  );
+}
+
+function SessionDetailBottomCards({
   locale,
   messages,
   labels,
-  events,
-  onSelect,
+  detail,
+  siteId,
+  siteBasePath,
+  siteDomain,
 }: {
   locale: Locale;
   messages: AppMessages;
   labels: Labels;
-  events: JourneyEvent[];
-  onSelect: (event: JourneyEvent) => void;
+  detail: SessionDetail;
+  siteId: string;
+  siteBasePath: string;
+  siteDomain: string;
 }) {
+  const pageCardData = useMemo(
+    () => buildSessionOverviewPageCardData(detail, messages.common.unknown),
+    [detail, messages.common.unknown],
+  );
+  const eventRows = useMemo(
+    () => buildSessionEventBreakdownRows(detail.events, labels),
+    [detail.events, labels],
+  );
+  const eventTabs = useMemo(
+    () =>
+      [
+        {
+          value: "event",
+          label: labels.events,
+          columnLabel: labels.events,
+          primaryMetricLabel: labels.events,
+        },
+      ] as const,
+    [labels.events],
+  );
+  const loadEventRows = useMemo(() => async () => eventRows, [eventRows]);
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{labels.allEventsTitle}</CardTitle>
-        <CardDescription>{labels.allEventsSubtitle}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {events.length === 0 ? (
-          <EmptyState>{labels.emptyEvents}</EmptyState>
-        ) : (
-          <div className="space-y-2">
-            {events.map((event) => (
-              <SessionEventCard
-                key={event.id}
-                locale={locale}
-                messages={messages}
-                labels={labels}
-                event={event}
-                deltaMs={null}
-                onSelect={onSelect}
-              />
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function EventDetailsDialog({
-  locale,
-  messages,
-  labels,
-  event,
-  open,
-  onOpenChange,
-}: {
-  locale: Locale;
-  messages: AppMessages;
-  labels: Labels;
-  event: JourneyEvent | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  if (!event) return null;
-
-  const detailRows = [
-    {
-      label: labels.eventId,
-      value: (
-        <DetailValue mono>{event.id || messages.common.unknown}</DetailValue>
-      ),
-    },
-    {
-      label: labels.eventKind,
-      value: <DetailValue>{eventKindLabel(labels, event)}</DetailValue>,
-    },
-    {
-      label: labels.eventType,
-      value: (
-        <DetailValue mono>
-          {event.eventType || messages.common.unknown}
-        </DetailValue>
-      ),
-    },
-    {
-      label: labels.occurredAt,
-      value: (
-        <DetailValue mono>
-          {formatShortDateTime(locale, event.occurredAt)}
-        </DetailValue>
-      ),
-    },
-    {
-      label: labels.visitorId,
-      value: (
-        <DetailValue mono>
-          {event.visitorId || messages.common.unknown}
-        </DetailValue>
-      ),
-    },
-    {
-      label: labels.sessionId,
-      value: (
-        <DetailValue mono>
-          {event.sessionId || messages.common.unknown}
-        </DetailValue>
-      ),
-    },
-    {
-      label: labels.visitId,
-      value: (
-        <DetailValue mono>
-          {event.visitId || messages.common.unknown}
-        </DetailValue>
-      ),
-    },
-    {
-      label: labels.title,
-      value: (
-        <DetailValue>{event.title || messages.common.unknown}</DetailValue>
-      ),
-    },
-    {
-      label: labels.path,
-      value: <DetailValue mono>{formatPath(event.pathname)}</DetailValue>,
-    },
-    {
-      label: labels.hostname,
-      value: (
-        <DetailValue mono>
-          {event.hostname || messages.common.unknown}
-        </DetailValue>
-      ),
-    },
-    {
-      label: labels.referrerName,
-      value: (
-        <ReferrerMeta
-          referrerHost={event.referrerHost}
-          referrerUrl={event.referrerUrl}
-          directLabel={messages.overview.direct}
-          className="justify-end"
-        />
-      ),
-    },
-    {
-      label: labels.referrerUrl,
-      value: (
-        <DetailValue mono>
-          {event.referrerUrl || messages.overview.direct}
-        </DetailValue>
-      ),
-    },
-    {
-      label: labels.browser,
-      value: (
-        <BrowserMeta
-          browser={event.browser}
-          version={event.browserVersion}
-          unknownLabel={messages.common.unknown}
-          className="justify-end"
-        />
-      ),
-    },
-    {
-      label: labels.os,
-      value: (
-        <OsMeta
-          os={event.os}
-          version={event.osVersion}
-          unknownLabel={messages.common.unknown}
-          className="justify-end"
-        />
-      ),
-    },
-    {
-      label: labels.device,
-      value: (
-        <DeviceMeta
-          deviceType={event.deviceType}
-          locale={locale}
-          unknownLabel={messages.common.unknown}
-          className="justify-end"
-        />
-      ),
-    },
-    {
-      label: labels.screen,
-      value: (
-        <DetailValue mono>
-          {formatScreen(event.screenWidth, event.screenHeight)}
-        </DetailValue>
-      ),
-    },
-    {
-      label: labels.location,
-      value: (
-        <LocationMeta
+    <section className="grid items-stretch gap-6 xl:grid-cols-2">
+      <div className="min-w-0 [&>section]:!grid-cols-1">
+        <OverviewPagesSection
           locale={locale}
           messages={messages}
-          country={event.country}
-          region={event.region}
-          city={event.city}
-          className="justify-end"
+          siteId={siteId}
+          siteDomain={siteDomain}
+          pathname={siteBasePath}
+          filters={SESSION_DETAIL_OVERVIEW_FILTERS}
+          cardDataOverride={pageCardData}
+          visibleCards={["page"]}
+          pageCardTabs={SESSION_OVERVIEW_PAGE_CARD_TABS}
         />
-      ),
-    },
-  ];
+      </div>
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl gap-0 p-0">
-        <DialogHeader className="border-b px-4 py-4 sm:px-5">
-          <DialogTitle>{labels.eventDetails}</DialogTitle>
-        </DialogHeader>
-        <div className="max-h-[min(78vh,42rem)] overflow-y-auto p-4 sm:p-5">
-          <div className="mb-4 flex items-start gap-3 border border-border/70 bg-muted/20 p-3">
-            <EventIcon event={event} />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-foreground">
-                {eventTitle(labels, event)}
-              </p>
-              <p className="truncate text-[11px] text-muted-foreground">
-                {eventSubtitle(event, messages.common.unknown)}
-              </p>
-            </div>
-            <p className="shrink-0 font-mono text-[11px] text-muted-foreground">
-              {formatShortDateTime(locale, event.occurredAt)}
-            </p>
-          </div>
-          <section className="space-y-2">
-            <h3 className="text-sm font-medium text-foreground">
-              {labels.eventInformation}
-            </h3>
-            <div className="divide-y divide-border/70 ring-1 ring-foreground/10">
-              {detailRows.map((row) => (
-                <DetailRow
-                  key={row.label}
-                  label={row.label}
-                  value={row.value}
-                />
-              ))}
-            </div>
-          </section>
-        </div>
-      </DialogContent>
-    </Dialog>
+      <div className="min-w-0">
+        <AsyncDimensionBreakdownCard
+          locale={locale}
+          messages={messages}
+          tabs={eventTabs}
+          loadRows={loadEventRows}
+          requestKey={`session-detail-events:${detail.session.sessionId}:${locale}`}
+          className="h-full"
+        />
+      </div>
+    </section>
   );
 }
 
@@ -1226,18 +1078,23 @@ function DetailContent({
   messages,
   labels,
   detail,
+  siteId,
   pathname,
 }: {
   locale: Locale;
   messages: AppMessages;
   labels: Labels;
   detail: SessionDetail;
+  siteId: string;
   pathname: string;
 }) {
-  const [selectedEvent, setSelectedEvent] = useState<JourneyEvent | null>(null);
   const session = detail.session;
   const sessionsPath = pathname.replace(/\/detail$/, "");
   const siteBasePath = sessionsPath.replace(/\/sessions$/, "");
+  const sessionSiteDomain = useMemo(
+    () => resolveSessionSiteDomain(detail),
+    [detail],
+  );
   const pagesPath = `${siteBasePath}/pages`;
   const visitorHref = `${siteBasePath}/visitors/detail?visitorId=${encodeURIComponent(
     session.visitorId,
@@ -1262,34 +1119,25 @@ function DetailContent({
           pagesPath={pagesPath}
         />
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.85fr)]">
-          <JourneyTab
+        <section>
+          <VisitDetailsTab
             locale={locale}
             messages={messages}
             labels={labels}
             events={detail.events}
-            onSelect={setSelectedEvent}
-          />
-          <EventListTab
-            locale={locale}
-            messages={messages}
-            labels={labels}
-            events={detail.events}
-            onSelect={setSelectedEvent}
           />
         </section>
-      </div>
 
-      <EventDetailsDialog
-        locale={locale}
-        messages={messages}
-        labels={labels}
-        event={selectedEvent}
-        open={selectedEvent !== null}
-        onOpenChange={(open) => {
-          if (!open) setSelectedEvent(null);
-        }}
-      />
+        <SessionDetailBottomCards
+          locale={locale}
+          messages={messages}
+          labels={labels}
+          detail={detail}
+          siteId={siteId}
+          siteBasePath={siteBasePath}
+          siteDomain={sessionSiteDomain}
+        />
+      </div>
     </div>
   );
 }
@@ -1384,6 +1232,7 @@ export function SessionDetailClientPage({
       messages={messages}
       labels={labels}
       detail={detail}
+      siteId={siteId}
       pathname={pathname}
     />
   );

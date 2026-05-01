@@ -302,6 +302,7 @@ type PageCardSortKey = "views" | "visitors";
 type PageCardNavigableTab = "path" | "query" | "hostname" | "entry" | "exit";
 type PageCardDetailTab = "path" | "entry" | "exit";
 type SourceCardTab = "domain" | "link";
+type OverviewPagesSectionCardKind = "page" | "source" | "client" | "geo";
 type ClientDimensionCardTab =
   | "browser"
   | "osVersion"
@@ -1856,6 +1857,7 @@ function MetricAreaMap({
 interface OverviewPagesSectionProps extends OverviewClientPageProps {
   filters: DashboardFilters;
   cardDataOverride?: OverviewPagesSectionCardData | null;
+  visibleCards?: readonly OverviewPagesSectionCardKind[];
   pageCardTabs?: readonly PageCardTab[];
   pageCardTabMetaOverride?: Partial<
     Record<PageCardTab, Partial<PageCardTabMeta>>
@@ -1878,6 +1880,7 @@ export function OverviewPagesSection({
   pathname,
   filters,
   cardDataOverride,
+  visibleCards,
   pageCardTabs,
   pageCardTabMetaOverride,
   pageCardQueryParamOverride,
@@ -1896,6 +1899,13 @@ export function OverviewPagesSection({
   const resolvedPageCardTabs = useMemo(
     () => pageCardTabs ?? PAGE_CARD_TABS,
     [pageCardTabs],
+  );
+  const resolvedVisibleCards = useMemo(
+    () =>
+      new Set<OverviewPagesSectionCardKind>(
+        visibleCards ?? ["page", "source", "client", "geo"],
+      ),
+    [visibleCards],
   );
   const timezoneReferenceTimestampMs = useMemo(() => {
     const from = Number(window.from ?? 0);
@@ -4035,107 +4045,115 @@ export function OverviewPagesSection({
   return (
     <>
       <section className="grid items-stretch gap-6 xl:grid-cols-2">
-        <div className="min-w-0">
-          <TabbedScrollMaskCard
-            value={pageCardTab}
-            onValueChange={(value) => handlePageCardTabChange(value)}
-            tabs={resolvedPageCardTabs.map((tab) => ({
-              value: tab,
-              label: pageCardTabMeta[tab].label,
-            }))}
-            headerRight={pageCardSearchAction}
-            className="h-full"
-            syncKey={`${pageCardLoading}-${pageCardTab}-${pageCardSort.key}-${pageCardSort.direction}-${sortedPageCardRows.length}-${activePageCardQueryValue ?? "all"}-${visiblePageCardRows.length}`}
-          >
-            <DataTableSwitch
-              loading={pageCardLoading}
-              hasContent={visiblePageCardRows.length > 0}
-              loadingLabel={messages.common.loading}
-              emptyLabel={noDataText}
-              colSpan={3}
-              contentKey={`${pageCardTab}-${activePageCardQueryValue ?? "all"}`}
-              header={pageCardTableHeader}
-              rows={renderPageCardRows(visiblePageCardRows)}
-            />
-          </TabbedScrollMaskCard>
-        </div>
+        {resolvedVisibleCards.has("page") ? (
+          <div className="min-w-0">
+            <TabbedScrollMaskCard
+              value={pageCardTab}
+              onValueChange={(value) => handlePageCardTabChange(value)}
+              tabs={resolvedPageCardTabs.map((tab) => ({
+                value: tab,
+                label: pageCardTabMeta[tab].label,
+              }))}
+              headerRight={pageCardSearchAction}
+              className="h-full"
+              syncKey={`${pageCardLoading}-${pageCardTab}-${pageCardSort.key}-${pageCardSort.direction}-${sortedPageCardRows.length}-${activePageCardQueryValue ?? "all"}-${visiblePageCardRows.length}`}
+            >
+              <DataTableSwitch
+                loading={pageCardLoading}
+                hasContent={visiblePageCardRows.length > 0}
+                loadingLabel={messages.common.loading}
+                emptyLabel={noDataText}
+                colSpan={3}
+                contentKey={`${pageCardTab}-${activePageCardQueryValue ?? "all"}`}
+                header={pageCardTableHeader}
+                rows={renderPageCardRows(visiblePageCardRows)}
+              />
+            </TabbedScrollMaskCard>
+          </div>
+        ) : null}
 
-        <div className="min-w-0">
-          <TabbedScrollMaskCard
-            value={sourceCardTab}
-            onValueChange={(value) => setSourceCardTab(value)}
-            tabs={SOURCE_CARD_TABS.map((tab) => ({
-              value: tab,
-              label: sourceCardTabMeta[tab].label,
-            }))}
-            headerRight={sourceCardSearchAction}
-            className="h-full"
-            syncKey={`${sourceCardLoading}-${sourceCardTab}-${sourceCardSort.key}-${sourceCardSort.direction}-${sortedSourceCardRows.length}-${activeSourceCardQueryValue ?? "all"}-${visibleSourceCardRows.length}`}
-          >
-            <DataTableSwitch
-              loading={sourceCardLoading}
-              hasContent={visibleSourceCardRows.length > 0}
-              loadingLabel={messages.common.loading}
-              emptyLabel={noDataText}
-              colSpan={3}
-              contentKey={`${sourceCardTab}-${activeSourceCardQueryValue ?? "all"}`}
-              header={sourceCardTableHeader}
-              rows={renderSourceCardRows(visibleSourceCardRows)}
-            />
-          </TabbedScrollMaskCard>
-        </div>
+        {resolvedVisibleCards.has("source") ? (
+          <div className="min-w-0">
+            <TabbedScrollMaskCard
+              value={sourceCardTab}
+              onValueChange={(value) => setSourceCardTab(value)}
+              tabs={SOURCE_CARD_TABS.map((tab) => ({
+                value: tab,
+                label: sourceCardTabMeta[tab].label,
+              }))}
+              headerRight={sourceCardSearchAction}
+              className="h-full"
+              syncKey={`${sourceCardLoading}-${sourceCardTab}-${sourceCardSort.key}-${sourceCardSort.direction}-${sortedSourceCardRows.length}-${activeSourceCardQueryValue ?? "all"}-${visibleSourceCardRows.length}`}
+            >
+              <DataTableSwitch
+                loading={sourceCardLoading}
+                hasContent={visibleSourceCardRows.length > 0}
+                loadingLabel={messages.common.loading}
+                emptyLabel={noDataText}
+                colSpan={3}
+                contentKey={`${sourceCardTab}-${activeSourceCardQueryValue ?? "all"}`}
+                header={sourceCardTableHeader}
+                rows={renderSourceCardRows(visibleSourceCardRows)}
+              />
+            </TabbedScrollMaskCard>
+          </div>
+        ) : null}
 
-        <div className="min-w-0">
-          <TabbedScrollMaskCard
-            value={clientDimensionCardTab}
-            onValueChange={(value) => setClientDimensionCardTab(value)}
-            tabs={CLIENT_DIMENSION_CARD_TABS.map((tab) => ({
-              value: tab,
-              label: clientDimensionCardTabMeta[tab].label,
-            }))}
-            headerRight={clientDimensionCardSearchAction}
-            className="h-full"
-            syncKey={`${clientDimensionCardLoading}-${clientDimensionCardTab}-${clientDimensionCardSort.key}-${clientDimensionCardSort.direction}-${sortedClientDimensionCardRows.length}-${activeClientDimensionCardQueryValue ?? "all"}-${visibleClientDimensionCardRows.length}`}
-          >
-            <DataTableSwitch
-              loading={clientDimensionCardLoading}
-              hasContent={visibleClientDimensionCardRows.length > 0}
-              loadingLabel={messages.common.loading}
-              emptyLabel={noDataText}
-              colSpan={3}
-              contentKey={`${clientDimensionCardTab}-${activeClientDimensionCardQueryValue ?? "all"}`}
-              header={clientDimensionCardTableHeader}
-              rows={renderClientDimensionCardRows(
-                visibleClientDimensionCardRows,
-              )}
-            />
-          </TabbedScrollMaskCard>
-        </div>
+        {resolvedVisibleCards.has("client") ? (
+          <div className="min-w-0">
+            <TabbedScrollMaskCard
+              value={clientDimensionCardTab}
+              onValueChange={(value) => setClientDimensionCardTab(value)}
+              tabs={CLIENT_DIMENSION_CARD_TABS.map((tab) => ({
+                value: tab,
+                label: clientDimensionCardTabMeta[tab].label,
+              }))}
+              headerRight={clientDimensionCardSearchAction}
+              className="h-full"
+              syncKey={`${clientDimensionCardLoading}-${clientDimensionCardTab}-${clientDimensionCardSort.key}-${clientDimensionCardSort.direction}-${sortedClientDimensionCardRows.length}-${activeClientDimensionCardQueryValue ?? "all"}-${visibleClientDimensionCardRows.length}`}
+            >
+              <DataTableSwitch
+                loading={clientDimensionCardLoading}
+                hasContent={visibleClientDimensionCardRows.length > 0}
+                loadingLabel={messages.common.loading}
+                emptyLabel={noDataText}
+                colSpan={3}
+                contentKey={`${clientDimensionCardTab}-${activeClientDimensionCardQueryValue ?? "all"}`}
+                header={clientDimensionCardTableHeader}
+                rows={renderClientDimensionCardRows(
+                  visibleClientDimensionCardRows,
+                )}
+              />
+            </TabbedScrollMaskCard>
+          </div>
+        ) : null}
 
-        <div className="min-w-0">
-          <TabbedScrollMaskCard
-            value={geoDimensionCardTab}
-            onValueChange={(value) => setGeoDimensionCardTab(value)}
-            tabs={GEO_DIMENSION_CARD_TABS.map((tab) => ({
-              value: tab,
-              label: geoDimensionCardTabMeta[tab].label,
-            }))}
-            headerRight={geoDimensionCardSearchAction}
-            className="h-full"
-            syncKey={`${geoDimensionCardLoading}-${geoDimensionCardTab}-${geoDimensionCardSort.key}-${geoDimensionCardSort.direction}-${sortedGeoDimensionCardRows.length}-${activeGeoDimensionCardQueryValue ?? "all"}-${visibleGeoDimensionCardRows.length}`}
-          >
-            <DataTableSwitch
-              loading={geoDimensionCardLoading}
-              hasContent={visibleGeoDimensionCardRows.length > 0}
-              loadingLabel={messages.common.loading}
-              emptyLabel={noDataText}
-              colSpan={3}
-              contentKey={`${geoDimensionCardTab}-${activeGeoDimensionCardQueryValue ?? "all"}`}
-              header={geoDimensionCardTableHeader}
-              rows={renderGeoDimensionCardRows(visibleGeoDimensionCardRows)}
-            />
-          </TabbedScrollMaskCard>
-        </div>
+        {resolvedVisibleCards.has("geo") ? (
+          <div className="min-w-0">
+            <TabbedScrollMaskCard
+              value={geoDimensionCardTab}
+              onValueChange={(value) => setGeoDimensionCardTab(value)}
+              tabs={GEO_DIMENSION_CARD_TABS.map((tab) => ({
+                value: tab,
+                label: geoDimensionCardTabMeta[tab].label,
+              }))}
+              headerRight={geoDimensionCardSearchAction}
+              className="h-full"
+              syncKey={`${geoDimensionCardLoading}-${geoDimensionCardTab}-${geoDimensionCardSort.key}-${geoDimensionCardSort.direction}-${sortedGeoDimensionCardRows.length}-${activeGeoDimensionCardQueryValue ?? "all"}-${visibleGeoDimensionCardRows.length}`}
+            >
+              <DataTableSwitch
+                loading={geoDimensionCardLoading}
+                hasContent={visibleGeoDimensionCardRows.length > 0}
+                loadingLabel={messages.common.loading}
+                emptyLabel={noDataText}
+                colSpan={3}
+                contentKey={`${geoDimensionCardTab}-${activeGeoDimensionCardQueryValue ?? "all"}`}
+                header={geoDimensionCardTableHeader}
+                rows={renderGeoDimensionCardRows(visibleGeoDimensionCardRows)}
+              />
+            </TabbedScrollMaskCard>
+          </div>
+        ) : null}
       </section>
       {geoDimensionCardSearchPanel}
       {clientDimensionCardSearchPanel}
