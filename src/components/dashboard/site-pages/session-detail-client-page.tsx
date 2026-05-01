@@ -10,6 +10,9 @@ import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
 import {
   RiArrowLeftLine,
   RiCalendarEventLine,
+  RiCheckboxCircleFill,
+  RiCloseCircleFill,
+  RiErrorWarningFill,
   RiLogoutBoxRLine,
   RiPulseLine,
   RiTimeLine,
@@ -52,7 +55,10 @@ import { intlLocale, numberFormat } from "@/lib/dashboard/format";
 import { buildPageDetailHref } from "@/lib/dashboard/page-detail";
 import type {
   JourneyEvent,
+  JourneyPerformanceMetricSummary,
+  JourneyPerformanceSummary,
   JourneySession,
+  PerformanceMetricKey,
   SessionDetailData,
 } from "@/lib/edge-client";
 import {
@@ -73,6 +79,8 @@ interface SessionDetailClientPageProps {
 type SessionDetail = NonNullable<SessionDetailData["data"]>;
 type Labels = ReturnType<typeof copy>;
 type EffectiveMapTheme = "light" | "dark";
+type SessionPerformancePanelKey = PerformanceMetricKey | "score";
+type SessionPerformanceStatus = "great" | "needs-improvement" | "poor" | "none";
 
 const SESSION_MAP_VIEW_STATE = {
   longitude: 0,
@@ -86,6 +94,52 @@ const SESSION_MAP_VIEW_STATE = {
 const SESSION_MAP_MAX_RENDERED_POINTS = 320;
 const SESSION_MAP_POINT_RGB = [52, 211, 153] as const;
 const SESSION_MAP_POINT_BASE_RADIUS_PX = 4.8;
+const SESSION_PERFORMANCE_METRICS: PerformanceMetricKey[] = [
+  "ttfb",
+  "fcp",
+  "lcp",
+  "cls",
+  "inp",
+];
+const SESSION_PERFORMANCE_THRESHOLDS: Record<
+  PerformanceMetricKey,
+  { good: number; poor: number }
+> = {
+  ttfb: { good: 800, poor: 1800 },
+  fcp: { good: 1800, poor: 3000 },
+  lcp: { good: 2500, poor: 4000 },
+  cls: { good: 0.1, poor: 0.25 },
+  inp: { good: 200, poor: 500 },
+};
+const SESSION_PERFORMANCE_STATUS_STYLE = {
+  great: {
+    labelClassName: "text-chart-4",
+    softClassName: "bg-chart-4/10 text-chart-4",
+    icon: RiCheckboxCircleFill,
+  },
+  "needs-improvement": {
+    labelClassName: "text-[oklch(0.75_0.16_80)]",
+    softClassName: "bg-[oklch(0.75_0.16_80_/_0.12)] text-[oklch(0.75_0.16_80)]",
+    icon: RiErrorWarningFill,
+  },
+  poor: {
+    labelClassName: "text-destructive",
+    softClassName: "bg-destructive/10 text-destructive",
+    icon: RiCloseCircleFill,
+  },
+  none: {
+    labelClassName: "text-muted-foreground",
+    softClassName: "bg-muted text-muted-foreground",
+    icon: RiPulseLine,
+  },
+} satisfies Record<
+  SessionPerformanceStatus,
+  {
+    labelClassName: string;
+    softClassName: string;
+    icon: typeof RiCheckboxCircleFill;
+  }
+>;
 
 interface SessionLocationPoint {
   latitude: number;
@@ -295,6 +349,10 @@ function copy(locale: Locale) {
         emptyEvents: "没有事件记录。",
         emptyCustomEvents: "暂无自定义事件",
         sincePrevious: "距上个事件",
+        performanceTitle: "当前会话性能",
+        max: "最大值",
+        excellentThreshold: "优秀阈值",
+        poorThreshold: "较差阈值",
       }
     : {
         titlePrefix: "Session",
@@ -339,6 +397,10 @@ function copy(locale: Locale) {
         emptyEvents: "No events recorded.",
         emptyCustomEvents: "No custom events.",
         sincePrevious: "Since previous",
+        performanceTitle: "Current session performance",
+        max: "Max",
+        excellentThreshold: "Great threshold",
+        poorThreshold: "Poor threshold",
       };
 }
 
@@ -394,6 +456,173 @@ function pageviewSubtitle(
   return `${title} · ${formatDuration(locale, event.durationMs)}`;
 }
 
+function sessionPerformanceStatusLabel(
+  messages: AppMessages,
+  status: SessionPerformanceStatus,
+): string {
+  if (status === "great") return messages.performance.great;
+  if (status === "needs-improvement")
+    return messages.performance.needsImprovement;
+  if (status === "poor") return messages.performance.poor;
+  return messages.common.noData;
+}
+
+function sessionScoreStatus(
+  score: number | null | undefined,
+): SessionPerformanceStatus {
+  if (score == null || !Number.isFinite(score)) return "none";
+  if (score >= 90) return "great";
+  if (score >= 50) return "needs-improvement";
+  return "poor";
+}
+
+function sessionMetricStatus(
+  metric: PerformanceMetricKey,
+  value: number | null | undefined,
+): SessionPerformanceStatus {
+  if (value == null || !Number.isFinite(value)) return "none";
+  const thresholds = SESSION_PERFORMANCE_THRESHOLDS[metric];
+  if (value <= thresholds.good) return "great";
+  if (value <= thresholds.poor) return "needs-improvement";
+  return "poor";
+}
+
+function sessionMetricScore(
+  metric: PerformanceMetricKey,
+  value: number | null | undefined,
+): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const thresholds = SESSION_PERFORMANCE_THRESHOLDS[metric];
+  if (value <= thresholds.good) {
+    const ratio = thresholds.good > 0 ? value / thresholds.good : 0;
+    return Math.max(90, Math.min(100, 100 - ratio * 10));
+  }
+  if (value <= thresholds.poor) {
+    const ratio =
+      (value - thresholds.good) / (thresholds.poor - thresholds.good);
+    return Math.max(50, Math.min(90, 90 - ratio * 40));
+  }
+
+  const poorWindow = Math.max(
+    thresholds.poor - thresholds.good,
+    thresholds.poor,
+    1,
+  );
+  const ratio = (value - thresholds.poor) / poorWindow;
+  return Math.max(0, Math.min(50, 50 - ratio * 50));
+}
+
+function averageSessionPerformanceScore(
+  values: Array<number | null | undefined>,
+): number | null {
+  const scores = values.filter(
+    (value): value is number => value != null && Number.isFinite(value),
+  );
+  if (scores.length === 0) return null;
+  return scores.reduce((sum, value) => sum + value, 0) / scores.length;
+}
+
+function sessionPerformanceScore(
+  performance: JourneyPerformanceSummary,
+): number | null {
+  return averageSessionPerformanceScore(
+    SESSION_PERFORMANCE_METRICS.map((metric) =>
+      sessionMetricScore(metric, performance[metric]?.p75),
+    ),
+  );
+}
+
+function sessionPerformanceSamples(
+  performance: JourneyPerformanceSummary,
+): number {
+  return Math.max(
+    0,
+    ...SESSION_PERFORMANCE_METRICS.map(
+      (metric) => performance[metric]?.samples ?? 0,
+    ),
+  );
+}
+
+function hasSessionPerformanceSamples(
+  performance: JourneyPerformanceSummary,
+): boolean {
+  return SESSION_PERFORMANCE_METRICS.some(
+    (metric) => (performance[metric]?.samples ?? 0) > 0,
+  );
+}
+
+function formatSessionMetricValue(
+  locale: Locale,
+  messages: AppMessages,
+  metric: PerformanceMetricKey,
+  value: number | null | undefined,
+): string {
+  if (value == null || !Number.isFinite(value)) return "--";
+  if (metric === "cls") {
+    const formatted = new Intl.NumberFormat(intlLocale(locale), {
+      maximumFractionDigits: 3,
+    }).format(value);
+    return `${formatted} ${messages.performance.clsUnit}`;
+  }
+  if (metric === "inp") {
+    return `${numberFormat(locale, Math.round(value))} ${messages.performance.msUnit}`;
+  }
+  const seconds = value / 1000;
+  const formatted = new Intl.NumberFormat(intlLocale(locale), {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: seconds < 10 ? 2 : 1,
+  }).format(seconds);
+  return `${formatted} ${messages.performance.secondsUnit}`;
+}
+
+function sessionPerformancePanelValue(
+  locale: Locale,
+  messages: AppMessages,
+  key: SessionPerformancePanelKey,
+  value: number | null | undefined,
+): string {
+  if (key === "score") {
+    return value == null || !Number.isFinite(value)
+      ? "--"
+      : numberFormat(locale, Math.round(value));
+  }
+  return formatSessionMetricValue(locale, messages, key, value);
+}
+
+function sessionMetricThresholdDetails(
+  locale: Locale,
+  messages: AppMessages,
+  labels: Labels,
+  metric: PerformanceMetricKey,
+): string[] {
+  const thresholds = SESSION_PERFORMANCE_THRESHOLDS[metric];
+  return [
+    `${labels.excellentThreshold}: <= ${formatSessionMetricValue(
+      locale,
+      messages,
+      metric,
+      thresholds.good,
+    )}`,
+    `${labels.poorThreshold}: > ${formatSessionMetricValue(
+      locale,
+      messages,
+      metric,
+      thresholds.poor,
+    )}`,
+  ];
+}
+
+function sessionScoreThresholdDetails(
+  messages: AppMessages,
+  labels: Labels,
+): string[] {
+  return [
+    `${labels.excellentThreshold}: >= 90`,
+    `${labels.poorThreshold}: < 50`,
+    messages.performance.scoreDescription,
+  ];
+}
+
 function eventSubtitle(
   locale: Locale,
   event: JourneyEvent,
@@ -444,6 +673,176 @@ function EmptyState({ children }: { children: ReactNode }) {
     <div className="flex min-h-24 items-center justify-center border border-dashed border-border px-4 py-6 text-center text-[11px] text-muted-foreground">
       {children}
     </div>
+  );
+}
+
+function SessionPerformanceCell({
+  label,
+  value,
+  status,
+  details,
+}: {
+  label: string;
+  value: string;
+  status: SessionPerformanceStatus;
+  details: string[];
+}) {
+  const statusStyle = SESSION_PERFORMANCE_STATUS_STYLE[status];
+  const StatusIcon = statusStyle.icon;
+
+  return (
+    <div className="min-w-0 bg-card p-4">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <p className="min-w-0 truncate text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+          {label}
+        </p>
+        <span
+          className={cn(
+            "inline-flex size-7 shrink-0 items-center justify-center rounded-full",
+            statusStyle.softClassName,
+          )}
+        >
+          <StatusIcon className="size-3.5" />
+        </span>
+      </div>
+      <p className="mt-3 min-w-0 truncate font-mono text-xl font-semibold leading-7 text-foreground">
+        {value}
+      </p>
+      <div className="mt-3 flex min-w-0 flex-col gap-1 text-[11px] leading-[14px] text-muted-foreground">
+        {details.map((detail) => (
+          <span key={detail} className="min-w-0 truncate">
+            {detail}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SessionPerformanceMetricCell({
+  locale,
+  messages,
+  labels,
+  metric,
+  summary,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  labels: Labels;
+  metric: PerformanceMetricKey;
+  summary: JourneyPerformanceMetricSummary;
+}) {
+  const value = summary.p75;
+  const status = sessionMetricStatus(metric, value);
+
+  return (
+    <SessionPerformanceCell
+      label={messages.performance[metric]}
+      value={formatSessionMetricValue(locale, messages, metric, value)}
+      status={status}
+      details={[
+        `${labels.status}: ${sessionPerformanceStatusLabel(messages, status)}`,
+        `${messages.performance.p75Label}: ${formatSessionMetricValue(
+          locale,
+          messages,
+          metric,
+          value,
+        )}`,
+        `${messages.performance.avgLabel}: ${formatSessionMetricValue(
+          locale,
+          messages,
+          metric,
+          summary.avg,
+        )}`,
+        `${labels.max}: ${formatSessionMetricValue(
+          locale,
+          messages,
+          metric,
+          summary.max,
+        )}`,
+        `${messages.performance.samplesLabel}: ${numberFormat(
+          locale,
+          summary.samples,
+        )}`,
+        ...sessionMetricThresholdDetails(locale, messages, labels, metric),
+      ]}
+    />
+  );
+}
+
+function SessionPerformancePanel({
+  locale,
+  messages,
+  labels,
+  performance,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  labels: Labels;
+  performance: JourneyPerformanceSummary;
+}) {
+  const score = sessionPerformanceScore(performance);
+  const samples = sessionPerformanceSamples(performance);
+  const scoreStatus = sessionScoreStatus(score);
+  const statusStyle = SESSION_PERFORMANCE_STATUS_STYLE[scoreStatus];
+  const StatusIcon = statusStyle.icon;
+  const hasSamples = hasSessionPerformanceSamples(performance);
+  if (!hasSamples) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <CardTitle>{labels.performanceTitle}</CardTitle>
+          </div>
+          <div
+            className={cn(
+              "inline-flex shrink-0 items-center gap-2 self-start rounded-full px-3 py-1 text-xs font-medium",
+              statusStyle.softClassName,
+            )}
+          >
+            <StatusIcon className="size-3.5" />
+            <span>{sessionPerformanceStatusLabel(messages, scoreStatus)}</span>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="grid grid-cols-2 gap-px overflow-hidden bg-border/70 text-xs md:grid-cols-3">
+          <SessionPerformanceCell
+            label={messages.performance.score}
+            value={sessionPerformancePanelValue(
+              locale,
+              messages,
+              "score",
+              score,
+            )}
+            status={scoreStatus}
+            details={[
+              `${labels.status}: ${sessionPerformanceStatusLabel(
+                messages,
+                scoreStatus,
+              )}`,
+              `${messages.performance.samplesLabel}: ${numberFormat(
+                locale,
+                samples,
+              )}`,
+              ...sessionScoreThresholdDetails(messages, labels),
+            ]}
+          />
+          {SESSION_PERFORMANCE_METRICS.map((metric) => (
+            <SessionPerformanceMetricCell
+              key={metric}
+              locale={locale}
+              messages={messages}
+              labels={labels}
+              metric={metric}
+              summary={performance[metric]}
+            />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1166,6 +1565,13 @@ function DetailContent({
           siteId={siteId}
           siteBasePath={siteBasePath}
           siteDomain={sessionSiteDomain}
+        />
+
+        <SessionPerformancePanel
+          locale={locale}
+          messages={messages}
+          labels={labels}
+          performance={detail.performance}
         />
       </div>
     </div>

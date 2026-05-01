@@ -4795,6 +4795,13 @@ function generateDemoTrend(
 }
 
 type DemoPerformanceMetricKey = "ttfb" | "fcp" | "lcp" | "cls" | "inp";
+const DEMO_PERFORMANCE_METRICS: DemoPerformanceMetricKey[] = [
+  "ttfb",
+  "fcp",
+  "lcp",
+  "cls",
+  "inp",
+];
 
 function roundDemoPerformanceValue(value: number): number {
   return Math.round(value * 1000) / 1000;
@@ -4889,6 +4896,54 @@ function demoPercentile(values: number[], ratio: number): number | null {
   return roundDemoPerformanceValue(
     values[Math.min(rank, values.length - 1)] ?? 0,
   );
+}
+
+function summarizeDemoJourneyPerformance(
+  siteId: string,
+  visits: DemoVisitFact[],
+): Record<
+  DemoPerformanceMetricKey,
+  {
+    avg: number | null;
+    p75: number | null;
+    max: number | null;
+    samples: number;
+  }
+> {
+  return Object.fromEntries(
+    DEMO_PERFORMANCE_METRICS.map((metric) => {
+      const values = visits
+        .map((visit) => demoPerformanceMetricValue(siteId, visit, metric))
+        .filter((value) => Number.isFinite(value) && value >= 0)
+        .sort((left, right) => left - right);
+      const avg =
+        values.length > 0
+          ? roundDemoPerformanceValue(
+              values.reduce((sum, value) => sum + value, 0) / values.length,
+            )
+          : null;
+      return [
+        metric,
+        {
+          avg,
+          p75: demoPercentile(values, 0.75),
+          max:
+            values.length > 0
+              ? roundDemoPerformanceValue(values[values.length - 1] ?? 0)
+              : null,
+          samples: values.length,
+        },
+      ];
+    }),
+  ) as Record<
+    DemoPerformanceMetricKey,
+    {
+      avg: number | null;
+      p75: number | null;
+      max: number | null;
+      samples: number;
+    }
+  >;
 }
 
 function generateDemoPerformance(
@@ -5915,6 +5970,7 @@ function generateDemoSessionDetail(
       events,
       visitedPages: summarizeDemoVisitedPages(events),
       eventDistribution: summarizeDemoEventDistribution(events),
+      performance: summarizeDemoJourneyPerformance(siteId, visits),
     },
   };
 }
