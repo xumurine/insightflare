@@ -5362,39 +5362,80 @@ function demoVisitsBySession(
 
 function createDemoJourneyEvents(
   visits: DemoVisitFact[],
-  options?: { includeSessionStart?: boolean },
+  options?: { includeSessionStart?: boolean; includeSessionEnd?: boolean },
 ): Array<Record<string, unknown>> {
   const events: Array<Record<string, unknown>> = [];
   const bySession = demoVisitsBySession(visits);
 
-  if (options?.includeSessionStart) {
+  if (options?.includeSessionStart || options?.includeSessionEnd) {
     for (const [sessionId, sessionVisits] of bySession.entries()) {
       const session = createDemoJourneySession(sessionId, sessionVisits);
       if (!session) continue;
-      events.push({
-        id: `session-start:${sessionId}`,
-        kind: "session_start",
-        eventType: "session start",
-        occurredAt: session.startedAt,
-        visitId: "",
-        sessionId,
-        visitorId: session.visitorId,
-        pathname: session.entryPath,
-        title: "",
-        hostname: "",
-        referrerHost: session.referrerHost,
-        referrerUrl: session.referrerUrl,
-        country: session.country,
-        region: session.region,
-        city: session.city,
-        browser: session.browser,
-        browserVersion: session.browserVersion,
-        os: session.os,
-        osVersion: session.osVersion,
-        deviceType: session.deviceType,
-        screenWidth: session.screenWidth,
-        screenHeight: session.screenHeight,
-      });
+      if (options?.includeSessionStart) {
+        events.push({
+          id: `session-start:${sessionId}`,
+          kind: "session_start",
+          eventType: "session start",
+          occurredAt: session.startedAt,
+          visitId: "",
+          sessionId,
+          visitorId: session.visitorId,
+          pathname: session.entryPath,
+          title: "",
+          hostname: "",
+          referrerHost: session.referrerHost,
+          referrerUrl: session.referrerUrl,
+          country: session.country,
+          region: session.region,
+          city: session.city,
+          browser: session.browser,
+          browserVersion: session.browserVersion,
+          os: session.os,
+          osVersion: session.osVersion,
+          deviceType: session.deviceType,
+          screenWidth: session.screenWidth,
+          screenHeight: session.screenHeight,
+          durationMs: 0,
+        });
+      }
+
+      if (options?.includeSessionEnd && !session.active) {
+        const sessionStartedAt = Number(session.startedAt ?? 0);
+        const sessionEndedAt = Number(session.endedAt ?? sessionStartedAt);
+        const lastVisit = [...sessionVisits].sort(
+          (left, right) =>
+            right.startedAt - left.startedAt ||
+            right.visitId.localeCompare(left.visitId),
+        )[0];
+        if (lastVisit && Number.isFinite(sessionEndedAt)) {
+          const screen = parseDemoScreenSize(lastVisit.screenSize);
+          events.push({
+            id: `session-leave:${sessionId}`,
+            kind: "leave",
+            eventType: "leave",
+            occurredAt: Math.max(sessionEndedAt, sessionStartedAt),
+            visitId: lastVisit.visitId,
+            sessionId,
+            visitorId: lastVisit.visitorId,
+            pathname: session.exitPath || lastVisit.pathname,
+            title: lastVisit.title,
+            hostname: lastVisit.hostname,
+            referrerHost: lastVisit.referrerHost,
+            referrerUrl: lastVisit.referrerUrl,
+            country: lastVisit.country,
+            region: lastVisit.regionName || lastVisit.region,
+            city: lastVisit.cityName || lastVisit.city,
+            browser: lastVisit.browser,
+            browserVersion: lastVisit.browserVersion,
+            os: demoOperatingSystemLabel(lastVisit.osVersion),
+            osVersion: lastVisit.osVersion,
+            deviceType: lastVisit.deviceType,
+            screenWidth: screen.screenWidth,
+            screenHeight: screen.screenHeight,
+            durationMs: 0,
+          });
+        }
+      }
     }
   }
 
@@ -5419,6 +5460,7 @@ function createDemoJourneyEvents(
       deviceType: visit.deviceType,
       screenWidth: screen.screenWidth,
       screenHeight: screen.screenHeight,
+      durationMs: 0,
     };
     events.push({
       ...base,
@@ -5426,6 +5468,7 @@ function createDemoJourneyEvents(
       kind: "pageview",
       eventType: "pageview",
       occurredAt: visit.startedAt,
+      durationMs: Math.max(0, visit.durationMs),
     });
     if (visit.eventType !== "pageview") {
       events.push({
@@ -5858,7 +5901,10 @@ function generateDemoSessionDetail(
   );
   const session = createDemoJourneySession(sessionId, visits);
   if (!session) return { ok: true, data: null };
-  const events = createDemoJourneyEvents(visits, { includeSessionStart: true });
+  const events = createDemoJourneyEvents(visits, {
+    includeSessionStart: true,
+    includeSessionEnd: true,
+  });
   const locationPoints = createDemoJourneyLocationPoints(visits);
 
   return {

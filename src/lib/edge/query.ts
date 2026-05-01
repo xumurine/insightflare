@@ -363,7 +363,7 @@ interface SessionRow {
 
 interface JourneyEventRow {
   id: string;
-  kind: "session_start" | "pageview" | "custom";
+  kind: "session_start" | "pageview" | "leave" | "custom";
   eventType: string;
   occurredAt: number;
   visitId: string;
@@ -384,6 +384,7 @@ interface JourneyEventRow {
   deviceType: string;
   screenWidth: number | null;
   screenHeight: number | null;
+  durationMs: number;
   performance: VisitPerformanceMetricsRow;
 }
 
@@ -7080,14 +7081,17 @@ LIMIT ? OFFSET ?
 }
 
 function mapJourneyEventRow(row: Record<string, unknown>): JourneyEventRow {
+  const kind = String(row.kind ?? "pageview");
   return {
     id: String(row.id ?? ""),
     kind:
-      String(row.kind ?? "pageview") === "custom"
+      kind === "custom"
         ? "custom"
-        : String(row.kind ?? "pageview") === "session_start"
+        : kind === "session_start"
           ? "session_start"
-          : "pageview",
+          : kind === "leave"
+            ? "leave"
+            : "pageview",
     eventType: String(row.eventType ?? ""),
     occurredAt: Number(row.occurredAt ?? 0),
     visitId: String(row.visitId ?? ""),
@@ -7108,6 +7112,7 @@ function mapJourneyEventRow(row: Record<string, unknown>): JourneyEventRow {
     deviceType: String(row.deviceType ?? ""),
     screenWidth: nullableNumber(row.screenWidth),
     screenHeight: nullableNumber(row.screenHeight),
+    durationMs: Math.max(0, Number(row.durationMs ?? 0)),
     performance: mapVisitPerformanceMetrics(row),
   };
 }
@@ -7136,6 +7141,50 @@ function sessionStartEvent(session: SessionRow): JourneyEventRow {
     deviceType: session.deviceType,
     screenWidth: session.screenWidth,
     screenHeight: session.screenHeight,
+    durationMs: 0,
+    performance: emptyVisitPerformanceMetrics(),
+  };
+}
+
+function sessionLeaveEvent(
+  session: SessionRow,
+  events: JourneyEventRow[],
+): JourneyEventRow | null {
+  if (session.active) return null;
+  if (!Number.isFinite(session.endedAt) || session.endedAt <= 0) return null;
+  if (
+    Number.isFinite(session.startedAt) &&
+    session.endedAt < session.startedAt
+  ) {
+    return null;
+  }
+
+  const latestPageEvent = events.reduce<JourneyEventRow | null>(
+    (latest, event) =>
+      event.kind === "pageview" &&
+      (!latest || event.occurredAt > latest.occurredAt)
+        ? event
+        : latest,
+    null,
+  );
+  const pathname =
+    session.exitPath.trim() ||
+    latestPageEvent?.pathname.trim() ||
+    session.entryPath.trim();
+  if (!pathname) return null;
+
+  const base = latestPageEvent ?? sessionStartEvent(session);
+  return {
+    ...base,
+    id: `session-leave:${session.sessionId}`,
+    kind: "leave",
+    eventType: "leave",
+    occurredAt: Math.max(session.endedAt, session.startedAt),
+    visitId: latestPageEvent?.visitId ?? "",
+    sessionId: session.sessionId,
+    visitorId: session.visitorId,
+    pathname,
+    durationMs: 0,
     performance: emptyVisitPerformanceMetrics(),
   };
 }
@@ -7187,6 +7236,7 @@ page_events AS (
     device_type AS deviceType,
     screen_width AS screenWidth,
     screen_height AS screenHeight,
+    COALESCE(duration_ms, 0) AS durationMs,
     perf_ttfb_ms AS perfTtfbMs,
     perf_fcp_ms AS perfFcpMs,
     perf_lcp_ms AS perfLcpMs,
@@ -7218,6 +7268,7 @@ custom_event_rows AS (
     COALESCE(NULLIF(es.device_type, ''), fv.device_type) AS deviceType,
     COALESCE(es.screen_width, fv.screen_width) AS screenWidth,
     COALESCE(es.screen_height, fv.screen_height) AS screenHeight,
+    0 AS durationMs,
     fv.perf_ttfb_ms AS perfTtfbMs,
     fv.perf_fcp_ms AS perfFcpMs,
     fv.perf_lcp_ms AS perfLcpMs,
@@ -7741,6 +7792,7 @@ page_events AS (
     device_type AS deviceType,
     screen_width AS screenWidth,
     screen_height AS screenHeight,
+    COALESCE(duration_ms, 0) AS durationMs,
     perf_ttfb_ms AS perfTtfbMs,
     perf_fcp_ms AS perfFcpMs,
     perf_lcp_ms AS perfLcpMs,
@@ -7772,6 +7824,7 @@ custom_event_rows AS (
     device_type AS deviceType,
     screen_width AS screenWidth,
     screen_height AS screenHeight,
+    0 AS durationMs,
     perf_ttfb_ms AS perfTtfbMs,
     perf_fcp_ms AS perfFcpMs,
     perf_lcp_ms AS perfLcpMs,
@@ -7877,10 +7930,16 @@ async function querySessionDetailFromD1(
   const session = sessions.find((item) => item.sessionId === sessionId);
   if (!session) return null;
 
-  const events = [sessionStartEvent(session), ...baseEvents].sort(
-    (left, right) =>
-      right.occurredAt - left.occurredAt || right.id.localeCompare(left.id),
-  );
+  const events = [
+    sessionStartEvent(session),
+    ...baseEvents,
+    sessionLeaveEvent(session, baseEvents),
+  ]
+    .filter((event): event is JourneyEventRow => event !== null)
+    .sort(
+      (left, right) =>
+        right.occurredAt - left.occurredAt || right.id.localeCompare(left.id),
+    );
 
   return {
     session,

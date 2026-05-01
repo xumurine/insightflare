@@ -10,6 +10,7 @@ import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
 import {
   RiArrowLeftLine,
   RiCalendarEventLine,
+  RiLogoutBoxRLine,
   RiPulseLine,
   RiTimeLine,
 } from "@remixicon/react";
@@ -279,10 +280,12 @@ function copy(locale: Locale) {
         lastEvent: "最后事件",
         sessionStarted: "会话开始",
         pageview: "访问页面",
+        exitPage: "退出页面",
         customEvent: "自定义事件",
         eventTitleSeparator: "：",
         visitDetailsTitle: "访问明细",
-        visitDetailsSubtitle: "按发生顺序展示该会话内的页面访问和自定义事件。",
+        visitDetailsSubtitle:
+          "按发生顺序展示该会话内的开始、页面访问、退出和自定义事件。",
         path: "路径",
         title: "标题",
         location: "位置",
@@ -290,6 +293,7 @@ function copy(locale: Locale) {
         sessionId: "会话 ID",
         referrerUrl: "来源链接",
         emptyEvents: "没有事件记录。",
+        emptyCustomEvents: "暂无自定义事件",
         sincePrevious: "距上个事件",
       }
     : {
@@ -320,11 +324,12 @@ function copy(locale: Locale) {
         lastEvent: "Last Event",
         sessionStarted: "Session started",
         pageview: "Pageview",
+        exitPage: "Exit page",
         customEvent: "Custom event",
         eventTitleSeparator: ": ",
         visitDetailsTitle: "Visit details",
         visitDetailsSubtitle:
-          "Pageviews and custom events in the order they happened.",
+          "Session start, pageviews, exits, and custom events in the order they happened.",
         path: "Path",
         title: "Title",
         location: "Location",
@@ -332,6 +337,7 @@ function copy(locale: Locale) {
         sessionId: "Session ID",
         referrerUrl: "Referrer URL",
         emptyEvents: "No events recorded.",
+        emptyCustomEvents: "No custom events.",
         sincePrevious: "Since previous",
       };
 }
@@ -339,12 +345,14 @@ function copy(locale: Locale) {
 function eventKindLabel(labels: Labels, event: JourneyEvent): string {
   if (event.kind === "session_start") return labels.sessionStarted;
   if (event.kind === "pageview") return labels.pageview;
+  if (event.kind === "leave") return labels.exitPage;
   return labels.customEvent;
 }
 
 function eventTitle(labels: Labels, event: JourneyEvent): string {
   if (event.kind === "session_start") return labels.sessionStarted;
-  if (event.kind === "pageview") return formatPath(event.pathname);
+  if (event.kind === "pageview" || event.kind === "leave")
+    return formatPath(event.pathname);
   return event.eventType.trim() || labels.customEvent;
 }
 
@@ -353,6 +361,13 @@ function eventDisplayTitle(labels: Labels, event: JourneyEvent): string {
   const title = eventTitle(labels, event);
   if (!title || title === kind) return kind;
   return `${kind}${labels.eventTitleSeparator}${title}`;
+}
+
+function eventChronologyRank(event: JourneyEvent): number {
+  if (event.kind === "session_start") return 0;
+  if (event.kind === "pageview") return 1;
+  if (event.kind === "custom") return 2;
+  return 3;
 }
 
 function formatDetailedDateTime(locale: Locale, timestamp: number): string {
@@ -367,6 +382,18 @@ function formatDetailedDateTime(locale: Locale, timestamp: number): string {
   }).format(new Date(timestamp));
 }
 
+function pageviewSubtitle(
+  locale: Locale,
+  event: JourneyEvent,
+  unknownLabel: string,
+): string {
+  const title = event.title.trim() || event.hostname.trim() || unknownLabel;
+  if (!Number.isFinite(event.durationMs) || event.durationMs <= 0) {
+    return title;
+  }
+  return `${title} · ${formatDuration(locale, event.durationMs)}`;
+}
+
 function eventSubtitle(
   locale: Locale,
   event: JourneyEvent,
@@ -375,12 +402,19 @@ function eventSubtitle(
   if (event.kind === "session_start") {
     return formatDetailedDateTime(locale, event.occurredAt);
   }
+  if (event.kind === "leave") {
+    return formatDetailedDateTime(locale, event.occurredAt);
+  }
+  if (event.kind === "pageview") {
+    return pageviewSubtitle(locale, event, unknownLabel);
+  }
   return event.title.trim() || event.hostname.trim() || unknownLabel;
 }
 
 function EventIcon({ event }: { event: JourneyEvent }) {
   const isCustom = event.kind === "custom";
   const isSessionStart = event.kind === "session_start";
+  const isLeave = event.kind === "leave";
   return (
     <span
       className={cn(
@@ -388,11 +422,14 @@ function EventIcon({ event }: { event: JourneyEvent }) {
         isSessionStart && "bg-amber-500/15 text-amber-600 dark:text-amber-400",
         event.kind === "pageview" &&
           "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+        isLeave && "bg-rose-500/15 text-rose-600 dark:text-rose-400",
         isCustom && "bg-sky-500/15 text-sky-600 dark:text-sky-400",
       )}
     >
       {isSessionStart ? (
         <RiTimeLine className="size-4" />
+      ) : isLeave ? (
+        <RiLogoutBoxRLine className="size-4" />
       ) : isCustom ? (
         <RiPulseLine className="size-4" />
       ) : (
@@ -762,7 +799,7 @@ function SessionEventCard({
   return (
     <Card size="sm" className="py-0">
       <CardContent className="p-0">
-        <div className="flex items-center gap-2 px-2 py-1">
+        <div className="flex items-center gap-2 px-1.5 py-1">
           <EventIcon event={event} />
           <div className="flex min-w-0 flex-1 items-stretch justify-between gap-3">
             <div className="min-w-0 flex-1">
@@ -808,11 +845,9 @@ function VisitDetailsTab({
   const chronologicalEvents = useMemo(
     () =>
       [...events].sort((left, right) => {
-        const leftRank = left.kind === "session_start" ? 0 : 1;
-        const rightRank = right.kind === "session_start" ? 0 : 1;
         return (
-          leftRank - rightRank ||
           left.occurredAt - right.occurredAt ||
+          eventChronologyRank(left) - eventChronologyRank(right) ||
           left.id.localeCompare(right.id)
         );
       }),
@@ -825,7 +860,7 @@ function VisitDetailsTab({
         <CardTitle>{labels.visitDetailsTitle}</CardTitle>
         <CardDescription>{labels.visitDetailsSubtitle}</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-2">
         {chronologicalEvents.length === 0 ? (
           <EmptyState>{labels.emptyEvents}</EmptyState>
         ) : (
@@ -853,13 +888,7 @@ function VisitDetailsTab({
 }
 
 const SESSION_DETAIL_OVERVIEW_FILTERS = {};
-const SESSION_OVERVIEW_PAGE_CARD_TABS = [
-  "path",
-  "title",
-  "hostname",
-  "entry",
-  "exit",
-] as const;
+const SESSION_OVERVIEW_PAGE_CARD_TABS = ["path", "title"] as const;
 
 interface SessionOverviewRowInput {
   label: string;
@@ -978,10 +1007,8 @@ function buildSessionEventBreakdownRows(
   const rowByLabel = new globalThis.Map<string, AsyncDimensionBreakdownRow>();
 
   for (const event of events) {
-    const label =
-      event.kind === "custom"
-        ? event.eventType.trim() || labels.customEvent
-        : eventKindLabel(labels, event);
+    if (event.kind !== "custom") continue;
+    const label = event.eventType.trim() || labels.customEvent;
     const existing = rowByLabel.get(label);
 
     if (existing) {
@@ -1045,7 +1072,7 @@ function SessionDetailBottomCards({
 
   return (
     <section className="grid items-stretch gap-6 xl:grid-cols-2">
-      <div className="min-w-0 [&>section]:!grid-cols-1">
+      <div className="min-w-0 h-full [&>section]:h-full [&>section]:!grid-cols-1 [&>section>div]:h-full">
         <OverviewPagesSection
           locale={locale}
           messages={messages}
@@ -1056,10 +1083,11 @@ function SessionDetailBottomCards({
           cardDataOverride={pageCardData}
           visibleCards={["page"]}
           pageCardTabs={SESSION_OVERVIEW_PAGE_CARD_TABS}
+          pageCardShowVisitors={false}
         />
       </div>
 
-      <div className="min-w-0">
+      <div className="min-w-0 h-full">
         <AsyncDimensionBreakdownCard
           locale={locale}
           messages={messages}
@@ -1067,6 +1095,8 @@ function SessionDetailBottomCards({
           loadRows={loadEventRows}
           requestKey={`session-detail-events:${detail.session.sessionId}:${locale}`}
           className="h-full"
+          showVisitors={false}
+          emptyLabel={labels.emptyCustomEvents}
         />
       </div>
     </section>

@@ -67,6 +67,8 @@ interface AsyncDimensionBreakdownCardProps<T extends string> {
   loadRows: (tab: T) => Promise<AsyncDimensionBreakdownRow[]>;
   requestKey: string;
   className?: string;
+  showVisitors?: boolean;
+  emptyLabel?: string;
 }
 
 function createRecord<T extends string, TValue>(
@@ -102,6 +104,8 @@ export function AsyncDimensionBreakdownCard<T extends string>({
   loadRows,
   requestKey,
   className,
+  showVisitors = true,
+  emptyLabel,
 }: AsyncDimensionBreakdownCardProps<T>) {
   const isMobile = useIsMobile();
   const reduceDataRowMotion = useReducedMotion() ?? false;
@@ -123,6 +127,8 @@ export function AsyncDimensionBreakdownCard<T extends string>({
   const activeRows = rowsByTab[activeTab];
   const isActiveTabLoading = loadingByTab[activeTab];
   const activeLoading = isActiveTabLoading || activeRows === null;
+  const tableColumnSpan = showVisitors ? 3 : 2;
+  const resolvedEmptyLabel = emptyLabel ?? messages.common.noData;
 
   useEffect(() => {
     latestLoadRowsRef.current = loadRows;
@@ -206,10 +212,11 @@ export function AsyncDimensionBreakdownCard<T extends string>({
     for (const tab of tabs) {
       const currentRows = rowsByTab[tab.value] ?? [];
       const sort = sortByTab[tab.value];
+      const sortKey = showVisitors ? sort.key : "views";
       const direction = sort.direction === "asc" ? 1 : -1;
 
       next[tab.value] = [...currentRows].sort((left, right) => {
-        const primary = (left[sort.key] - right[sort.key]) * direction;
+        const primary = (left[sortKey] - right[sortKey]) * direction;
         if (primary !== 0) return primary;
         if (right.views !== left.views) return right.views - left.views;
         if (right.visitors !== left.visitors)
@@ -219,21 +226,22 @@ export function AsyncDimensionBreakdownCard<T extends string>({
     }
 
     return next;
-  }, [rowsByTab, sortByTab, tabs]);
+  }, [rowsByTab, showVisitors, sortByTab, tabs]);
 
   const progressTotalByTab = useMemo(() => {
     const next = {} as Record<T, number>;
 
     for (const tab of tabs) {
       const sort = sortByTab[tab.value];
+      const sortKey = showVisitors ? sort.key : "views";
       next[tab.value] = sortedRowsByTab[tab.value].reduce<number>(
-        (sum, row) => sum + Math.max(0, Number(row[sort.key] ?? 0)),
+        (sum, row) => sum + Math.max(0, Number(row[sortKey] ?? 0)),
         0,
       );
     }
 
     return next;
-  }, [sortByTab, sortedRowsByTab, tabs]);
+  }, [showVisitors, sortByTab, sortedRowsByTab, tabs]);
 
   const activeSearchTab = searchTab ?? activeTab;
   const activeSearchRows = sortedRowsByTab[activeSearchTab];
@@ -267,7 +275,8 @@ export function AsyncDimensionBreakdownCard<T extends string>({
 
   function renderSortIndicator(tab: T, key: SortKey) {
     const sort = sortByTab[tab];
-    if (sort.key === key) {
+    const sortKey = showVisitors ? sort.key : "views";
+    if (sortKey === key) {
       return sort.direction === "desc" ? (
         <RiArrowDownSLine className="size-3.5" />
       ) : (
@@ -285,6 +294,7 @@ export function AsyncDimensionBreakdownCard<T extends string>({
 
   function renderTableHeader(tab: T) {
     const sort = sortByTab[tab];
+    const sortKey = showVisitors ? sort.key : "views";
     const meta = tabMeta[tab];
 
     return (
@@ -298,7 +308,7 @@ export function AsyncDimensionBreakdownCard<T extends string>({
               type="button"
               className={cn(
                 "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-                sort.key === "views"
+                sortKey === "views"
                   ? "text-foreground"
                   : "text-muted-foreground",
               )}
@@ -309,23 +319,25 @@ export function AsyncDimensionBreakdownCard<T extends string>({
             </button>
           </div>
         </TableHead>
-        <TableHead className="h-8 w-20 p-0">
-          <div className="flex justify-end px-2">
-            <button
-              type="button"
-              className={cn(
-                "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-                sort.key === "visitors"
-                  ? "text-foreground"
-                  : "text-muted-foreground",
-              )}
-              onClick={() => toggleSort(tab, "visitors")}
-            >
-              {messages.common.visitors}
-              {renderSortIndicator(tab, "visitors")}
-            </button>
-          </div>
-        </TableHead>
+        {showVisitors ? (
+          <TableHead className="h-8 w-20 p-0">
+            <div className="flex justify-end px-2">
+              <button
+                type="button"
+                className={cn(
+                  "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
+                  sort.key === "visitors"
+                    ? "text-foreground"
+                    : "text-muted-foreground",
+                )}
+                onClick={() => toggleSort(tab, "visitors")}
+              >
+                {messages.common.visitors}
+                {renderSortIndicator(tab, "visitors")}
+              </button>
+            </div>
+          </TableHead>
+        ) : null}
       </TableRow>
     );
   }
@@ -336,12 +348,13 @@ export function AsyncDimensionBreakdownCard<T extends string>({
     contentKeyPrefix: string,
   ) {
     const sort = sortByTab[tab];
+    const sortKey = showVisitors ? sort.key : "views";
     const progressTotal = progressTotalByTab[tab];
 
     return (
       <AnimatePresence initial={false} mode="popLayout">
         {rows.map((row) => {
-          const rowValue = Math.max(0, Number(row[sort.key] ?? 0));
+          const rowValue = Math.max(0, Number(row[sortKey] ?? 0));
           const progressPercent =
             progressTotal > 0
               ? Math.min(100, (rowValue / progressTotal) * 100)
@@ -374,11 +387,13 @@ export function AsyncDimensionBreakdownCard<T extends string>({
                   {numberFormat(locale, row.views)}
                 </div>
               </TableCell>
-              <TableCell className="p-0">
-                <div className="px-4 py-2 text-right">
-                  {numberFormat(locale, row.visitors)}
-                </div>
-              </TableCell>
+              {showVisitors ? (
+                <TableCell className="p-0">
+                  <div className="px-4 py-2 text-right">
+                    {numberFormat(locale, row.visitors)}
+                  </div>
+                </TableCell>
+              ) : null}
             </AnimatedDataTableRow>
           );
         })}
@@ -400,8 +415,8 @@ export function AsyncDimensionBreakdownCard<T extends string>({
           }
           hasContent={searchedRows.length > 0}
           loadingLabel={messages.common.loading}
-          emptyLabel={messages.common.noData}
-          colSpan={3}
+          emptyLabel={resolvedEmptyLabel}
+          colSpan={tableColumnSpan}
           header={renderTableHeader(activeSearchTab)}
           rows={renderRows(
             activeSearchTab,
@@ -476,8 +491,8 @@ export function AsyncDimensionBreakdownCard<T extends string>({
           loading={activeLoading}
           hasContent={visibleRows.length > 0}
           loadingLabel={messages.common.loading}
-          emptyLabel={messages.common.noData}
-          colSpan={3}
+          emptyLabel={resolvedEmptyLabel}
+          colSpan={tableColumnSpan}
           header={renderTableHeader(activeTab)}
           rows={renderRows(activeTab, visibleRows, `card-${activeTab}`)}
           contentKey={`card-${activeTab}-${visibleRows.length}`}

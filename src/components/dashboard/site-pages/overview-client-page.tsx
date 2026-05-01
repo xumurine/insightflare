@@ -1869,6 +1869,7 @@ interface OverviewPagesSectionProps extends OverviewClientPageProps {
   pageCardTargetUrlResolvers?: Partial<
     Record<PageCardTab, PageCardTargetUrlResolver>
   >;
+  pageCardShowVisitors?: boolean;
   geoPageBasePathname?: string;
 }
 
@@ -1888,6 +1889,7 @@ export function OverviewPagesSection({
   pageCardDetailTabs,
   pageCardFetchers,
   pageCardTargetUrlResolvers,
+  pageCardShowVisitors = true,
   geoPageBasePathname,
 }: OverviewPagesSectionProps) {
   const router = useRouter();
@@ -2424,26 +2426,37 @@ export function OverviewPagesSection({
     [pathRows, queryRows, titleRows, hostnameRows, entryRows, exitRows],
   );
   const activePageTabMeta = pageCardTabMeta[pageCardTab];
+  const effectivePageCardSortKey: PageCardSortKey = pageCardShowVisitors
+    ? pageCardSort.key
+    : "views";
+  const pageCardColumnSpan = pageCardShowVisitors ? 3 : 2;
   const sortedPageCardRows = useMemo(() => {
     const source = pageCardRows[pageCardTab];
     const direction = pageCardSort.direction === "asc" ? 1 : -1;
 
     return [...source].sort((left, right) => {
       const primary =
-        (left[pageCardSort.key] - right[pageCardSort.key]) * direction;
+        (left[effectivePageCardSortKey] - right[effectivePageCardSortKey]) *
+        direction;
       if (primary !== 0) return primary;
       return (left.displayLabel ?? left.label).localeCompare(
         right.displayLabel ?? right.label,
       );
     });
-  }, [pageCardRows, pageCardSort.direction, pageCardSort.key, pageCardTab]);
+  }, [
+    effectivePageCardSortKey,
+    pageCardRows,
+    pageCardSort.direction,
+    pageCardTab,
+  ]);
   const pageCardProgressTotal = useMemo(
     () =>
       sortedPageCardRows.reduce(
-        (sum, item) => sum + Math.max(0, Number(item[pageCardSort.key] ?? 0)),
+        (sum, item) =>
+          sum + Math.max(0, Number(item[effectivePageCardSortKey] ?? 0)),
         0,
       ),
-    [sortedPageCardRows, pageCardSort.key],
+    [effectivePageCardSortKey, sortedPageCardRows],
   );
   const activePageCardQueryValue = useMemo(() => {
     const queryParamKey = pageCardQueryParamByTab[pageCardTab];
@@ -3165,7 +3178,7 @@ export function OverviewPagesSection({
     router.push(targetUrl);
   };
   const renderSortIndicator = (key: PageCardSortKey) => {
-    if (pageCardSort.key === key) {
+    if (effectivePageCardSortKey === key) {
       return pageCardSort.direction === "desc" ? (
         <RiArrowDownSLine className="size-3.5" />
       ) : (
@@ -3263,7 +3276,7 @@ export function OverviewPagesSection({
             type="button"
             className={cn(
               "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              pageCardSort.key === "views"
+              effectivePageCardSortKey === "views"
                 ? "text-foreground"
                 : "text-muted-foreground",
             )}
@@ -3274,23 +3287,25 @@ export function OverviewPagesSection({
           </button>
         </div>
       </TableHead>
-      <TableHead className="h-8 p-0 w-20">
-        <div className="flex justify-end px-2">
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              pageCardSort.key === "visitors"
-                ? "text-foreground"
-                : "text-muted-foreground",
-            )}
-            onClick={() => togglePageCardSort("visitors")}
-          >
-            {messages.common.visitors}
-            {renderSortIndicator("visitors")}
-          </button>
-        </div>
-      </TableHead>
+      {pageCardShowVisitors ? (
+        <TableHead className="h-8 p-0 w-20">
+          <div className="flex justify-end px-2">
+            <button
+              type="button"
+              className={cn(
+                "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
+                pageCardSort.key === "visitors"
+                  ? "text-foreground"
+                  : "text-muted-foreground",
+              )}
+              onClick={() => togglePageCardSort("visitors")}
+            >
+              {messages.common.visitors}
+              {renderSortIndicator("visitors")}
+            </button>
+          </div>
+        </TableHead>
+      ) : null}
     </TableRow>
   );
   const renderPageCardRows = (rows: PageCardRow[]) => (
@@ -3298,7 +3313,10 @@ export function OverviewPagesSection({
       {rows.map((item) => {
         const displayLabel = item.displayLabel ?? item.label;
         const rowFilterValue = item.filterValue ?? item.label;
-        const rowValue = Math.max(0, Number(item[pageCardSort.key] ?? 0));
+        const rowValue = Math.max(
+          0,
+          Number(item[effectivePageCardSortKey] ?? 0),
+        );
         const progressPercent =
           pageCardProgressTotal > 0
             ? Math.min(100, (rowValue / pageCardProgressTotal) * 100)
@@ -3411,11 +3429,13 @@ export function OverviewPagesSection({
                 {numberFormat(locale, item.views)}
               </div>
             </TableCell>
-            <TableCell className="p-0">
-              <div className="px-4 py-2 text-right">
-                {numberFormat(locale, item.visitors)}
-              </div>
-            </TableCell>
+            {pageCardShowVisitors ? (
+              <TableCell className="p-0">
+                <div className="px-4 py-2 text-right">
+                  {numberFormat(locale, item.visitors)}
+                </div>
+              </TableCell>
+            ) : null}
           </AnimatedDataTableRow>
         );
       })}
@@ -4005,7 +4025,7 @@ export function OverviewPagesSection({
           hasContent={searchedPageCardRows.length > 0}
           loadingLabel={messages.common.loading}
           emptyLabel={noDataText}
-          colSpan={3}
+          colSpan={pageCardColumnSpan}
           header={pageCardTableHeader}
           rows={renderPageCardRows(searchedPageCardRows)}
         />
@@ -4056,14 +4076,14 @@ export function OverviewPagesSection({
               }))}
               headerRight={pageCardSearchAction}
               className="h-full"
-              syncKey={`${pageCardLoading}-${pageCardTab}-${pageCardSort.key}-${pageCardSort.direction}-${sortedPageCardRows.length}-${activePageCardQueryValue ?? "all"}-${visiblePageCardRows.length}`}
+              syncKey={`${pageCardLoading}-${pageCardTab}-${effectivePageCardSortKey}-${pageCardSort.direction}-${sortedPageCardRows.length}-${activePageCardQueryValue ?? "all"}-${visiblePageCardRows.length}`}
             >
               <DataTableSwitch
                 loading={pageCardLoading}
                 hasContent={visiblePageCardRows.length > 0}
                 loadingLabel={messages.common.loading}
                 emptyLabel={noDataText}
-                colSpan={3}
+                colSpan={pageCardColumnSpan}
                 contentKey={`${pageCardTab}-${activePageCardQueryValue ?? "all"}`}
                 header={pageCardTableHeader}
                 rows={renderPageCardRows(visiblePageCardRows)}

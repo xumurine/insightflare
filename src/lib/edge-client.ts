@@ -578,7 +578,7 @@ export interface JourneyLocationPoint {
 
 export interface JourneyEvent {
   id: string;
-  kind: "session_start" | "pageview" | "custom";
+  kind: "session_start" | "pageview" | "leave" | "custom";
   eventType: string;
   occurredAt: number;
   visitId: string;
@@ -599,6 +599,7 @@ export interface JourneyEvent {
   deviceType: string;
   screenWidth: number | null;
   screenHeight: number | null;
+  durationMs: number;
   performance: VisitPerformanceMetrics;
 }
 
