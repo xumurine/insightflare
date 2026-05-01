@@ -64,17 +64,24 @@ function formatChangeRate(value: number | null): string | null {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
-function changeRateClass(value: number | null): string {
+function changeRateClass(value: number | null, lowerIsBetter = false): string {
   if (value === null) return "text-muted-foreground";
-  return value >= 0 ? "text-emerald-600" : "text-rose-600";
+  const isImprovement = lowerIsBetter ? value <= 0 : value >= 0;
+  return isImprovement ? "text-emerald-600" : "text-rose-600";
 }
 
-function ChangeRateInline({ value }: { value: number | null }) {
+function ChangeRateInline({
+  value,
+  lowerIsBetter = false,
+}: {
+  value: number | null;
+  lowerIsBetter?: boolean;
+}) {
   if (value === null) return null;
   const Icon = value >= 0 ? RiArrowUpLine : RiArrowDownLine;
   return (
     <span
-      className={`inline-flex items-end gap-0.5 font-mono text-xs leading-none ${changeRateClass(value)}`}
+      className={`inline-flex items-end gap-0.5 font-mono text-xs leading-none ${changeRateClass(value, lowerIsBetter)}`}
     >
       <Icon className="size-3.5" />
       {formatChangeRate(value)}
@@ -86,17 +93,19 @@ function PageMetricField({
   label,
   value,
   change,
+  lowerIsBetter = false,
 }: {
   label: string;
   value: string;
   change: number | null;
+  lowerIsBetter?: boolean;
 }) {
   return (
     <div className="space-y-1">
       <p className="text-muted-foreground">{label}</p>
       <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
         {value}
-        <ChangeRateInline value={change} />
+        <ChangeRateInline value={change} lowerIsBetter={lowerIsBetter} />
       </p>
     </div>
   );
@@ -198,6 +207,7 @@ function PageTrafficCard({
                 label={messages.common.bounceRate}
                 value={percentFormat(locale, item.metrics.bounceRate)}
                 change={item.changeRates.bounceRate}
+                lowerIsBetter
               />
               <PageMetricField
                 label={messages.pages.pagesPerSession}

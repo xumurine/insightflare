@@ -267,17 +267,24 @@ function formatChangeRate(value: number | null): string | null {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
-function changeRateClass(value: number | null): string {
+function changeRateClass(value: number | null, lowerIsBetter = false): string {
   if (value === null) return "text-muted-foreground";
-  return value >= 0 ? "text-emerald-600" : "text-rose-600";
+  const isImprovement = lowerIsBetter ? value <= 0 : value >= 0;
+  return isImprovement ? "text-emerald-600" : "text-rose-600";
 }
 
-function ChangeRateInline({ value }: { value: number | null }) {
+function ChangeRateInline({
+  value,
+  lowerIsBetter = false,
+}: {
+  value: number | null;
+  lowerIsBetter?: boolean;
+}) {
   if (value === null) return null;
   const Icon = value >= 0 ? RiArrowUpLine : RiArrowDownLine;
   return (
     <span
-      className={`inline-flex items-end gap-0.5 font-mono text-xs leading-none ${changeRateClass(value)}`}
+      className={`inline-flex items-end gap-0.5 font-mono text-xs leading-none ${changeRateClass(value, lowerIsBetter)}`}
     >
       <Icon className="size-3.5" />
       {formatChangeRate(value)}
@@ -4295,7 +4302,7 @@ export function OverviewMetricsSection({
       label: messages.common.bounceRate,
       value: percentFormat(locale, overview.data.bounceRate),
       delta: toDeltaPercent(overview.data.bounceRate, previous.bounceRate),
-      inverted: true,
+      lowerIsBetter: true,
       trend: bounceRateSeries,
       formatTrendValue: (value: number) => percentFormat(locale, value),
     },
@@ -4327,11 +4334,7 @@ export function OverviewMetricsSection({
           {metrics.map((item, index) => {
             const hasDelta =
               typeof item.delta === "number" && Number.isFinite(item.delta);
-            const effectiveDelta = hasDelta
-              ? item.inverted
-                ? -(item.delta ?? 0)
-                : (item.delta ?? 0)
-              : null;
+            const effectiveDelta = hasDelta ? (item.delta ?? 0) : null;
 
             return (
               <div key={item.label} className={metricCellBorderClasses(index)}>
@@ -4366,7 +4369,10 @@ export function OverviewMetricsSection({
                               className="inline-flex h-6 items-end gap-1.5 font-mono text-2xl font-semibold leading-none tracking-tight"
                             >
                               <span>{item.value}</span>
-                              <ChangeRateInline value={effectiveDelta} />
+                              <ChangeRateInline
+                                value={effectiveDelta}
+                                lowerIsBetter={item.lowerIsBetter}
+                              />
                             </p>
                           )}
                         </AutoTransition>

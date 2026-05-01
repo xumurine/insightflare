@@ -119,17 +119,24 @@ function formatChangeRate(value: number | null): string | null {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
-function changeRateClass(value: number | null): string {
+function changeRateClass(value: number | null, lowerIsBetter = false): string {
   if (value === null) return "text-muted-foreground";
-  return value >= 0 ? "text-emerald-600" : "text-rose-600";
+  const isImprovement = lowerIsBetter ? value <= 0 : value >= 0;
+  return isImprovement ? "text-emerald-600" : "text-rose-600";
 }
 
-function ChangeRateInline({ value }: { value: number | null }) {
+function ChangeRateInline({
+  value,
+  lowerIsBetter = false,
+}: {
+  value: number | null;
+  lowerIsBetter?: boolean;
+}) {
   if (value === null) return null;
   const Icon = value >= 0 ? RiArrowUpLine : RiArrowDownLine;
   return (
     <span
-      className={`inline-flex items-end gap-0.5 font-mono text-xs leading-none ${changeRateClass(value)}`}
+      className={`inline-flex items-end gap-0.5 font-mono text-xs leading-none ${changeRateClass(value, lowerIsBetter)}`}
     >
       <Icon className="size-3.5" />
       {formatChangeRate(value)}
@@ -1239,6 +1246,7 @@ export function TeamManagementClient({
                                   {percentFormat(locale, overview.bounceRate)}
                                   <ChangeRateInline
                                     value={changeRates.bounceRate}
+                                    lowerIsBetter
                                   />
                                 </p>
                               </div>
