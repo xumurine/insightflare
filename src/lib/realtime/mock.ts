@@ -5712,6 +5712,7 @@ function generateDemoVisitors(
       views: number;
       sessions: Set<string>;
       events: number;
+      firstVisit: DemoVisitFact;
       latestVisit: DemoVisitFact;
     }
   >();
@@ -5723,9 +5724,13 @@ function generateDemoVisitors(
       views: 0,
       sessions: new Set<string>(),
       events: 0,
+      firstVisit: visit,
       latestVisit: visit,
     };
-    bucket.firstSeenAt = Math.min(bucket.firstSeenAt, visit.startedAt);
+    if (visit.startedAt <= bucket.firstSeenAt) {
+      bucket.firstSeenAt = visit.startedAt;
+      bucket.firstVisit = visit;
+    }
     if (visit.startedAt >= bucket.lastSeenAt) {
       bucket.lastSeenAt = visit.startedAt;
       bucket.latestVisit = visit;
@@ -5752,8 +5757,8 @@ function generateDemoVisitors(
       region: bucket.latestVisit.regionName || bucket.latestVisit.region,
       regionCode: bucket.latestVisit.regionCode,
       city: bucket.latestVisit.cityName || bucket.latestVisit.city,
-      referrerHost: bucket.latestVisit.referrerHost,
-      referrerUrl: bucket.latestVisit.referrerUrl,
+      referrerHost: bucket.firstVisit.referrerHost,
+      referrerUrl: bucket.firstVisit.referrerUrl,
       browser: bucket.latestVisit.browser,
       browserVersion: bucket.latestVisit.browserVersion,
       os: demoOperatingSystemLabel(bucket.latestVisit.osVersion),
@@ -5876,6 +5881,9 @@ function generateDemoVisitorDetail(
   const latest =
     [...visits].sort((left, right) => right.startedAt - left.startedAt)[0] ??
     visits[0];
+  const earliest =
+    [...visits].sort((left, right) => left.startedAt - right.startedAt)[0] ??
+    visits[0];
   const firstSeenAt = Math.min(...visits.map((visit) => visit.startedAt));
   const lastSeenAt = Math.max(...visits.map((visit) => visit.startedAt));
   const screen = parseDemoScreenSize(latest.screenSize);
@@ -5899,8 +5907,8 @@ function generateDemoVisitorDetail(
     country: latest.country,
     region: latest.regionName || latest.region,
     city: latest.cityName || latest.city,
-    referrerHost: latest.referrerHost,
-    referrerUrl: latest.referrerUrl,
+    referrerHost: earliest.referrerHost,
+    referrerUrl: earliest.referrerUrl,
     browser: latest.browser,
     browserVersion: latest.browserVersion,
     os: demoOperatingSystemLabel(latest.osVersion),
@@ -5942,6 +5950,7 @@ function generateDemoVisitorDetail(
       visitedPages: summarizeDemoVisitedPages(events),
       eventDistribution: summarizeDemoEventDistribution(events),
       activity: summarizeDemoActivity(events),
+      performance: summarizeDemoJourneyPerformance(siteId, visits),
     },
   };
 }

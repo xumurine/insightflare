@@ -34,6 +34,10 @@ import {
   ReferrerMeta,
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
+import {
+  JourneyGeoLocationCard,
+  type JourneyGeoLocationInput,
+} from "@/components/dashboard/journey-geo-location-card";
 import { LazyGeoCityBreadcrumbLabel } from "@/components/dashboard/lazy-geo-location-label";
 import {
   OverviewPagesSection,
@@ -251,6 +255,30 @@ function sessionLocationPoints(
   return fallback ? [fallback] : [];
 }
 
+function sessionGeoLocationInputs(
+  detail: SessionDetail,
+): JourneyGeoLocationInput[] {
+  const session = detail.session;
+  return [
+    {
+      country: session.country,
+      region: session.region,
+      regionCode: session.regionCode,
+      city: session.city,
+      latitude: session.latitude,
+      longitude: session.longitude,
+    },
+    ...(detail.locationPoints ?? []).map((point) => ({
+      country: point.country,
+      region: point.region,
+      regionCode: point.regionCode,
+      city: point.city,
+      latitude: point.latitude,
+      longitude: point.longitude,
+    })),
+  ];
+}
+
 function DeckOverlay(props: MapboxOverlayProps) {
   const overlay = useControl<MapboxOverlay>(() => new MapboxOverlay(props));
   overlay.setProps(props);
@@ -349,6 +377,7 @@ function copy(locale: Locale) {
         emptyEvents: "没有事件记录。",
         emptyCustomEvents: "暂无自定义事件",
         sincePrevious: "距上个事件",
+        geoLocationTitle: "地理位置",
         performanceTitle: "当前会话性能",
         range: "范围",
       }
@@ -395,6 +424,7 @@ function copy(locale: Locale) {
         emptyEvents: "No events recorded.",
         emptyCustomEvents: "No custom events.",
         sincePrevious: "Since previous",
+        geoLocationTitle: "Geo location",
         performanceTitle: "Current session performance",
         range: "Range",
       };
@@ -1251,7 +1281,7 @@ function VisitDetailsTab({
         <CardTitle>{labels.visitDetailsTitle}</CardTitle>
         <CardDescription>{labels.visitDetailsSubtitle}</CardDescription>
       </CardHeader>
-      <CardContent className="px-2">
+      <CardContent className="px-4">
         {chronologicalEvents.length === 0 ? (
           <EmptyState>{labels.emptyEvents}</EmptyState>
         ) : (
@@ -1520,6 +1550,10 @@ function DetailContent({
   const visitorHref = `${siteBasePath}/visitors/detail?visitorId=${encodeURIComponent(
     session.visitorId,
   )}`;
+  const geoLocations = useMemo(
+    () => sessionGeoLocationInputs(detail),
+    [detail],
+  );
 
   return (
     <div className="pb-6">
@@ -1557,6 +1591,13 @@ function DetailContent({
           siteId={siteId}
           siteBasePath={siteBasePath}
           siteDomain={sessionSiteDomain}
+        />
+
+        <JourneyGeoLocationCard
+          locale={locale}
+          messages={messages}
+          title={labels.geoLocationTitle}
+          locations={geoLocations}
         />
 
         <SessionPerformancePanel

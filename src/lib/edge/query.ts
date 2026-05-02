@@ -6601,17 +6601,17 @@ SELECT
     LIMIT 1
   ), '') AS city,
   COALESCE((
-    SELECT latest.referrer_host
-    FROM filtered_visits latest
-    WHERE latest.visitor_id = fv.visitor_id
-    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    SELECT first.referrer_host
+    FROM filtered_visits first
+    WHERE first.visitor_id = fv.visitor_id
+    ORDER BY first.started_at ASC, first.visit_id ASC
     LIMIT 1
   ), '') AS referrerHost,
   COALESCE((
-    SELECT latest.referrer_url
-    FROM filtered_visits latest
-    WHERE latest.visitor_id = fv.visitor_id
-    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    SELECT first.referrer_url
+    FROM filtered_visits first
+    WHERE first.visitor_id = fv.visitor_id
+    ORDER BY first.started_at ASC, first.visit_id ASC
     LIMIT 1
   ), '') AS referrerUrl,
   COALESCE((
@@ -7510,17 +7510,17 @@ SELECT
     LIMIT 1
   ), '') AS city,
   COALESCE((
-    SELECT latest.referrer_host
-    FROM filtered_visits latest
-    WHERE latest.visitor_id = fv.visitor_id
-    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    SELECT first.referrer_host
+    FROM filtered_visits first
+    WHERE first.visitor_id = fv.visitor_id
+    ORDER BY first.started_at ASC, first.visit_id ASC
     LIMIT 1
   ), '') AS referrerHost,
   COALESCE((
-    SELECT latest.referrer_url
-    FROM filtered_visits latest
-    WHERE latest.visitor_id = fv.visitor_id
-    ORDER BY latest.started_at DESC, latest.visit_id DESC
+    SELECT first.referrer_url
+    FROM filtered_visits first
+    WHERE first.visitor_id = fv.visitor_id
+    ORDER BY first.started_at ASC, first.visit_id ASC
     LIMIT 1
   ), '') AS referrerUrl,
   COALESCE((

@@ -1,6 +1,13 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Map, { useControl } from "react-map-gl/maplibre";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -10,6 +17,9 @@ import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
 import {
   RiArrowLeftLine,
   RiCalendarEventLine,
+  RiCheckboxCircleFill,
+  RiCloseCircleFill,
+  RiErrorWarningFill,
   RiLogoutBoxRLine,
   RiPulseLine,
   RiTimeLine,
@@ -32,6 +42,10 @@ import {
   ReferrerMeta,
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
+import {
+  JourneyGeoLocationCard,
+  type JourneyGeoLocationInput,
+} from "@/components/dashboard/journey-geo-location-card";
 import { LazyGeoCityBreadcrumbLabel } from "@/components/dashboard/lazy-geo-location-label";
 import {
   type SessionSortKey,
@@ -62,7 +76,10 @@ import {
 } from "@/lib/dashboard/format";
 import type {
   JourneyEvent,
+  JourneyPerformanceMetricSummary,
+  JourneyPerformanceSummary,
   JourneySession,
+  PerformanceMetricKey,
   VisitorActivityDay,
   VisitorDetailData,
 } from "@/lib/edge-client";
@@ -85,6 +102,8 @@ type VisitorDetail = NonNullable<VisitorDetailData["data"]>;
 type VisitorRow = VisitorDetail["visitor"];
 type Labels = ReturnType<typeof copy>;
 type EffectiveMapTheme = "light" | "dark";
+type VisitorPerformancePanelKey = PerformanceMetricKey | "score";
+type VisitorPerformanceStatus = "great" | "needs-improvement" | "poor" | "none";
 
 const VISITOR_MAP_VIEW_STATE = {
   longitude: 0,
@@ -105,6 +124,60 @@ const VISITOR_SESSION_SORT: SessionSortState = {
   key: "startedAt",
   direction: "desc",
 };
+const VISITOR_PERFORMANCE_METRICS: PerformanceMetricKey[] = [
+  "ttfb",
+  "fcp",
+  "lcp",
+  "cls",
+  "inp",
+];
+const VISITOR_PERFORMANCE_THRESHOLDS: Record<
+  PerformanceMetricKey,
+  { good: number; poor: number }
+> = {
+  ttfb: { good: 800, poor: 1800 },
+  fcp: { good: 1800, poor: 3000 },
+  lcp: { good: 2500, poor: 4000 },
+  cls: { good: 0.1, poor: 0.25 },
+  inp: { good: 200, poor: 500 },
+};
+const VISITOR_PERFORMANCE_STATUS_STYLE = {
+  great: {
+    labelClassName: "text-chart-4",
+    softClassName: "bg-chart-4/10 text-chart-4",
+    icon: RiCheckboxCircleFill,
+  },
+  "needs-improvement": {
+    labelClassName: "text-[oklch(0.75_0.16_80)]",
+    softClassName: "bg-[oklch(0.75_0.16_80_/_0.12)] text-[oklch(0.75_0.16_80)]",
+    icon: RiErrorWarningFill,
+  },
+  poor: {
+    labelClassName: "text-destructive",
+    softClassName: "bg-destructive/10 text-destructive",
+    icon: RiCloseCircleFill,
+  },
+  none: {
+    labelClassName: "text-muted-foreground",
+    softClassName: "bg-muted text-muted-foreground",
+    icon: RiPulseLine,
+  },
+} satisfies Record<
+  VisitorPerformanceStatus,
+  {
+    labelClassName: string;
+    softClassName: string;
+    icon: typeof RiCheckboxCircleFill;
+  }
+>;
+const EMPTY_VISITOR_PERFORMANCE_METRIC_SUMMARY: JourneyPerformanceMetricSummary =
+  {
+    avg: null,
+    p75: null,
+    min: null,
+    max: null,
+    samples: 0,
+  };
 const EMPTY_VISIT_PERFORMANCE: JourneyEvent["performance"] = {
   ttfb: null,
   fcp: null,
@@ -123,6 +196,27 @@ interface RenderedVisitorLocationPoint extends VisitorLocationPoint {
   id: string;
   radius: number;
   fillColor: [number, number, number, number];
+}
+
+interface VisitorActivityDayItem {
+  date: Date;
+  key: string;
+  count: number;
+  title: string;
+}
+
+type VisitorActivityCalendarCell =
+  | { type: "empty"; key: string }
+  | VisitorActivityCalendarDayCell;
+
+interface VisitorActivityCalendarDayCell extends VisitorActivityDayItem {
+  type: "day";
+}
+
+interface VisitorActivityCalendarSection {
+  cells: VisitorActivityCalendarCell[];
+  monthLabels: string[];
+  weekCount: number;
 }
 
 function buildRasterStyle(theme: EffectiveMapTheme): StyleSpecification {
@@ -214,6 +308,9 @@ function copy(locale: Locale) {
         customEvent: "自定义事件",
         eventTitleSeparator: "：",
         sincePrevious: "距上个事件",
+        geoLocationTitle: "地理位置",
+        performanceTitle: "当前访客性能",
+        range: "范围",
       }
     : {
         anonymous: "Anonymous",
@@ -274,6 +371,9 @@ function copy(locale: Locale) {
         customEvent: "Custom event",
         eventTitleSeparator: ": ",
         sincePrevious: "Since previous",
+        geoLocationTitle: "Geo location",
+        performanceTitle: "Current visitor performance",
+        range: "Range",
       };
 }
 
@@ -327,6 +427,19 @@ function visitorLocationPoints(
         ]
       : [],
   );
+}
+
+function visitorGeoLocationInputs(
+  detail: VisitorDetail,
+): JourneyGeoLocationInput[] {
+  return detail.sessions.map((session) => ({
+    country: session.country,
+    region: session.region,
+    regionCode: session.regionCode,
+    city: session.city,
+    latitude: session.latitude,
+    longitude: session.longitude,
+  }));
 }
 
 function DeckOverlay(props: MapboxOverlayProps) {
@@ -420,6 +533,151 @@ function EmptyState({ children }: { children: ReactNode }) {
   );
 }
 
+function VisitorPerformanceCell({
+  label,
+  value,
+  status,
+  details,
+}: {
+  label: string;
+  value: string;
+  status: VisitorPerformanceStatus;
+  details: string[];
+}) {
+  const statusStyle = VISITOR_PERFORMANCE_STATUS_STYLE[status];
+  const StatusIcon = statusStyle.icon;
+
+  return (
+    <div className="min-w-0 bg-card p-4">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <p className="min-w-0 truncate text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+          {label}
+        </p>
+        <span
+          className={cn(
+            "inline-flex size-7 shrink-0 items-center justify-center rounded-full",
+            statusStyle.softClassName,
+          )}
+        >
+          <StatusIcon className="size-3.5" />
+        </span>
+      </div>
+      <p className="mt-3 min-w-0 truncate font-mono text-xl font-semibold leading-7 text-foreground">
+        {value}
+      </p>
+      <div className="mt-3 flex min-w-0 flex-col gap-1 text-[11px] leading-[14px] text-muted-foreground">
+        {details.map((detail) => (
+          <span key={detail} className="min-w-0 truncate">
+            {detail}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VisitorPerformanceMetricCell({
+  locale,
+  messages,
+  labels,
+  metric,
+  summary,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  labels: Labels;
+  metric: PerformanceMetricKey;
+  summary: JourneyPerformanceMetricSummary;
+}) {
+  const value = summary.p75;
+  const status = visitorMetricStatus(metric, value);
+
+  return (
+    <VisitorPerformanceCell
+      label={messages.performance[metric]}
+      value={formatVisitorMetricValue(locale, messages, metric, value)}
+      status={status}
+      details={visitorMetricDetailRows(
+        locale,
+        messages,
+        labels,
+        metric,
+        summary,
+      )}
+    />
+  );
+}
+
+function VisitorPerformancePanel({
+  locale,
+  messages,
+  labels,
+  performance,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  labels: Labels;
+  performance: JourneyPerformanceSummary | null | undefined;
+}) {
+  const hasSamples = hasVisitorPerformanceSamples(performance);
+  if (!hasSamples) return null;
+
+  const score = visitorPerformanceScore(performance);
+  const samples = visitorPerformanceSamples(performance);
+  const scoreStatus = visitorScoreStatus(score);
+  const statusStyle = VISITOR_PERFORMANCE_STATUS_STYLE[scoreStatus];
+  const StatusIcon = statusStyle.icon;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <CardTitle>{labels.performanceTitle}</CardTitle>
+          </div>
+          <div
+            className={cn(
+              "inline-flex shrink-0 items-center gap-2 self-start rounded-full px-3 py-1 text-xs font-medium",
+              statusStyle.softClassName,
+            )}
+          >
+            <StatusIcon className="size-3.5" />
+            <span>{visitorPerformanceStatusLabel(messages, scoreStatus)}</span>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="grid grid-cols-2 gap-px overflow-hidden bg-border/70 text-xs md:grid-cols-3">
+          <VisitorPerformanceCell
+            label={messages.performance.score}
+            value={visitorPerformancePanelValue(
+              locale,
+              messages,
+              "score",
+              score,
+            )}
+            status={scoreStatus}
+            details={visitorScoreDetailRows(locale, messages, labels, samples)}
+          />
+          {VISITOR_PERFORMANCE_METRICS.map((metric) => (
+            <VisitorPerformanceMetricCell
+              key={metric}
+              locale={locale}
+              messages={messages}
+              labels={labels}
+              metric={metric}
+              summary={
+                performance?.[metric] ??
+                EMPTY_VISITOR_PERFORMANCE_METRIC_SUMMARY
+              }
+            />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function SummaryGridItem({
   label,
   value,
@@ -472,6 +730,7 @@ function eventTitle(labels: Labels, event: JourneyEvent): string {
 function eventDisplayTitle(labels: Labels, event: JourneyEvent): string {
   const prefix = eventKindLabel(labels, event);
   const title = eventTitle(labels, event);
+  if (!title || title === prefix) return prefix;
   return `${prefix}${labels.eventTitleSeparator}${title}`;
 }
 
@@ -510,6 +769,198 @@ function eventSubtitle(
     return pageviewSubtitle(locale, event, unknownLabel);
   }
   return event.title.trim() || event.hostname.trim() || unknownLabel;
+}
+
+function visitorPerformanceStatusLabel(
+  messages: AppMessages,
+  status: VisitorPerformanceStatus,
+): string {
+  if (status === "great") return messages.performance.great;
+  if (status === "needs-improvement")
+    return messages.performance.needsImprovement;
+  if (status === "poor") return messages.performance.poor;
+  return messages.common.noData;
+}
+
+function visitorScoreStatus(
+  score: number | null | undefined,
+): VisitorPerformanceStatus {
+  if (score == null || !Number.isFinite(score)) return "none";
+  if (score >= 90) return "great";
+  if (score >= 50) return "needs-improvement";
+  return "poor";
+}
+
+function visitorMetricStatus(
+  metric: PerformanceMetricKey,
+  value: number | null | undefined,
+): VisitorPerformanceStatus {
+  if (value == null || !Number.isFinite(value)) return "none";
+  const thresholds = VISITOR_PERFORMANCE_THRESHOLDS[metric];
+  if (value <= thresholds.good) return "great";
+  if (value <= thresholds.poor) return "needs-improvement";
+  return "poor";
+}
+
+function visitorMetricScore(
+  metric: PerformanceMetricKey,
+  value: number | null | undefined,
+): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const thresholds = VISITOR_PERFORMANCE_THRESHOLDS[metric];
+  if (value <= thresholds.good) {
+    const ratio = thresholds.good > 0 ? value / thresholds.good : 0;
+    return Math.max(90, Math.min(100, 100 - ratio * 10));
+  }
+  if (value <= thresholds.poor) {
+    const ratio =
+      (value - thresholds.good) / (thresholds.poor - thresholds.good);
+    return Math.max(50, Math.min(90, 90 - ratio * 40));
+  }
+
+  const poorWindow = Math.max(
+    thresholds.poor - thresholds.good,
+    thresholds.poor,
+    1,
+  );
+  const ratio = (value - thresholds.poor) / poorWindow;
+  return Math.max(0, Math.min(50, 50 - ratio * 50));
+}
+
+function averageVisitorPerformanceScore(
+  values: Array<number | null | undefined>,
+): number | null {
+  const scores = values.filter(
+    (value): value is number => value != null && Number.isFinite(value),
+  );
+  if (scores.length === 0) return null;
+  return scores.reduce((sum, value) => sum + value, 0) / scores.length;
+}
+
+function visitorPerformanceScore(
+  performance: JourneyPerformanceSummary | null | undefined,
+): number | null {
+  return averageVisitorPerformanceScore(
+    VISITOR_PERFORMANCE_METRICS.map((metric) =>
+      visitorMetricScore(metric, performance?.[metric]?.p75),
+    ),
+  );
+}
+
+function visitorPerformanceSamples(
+  performance: JourneyPerformanceSummary | null | undefined,
+): number {
+  return Math.max(
+    0,
+    ...VISITOR_PERFORMANCE_METRICS.map(
+      (metric) => performance?.[metric]?.samples ?? 0,
+    ),
+  );
+}
+
+function hasVisitorPerformanceSamples(
+  performance: JourneyPerformanceSummary | null | undefined,
+): boolean {
+  return VISITOR_PERFORMANCE_METRICS.some(
+    (metric) => (performance?.[metric]?.samples ?? 0) > 0,
+  );
+}
+
+function formatVisitorMetricValue(
+  locale: Locale,
+  messages: AppMessages,
+  metric: PerformanceMetricKey,
+  value: number | null | undefined,
+): string {
+  if (value == null || !Number.isFinite(value)) return "--";
+  if (metric === "cls") {
+    const formatted = new Intl.NumberFormat(intlLocale(locale), {
+      maximumFractionDigits: 3,
+    }).format(value);
+    return `${formatted} ${messages.performance.clsUnit}`;
+  }
+  if (metric === "inp") {
+    return `${numberFormat(locale, Math.round(value))} ${messages.performance.msUnit}`;
+  }
+  const seconds = value / 1000;
+  const formatted = new Intl.NumberFormat(intlLocale(locale), {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: seconds < 10 ? 2 : 1,
+  }).format(seconds);
+  return `${formatted} ${messages.performance.secondsUnit}`;
+}
+
+function visitorPerformancePanelValue(
+  locale: Locale,
+  messages: AppMessages,
+  key: VisitorPerformancePanelKey,
+  value: number | null | undefined,
+): string {
+  if (key === "score") {
+    return value == null || !Number.isFinite(value)
+      ? "--"
+      : numberFormat(locale, Math.round(value));
+  }
+  return formatVisitorMetricValue(locale, messages, key, value);
+}
+
+function formatVisitorMetricRange(
+  locale: Locale,
+  messages: AppMessages,
+  metric: PerformanceMetricKey,
+  summary: JourneyPerformanceMetricSummary,
+): string {
+  if (
+    summary.min == null ||
+    summary.max == null ||
+    !Number.isFinite(summary.min) ||
+    !Number.isFinite(summary.max)
+  ) {
+    return "--";
+  }
+  return `${formatVisitorMetricValue(
+    locale,
+    messages,
+    metric,
+    summary.min,
+  )} - ${formatVisitorMetricValue(locale, messages, metric, summary.max)}`;
+}
+
+function visitorScoreRange(): string {
+  return "0 - 100";
+}
+
+function visitorMetricDetailRows(
+  locale: Locale,
+  messages: AppMessages,
+  labels: Labels,
+  metric: PerformanceMetricKey,
+  summary: JourneyPerformanceMetricSummary,
+): string[] {
+  return [
+    `${labels.range}: ${formatVisitorMetricRange(
+      locale,
+      messages,
+      metric,
+      summary,
+    )}`,
+    `${messages.performance.samplesLabel}: ${numberFormat(
+      locale,
+      summary.samples,
+    )}`,
+  ];
+}
+
+function visitorScoreDetailRows(
+  locale: Locale,
+  messages: AppMessages,
+  labels: Labels,
+  samples: number,
+): string[] {
+  return [
+    `${labels.range}: ${visitorScoreRange()}`,
+    `${messages.performance.samplesLabel}: ${numberFormat(locale, samples)}`,
+  ];
 }
 
 function visitorSessionLeaveEvent(
@@ -905,102 +1356,227 @@ function ActivityGrid({
   activity: VisitorActivityDay[];
   locale: Locale;
 }) {
-  const { cells, monthLabels, weekdayLabels } = useMemo(() => {
-    const byDate = new globalThis.Map(
-      activity.map((item) => [item.date, item.count]),
-    );
-    const end = new Date();
-    end.setHours(0, 0, 0, 0);
-    const start = new Date(end);
-    start.setDate(start.getDate() - (VISITOR_ACTIVITY_DAYS - 1));
-    const leadingEmptyDays = start.getDay();
-    const dayItems: Array<{ date: Date; key: string; count: number }> = [];
-
-    for (
-      let cursor = new Date(start);
-      cursor <= end;
-      cursor.setDate(cursor.getDate() + 1)
-    ) {
-      const date = cursor.toISOString().slice(0, 10);
-      dayItems.push({
-        date: new Date(cursor),
-        key: date,
-        count: byDate.get(date) ?? 0,
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const { desktopSection, mobileSections, weekdayLabels, mobileWeekCount } =
+    useMemo(() => {
+      const monthFormatter = new Intl.DateTimeFormat(intlLocale(locale), {
+        month: "short",
       });
-    }
+      const dateFormatter = new Intl.DateTimeFormat(intlLocale(locale), {
+        month: "short",
+        day: "numeric",
+      });
+      const weekdayFormatter = new Intl.DateTimeFormat(intlLocale(locale), {
+        weekday: "narrow",
+      });
+      const buildSection = (
+        days: VisitorActivityDayItem[],
+      ): VisitorActivityCalendarSection => {
+        if (days.length === 0) {
+          return {
+            cells: [],
+            monthLabels: [],
+            weekCount: 0,
+          };
+        }
 
-    const nextCells: Array<
-      | { type: "empty"; key: string }
-      | { type: "day"; key: string; date: Date; count: number }
-    > = [
-      ...Array.from({ length: leadingEmptyDays }, (_, index) => ({
-        type: "empty" as const,
-        key: `empty-${index}`,
-      })),
-      ...dayItems.map((day) => ({ type: "day" as const, ...day })),
-    ];
-    const weekCount = Math.ceil(nextCells.length / 7);
-    const monthFormatter = new Intl.DateTimeFormat(intlLocale(locale), {
-      month: "short",
-    });
-    const dateFormatter = new Intl.DateTimeFormat(intlLocale(locale), {
-      month: "short",
-      day: "numeric",
-    });
-    const weekdayFormatter = new Intl.DateTimeFormat(intlLocale(locale), {
-      weekday: "narrow",
-    });
-    const labelsByWeek = Array.from({ length: weekCount }, (_, weekIndex) => {
-      const weekCells = nextCells.slice(weekIndex * 7, weekIndex * 7 + 7);
-      const firstMonthDay = weekCells.find(
-        (cell) => cell.type === "day" && cell.date.getDate() <= 7,
-      );
-      return firstMonthDay?.type === "day"
-        ? monthFormatter.format(firstMonthDay.date)
-        : "";
-    });
-    const weekdayNames = Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(2024, 0, 7 + index);
-      return weekdayFormatter.format(date);
-    });
-
-    return {
-      cells: nextCells.map((cell) =>
-        cell.type === "day"
-          ? {
-              ...cell,
-              title: `${dateFormatter.format(cell.date)}: ${numberFormat(
-                locale,
-                cell.count,
-              )}`,
+        const leadingEmptyDays = days[0]?.date.getDay() ?? 0;
+        const cells: VisitorActivityCalendarCell[] = [
+          ...Array.from({ length: leadingEmptyDays }, (_, index) => ({
+            type: "empty" as const,
+            key: `empty-${days[0]?.key ?? "section"}-${index}`,
+          })),
+          ...days.map((day) => ({ type: "day" as const, ...day })),
+        ];
+        const weekCount = Math.ceil(cells.length / 7);
+        const seenMonthKeys = new Set<string>();
+        const monthLabels = Array.from(
+          { length: weekCount },
+          (_, weekIndex) => {
+            const weekCells = cells.slice(weekIndex * 7, weekIndex * 7 + 7);
+            const firstMonthDay = weekCells.find((cell) => {
+              if (cell.type !== "day") return false;
+              const monthKey = `${cell.date.getFullYear()}-${cell.date.getMonth()}`;
+              if (seenMonthKeys.has(monthKey)) return false;
+              return weekIndex === 0 || cell.date.getDate() <= 7;
+            });
+            if (firstMonthDay?.type === "day") {
+              seenMonthKeys.add(
+                `${firstMonthDay.date.getFullYear()}-${firstMonthDay.date.getMonth()}`,
+              );
             }
-          : cell,
-      ),
-      monthLabels: labelsByWeek,
-      weekdayLabels: weekdayNames,
-    };
-  }, [activity, locale]);
+            return firstMonthDay?.type === "day"
+              ? monthFormatter.format(firstMonthDay.date)
+              : "";
+          },
+        );
+
+        return {
+          cells,
+          monthLabels,
+          weekCount,
+        };
+      };
+      const byDate = new globalThis.Map(
+        activity.map((item) => [item.date, item.count]),
+      );
+      const end = new Date();
+      end.setHours(0, 0, 0, 0);
+      const start = new Date(end);
+      start.setDate(start.getDate() - (VISITOR_ACTIVITY_DAYS - 1));
+      const dayItems: VisitorActivityDayItem[] = [];
+
+      for (
+        let cursor = new Date(start);
+        cursor <= end;
+        cursor.setDate(cursor.getDate() + 1)
+      ) {
+        const date = cursor.toISOString().slice(0, 10);
+        const count = byDate.get(date) ?? 0;
+        dayItems.push({
+          date: new Date(cursor),
+          key: date,
+          count,
+          title: `${dateFormatter.format(cursor)}: ${numberFormat(
+            locale,
+            count,
+          )}`,
+        });
+      }
+
+      const splitIndex = Math.ceil(dayItems.length / 2);
+      const nextMobileSections = [
+        buildSection(dayItems.slice(0, splitIndex)),
+        buildSection(dayItems.slice(splitIndex)),
+      ];
+      const weekdayNames = Array.from({ length: 7 }, (_, index) => {
+        const date = new Date(2024, 0, 7 + index);
+        return weekdayFormatter.format(date);
+      });
+
+      return {
+        desktopSection: buildSection(dayItems),
+        mobileSections: nextMobileSections,
+        weekdayLabels: weekdayNames,
+        mobileWeekCount: Math.max(
+          1,
+          ...nextMobileSections.map((section) => section.weekCount),
+        ),
+      };
+    }, [activity, locale]);
   const max = Math.max(
     1,
-    ...cells.map((cell) => (cell.type === "day" ? cell.count : 0)),
+    ...desktopSection.cells.map((cell) =>
+      cell.type === "day" ? cell.count : 0,
+    ),
+  );
+  const cellSizePx = useMemo(() => {
+    if (containerWidth <= 0) return 8;
+    const weekdayLabelWidth = 20;
+    const labelGap = 8;
+    const columnGap = 4;
+    const available =
+      containerWidth -
+      weekdayLabelWidth -
+      labelGap -
+      Math.max(0, desktopSection.weekCount - 1) * columnGap;
+    return Math.max(
+      7,
+      Math.min(16, available / Math.max(1, desktopSection.weekCount)),
+    );
+  }, [containerWidth, desktopSection.weekCount]);
+  const mobileCellSizePx = useMemo(() => {
+    if (containerWidth <= 0) return 10;
+    const weekdayLabelWidth = 20;
+    const labelGap = 8;
+    const columnGap = 3;
+    const available =
+      containerWidth -
+      weekdayLabelWidth -
+      labelGap -
+      Math.max(0, mobileWeekCount - 1) * columnGap;
+    return Math.max(7, Math.min(14, available / Math.max(1, mobileWeekCount)));
+  }, [containerWidth, mobileWeekCount]);
+  const activityStyle = {
+    scrollbarGutter: "stable",
+    "--activity-cell-size": `${cellSizePx}px`,
+    "--activity-mobile-cell-size": `${mobileCellSizePx}px`,
+  } as CSSProperties;
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+
+    const updateWidth = () => setContainerWidth(node.clientWidth);
+    updateWidth();
+
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const renderActivityCells = (
+    section: VisitorActivityCalendarSection,
+    cellClassName: string,
+  ) =>
+    section.cells.map((cell) => {
+      if (cell.type === "empty") {
+        return <span key={cell.key} className={cellClassName} />;
+      }
+      const intensity = cell.count / max;
+      return (
+        <span
+          key={cell.key}
+          title={cell.title}
+          className={cn(
+            cellClassName,
+            "rounded-[2px] ring-1 ring-border/70",
+            cell.count === 0 && "bg-muted",
+          )}
+          style={
+            cell.count > 0
+              ? {
+                  backgroundColor: `rgba(16, 185, 129, ${
+                    0.28 + intensity * 0.72
+                  })`,
+                }
+              : undefined
+          }
+        />
+      );
+    });
+  const renderActivityMonthLabels = (
+    section: VisitorActivityCalendarSection,
+    gridAutoColumnClassName: string,
+  ) => (
+    <div
+      className={cn(
+        "ml-7 grid grid-flow-col grid-rows-1 gap-1",
+        gridAutoColumnClassName,
+      )}
+    >
+      {section.monthLabels.map((label, index) => (
+        <span
+          key={`${label}-${index}`}
+          className="h-4 text-[10px] leading-4 text-muted-foreground"
+        >
+          {label}
+        </span>
+      ))}
+    </div>
   );
 
   return (
     <div
-      className="overflow-x-auto pb-1 [--activity-cell-size:clamp(0.72rem,calc((100vw-10rem)/60),1.35rem)]"
-      style={{ scrollbarGutter: "stable" }}
+      ref={containerRef}
+      className="w-full max-w-full overflow-x-auto pb-1"
+      style={activityStyle}
     >
-      <div className="mx-auto w-max min-w-max">
-        <div className="ml-7 grid grid-flow-col grid-rows-1 gap-1 [grid-auto-columns:var(--activity-cell-size)]">
-          {monthLabels.map((label, index) => (
-            <span
-              key={`${label}-${index}`}
-              className="h-4 text-[10px] leading-4 text-muted-foreground"
-            >
-              {label}
-            </span>
-          ))}
-        </div>
+      <div className="mx-auto hidden w-max min-w-max sm:block">
+        {renderActivityMonthLabels(
+          desktopSection,
+          "[grid-auto-columns:var(--activity-cell-size)]",
+        )}
         <div className="flex gap-2">
           <div className="grid grid-rows-7 gap-1">
             {weekdayLabels.map((label, index) => (
@@ -1013,38 +1589,44 @@ function ActivityGrid({
             ))}
           </div>
           <div className="grid grid-flow-col grid-rows-7 gap-1 [grid-auto-columns:var(--activity-cell-size)]">
-            {cells.map((cell) => {
-              if (cell.type === "empty") {
-                return (
-                  <span
-                    key={cell.key}
-                    className="size-[var(--activity-cell-size)]"
-                  />
-                );
-              }
-              const intensity = cell.count / max;
-              return (
-                <span
-                  key={cell.key}
-                  title={cell.title}
-                  className={cn(
-                    "size-[var(--activity-cell-size)] rounded-[2px] ring-1 ring-border/70",
-                    cell.count === 0 && "bg-muted",
-                  )}
-                  style={
-                    cell.count > 0
-                      ? {
-                          backgroundColor: `rgba(16, 185, 129, ${
-                            0.28 + intensity * 0.72
-                          })`,
-                        }
-                      : undefined
-                  }
-                />
-              );
-            })}
+            {renderActivityCells(
+              desktopSection,
+              "size-[var(--activity-cell-size)]",
+            )}
           </div>
         </div>
+      </div>
+
+      <div className="space-y-4 sm:hidden">
+        {mobileSections.map((section, sectionIndex) => (
+          <div
+            key={`activity-mobile-${sectionIndex}`}
+            className="mx-auto w-max max-w-full"
+          >
+            {renderActivityMonthLabels(
+              section,
+              "[grid-auto-columns:var(--activity-mobile-cell-size)]",
+            )}
+            <div className="flex gap-2">
+              <div className="grid grid-rows-7 gap-[3px]">
+                {weekdayLabels.map((label, index) => (
+                  <span
+                    key={`${label}-${sectionIndex}-${index}`}
+                    className="flex h-[var(--activity-mobile-cell-size)] w-5 items-center justify-end text-[10px] leading-none text-muted-foreground"
+                  >
+                    {index % 2 === 1 ? label : ""}
+                  </span>
+                ))}
+              </div>
+              <div className="grid grid-flow-col grid-rows-7 gap-[3px] [grid-auto-columns:var(--activity-mobile-cell-size)]">
+                {renderActivityCells(
+                  section,
+                  "size-[var(--activity-mobile-cell-size)]",
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1144,7 +1726,7 @@ function VisitDetailsCard({
         <CardTitle>{labels.visitDetailsTitle}</CardTitle>
         <CardDescription>{labels.visitDetailsSubtitle}</CardDescription>
       </CardHeader>
-      <CardContent className="px-2">
+      <CardContent className="px-4">
         {chronologicalEvents.length === 0 ? (
           <EmptyState>{labels.emptyEvents}</EmptyState>
         ) : (
@@ -1239,7 +1821,7 @@ function ActivityAndSessionsSection({
       </Card>
 
       <section className="space-y-3">
-        <h2 className="px-4 text-base font-semibold tracking-tight md:px-6">
+        <h2 className="text-base font-semibold tracking-tight">
           {labels.sessionRecords}
         </h2>
         <SessionsTableCard
@@ -1532,6 +2114,10 @@ function DetailContent({
     [detail],
   );
   const displayEvents = useMemo(() => visitorDisplayEvents(detail), [detail]);
+  const geoLocations = useMemo(
+    () => visitorGeoLocationInputs(detail),
+    [detail],
+  );
 
   return (
     <div className="pb-6">
@@ -1576,6 +2162,20 @@ function DetailContent({
           siteId={siteId}
           siteBasePath={siteBasePath}
           siteDomain={visitorSiteDomain}
+        />
+
+        <JourneyGeoLocationCard
+          locale={locale}
+          messages={messages}
+          title={labels.geoLocationTitle}
+          locations={geoLocations}
+        />
+
+        <VisitorPerformancePanel
+          locale={locale}
+          messages={messages}
+          labels={labels}
+          performance={detail.performance}
         />
       </div>
     </div>
