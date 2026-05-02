@@ -294,9 +294,15 @@ export function DashboardShell({
     (livePathname === `${activeSiteBase}/sessions/detail` ||
       livePathname.startsWith(`${activeSiteBase}/sessions/detail/`)),
   );
+  const isVisitorDetailRoute = Boolean(
+    hasActiveSite &&
+    activeSiteBase &&
+    (livePathname === `${activeSiteBase}/visitors/detail` ||
+      livePathname.startsWith(`${activeSiteBase}/visitors/detail/`)),
+  );
   const contentContainerClassName = isGeoRoute
     ? "flex min-h-0 flex-1 min-w-0 w-full flex-col [&>[data-page-transition]]:h-full"
-    : isRealtimeRoute || isSessionDetailRoute
+    : isRealtimeRoute || isSessionDetailRoute || isVisitorDetailRoute
       ? "min-w-0 w-full"
       : "mx-auto min-w-0 w-full max-w-[1400px] p-4 md:p-6";
   const mobileCurrentLevelName = hasActiveSite
