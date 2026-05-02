@@ -253,6 +253,7 @@ export interface VisitPerformanceMetrics {
 export interface JourneyPerformanceMetricSummary {
   avg: number | null;
   p75: number | null;
+  min: number | null;
   max: number | null;
   samples: number;
 }

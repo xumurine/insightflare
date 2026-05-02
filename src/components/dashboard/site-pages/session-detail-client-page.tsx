@@ -350,9 +350,7 @@ function copy(locale: Locale) {
         emptyCustomEvents: "暂无自定义事件",
         sincePrevious: "距上个事件",
         performanceTitle: "当前会话性能",
-        max: "最大值",
-        excellentThreshold: "优秀阈值",
-        poorThreshold: "较差阈值",
+        range: "范围",
       }
     : {
         titlePrefix: "Session",
@@ -398,9 +396,7 @@ function copy(locale: Locale) {
         emptyCustomEvents: "No custom events.",
         sincePrevious: "Since previous",
         performanceTitle: "Current session performance",
-        max: "Max",
-        excellentThreshold: "Great threshold",
-        poorThreshold: "Poor threshold",
+        range: "Range",
       };
 }
 
@@ -589,37 +585,62 @@ function sessionPerformancePanelValue(
   return formatSessionMetricValue(locale, messages, key, value);
 }
 
-function sessionMetricThresholdDetails(
+function formatSessionMetricRange(
+  locale: Locale,
+  messages: AppMessages,
+  metric: PerformanceMetricKey,
+  summary: JourneyPerformanceMetricSummary,
+): string {
+  if (
+    summary.min == null ||
+    summary.max == null ||
+    !Number.isFinite(summary.min) ||
+    !Number.isFinite(summary.max)
+  ) {
+    return "--";
+  }
+  return `${formatSessionMetricValue(
+    locale,
+    messages,
+    metric,
+    summary.min,
+  )} - ${formatSessionMetricValue(locale, messages, metric, summary.max)}`;
+}
+
+function sessionScoreRange(): string {
+  return "0 - 100";
+}
+
+function sessionMetricDetailRows(
   locale: Locale,
   messages: AppMessages,
   labels: Labels,
   metric: PerformanceMetricKey,
+  summary: JourneyPerformanceMetricSummary,
 ): string[] {
-  const thresholds = SESSION_PERFORMANCE_THRESHOLDS[metric];
   return [
-    `${labels.excellentThreshold}: <= ${formatSessionMetricValue(
+    `${labels.range}: ${formatSessionMetricRange(
       locale,
       messages,
       metric,
-      thresholds.good,
+      summary,
     )}`,
-    `${labels.poorThreshold}: > ${formatSessionMetricValue(
+    `${messages.performance.samplesLabel}: ${numberFormat(
       locale,
-      messages,
-      metric,
-      thresholds.poor,
+      summary.samples,
     )}`,
   ];
 }
 
-function sessionScoreThresholdDetails(
+function sessionScoreDetailRows(
+  locale: Locale,
   messages: AppMessages,
   labels: Labels,
+  samples: number,
 ): string[] {
   return [
-    `${labels.excellentThreshold}: >= 90`,
-    `${labels.poorThreshold}: < 50`,
-    messages.performance.scoreDescription,
+    `${labels.range}: ${sessionScoreRange()}`,
+    `${messages.performance.samplesLabel}: ${numberFormat(locale, samples)}`,
   ];
 }
 
@@ -740,32 +761,13 @@ function SessionPerformanceMetricCell({
       label={messages.performance[metric]}
       value={formatSessionMetricValue(locale, messages, metric, value)}
       status={status}
-      details={[
-        `${labels.status}: ${sessionPerformanceStatusLabel(messages, status)}`,
-        `${messages.performance.p75Label}: ${formatSessionMetricValue(
-          locale,
-          messages,
-          metric,
-          value,
-        )}`,
-        `${messages.performance.avgLabel}: ${formatSessionMetricValue(
-          locale,
-          messages,
-          metric,
-          summary.avg,
-        )}`,
-        `${labels.max}: ${formatSessionMetricValue(
-          locale,
-          messages,
-          metric,
-          summary.max,
-        )}`,
-        `${messages.performance.samplesLabel}: ${numberFormat(
-          locale,
-          summary.samples,
-        )}`,
-        ...sessionMetricThresholdDetails(locale, messages, labels, metric),
-      ]}
+      details={sessionMetricDetailRows(
+        locale,
+        messages,
+        labels,
+        metric,
+        summary,
+      )}
     />
   );
 }
@@ -818,17 +820,7 @@ function SessionPerformancePanel({
               score,
             )}
             status={scoreStatus}
-            details={[
-              `${labels.status}: ${sessionPerformanceStatusLabel(
-                messages,
-                scoreStatus,
-              )}`,
-              `${messages.performance.samplesLabel}: ${numberFormat(
-                locale,
-                samples,
-              )}`,
-              ...sessionScoreThresholdDetails(messages, labels),
-            ]}
+            details={sessionScoreDetailRows(locale, messages, labels, samples)}
           />
           {SESSION_PERFORMANCE_METRICS.map((metric) => (
             <SessionPerformanceMetricCell

@@ -4906,6 +4906,7 @@ function summarizeDemoJourneyPerformance(
   {
     avg: number | null;
     p75: number | null;
+    min: number | null;
     max: number | null;
     samples: number;
   }
@@ -4927,6 +4928,10 @@ function summarizeDemoJourneyPerformance(
         {
           avg,
           p75: demoPercentile(values, 0.75),
+          min:
+            values.length > 0
+              ? roundDemoPerformanceValue(values[0] ?? 0)
+              : null,
           max:
             values.length > 0
               ? roundDemoPerformanceValue(values[values.length - 1] ?? 0)
@@ -4940,6 +4945,7 @@ function summarizeDemoJourneyPerformance(
     {
       avg: number | null;
       p75: number | null;
+      min: number | null;
       max: number | null;
       samples: number;
     }

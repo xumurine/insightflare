@@ -140,6 +140,7 @@ interface VisitPerformanceMetricsRow {
 interface JourneyPerformanceMetricSummaryRow {
   avg: number | null;
   p75: number | null;
+  min: number | null;
   max: number | null;
   samples: number;
 }
@@ -7338,7 +7339,7 @@ function emptyJourneyPerformanceSummary(): JourneyPerformanceSummaryRow {
   return Object.fromEntries(
     PERFORMANCE_METRIC_KEYS.map((metric) => [
       metric,
-      { avg: null, p75: null, max: null, samples: 0 },
+      { avg: null, p75: null, min: null, max: null, samples: 0 },
     ]),
   ) as JourneyPerformanceSummaryRow;
 }
@@ -7372,6 +7373,7 @@ function summarizeJourneyPerformance(
     summary[metric] = {
       avg: roundPerformanceValue(total / values.length),
       p75: roundPerformanceValue(percentile(values, 75)),
+      min: roundPerformanceValue(Math.min(...values)),
       max: roundPerformanceValue(Math.max(...values)),
       samples: values.length,
     };
