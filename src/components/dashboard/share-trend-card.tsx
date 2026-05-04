@@ -1,6 +1,12 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  type ComponentType,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
@@ -59,6 +65,10 @@ interface ShareTrendCardProps {
   limit?: number;
   otherLabel?: string;
   headerBelow?: ReactNode;
+  formatSeriesLabel?: (series: BrowserTrendSeries) => string;
+  resolveSeriesIcon?: (
+    series: BrowserTrendSeries,
+  ) => ComponentType<{ className?: string }> | undefined;
 }
 
 function emptyTrendData(interval: DashboardInterval): BrowserTrendData {
@@ -120,8 +130,10 @@ function tooltipDateFormat(
 function seriesDisplayLabel(
   series: BrowserTrendSeries,
   otherLabel: string,
+  formatSeriesLabel?: (series: BrowserTrendSeries) => string,
 ): string {
-  return series.isOther ? otherLabel : series.label;
+  if (series.isOther) return otherLabel;
+  return formatSeriesLabel ? formatSeriesLabel(series) : series.label;
 }
 
 function ShareTrendCardSkeleton() {
@@ -167,6 +179,8 @@ export function ShareTrendCard({
   limit = 5,
   otherLabel = messages.browsers.otherLabel,
   headerBelow,
+  formatSeriesLabel,
+  resolveSeriesIcon,
 }: ShareTrendCardProps) {
   const [loading, setLoading] = useState(true);
   const [hydrated, setHydrated] = useState(false);
@@ -228,12 +242,13 @@ export function ShareTrendCard({
     () =>
       trendData.series.map((series, index) => ({
         ...series,
-        displayLabel: seriesDisplayLabel(series, otherLabel),
+        displayLabel: seriesDisplayLabel(series, otherLabel, formatSeriesLabel),
+        Icon: series.isOther ? undefined : resolveSeriesIcon?.(series),
         color: series.isOther
           ? "var(--muted-foreground)"
           : CHART_COLORS[index % CHART_COLORS.length],
       })),
-    [otherLabel, trendData.series],
+    [formatSeriesLabel, otherLabel, resolveSeriesIcon, trendData.series],
   );
   const chartConfig = useMemo(
     () =>
@@ -241,6 +256,7 @@ export function ShareTrendCard({
         config[series.key] = {
           label: series.displayLabel,
           color: series.color,
+          icon: series.Icon,
         };
         return config;
       }, {} as ChartConfig),
@@ -339,15 +355,20 @@ export function ShareTrendCard({
                         const currentSeries = chartSeries.find(
                           (item) => item.key === seriesKey,
                         );
+                        const SeriesIcon = currentSeries?.Icon;
                         return (
                           <div className="flex w-full items-center gap-3">
                             <span className="inline-flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-                              <span
-                                className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
-                                style={{
-                                  backgroundColor: currentSeries?.color,
-                                }}
-                              />
+                              {SeriesIcon ? (
+                                <SeriesIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                              ) : (
+                                <span
+                                  className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
+                                  style={{
+                                    backgroundColor: currentSeries?.color,
+                                  }}
+                                />
+                              )}
                               <span
                                 className="truncate text-muted-foreground"
                                 title={currentSeries?.displayLabel ?? seriesKey}

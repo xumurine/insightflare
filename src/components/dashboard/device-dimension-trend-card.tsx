@@ -1,5 +1,6 @@
 "use client";
 
+import { resolveDeviceTypeMeta } from "@/components/dashboard/journey-display";
 import { ShareTrendCard } from "@/components/dashboard/share-trend-card";
 import { fetchClientDimensionTrend } from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
@@ -60,6 +61,7 @@ export function DeviceDimensionTrendCard({
     dimension === "deviceType"
       ? fetchDeviceTypeTrend
       : fetchOperatingSystemTrend;
+  const isDeviceType = dimension === "deviceType";
 
   return (
     <ShareTrendCard
@@ -71,6 +73,26 @@ export function DeviceDimensionTrendCard({
       title={title}
       fetchTrend={fetchTrend}
       otherLabel={messages.devices.otherLabel}
+      formatSeriesLabel={
+        isDeviceType
+          ? (series) =>
+              resolveDeviceTypeMeta(
+                series.label,
+                locale,
+                messages.common.unknown,
+              ).label
+          : undefined
+      }
+      resolveSeriesIcon={
+        isDeviceType
+          ? (series) =>
+              resolveDeviceTypeMeta(
+                series.label,
+                locale,
+                messages.common.unknown,
+              ).Icon
+          : undefined
+      }
     />
   );
 }

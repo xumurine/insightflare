@@ -21,6 +21,7 @@ import {
   type GeoPointsMapCountryCount,
   type GeoPointsMapPoint,
 } from "@/components/dashboard/geo-points-map";
+import { resolveDeviceTypeMeta } from "@/components/dashboard/journey-display";
 import { useGeoStateTranslationBundle } from "@/components/dashboard/lazy-geo-location-label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clickable } from "@/components/ui/clickable";
@@ -1110,6 +1111,12 @@ function RealtimeLogEventDetailsDialog({
     locale,
     messages.common.unknown,
   ).label;
+  const deviceTypeMeta = resolveDeviceTypeMeta(
+    event.deviceType,
+    locale,
+    messages.common.unknown,
+  );
+  const DeviceTypeIcon = deviceTypeMeta.Icon;
   const detailRows = [
     {
       label: messages.common.id,
@@ -1225,7 +1232,8 @@ function RealtimeLogEventDetailsDialog({
       label: messages.common.deviceType,
       value: (
         <RealtimeEventDetailValue
-          value={event.deviceType.trim() || messages.common.unknown}
+          icon={<DeviceTypeIcon className="size-3.5 text-muted-foreground" />}
+          value={deviceTypeMeta.label}
         />
       ),
     },

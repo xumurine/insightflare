@@ -11,7 +11,7 @@ const THEMES = { light: "", dark: ".dark" } as const;
 export type ChartConfig = {
   [k in string]: {
     label?: React.ReactNode;
-    icon?: React.ComponentType;
+    icon?: React.ComponentType<{ className?: string }>;
   } & (
     | { color?: string; theme?: never }
     | { color?: never; theme: Record<keyof typeof THEMES, string> }
@@ -199,7 +199,7 @@ function ChartTooltipContent({
                 ) : (
                   <>
                     {itemConfig?.icon ? (
-                      <itemConfig.icon />
+                      <itemConfig.icon className="size-2.5 text-muted-foreground" />
                     ) : (
                       !hideIndicator && (
                         <div
@@ -291,7 +291,7 @@ function ChartLegendContent({
               )}
             >
               {itemConfig?.icon && !hideIcon ? (
-                <itemConfig.icon />
+                <itemConfig.icon className="size-3 text-muted-foreground" />
               ) : (
                 <div
                   className="h-2 w-2 shrink-0 rounded-[2px]"

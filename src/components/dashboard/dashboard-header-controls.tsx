@@ -24,6 +24,7 @@ import type { PartialOptions } from "overlayscrollbars";
 import { OverlayScrollbars } from "overlayscrollbars";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
+import { resolveDeviceTypeMeta } from "@/components/dashboard/journey-display";
 import {
   RealtimeStatusDot,
   realtimeStatusText,
@@ -504,6 +505,13 @@ function formatFilterOptionLabel(
   }
   if (key === "clientLanguage") {
     return resolveLanguageLabel(label, locale, messages.common.unknown).label;
+  }
+  if (key === "device" || key === "clientDeviceType") {
+    return resolveDeviceTypeMeta(
+      value || label,
+      locale,
+      messages.common.unknown,
+    ).label;
   }
   if (key === "geoContinent") {
     return resolveContinentLabel(

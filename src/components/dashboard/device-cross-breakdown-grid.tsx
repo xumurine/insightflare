@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
+import { resolveDeviceTypeMeta } from "@/components/dashboard/journey-display";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   type ChartConfig,
@@ -75,10 +76,11 @@ function emptyDimension(): BrowserCrossBreakdownDimensionData {
 function crossLabel(
   item: BrowserCrossBreakdownItem,
   messages: AppMessages,
+  formatLabel?: (value: string) => string,
 ): string {
   if (item.isOther) return messages.devices.otherLabel;
   if (item.isUnknown) return messages.common.unknown;
-  return item.label;
+  return formatLabel ? formatLabel(item.label) : item.label;
 }
 
 function shortenLabel(label: string, maxLength = 18): string {
@@ -88,6 +90,9 @@ function shortenLabel(label: string, maxLength = 18): string {
 function buildDisplayDimension(
   data: BrowserCrossBreakdownDimensionData,
   messages: AppMessages,
+  options?: {
+    formatRowLabel?: (value: string) => string;
+  },
 ): CrossDisplayDimension {
   const columns = data.columns.map((column, index) => ({
     ...column,
@@ -104,7 +109,7 @@ function buildDisplayDimension(
     rows: data.rows.map((row) => ({
       key: row.key,
       label: row.label,
-      displayLabel: crossLabel(row, messages),
+      displayLabel: crossLabel(row, messages, options?.formatRowLabel),
       views: row.views,
       visitors: row.visitors,
       sessions: row.sessions,
@@ -356,12 +361,20 @@ export function DeviceCrossBreakdownGrid({
   }, [filters, siteId, window.from, window.to]);
 
   const browserDimension = useMemo(
-    () => buildDisplayDimension(browserData, messages),
-    [browserData, messages],
+    () =>
+      buildDisplayDimension(browserData, messages, {
+        formatRowLabel: (value) =>
+          resolveDeviceTypeMeta(value, locale, messages.common.unknown).label,
+      }),
+    [browserData, locale, messages],
   );
   const osDimension = useMemo(
-    () => buildDisplayDimension(osData, messages),
-    [messages, osData],
+    () =>
+      buildDisplayDimension(osData, messages, {
+        formatRowLabel: (value) =>
+          resolveDeviceTypeMeta(value, locale, messages.common.unknown).label,
+      }),
+    [locale, messages, osData],
   );
 
   return (

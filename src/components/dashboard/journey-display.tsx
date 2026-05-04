@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type ComponentType,
   type ReactNode,
   type SyntheticEvent,
   useEffect,
@@ -46,6 +47,55 @@ const UNKNOWN_ICON_KEY = "unknown";
 const BROWSER_APPLE_ICON_KEYS = new Set(["ios", "ios-webview"]);
 const OS_APPLE_ICON_KEYS = new Set(["ios", "mac-os"]);
 const ABSOLUTE_URL_PATTERN = /^[a-z][a-z\d+\-.]*:\/\//i;
+
+export type DeviceTypeIcon = ComponentType<{ className?: string }>;
+
+export function resolveDeviceTypeMeta(
+  deviceType: string,
+  locale: Locale | undefined,
+  unknownLabel: string,
+): { label: string; Icon: DeviceTypeIcon } {
+  const normalized = deviceType.trim();
+  const lowered = normalized.toLocaleLowerCase();
+  const isUnknown =
+    normalized.length === 0 ||
+    lowered === "unknown" ||
+    lowered === "undefined" ||
+    lowered === "null";
+  const isTablet = lowered.includes("tablet");
+  const isMobile =
+    lowered.includes("mobile") ||
+    lowered.includes("phone") ||
+    lowered.includes("cellphone");
+  const isDesktop =
+    lowered.includes("desktop") ||
+    lowered.includes("computer") ||
+    lowered === "pc";
+  const Icon = isTablet
+    ? RiTabletLine
+    : isMobile
+      ? RiCellphoneLine
+      : isDesktop
+        ? RiComputerLine
+        : RiDeviceLine;
+  const label = isUnknown
+    ? unknownLabel
+    : isTablet
+      ? locale === "zh"
+        ? "平板"
+        : "Tablet"
+      : isMobile
+        ? locale === "zh"
+          ? "手机"
+          : "Mobile"
+        : isDesktop
+          ? locale === "zh"
+            ? "桌面"
+            : "Desktop"
+          : normalized;
+
+  return { label, Icon };
+}
 
 export function VisitorAvatar({
   seed,
@@ -272,37 +322,11 @@ export function DeviceMeta({
   unknownLabel: string;
   className?: string;
 }) {
-  const normalized = deviceType.trim();
-  const lowered = normalized.toLocaleLowerCase();
-  const isTablet = lowered.includes("tablet");
-  const isMobile =
-    lowered.includes("mobile") ||
-    lowered.includes("phone") ||
-    lowered.includes("cellphone");
-  const isDesktop =
-    lowered.includes("desktop") ||
-    lowered.includes("computer") ||
-    lowered === "pc";
-  const DeviceIcon = isTablet
-    ? RiTabletLine
-    : isMobile
-      ? RiCellphoneLine
-      : isDesktop
-        ? RiComputerLine
-        : RiDeviceLine;
-  const label = isTablet
-    ? locale === "zh"
-      ? "平板"
-      : "Tablet"
-    : isMobile
-      ? locale === "zh"
-        ? "手机"
-        : "Mobile"
-      : isDesktop
-        ? locale === "zh"
-          ? "桌面"
-          : "Desktop"
-        : normalized || unknownLabel;
+  const { Icon: DeviceIcon, label } = resolveDeviceTypeMeta(
+    deviceType,
+    locale,
+    unknownLabel,
+  );
   return (
     <InlineMeta
       icon={<DeviceIcon className="size-4 text-muted-foreground" />}

@@ -29,6 +29,10 @@ import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table
 import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import {
+  DeviceMeta,
+  resolveDeviceTypeMeta,
+} from "@/components/dashboard/journey-display";
+import {
   LazyGeoCityBreadcrumbLabel,
   LazyGeoRegionBreadcrumbLabel,
 } from "@/components/dashboard/lazy-geo-location-label";
@@ -2739,7 +2743,10 @@ export function OverviewPagesSection({
       osVersion: toRows(resolvedClientDimensionCardTabData.osVersion ?? [], {
         resolveIconName: resolveOsLogoIconName,
       }),
-      deviceType: toRows(resolvedClientDimensionCardTabData.deviceType ?? []),
+      deviceType: toRows(resolvedClientDimensionCardTabData.deviceType ?? [], {
+        transformLabel: (value) =>
+          resolveDeviceTypeMeta(value, locale, messages.common.unknown).label,
+      }),
       language: toRows(resolvedClientDimensionCardTabData.language ?? [], {
         transformLabel: (value) =>
           resolveLanguageLabel(value, locale, messages.common.unknown).label,
@@ -2977,11 +2984,14 @@ export function OverviewPagesSection({
   const searchedClientDimensionCardRows = useMemo(() => {
     if (!normalizedClientDimensionCardSearchTerm)
       return sortedClientDimensionCardRows;
-    return sortedClientDimensionCardRows.filter((row) =>
-      row.label
-        .toLocaleLowerCase()
-        .includes(normalizedClientDimensionCardSearchTerm),
-    );
+    return sortedClientDimensionCardRows.filter((row) => {
+      const normalizedLabel = row.label.toLocaleLowerCase();
+      const normalizedRawLabel = (row.rawLabel ?? "").toLocaleLowerCase();
+      return (
+        normalizedLabel.includes(normalizedClientDimensionCardSearchTerm) ||
+        normalizedRawLabel.includes(normalizedClientDimensionCardSearchTerm)
+      );
+    });
   }, [normalizedClientDimensionCardSearchTerm, sortedClientDimensionCardRows]);
   const searchedGeoDimensionCardRows = useMemo(() => {
     if (!normalizedGeoDimensionCardSearchTerm)
@@ -3688,10 +3698,18 @@ export function OverviewPagesSection({
                   item.mono && "font-mono",
                 )}
               >
-                <LabelWithLeadingIcon
-                  label={item.label}
-                  iconName={item.iconName}
-                />
+                {clientDimensionCardTab === "deviceType" ? (
+                  <DeviceMeta
+                    deviceType={item.rawLabel ?? item.label}
+                    locale={locale}
+                    unknownLabel={messages.common.unknown}
+                  />
+                ) : (
+                  <LabelWithLeadingIcon
+                    label={item.label}
+                    iconName={item.iconName}
+                  />
+                )}
               </div>
             </TableCell>
             <TableCell className="p-0">

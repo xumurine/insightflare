@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { type ComponentType, useMemo } from "react";
 import { Label, PolarRadiusAxis, RadialBar, RadialBarChart } from "recharts";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +27,7 @@ export interface ShareRadialCardItem {
   value: number;
   isOther?: boolean;
   color?: string;
+  icon?: ComponentType<{ className?: string }>;
 }
 
 interface ShareRadialCardProps {
@@ -104,8 +105,12 @@ export function ShareRadialCard({
                   const key = String(item.dataKey ?? "");
                   const value = Number(item.value ?? 0);
                   const share = totalValue > 0 ? value / totalValue : 0;
+                  const resolvedItem = resolvedItems.find(
+                    (entry) => entry.key === key,
+                  );
                   const label = String(chartConfig[key]?.label ?? key);
                   const color = chartConfig[key]?.color;
+                  const ItemIcon = resolvedItem?.icon;
 
                   return (
                     <div className="grid min-w-[10rem] gap-1 rounded-none border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
@@ -114,6 +119,9 @@ export function ShareRadialCard({
                           className="size-2.5 shrink-0 rounded-[2px]"
                           style={{ backgroundColor: color }}
                         />
+                        {ItemIcon ? (
+                          <ItemIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                        ) : null}
                         <span className="font-medium">{label}</span>
                       </div>
                       <div className="flex items-center justify-between gap-3">
@@ -173,6 +181,7 @@ export function ShareRadialCard({
           <div className="-mt-8 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
             {resolvedItems.map((item) => {
               const share = totalValue > 0 ? item.value / totalValue : 0;
+              const ItemIcon = item.icon;
               return (
                 <div
                   key={item.key}
@@ -182,6 +191,9 @@ export function ShareRadialCard({
                     className="size-2.5 shrink-0 rounded-[2px]"
                     style={{ backgroundColor: item.color }}
                   />
+                  {ItemIcon ? (
+                    <ItemIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                  ) : null}
                   <span className="text-muted-foreground">{item.label}</span>
                   <span className="font-mono tabular-nums text-foreground">
                     {percentFormat(locale, share)}

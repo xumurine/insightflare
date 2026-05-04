@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
+import {
+  type DeviceTypeIcon,
+  resolveDeviceTypeMeta,
+} from "@/components/dashboard/journey-display";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -44,6 +48,7 @@ interface BrowserCrossBreakdownGridProps {
 interface BrowserCrossDisplayItem extends BrowserCrossBreakdownItem {
   color: string;
   displayLabel: string;
+  Icon?: DeviceTypeIcon;
 }
 
 interface BrowserCrossChartRow {
@@ -84,10 +89,11 @@ function emptyBrowserCrossBreakdown(): BrowserCrossBreakdownData {
 function crossItemLabel(
   item: BrowserCrossBreakdownItem,
   messages: AppMessages,
+  formatLabel?: (value: string) => string,
 ): string {
   if (item.isOther) return messages.browsers.otherLabel;
   if (item.isUnknown) return messages.common.unknown;
-  return item.label;
+  return formatLabel ? formatLabel(item.label) : item.label;
 }
 
 function shortenLabel(label: string, maxLength = 18): string {
@@ -97,13 +103,21 @@ function shortenLabel(label: string, maxLength = 18): string {
 function buildCrossDisplayDimension(
   data: BrowserCrossBreakdownDimensionData,
   messages: AppMessages,
+  options?: {
+    formatColumnLabel?: (value: string) => string;
+    resolveColumnIcon?: (value: string) => DeviceTypeIcon;
+  },
 ): BrowserCrossDisplayDimension {
   const columns = data.columns.map((column, index) => ({
     ...column,
     color: column.isOther
       ? "var(--muted-foreground)"
       : STACK_COLORS[index % STACK_COLORS.length],
-    displayLabel: crossItemLabel(column, messages),
+    displayLabel: crossItemLabel(column, messages, options?.formatColumnLabel),
+    Icon:
+      column.isOther || column.isUnknown
+        ? undefined
+        : options?.resolveColumnIcon?.(column.label),
   }));
   const columnByKey = new Map(columns.map((column) => [column.key, column]));
 
@@ -123,7 +137,12 @@ function buildCrossDisplayDimension(
         return {
           ...cell,
           color: column?.color ?? "var(--muted-foreground)",
-          displayLabel: crossItemLabel(cell, messages),
+          displayLabel: crossItemLabel(
+            cell,
+            messages,
+            options?.formatColumnLabel,
+          ),
+          Icon: column?.Icon,
         };
       }),
     })),
@@ -154,6 +173,7 @@ function BrowserCrossStackedBarCard({
         config[column.key] = {
           label: column.displayLabel,
           color: column.color,
+          icon: column.Icon,
         };
         return config;
       }, {} as ChartConfig),
@@ -260,6 +280,7 @@ function BrowserCrossStackedBarCard({
                             const currentSeries = dimension.columns.find(
                               (column) => column.key === seriesKey,
                             );
+                            const SeriesIcon = currentSeries?.Icon;
                             const share = Math.max(0, Number(item.value ?? 0));
                             const visitors = Math.max(
                               0,
@@ -272,12 +293,16 @@ function BrowserCrossStackedBarCard({
                                 className="flex items-center gap-3"
                               >
                                 <span className="inline-flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-                                  <span
-                                    className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
-                                    style={{
-                                      backgroundColor: currentSeries?.color,
-                                    }}
-                                  />
+                                  {SeriesIcon ? (
+                                    <SeriesIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                                  ) : (
+                                    <span
+                                      className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
+                                      style={{
+                                        backgroundColor: currentSeries?.color,
+                                      }}
+                                    />
+                                  )}
                                   <span
                                     className="truncate text-muted-foreground"
                                     title={
@@ -382,8 +407,14 @@ export function BrowserCrossBreakdownGrid({
     [breakdownData.operatingSystem, messages],
   );
   const deviceType = useMemo(
-    () => buildCrossDisplayDimension(breakdownData.deviceType, messages),
-    [breakdownData.deviceType, messages],
+    () =>
+      buildCrossDisplayDimension(breakdownData.deviceType, messages, {
+        formatColumnLabel: (value) =>
+          resolveDeviceTypeMeta(value, locale, messages.common.unknown).label,
+        resolveColumnIcon: (value) =>
+          resolveDeviceTypeMeta(value, locale, messages.common.unknown).Icon,
+      }),
+    [breakdownData.deviceType, locale, messages],
   );
 
   return (

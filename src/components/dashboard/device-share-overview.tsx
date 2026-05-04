@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
+import { resolveDeviceTypeMeta } from "@/components/dashboard/journey-display";
 import { ShareRadialCard } from "@/components/dashboard/share-radial-card";
 import { fetchClientDimensionTrend } from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
@@ -18,7 +19,8 @@ function seriesLabel(
   series: BrowserTrendData["series"][number],
   messages: AppMessages,
 ): string {
-  return series.isOther ? messages.devices.otherLabel : series.label;
+  if (series.isOther) return messages.devices.otherLabel;
+  return series.label;
 }
 
 interface DeviceShareOverviewProps {
@@ -80,12 +82,22 @@ export function DeviceShareOverview({
       <div className="grid gap-4 md:grid-cols-2">
         <ShareRadialCard
           title={messages.devices.deviceShareTitle}
-          items={deviceTrend.series.map((item) => ({
-            key: item.key,
-            label: seriesLabel(item, messages),
-            value: item.visitors,
-            isOther: item.isOther,
-          }))}
+          items={deviceTrend.series.map((item) => {
+            const deviceMeta = resolveDeviceTypeMeta(
+              item.label,
+              locale,
+              messages.common.unknown,
+            );
+            return {
+              key: item.key,
+              label: item.isOther
+                ? messages.devices.otherLabel
+                : deviceMeta.label,
+              value: item.visitors,
+              isOther: item.isOther,
+              icon: item.isOther ? undefined : deviceMeta.Icon,
+            };
+          })}
           locale={locale}
           valueLabel={messages.common.visitors}
         />
