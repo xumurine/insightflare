@@ -293,6 +293,12 @@ function toQueryString(params?: Record<string, string | number>): string {
   return encoded.length > 0 ? `?${encoded}` : "";
 }
 
+// Concurrent identical GET requests share a single in-flight promise so a
+// dashboard page mounting many cards at once does not fan out into multiple
+// fetches for the same URL. The map is cleared as soon as the request
+// settles so subsequent retries / re-fetches still hit the network.
+const inflightPrivateRequests = new Map<string, Promise<unknown>>();
+
 async function fetchPrivateJson<T>(
   path: string,
   params?: Record<string, string | number>,
@@ -301,16 +307,27 @@ async function fetchPrivateJson<T>(
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     return handleDemoRequest({ path, params }) as T;
   }
-  const res = await fetch(`${path}${toQueryString(params)}`, {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
+  const url = `${path}${toQueryString(params)}`;
+  const existing = inflightPrivateRequests.get(url) as Promise<T> | undefined;
+  if (existing) return existing;
+  const promise = (async () => {
+    const res = await fetch(url, {
+      method: "GET",
+      credentials: "include",
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Request failed (${res.status} ${path}): ${text}`);
+    }
+    return (await res.json()) as T;
+  })();
+  inflightPrivateRequests.set(url, promise);
+  void promise.finally(() => {
+    if (inflightPrivateRequests.get(url) === promise) {
+      inflightPrivateRequests.delete(url);
+    }
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Request failed (${res.status} ${path}): ${text}`);
-  }
-  return (await res.json()) as T;
+  return promise;
 }
 
 async function fetchPrivateJsonMutate<T>(

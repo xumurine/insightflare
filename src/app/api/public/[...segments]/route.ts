@@ -5,7 +5,8 @@ export async function GET(request: Request): Promise<Response> {
   const {
     request: requestWithCf,
     env,
+    ctx,
     url,
   } = await resolveEdgeRuntime(request);
-  return handlePublicQuery(requestWithCf, env, url);
+  return handlePublicQuery(requestWithCf, env, url, ctx);
 }

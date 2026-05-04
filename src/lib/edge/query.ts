@@ -11,6 +11,7 @@ import {
   zonedParts,
 } from "@/lib/dashboard/time-zone";
 
+import { withDashboardCache } from "./dashboard-cache";
 import { requireSession } from "./session-auth";
 import type { Env } from "./types";
 import { coerceNumber, ONE_DAY_MS, ONE_HOUR_MS } from "./utils";
@@ -6321,6 +6322,7 @@ export async function handlePrivateQuery(
   request: Request,
   env: Env,
   url: URL,
+  ctx?: ExecutionContext,
 ): Promise<Response> {
   if (request.method !== "GET") return notAllowed();
   const pathname = url.pathname.replace(/^\/api\/private\//, "");
@@ -6329,20 +6331,28 @@ export async function handlePrivateQuery(
   }
   const site = await resolvePrivateSite(request, env, url);
   if (site instanceof Response) return site;
-  return routeQuery(env, site.id, pathname, url, { publicMode: false });
+  // Auth has passed; wrap the read-only dispatch with the edge cache so two
+  // dashboards (and two viewers of the same site) don't repeatedly re-issue
+  // the same aggregation SQL against D1.
+  return withDashboardCache(ctx, url, () =>
+    routeQuery(env, site.id, pathname, url, { publicMode: false }),
+  );
 }
 
 export async function handlePublicQuery(
   request: Request,
   env: Env,
   url: URL,
+  ctx?: ExecutionContext,
 ): Promise<Response> {
   if (request.method !== "GET") return notAllowed();
   const site = await fetchPublicSite(env, url);
   if (site instanceof Response) return site;
   const segments = url.pathname.split("/").filter(Boolean);
   const pathname = segments.slice(3).join("/");
-  return routeQuery(env, site.id, pathname, url, { publicMode: true });
+  return withDashboardCache(ctx, url, () =>
+    routeQuery(env, site.id, pathname, url, { publicMode: true }),
+  );
 }
 async function queryDimensionFromD1(
   env: Env,
