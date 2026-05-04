@@ -10,7 +10,6 @@ import {
   SessionsTableCard,
 } from "@/components/dashboard/sessions-table-card";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
-import { AutoTransition } from "@/components/ui/auto-transition";
 import { Input } from "@/components/ui/input";
 import { fetchSessions } from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
@@ -143,7 +142,6 @@ export function SessionsClientPage({
       timeWindow.to,
     ],
   );
-  const tableTransitionKey = `sessions-table-${debouncedQuery || "all"}`;
   const replacingRows =
     loadingInitial || latestRequestKeyRef.current !== requestKey;
 
@@ -307,30 +305,22 @@ export function SessionsClientPage({
         />
       </div>
 
-      <AutoTransition
-        type="fade"
-        duration={0.18}
-        initial={false}
-        className="w-full"
-      >
-        <SessionsTableCard
-          key={tableTransitionKey}
-          locale={locale}
-          messages={messages}
-          labels={labels}
-          rows={rows}
-          pathname={pathname}
-          sort={sort}
-          onSort={toggleSort}
-          loadingRows={replacingRows}
-          loadingMore={loadingMore}
-          error={error}
-          appendError={appendError}
-          hasMore={meta.hasMore}
-          skeletonRows={SESSION_SKELETON_ROWS}
-          sentinelRef={setSentinelNode}
-        />
-      </AutoTransition>
+      <SessionsTableCard
+        locale={locale}
+        messages={messages}
+        labels={labels}
+        rows={rows}
+        pathname={pathname}
+        sort={sort}
+        onSort={toggleSort}
+        loadingRows={replacingRows}
+        loadingMore={loadingMore}
+        error={error}
+        appendError={appendError}
+        hasMore={meta.hasMore}
+        skeletonRows={SESSION_SKELETON_ROWS}
+        sentinelRef={setSentinelNode}
+      />
     </div>
   );
 }

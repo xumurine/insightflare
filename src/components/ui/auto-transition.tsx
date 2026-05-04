@@ -15,14 +15,18 @@ export type TransitionType =
   | "slideUp"
   | "slideDown";
 
-export interface AutoTransitionProps {
+export interface AutoTransitionProps extends Omit<
+  React.HTMLAttributes<HTMLElement>,
+  "children" | "className"
+> {
   children: React.ReactNode;
-  as?: "div" | "g";
+  as?: "div" | "g" | "tbody";
   className?: string;
   duration?: number;
   type?: TransitionType;
   initial?: boolean;
   custom?: unknown;
+  transitionKey?: string | number;
   presenceMode?: "sync" | "wait" | "popLayout";
   customVariants?: {
     initial?: TargetAndTransition | ((custom: unknown) => TargetAndTransition);
@@ -74,8 +78,10 @@ export function AutoTransition({
   type = "fade",
   initial = true,
   custom,
+  transitionKey,
   presenceMode = "wait",
   customVariants,
+  ...motionProps
 }: AutoTransitionProps) {
   const [hasRendered, setHasRendered] = useState(false);
 
@@ -84,6 +90,7 @@ export function AutoTransition({
   }, [hasRendered]);
 
   const key = useMemo(() => {
+    if (transitionKey !== undefined) return String(transitionKey);
     if (!children) return "empty";
 
     const childArray = React.Children.toArray(children);
@@ -108,17 +115,18 @@ export function AutoTransition({
     return typeof firstChild === "string" || typeof firstChild === "number"
       ? String(firstChild)
       : "node";
-  }, [children]);
+  }, [children, transitionKey]);
 
   const selectedVariants = customVariants || transitionVariants[type];
   const shouldAnimate = initial || hasRendered;
   const MotionComponent = (
-    as === "g" ? motion.g : motion.div
-  ) as typeof motion.div;
+    as === "g" ? motion.g : as === "tbody" ? motion.tbody : motion.div
+  ) as React.ElementType;
 
   return (
     <AnimatePresence mode={presenceMode} custom={custom}>
       <MotionComponent
+        {...motionProps}
         key={key}
         className={className}
         custom={custom}

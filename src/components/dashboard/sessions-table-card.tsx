@@ -15,11 +15,11 @@ import {
   ReferrerMeta,
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
-  TableBody,
   TableCell,
   TableHead,
   TableHeader,
@@ -142,6 +142,20 @@ function PageViewsValue({ locale, views }: { locale: Locale; views: number }) {
   return <span className="font-mono tabular-nums">{value}</span>;
 }
 
+function SessionDurationValue({
+  locale,
+  durationMs,
+}: {
+  locale: Locale;
+  durationMs: number;
+}) {
+  if (durationMs === 0) {
+    return <span className="text-muted-foreground">-</span>;
+  }
+
+  return <>{formatDuration(locale, durationMs)}</>;
+}
+
 function SortIndicator({
   active,
   direction,
@@ -251,6 +265,13 @@ export function SessionsTableCard({
     event.preventDefault();
     openSession(href);
   };
+  const bodyState = loadingRows
+    ? "loading"
+    : error
+      ? "error"
+      : rows.length === 0 && !hasMore
+        ? "empty"
+        : "rows";
 
   return (
     <Card className="py-0">
@@ -291,7 +312,17 @@ export function SessionsTableCard({
               <TableHead>{labels.exitPage}</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody aria-busy={loadingRows || loadingMore}>
+          <AutoTransition
+            as="tbody"
+            transitionKey={bodyState}
+            initial={false}
+            duration={0.18}
+            type="fade"
+            presenceMode="wait"
+            aria-busy={loadingRows || loadingMore}
+            data-slot="table-body"
+            className="[&_tr:last-child]:border-0"
+          >
             {loadingRows ? (
               Array.from({ length: skeletonRows }, (_, index) => (
                 <SessionRowSkeleton
@@ -356,7 +387,10 @@ export function SessionsTableCard({
                         {formatRelativeTime(locale, row.startedAt, now)}
                       </TableCell>
                       <TableCell className="text-right font-mono tabular-nums">
-                        {formatDuration(locale, row.durationMs)}
+                        <SessionDurationValue
+                          locale={locale}
+                          durationMs={row.durationMs}
+                        />
                       </TableCell>
                       <TableCell className="text-center">
                         <PageViewsValue locale={locale} views={row.views} />
@@ -427,7 +461,7 @@ export function SessionsTableCard({
                 ) : null}
               </>
             )}
-          </TableBody>
+          </AutoTransition>
         </Table>
       </CardContent>
     </Card>
