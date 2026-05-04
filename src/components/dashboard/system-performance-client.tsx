@@ -60,69 +60,15 @@ const WINDOW_OPTIONS: readonly SystemPerformanceWindowMinutes[] = [
   15, 60, 360, 1440,
 ] as const;
 
-function bucketSizeMsForWindow(
-  minutes: SystemPerformanceWindowMinutes,
-): number {
-  if (minutes <= 15) return 60_000;
-  if (minutes <= 60) return 300_000;
-  if (minutes <= 360) return 1_800_000;
-  return 3_600_000;
-}
-
-function emptySystemPerformanceData(
-  minutes: SystemPerformanceWindowMinutes,
-): SystemPerformanceData {
-  const generatedAt = Date.now();
-  return {
-    ok: true,
-    generatedAt,
-    window: {
-      from: generatedAt - minutes * 60 * 1000,
-      to: generatedAt,
-      minutes,
-      bucketSizeMs: bucketSizeMsForWindow(minutes),
-    },
-    thresholds: {
-      delayedMs: 5 * 60 * 1000,
-      futureSkewMs: 30 * 1000,
-      trustedLatencyMaxMs: 24 * 60 * 60 * 1000,
-      staleOpenVisitMs: 30 * 60 * 1000,
-      timedOutOpenVisitMs: 12 * 60 * 60 * 1000,
-    },
-    summary: {
-      totalEvents: 0,
-      visits: 0,
-      customEvents: 0,
-      activeSites: 0,
-      eventsPerMinute: 0,
-      latestCreatedAt: null,
-      dataFreshnessMs: null,
-      avgLatencyMs: null,
-      p50LatencyMs: null,
-      p95LatencyMs: null,
-      trustedLatencySamples: 0,
-      delayedEvents: 0,
-      futureSkewedEvents: 0,
-      anomalyRate: 0,
-    },
-    openVisits: {
-      total: 0,
-      stale: 0,
-      timedOut: 0,
-      oldestStartedAt: null,
-      newestActivityAt: null,
-    },
-    trend: [],
-    topSites: [],
-    slowEvents: [],
-  };
-}
-
 async function fetchSystemPerformance(
   minutes: SystemPerformanceWindowMinutes,
 ): Promise<SystemPerformanceData> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    return emptySystemPerformanceData(minutes);
+    const { handleDemoRequest } = await import("@/lib/realtime/mock");
+    return handleDemoRequest({
+      path: "/api/private/admin/system-performance",
+      params: { minutes },
+    }) as SystemPerformanceData;
   }
 
   const response = await fetch(
