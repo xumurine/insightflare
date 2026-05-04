@@ -727,11 +727,17 @@ export interface AppMessages {
     totalEvents: string;
     p95Latency: string;
     p50Latency: string;
+    p75Latency: string;
+    p50Label: string;
+    p75Label: string;
+    p95Label: string;
     dataFreshness: string;
     noRecentWrite: string;
     clockAnomalies: string;
     delayed: string;
     future: string;
+    latencyPercentileTrend: string;
+    latencyPercentileTrendDescription: string;
     throughputTrend: string;
     throughputTrendDescription: string;
     visits: string;
@@ -745,6 +751,9 @@ export interface AppMessages {
     oldestOpen: string;
     latestActivity: string;
     estimationNote: string;
+    latencySampleHealth: string;
+    latencySampleHealthDescription: string;
+    trustedSamples: string;
     topSitesTitle: string;
     topSitesDescription: string;
     events: string;

@@ -10,6 +10,7 @@ export interface SystemPerformanceSummary {
   dataFreshnessMs: number | null;
   avgLatencyMs: number | null;
   p50LatencyMs: number | null;
+  p75LatencyMs: number | null;
   p95LatencyMs: number | null;
   trustedLatencySamples: number;
   delayedEvents: number;
@@ -32,6 +33,9 @@ export interface SystemPerformanceTrendPoint {
   customEvents: number;
   totalEvents: number;
   avgLatencyMs: number | null;
+  p50LatencyMs: number | null;
+  p75LatencyMs: number | null;
+  p95LatencyMs: number | null;
   delayedEvents: number;
   futureSkewedEvents: number;
 }

@@ -713,11 +713,17 @@ systemPerformance:
   totalEvents: 已接收事件
   p95Latency: P95 估算延迟
   p50Latency: P50
+  p75Latency: P75
+  p50Label: P50
+  p75Label: P75
+  p95Label: P95
   dataFreshness: 数据新鲜度
   noRecentWrite: 暂无最近写入
   clockAnomalies: 时钟/延迟异常
   delayed: 延迟
   future: 未来时钟
+  latencyPercentileTrend: 延迟分位趋势
+  latencyPercentileTrendDescription: 按服务端写入时间分桶，展示可信样本的 P50、P75、P95 估算延迟。
   throughputTrend: 已接收事件吞吐
   throughputTrendDescription: 按服务端写入时间分桶，柱条合并访问和自定义事件。
   visits: 访问
@@ -731,6 +737,9 @@ systemPerformance:
   oldestOpen: 最早未关闭
   latestActivity: 最近活动
   estimationNote: 估算延迟等于服务端写入时间减客户端事件时间，因此会包含浏览器排队和错误客户端时钟。
+  latencySampleHealth: 延迟样本健康度
+  latencySampleHealthDescription: 只统计非负且未超过可信上限的延迟样本。
+  trustedSamples: 可信样本
   topSitesTitle: 系统负载最高的站点
   topSitesDescription: 当前窗口内产生最多已接收行的站点。
   events: 事件

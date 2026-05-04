@@ -713,11 +713,17 @@ systemPerformance:
   totalEvents: Accepted Events
   p95Latency: P95 Estimated Delay
   p50Latency: P50
+  p75Latency: P75
+  p50Label: P50
+  p75Label: P75
+  p95Label: P95
   dataFreshness: Data Freshness
   noRecentWrite: No recent write
   clockAnomalies: Clock / Delay Anomalies
   delayed: Delayed
   future: Future clock
+  latencyPercentileTrend: Latency Percentile Trend
+  latencyPercentileTrendDescription: P50, P75, and P95 estimated delay for trusted samples grouped by server write time.
   throughputTrend: Accepted Event Throughput
   throughputTrendDescription: Rows grouped by server write time. Bars combine visits and custom events.
   visits: Visits
@@ -731,6 +737,9 @@ systemPerformance:
   oldestOpen: Oldest open
   latestActivity: Latest activity
   estimationNote: Estimated delay is server write time minus client event time, so browser queueing and wrong client clocks are included.
+  latencySampleHealth: Latency Sample Health
+  latencySampleHealthDescription: Counts only non-negative delay samples below the trusted upper bound.
+  trustedSamples: Trusted samples
   topSitesTitle: Top Sites by System Load
   topSitesDescription: Sites producing the most accepted rows in the selected window.
   events: Events

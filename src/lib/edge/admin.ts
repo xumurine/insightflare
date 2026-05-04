@@ -1241,6 +1241,7 @@ async function hSystemPerformance(
         )
         SELECT
           MIN(CASE WHEN rn >= total * 0.5 THEN latencyMs END) AS p50LatencyMs,
+          MIN(CASE WHEN rn >= total * 0.75 THEN latencyMs END) AS p75LatencyMs,
           MIN(CASE WHEN rn >= total * 0.95 THEN latencyMs END) AS p95LatencyMs
         FROM ranked_latency
       `,
@@ -1249,18 +1250,57 @@ async function hSystemPerformance(
       .first<Record<string, unknown>>(),
     env.DB.prepare(
       `
-        ${SYSTEM_EVENTS_CTE}
+        ${SYSTEM_EVENTS_CTE},
+        trend_aggregate AS (
+          SELECT
+            CAST(createdAtSec / ? AS INTEGER) * ? AS bucketSec,
+            SUM(CASE WHEN kind = 'visit' THEN 1 ELSE 0 END) AS visits,
+            SUM(CASE WHEN kind = 'custom_event' THEN 1 ELSE 0 END) AS customEvents,
+            COUNT(*) AS totalEvents,
+            AVG(CASE WHEN latencyMs >= 0 AND latencyMs <= ? THEN latencyMs END) AS avgLatencyMs,
+            SUM(CASE WHEN latencyMs > ? THEN 1 ELSE 0 END) AS delayedEvents,
+            SUM(CASE WHEN latencyMs < -? THEN 1 ELSE 0 END) AS futureSkewedEvents
+          FROM events
+          GROUP BY bucketSec
+        ),
+        valid_bucket_latency AS (
+          SELECT
+            CAST(createdAtSec / ? AS INTEGER) * ? AS bucketSec,
+            latencyMs
+          FROM events
+          WHERE latencyMs >= 0 AND latencyMs <= ?
+        ),
+        ranked_bucket_latency AS (
+          SELECT
+            bucketSec,
+            latencyMs,
+            ROW_NUMBER() OVER (PARTITION BY bucketSec ORDER BY latencyMs) AS rn,
+            COUNT(*) OVER (PARTITION BY bucketSec) AS total
+          FROM valid_bucket_latency
+        ),
+        bucket_percentiles AS (
+          SELECT
+            bucketSec,
+            MIN(CASE WHEN rn >= total * 0.5 THEN latencyMs END) AS p50LatencyMs,
+            MIN(CASE WHEN rn >= total * 0.75 THEN latencyMs END) AS p75LatencyMs,
+            MIN(CASE WHEN rn >= total * 0.95 THEN latencyMs END) AS p95LatencyMs
+          FROM ranked_bucket_latency
+          GROUP BY bucketSec
+        )
         SELECT
-          CAST(createdAtSec / ? AS INTEGER) * ? AS bucketSec,
-          SUM(CASE WHEN kind = 'visit' THEN 1 ELSE 0 END) AS visits,
-          SUM(CASE WHEN kind = 'custom_event' THEN 1 ELSE 0 END) AS customEvents,
-          COUNT(*) AS totalEvents,
-          AVG(CASE WHEN latencyMs >= 0 AND latencyMs <= ? THEN latencyMs END) AS avgLatencyMs,
-          SUM(CASE WHEN latencyMs > ? THEN 1 ELSE 0 END) AS delayedEvents,
-          SUM(CASE WHEN latencyMs < -? THEN 1 ELSE 0 END) AS futureSkewedEvents
-        FROM events
-        GROUP BY bucketSec
-        ORDER BY bucketSec ASC
+          a.bucketSec,
+          a.visits,
+          a.customEvents,
+          a.totalEvents,
+          a.avgLatencyMs,
+          p.p50LatencyMs,
+          p.p75LatencyMs,
+          p.p95LatencyMs,
+          a.delayedEvents,
+          a.futureSkewedEvents
+        FROM trend_aggregate a
+        LEFT JOIN bucket_percentiles p ON p.bucketSec = a.bucketSec
+        ORDER BY a.bucketSec ASC
       `,
     )
       .bind(
@@ -1270,6 +1310,9 @@ async function hSystemPerformance(
         SYSTEM_TRUSTED_LATENCY_MAX_MS,
         SYSTEM_DELAYED_EVENT_MS,
         SYSTEM_FUTURE_SKEW_MS,
+        bucketSizeSec,
+        bucketSizeSec,
+        SYSTEM_TRUSTED_LATENCY_MAX_MS,
       )
       .all<Record<string, unknown>>(),
     env.DB.prepare(
@@ -1375,6 +1418,7 @@ async function hSystemPerformance(
           : Math.max(0, generatedAt - latestCreatedAt),
       avgLatencyMs: toNullableNumber(summaryRow?.avgLatencyMs),
       p50LatencyMs: toNullableNumber(percentileRow?.p50LatencyMs),
+      p75LatencyMs: toNullableNumber(percentileRow?.p75LatencyMs),
       p95LatencyMs: toNullableNumber(percentileRow?.p95LatencyMs),
       trustedLatencySamples: toFiniteNumber(summaryRow?.trustedLatencySamples),
       delayedEvents,
@@ -1400,6 +1444,9 @@ async function hSystemPerformance(
         customEvents: toFiniteNumber(row.customEvents),
         totalEvents: toFiniteNumber(row.totalEvents),
         avgLatencyMs: toNullableNumber(row.avgLatencyMs),
+        p50LatencyMs: toNullableNumber(row.p50LatencyMs),
+        p75LatencyMs: toNullableNumber(row.p75LatencyMs),
+        p95LatencyMs: toNullableNumber(row.p95LatencyMs),
         delayedEvents: toFiniteNumber(row.delayedEvents),
         futureSkewedEvents: toFiniteNumber(row.futureSkewedEvents),
       };

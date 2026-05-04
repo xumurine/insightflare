@@ -751,6 +751,13 @@ interface TimeBucketCase {
   bindings: number[];
 }
 
+function sqlIntegerLiteral(value: number): string {
+  if (!Number.isFinite(value)) {
+    throw new Error("Invalid time bucket boundary");
+  }
+  return String(Math.trunc(value));
+}
+
 function buildTimeBuckets(
   window: QueryWindow,
   interval: Interval,
@@ -790,14 +797,12 @@ function timeBucketCase(
   buckets: TimeBucket[],
   columnExpression: string,
 ): TimeBucketCase {
-  const bindings: number[] = [];
   const clauses = buckets.map((bucket) => {
-    bindings.push(bucket.fromMs, bucket.toMs);
-    return `WHEN ${columnExpression} >= ? AND ${columnExpression} < ? THEN ${bucket.index}`;
+    return `WHEN ${columnExpression} >= ${sqlIntegerLiteral(bucket.fromMs)} AND ${columnExpression} < ${sqlIntegerLiteral(bucket.toMs)} THEN ${bucket.index}`;
   });
   return {
     sql: `CASE ${clauses.join(" ")} ELSE NULL END`,
-    bindings,
+    bindings: [],
   };
 }
 

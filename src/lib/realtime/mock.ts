@@ -7578,6 +7578,9 @@ function generateDemoSystemPerformance(
       customEvents: 0,
       totalEvents: 0,
       avgLatencyMs: null,
+      p50LatencyMs: null,
+      p75LatencyMs: null,
+      p95LatencyMs: null,
       delayedEvents: 0,
       futureSkewedEvents: 0,
     };
@@ -7650,6 +7653,9 @@ function generateDemoSystemPerformance(
       latencies.length > 0
         ? latencies.reduce((sum, value) => sum + value, 0) / latencies.length
         : null;
+    trend.p50LatencyMs = percentileNumber(latencies, 0.5);
+    trend.p75LatencyMs = percentileNumber(latencies, 0.75);
+    trend.p95LatencyMs = percentileNumber(latencies, 0.95);
   }
 
   const openTotal = Math.max(
@@ -7699,6 +7705,7 @@ function generateDemoSystemPerformance(
             trustedLatencies.length
           : null,
       p50LatencyMs: percentileNumber(trustedLatencies, 0.5),
+      p75LatencyMs: percentileNumber(trustedLatencies, 0.75),
       p95LatencyMs: percentileNumber(trustedLatencies, 0.95),
       trustedLatencySamples: trustedLatencies.length,
       delayedEvents,

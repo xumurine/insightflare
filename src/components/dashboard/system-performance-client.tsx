@@ -1,13 +1,15 @@
 "use client";
 
-import { type ComponentType, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  type RemixiconComponentType,
   RiAlarmWarningLine,
   RiDatabase2Line,
   RiRefreshLine,
   RiSpeedUpLine,
   RiTimeLine,
 } from "@remixicon/react";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
@@ -23,6 +25,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
 import {
   Select,
   SelectContent,
@@ -59,6 +69,11 @@ interface ApiErrorResponse {
 const WINDOW_OPTIONS: readonly SystemPerformanceWindowMinutes[] = [
   15, 60, 360, 1440,
 ] as const;
+const LATENCY_SERIES_COLORS = {
+  p50: "var(--color-chart-1)",
+  p75: "var(--color-chart-4)",
+  p95: "var(--color-chart-5)",
+} as const;
 
 async function fetchSystemPerformance(
   minutes: SystemPerformanceWindowMinutes,
@@ -147,41 +162,220 @@ function windowLabel(
   return messages.systemPerformance.range24h;
 }
 
-function StatCard({
-  title,
-  value,
-  description,
+function SystemMetricCell({
   icon: Icon,
+  label,
+  value,
+  detail,
   tone = "default",
 }: {
-  title: string;
+  icon: RemixiconComponentType;
+  label: string;
   value: string;
-  description: string;
-  icon: ComponentType<{ className?: string }>;
+  detail: string;
   tone?: "default" | "warning" | "good";
 }) {
   return (
+    <div className="min-w-0 bg-card p-4">
+      <div className="flex min-w-0 items-center gap-2">
+        <span
+          className={cn(
+            "inline-flex shrink-0 items-center justify-center text-muted-foreground",
+            tone === "warning" && "text-destructive",
+            tone === "good" && "text-primary",
+          )}
+        >
+          <Icon className="size-[11px]" />
+        </span>
+        <p className="min-w-0 truncate text-[11px] uppercase text-muted-foreground">
+          {label}
+        </p>
+      </div>
+      <p
+        className={cn(
+          "mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground tabular-nums",
+          tone === "warning" && "text-destructive",
+          tone === "good" && "text-primary",
+        )}
+      >
+        {value}
+      </p>
+      <p className="mt-3 min-w-0 truncate text-[11px] leading-[14px] text-muted-foreground">
+        {detail}
+      </p>
+    </div>
+  );
+}
+
+function LatencyPercentileChart({
+  locale,
+  messages,
+  timeZone,
+  data,
+  loading,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  timeZone: string;
+  data: SystemPerformanceData | null;
+  loading: boolean;
+}) {
+  const t = messages.systemPerformance;
+  const chartData = useMemo(
+    () =>
+      (data?.trend ?? []).map((point) => ({
+        timestampMs: point.timestampMs,
+        p50: point.p50LatencyMs,
+        p75: point.p75LatencyMs,
+        p95: point.p95LatencyMs,
+      })),
+    [data?.trend],
+  );
+  const hasLatencyData = chartData.some(
+    (point) => point.p50 !== null || point.p75 !== null || point.p95 !== null,
+  );
+  const bucketFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(intlLocale(locale), {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone,
+      }),
+    [locale, timeZone],
+  );
+  const tooltipFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(intlLocale(locale), {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone,
+      }),
+    [locale, timeZone],
+  );
+  const chartConfig = useMemo(
+    () =>
+      ({
+        p50: {
+          label: t.p50Label,
+          color: LATENCY_SERIES_COLORS.p50,
+        },
+        p75: {
+          label: t.p75Label,
+          color: LATENCY_SERIES_COLORS.p75,
+        },
+        p95: {
+          label: t.p95Label,
+          color: LATENCY_SERIES_COLORS.p95,
+        },
+      }) satisfies ChartConfig,
+    [t.p50Label, t.p75Label, t.p95Label],
+  );
+
+  return (
     <Card>
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-1">
-            <div className="text-xs font-medium text-muted-foreground">
-              {title}
-            </div>
-            <div className="text-2xl font-semibold tabular-nums">{value}</div>
-            <div className="text-xs text-muted-foreground">{description}</div>
-          </div>
-          <div
-            className={cn(
-              "flex size-8 shrink-0 items-center justify-center border border-border",
-              tone === "warning" &&
-                "border-destructive/30 bg-destructive/10 text-destructive",
-              tone === "good" && "border-primary/30 bg-primary/10 text-primary",
-            )}
+      <CardHeader>
+        <CardTitle>{t.latencyPercentileTrend}</CardTitle>
+        <CardDescription>{t.latencyPercentileTrendDescription}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {hasLatencyData ? (
+          <ChartContainer
+            className="h-[320px] w-full aspect-auto"
+            config={chartConfig}
           >
-            <Icon className="size-4" />
+            <LineChart
+              accessibilityLayer
+              data={chartData}
+              margin={{ left: 12, right: 12, top: 12, bottom: 4 }}
+            >
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis
+                dataKey="timestampMs"
+                tickFormatter={(value) =>
+                  bucketFormatter.format(new Date(Number(value ?? 0)))
+                }
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                minTickGap={12}
+              />
+              <YAxis
+                tickFormatter={(value) =>
+                  formatLatency(locale, Number(value ?? 0))
+                }
+                tickLine={false}
+                axisLine={false}
+                width={74}
+              />
+              <ChartTooltip
+                cursor={false}
+                content={
+                  <ChartTooltipContent
+                    className="min-w-[14rem]"
+                    indicator="line"
+                    labelFormatter={(value, payload) => {
+                      const timestamp = Number(
+                        payload?.[0]?.payload?.timestampMs ?? value ?? 0,
+                      );
+                      return tooltipFormatter.format(new Date(timestamp));
+                    }}
+                    formatter={(value, name) => (
+                      <div className="flex w-full items-center justify-between gap-3">
+                        <span className="text-muted-foreground">
+                          {String(name ?? "")}
+                        </span>
+                        <span className="font-mono text-foreground tabular-nums">
+                          {formatLatency(locale, Number(value ?? 0))}
+                        </span>
+                      </div>
+                    )}
+                  />
+                }
+              />
+              <ChartLegend
+                content={
+                  <ChartLegendContent className="pt-6 flex-wrap justify-center gap-x-4 gap-y-2" />
+                }
+              />
+              <Line
+                type="monotone"
+                dataKey="p50"
+                name={t.p50Label}
+                stroke={LATENCY_SERIES_COLORS.p50}
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4 }}
+                connectNulls={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="p75"
+                name={t.p75Label}
+                stroke={LATENCY_SERIES_COLORS.p75}
+                strokeWidth={2.4}
+                dot={false}
+                activeDot={{ r: 4 }}
+                connectNulls={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="p95"
+                name={t.p95Label}
+                stroke={LATENCY_SERIES_COLORS.p95}
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4 }}
+                connectNulls={false}
+              />
+            </LineChart>
+          </ChartContainer>
+        ) : (
+          <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
+            {loading ? messages.common.loading : t.noData}
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -307,58 +501,144 @@ export function SystemPerformanceClient({
         }
       />
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title={t.totalEvents}
-          value={
-            summary ? formatMetricNumber(locale, summary.totalEvents) : "--"
-          }
-          description={
-            summary
-              ? `${formatMetricRate(locale, summary.eventsPerMinute)} / min`
-              : "--"
-          }
-          icon={RiDatabase2Line}
+      <Card className="py-0">
+        <CardContent className="p-0">
+          <div className="grid gap-px overflow-hidden bg-border/70 sm:grid-cols-2 xl:grid-cols-4">
+            <SystemMetricCell
+              icon={RiDatabase2Line}
+              label={t.totalEvents}
+              value={
+                summary ? formatMetricNumber(locale, summary.totalEvents) : "--"
+              }
+              detail={
+                summary
+                  ? `${formatMetricRate(locale, summary.eventsPerMinute)} / min`
+                  : "--"
+              }
+            />
+            <SystemMetricCell
+              icon={RiSpeedUpLine}
+              label={t.p95Latency}
+              value={
+                summary ? formatLatency(locale, summary.p95LatencyMs) : "--"
+              }
+              detail={
+                summary
+                  ? `${t.p50Latency}: ${formatLatency(locale, summary.p50LatencyMs)} / ${t.p75Latency}: ${formatLatency(locale, summary.p75LatencyMs)}`
+                  : "--"
+              }
+              tone={
+                summary?.p95LatencyMs !== null &&
+                summary?.p95LatencyMs !== undefined &&
+                summary.p95LatencyMs > (data?.thresholds.delayedMs ?? 0)
+                  ? "warning"
+                  : "default"
+              }
+            />
+            <SystemMetricCell
+              icon={RiTimeLine}
+              label={t.dataFreshness}
+              value={
+                summary ? formatAge(locale, summary.dataFreshnessMs) : "--"
+              }
+              detail={
+                summary?.latestCreatedAt
+                  ? shortDateTime(locale, summary.latestCreatedAt, timeZone)
+                  : t.noRecentWrite
+              }
+              tone={freshnessTone}
+            />
+            <SystemMetricCell
+              icon={RiAlarmWarningLine}
+              label={t.clockAnomalies}
+              value={
+                summary ? formatPercent(locale, summary.anomalyRate) : "--"
+              }
+              detail={
+                summary
+                  ? `${t.delayed}: ${formatMetricNumber(locale, summary.delayedEvents)} / ${t.future}: ${formatMetricNumber(locale, summary.futureSkewedEvents)}`
+                  : "--"
+              }
+              tone={anomalyTone}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)]">
+        <LatencyPercentileChart
+          locale={locale}
+          messages={messages}
+          timeZone={timeZone}
+          data={data}
+          loading={loading}
         />
-        <StatCard
-          title={t.p95Latency}
-          value={summary ? formatLatency(locale, summary.p95LatencyMs) : "--"}
-          description={
-            summary
-              ? `${t.p50Latency}: ${formatLatency(locale, summary.p50LatencyMs)}`
-              : "--"
-          }
-          icon={RiSpeedUpLine}
-          tone={
-            summary?.p95LatencyMs !== null &&
-            summary?.p95LatencyMs !== undefined &&
-            summary.p95LatencyMs > (data?.thresholds.delayedMs ?? 0)
-              ? "warning"
-              : "default"
-          }
-        />
-        <StatCard
-          title={t.dataFreshness}
-          value={summary ? formatAge(locale, summary.dataFreshnessMs) : "--"}
-          description={
-            summary?.latestCreatedAt
-              ? shortDateTime(locale, summary.latestCreatedAt, timeZone)
-              : t.noRecentWrite
-          }
-          icon={RiTimeLine}
-          tone={freshnessTone}
-        />
-        <StatCard
-          title={t.clockAnomalies}
-          value={summary ? formatPercent(locale, summary.anomalyRate) : "--"}
-          description={
-            summary
-              ? `${t.delayed}: ${formatMetricNumber(locale, summary.delayedEvents)} / ${t.future}: ${formatMetricNumber(locale, summary.futureSkewedEvents)}`
-              : "--"
-          }
-          icon={RiAlarmWarningLine}
-          tone={anomalyTone}
-        />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{t.openVisitHealth}</CardTitle>
+            <CardDescription>{t.openVisitHealthDescription}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-3 gap-px overflow-hidden border bg-border/70">
+              <div className="bg-card p-3">
+                <div className="text-xs text-muted-foreground">{t.open}</div>
+                <div className="mt-2 font-mono text-xl font-semibold tabular-nums">
+                  {openVisits
+                    ? formatMetricNumber(locale, openVisits.total)
+                    : "--"}
+                </div>
+              </div>
+              <div className="bg-card p-3">
+                <div className="text-xs text-muted-foreground">{t.stale}</div>
+                <div className="mt-2 font-mono text-xl font-semibold tabular-nums">
+                  {openVisits
+                    ? formatMetricNumber(locale, openVisits.stale)
+                    : "--"}
+                </div>
+              </div>
+              <div className="bg-card p-3">
+                <div className="text-xs text-muted-foreground">
+                  {t.timedOut}
+                </div>
+                <div className="mt-2 font-mono text-xl font-semibold tabular-nums">
+                  {openVisits
+                    ? formatMetricNumber(locale, openVisits.timedOut)
+                    : "--"}
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">{t.oldestOpen}</span>
+                <span className="font-mono text-xs">
+                  {openVisits?.oldestStartedAt
+                    ? shortDateTime(
+                        locale,
+                        openVisits.oldestStartedAt,
+                        timeZone,
+                      )
+                    : "--"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">
+                  {t.latestActivity}
+                </span>
+                <span className="font-mono text-xs">
+                  {openVisits?.newestActivityAt
+                    ? shortDateTime(
+                        locale,
+                        openVisits.newestActivityAt,
+                        timeZone,
+                      )
+                    : "--"}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">{t.estimationNote}</p>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)]">
@@ -427,62 +707,46 @@ export function SystemPerformanceClient({
 
         <Card>
           <CardHeader>
-            <CardTitle>{t.openVisitHealth}</CardTitle>
-            <CardDescription>{t.openVisitHealthDescription}</CardDescription>
+            <CardTitle>{t.latencySampleHealth}</CardTitle>
+            <CardDescription>
+              {t.latencySampleHealthDescription}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-2">
-              <div className="border border-border p-3">
-                <div className="text-xs text-muted-foreground">{t.open}</div>
-                <div className="text-xl font-semibold tabular-nums">
-                  {openVisits
-                    ? formatMetricNumber(locale, openVisits.total)
-                    : "--"}
-                </div>
-              </div>
-              <div className="border border-border p-3">
-                <div className="text-xs text-muted-foreground">{t.stale}</div>
-                <div className="text-xl font-semibold tabular-nums">
-                  {openVisits
-                    ? formatMetricNumber(locale, openVisits.stale)
-                    : "--"}
-                </div>
-              </div>
-              <div className="border border-border p-3">
+            <div className="grid grid-cols-2 gap-px overflow-hidden border bg-border/70">
+              <div className="bg-card p-3">
                 <div className="text-xs text-muted-foreground">
-                  {t.timedOut}
+                  {t.trustedSamples}
                 </div>
-                <div className="text-xl font-semibold tabular-nums">
-                  {openVisits
-                    ? formatMetricNumber(locale, openVisits.timedOut)
+                <div className="mt-2 font-mono text-xl font-semibold tabular-nums">
+                  {summary
+                    ? formatMetricNumber(locale, summary.trustedLatencySamples)
                     : "--"}
+                </div>
+              </div>
+              <div className="bg-card p-3">
+                <div className="text-xs text-muted-foreground">
+                  {t.avgLatency}
+                </div>
+                <div className="mt-2 font-mono text-xl font-semibold tabular-nums">
+                  {summary ? formatLatency(locale, summary.avgLatencyMs) : "--"}
                 </div>
               </div>
             </div>
             <div className="space-y-2 text-sm">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">{t.oldestOpen}</span>
+                <span className="text-muted-foreground">{t.delayed}</span>
                 <span className="font-mono text-xs">
-                  {openVisits?.oldestStartedAt
-                    ? shortDateTime(
-                        locale,
-                        openVisits.oldestStartedAt,
-                        timeZone,
-                      )
+                  {summary
+                    ? formatMetricNumber(locale, summary.delayedEvents)
                     : "--"}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">
-                  {t.latestActivity}
-                </span>
+                <span className="text-muted-foreground">{t.future}</span>
                 <span className="font-mono text-xs">
-                  {openVisits?.newestActivityAt
-                    ? shortDateTime(
-                        locale,
-                        openVisits.newestActivityAt,
-                        timeZone,
-                      )
+                  {summary
+                    ? formatMetricNumber(locale, summary.futureSkewedEvents)
                     : "--"}
                 </span>
               </div>
