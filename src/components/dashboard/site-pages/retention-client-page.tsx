@@ -424,8 +424,8 @@ function retentionCellStyle(rate: number, available: boolean): CSSProperties {
   return {
     backgroundColor:
       normalized <= 0
-        ? "color-mix(in oklch, var(--color-muted) 82%, var(--color-background))"
-        : `color-mix(in oklch, var(--color-chart-4) ${mix}%, var(--color-muted))`,
+        ? "color-mix(in oklab, var(--color-muted) 82%, var(--color-background))"
+        : `color-mix(in oklab, var(--color-chart-4) ${mix}%, var(--color-muted))`,
     color: mix >= 42 ? "oklch(0.985 0 0)" : "var(--color-foreground)",
   };
 }
@@ -687,7 +687,7 @@ function RetentionMatrix({
               className="absolute inset-y-0 right-0 w-[76%]"
               style={{
                 background:
-                  "linear-gradient(90deg, var(--color-muted) 0%, color-mix(in oklch, var(--color-chart-4) 16%, var(--color-muted)) 22%, color-mix(in oklch, var(--color-chart-4) 28%, var(--color-muted)) 46%, color-mix(in oklch, var(--color-chart-4) 42%, var(--color-muted)) 72%, color-mix(in oklch, var(--color-chart-4) 54%, var(--color-muted)) 100%)",
+                  "linear-gradient(90deg, var(--color-muted) 0%, color-mix(in oklab, var(--color-chart-4) 16%, var(--color-muted)) 22%, color-mix(in oklab, var(--color-chart-4) 28%, var(--color-muted)) 46%, color-mix(in oklab, var(--color-chart-4) 42%, var(--color-muted)) 72%, color-mix(in oklab, var(--color-chart-4) 54%, var(--color-muted)) 100%)",
               }}
             />
           </span>
