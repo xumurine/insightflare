@@ -29,5 +29,5 @@ export default async function AccountSettingsPage({
     notFound();
   }
 
-  return <AccountSettingsClient messages={messages} />;
+  return <AccountSettingsClient locale={resolvedLocale} messages={messages} />;
 }

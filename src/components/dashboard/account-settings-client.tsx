@@ -23,7 +23,6 @@ import {
   FieldDescription,
   FieldLabel,
 } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -32,13 +31,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { intlLocale } from "@/lib/dashboard/format";
 import {
+  FALLBACK_TIME_ZONE,
   normalizeTimeZone,
   supportedTimeZones,
+  timeZoneOffsetMinutes,
 } from "@/lib/dashboard/time-zone";
+import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
 interface AccountSettingsClientProps {
+  locale: Locale;
   messages: AppMessages;
 }
 
@@ -52,7 +56,90 @@ interface ProfileResponse {
   message?: string;
 }
 
+interface TimeZoneOption {
+  value: string;
+  label: string;
+}
+
+const timeZoneNameFormatterCache = new Map<string, Intl.DateTimeFormat>();
+
+function getTimeZoneNameFormatter(
+  locale: Locale,
+  timeZone: string,
+): Intl.DateTimeFormat | null {
+  const cacheKey = `${locale}::${timeZone}`;
+  const cached = timeZoneNameFormatterCache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const formatter = new Intl.DateTimeFormat(intlLocale(locale), {
+      timeZone,
+      timeZoneName: "long",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+    timeZoneNameFormatterCache.set(cacheKey, formatter);
+    return formatter;
+  } catch {
+    return null;
+  }
+}
+
+function formatUtcOffset(offsetMinutes: number): string {
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absolute = Math.abs(offsetMinutes);
+  const hours = Math.floor(absolute / 60)
+    .toString()
+    .padStart(2, "0");
+  const minutes = (absolute % 60).toString().padStart(2, "0");
+  return `UTC${sign}${hours}:${minutes}`;
+}
+
+function formatTimeZoneOptionLabel(
+  locale: Locale,
+  timeZone: string,
+  timestampMs: number,
+): string {
+  const date = new Date(timestampMs);
+  const name =
+    getTimeZoneNameFormatter(locale, timeZone)
+      ?.formatToParts(date)
+      .find((part) => part.type === "timeZoneName")
+      ?.value.trim() || "";
+  const offset = formatUtcOffset(timeZoneOffsetMinutes(timeZone, timestampMs));
+  return name && name !== timeZone
+    ? `${name} (${offset}) - ${timeZone}`
+    : `${timeZone} (${offset})`;
+}
+
+function buildTimeZoneOptions(params: {
+  locale: Locale;
+  supported: string[];
+  selected: string;
+  active: string;
+  browser: string;
+  timestampMs: number;
+}): TimeZoneOption[] {
+  const values = new Set<string>();
+  for (const value of [
+    params.selected,
+    params.active,
+    params.browser,
+    ...params.supported,
+  ]) {
+    const normalized = normalizeTimeZone(value);
+    if (normalized) values.add(normalized);
+  }
+
+  return Array.from(values).map((value) => ({
+    value,
+    label: formatTimeZoneOptionLabel(params.locale, value, params.timestampMs),
+  }));
+}
+
 export function AccountSettingsClient({
+  locale,
   messages,
 }: AccountSettingsClientProps) {
   const copy = messages.accountSettings;
@@ -71,6 +158,31 @@ export function AccountSettingsClient({
     timeZonePreference || timeZone,
   );
   const [saving, setSaving] = useState(false);
+  const timeZoneOptionTimestamp = useMemo(() => Date.now(), []);
+  const selectedCustomTimeZone =
+    normalizeTimeZone(customTimeZone) ||
+    normalizeTimeZone(timeZone) ||
+    normalizeTimeZone(browserTimeZone) ||
+    FALLBACK_TIME_ZONE;
+  const timeZoneOptions = useMemo(
+    () =>
+      buildTimeZoneOptions({
+        locale,
+        supported: timeZones,
+        selected: selectedCustomTimeZone,
+        active: timeZone,
+        browser: browserTimeZone,
+        timestampMs: timeZoneOptionTimestamp,
+      }),
+    [
+      browserTimeZone,
+      locale,
+      selectedCustomTimeZone,
+      timeZone,
+      timeZoneOptionTimestamp,
+      timeZones,
+    ],
+  );
 
   useEffect(() => {
     setMode(timeZonePreference ? "custom" : "browser");
@@ -81,18 +193,25 @@ export function AccountSettingsClient({
     }
   }, [timeZone, timeZonePreference]);
 
-  const normalizedCustomTimeZone = normalizeTimeZone(customTimeZone);
-  const nextPreference = mode === "browser" ? "" : normalizedCustomTimeZone;
-  const hasInvalidCustomTimeZone =
-    mode === "custom" && customTimeZone.trim().length > 0 && !nextPreference;
+  const nextPreference = mode === "browser" ? "" : selectedCustomTimeZone;
   const canSave =
     !saving &&
-    !hasInvalidCustomTimeZone &&
     (mode === "browser" || Boolean(nextPreference)) &&
     nextPreference !== timeZonePreference;
   const sourceLabel =
     timeZonePreference.length > 0 ? copy.manualSource : copy.browserSource;
-  const browserLabel = browserTimeZone || copy.browserUnavailable;
+  const activeTimeZoneLabel = formatTimeZoneOptionLabel(
+    locale,
+    timeZone,
+    timeZoneOptionTimestamp,
+  );
+  const browserTimeZoneLabel = browserTimeZone
+    ? formatTimeZoneOptionLabel(
+        locale,
+        browserTimeZone,
+        timeZoneOptionTimestamp,
+      )
+    : copy.browserUnavailable;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -158,14 +277,14 @@ export function AccountSettingsClient({
                   <RiGlobalLine className="size-4 text-muted-foreground" />
                   {copy.activeTimeZone}
                 </div>
-                <div className="font-mono text-sm">{timeZone}</div>
+                <div className="text-sm">{activeTimeZoneLabel}</div>
               </div>
               <div className="rounded-none border border-border p-3">
                 <div className="mb-1 flex items-center gap-2 text-xs font-medium">
                   <RiComputerLine className="size-4 text-muted-foreground" />
                   {copy.browserTimeZone}
                 </div>
-                <div className="font-mono text-sm">{browserLabel}</div>
+                <div className="text-sm">{browserTimeZoneLabel}</div>
               </div>
             </div>
 
@@ -193,31 +312,34 @@ export function AccountSettingsClient({
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="account-timezone-input">
+              <FieldLabel htmlFor="account-timezone-select">
                 {copy.customTimeZoneLabel}
               </FieldLabel>
               <FieldContent>
-                <Input
-                  id="account-timezone-input"
-                  list="account-timezone-options"
-                  value={customTimeZone}
+                <Select
+                  value={selectedCustomTimeZone}
                   disabled={mode === "browser"}
-                  placeholder={copy.customTimeZonePlaceholder}
-                  aria-invalid={hasInvalidCustomTimeZone}
-                  onChange={(event) => {
-                    setCustomTimeZone(event.target.value);
+                  onValueChange={(value) => {
+                    setCustomTimeZone(value);
                     if (mode !== "custom") setMode("custom");
                   }}
-                />
-                <datalist id="account-timezone-options">
-                  {timeZones.map((item) => (
-                    <option key={item} value={item} />
-                  ))}
-                </datalist>
+                >
+                  <SelectTrigger
+                    id="account-timezone-select"
+                    className="w-full"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-80">
+                    {timeZoneOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FieldDescription>
-                  {hasInvalidCustomTimeZone
-                    ? copy.invalidTimeZone
-                    : copy.customTimeZoneDescription}
+                  {copy.customTimeZoneDescription}
                 </FieldDescription>
               </FieldContent>
             </Field>

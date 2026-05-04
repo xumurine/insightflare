@@ -199,6 +199,16 @@ const INTERVAL_ORDER: readonly DashboardInterval[] = [
   "week",
   "month",
 ] as const;
+const ROLLING_RANGE_PRESETS = new Set<RangePreset>([
+  "30m",
+  "1h",
+  "24h",
+  "7d",
+  "30d",
+  "90d",
+  "6m",
+  "12m",
+]);
 const USE_REALTIME_MOCK = isRealtimeMockEnabled();
 const PANEL_SCROLLBAR_OPTIONS = {
   overflow: {
@@ -1092,7 +1102,10 @@ export function DashboardHeaderControls({
     window.to,
     "next",
   );
-  const nextPeriodRange = periodForwardStack[0] ?? inferredNextPeriodRange;
+  const canShiftToNextPeriod = !ROLLING_RANGE_PRESETS.has(range);
+  const nextPeriodRange = canShiftToNextPeriod
+    ? (periodForwardStack[0] ?? inferredNextPeriodRange)
+    : null;
   const previousPeriodLabel = messages.dashboardHeader.previousPeriod;
   const nextPeriodLabel = messages.dashboardHeader.nextPeriod;
   const mobileTimeLabel = messages.common.time;
@@ -1229,6 +1242,7 @@ export function DashboardHeaderControls({
   };
 
   const handleShiftToNextPeriod = () => {
+    if (!canShiftToNextPeriod) return;
     if (periodForwardStack.length > 0) {
       const [nextRange, ...rest] = periodForwardStack;
       setPeriodForwardStack(rest);

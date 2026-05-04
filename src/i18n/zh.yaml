@@ -525,11 +525,10 @@ accountSettings:
   preferenceLabel: 时区偏好
   preferenceDescription: 跟随浏览器会使用当前设备时区；手动设置会在所有设备上保持同一时区。
   useBrowser: 跟随浏览器时区
-  useCustom: 手动指定
-  customTimeZoneLabel: 手动时区
-  customTimeZonePlaceholder: 例如：Asia/Shanghai
-  customTimeZoneDescription: 请输入 IANA 时区名称。
-  invalidTimeZone: 请输入有效的 IANA 时区。
+  useCustom: 选择时区
+  customTimeZoneLabel: 时区
+  customTimeZoneDescription: 从支持的 IANA 时区中选择。
+  invalidTimeZone: 请选择有效的 IANA 时区。
   save: 保存偏好
   saving: 保存中...
   saved: 时区偏好已保存。

@@ -525,11 +525,10 @@ accountSettings:
   preferenceLabel: Timezone preference
   preferenceDescription: Browser mode follows this device. Manual mode keeps the same timezone on every device.
   useBrowser: Use browser timezone
-  useCustom: Set manually
-  customTimeZoneLabel: Manual timezone
-  customTimeZonePlaceholder: e.g. Asia/Shanghai
-  customTimeZoneDescription: Enter an IANA timezone name.
-  invalidTimeZone: Please enter a valid IANA timezone.
+  useCustom: Choose a timezone
+  customTimeZoneLabel: Timezone
+  customTimeZoneDescription: Choose from supported IANA timezones.
+  invalidTimeZone: Please choose a valid IANA timezone.
   save: Save preference
   saving: Saving...
   saved: Timezone preference saved.

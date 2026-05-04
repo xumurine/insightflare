@@ -522,7 +522,6 @@ export interface AppMessages {
     useBrowser: string;
     useCustom: string;
     customTimeZoneLabel: string;
-    customTimeZonePlaceholder: string;
     customTimeZoneDescription: string;
     invalidTimeZone: string;
     save: string;
