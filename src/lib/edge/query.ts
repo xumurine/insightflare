@@ -7872,7 +7872,9 @@ async function queryVisitorDetailFromD1(
     (left, right) =>
       right.occurredAt - left.occurredAt || right.id.localeCompare(left.id),
   );
-  const totalEvents = events.length;
+  const customEventCount = baseEvents.filter(
+    (event) => event.kind === "custom",
+  ).length;
   const sessionCount = sessions.length;
   const views = baseEvents.filter((event) => event.kind === "pageview").length;
   const bounces = sessions.filter((session) => session.bounce).length;
@@ -7887,10 +7889,11 @@ async function queryVisitorDetailFromD1(
   return {
     visitor,
     metrics: {
-      totalEvents,
+      totalEvents: customEventCount,
       sessions: sessionCount,
       views,
-      avgEventsPerSession: sessionCount > 0 ? totalEvents / sessionCount : 0,
+      avgEventsPerSession:
+        sessionCount > 0 ? customEventCount / sessionCount : 0,
       bounceRate: sessionCount > 0 ? bounces / sessionCount : 0,
       avgDurationMs:
         sessionCount > 0 ? Math.round(durationTotal / sessionCount) : 0,
@@ -7898,8 +7901,7 @@ async function queryVisitorDetailFromD1(
       firstSeenAt: visitor.firstSeenAt,
       lastSeenAt: visitor.lastSeenAt,
       daysActive,
-      conversionEvents: events.filter((event) => event.kind === "custom")
-        .length,
+      conversionEvents: customEventCount,
       avgTimeBetweenSessionsMs: averageGapMs(
         sessions.map((session) => session.startedAt),
       ),

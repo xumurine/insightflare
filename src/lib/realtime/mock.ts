@@ -5990,6 +5990,9 @@ function generateDemoVisitorDetail(
         Number(right.startedAt ?? 0) - Number(left.startedAt ?? 0),
     );
   const events = createDemoJourneyEvents(visits, { includeSessionStart: true });
+  const customEventCount = events.filter(
+    (event) => event.kind === "custom",
+  ).length;
   const latest =
     [...visits].sort((left, right) => right.startedAt - left.startedAt)[0] ??
     visits[0];
@@ -6015,7 +6018,7 @@ function generateDemoVisitorDetail(
     lastSeenAt,
     views: visits.length,
     sessions: sessions.length,
-    events: events.filter((event) => event.kind === "custom").length,
+    events: customEventCount,
     country: latest.country,
     region: latest.regionName || latest.region,
     city: latest.cityName || latest.city,
@@ -6035,11 +6038,11 @@ function generateDemoVisitorDetail(
     data: {
       visitor,
       metrics: {
-        totalEvents: events.length,
+        totalEvents: customEventCount,
         sessions: sessions.length,
         views: visits.length,
         avgEventsPerSession:
-          sessions.length > 0 ? events.length / sessions.length : 0,
+          sessions.length > 0 ? customEventCount / sessions.length : 0,
         bounceRate:
           sessions.length > 0
             ? sessions.filter((session) => Boolean(session.bounce)).length /
@@ -6051,8 +6054,7 @@ function generateDemoVisitorDetail(
         firstSeenAt,
         lastSeenAt,
         daysActive,
-        conversionEvents: events.filter((event) => event.kind === "custom")
-          .length,
+        conversionEvents: customEventCount,
         avgTimeBetweenSessionsMs: demoAverageGapMs(
           sessions.map((session) => Number(session.startedAt ?? 0)),
         ),
