@@ -1,16 +1,12 @@
 "use client";
 
 import { type ComponentType, useMemo } from "react";
-import { Label, PolarRadiusAxis, RadialBar, RadialBarChart } from "recharts";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  type ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-} from "@/components/ui/chart";
+import { Skeleton } from "@/components/ui/skeleton";
 import { numberFormat, percentFormat } from "@/lib/dashboard/format";
 import type { Locale } from "@/lib/i18n/config";
+import { cn } from "@/lib/utils";
 
 const CHART_COLORS = [
   "var(--color-chart-1)",
@@ -35,6 +31,34 @@ interface ShareRadialCardProps {
   items: ShareRadialCardItem[];
   locale: Locale;
   valueLabel: string;
+  loading?: boolean;
+  emptyLabel?: string;
+}
+
+type ResolvedShareItem = ShareRadialCardItem & {
+  color: string;
+  share: number;
+  value: number;
+};
+
+function resolveShareItems(
+  items: ShareRadialCardItem[],
+  totalValue: number,
+): ResolvedShareItem[] {
+  return items.map((item, index) => {
+    const value = Math.max(0, Number(item.value ?? 0));
+
+    return {
+      ...item,
+      value,
+      share: totalValue > 0 ? value / totalValue : 0,
+      color:
+        item.color ??
+        (item.isOther
+          ? "var(--muted-foreground)"
+          : CHART_COLORS[index % CHART_COLORS.length]),
+    };
+  });
 }
 
 export function ShareRadialCard({
@@ -42,167 +66,158 @@ export function ShareRadialCard({
   items,
   locale,
   valueLabel,
+  loading = false,
+  emptyLabel,
 }: ShareRadialCardProps) {
   const totalValue = useMemo(
-    () => items.reduce((sum, item) => sum + item.value, 0),
-    [items],
-  );
-
-  const resolvedItems = useMemo(
     () =>
-      items.map((item, index) => ({
-        ...item,
-        color:
-          item.color ??
-          (item.isOther
-            ? "var(--muted-foreground)"
-            : CHART_COLORS[index % CHART_COLORS.length]),
-      })),
+      items.reduce(
+        (sum, item) => sum + Math.max(0, Number(item.value ?? 0)),
+        0,
+      ),
     [items],
   );
-
-  const chartConfig = useMemo(() => {
-    const config: ChartConfig = {};
-    for (const item of resolvedItems) {
-      config[item.key] = {
-        label: item.label,
-        color: item.color,
-      };
-    }
-    return config;
-  }, [resolvedItems]);
-
-  const chartData = useMemo(() => {
-    const row: Record<string, number> = {};
-    for (const item of resolvedItems) {
-      row[item.key] = item.value;
-    }
-    return [row];
-  }, [resolvedItems]);
+  const resolvedItems = useMemo(
+    () => resolveShareItems(items, totalValue),
+    [items, totalValue],
+  );
+  const ariaLabel = `${title}: ${resolvedItems
+    .map(
+      (item) =>
+        `${item.label} ${percentFormat(locale, item.share)} (${numberFormat(locale, item.value)} ${valueLabel})`,
+    )
+    .join(", ")}`;
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="gap-2">
         <CardTitle>{title}</CardTitle>
+        {loading ? (
+          <div className="flex items-baseline gap-2">
+            <Skeleton className="h-6 w-20" />
+            <Skeleton className="h-3 w-14" />
+          </div>
+        ) : (
+          <div className="flex items-baseline gap-2">
+            <span className="font-mono text-xl font-medium tabular-nums text-foreground">
+              {numberFormat(locale, totalValue)}
+            </span>
+            <span className="text-xs text-muted-foreground">{valueLabel}</span>
+          </div>
+        )}
       </CardHeader>
       <CardContent>
-        <div className="flex flex-col items-center">
-          <ChartContainer
-            config={chartConfig}
-            className="mx-auto aspect-[2/1] w-full"
-          >
-            <RadialBarChart
-              data={chartData}
-              endAngle={180}
-              innerRadius="60%"
-              outerRadius="100%"
+        {loading ? (
+          <ShareRadialCardContentSkeleton />
+        ) : resolvedItems.length > 0 ? (
+          <div className="grid gap-4">
+            <div
+              className="flex h-6 w-full overflow-hidden rounded-none bg-muted ring-1 ring-border/50"
+              role="img"
+              aria-label={ariaLabel}
             >
-              <ChartTooltip
-                cursor={false}
-                content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null;
-                  const item = payload[0];
-                  const key = String(item.dataKey ?? "");
-                  const value = Number(item.value ?? 0);
-                  const share = totalValue > 0 ? value / totalValue : 0;
-                  const resolvedItem = resolvedItems.find(
-                    (entry) => entry.key === key,
-                  );
-                  const label = String(chartConfig[key]?.label ?? key);
-                  const color = chartConfig[key]?.color;
-                  const ItemIcon = resolvedItem?.icon;
+              {resolvedItems.map((item) => {
+                const width = `${Math.min(100, Math.max(0, item.share * 100)).toFixed(2)}%`;
+                const titleText = `${item.label}: ${numberFormat(locale, item.value)} ${valueLabel}, ${percentFormat(locale, item.share)}`;
 
-                  return (
-                    <div className="grid min-w-[10rem] gap-1 rounded-none border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="size-2.5 shrink-0 rounded-[2px]"
-                          style={{ backgroundColor: color }}
-                        />
-                        {ItemIcon ? (
-                          <ItemIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                        ) : null}
-                        <span className="font-medium">{label}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-muted-foreground">
-                          {numberFormat(locale, value)} {valueLabel}
-                        </span>
-                        <span className="font-mono font-medium tabular-nums">
-                          {percentFormat(locale, share)}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                }}
-              />
-              <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
-                <Label
-                  content={({ viewBox }) => {
-                    if (!viewBox || !("cx" in viewBox) || !("cy" in viewBox)) {
-                      return null;
-                    }
-                    const cx = viewBox.cx || 0;
-                    const cy = viewBox.cy || 0;
-                    const width = 200;
-                    const height = 60;
-                    return (
-                      <foreignObject
-                        x={cx - width / 2}
-                        y={cy - height + 4}
-                        width={width}
-                        height={height}
-                      >
-                        <div className="flex h-full flex-col items-center justify-end">
-                          <span className="text-center text-[clamp(1rem,3cqi,1.75rem)] font-bold leading-tight text-foreground">
-                            {numberFormat(locale, totalValue)}
-                          </span>
-                          <span className="text-[clamp(0.625rem,1.5cqi,0.75rem)] text-muted-foreground">
-                            {valueLabel}
-                          </span>
-                        </div>
-                      </foreignObject>
-                    );
-                  }}
-                />
-              </PolarRadiusAxis>
-              {resolvedItems.map((item) => (
-                <RadialBar
-                  key={item.key}
-                  dataKey={item.key}
-                  stackId="share"
-                  fill={item.color}
-                  className="stroke-transparent stroke-2"
-                />
-              ))}
-            </RadialBarChart>
-          </ChartContainer>
-
-          <div className="-mt-8 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-            {resolvedItems.map((item) => {
-              const share = totalValue > 0 ? item.value / totalValue : 0;
-              const ItemIcon = item.icon;
-              return (
-                <div
-                  key={item.key}
-                  className="flex items-center gap-1.5 text-xs"
-                >
-                  <span
-                    className="size-2.5 shrink-0 rounded-[2px]"
-                    style={{ backgroundColor: item.color }}
+                return (
+                  <div
+                    key={item.key}
+                    className={cn(
+                      "h-full min-w-0 shrink-0 border-r border-background/80 last:border-r-0",
+                      item.share <= 0 && "hidden",
+                    )}
+                    style={{
+                      width,
+                      backgroundColor: item.color,
+                    }}
+                    title={titleText}
                   />
-                  {ItemIcon ? (
-                    <ItemIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                  ) : null}
-                  <span className="text-muted-foreground">{item.label}</span>
-                  <span className="font-mono tabular-nums text-foreground">
-                    {percentFormat(locale, share)}
-                  </span>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+
+            <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+              {resolvedItems.map((item) => {
+                const ItemIcon = item.icon;
+
+                return (
+                  <div
+                    key={item.key}
+                    className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span
+                        className="size-2.5 shrink-0 rounded-[2px]"
+                        style={{ backgroundColor: item.color }}
+                      />
+                      {ItemIcon ? (
+                        <ItemIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                      ) : null}
+                      <span className="truncate text-xs text-muted-foreground">
+                        {item.label}
+                      </span>
+                    </div>
+                    <div className="flex shrink-0 items-baseline gap-2">
+                      <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                        {numberFormat(locale, item.value)}
+                      </span>
+                      <span className="font-mono text-xs font-medium tabular-nums text-foreground">
+                        {percentFormat(locale, item.share)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
+        ) : (
+          <div
+            className="flex min-h-[96px] items-center justify-center text-sm text-muted-foreground"
+            role="status"
+          >
+            {emptyLabel}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ShareRadialCardContentSkeleton() {
+  return (
+    <div className="grid gap-4">
+      <Skeleton className="h-6 w-full" />
+      <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 5 }, (_, index) => (
+          <div
+            key={`share-radial-card-content-skeleton-${index}`}
+            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
+          >
+            <div className="flex min-w-0 items-center gap-2">
+              <Skeleton className="size-2.5 shrink-0" />
+              <Skeleton className="h-4 w-[min(12rem,55%)]" />
+            </div>
+            <Skeleton className="h-4 w-20" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function ShareRadialCardSkeleton({ className }: { className?: string }) {
+  return (
+    <Card className={cn("gap-4", className)}>
+      <CardHeader className="gap-2">
+        <Skeleton className="h-4 w-36" />
+        <div className="flex items-baseline gap-2">
+          <Skeleton className="h-6 w-20" />
+          <Skeleton className="h-3 w-14" />
         </div>
+      </CardHeader>
+      <CardContent>
+        <ShareRadialCardContentSkeleton />
       </CardContent>
     </Card>
   );

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 
-import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { ShareRadialCard } from "@/components/dashboard/share-radial-card";
+import { AutoTransition } from "@/components/ui/auto-transition";
+import { Spinner } from "@/components/ui/spinner";
 import {
   fetchBrowserEngineTrend,
   fetchBrowserTrend,
@@ -36,6 +37,7 @@ export function BrowserShareOverview({
     useState<BrowserTrendData>(emptyTrend);
   const [engineTrend, setEngineTrend] = useState<BrowserTrendData>(emptyTrend);
   const [loading, setLoading] = useState(true);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -53,6 +55,7 @@ export function BrowserShareOverview({
       setBrowserTrend(bt);
       setEngineTrend(et);
       setLoading(false);
+      setHydrated(true);
     });
 
     return () => {
@@ -60,18 +63,12 @@ export function BrowserShareOverview({
     };
   }, [siteId, tw.from, tw.to, filters]);
 
-  const hasContent =
-    browserTrend.series.length > 0 || engineTrend.series.length > 0;
+  const showOverlayLoading = loading && hydrated;
+  const showInitialLoading = loading && !hydrated;
 
   return (
-    <ContentSwitch
-      loading={loading}
-      hasContent={hasContent}
-      loadingLabel={messages.common.loading}
-      emptyContent={<p>{messages.common.noData}</p>}
-      minHeightClassName="min-h-[200px]"
-    >
-      <div className="grid gap-4 md:grid-cols-2">
+    <div className="relative">
+      <div className="grid gap-4">
         <ShareRadialCard
           title={messages.browsers.browserShareTitle}
           items={browserTrend.series.map((item) => ({
@@ -82,6 +79,8 @@ export function BrowserShareOverview({
           }))}
           locale={locale}
           valueLabel={messages.common.visitors}
+          loading={showInitialLoading}
+          emptyLabel={messages.common.noData}
         />
         <ShareRadialCard
           title={messages.browsers.engineShareTitle}
@@ -93,8 +92,31 @@ export function BrowserShareOverview({
           }))}
           locale={locale}
           valueLabel={messages.common.visitors}
+          loading={showInitialLoading}
+          emptyLabel={messages.common.noData}
         />
       </div>
-    </ContentSwitch>
+
+      <AutoTransition
+        type="fade"
+        duration={0.22}
+        className="pointer-events-none absolute top-2 right-2"
+      >
+        {showOverlayLoading ? (
+          <span
+            key="browser-share-overlay-loading"
+            className="inline-flex items-center gap-2 rounded-none border border-border/50 bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm"
+          >
+            <Spinner className="size-3.5" />
+            {messages.common.loading}
+          </span>
+        ) : (
+          <div
+            key="browser-share-overlay-idle"
+            className="h-0 w-0 overflow-hidden"
+          />
+        )}
+      </AutoTransition>
+    </div>
   );
 }
