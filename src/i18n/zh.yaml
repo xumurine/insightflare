@@ -749,6 +749,43 @@ systemPerformance:
   eventTime: 事件时间
   serverTime: 服务端写入时间
   estimatedDelay: 估算延迟
+  doDiagnosticTitle: DO 内部缓冲诊断
+  doDiagnosticDescription: 直接询问每个站点的 Durable Object，统计 buffered_visits / buffered_custom_events 是否存在停滞、未来时间戳或永久 dirty 行。
+  doDiagnosticLoadFailed: 加载 DO 诊断数据失败。
+  doDiagnosticLoading: 正在拉取每个 DO 的状态…
+  doDiagnosticEmpty: 暂无站点 DO 状态。
+  doDiagnosticUnreachable: 部分站点 DO 不可达
+  doDiagnosticReachableSites: 可达 DO
+  doDiagnosticTotalSites: 总站点
+  doDiagnosticActiveAlarms: 活跃 alarm
+  doDiagnosticBufferedVisits: 缓冲访问
+  doDiagnosticOpenVisits: 缓冲 open 行
+  doDiagnosticOpenStale: open >30 分钟无活动
+  doDiagnosticOpenTimedOut: open >12 小时无活动
+  doDiagnosticOpenHardAged: 起始 >36 小时
+  doDiagnosticOpenFutureSkew: 未来时间戳
+  doDiagnosticDirtyVisits: dirty 访问
+  doDiagnosticStuckDirty: dirty 卡住
+  doDiagnosticMaxFlushAttempts: 最大重试次数
+  doDiagnosticBufferedCustomEvents: 缓冲自定义事件
+  doDiagnosticDirtyCustomEvents: dirty 自定义事件
+  doDiagnosticStuckDirtyCustomEvents: dirty 自定义事件卡住
+  doDiagnosticOldestOpen: 最早 open 起始
+  doDiagnosticFutureMaxActivity: 最远未来 last_activity
+  doDiagnosticSiteList: 风险靠前的站点
+  doDiagnosticSiteListDescription: 按风险评分排序，前 20 个站点的 DO 内部缓冲快照。
+  doDiagnosticSiteOk: 已响应
+  doDiagnosticSiteFailed: 不可达
+  doDiagnosticSiteOpen: open
+  doDiagnosticSiteStuck: 卡住
+  doDiagnosticSiteFuture: 未来
+  doDiagnosticSiteHardAged: 老旧
+  doDiagnosticSiteAlarm: alarm
+  doDiagnosticSiteAlarmNone: 无
+  doDiagnosticSiteAlarmDue: 到期
+  doDiagnosticSiteResponseMs: 响应耗时
+  doDiagnosticThresholdsHint: 阈值：stale {stale}，timeout {timeout}，hardAged {hardAged}，stuck flush_attempts ≥ {stuck}
+  doDiagnosticHealthy: 当前未发现异常缓冲行。
 loginForm:
   signingIn: 登录中...
   failed: 登录失败，请稍后重试。

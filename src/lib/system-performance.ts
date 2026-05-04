@@ -84,3 +84,92 @@ export interface SystemPerformanceData {
   topSites: SystemPerformanceTopSite[];
   slowEvents: SystemPerformanceSlowEvent[];
 }
+
+export interface DoDiagnosticOpenVisits {
+  total: number;
+  stale: number;
+  timedOut: number;
+  hardAged: number;
+  futureSkewed: number;
+  oldestStartedAt: number | null;
+  newestActivityAt: number | null;
+  futureMaxActivityAt: number | null;
+}
+
+export interface DoDiagnosticDirtyVisits {
+  total: number;
+  stuck: number;
+  maxFlushAttempts: number;
+}
+
+export interface DoDiagnosticCustomEvents {
+  total: number;
+  dirty: number;
+  stuck: number;
+  maxFlushAttempts: number;
+  oldestOccurredAt: number | null;
+}
+
+export interface DoDiagnosticPayload {
+  ok: true;
+  snapshotAt: number;
+  thresholds: {
+    staleMs: number;
+    timeoutMs: number;
+    hardAgedMs: number;
+    stuckFlushAttempts: number;
+  };
+  visits: {
+    total: number;
+    byStatus: Record<string, number>;
+    open: DoDiagnosticOpenVisits;
+    dirty: DoDiagnosticDirtyVisits;
+  };
+  customEvents: DoDiagnosticCustomEvents;
+  alarm: {
+    scheduledAt: number | null;
+  };
+}
+
+export interface DoDiagnosticSiteEntry {
+  siteId: string;
+  siteName: string;
+  siteDomain: string;
+  ok: boolean;
+  error?: string;
+  durationMs: number;
+  diagnostic?: DoDiagnosticPayload;
+}
+
+export interface DoDiagnosticAggregate {
+  ok: true;
+  generatedAt: number;
+  totalSites: number;
+  reachableSites: number;
+  unreachableSites: number;
+  thresholds: {
+    staleMs: number;
+    timeoutMs: number;
+    hardAgedMs: number;
+    stuckFlushAttempts: number;
+  };
+  totals: {
+    bufferedVisits: number;
+    openVisits: number;
+    openStale: number;
+    openTimedOut: number;
+    openHardAged: number;
+    openFutureSkewed: number;
+    dirtyVisits: number;
+    stuckDirtyVisits: number;
+    bufferedCustomEvents: number;
+    dirtyCustomEvents: number;
+    stuckDirtyCustomEvents: number;
+    activeAlarms: number;
+    maxVisitFlushAttempts: number;
+    maxCustomEventFlushAttempts: number;
+  };
+  oldestOpenStartedAt: number | null;
+  futureMaxActivityAt: number | null;
+  sites: DoDiagnosticSiteEntry[];
+}

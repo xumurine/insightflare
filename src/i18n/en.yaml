@@ -749,6 +749,43 @@ systemPerformance:
   eventTime: Event time
   serverTime: Server write time
   estimatedDelay: Estimated delay
+  doDiagnosticTitle: DO Buffer Diagnostic
+  doDiagnosticDescription: Asks each site's Durable Object directly for the state of buffered_visits / buffered_custom_events to surface stale rows, future-skewed timestamps, or stuck dirty rows.
+  doDiagnosticLoadFailed: Failed to load DO diagnostic data.
+  doDiagnosticLoading: Fetching DO state per site…
+  doDiagnosticEmpty: No DO state available.
+  doDiagnosticUnreachable: Some DOs unreachable
+  doDiagnosticReachableSites: Reachable DOs
+  doDiagnosticTotalSites: Total sites
+  doDiagnosticActiveAlarms: Active alarms
+  doDiagnosticBufferedVisits: Buffered visits
+  doDiagnosticOpenVisits: Buffered open rows
+  doDiagnosticOpenStale: Open idle >30m
+  doDiagnosticOpenTimedOut: Open idle >12h
+  doDiagnosticOpenHardAged: Started >36h ago
+  doDiagnosticOpenFutureSkew: Future timestamps
+  doDiagnosticDirtyVisits: Dirty visits
+  doDiagnosticStuckDirty: Stuck dirty
+  doDiagnosticMaxFlushAttempts: Max retry attempts
+  doDiagnosticBufferedCustomEvents: Buffered custom events
+  doDiagnosticDirtyCustomEvents: Dirty custom events
+  doDiagnosticStuckDirtyCustomEvents: Stuck dirty custom events
+  doDiagnosticOldestOpen: Oldest open started_at
+  doDiagnosticFutureMaxActivity: Farthest future last_activity
+  doDiagnosticSiteList: Top risk sites
+  doDiagnosticSiteListDescription: Top 20 sites by risk score, snapshotted from per-DO buffered state.
+  doDiagnosticSiteOk: Responded
+  doDiagnosticSiteFailed: Unreachable
+  doDiagnosticSiteOpen: open
+  doDiagnosticSiteStuck: stuck
+  doDiagnosticSiteFuture: future
+  doDiagnosticSiteHardAged: aged
+  doDiagnosticSiteAlarm: alarm
+  doDiagnosticSiteAlarmNone: none
+  doDiagnosticSiteAlarmDue: due
+  doDiagnosticSiteResponseMs: Response time
+  doDiagnosticThresholdsHint: Thresholds — stale {stale}, timeout {timeout}, hardAged {hardAged}, stuck flush_attempts ≥ {stuck}
+  doDiagnosticHealthy: No abnormal buffered rows detected.
 loginForm:
   signingIn: Signing in...
   failed: Sign in failed. Please try again.

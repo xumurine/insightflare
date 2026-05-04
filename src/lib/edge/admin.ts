@@ -3,6 +3,9 @@ import { argon2id } from "@noble/hashes/argon2.js";
 import { normalizeTimeZone } from "@/lib/dashboard/time-zone";
 import { DEFAULT_SITE_SCRIPT_SETTINGS } from "@/lib/site-settings";
 import type {
+  DoDiagnosticAggregate,
+  DoDiagnosticPayload,
+  DoDiagnosticSiteEntry,
   SystemPerformanceData,
   SystemPerformanceWindowMinutes,
 } from "@/lib/system-performance";
@@ -1477,6 +1480,226 @@ async function hSystemPerformance(
   return j(data);
 }
 
+const DO_DIAGNOSTIC_FETCH_TIMEOUT_MS = 4000;
+const DO_DIAGNOSTIC_PARALLELISM = 8;
+const DO_DIAGNOSTIC_TOP_SITES = 20;
+
+async function fetchDoDiagnostic(
+  env: Env,
+  site: { id: string; name: string; domain: string },
+): Promise<DoDiagnosticSiteEntry> {
+  const startedAt = Date.now();
+  const baseEntry = {
+    siteId: site.id,
+    siteName: site.name || site.id,
+    siteDomain: site.domain || "",
+  };
+  try {
+    const stubId = env.INGEST_DO.idFromName(site.id);
+    const stub = env.INGEST_DO.get(stubId);
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      DO_DIAGNOSTIC_FETCH_TIMEOUT_MS,
+    );
+    let response: Response;
+    try {
+      response = await stub.fetch("https://ingest.internal/diagnostic", {
+        method: "GET",
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    const durationMs = Date.now() - startedAt;
+    if (!response.ok) {
+      return {
+        ...baseEntry,
+        ok: false,
+        error: `do_status_${response.status}`,
+        durationMs,
+      };
+    }
+    const payload = (await response.json()) as
+      | DoDiagnosticPayload
+      | { ok: false; error?: string };
+    if ("ok" in payload && payload.ok === true) {
+      return {
+        ...baseEntry,
+        ok: true,
+        durationMs,
+        diagnostic: payload,
+      };
+    }
+    return {
+      ...baseEntry,
+      ok: false,
+      error:
+        ("error" in payload && typeof payload.error === "string"
+          ? payload.error
+          : null) || "do_invalid_response",
+      durationMs,
+    };
+  } catch (error) {
+    return {
+      ...baseEntry,
+      ok: false,
+      error: clampString(
+        String(error instanceof Error ? error.message : error),
+        160,
+      ),
+      durationMs: Date.now() - startedAt,
+    };
+  }
+}
+
+async function fetchDoDiagnosticsBatched(
+  env: Env,
+  sites: Array<{ id: string; name: string; domain: string }>,
+): Promise<DoDiagnosticSiteEntry[]> {
+  const results: DoDiagnosticSiteEntry[] = new Array(sites.length);
+  let cursor = 0;
+  const workers = Array.from(
+    { length: Math.min(DO_DIAGNOSTIC_PARALLELISM, sites.length) },
+    async () => {
+      while (true) {
+        const index = cursor;
+        cursor += 1;
+        if (index >= sites.length) return;
+        results[index] = await fetchDoDiagnostic(env, sites[index]);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+function siteAnomalyScore(entry: DoDiagnosticSiteEntry): number {
+  if (!entry.ok || !entry.diagnostic) return -1;
+  const d = entry.diagnostic;
+  const o = d.visits.open;
+  return (
+    o.futureSkewed * 1000 +
+    o.hardAged * 100 +
+    o.timedOut * 10 +
+    d.visits.dirty.stuck * 100 +
+    d.customEvents.stuck * 100 +
+    d.visits.dirty.maxFlushAttempts +
+    d.customEvents.maxFlushAttempts +
+    d.visits.open.total
+  );
+}
+
+async function hDoDiagnostic(
+  req: Request,
+  env: Env,
+  _url: URL,
+): Promise<Response> {
+  const a = await requireActor(env, req);
+  if (a instanceof Response) return a;
+  if (!a.isAdmin) return forb("Only system admin can view DO diagnostics");
+  if (req.method !== "GET") return na();
+
+  const generatedAt = Date.now();
+  const sitesResult = await env.DB.prepare(
+    "SELECT id, name, domain FROM sites ORDER BY created_at ASC",
+  ).all<{ id: string; name: string; domain: string }>();
+  const sites = sitesResult.results.map((row) => ({
+    id: String(row.id || ""),
+    name: String(row.name || ""),
+    domain: String(row.domain || ""),
+  }));
+
+  const siteEntries = await fetchDoDiagnosticsBatched(env, sites);
+
+  const totals = {
+    bufferedVisits: 0,
+    openVisits: 0,
+    openStale: 0,
+    openTimedOut: 0,
+    openHardAged: 0,
+    openFutureSkewed: 0,
+    dirtyVisits: 0,
+    stuckDirtyVisits: 0,
+    bufferedCustomEvents: 0,
+    dirtyCustomEvents: 0,
+    stuckDirtyCustomEvents: 0,
+    activeAlarms: 0,
+    maxVisitFlushAttempts: 0,
+    maxCustomEventFlushAttempts: 0,
+  };
+  let oldestOpenStartedAt: number | null = null;
+  let futureMaxActivityAt: number | null = null;
+  let reachable = 0;
+  let referenceThresholds: DoDiagnosticPayload["thresholds"] | null = null;
+
+  for (const entry of siteEntries) {
+    if (!entry.ok || !entry.diagnostic) continue;
+    reachable += 1;
+    const d = entry.diagnostic;
+    if (!referenceThresholds) referenceThresholds = d.thresholds;
+    totals.bufferedVisits += d.visits.total;
+    totals.openVisits += d.visits.open.total;
+    totals.openStale += d.visits.open.stale;
+    totals.openTimedOut += d.visits.open.timedOut;
+    totals.openHardAged += d.visits.open.hardAged;
+    totals.openFutureSkewed += d.visits.open.futureSkewed;
+    totals.dirtyVisits += d.visits.dirty.total;
+    totals.stuckDirtyVisits += d.visits.dirty.stuck;
+    totals.bufferedCustomEvents += d.customEvents.total;
+    totals.dirtyCustomEvents += d.customEvents.dirty;
+    totals.stuckDirtyCustomEvents += d.customEvents.stuck;
+    if (d.alarm.scheduledAt !== null) totals.activeAlarms += 1;
+    totals.maxVisitFlushAttempts = Math.max(
+      totals.maxVisitFlushAttempts,
+      d.visits.dirty.maxFlushAttempts,
+    );
+    totals.maxCustomEventFlushAttempts = Math.max(
+      totals.maxCustomEventFlushAttempts,
+      d.customEvents.maxFlushAttempts,
+    );
+    if (
+      d.visits.open.oldestStartedAt !== null &&
+      (oldestOpenStartedAt === null ||
+        d.visits.open.oldestStartedAt < oldestOpenStartedAt)
+    ) {
+      oldestOpenStartedAt = d.visits.open.oldestStartedAt;
+    }
+    if (
+      d.visits.open.futureMaxActivityAt !== null &&
+      (futureMaxActivityAt === null ||
+        d.visits.open.futureMaxActivityAt > futureMaxActivityAt)
+    ) {
+      futureMaxActivityAt = d.visits.open.futureMaxActivityAt;
+    }
+  }
+
+  const sortedSites = [...siteEntries].sort(
+    (left, right) => siteAnomalyScore(right) - siteAnomalyScore(left),
+  );
+  const topSites = sortedSites.slice(0, DO_DIAGNOSTIC_TOP_SITES);
+
+  const aggregate: DoDiagnosticAggregate = {
+    ok: true,
+    generatedAt,
+    totalSites: sites.length,
+    reachableSites: reachable,
+    unreachableSites: siteEntries.length - reachable,
+    thresholds: referenceThresholds ?? {
+      staleMs: 30 * 60 * 1000,
+      timeoutMs: 12 * 60 * 60 * 1000,
+      hardAgedMs: 36 * 60 * 60 * 1000,
+      stuckFlushAttempts: 5,
+    },
+    totals,
+    oldestOpenStartedAt,
+    futureMaxActivityAt,
+    sites: topSites,
+  };
+
+  return j(aggregate);
+}
+
 export async function handlePrivateAdmin(
   request: Request,
   env: Env,
@@ -1496,5 +1719,7 @@ export async function handlePrivateAdmin(
     return hScriptSnippet(request, env, url);
   if (p === "/api/private/admin/system-performance")
     return hSystemPerformance(request, env, url);
+  if (p === "/api/private/admin/do-diagnostic")
+    return hDoDiagnostic(request, env, url);
   return nf();
 }
