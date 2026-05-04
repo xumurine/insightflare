@@ -33,6 +33,7 @@ const D1_FLUSH_INTERVAL_MS = 60 * 1000;
 const D1_FLUSH_BATCH_SIZE = 100;
 const TIMEOUT_FINALIZE_BATCH_SIZE = WRITE_BUDGET_PER_INVOCATION;
 const FLUSHED_BUFFER_RETENTION_MS = RECENT_EVENT_RETENTION_MS;
+const MAX_CLIENT_EVENT_LAG_MS = 30 * 1000;
 
 interface RealtimeSnapshotRecord {
   id: string;
@@ -329,6 +330,17 @@ function clampTimestamp(input: unknown, fallback: number): number {
   const value = coerceNumber(input, fallback) ?? fallback;
   if (!Number.isFinite(value) || value <= 0) return fallback;
   return Math.floor(value);
+}
+
+function resolveTrustedClientTimestamp(
+  input: unknown,
+  receivedAt: number,
+  fallback = receivedAt,
+): number {
+  const value = clampTimestamp(input, fallback);
+  if (value > receivedAt) return receivedAt;
+  if (receivedAt - value > MAX_CLIENT_EVENT_LAG_MS) return receivedAt;
+  return value;
 }
 
 function normalizePerformanceMetric(input: unknown): number | null {
@@ -810,8 +822,11 @@ export class IngestDurableObject extends DurableObject {
     const requestHeaders = envelope.request.headers ?? {};
     const nowMs = Date.now();
     const receivedAt = clampTimestamp(envelope.request.receivedAt, nowMs);
-    const eventAt = clampTimestamp(client.timestamp, nowMs);
-    const startedAt = clampTimestamp(client.startedAt, eventAt);
+    const eventAt = resolveTrustedClientTimestamp(client.timestamp, receivedAt);
+    const startedAt = Math.min(
+      resolveTrustedClientTimestamp(client.startedAt, receivedAt, eventAt),
+      eventAt,
+    );
     const kind = clampString(
       coerceString(client.kind),
       40,
