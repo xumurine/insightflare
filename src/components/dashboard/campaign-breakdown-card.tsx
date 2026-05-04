@@ -43,6 +43,7 @@ type CampaignSortState = {
   key: CampaignSortKey;
   direction: "asc" | "desc";
 };
+type CampaignBreakdownGroupKey = "acquisition" | "signals";
 
 interface CampaignBreakdownCardProps {
   locale: Locale;
@@ -55,6 +56,19 @@ const DEFAULT_SORT: CampaignSortState = {
   key: "views",
   direction: "desc",
 };
+const CAMPAIGN_BREAKDOWN_GROUPS: Array<{
+  key: CampaignBreakdownGroupKey;
+  tabs: CampaignTab[];
+}> = [
+  {
+    key: "acquisition",
+    tabs: ["source", "medium", "campaign"],
+  },
+  {
+    key: "signals",
+    tabs: ["term", "content"],
+  },
+];
 
 function createInitialSortByTab(): Record<CampaignTab, CampaignSortState> {
   return {
@@ -63,6 +77,16 @@ function createInitialSortByTab(): Record<CampaignTab, CampaignSortState> {
     campaign: { ...DEFAULT_SORT },
     term: { ...DEFAULT_SORT },
     content: { ...DEFAULT_SORT },
+  };
+}
+
+function createInitialActiveTabByGroup(): Record<
+  CampaignBreakdownGroupKey,
+  CampaignTab
+> {
+  return {
+    acquisition: "source",
+    signals: "term",
   };
 }
 
@@ -77,6 +101,9 @@ export function CampaignBreakdownCard({
   const [sortByTab, setSortByTab] = useState<
     Record<CampaignTab, CampaignSortState>
   >(createInitialSortByTab);
+  const [activeTabByGroup, setActiveTabByGroup] = useState<
+    Record<CampaignBreakdownGroupKey, CampaignTab>
+  >(createInitialActiveTabByGroup);
   const [searchTab, setSearchTab] = useState<CampaignTab | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -340,19 +367,28 @@ export function CampaignBreakdownCard({
       </div>
 
       <div className="grid items-stretch gap-6 lg:grid-cols-2">
-        {CAMPAIGN_TABS.map((tab) => {
-          const rows = sortedRowsByTab[tab];
+        {CAMPAIGN_BREAKDOWN_GROUPS.map((group) => {
+          const activeTab = activeTabByGroup[group.key];
+          const rows = sortedRowsByTab[activeTab];
 
           return (
-            <div key={tab} className="min-w-0 h-full">
-              <TabbedScrollMaskCard
-                value={tab}
-                onValueChange={() => {}}
-                tabs={[{ value: tab, label: tabMeta[tab].label }]}
+            <div key={group.key} className="h-full min-w-0">
+              <TabbedScrollMaskCard<CampaignTab>
+                value={activeTab}
+                onValueChange={(value) =>
+                  setActiveTabByGroup((previous) => ({
+                    ...previous,
+                    [group.key]: value,
+                  }))
+                }
+                tabs={group.tabs.map((tab) => ({
+                  value: tab,
+                  label: tabMeta[tab].label,
+                }))}
                 headerRight={
                   <Clickable
                     className="size-6 text-muted-foreground hover:text-foreground"
-                    onClick={() => setSearchTab(tab)}
+                    onClick={() => setSearchTab(activeTab)}
                     aria-label={messages.common.search}
                     title={messages.common.search}
                   >
@@ -360,7 +396,7 @@ export function CampaignBreakdownCard({
                   </Clickable>
                 }
                 className="h-full min-h-[420px]"
-                syncKey={`${loading}-${tab}-${sortByTab[tab].key}-${sortByTab[tab].direction}-${rows.length}`}
+                syncKey={`${loading}-${activeTab}-${sortByTab[activeTab].key}-${sortByTab[activeTab].direction}-${rows.length}`}
               >
                 <DataTableSwitch
                   loading={loading}
@@ -368,9 +404,9 @@ export function CampaignBreakdownCard({
                   loadingLabel={messages.common.loading}
                   emptyLabel={messages.campaigns.noTaggedTraffic}
                   colSpan={3}
-                  header={renderTableHeader(tab)}
-                  rows={renderRows(tab, `main-${tab}`)}
-                  contentKey={tab}
+                  header={renderTableHeader(activeTab)}
+                  rows={renderRows(activeTab, `main-${activeTab}`)}
+                  contentKey={activeTab}
                 />
               </TabbedScrollMaskCard>
             </div>
