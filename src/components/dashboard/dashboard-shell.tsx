@@ -8,6 +8,7 @@ import {
   RiFolderLine,
   RiGlobalLine,
   RiSettings3Line,
+  RiSpeedUpLine,
   RiTeamLine,
   RiUser3Line,
 } from "@remixicon/react";
@@ -97,6 +98,7 @@ function getTeamSectionIcon(key: string) {
 function getManagementSectionIcon(key: string) {
   if (key === "manage-users") return RiUser3Line;
   if (key === "manage-sites") return RiGlobalLine;
+  if (key === "system-performance") return RiSpeedUpLine;
   return RiTeamLine;
 }
 
@@ -187,6 +189,12 @@ function parseSidebarRouteState(
       return {
         mode: "team",
         activeManagementSectionKey: "manage-teams",
+      };
+    }
+    if (localPath[1] === "system-performance") {
+      return {
+        mode: "team",
+        activeManagementSectionKey: "system-performance",
       };
     }
     return {

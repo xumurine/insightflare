@@ -617,6 +617,7 @@ managementNav:
   users: User Management
   sites: Site Management
   teams: Team Management
+  systemPerformance: System Performance
 adminUsers:
   title: User Management
   subtitle: Only system admins can create and manage dashboard users.
@@ -699,6 +700,46 @@ adminTeams:
     members: Members
     created: Created
     action: Action
+systemPerformance:
+  title: System Performance
+  subtitle: Monitor InsightFlare collection, buffering, and write health from existing analytics rows.
+  refresh: Refresh
+  loadFailed: Failed to load system performance data.
+  noData: No system performance data in this window.
+  range15m: Last 15 minutes
+  range1h: Last 1 hour
+  range6h: Last 6 hours
+  range24h: Last 24 hours
+  totalEvents: Accepted Events
+  p95Latency: P95 Estimated Delay
+  p50Latency: P50
+  dataFreshness: Data Freshness
+  noRecentWrite: No recent write
+  clockAnomalies: Clock / Delay Anomalies
+  delayed: Delayed
+  future: Future clock
+  throughputTrend: Accepted Event Throughput
+  throughputTrendDescription: Rows grouped by server write time. Bars combine visits and custom events.
+  visits: Visits
+  customEvents: Custom Events
+  anomalyBucket: Anomaly bucket
+  openVisitHealth: Open Visit Backlog
+  openVisitHealthDescription: Open rows that have not been closed by leave, route change, or timeout finalization.
+  open: Open
+  stale: Stale
+  timedOut: Timed out
+  oldestOpen: Oldest open
+  latestActivity: Latest activity
+  estimationNote: Estimated delay is server write time minus client event time, so browser queueing and wrong client clocks are included.
+  topSitesTitle: Top Sites by System Load
+  topSitesDescription: Sites producing the most accepted rows in the selected window.
+  events: Events
+  avgLatency: Avg delay
+  slowestEventsTitle: Slowest Estimated Events
+  slowestEventsDescription: Highest positive write-time minus event-time gaps in the selected window.
+  eventTime: Event time
+  serverTime: Server write time
+  estimatedDelay: Estimated delay
 loginForm:
   signingIn: Signing in...
   failed: Sign in failed. Please try again.

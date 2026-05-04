@@ -6,7 +6,8 @@ export type TeamTab = "sites" | "settings" | "members";
 export type ManagementSectionKey =
   | "manage-users"
   | "manage-sites"
-  | "manage-teams";
+  | "manage-teams"
+  | "system-performance";
 
 export interface DashboardSectionItem {
   key: string;
@@ -28,7 +29,8 @@ function managementLabel(
 ): string {
   if (key === "manage-users") return messages.managementNav.users;
   if (key === "manage-sites") return messages.managementNav.sites;
-  return messages.managementNav.teams;
+  if (key === "manage-teams") return messages.managementNav.teams;
+  return messages.managementNav.systemPerformance;
 }
 
 function buildTeamTabPath(
@@ -48,7 +50,8 @@ function buildManagementPath(
 ): string {
   if (key === "manage-users") return `/${locale}/app/${teamSlug}/manage/users`;
   if (key === "manage-sites") return `/${locale}/app/${teamSlug}/manage/sites`;
-  return `/${locale}/app/${teamSlug}/manage/teams`;
+  if (key === "manage-teams") return `/${locale}/app/${teamSlug}/manage/teams`;
+  return `/${locale}/app/${teamSlug}/manage/system-performance`;
 }
 
 export function buildTeamSections(
@@ -72,6 +75,7 @@ export function buildManagementSections(
     "manage-users",
     "manage-sites",
     "manage-teams",
+    "system-performance",
   ] as const;
   return keys.map((key) => ({
     key,

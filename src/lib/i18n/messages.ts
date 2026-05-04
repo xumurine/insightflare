@@ -624,6 +624,7 @@ export interface AppMessages {
     users: string;
     sites: string;
     teams: string;
+    systemPerformance: string;
   };
   adminUsers: {
     title: string;
@@ -712,6 +713,47 @@ export interface AppMessages {
       created: string;
       action: string;
     };
+  };
+  systemPerformance: {
+    title: string;
+    subtitle: string;
+    refresh: string;
+    loadFailed: string;
+    noData: string;
+    range15m: string;
+    range1h: string;
+    range6h: string;
+    range24h: string;
+    totalEvents: string;
+    p95Latency: string;
+    p50Latency: string;
+    dataFreshness: string;
+    noRecentWrite: string;
+    clockAnomalies: string;
+    delayed: string;
+    future: string;
+    throughputTrend: string;
+    throughputTrendDescription: string;
+    visits: string;
+    customEvents: string;
+    anomalyBucket: string;
+    openVisitHealth: string;
+    openVisitHealthDescription: string;
+    open: string;
+    stale: string;
+    timedOut: string;
+    oldestOpen: string;
+    latestActivity: string;
+    estimationNote: string;
+    topSitesTitle: string;
+    topSitesDescription: string;
+    events: string;
+    avgLatency: string;
+    slowestEventsTitle: string;
+    slowestEventsDescription: string;
+    eventTime: string;
+    serverTime: string;
+    estimatedDelay: string;
   };
   loginForm: {
     signingIn: string;

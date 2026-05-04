@@ -617,6 +617,7 @@ managementNav:
   users: 用户管理
   sites: 站点管理
   teams: 团队管理
+  systemPerformance: 系统性能
 adminUsers:
   title: 用户管理
   subtitle: 仅系统管理员可创建和管理后台用户。
@@ -699,6 +700,46 @@ adminTeams:
     members: 成员数
     created: 创建时间
     action: 操作
+systemPerformance:
+  title: 系统性能
+  subtitle: 基于现有分析行监控 InsightFlare 的采集、缓冲和写入健康度。
+  refresh: 刷新
+  loadFailed: 加载系统性能数据失败。
+  noData: 当前时间窗口内暂无系统性能数据。
+  range15m: 最近 15 分钟
+  range1h: 最近 1 小时
+  range6h: 最近 6 小时
+  range24h: 最近 24 小时
+  totalEvents: 已接收事件
+  p95Latency: P95 估算延迟
+  p50Latency: P50
+  dataFreshness: 数据新鲜度
+  noRecentWrite: 暂无最近写入
+  clockAnomalies: 时钟/延迟异常
+  delayed: 延迟
+  future: 未来时钟
+  throughputTrend: 已接收事件吞吐
+  throughputTrendDescription: 按服务端写入时间分桶，柱条合并访问和自定义事件。
+  visits: 访问
+  customEvents: 自定义事件
+  anomalyBucket: 异常分桶
+  openVisitHealth: 未关闭访问堆积
+  openVisitHealthDescription: 尚未被离开事件、路由切换或超时收尾关闭的访问行。
+  open: 未关闭
+  stale: 停滞
+  timedOut: 已超时
+  oldestOpen: 最早未关闭
+  latestActivity: 最近活动
+  estimationNote: 估算延迟等于服务端写入时间减客户端事件时间，因此会包含浏览器排队和错误客户端时钟。
+  topSitesTitle: 系统负载最高的站点
+  topSitesDescription: 当前窗口内产生最多已接收行的站点。
+  events: 事件
+  avgLatency: 平均延迟
+  slowestEventsTitle: 估算最慢事件
+  slowestEventsDescription: 当前窗口内服务端写入时间与事件时间正向差值最大的记录。
+  eventTime: 事件时间
+  serverTime: 服务端写入时间
+  estimatedDelay: 估算延迟
 loginForm:
   signingIn: 登录中...
   failed: 登录失败，请稍后重试。

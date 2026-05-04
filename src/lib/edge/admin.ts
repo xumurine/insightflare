@@ -2,6 +2,10 @@ import { argon2id } from "@noble/hashes/argon2.js";
 
 import { normalizeTimeZone } from "@/lib/dashboard/time-zone";
 import { DEFAULT_SITE_SCRIPT_SETTINGS } from "@/lib/site-settings";
+import type {
+  SystemPerformanceData,
+  SystemPerformanceWindowMinutes,
+} from "@/lib/system-performance";
 
 import { requireSession } from "./session-auth";
 import {
@@ -61,6 +65,13 @@ const una = (m = "Unauthorized") => j({ ok: false, error: m }, 401);
 const forb = (m = "Forbidden") => j({ ok: false, error: m }, 403);
 const nf = (m = "Not Found") => j({ ok: false, error: m }, 404);
 const na = () => j({ ok: false, error: "Method Not Allowed" }, 405);
+
+const SYSTEM_PERFORMANCE_WINDOW_OPTIONS = [15, 60, 360, 1440] as const;
+const SYSTEM_DELAYED_EVENT_MS = 5 * 60 * 1000;
+const SYSTEM_FUTURE_SKEW_MS = 30 * 1000;
+const SYSTEM_TRUSTED_LATENCY_MAX_MS = 24 * 60 * 60 * 1000;
+const SYSTEM_STALE_OPEN_VISIT_MS = 30 * 60 * 1000;
+const SYSTEM_TIMED_OUT_OPEN_VISIT_MS = 12 * 60 * 60 * 1000;
 
 const normU = (s: string) => clampString(s.trim().toLowerCase(), 80);
 const normE = (s: string) => clampString(s.trim().toLowerCase(), 200);
@@ -1097,6 +1108,328 @@ async function hScriptSnippet(
   });
 }
 
+const SYSTEM_EVENTS_CTE = `
+  WITH raw_events AS (
+    SELECT
+      'visit' AS kind,
+      site_id AS siteId,
+      started_at AS eventAtMs,
+      created_at * 1000 AS serverAtMs,
+      created_at AS createdAtSec
+    FROM visits
+    WHERE created_at >= ? AND created_at <= ?
+    UNION ALL
+    SELECT
+      'custom_event' AS kind,
+      site_id AS siteId,
+      occurred_at AS eventAtMs,
+      created_at * 1000 AS serverAtMs,
+      created_at AS createdAtSec
+    FROM custom_events
+    WHERE created_at >= ? AND created_at <= ?
+  ),
+  events AS (
+    SELECT
+      kind,
+      siteId,
+      eventAtMs,
+      serverAtMs,
+      createdAtSec,
+      serverAtMs - eventAtMs AS latencyMs
+    FROM raw_events
+  )
+`;
+
+function toFiniteNumber(value: unknown, fallback = 0): number {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function toNullableNumber(value: unknown): number | null {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function parseSystemPerformanceWindowMinutes(
+  url: URL,
+): SystemPerformanceWindowMinutes {
+  const value = Number(url.searchParams.get("minutes") || "60");
+  return SYSTEM_PERFORMANCE_WINDOW_OPTIONS.includes(
+    value as SystemPerformanceWindowMinutes,
+  )
+    ? (value as SystemPerformanceWindowMinutes)
+    : 60;
+}
+
+function systemPerformanceBucketSizeSeconds(
+  minutes: SystemPerformanceWindowMinutes,
+): number {
+  if (minutes <= 15) return 60;
+  if (minutes <= 60) return 5 * 60;
+  if (minutes <= 360) return 30 * 60;
+  return 60 * 60;
+}
+
+function systemWindowBindings(fromSec: number, toSec: number): number[] {
+  return [fromSec, toSec, fromSec, toSec];
+}
+
+async function hSystemPerformance(
+  req: Request,
+  env: Env,
+  url: URL,
+): Promise<Response> {
+  const a = await requireActor(env, req);
+  if (a instanceof Response) return a;
+  if (!a.isAdmin) return forb("Only system admin can view system performance");
+  if (req.method !== "GET") return na();
+
+  const minutes = parseSystemPerformanceWindowMinutes(url);
+  const generatedAt = Date.now();
+  const from = generatedAt - minutes * 60 * 1000;
+  const fromSec = Math.max(0, Math.floor(from / 1000));
+  const toSec = Math.ceil(generatedAt / 1000);
+  const bucketSizeSec = systemPerformanceBucketSizeSeconds(minutes);
+  const eventBindings = systemWindowBindings(fromSec, toSec);
+
+  const [
+    summaryRow,
+    percentileRow,
+    trendRows,
+    topSiteRows,
+    slowEventRows,
+    openVisitRow,
+  ] = await Promise.all([
+    env.DB.prepare(
+      `
+        ${SYSTEM_EVENTS_CTE}
+        SELECT
+          COUNT(*) AS totalEvents,
+          SUM(CASE WHEN kind = 'visit' THEN 1 ELSE 0 END) AS visits,
+          SUM(CASE WHEN kind = 'custom_event' THEN 1 ELSE 0 END) AS customEvents,
+          COUNT(DISTINCT siteId) AS activeSites,
+          AVG(CASE WHEN latencyMs >= 0 AND latencyMs <= ? THEN latencyMs END) AS avgLatencyMs,
+          SUM(CASE WHEN latencyMs >= 0 AND latencyMs <= ? THEN 1 ELSE 0 END) AS trustedLatencySamples,
+          SUM(CASE WHEN latencyMs > ? THEN 1 ELSE 0 END) AS delayedEvents,
+          SUM(CASE WHEN latencyMs < -? THEN 1 ELSE 0 END) AS futureSkewedEvents,
+          MAX(createdAtSec) AS latestCreatedAtSec
+        FROM events
+      `,
+    )
+      .bind(
+        ...eventBindings,
+        SYSTEM_TRUSTED_LATENCY_MAX_MS,
+        SYSTEM_TRUSTED_LATENCY_MAX_MS,
+        SYSTEM_DELAYED_EVENT_MS,
+        SYSTEM_FUTURE_SKEW_MS,
+      )
+      .first<Record<string, unknown>>(),
+    env.DB.prepare(
+      `
+        ${SYSTEM_EVENTS_CTE},
+        valid_latency AS (
+          SELECT latencyMs
+          FROM events
+          WHERE latencyMs >= 0 AND latencyMs <= ?
+        ),
+        ranked_latency AS (
+          SELECT
+            latencyMs,
+            ROW_NUMBER() OVER (ORDER BY latencyMs) AS rn,
+            COUNT(*) OVER () AS total
+          FROM valid_latency
+        )
+        SELECT
+          MIN(CASE WHEN rn >= total * 0.5 THEN latencyMs END) AS p50LatencyMs,
+          MIN(CASE WHEN rn >= total * 0.95 THEN latencyMs END) AS p95LatencyMs
+        FROM ranked_latency
+      `,
+    )
+      .bind(...eventBindings, SYSTEM_TRUSTED_LATENCY_MAX_MS)
+      .first<Record<string, unknown>>(),
+    env.DB.prepare(
+      `
+        ${SYSTEM_EVENTS_CTE}
+        SELECT
+          CAST(createdAtSec / ? AS INTEGER) * ? AS bucketSec,
+          SUM(CASE WHEN kind = 'visit' THEN 1 ELSE 0 END) AS visits,
+          SUM(CASE WHEN kind = 'custom_event' THEN 1 ELSE 0 END) AS customEvents,
+          COUNT(*) AS totalEvents,
+          AVG(CASE WHEN latencyMs >= 0 AND latencyMs <= ? THEN latencyMs END) AS avgLatencyMs,
+          SUM(CASE WHEN latencyMs > ? THEN 1 ELSE 0 END) AS delayedEvents,
+          SUM(CASE WHEN latencyMs < -? THEN 1 ELSE 0 END) AS futureSkewedEvents
+        FROM events
+        GROUP BY bucketSec
+        ORDER BY bucketSec ASC
+      `,
+    )
+      .bind(
+        ...eventBindings,
+        bucketSizeSec,
+        bucketSizeSec,
+        SYSTEM_TRUSTED_LATENCY_MAX_MS,
+        SYSTEM_DELAYED_EVENT_MS,
+        SYSTEM_FUTURE_SKEW_MS,
+      )
+      .all<Record<string, unknown>>(),
+    env.DB.prepare(
+      `
+        ${SYSTEM_EVENTS_CTE}
+        SELECT
+          e.siteId,
+          COALESCE(s.name, e.siteId) AS siteName,
+          COALESCE(s.domain, '') AS siteDomain,
+          COUNT(*) AS totalEvents,
+          SUM(CASE WHEN e.kind = 'visit' THEN 1 ELSE 0 END) AS visits,
+          SUM(CASE WHEN e.kind = 'custom_event' THEN 1 ELSE 0 END) AS customEvents,
+          AVG(CASE WHEN e.latencyMs >= 0 AND e.latencyMs <= ? THEN e.latencyMs END) AS avgLatencyMs,
+          SUM(CASE WHEN e.latencyMs > ? THEN 1 ELSE 0 END) AS delayedEvents,
+          SUM(CASE WHEN e.latencyMs < -? THEN 1 ELSE 0 END) AS futureSkewedEvents
+        FROM events e
+        LEFT JOIN sites s ON s.id = e.siteId
+        GROUP BY e.siteId
+        ORDER BY totalEvents DESC, delayedEvents DESC
+        LIMIT 8
+      `,
+    )
+      .bind(
+        ...eventBindings,
+        SYSTEM_TRUSTED_LATENCY_MAX_MS,
+        SYSTEM_DELAYED_EVENT_MS,
+        SYSTEM_FUTURE_SKEW_MS,
+      )
+      .all<Record<string, unknown>>(),
+    env.DB.prepare(
+      `
+        ${SYSTEM_EVENTS_CTE}
+        SELECT
+          e.kind,
+          e.siteId,
+          COALESCE(s.name, e.siteId) AS siteName,
+          COALESCE(s.domain, '') AS siteDomain,
+          e.eventAtMs,
+          e.serverAtMs,
+          e.latencyMs
+        FROM events e
+        LEFT JOIN sites s ON s.id = e.siteId
+        WHERE e.latencyMs > 0
+        ORDER BY e.latencyMs DESC
+        LIMIT 10
+      `,
+    )
+      .bind(...eventBindings)
+      .all<Record<string, unknown>>(),
+    env.DB.prepare(
+      `
+        SELECT
+          COUNT(*) AS total,
+          SUM(CASE WHEN ? - last_activity_at > ? THEN 1 ELSE 0 END) AS stale,
+          SUM(CASE WHEN ? - last_activity_at > ? THEN 1 ELSE 0 END) AS timedOut,
+          MIN(started_at) AS oldestStartedAt,
+          MAX(last_activity_at) AS newestActivityAt
+        FROM visits
+        WHERE status = 'open'
+      `,
+    )
+      .bind(
+        generatedAt,
+        SYSTEM_STALE_OPEN_VISIT_MS,
+        generatedAt,
+        SYSTEM_TIMED_OUT_OPEN_VISIT_MS,
+      )
+      .first<Record<string, unknown>>(),
+  ]);
+
+  const totalEvents = toFiniteNumber(summaryRow?.totalEvents);
+  const delayedEvents = toFiniteNumber(summaryRow?.delayedEvents);
+  const futureSkewedEvents = toFiniteNumber(summaryRow?.futureSkewedEvents);
+  const latestCreatedAtSec = toNullableNumber(summaryRow?.latestCreatedAtSec);
+  const latestCreatedAt =
+    latestCreatedAtSec === null ? null : latestCreatedAtSec * 1000;
+  const data: SystemPerformanceData = {
+    ok: true,
+    generatedAt,
+    window: {
+      from: fromSec * 1000,
+      to: generatedAt,
+      minutes,
+      bucketSizeMs: bucketSizeSec * 1000,
+    },
+    thresholds: {
+      delayedMs: SYSTEM_DELAYED_EVENT_MS,
+      futureSkewMs: SYSTEM_FUTURE_SKEW_MS,
+      trustedLatencyMaxMs: SYSTEM_TRUSTED_LATENCY_MAX_MS,
+      staleOpenVisitMs: SYSTEM_STALE_OPEN_VISIT_MS,
+      timedOutOpenVisitMs: SYSTEM_TIMED_OUT_OPEN_VISIT_MS,
+    },
+    summary: {
+      totalEvents,
+      visits: toFiniteNumber(summaryRow?.visits),
+      customEvents: toFiniteNumber(summaryRow?.customEvents),
+      activeSites: toFiniteNumber(summaryRow?.activeSites),
+      eventsPerMinute: totalEvents / minutes,
+      latestCreatedAt,
+      dataFreshnessMs:
+        latestCreatedAt === null
+          ? null
+          : Math.max(0, generatedAt - latestCreatedAt),
+      avgLatencyMs: toNullableNumber(summaryRow?.avgLatencyMs),
+      p50LatencyMs: toNullableNumber(percentileRow?.p50LatencyMs),
+      p95LatencyMs: toNullableNumber(percentileRow?.p95LatencyMs),
+      trustedLatencySamples: toFiniteNumber(summaryRow?.trustedLatencySamples),
+      delayedEvents,
+      futureSkewedEvents,
+      anomalyRate:
+        totalEvents > 0
+          ? (delayedEvents + futureSkewedEvents) / totalEvents
+          : 0,
+    },
+    openVisits: {
+      total: toFiniteNumber(openVisitRow?.total),
+      stale: toFiniteNumber(openVisitRow?.stale),
+      timedOut: toFiniteNumber(openVisitRow?.timedOut),
+      oldestStartedAt: toNullableNumber(openVisitRow?.oldestStartedAt),
+      newestActivityAt: toNullableNumber(openVisitRow?.newestActivityAt),
+    },
+    trend: trendRows.results.map((row) => {
+      const bucketSec = toFiniteNumber(row.bucketSec);
+      return {
+        bucket: bucketSec,
+        timestampMs: bucketSec * 1000,
+        visits: toFiniteNumber(row.visits),
+        customEvents: toFiniteNumber(row.customEvents),
+        totalEvents: toFiniteNumber(row.totalEvents),
+        avgLatencyMs: toNullableNumber(row.avgLatencyMs),
+        delayedEvents: toFiniteNumber(row.delayedEvents),
+        futureSkewedEvents: toFiniteNumber(row.futureSkewedEvents),
+      };
+    }),
+    topSites: topSiteRows.results.map((row) => ({
+      siteId: clampString(String(row.siteId || ""), 120),
+      siteName: clampString(String(row.siteName || ""), 120),
+      siteDomain: clampString(String(row.siteDomain || ""), 255),
+      totalEvents: toFiniteNumber(row.totalEvents),
+      visits: toFiniteNumber(row.visits),
+      customEvents: toFiniteNumber(row.customEvents),
+      avgLatencyMs: toNullableNumber(row.avgLatencyMs),
+      delayedEvents: toFiniteNumber(row.delayedEvents),
+      futureSkewedEvents: toFiniteNumber(row.futureSkewedEvents),
+    })),
+    slowEvents: slowEventRows.results.map((row) => ({
+      kind:
+        String(row.kind || "") === "custom_event" ? "custom_event" : "visit",
+      siteId: clampString(String(row.siteId || ""), 120),
+      siteName: clampString(String(row.siteName || ""), 120),
+      siteDomain: clampString(String(row.siteDomain || ""), 255),
+      eventAt: toFiniteNumber(row.eventAtMs),
+      serverAt: toFiniteNumber(row.serverAtMs),
+      latencyMs: toFiniteNumber(row.latencyMs),
+    })),
+  };
+
+  return j(data);
+}
+
 export async function handlePrivateAdmin(
   request: Request,
   env: Env,
@@ -1114,5 +1447,7 @@ export async function handlePrivateAdmin(
     return hSiteConfig(request, env, url);
   if (p === "/api/private/admin/script-snippet")
     return hScriptSnippet(request, env, url);
+  if (p === "/api/private/admin/system-performance")
+    return hSystemPerformance(request, env, url);
   return nf();
 }
