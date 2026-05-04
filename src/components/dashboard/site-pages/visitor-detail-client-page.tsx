@@ -31,6 +31,10 @@ import {
   type AsyncDimensionBreakdownRow,
 } from "@/components/dashboard/async-dimension-breakdown-card";
 import {
+  JourneyDetailLoadingState,
+  JourneyDetailStateSwitch,
+} from "@/components/dashboard/journey-detail-state";
+import {
   BrowserMeta,
   DeviceMeta,
   formatDuration,
@@ -2228,52 +2232,61 @@ export function VisitorDetailClientPage({
 
   if (!visitorId) {
     return (
-      <Card>
-        <CardContent className="py-8 text-sm text-muted-foreground">
-          {labels.missing}
-        </CardContent>
-      </Card>
+      <JourneyDetailStateSwitch stateKey="visitor-missing">
+        <Card>
+          <CardContent className="py-8 text-sm text-muted-foreground">
+            {labels.missing}
+          </CardContent>
+        </Card>
+      </JourneyDetailStateSwitch>
     );
   }
 
   if (loading) {
     return (
-      <Card>
-        <CardContent className="py-8 text-sm text-muted-foreground">
-          {messages.common.loading}
-        </CardContent>
-      </Card>
+      <JourneyDetailStateSwitch stateKey="visitor-loading">
+        <JourneyDetailLoadingState
+          kind="visitor"
+          loadingLabel={messages.common.loading}
+        />
+      </JourneyDetailStateSwitch>
     );
   }
 
   if (error) {
     return (
-      <Card>
-        <CardContent className="py-8 text-sm text-muted-foreground">
-          {labels.loadError}
-        </CardContent>
-      </Card>
+      <JourneyDetailStateSwitch stateKey="visitor-error">
+        <Card>
+          <CardContent className="py-8 text-sm text-muted-foreground">
+            {labels.loadError}
+          </CardContent>
+        </Card>
+      </JourneyDetailStateSwitch>
     );
   }
 
   if (!detail) {
     return (
-      <Card>
-        <CardContent className="py-8 text-sm text-muted-foreground">
-          {labels.notFound}
-        </CardContent>
-      </Card>
+      <JourneyDetailStateSwitch stateKey="visitor-not-found">
+        <Card>
+          <CardContent className="py-8 text-sm text-muted-foreground">
+            {labels.notFound}
+          </CardContent>
+        </Card>
+      </JourneyDetailStateSwitch>
     );
   }
 
   return (
-    <DetailContent
-      locale={locale}
-      messages={messages}
-      labels={labels}
-      detail={detail}
-      siteId={siteId}
-      pathname={pathname}
-    />
+    <JourneyDetailStateSwitch stateKey={`visitor-content-${requestKey}`}>
+      <DetailContent
+        locale={locale}
+        messages={messages}
+        labels={labels}
+        detail={detail}
+        siteId={siteId}
+        pathname={pathname}
+      />
+    </JourneyDetailStateSwitch>
   );
 }
