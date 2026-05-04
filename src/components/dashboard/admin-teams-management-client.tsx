@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { RiArrowRightLine, RiSettings3Line } from "@remixicon/react";
 import { toast } from "sonner";
 
+import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
@@ -62,6 +63,7 @@ export function AdminTeamsManagementClient({
   locale,
   messages,
 }: AdminTeamsManagementClientProps) {
+  const { timeZone } = useDashboardQueryControls();
   const router = useRouter();
   const t = messages.adminTeams;
   const [teams, setTeams] = useState<TeamData[]>([]);
@@ -223,7 +225,9 @@ export function AdminTeamsManagementClient({
                 <TableCell className="font-mono">{team.slug}</TableCell>
                 <TableCell className="text-right">{team.siteCount}</TableCell>
                 <TableCell className="text-right">{team.memberCount}</TableCell>
-                <TableCell>{shortDateTime(locale, team.createdAt)}</TableCell>
+                <TableCell>
+                  {shortDateTime(locale, team.createdAt, timeZone)}
+                </TableCell>
                 <TableCell className="text-right">
                   <div className="inline-flex items-center justify-end gap-2">
                     <Clickable

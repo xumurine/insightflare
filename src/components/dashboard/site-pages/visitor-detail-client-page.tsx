@@ -30,6 +30,7 @@ import {
   AsyncDimensionBreakdownCard,
   type AsyncDimensionBreakdownRow,
 } from "@/components/dashboard/async-dimension-breakdown-card";
+import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import {
   JourneyDetailLoadingState,
   JourneyDetailStateSwitch,
@@ -78,6 +79,7 @@ import {
   numberFormat,
   percentFormat,
 } from "@/lib/dashboard/format";
+import { zonedParts } from "@/lib/dashboard/time-zone";
 import type {
   JourneyEvent,
   JourneyPerformanceMetricSummary,
@@ -499,9 +501,14 @@ function VisitorMapStage({
   );
 }
 
-function formatDetailedDateTime(locale: Locale, timestampMs: number): string {
+function formatDetailedDateTime(
+  locale: Locale,
+  timestampMs: number,
+  timeZone: string,
+): string {
   if (!Number.isFinite(timestampMs) || timestampMs <= 0) return "--";
   return new Intl.DateTimeFormat(intlLocale(locale), {
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -514,10 +521,12 @@ function formatDetailedDateTime(locale: Locale, timestampMs: number): string {
 function formatSeenDateTime(
   locale: Locale,
   timestampMs: number,
+  timeZone: string,
   now = Date.now(),
 ): string {
   if (!Number.isFinite(timestampMs) || timestampMs <= 0) return "--";
   const absolute = new Intl.DateTimeFormat(intlLocale(locale), {
+    timeZone,
     month: "numeric",
     day: "numeric",
     hour: "2-digit",
@@ -765,9 +774,10 @@ function eventSubtitle(
   locale: Locale,
   event: JourneyEvent,
   unknownLabel: string,
+  timeZone: string,
 ): string {
   if (event.kind === "session_start" || event.kind === "leave") {
-    return formatDetailedDateTime(locale, event.occurredAt);
+    return formatDetailedDateTime(locale, event.occurredAt, timeZone);
   }
   if (event.kind === "pageview") {
     return pageviewSubtitle(locale, event, unknownLabel);
@@ -1196,11 +1206,13 @@ function VisitorMetaPanel({
   messages,
   labels,
   detail,
+  timeZone,
 }: {
   locale: Locale;
   messages: AppMessages;
   labels: Labels;
   detail: VisitorDetail;
+  timeZone: string;
 }) {
   const { visitor, metrics } = detail;
   const totalDurationMs = detail.sessions.reduce(
@@ -1327,13 +1339,13 @@ function VisitorMetaPanel({
             label={labels.firstSeen}
             prominent
             mono
-            value={formatSeenDateTime(locale, metrics.firstSeenAt)}
+            value={formatSeenDateTime(locale, metrics.firstSeenAt, timeZone)}
           />
           <SummaryGridItem
             label={labels.lastSeen}
             prominent
             mono
-            value={formatSeenDateTime(locale, metrics.lastSeenAt)}
+            value={formatSeenDateTime(locale, metrics.lastSeenAt, timeZone)}
           />
           <SummaryGridItem
             label={labels.daysActive}
@@ -1353,12 +1365,21 @@ function VisitorMetaPanel({
   );
 }
 
+function activityDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function ActivityGrid({
   activity,
   locale,
+  timeZone,
 }: {
   activity: VisitorActivityDay[];
   locale: Locale;
+  timeZone: string;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -1425,8 +1446,8 @@ function ActivityGrid({
       const byDate = new globalThis.Map(
         activity.map((item) => [item.date, item.count]),
       );
-      const end = new Date();
-      end.setHours(0, 0, 0, 0);
+      const endParts = zonedParts(Date.now(), timeZone);
+      const end = new Date(endParts.year, endParts.month - 1, endParts.day);
       const start = new Date(end);
       start.setDate(start.getDate() - (VISITOR_ACTIVITY_DAYS - 1));
       const dayItems: VisitorActivityDayItem[] = [];
@@ -1436,7 +1457,7 @@ function ActivityGrid({
         cursor <= end;
         cursor.setDate(cursor.getDate() + 1)
       ) {
-        const date = cursor.toISOString().slice(0, 10);
+        const date = activityDateKey(cursor);
         const count = byDate.get(date) ?? 0;
         dayItems.push({
           date: new Date(cursor),
@@ -1468,7 +1489,7 @@ function ActivityGrid({
           ...nextMobileSections.map((section) => section.weekCount),
         ),
       };
-    }, [activity, locale]);
+    }, [activity, locale, timeZone]);
   const max = Math.max(
     1,
     ...desktopSection.cells.map((cell) =>
@@ -1643,6 +1664,7 @@ function VisitorEventCard({
   event,
   deltaMs,
   siteBasePath,
+  timeZone,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -1650,6 +1672,7 @@ function VisitorEventCard({
   event: JourneyEvent;
   deltaMs: number | null;
   siteBasePath: string;
+  timeZone: string;
 }) {
   const sessionHref = `${siteBasePath}/sessions/detail?sessionId=${encodeURIComponent(
     event.sessionId,
@@ -1667,13 +1690,18 @@ function VisitorEventCard({
               </p>
               <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-[11px] leading-[14px] text-muted-foreground">
                 <span className="min-w-0 truncate leading-[14px]">
-                  {eventSubtitle(locale, event, messages.common.unknown)}
+                  {eventSubtitle(
+                    locale,
+                    event,
+                    messages.common.unknown,
+                    timeZone,
+                  )}
                 </span>
               </div>
             </div>
             <div className="flex h-[34px] min-w-0 w-[42%] shrink-0 flex-col items-end justify-between text-right sm:w-auto sm:max-w-[24rem]">
               <p className="font-mono text-[11px] leading-[14px] text-foreground">
-                {formatShortDateTime(locale, event.occurredAt)}
+                {formatShortDateTime(locale, event.occurredAt, timeZone)}
               </p>
               <div className="max-w-full truncate font-mono text-[10px] leading-[13px] text-muted-foreground">
                 {deltaMs !== null && deltaMs > 0 ? (
@@ -1705,12 +1733,14 @@ function VisitDetailsCard({
   labels,
   events,
   siteBasePath,
+  timeZone,
 }: {
   locale: Locale;
   messages: AppMessages;
   labels: Labels;
   events: JourneyEvent[];
   siteBasePath: string;
+  timeZone: string;
 }) {
   const chronologicalEvents = useMemo(
     () =>
@@ -1743,6 +1773,7 @@ function VisitDetailsCard({
                 labels={labels}
                 event={event}
                 siteBasePath={siteBasePath}
+                timeZone={timeZone}
                 deltaMs={
                   index > 0
                     ? event.occurredAt -
@@ -1786,12 +1817,14 @@ function ActivityAndSessionsSection({
   messages,
   detail,
   siteBasePath,
+  timeZone,
 }: {
   locale: Locale;
   labels: Labels;
   messages: AppMessages;
   detail: VisitorDetail;
   siteBasePath: string;
+  timeZone: string;
 }) {
   const [sessionSort, setSessionSort] =
     useState<SessionSortState>(VISITOR_SESSION_SORT);
@@ -1820,7 +1853,11 @@ function ActivityAndSessionsSection({
           <CardTitle>{labels.activity}</CardTitle>
         </CardHeader>
         <CardContent>
-          <ActivityGrid activity={detail.activity} locale={locale} />
+          <ActivityGrid
+            activity={detail.activity}
+            locale={locale}
+            timeZone={timeZone}
+          />
         </CardContent>
       </Card>
 
@@ -2103,6 +2140,7 @@ function DetailContent({
   detail,
   siteId,
   pathname,
+  timeZone,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -2110,6 +2148,7 @@ function DetailContent({
   detail: VisitorDetail;
   siteId: string;
   pathname: string;
+  timeZone: string;
 }) {
   const visitorListPath = pathname.replace(/\/detail$/, "");
   const siteBasePath = visitorListPath.replace(/\/visitors$/, "");
@@ -2140,6 +2179,7 @@ function DetailContent({
           messages={messages}
           labels={labels}
           detail={detail}
+          timeZone={timeZone}
         />
 
         <ActivityAndSessionsSection
@@ -2148,6 +2188,7 @@ function DetailContent({
           messages={messages}
           detail={detail}
           siteBasePath={siteBasePath}
+          timeZone={timeZone}
         />
 
         <VisitDetailsCard
@@ -2156,6 +2197,7 @@ function DetailContent({
           labels={labels}
           events={displayEvents}
           siteBasePath={siteBasePath}
+          timeZone={timeZone}
         />
 
         <VisitorDetailBottomCards
@@ -2193,14 +2235,15 @@ export function VisitorDetailClientPage({
   pathname,
 }: VisitorDetailClientPageProps) {
   const labels = copy(locale);
+  const { timeZone } = useDashboardQueryControls();
   const searchParams = useSearchParams();
   const visitorId = searchParams.get("visitorId")?.trim() || "";
   const [detail, setDetail] = useState<VisitorDetail | null>(null);
   const [loading, setLoading] = useState(Boolean(visitorId));
   const [error, setError] = useState(false);
   const requestKey = useMemo(
-    () => [siteId, visitorId].join(":"),
-    [siteId, visitorId],
+    () => [siteId, visitorId, timeZone].join(":"),
+    [siteId, timeZone, visitorId],
   );
 
   useEffect(() => {
@@ -2212,7 +2255,7 @@ export function VisitorDetailClientPage({
     let active = true;
     setLoading(true);
     setError(false);
-    fetchVisitorDetail(siteId, visitorId)
+    fetchVisitorDetail(siteId, visitorId, timeZone)
       .then((payload) => {
         if (!active) return;
         setDetail(payload.data);
@@ -2286,6 +2329,7 @@ export function VisitorDetailClientPage({
         detail={detail}
         siteId={siteId}
         pathname={pathname}
+        timeZone={timeZone}
       />
     </JourneyDetailStateSwitch>
   );

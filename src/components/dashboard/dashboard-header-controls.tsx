@@ -98,6 +98,7 @@ import {
   type RangePreset,
   type TimeWindow,
 } from "@/lib/dashboard/query-state";
+import { zonedParts } from "@/lib/dashboard/time-zone";
 import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import {
   resolveContinentLabel,
@@ -241,20 +242,39 @@ function intervalLabel(
   return messages.intervals.month;
 }
 
-function toDateRange(from?: number, to?: number): DateRange | undefined {
+function toCalendarDate(timestampMs: number, timeZone: string): Date | null {
+  if (!Number.isFinite(timestampMs)) return null;
+  const parts = zonedParts(timestampMs, timeZone);
+  return new Date(parts.year, parts.month - 1, parts.day);
+}
+
+function toDateRange(
+  from: number | undefined,
+  to: number | undefined,
+  timeZone: string,
+): DateRange | undefined {
   if (!Number.isFinite(from) || !Number.isFinite(to)) return undefined;
+  const fromDate = toCalendarDate(from as number, timeZone);
+  const toDate = toCalendarDate(to as number, timeZone);
+  if (!fromDate || !toDate) return undefined;
   return {
-    from: new Date(from as number),
-    to: new Date(to as number),
+    from: fromDate,
+    to: toDate,
   };
 }
 
-function formatDateSpan(locale: Locale, from?: number, to?: number): string {
+function formatDateSpan(
+  locale: Locale,
+  timeZone: string,
+  from?: number,
+  to?: number,
+): string {
   if (!Number.isFinite(from) || !Number.isFinite(to)) return "";
   const formatter = new Intl.DateTimeFormat(intlLocale(locale), {
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone,
   });
   return `${formatter.format(new Date(from as number))} - ${formatter.format(new Date(to as number))}`;
 }
@@ -997,6 +1017,7 @@ export function DashboardHeaderControls({
     setInterval: setDashboardInterval,
     setUiFilters,
     allowedIntervals,
+    timeZone,
   } = useDashboardQueryControls();
   const searchParamsKey = searchParams.toString();
   const queryFilters = useMemo(
@@ -1026,8 +1047,8 @@ export function DashboardHeaderControls({
     : undefined;
 
   const selectedDateRange = useMemo(
-    () => toDateRange(customRange?.from, customRange?.to),
-    [customRange?.from, customRange?.to],
+    () => toDateRange(customRange?.from, customRange?.to, timeZone),
+    [customRange?.from, customRange?.to, timeZone],
   );
   const [customDialogOpen, setCustomDialogOpen] = useState(false);
   const [mobileFilterDrawerOpen, setMobileFilterDrawerOpen] = useState(false);
@@ -1057,7 +1078,10 @@ export function DashboardHeaderControls({
   );
   const rangeLabelText = rangeLabel(messages, range);
   const intervalLabelText = intervalLabel(messages, window.interval);
-  const pendingNormalized = normalizeCustomDateRange(pendingCustomRange);
+  const pendingNormalized = normalizeCustomDateRange(
+    pendingCustomRange,
+    timeZone,
+  );
   const previousPeriodRange = shiftTimeWindow(
     window.from,
     window.to,
@@ -1089,6 +1113,7 @@ export function DashboardHeaderControls({
       year: "numeric",
       month: "long",
       day: "numeric",
+      timeZone,
     });
     const dayCount = Math.max(
       1,
@@ -1109,6 +1134,7 @@ export function DashboardHeaderControls({
     pendingCustomRange?.from,
     pendingCustomRange?.to,
     pendingNormalized,
+    timeZone,
   ]);
 
   useEffect(() => {
@@ -1579,8 +1605,12 @@ export function DashboardHeaderControls({
           <DialogHeader>
             <DialogTitle>{messages.ranges.custom}</DialogTitle>
             <DialogDescription>
-              {formatDateSpan(locale, customRange?.from, customRange?.to) ||
-                messages.dashboardHeader.customRange}
+              {formatDateSpan(
+                locale,
+                timeZone,
+                customRange?.from,
+                customRange?.to,
+              ) || messages.dashboardHeader.customRange}
             </DialogDescription>
           </DialogHeader>
           <Calendar

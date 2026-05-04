@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { RiDeleteBinLine } from "@remixicon/react";
 import { toast } from "sonner";
 
+import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import {
   AlertDialog,
@@ -79,6 +80,7 @@ export function AdminUsersManagementClient({
   messages,
   currentUserId,
 }: AdminUsersManagementClientProps) {
+  const { timeZone } = useDashboardQueryControls();
   const t = messages.adminUsers;
   const [users, setUsers] = useState<AccountUserData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -345,7 +347,9 @@ export function AdminUsersManagementClient({
                     </span>
                   )}
                 </TableCell>
-                <TableCell>{shortDateTime(locale, user.createdAt)}</TableCell>
+                <TableCell>
+                  {shortDateTime(locale, user.createdAt, timeZone)}
+                </TableCell>
                 <TableCell className="text-right">
                   <Clickable
                     onClick={() => {

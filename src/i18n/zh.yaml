@@ -512,6 +512,28 @@ siteSettings:
     deleted: 站点已删除。
     deleteFailed: 删除站点失败。
     invalidInput: 请填写有效的站点名称和域名。
+accountSettings:
+  title: 账户设置
+  subtitle: 配置你的个人仪表盘时区。
+  timeZoneTitle: 报表时区
+  timeZoneDescription: 仪表盘里的自然日期范围和聚合分桶都会使用这个时区。
+  activeTimeZone: 当前生效时区
+  browserTimeZone: 浏览器时区
+  browserUnavailable: 未检测到
+  browserSource: 跟随浏览器
+  manualSource: 手动设置
+  preferenceLabel: 时区偏好
+  preferenceDescription: 跟随浏览器会使用当前设备时区；手动设置会在所有设备上保持同一时区。
+  useBrowser: 跟随浏览器时区
+  useCustom: 手动指定
+  customTimeZoneLabel: 手动时区
+  customTimeZonePlaceholder: 例如：Asia/Shanghai
+  customTimeZoneDescription: 请输入 IANA 时区名称。
+  invalidTimeZone: 请输入有效的 IANA 时区。
+  save: 保存偏好
+  saving: 保存中...
+  saved: 时区偏好已保存。
+  saveFailed: 保存时区偏好失败。
 login:
   title: 登录
   subtitle: 使用 InsightFlare 账号登录。

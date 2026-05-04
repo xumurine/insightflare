@@ -854,6 +854,7 @@ export interface AccountUserData {
   email: string;
   name: string;
   systemRole: "admin" | "user";
+  timeZone?: string;
   createdAt: number;
   updatedAt: number;
   teamCount?: number;
@@ -1210,6 +1211,7 @@ export async function updateMyProfile(input: {
   email?: string;
   name?: string;
   password?: string;
+  timeZone?: string;
 }): Promise<AccountUserData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: AccountUserData }>({
     method: "POST",

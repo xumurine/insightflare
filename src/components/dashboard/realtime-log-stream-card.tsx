@@ -16,6 +16,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { PartialOptions } from "overlayscrollbars";
 import { OverlayScrollbars } from "overlayscrollbars";
 
+import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import {
   GeoPointsMap,
   type GeoPointsMapCountryCount,
@@ -516,10 +517,15 @@ function formatRelativeTime(
   return formatter.format(diffDays, "day");
 }
 
-function formatDetailDateTime(locale: Locale, value: number): string {
+function formatDetailDateTime(
+  locale: Locale,
+  value: number,
+  timeZone: string,
+): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "--";
   return new Intl.DateTimeFormat(intlLocale(locale), {
+    timeZone,
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -654,6 +660,7 @@ interface RealtimeLogStreamItemProps {
   locale: Locale;
   messages: AppMessages;
   now: number;
+  timeZone: string;
 }
 
 function areRealtimeLogStreamItemPropsEqual(
@@ -664,6 +671,7 @@ function areRealtimeLogStreamItemPropsEqual(
     previousProps.locale === nextProps.locale &&
     previousProps.messages === nextProps.messages &&
     previousProps.now === nextProps.now &&
+    previousProps.timeZone === nextProps.timeZone &&
     previousProps.event.id === nextProps.event.id &&
     previousProps.event.eventType === nextProps.event.eventType &&
     previousProps.event.eventAt === nextProps.event.eventAt &&
@@ -727,6 +735,7 @@ const RealtimeLogStreamItemCard = memo(function RealtimeLogStreamItemCard({
   locale,
   messages,
   now,
+  timeZone,
 }: RealtimeLogStreamItemProps) {
   const {
     avatarSeed,
@@ -813,7 +822,7 @@ const RealtimeLogStreamItemCard = memo(function RealtimeLogStreamItemCard({
                   {formatRelativeTime(locale, event.eventAt, now)}
                 </p>
                 <p className="font-mono text-[11px] text-muted-foreground">
-                  {shortDateTime(locale, event.eventAt)}
+                  {shortDateTime(locale, event.eventAt, timeZone)}
                 </p>
               </div>
             </div>
@@ -829,6 +838,7 @@ function RealtimeLogStreamItem({
   locale,
   messages,
   now,
+  timeZone,
   onSelect,
   reduceMotion,
 }: RealtimeLogStreamItemProps & {
@@ -866,6 +876,7 @@ function RealtimeLogStreamItem({
           locale={locale}
           messages={messages}
           now={now}
+          timeZone={timeZone}
         />
       </Clickable>
     </motion.li>
@@ -876,6 +887,7 @@ function RealtimeVisitorHistorySection({
   locale,
   messages,
   now,
+  timeZone,
   event,
   events,
   visits,
@@ -883,6 +895,7 @@ function RealtimeVisitorHistorySection({
   locale: Locale;
   messages: AppMessages;
   now: number;
+  timeZone: string;
   event: RealtimeEvent;
   events: RealtimeEvent[];
   visits: RealtimeVisit[];
@@ -946,14 +959,14 @@ function RealtimeVisitorHistorySection({
                       {formatRelativeTime(locale, visit.lastActivityAt, now)}
                     </p>
                     <p className="font-mono text-[11px] text-muted-foreground">
-                      {shortDateTime(locale, visit.lastActivityAt)}
+                      {shortDateTime(locale, visit.lastActivityAt, timeZone)}
                     </p>
                   </div>
                 </div>
                 <div className="grid gap-2 text-[11px] text-muted-foreground sm:grid-cols-3">
                   <span>
                     {messages.common.startedAt}:{" "}
-                    {formatDetailDateTime(locale, visit.startedAt)}
+                    {formatDetailDateTime(locale, visit.startedAt, timeZone)}
                   </span>
                   <span>
                     {messages.realtime.visitId}: {visit.visitId}
@@ -977,7 +990,7 @@ function RealtimeVisitorHistorySection({
                         )}
                       </p>
                       <p className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                        {shortDateTime(locale, visitEvent.eventAt)}
+                        {shortDateTime(locale, visitEvent.eventAt, timeZone)}
                       </p>
                     </div>
                   ))}
@@ -1054,6 +1067,7 @@ function RealtimeLogEventDetailsDialog({
   locale,
   messages,
   now,
+  timeZone,
   event,
   open,
   onOpenChange,
@@ -1063,6 +1077,7 @@ function RealtimeLogEventDetailsDialog({
   locale: Locale;
   messages: AppMessages;
   now: number;
+  timeZone: string;
   event: RealtimeEvent | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1167,7 +1182,7 @@ function RealtimeLogEventDetailsDialog({
       label: messages.realtime.eventTime,
       value: (
         <RealtimeEventDetailValue
-          value={formatDetailDateTime(locale, event.eventAt)}
+          value={formatDetailDateTime(locale, event.eventAt, timeZone)}
           mono
         />
       ),
@@ -1395,6 +1410,7 @@ function RealtimeLogEventDetailsDialog({
               locale={locale}
               messages={messages}
               now={now}
+              timeZone={timeZone}
             />
             <section className="space-y-2">
               <h3 className="text-sm font-medium text-foreground">
@@ -1417,6 +1433,7 @@ function RealtimeLogEventDetailsDialog({
               event={event}
               events={events}
               visits={visits}
+              timeZone={timeZone}
             />
             <RealtimeVisitorLocationMapSection
               locale={locale}
@@ -1437,6 +1454,7 @@ export function RealtimeLogStreamCard({
   events,
   visits,
 }: RealtimeLogStreamCardProps) {
+  const { timeZone } = useDashboardQueryControls();
   const reduceLogItemMotion = useReducedMotion() ?? false;
   const [now, setNow] = useState(() => Date.now());
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_EVENTS);
@@ -1509,6 +1527,7 @@ export function RealtimeLogStreamCard({
                         locale={locale}
                         messages={messages}
                         now={now}
+                        timeZone={timeZone}
                         onSelect={setSelectedEvent}
                         reduceMotion={reduceLogItemMotion}
                       />
@@ -1525,6 +1544,7 @@ export function RealtimeLogStreamCard({
         locale={locale}
         messages={messages}
         now={now}
+        timeZone={timeZone}
         events={events}
         visits={visits}
         open={selectedEvent !== null}

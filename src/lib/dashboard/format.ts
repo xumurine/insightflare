@@ -78,27 +78,49 @@ function formatDate(
   locale: Locale,
   value: DateValue,
   options: Intl.DateTimeFormatOptions,
+  timeZone?: string,
 ): string {
   const date = toValidDate(value);
   if (!date) return "--";
 
-  return new Intl.DateTimeFormat(intlLocale(locale), options).format(date);
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    ...options,
+    ...(timeZone ? { timeZone } : {}),
+  }).format(date);
 }
 
-export function shortDateTime(locale: Locale, value: DateValue): string {
-  return formatDate(locale, value, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+export function shortDateTime(
+  locale: Locale,
+  value: DateValue,
+  timeZone?: string,
+): string {
+  return formatDate(
+    locale,
+    value,
+    {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    },
+    timeZone,
+  );
 }
 
-export function shortDate(locale: Locale, value: DateValue): string {
-  return formatDate(locale, value, {
-    month: "short",
-    day: "numeric",
-  });
+export function shortDate(
+  locale: Locale,
+  value: DateValue,
+  timeZone?: string,
+): string {
+  return formatDate(
+    locale,
+    value,
+    {
+      month: "short",
+      day: "numeric",
+    },
+    timeZone,
+  );
 }
 
 export function durationFormat(locale: Locale, ms: number): string {

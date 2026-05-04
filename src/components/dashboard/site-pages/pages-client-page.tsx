@@ -122,7 +122,7 @@ function PageTrafficCard({
 }: {
   item: PagesDashboardRow;
   interval: TimeWindow["interval"];
-  range: Pick<TimeWindow, "from" | "to">;
+  range: Pick<TimeWindow, "from" | "to" | "timeZone">;
   locale: Locale;
   messages: AppMessages;
   pagesPerSessionFormatter: Intl.NumberFormat;
@@ -179,6 +179,7 @@ function PageTrafficCard({
             <TrafficPairBarChart
               data={item.trend}
               locale={locale}
+              timeZone={range.timeZone}
               interval={interval}
               range={range}
               viewsLabel={messages.common.views}

@@ -10,6 +10,7 @@ import {
   RiGlobalLine,
   RiLogoutBoxRLine,
   RiMoonLine,
+  RiSettings3Line,
   RiSunLine,
 } from "@remixicon/react";
 import { toast } from "sonner";
@@ -35,6 +36,7 @@ interface SidebarFooterMenusProps {
   locale: Locale;
   switchToEn: string;
   switchToZh: string;
+  accountHref: string;
   user: {
     username: string;
     name: string;
@@ -64,6 +66,7 @@ export function SidebarFooterMenus({
   locale,
   switchToEn,
   switchToZh,
+  accountHref,
   user,
   messages,
 }: SidebarFooterMenusProps) {
@@ -213,6 +216,13 @@ export function SidebarFooterMenus({
               {messages.common.role}: {roleLabel}
             </div>
           </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link href={accountHref}>
+              <RiSettings3Line />
+              <span>{messages.accountSettings.title}</span>
+            </Link>
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"

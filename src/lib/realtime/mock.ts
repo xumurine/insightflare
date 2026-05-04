@@ -1,5 +1,12 @@
 import { browserEngineLabel } from "@/lib/browser-engine";
 import {
+  addZonedInterval,
+  normalizeTimeZone,
+  resolveReportingTimeZone,
+  startOfZonedInterval,
+  zonedParts,
+} from "@/lib/dashboard/time-zone";
+import {
   DEMO_SITE_PROFILES,
   DEMO_TEAMS,
   type DemoSiteProfile,
@@ -3192,14 +3199,75 @@ function collectGeoTabs(
   };
 }
 
+interface DemoTimeBucket {
+  index: number;
+  timestampMs: number;
+  fromMs: number;
+  toMs: number;
+}
+
+function parseDemoTimeZone(params: Record<string, string | number>): string {
+  return resolveReportingTimeZone(
+    String(params.timeZone || params.tz || "").trim(),
+  );
+}
+
+function buildDemoTimeBuckets(
+  from: number,
+  to: number,
+  interval: "minute" | "hour" | "day" | "week" | "month",
+  timeZone: string,
+): DemoTimeBucket[] {
+  const buckets: DemoTimeBucket[] = [];
+  let current = startOfZonedInterval(from, interval, timeZone);
+  const hardLimit = 2000;
+
+  for (let index = 0; index < hardLimit && current <= to; index += 1) {
+    let next = addZonedInterval(current, interval, timeZone);
+    if (!Number.isFinite(next) || next <= current) {
+      next = current + demoIntervalStepMs(interval);
+    }
+    buckets.push({
+      index,
+      timestampMs: current,
+      fromMs: current,
+      toMs: next,
+    });
+    current = next;
+  }
+
+  if (buckets.length === 0) {
+    const fallbackStart = Math.max(0, Math.floor(from));
+    buckets.push({
+      index: 0,
+      timestampMs: fallbackStart,
+      fromMs: fallbackStart,
+      toMs: Math.max(fallbackStart + 1, Math.floor(to) + 1),
+    });
+  }
+
+  return buckets;
+}
+
+function findDemoTimeBucketIndex(
+  buckets: DemoTimeBucket[],
+  timestampMs: number,
+): number | null {
+  const bucket = buckets.find(
+    (item) => timestampMs >= item.fromMs && timestampMs < item.toMs,
+  );
+  return bucket?.index ?? null;
+}
+
 function buildDemoTrendBuckets(
   siteId: string,
   from: number,
   to: number,
   interval: "minute" | "hour" | "day" | "week" | "month",
   filters: DemoQueryFilters,
+  timeZone: string,
 ) {
-  const stepMs = demoIntervalStepMs(interval);
+  const buckets = buildDemoTimeBuckets(from, to, interval, timeZone);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
   const bucketStats = new Map<
@@ -3229,7 +3297,8 @@ function buildDemoTrendBuckets(
   };
 
   for (const visit of filtered.visits) {
-    const bucket = Math.floor(visit.startedAt / stepMs);
+    const bucket = findDemoTimeBucketIndex(buckets, visit.startedAt);
+    if (bucket === null) continue;
     const agg = ensureBucket(bucket);
     agg.views += dataset.viewWeight;
     agg.totalDurationMs += visit.durationMs * dataset.viewWeight;
@@ -3241,7 +3310,8 @@ function buildDemoTrendBuckets(
   }
 
   for (const [sessionId, sessionStartedAt] of sessionFirstTs.entries()) {
-    const bucket = Math.floor(sessionStartedAt / stepMs);
+    const bucket = findDemoTimeBucketIndex(buckets, sessionStartedAt);
+    if (bucket === null) continue;
     const agg = ensureBucket(bucket);
     const sessionWeight = dataset.sessions.get(sessionId)?.weight ?? 0;
     agg.sessions += sessionWeight;
@@ -3261,8 +3331,8 @@ function buildDemoTrendBuckets(
     avgDurationMs: number;
     source: string;
   }> = [];
-  for (let ts = from; ts < to; ts += stepMs) {
-    const bucket = Math.floor(ts / stepMs);
+  for (const timeBucket of buckets) {
+    const bucket = timeBucket.index;
     const agg = bucketStats.get(bucket);
     const views = Math.max(0, Math.round(agg?.views ?? 0));
     const visitors = Math.max(
@@ -3277,7 +3347,7 @@ function buildDemoTrendBuckets(
     const totalDurationMs = Math.max(0, Math.round(agg?.totalDurationMs ?? 0));
     rows.push({
       bucket,
-      timestampMs: ts,
+      timestampMs: timeBucket.timestampMs,
       views,
       visitors,
       sessions,
@@ -3423,7 +3493,8 @@ function generateDemoShareTrend(
   const interval = parseDemoInterval(params.interval);
   const limit = parseDemoLimit(params.limit, 5, 1, 12);
   const filters = parseDemoFilters(params);
-  const stepMs = demoIntervalStepMs(interval);
+  const timeZone = parseDemoTimeZone(params);
+  const buckets = buildDemoTimeBuckets(from, to, interval, timeZone);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
   const labelForVisit = (visit: DemoVisitFact) =>
@@ -3435,7 +3506,8 @@ function generateDemoShareTrend(
     const label = labelForVisit(visit);
     visitorLabels.set(visit.visitorId, label);
 
-    const bucket = Math.floor(visit.startedAt / stepMs);
+    const bucket = findDemoTimeBucketIndex(buckets, visit.startedAt);
+    if (bucket === null) continue;
     const labelsForBucket =
       bucketVisitorLabels.get(bucket) ?? new Map<string, string>();
     labelsForBucket.set(visit.visitorId, label);
@@ -3558,9 +3630,9 @@ function generateDemoShareTrend(
     };
   }
 
-  const createEmptyPoint = (bucket: number) => ({
-    bucket,
-    timestampMs: bucket * stepMs,
+  const createEmptyPoint = (bucket: DemoTimeBucket) => ({
+    bucket: bucket.index,
+    timestampMs: bucket.timestampMs,
     totalVisitors: 0,
     visitorsBySeries: Object.fromEntries(series.map((item) => [item.key, 0])),
   });
@@ -3578,7 +3650,8 @@ function generateDemoShareTrend(
   >();
 
   for (const visit of filtered.visits) {
-    const bucket = Math.floor(visit.startedAt / stepMs);
+    const bucket = findDemoTimeBucketIndex(buckets, visit.startedAt);
+    if (bucket === null) continue;
     const bucketLabel =
       bucketVisitorLabels.get(bucket)?.get(visit.visitorId) ?? "";
     const label =
@@ -3589,7 +3662,14 @@ function generateDemoShareTrend(
     if (!key) continue;
 
     const point = bucketMap.get(bucket) ?? {
-      ...createEmptyPoint(bucket),
+      ...createEmptyPoint(
+        buckets[bucket] ?? {
+          index: bucket,
+          timestampMs: visit.startedAt,
+          fromMs: visit.startedAt,
+          toMs: visit.startedAt + 1,
+        },
+      ),
       sessionSets: new Map<string, Set<string>>(),
       visitorSets: new Map<string, Set<string>>(),
     };
@@ -3625,11 +3705,9 @@ function generateDemoShareTrend(
     point.totalVisitors = totalVisitors;
   }
 
-  const fromBucket = Math.floor(from / stepMs);
-  const toBucket = Math.max(fromBucket, Math.floor(to / stepMs));
   const data = [];
-  for (let bucket = fromBucket; bucket <= toBucket; bucket += 1) {
-    const existing = bucketMap.get(bucket);
+  for (const bucket of buckets) {
+    const existing = bucketMap.get(bucket.index);
     if (existing) {
       data.push({
         bucket: existing.bucket,
@@ -4770,9 +4848,17 @@ function generateDemoOverview(
 
   if (parseDemoBoolean(params.includeDetail)) {
     const interval = parseDemoInterval(params.interval);
+    const timeZone = parseDemoTimeZone(params);
     result.detail = {
       interval,
-      data: buildDemoTrendBuckets(siteId, from, to, interval, filters),
+      data: buildDemoTrendBuckets(
+        siteId,
+        from,
+        to,
+        interval,
+        filters,
+        timeZone,
+      ),
     };
   }
 
@@ -4787,10 +4873,11 @@ function generateDemoTrend(
   const to = parseDemoNumber(params.to, Date.now());
   const interval = parseDemoInterval(params.interval);
   const filters = parseDemoFilters(params);
+  const timeZone = parseDemoTimeZone(params);
   return {
     ok: true,
     interval,
-    data: buildDemoTrendBuckets(siteId, from, to, interval, filters),
+    data: buildDemoTrendBuckets(siteId, from, to, interval, filters, timeZone),
   };
 }
 
@@ -4814,22 +4901,6 @@ function parseDemoRetentionGranularity(
   return "week";
 }
 
-function demoRetentionPeriodMs(granularity: DemoRetentionGranularity): number {
-  if (granularity === "minute") return 60 * 1000;
-  if (granularity === "hour") return 3600 * 1000;
-  if (granularity === "day") return 24 * 3600 * 1000;
-  if (granularity === "month") return 30 * 24 * 3600 * 1000;
-  return 7 * 24 * 3600 * 1000;
-}
-
-function demoRetentionBucket(
-  timestampMs: number,
-  granularity: DemoRetentionGranularity,
-): number {
-  const periodMs = demoRetentionPeriodMs(granularity);
-  return Math.floor(timestampMs / periodMs) * periodMs;
-}
-
 function generateDemoRetention(
   siteId: string,
   params: Record<string, string | number>,
@@ -4837,7 +4908,8 @@ function generateDemoRetention(
   const from = parseDemoNumber(params.from, Date.now() - 30 * 24 * 3600 * 1000);
   const to = parseDemoNumber(params.to, Date.now());
   const granularity = parseDemoRetentionGranularity(params.granularity);
-  const periodMs = demoRetentionPeriodMs(granularity);
+  const timeZone = parseDemoTimeZone(params);
+  const buckets = buildDemoTimeBuckets(from, to, granularity, timeZone);
   const filters = parseDemoFilters(params);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
@@ -4846,7 +4918,8 @@ function generateDemoRetention(
   for (const visit of filtered.visits) {
     const visitorId = visit.visitorId.trim();
     if (!visitorId) continue;
-    const bucket = demoRetentionBucket(visit.startedAt, granularity);
+    const bucket = findDemoTimeBucketIndex(buckets, visit.startedAt);
+    if (bucket === null) continue;
     const current = cohortByVisitor.get(visitorId);
     if (current === undefined || bucket < current) {
       cohortByVisitor.set(visitorId, bucket);
@@ -4859,11 +4932,9 @@ function generateDemoRetention(
     if (!visitorId) continue;
     const cohortBucket = cohortByVisitor.get(visitorId);
     if (cohortBucket === undefined) continue;
-    const visitBucket = demoRetentionBucket(visit.startedAt, granularity);
-    const index = Math.max(
-      0,
-      Math.round((visitBucket - cohortBucket) / periodMs),
-    );
+    const visitBucket = findDemoTimeBucketIndex(buckets, visit.startedAt);
+    if (visitBucket === null) continue;
+    const index = Math.max(0, visitBucket - cohortBucket);
     const cohortPeriods =
       periodsByCohort.get(cohortBucket) ?? new Map<number, Set<string>>();
     const visitorSet = cohortPeriods.get(index) ?? new Set<string>();
@@ -4880,7 +4951,7 @@ function generateDemoRetention(
         Math.round(weightedVisitorCount(dataset, periods.get(0) ?? [])),
       );
       return {
-        bucket,
+        bucket: buckets[bucket]?.timestampMs ?? 0,
         size,
         periods: Array.from(periods.entries())
           .sort(([leftIndex], [rightIndex]) => leftIndex - rightIndex)
@@ -5074,7 +5145,8 @@ function generateDemoPerformance(
   const filters = parseDemoFilters(params);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
-  const stepMs = demoIntervalStepMs(interval);
+  const timeZone = parseDemoTimeZone(params);
+  const buckets = buildDemoTimeBuckets(from, to, interval, timeZone);
   const metrics = ["ttfb", "fcp", "lcp", "cls", "inp"] as const;
   const summaryValues = {
     ttfb: [] as number[],
@@ -5092,7 +5164,8 @@ function generateDemoPerformance(
   };
 
   for (const visit of filtered.visits) {
-    const bucket = Math.floor(visit.startedAt / stepMs);
+    const bucket = findDemoTimeBucketIndex(buckets, visit.startedAt);
+    if (bucket === null) continue;
     for (const metric of metrics) {
       const value = demoPerformanceMetricValue(siteId, visit, metric);
       summaryValues[metric].push(value);
@@ -5142,8 +5215,8 @@ function generateDemoPerformance(
         samples: number;
       }> = [];
 
-      for (let ts = from; ts < to; ts += stepMs) {
-        const bucket = Math.floor(ts / stepMs);
+      for (const timeBucket of buckets) {
+        const bucket = timeBucket.index;
         const values = [...(bucketValues[metric].get(bucket) ?? [])].sort(
           (left, right) => left - right,
         );
@@ -5155,7 +5228,7 @@ function generateDemoPerformance(
             : null;
         rows.push({
           bucket,
-          timestampMs: ts,
+          timestampMs: timeBucket.timestampMs,
           avg,
           p50: demoPercentile(values, 0.5),
           p75: demoPercentile(values, 0.75),
@@ -5300,6 +5373,7 @@ function generateDemoPagesDashboard(
   const to = parseDemoNumber(params.to, Date.now());
   const interval = parseDemoInterval(params.interval);
   const filters = parseDemoFilters(params);
+  const timeZone = parseDemoTimeZone(params);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
   const allPathRows = aggregateDimensionRowsFromVisits(
@@ -5351,10 +5425,17 @@ function generateDemoPagesDashboard(
         3,
         (visit) => visit.title,
       ).map((titleRow) => titleRow.label);
-      const trend = buildDemoTrendBuckets(siteId, from, to, interval, {
-        ...filters,
-        path: pathname,
-      }).map((point) => ({
+      const trend = buildDemoTrendBuckets(
+        siteId,
+        from,
+        to,
+        interval,
+        {
+          ...filters,
+          path: pathname,
+        },
+        timeZone,
+      ).map((point) => ({
         timestampMs: point.timestampMs,
         views: point.views,
         visitors: point.visitors,
@@ -5698,12 +5779,22 @@ function summarizeDemoEventDistribution(
     .slice(0, 50);
 }
 
-function summarizeDemoActivity(events: Array<Record<string, unknown>>) {
+function demoReportingDateKey(timestampMs: number, timeZone: string): string {
+  const parts = zonedParts(timestampMs, timeZone);
+  const month = String(parts.month).padStart(2, "0");
+  const day = String(parts.day).padStart(2, "0");
+  return `${parts.year}-${month}-${day}`;
+}
+
+function summarizeDemoActivity(
+  events: Array<Record<string, unknown>>,
+  timeZone: string,
+) {
   const counts = new Map<string, number>();
   for (const event of events) {
     const occurredAt = Number(event.occurredAt ?? 0);
     if (!Number.isFinite(occurredAt) || occurredAt <= 0) continue;
-    const date = new Date(occurredAt).toISOString().slice(0, 10);
+    const date = demoReportingDateKey(occurredAt, timeZone);
     counts.set(date, (counts.get(date) ?? 0) + 1);
   }
   return Array.from(counts.entries())
@@ -5973,6 +6064,7 @@ function generateDemoVisitorDetail(
   const from = parseDemoNumber(params.from, Date.now() - 7 * 24 * 3600 * 1000);
   const to = parseDemoNumber(params.to, Date.now());
   const filters = parseDemoFilters(params);
+  const timeZone = parseDemoTimeZone(params);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
   const visits = filtered.visits.filter(
@@ -6010,7 +6102,7 @@ function generateDemoVisitorDetail(
     events
       .map((event) => Number(event.occurredAt ?? 0))
       .filter((value) => value > 0)
-      .map((value) => new Date(value).toISOString().slice(0, 10)),
+      .map((value) => demoReportingDateKey(value, timeZone)),
   ).size;
   const visitor = {
     visitorId,
@@ -6063,7 +6155,7 @@ function generateDemoVisitorDetail(
       events,
       visitedPages: summarizeDemoVisitedPages(events),
       eventDistribution: summarizeDemoEventDistribution(events),
-      activity: summarizeDemoActivity(events),
+      activity: summarizeDemoActivity(events, timeZone),
       performance: summarizeDemoJourneyPerformance(siteId, visits),
     },
   };
@@ -6581,7 +6673,14 @@ function generateDemoUtmTrend(
     return base;
   };
 
-  const bucketRows = buildDemoTrendBuckets(siteId, from, to, interval, filters);
+  const bucketRows = buildDemoTrendBuckets(
+    siteId,
+    from,
+    to,
+    interval,
+    filters,
+    parseDemoTimeZone(params),
+  );
   const dimensionOffset = Math.max(1, dimension.length);
   const data = bucketRows.map((bucketRow) => {
     const weights = series.map((item, index) => {
@@ -7174,6 +7273,7 @@ function generateDemoTeamDashboard(
   const from = Number(params.from || 0);
   const to = Number(params.to || Date.now());
   const interval = String(params.interval || "day");
+  const timeZone = parseDemoTimeZone(params);
   const now = Date.now();
   const span = to - from;
 
@@ -7204,14 +7304,20 @@ function generateDemoTeamDashboard(
     };
   });
 
-  const stepMs = demoIntervalStepMs(interval);
+  const buckets = buildDemoTimeBuckets(
+    from,
+    to,
+    parseDemoInterval(interval),
+    timeZone,
+  );
   const trend: Array<{
     bucket: number;
     timestampMs: number;
     sites: Array<{ siteId: string; views: number; visitors: number }>;
   }> = [];
-  for (let ts = from; ts < to; ts += stepMs) {
-    const end = Math.min(ts + stepMs, to);
+  for (const bucket of buckets) {
+    const ts = Math.max(from, bucket.fromMs);
+    const end = Math.min(bucket.toMs, to);
     const sitesForBucket = teamSites.map((site) => {
       const views = integrateViews(site.id, ts, end);
       const r = siteRatios(site.id);
@@ -7222,8 +7328,8 @@ function generateDemoTeamDashboard(
       return { siteId: site.id, views, visitors };
     });
     trend.push({
-      bucket: Math.floor(ts / stepMs),
-      timestampMs: ts,
+      bucket: bucket.index,
+      timestampMs: bucket.timestampMs,
       sites: sitesForBucket,
     });
   }
@@ -7242,6 +7348,7 @@ function getDemoUser() {
     email: "demo@insightflare.app",
     name: "Demo User",
     systemRole: "admin" as const,
+    timeZone: "",
     createdAt: Date.now() - 180 * 24 * 3600 * 1000,
     updatedAt: Date.now() - 2 * 24 * 3600 * 1000,
     teamCount: 1,
@@ -7353,7 +7460,24 @@ export function handleDemoRequest(options: {
       return { ok: true, data: { user, teams: getDemoTeams() } };
     }
     if (path.includes("/profile")) {
-      return { ok: true, data: getDemoUser() };
+      const body =
+        options.body && typeof options.body === "object" ? options.body : {};
+      const hasTimeZone = Object.prototype.hasOwnProperty.call(
+        body,
+        "timeZone",
+      );
+      const user = getDemoUser();
+      return {
+        ok: true,
+        data: {
+          ...user,
+          timeZone: hasTimeZone
+            ? normalizeTimeZone(
+                String((body as { timeZone?: unknown }).timeZone ?? ""),
+              )
+            : user.timeZone,
+        },
+      };
     }
     if (path.includes("/site-config")) {
       const config =

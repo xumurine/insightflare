@@ -7,11 +7,13 @@ export async function POST(request: Request): Promise<NextResponse> {
   const body = await parseRequestBody(request);
 
   try {
+    const hasTimeZone = Object.prototype.hasOwnProperty.call(body, "timeZone");
     const result = await updateMyProfile({
       username: bodyStr(body, "username") || undefined,
       email: bodyStr(body, "email") || undefined,
       name: bodyStr(body, "name") || undefined,
       password: bodyStr(body, "password") || undefined,
+      ...(hasTimeZone ? { timeZone: bodyStr(body, "timeZone") } : {}),
     });
     return NextResponse.json({ ok: true, data: result });
   } catch (error) {

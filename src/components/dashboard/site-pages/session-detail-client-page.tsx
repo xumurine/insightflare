@@ -23,6 +23,7 @@ import {
   AsyncDimensionBreakdownCard,
   type AsyncDimensionBreakdownRow,
 } from "@/components/dashboard/async-dimension-breakdown-card";
+import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import {
   JourneyDetailLoadingState,
   JourneyDetailStateSwitch,
@@ -462,9 +463,14 @@ function eventChronologyRank(event: JourneyEvent): number {
   return 3;
 }
 
-function formatDetailedDateTime(locale: Locale, timestamp: number): string {
+function formatDetailedDateTime(
+  locale: Locale,
+  timestamp: number,
+  timeZone: string,
+): string {
   if (!Number.isFinite(timestamp) || timestamp <= 0) return "--";
   return new Intl.DateTimeFormat(intlLocale(locale), {
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -682,12 +688,13 @@ function eventSubtitle(
   locale: Locale,
   event: JourneyEvent,
   unknownLabel: string,
+  timeZone: string,
 ): string {
   if (event.kind === "session_start") {
-    return formatDetailedDateTime(locale, event.occurredAt);
+    return formatDetailedDateTime(locale, event.occurredAt, timeZone);
   }
   if (event.kind === "leave") {
-    return formatDetailedDateTime(locale, event.occurredAt);
+    return formatDetailedDateTime(locale, event.occurredAt, timeZone);
   }
   if (event.kind === "pageview") {
     return pageviewSubtitle(locale, event, unknownLabel);
@@ -1048,12 +1055,14 @@ function MetaPanel({
   labels,
   detail,
   pagesPath,
+  timeZone,
 }: {
   locale: Locale;
   messages: AppMessages;
   labels: Labels;
   detail: SessionDetail;
   pagesPath: string;
+  timeZone: string;
 }) {
   const session = detail.session;
   const firstEvent = detail.events.reduce<JourneyEvent | null>(
@@ -1181,7 +1190,7 @@ function MetaPanel({
             mono
             value={
               firstEvent
-                ? formatShortDateTime(locale, firstEvent.occurredAt)
+                ? formatShortDateTime(locale, firstEvent.occurredAt, timeZone)
                 : "--"
             }
           />
@@ -1190,7 +1199,7 @@ function MetaPanel({
             mono
             value={
               lastEvent
-                ? formatShortDateTime(locale, lastEvent.occurredAt)
+                ? formatShortDateTime(locale, lastEvent.occurredAt, timeZone)
                 : "--"
             }
           />
@@ -1214,12 +1223,14 @@ function SessionEventCard({
   labels,
   event,
   deltaMs,
+  timeZone,
 }: {
   locale: Locale;
   messages: AppMessages;
   labels: Labels;
   event: JourneyEvent;
   deltaMs: number | null;
+  timeZone: string;
 }) {
   return (
     <Card size="sm" className="py-0">
@@ -1233,13 +1244,18 @@ function SessionEventCard({
               </p>
               <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-[11px] leading-[14px] text-muted-foreground">
                 <span className="min-w-0 truncate leading-[14px]">
-                  {eventSubtitle(locale, event, messages.common.unknown)}
+                  {eventSubtitle(
+                    locale,
+                    event,
+                    messages.common.unknown,
+                    timeZone,
+                  )}
                 </span>
               </div>
             </div>
             <div className="flex h-[34px] min-w-0 w-[42%] shrink-0 flex-col items-end justify-between text-right sm:w-auto sm:max-w-[24rem]">
               <p className="font-mono text-[11px] leading-[14px] text-foreground">
-                {formatShortDateTime(locale, event.occurredAt)}
+                {formatShortDateTime(locale, event.occurredAt, timeZone)}
               </p>
               {deltaMs !== null && deltaMs > 0 ? (
                 <p className="max-w-full break-words font-mono text-[10px] leading-[13px] text-muted-foreground">
@@ -1261,11 +1277,13 @@ function VisitDetailsTab({
   messages,
   labels,
   events,
+  timeZone,
 }: {
   locale: Locale;
   messages: AppMessages;
   labels: Labels;
   events: JourneyEvent[];
+  timeZone: string;
 }) {
   const chronologicalEvents = useMemo(
     () =>
@@ -1297,6 +1315,7 @@ function VisitDetailsTab({
                 messages={messages}
                 labels={labels}
                 event={event}
+                timeZone={timeZone}
                 deltaMs={
                   index > 0
                     ? event.occurredAt -
@@ -1535,6 +1554,7 @@ function DetailContent({
   detail,
   siteId,
   pathname,
+  timeZone,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -1542,6 +1562,7 @@ function DetailContent({
   detail: SessionDetail;
   siteId: string;
   pathname: string;
+  timeZone: string;
 }) {
   const session = detail.session;
   const sessionsPath = pathname.replace(/\/detail$/, "");
@@ -1576,6 +1597,7 @@ function DetailContent({
           labels={labels}
           detail={detail}
           pagesPath={pagesPath}
+          timeZone={timeZone}
         />
 
         <section>
@@ -1584,6 +1606,7 @@ function DetailContent({
             messages={messages}
             labels={labels}
             events={detail.events}
+            timeZone={timeZone}
           />
         </section>
 
@@ -1622,14 +1645,15 @@ export function SessionDetailClientPage({
   pathname,
 }: SessionDetailClientPageProps) {
   const labels = copy(locale);
+  const { timeZone } = useDashboardQueryControls();
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("sessionId")?.trim() || "";
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [loading, setLoading] = useState(Boolean(sessionId));
   const [error, setError] = useState(false);
   const requestKey = useMemo(
-    () => [siteId, sessionId].join(":"),
-    [sessionId, siteId],
+    () => [siteId, sessionId, timeZone].join(":"),
+    [sessionId, siteId, timeZone],
   );
 
   useEffect(() => {
@@ -1641,7 +1665,7 @@ export function SessionDetailClientPage({
     let active = true;
     setLoading(true);
     setError(false);
-    fetchSessionDetail(siteId, sessionId)
+    fetchSessionDetail(siteId, sessionId, timeZone)
       .then((payload) => {
         if (!active) return;
         setDetail(payload.data);
@@ -1715,6 +1739,7 @@ export function SessionDetailClientPage({
         detail={detail}
         siteId={siteId}
         pathname={pathname}
+        timeZone={timeZone}
       />
     </JourneyDetailStateSwitch>
   );

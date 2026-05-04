@@ -23,6 +23,7 @@ interface TrendChartPoint {
 
 interface TrendChartProps {
   locale: Locale;
+  timeZone: string;
   interval: DashboardInterval;
   data: TrendChartPoint[];
   viewsLabel: string;
@@ -102,20 +103,24 @@ function useAnimationOnChartSwitch({
 function tickDateFormat(
   localeCode: string,
   interval: DashboardInterval,
+  timeZone: string,
 ): Intl.DateTimeFormat {
   if (interval === "minute" || interval === "hour") {
     return new Intl.DateTimeFormat(localeCode, {
+      timeZone,
       hour: "2-digit",
       minute: "2-digit",
     });
   }
   if (interval === "month") {
     return new Intl.DateTimeFormat(localeCode, {
+      timeZone,
       year: "numeric",
       month: "short",
     });
   }
   return new Intl.DateTimeFormat(localeCode, {
+    timeZone,
     month: "short",
     day: "numeric",
   });
@@ -124,9 +129,11 @@ function tickDateFormat(
 function tooltipDateFormat(
   localeCode: string,
   interval: DashboardInterval,
+  timeZone: string,
 ): Intl.DateTimeFormat {
   if (interval === "minute" || interval === "hour") {
     return new Intl.DateTimeFormat(localeCode, {
+      timeZone,
       month: "short",
       day: "numeric",
       hour: "2-digit",
@@ -135,11 +142,13 @@ function tooltipDateFormat(
   }
   if (interval === "month") {
     return new Intl.DateTimeFormat(localeCode, {
+      timeZone,
       year: "numeric",
       month: "long",
     });
   }
   return new Intl.DateTimeFormat(localeCode, {
+    timeZone,
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -148,6 +157,7 @@ function tooltipDateFormat(
 
 export function TrendChart({
   locale,
+  timeZone,
   interval,
   data,
   viewsLabel,
@@ -156,8 +166,8 @@ export function TrendChart({
   const { containerRef, isVisible, hasMeasuredVisibility } =
     useChartVisibility();
   const localeCode = intlLocale(locale);
-  const axisTickFormatter = tickDateFormat(localeCode, interval);
-  const tooltipFormatter = tooltipDateFormat(localeCode, interval);
+  const axisTickFormatter = tickDateFormat(localeCode, interval, timeZone);
+  const tooltipFormatter = tooltipDateFormat(localeCode, interval, timeZone);
   const config = {
     nonSessionViews: {
       label: viewsLabel,

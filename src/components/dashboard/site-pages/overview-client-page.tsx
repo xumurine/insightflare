@@ -94,6 +94,10 @@ import {
   normalizePagePath,
 } from "@/lib/dashboard/page-detail";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import {
+  addZonedInterval,
+  startOfZonedInterval,
+} from "@/lib/dashboard/time-zone";
 import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import type { OverviewData, TrendData } from "@/lib/edge-client";
 import {
@@ -157,23 +161,32 @@ function trendStepMs(interval: TimeWindow["interval"]): number {
 }
 
 function buildEmptyTrendData(
-  window: Pick<TimeWindow, "from" | "to" | "interval">,
+  window: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">,
 ): Array<{
   timestampMs: number;
   views: number;
   visitors: number;
 }> {
-  const stepMs = trendStepMs(window.interval);
-  if (!Number.isFinite(stepMs) || stepMs <= 0) {
-    return [];
+  const starts: number[] = [];
+  const end = startOfZonedInterval(window.to, window.interval, window.timeZone);
+  let current = startOfZonedInterval(
+    window.from,
+    window.interval,
+    window.timeZone,
+  );
+  const hardLimit = 2000;
+  for (let index = 0; index < hardLimit && current <= end; index += 1) {
+    starts.push(current);
+    let next = addZonedInterval(current, window.interval, window.timeZone);
+    if (!Number.isFinite(next) || next <= current) {
+      next = current + trendStepMs(window.interval);
+    }
+    current = next;
   }
 
-  const fromBucket = Math.floor(window.from / stepMs);
-  const toBucket = Math.max(fromBucket, Math.floor(window.to / stepMs));
-  const totalBuckets = toBucket - fromBucket + 1;
   const stride = Math.max(
     1,
-    Math.ceil(totalBuckets / MAX_TREND_PLACEHOLDER_POINTS),
+    Math.ceil(starts.length / MAX_TREND_PLACEHOLDER_POINTS),
   );
   const points: Array<{
     timestampMs: number;
@@ -181,15 +194,16 @@ function buildEmptyTrendData(
     visitors: number;
   }> = [];
 
-  for (let bucket = fromBucket; bucket <= toBucket; bucket += stride) {
+  for (let index = 0; index < starts.length; index += stride) {
+    const timestampMs = starts[index] ?? 0;
     points.push({
-      timestampMs: bucket * stepMs,
+      timestampMs,
       views: 0,
       visitors: 0,
     });
   }
 
-  const lastTimestampMs = toBucket * stepMs;
+  const lastTimestampMs = starts[starts.length - 1] ?? 0;
   if (
     points.length === 0 ||
     points[points.length - 1]?.timestampMs !== lastTimestampMs
@@ -205,7 +219,7 @@ function buildEmptyTrendData(
 }
 
 function normalizeTrendData(
-  window: Pick<TimeWindow, "from" | "to" | "interval">,
+  window: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">,
   points: Array<{
     timestampMs: number;
     views: number;
@@ -216,18 +230,21 @@ function normalizeTrendData(
   views: number;
   visitors: number;
 }> {
-  const stepMs = trendStepMs(window.interval);
-  if (!Number.isFinite(stepMs) || stepMs <= 0) {
-    return points;
-  }
-
-  const fromBucket = Math.floor(window.from / stepMs);
-  const toBucket = Math.max(fromBucket, Math.floor(window.to / stepMs));
   const byBucket = new Map<number, { views: number; visitors: number }>();
+  const start = startOfZonedInterval(
+    window.from,
+    window.interval,
+    window.timeZone,
+  );
+  const end = startOfZonedInterval(window.to, window.interval, window.timeZone);
 
   for (const point of points) {
-    const bucket = Math.floor(Number(point.timestampMs ?? 0) / stepMs);
-    if (!Number.isFinite(bucket) || bucket < fromBucket || bucket > toBucket) {
+    const bucket = startOfZonedInterval(
+      Number(point.timestampMs ?? 0),
+      window.interval,
+      window.timeZone,
+    );
+    if (!Number.isFinite(bucket) || bucket < start || bucket > end) {
       continue;
     }
     const prev = byBucket.get(bucket) ?? { views: 0, visitors: 0 };
@@ -242,13 +259,23 @@ function normalizeTrendData(
     views: number;
     visitors: number;
   }> = [];
-  for (let bucket = fromBucket; bucket <= toBucket; bucket += 1) {
+  const hardLimit = 2000;
+  for (
+    let index = 0, bucket = start;
+    index < hardLimit && bucket <= end;
+    index += 1
+  ) {
     const value = byBucket.get(bucket);
     normalized.push({
-      timestampMs: bucket * stepMs,
+      timestampMs: bucket,
       views: value?.views ?? 0,
       visitors: value?.visitors ?? 0,
     });
+    let next = addZonedInterval(bucket, window.interval, window.timeZone);
+    if (!Number.isFinite(next) || next <= bucket) {
+      next = bucket + trendStepMs(window.interval);
+    }
+    bucket = next;
   }
 
   return normalized;
@@ -4458,11 +4485,12 @@ export function OverviewTrendSection({
     emptyTrendData(window.interval),
   );
   const [dataWindow, setDataWindow] = useState<
-    Pick<TimeWindow, "from" | "to" | "interval">
+    Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">
   >(() => ({
     from: window.from,
     to: window.to,
     interval: window.interval,
+    timeZone: window.timeZone,
   }));
 
   useEffect(() => {
@@ -4478,6 +4506,7 @@ export function OverviewTrendSection({
           from: window.from,
           to: window.to,
           interval: window.interval,
+          timeZone: window.timeZone,
         });
       })
       .finally(() => {
@@ -4489,7 +4518,14 @@ export function OverviewTrendSection({
     return () => {
       active = false;
     };
-  }, [filters, siteId, window.from, window.interval, window.to]);
+  }, [
+    filters,
+    siteId,
+    window.from,
+    window.interval,
+    window.timeZone,
+    window.to,
+  ]);
 
   const trendDisplayData = useMemo(() => {
     if (!trendHydrated && loading) {
@@ -4499,6 +4535,7 @@ export function OverviewTrendSection({
   }, [
     dataWindow.from,
     dataWindow.interval,
+    dataWindow.timeZone,
     dataWindow.to,
     loading,
     trendHydrated,
@@ -4520,7 +4557,8 @@ export function OverviewTrendSection({
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>{messages.overview.trendTitle}</CardTitle>
         <span className="text-xs text-muted-foreground">
-          {messages.common.lastUpdated}: {shortDateTime(locale, Date.now())}
+          {messages.common.lastUpdated}:{" "}
+          {shortDateTime(locale, Date.now(), dataWindow.timeZone)}
         </span>
       </CardHeader>
       <CardContent>
@@ -4528,6 +4566,7 @@ export function OverviewTrendSection({
           <div>
             <TrendChart
               locale={locale}
+              timeZone={dataWindow.timeZone}
               interval={dataWindow.interval}
               data={visitorTrendChartData}
               viewsLabel={messages.common.views}

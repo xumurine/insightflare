@@ -13,6 +13,10 @@ import {
 } from "@/components/ui/chart";
 import { intlLocale } from "@/lib/dashboard/format";
 import type { DashboardInterval } from "@/lib/dashboard/query-state";
+import {
+  addZonedInterval,
+  startOfZonedInterval,
+} from "@/lib/dashboard/time-zone";
 import type { Locale } from "@/lib/i18n/config";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +34,7 @@ interface SiteTrafficStackChartProps {
     name: string;
   }>;
   locale: Locale;
+  timeZone: string;
   interval: DashboardInterval;
   viewsLabel: string;
   visitorsLabel: string;
@@ -43,6 +48,7 @@ interface TrafficPairBarChartProps {
     visitors: number;
   }>;
   locale: Locale;
+  timeZone: string;
   interval: DashboardInterval;
   viewsLabel: string;
   visitorsLabel: string;
@@ -278,6 +284,7 @@ function trafficIntervalStepMs(interval: DashboardInterval): number {
 function fillMissingTrafficData(
   data: Array<{ timestampMs: number; views: number; visitors: number }>,
   interval: DashboardInterval,
+  timeZone: string,
   range?: {
     from: number;
     to: number;
@@ -285,54 +292,64 @@ function fillMissingTrafficData(
 ): Array<{ timestampMs: number; views: number; visitors: number }> {
   if (data.length === 0) return data;
 
-  const stepMs = trafficIntervalStepMs(interval);
-  if (!Number.isFinite(stepMs) || stepMs <= 0) return data;
-
   const bucketMap = new Map<
     number,
     { timestampMs: number; views: number; visitors: number }
   >();
 
   for (const point of data) {
-    const bucket = Math.floor(Number(point.timestampMs ?? 0) / stepMs);
-    const current = bucketMap.get(bucket) ?? {
-      timestampMs: bucket * stepMs,
+    const bucketStart = startOfZonedInterval(
+      Number(point.timestampMs ?? 0),
+      interval,
+      timeZone,
+    );
+    const current = bucketMap.get(bucketStart) ?? {
+      timestampMs: bucketStart,
       views: 0,
       visitors: 0,
     };
     current.views += safeCount(point.views);
     current.visitors += safeCount(point.visitors);
-    bucketMap.set(bucket, current);
+    bucketMap.set(bucketStart, current);
   }
 
-  const sortedBuckets = [...bucketMap.keys()].sort(
+  const sortedStarts = [...bucketMap.keys()].sort(
     (left, right) => left - right,
   );
-  const fallbackFromBucket = sortedBuckets[0] ?? 0;
-  const fallbackToBucket =
-    sortedBuckets[sortedBuckets.length - 1] ?? fallbackFromBucket;
-  const rangeFromBucket = Number.isFinite(range?.from)
-    ? Math.floor(Number(range?.from ?? 0) / stepMs)
-    : fallbackFromBucket;
-  const rangeToBucket = Number.isFinite(range?.to)
-    ? Math.floor(Number(range?.to ?? 0) / stepMs)
-    : fallbackToBucket;
-  const fromBucket = Math.min(rangeFromBucket, fallbackFromBucket);
-  const toBucket = Math.max(
-    fromBucket,
-    Math.max(rangeToBucket, fallbackToBucket),
-  );
+  const fallbackFrom = sortedStarts[0] ?? 0;
+  const fallbackTo = sortedStarts[sortedStarts.length - 1] ?? fallbackFrom;
+  const rangeFrom = Number.isFinite(range?.from)
+    ? startOfZonedInterval(Number(range?.from ?? 0), interval, timeZone)
+    : fallbackFrom;
+  const rangeTo = Number.isFinite(range?.to)
+    ? startOfZonedInterval(Number(range?.to ?? 0), interval, timeZone)
+    : fallbackTo;
+  const from = Math.min(rangeFrom, fallbackFrom);
+  const to = Math.max(from, Math.max(rangeTo, fallbackTo));
 
-  return Array.from({ length: toBucket - fromBucket + 1 }, (_, index) => {
-    const bucket = fromBucket + index;
-    return (
-      bucketMap.get(bucket) ?? {
-        timestampMs: bucket * stepMs,
+  const filled: Array<{
+    timestampMs: number;
+    views: number;
+    visitors: number;
+  }> = [];
+  const hardLimit = 2000;
+  let current = from;
+  for (let index = 0; index < hardLimit && current <= to; index += 1) {
+    filled.push(
+      bucketMap.get(current) ?? {
+        timestampMs: current,
         views: 0,
         visitors: 0,
-      }
+      },
     );
-  });
+    let next = addZonedInterval(current, interval, timeZone);
+    if (!Number.isFinite(next) || next <= current) {
+      next = current + trafficIntervalStepMs(interval);
+    }
+    current = next;
+  }
+
+  return filled;
 }
 
 function useChartVisibility(rootMargin = "120px 0px") {
@@ -448,9 +465,11 @@ function downsampleTrafficData(
 function tickDateFormat(
   locale: Locale,
   interval: DashboardInterval,
+  timeZone: string,
 ): Intl.DateTimeFormat {
   if (interval === "minute" || interval === "hour") {
     return new Intl.DateTimeFormat(intlLocale(locale), {
+      timeZone,
       month: "numeric",
       day: "numeric",
       hour: "2-digit",
@@ -459,11 +478,13 @@ function tickDateFormat(
   }
   if (interval === "day") {
     return new Intl.DateTimeFormat(intlLocale(locale), {
+      timeZone,
       month: "numeric",
       day: "numeric",
     });
   }
   return new Intl.DateTimeFormat(intlLocale(locale), {
+    timeZone,
     year: "2-digit",
     month: "short",
     day: interval === "week" ? "numeric" : undefined,
@@ -473,9 +494,11 @@ function tickDateFormat(
 function tooltipDateFormat(
   locale: Locale,
   interval: DashboardInterval,
+  timeZone: string,
 ): Intl.DateTimeFormat {
   if (interval === "minute" || interval === "hour") {
     return new Intl.DateTimeFormat(intlLocale(locale), {
+      timeZone,
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -484,6 +507,7 @@ function tooltipDateFormat(
     });
   }
   return new Intl.DateTimeFormat(intlLocale(locale), {
+    timeZone,
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -585,6 +609,7 @@ export const SiteTrafficStackChart = memo(function SiteTrafficStackChart({
   data,
   sites,
   locale,
+  timeZone,
   interval,
   viewsLabel,
   visitorsLabel,
@@ -714,12 +739,12 @@ export const SiteTrafficStackChart = memo(function SiteTrafficStackChart({
     [data, series],
   );
   const tickFormatter = useMemo(
-    () => tickDateFormat(locale, interval),
-    [locale, interval],
+    () => tickDateFormat(locale, interval, timeZone),
+    [locale, interval, timeZone],
   );
   const tooltipFormatter = useMemo(
-    () => tooltipDateFormat(locale, interval),
-    [locale, interval],
+    () => tooltipDateFormat(locale, interval, timeZone),
+    [locale, interval, timeZone],
   );
   const legendKey = useMemo(
     () => series.map((item) => item.siteId).join("|"),
@@ -871,6 +896,7 @@ const TRAFFIC_PAIR_CHART_CONFIG = {
 export const TrafficPairBarChart = memo(function TrafficPairBarChart({
   data,
   locale,
+  timeZone,
   interval,
   viewsLabel,
   visitorsLabel,
@@ -882,7 +908,7 @@ export const TrafficPairBarChart = memo(function TrafficPairBarChart({
   const { containerRef, isVisible, hasMeasuredVisibility } =
     useChartVisibility();
   const chartData = useMemo(() => {
-    const completed = fillMissingTrafficData(data, interval, range);
+    const completed = fillMissingTrafficData(data, interval, timeZone, range);
     const normalized = downsampleTrafficData(
       completed,
       maxPoints ?? (compact ? 72 : completed.length),
@@ -897,7 +923,7 @@ export const TrafficPairBarChart = memo(function TrafficPairBarChart({
         nonVisitorViews: Math.max(0, views - visitors),
       };
     });
-  }, [data, interval, maxPoints, compact, range]);
+  }, [data, interval, timeZone, maxPoints, compact, range]);
   const config = useMemo(
     () => ({
       visitors: {
@@ -912,12 +938,12 @@ export const TrafficPairBarChart = memo(function TrafficPairBarChart({
     [viewsLabel, visitorsLabel],
   );
   const tickFormatter = useMemo(
-    () => tickDateFormat(locale, interval),
-    [locale, interval],
+    () => tickDateFormat(locale, interval, timeZone),
+    [locale, interval, timeZone],
   );
   const tooltipFormatter = useMemo(
-    () => tooltipDateFormat(locale, interval),
-    [locale, interval],
+    () => tooltipDateFormat(locale, interval, timeZone),
+    [locale, interval, timeZone],
   );
   const pairChartDataKey = useMemo(() => {
     const firstTimestamp = chartData[0]?.timestampMs ?? 0;

@@ -1,5 +1,6 @@
 import { argon2id } from "@noble/hashes/argon2.js";
 
+import { normalizeTimeZone } from "@/lib/dashboard/time-zone";
 import { DEFAULT_SITE_SCRIPT_SETTINGS } from "@/lib/site-settings";
 
 import { requireSession } from "./session-auth";
@@ -20,6 +21,7 @@ type UserRow = {
   name: string | null;
   password_hash: string | null;
   system_role: string;
+  timezone: string;
   created_at: number;
   updated_at: number;
 };
@@ -223,6 +225,7 @@ const toPublicUser = (u: UserRow) => ({
   email: u.email,
   name: u.name || "",
   systemRole: u.system_role === "admin" ? "admin" : "user",
+  timeZone: u.timezone || "",
   createdAt: u.created_at,
   updatedAt: u.updated_at,
 });
@@ -230,7 +233,7 @@ const toPublicUser = (u: UserRow) => ({
 async function byId(env: Env, id: string): Promise<UserRow | null> {
   return (
     (await env.DB.prepare(
-      "SELECT id,username,email,name,password_hash,system_role,created_at,updated_at FROM users WHERE id=? LIMIT 1",
+      "SELECT id,username,email,name,password_hash,system_role,timezone,created_at,updated_at FROM users WHERE id=? LIMIT 1",
     )
       .bind(id)
       .first<UserRow>()) ?? null
@@ -243,7 +246,7 @@ async function byIdentifier(
   const lowered = normU(identifier);
   return (
     (await env.DB.prepare(
-      "SELECT id,username,email,name,password_hash,system_role,created_at,updated_at FROM users WHERE lower(username)=? OR lower(email)=? LIMIT 1",
+      "SELECT id,username,email,name,password_hash,system_role,timezone,created_at,updated_at FROM users WHERE lower(username)=? OR lower(email)=? LIMIT 1",
     )
       .bind(lowered, lowered)
       .first<UserRow>()) ?? null
@@ -378,7 +381,7 @@ async function ensureDefaultTeam(env: Env, user: UserRow): Promise<void> {
 
 async function ensureBootstrapAdmin(env: Env): Promise<UserRow> {
   const admin = await env.DB.prepare(
-    "SELECT id,username,email,name,password_hash,system_role,created_at,updated_at FROM users WHERE system_role='admin' ORDER BY created_at ASC LIMIT 1",
+    "SELECT id,username,email,name,password_hash,system_role,timezone,created_at,updated_at FROM users WHERE system_role='admin' ORDER BY created_at ASC LIMIT 1",
   ).first<UserRow>();
   if (admin) {
     await ensureDefaultTeam(env, admin);
@@ -482,7 +485,7 @@ async function hUsers(req: Request, env: Env): Promise<Response> {
   if (!a.isAdmin) return forb("Only system admin can manage accounts");
   if (req.method === "GET") {
     const rows = await env.DB.prepare(
-      "SELECT u.id,u.username,u.email,u.name,u.system_role AS systemRole,u.created_at AS createdAt,u.updated_at AS updatedAt,(SELECT COUNT(*) FROM team_members tm WHERE tm.user_id=u.id) AS teamCount,(SELECT COUNT(*) FROM teams t WHERE t.owner_user_id=u.id) AS ownedTeamCount FROM users u ORDER BY u.created_at ASC",
+      "SELECT u.id,u.username,u.email,u.name,u.system_role AS systemRole,u.timezone AS timeZone,u.created_at AS createdAt,u.updated_at AS updatedAt,(SELECT COUNT(*) FROM team_members tm WHERE tm.user_id=u.id) AS teamCount,(SELECT COUNT(*) FROM teams t WHERE t.owner_user_id=u.id) AS ownedTeamCount FROM users u ORDER BY u.created_at ASC",
     ).all<Record<string, unknown>>();
     return j({ ok: true, data: rows.results });
   }
@@ -609,10 +612,15 @@ async function hProfile(req: Request, env: Env): Promise<Response> {
     const email = normE(String(body.email ?? a.user.email));
     const name = clampString(String(body.name ?? a.user.name ?? ""), 120);
     const password = String(body.password || "");
+    const rawTimeZone = String(
+      body.timeZone ?? body.timezone ?? a.user.timezone ?? "",
+    ).trim();
+    const timeZone = rawTimeZone ? normalizeTimeZone(rawTimeZone) : "";
     if (username.length < 3 || !/^[a-z0-9._@-]+$/.test(username))
       return bad("Invalid username");
     if (email.length < 3 || !email.includes("@"))
       return bad("A valid email is required");
+    if (rawTimeZone && !timeZone) return bad("Invalid timezone");
     if (
       await env.DB.prepare(
         "SELECT 1 AS ok FROM users WHERE lower(username)=? AND id<>? LIMIT 1",
@@ -632,9 +640,9 @@ async function hProfile(req: Request, env: Env): Promise<Response> {
     const pass =
       password.length > 0 ? await hashPassword(password) : a.user.password_hash;
     await env.DB.prepare(
-      "UPDATE users SET username=?,email=?,name=?,password_hash=?,updated_at=unixepoch() WHERE id=?",
+      "UPDATE users SET username=?,email=?,name=?,password_hash=?,timezone=?,updated_at=unixepoch() WHERE id=?",
     )
-      .bind(username, email, name, pass, a.user.id)
+      .bind(username, email, name, pass, timeZone, a.user.id)
       .run();
     const u = await byId(env, a.user.id);
     if (!u) return bad("Failed to update profile");

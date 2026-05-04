@@ -23,6 +23,10 @@ import {
   resolveTimeWindow,
   type TimeWindow,
 } from "@/lib/dashboard/query-state";
+import {
+  browserTimeZone,
+  resolveReportingTimeZone,
+} from "@/lib/dashboard/time-zone";
 
 interface PersistedDashboardQueryState {
   range?: string;
@@ -43,11 +47,16 @@ interface DashboardQueryContextValue {
   setUiFilters: (filters: DashboardFilters) => void;
   clearUiFilters: () => void;
   allowedIntervals: DashboardInterval[];
+  timeZone: string;
+  timeZonePreference: string;
+  browserTimeZone: string;
+  setTimeZonePreference: (timeZone: string) => void;
 }
 
 interface DashboardQueryProviderProps {
   children: ReactNode;
   scopeKey?: string;
+  initialTimeZonePreference?: string;
 }
 
 const STORAGE_KEY = "insightflare.dashboard.query.v2";
@@ -119,14 +128,18 @@ function parsePersistedState(
   }
 }
 
-function buildInitialState() {
+function buildInitialState(initialTimeZonePreference: string) {
+  const timeZone = resolveReportingTimeZone(initialTimeZonePreference);
   if (typeof window === "undefined") {
-    const initialWindow = resolveTimeWindow(DEFAULT_RANGE);
+    const initialWindow = resolveTimeWindow(DEFAULT_RANGE, Date.now(), {
+      timeZone,
+    });
     return {
       range: DEFAULT_RANGE as RangePreset,
       interval: initialWindow.interval as DashboardInterval,
       customRange: null as CustomTimeRange | null,
       uiFilters: EMPTY_FILTERS as DashboardFilters,
+      timeZonePreference: initialTimeZonePreference,
     };
   }
 
@@ -134,12 +147,15 @@ function buildInitialState() {
     window.localStorage.getItem(STORAGE_KEY),
   );
   if (!persisted) {
-    const initialWindow = resolveTimeWindow(DEFAULT_RANGE);
+    const initialWindow = resolveTimeWindow(DEFAULT_RANGE, Date.now(), {
+      timeZone,
+    });
     return {
       range: DEFAULT_RANGE as RangePreset,
       interval: initialWindow.interval as DashboardInterval,
       customRange: null as CustomTimeRange | null,
       uiFilters: EMPTY_FILTERS as DashboardFilters,
+      timeZonePreference: initialTimeZonePreference,
     };
   }
 
@@ -148,6 +164,7 @@ function buildInitialState() {
   const persistedWindow = resolveTimeWindow(persistedRange, Date.now(), {
     customRange: persistedCustomRange || undefined,
     interval: persisted.interval ?? null,
+    timeZone,
   });
 
   return {
@@ -155,14 +172,19 @@ function buildInitialState() {
     interval: persistedWindow.interval,
     customRange: persistedCustomRange,
     uiFilters: normalizeFilters(persisted.uiFilters),
+    timeZonePreference: initialTimeZonePreference,
   };
 }
 
 export function DashboardQueryProvider({
   children,
   scopeKey = "",
+  initialTimeZonePreference = "",
 }: DashboardQueryProviderProps) {
-  const initial = useMemo(() => buildInitialState(), []);
+  const initial = useMemo(
+    () => buildInitialState(initialTimeZonePreference),
+    [initialTimeZonePreference],
+  );
   const [range, setRangeState] = useState<RangePreset>(initial.range);
   const [interval, setIntervalState] = useState<DashboardInterval>(
     initial.interval,
@@ -173,16 +195,29 @@ export function DashboardQueryProvider({
   const [uiFilters, setUiFiltersState] = useState<DashboardFilters>(
     initial.uiFilters,
   );
+  const [timeZonePreference, setTimeZonePreferenceState] = useState(
+    initial.timeZonePreference,
+  );
+  const [detectedBrowserTimeZone, setDetectedBrowserTimeZone] = useState("");
   const previousScopeKeyRef = useRef(scopeKey);
+  const timeZone = resolveReportingTimeZone(
+    timeZonePreference,
+    detectedBrowserTimeZone,
+  );
 
   const windowState = useMemo(
     () =>
       resolveTimeWindow(range, Date.now(), {
         customRange: customRange || undefined,
         interval,
+        timeZone,
       }),
-    [range, customRange, interval],
+    [range, customRange, interval, timeZone],
   );
+
+  useEffect(() => {
+    setDetectedBrowserTimeZone(browserTimeZone());
+  }, []);
 
   useEffect(() => {
     const clamped = clampIntervalForRange(
@@ -223,11 +258,12 @@ export function DashboardQueryProvider({
       const nextWindow = resolveTimeWindow(next, Date.now(), {
         customRange: customRange || undefined,
         interval: null,
+        timeZone,
       });
       setRangeState(next);
       setIntervalState(finestIntervalForRange(nextWindow.from, nextWindow.to));
     },
-    [customRange],
+    [customRange, timeZone],
   );
 
   const setCustomRange = useCallback((next: CustomTimeRange | null) => {
@@ -241,6 +277,10 @@ export function DashboardQueryProvider({
 
   const setInterval = useCallback((next: DashboardInterval) => {
     setIntervalState(next);
+  }, []);
+
+  const setTimeZonePreference = useCallback((next: string) => {
+    setTimeZonePreferenceState(next);
   }, []);
 
   const setUiFilters = useCallback((next: DashboardFilters) => {
@@ -269,6 +309,10 @@ export function DashboardQueryProvider({
       setUiFilters,
       clearUiFilters,
       allowedIntervals,
+      timeZone,
+      timeZonePreference,
+      browserTimeZone: detectedBrowserTimeZone,
+      setTimeZonePreference,
     }),
     [
       range,
@@ -281,6 +325,10 @@ export function DashboardQueryProvider({
       setUiFilters,
       clearUiFilters,
       allowedIntervals,
+      timeZone,
+      timeZonePreference,
+      detectedBrowserTimeZone,
+      setTimeZonePreference,
     ],
   );
 
@@ -307,6 +355,10 @@ function useDashboardQueryContext(): DashboardQueryContextValue {
       setUiFilters: () => {},
       clearUiFilters: () => {},
       allowedIntervals: ["hour", "day", "week", "month"],
+      timeZone: fallbackWindow.timeZone,
+      timeZonePreference: "",
+      browserTimeZone: "",
+      setTimeZonePreference: () => {},
     };
   }
   return context;

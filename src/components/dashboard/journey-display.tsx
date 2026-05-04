@@ -607,8 +607,12 @@ export function formatRelativeTime(
   return formatter.format(Math.round(diffHours / 24), "day");
 }
 
-export function formatShortDateTime(locale: Locale, timestamp: number): string {
-  return shortDateTime(locale, timestamp);
+export function formatShortDateTime(
+  locale: Locale,
+  timestamp: number,
+  timeZone?: string,
+): string {
+  return shortDateTime(locale, timestamp, timeZone);
 }
 
 export function formatDuration(locale: Locale, durationMs: number): string {

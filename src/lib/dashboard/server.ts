@@ -21,6 +21,7 @@ export interface DashboardContext {
     email: string;
     name: string;
     systemRole: "admin" | "user";
+    timeZone?: string;
   };
   teams: TeamData[];
   activeTeam: TeamData;
@@ -35,6 +36,7 @@ export interface DashboardTeamContext {
     email: string;
     name: string;
     systemRole: "admin" | "user";
+    timeZone?: string;
   };
   teams: TeamData[];
   activeTeam: TeamData;

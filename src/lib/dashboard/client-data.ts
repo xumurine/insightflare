@@ -354,6 +354,7 @@ export async function fetchOverview(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         ...(options?.includeChange ? { includeChange: 1 } : {}),
         ...(options?.includeDetail
           ? { includeDetail: 1, interval: window.interval }
@@ -376,6 +377,7 @@ export async function fetchTrend(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         interval: window.interval,
       },
       filters,
@@ -395,6 +397,7 @@ export async function fetchPages(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         limit: 100,
         details: 1,
       },
@@ -420,6 +423,7 @@ export async function fetchVisitors(
     siteId,
     from: window.from,
     to: window.to,
+    timeZone: window.timeZone,
   };
   if (options?.page !== undefined) params.page = options.page;
   if (options?.pageSize !== undefined) params.pageSize = options.pageSize;
@@ -446,12 +450,14 @@ export async function fetchVisitors(
 export async function fetchVisitorDetail(
   siteId: string,
   visitorId: string,
+  timeZone?: string,
 ): Promise<VisitorDetailData> {
   const normalizedVisitorId = visitorId.trim();
   if (!normalizedVisitorId) return emptyVisitorDetail();
   return fetchPrivateJson<VisitorDetailData>("/api/private/visitor-detail", {
     siteId,
     visitorId: normalizedVisitorId,
+    ...(timeZone ? { timeZone } : {}),
   });
 }
 
@@ -472,6 +478,7 @@ export async function fetchSessions(
     siteId,
     from: window.from,
     to: window.to,
+    timeZone: window.timeZone,
   };
   if (options?.page !== undefined) params.page = options.page;
   if (options?.pageSize !== undefined) params.pageSize = options.pageSize;
@@ -498,12 +505,14 @@ export async function fetchSessions(
 export async function fetchSessionDetail(
   siteId: string,
   sessionId: string,
+  timeZone?: string,
 ): Promise<SessionDetailData> {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) return emptySessionDetail();
   return fetchPrivateJson<SessionDetailData>("/api/private/session-detail", {
     siteId,
     sessionId: normalizedSessionId,
+    ...(timeZone ? { timeZone } : {}),
   });
 }
 
@@ -519,6 +528,7 @@ export async function fetchPerformance(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         interval: window.interval,
       },
       filters,
@@ -542,6 +552,7 @@ export async function fetchRetention(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         granularity,
       },
       filters,
@@ -565,6 +576,7 @@ export async function fetchPagesDashboard(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         interval: window.interval,
         page: options?.page ?? 1,
         pageSize: options?.pageSize ?? 12,
@@ -711,6 +723,7 @@ export async function fetchPageCardTabs(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         limit: 100,
       },
       filters,
@@ -735,6 +748,7 @@ export async function fetchReferrers(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         limit: options?.limit ?? 100,
         fullUrl: options?.fullUrl ? 1 : 0,
       },
@@ -771,6 +785,7 @@ export async function fetchUtmDimension(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         limit: 100,
       },
       filters,
@@ -794,6 +809,7 @@ export async function fetchUtmTrend(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         interval: window.interval,
         dimension: tab,
         limit: options?.limit ?? 5,
@@ -819,6 +835,7 @@ export async function fetchOverviewGeoPoints(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         limit: options?.limit ?? 5000,
         ...(options?.applyGeoFilter ? { applyGeoFilter: 1 } : {}),
       },
@@ -892,6 +909,7 @@ export async function fetchOverviewPageCardTab(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         limit: options?.limit ?? 100,
       },
       filters,
@@ -921,6 +939,7 @@ export async function fetchPageHashTab(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         limit: options?.limit ?? 100,
       },
       filters,
@@ -959,6 +978,7 @@ export async function fetchOverviewSourceCardTab(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         limit: options?.limit ?? 100,
       },
       filters,
@@ -982,6 +1002,7 @@ export async function fetchEventTypesTab(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         limit: options?.limit ?? 100,
       },
       filters,
@@ -1005,6 +1026,7 @@ export async function fetchReferrerTrend(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         interval: window.interval,
         limit: options?.limit ?? 5,
       },
@@ -1036,6 +1058,7 @@ export async function fetchOverviewClientDimensionTab(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         limit: options?.limit ?? 100,
       },
       filters,
@@ -1066,6 +1089,7 @@ export async function fetchOverviewGeoDimensionTab(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         limit: options?.limit ?? 100,
       },
       filters,
@@ -1122,6 +1146,7 @@ export async function fetchDashboardFilterOptions(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         filterKey,
         limit: options?.limit ?? 200,
       },
@@ -1147,6 +1172,7 @@ export async function fetchClientDimensionTrend(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         interval: window.interval,
         dimension,
         limit: options?.limit ?? 5,
@@ -1174,6 +1200,7 @@ export async function fetchClientCrossBreakdown(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         primaryDimension,
         secondaryDimension,
         primaryLimit: options?.primaryLimit ?? 5,
@@ -1199,6 +1226,7 @@ export async function fetchBrowserTrend(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         interval: window.interval,
         limit: options?.limit ?? 5,
       },
@@ -1222,6 +1250,7 @@ export async function fetchBrowserEngineTrend(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         interval: window.interval,
         limit: options?.limit ?? 5,
       },
@@ -1246,6 +1275,7 @@ export async function fetchBrowserVersionBreakdown(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         browserLimit: options?.browserLimit ?? 0,
         versionLimit: options?.versionLimit ?? 5,
       },
@@ -1271,6 +1301,7 @@ export async function fetchBrowserCrossBreakdown(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         browserLimit: options?.browserLimit ?? 8,
         osLimit: options?.osLimit ?? 6,
         deviceTypeLimit: options?.deviceTypeLimit ?? 5,
@@ -1292,6 +1323,7 @@ export async function fetchBrowserRadar(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
       },
       filters,
     ),
@@ -1313,6 +1345,7 @@ export async function fetchReferrerRadar(
         siteId,
         from: window.from,
         to: window.to,
+        timeZone: window.timeZone,
         limit: options?.limit ?? 24,
       },
       filters,

@@ -512,6 +512,28 @@ siteSettings:
     deleted: Site deleted.
     deleteFailed: Failed to delete site.
     invalidInput: Please provide valid site name and domain.
+accountSettings:
+  title: Account Settings
+  subtitle: Configure your personal dashboard timezone.
+  timeZoneTitle: Reporting Timezone
+  timeZoneDescription: Calendar ranges and aggregation buckets use this timezone across the dashboard.
+  activeTimeZone: Active timezone
+  browserTimeZone: Browser timezone
+  browserUnavailable: Not detected
+  browserSource: Browser
+  manualSource: Manual
+  preferenceLabel: Timezone preference
+  preferenceDescription: Browser mode follows this device. Manual mode keeps the same timezone on every device.
+  useBrowser: Use browser timezone
+  useCustom: Set manually
+  customTimeZoneLabel: Manual timezone
+  customTimeZonePlaceholder: e.g. Asia/Shanghai
+  customTimeZoneDescription: Enter an IANA timezone name.
+  invalidTimeZone: Please enter a valid IANA timezone.
+  save: Save preference
+  saving: Saving...
+  saved: Timezone preference saved.
+  saveFailed: Failed to save timezone preference.
 login:
   title: Sign in
   subtitle: Use your InsightFlare account.

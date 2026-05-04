@@ -68,8 +68,9 @@ export function CampaignsClientPage({
       from: window.from,
       to: window.to,
       interval: window.interval,
+      timeZone: window.timeZone,
     }),
-    [window.from, window.interval, window.preset, window.to],
+    [window.from, window.interval, window.preset, window.timeZone, window.to],
   );
 
   useEffect(() => {

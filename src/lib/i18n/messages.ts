@@ -507,6 +507,29 @@ export interface AppMessages {
       invalidInput: string;
     };
   };
+  accountSettings: {
+    title: string;
+    subtitle: string;
+    timeZoneTitle: string;
+    timeZoneDescription: string;
+    activeTimeZone: string;
+    browserTimeZone: string;
+    browserUnavailable: string;
+    browserSource: string;
+    manualSource: string;
+    preferenceLabel: string;
+    preferenceDescription: string;
+    useBrowser: string;
+    useCustom: string;
+    customTimeZoneLabel: string;
+    customTimeZonePlaceholder: string;
+    customTimeZoneDescription: string;
+    invalidTimeZone: string;
+    save: string;
+    saving: string;
+    saved: string;
+    saveFailed: string;
+  };
   login: {
     title: string;
     subtitle: string;

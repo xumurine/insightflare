@@ -38,6 +38,7 @@ import {
   percentFormat,
 } from "@/lib/dashboard/format";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import { addZonedInterval } from "@/lib/dashboard/time-zone";
 import type { RetentionData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -127,12 +128,6 @@ const RETENTION_SIZE_COLUMN =
 const RETENTION_PERIOD_COLUMN =
   "w-[var(--retention-period-width)] min-w-[var(--retention-period-width)] max-w-[var(--retention-period-width)]";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const HOUR_MS = 60 * 60 * 1000;
-const MINUTE_MS = 60 * 1000;
-const WEEK_MS = 7 * DAY_MS;
-const MONTH_MS = 30 * DAY_MS;
-
 function copy(locale: Locale): RetentionCopy {
   return locale === "zh"
     ? {
@@ -189,14 +184,6 @@ function copy(locale: Locale): RetentionCopy {
       };
 }
 
-function periodMsForGranularity(granularity: RetentionGranularity): number {
-  if (granularity === "minute") return MINUTE_MS;
-  if (granularity === "hour") return HOUR_MS;
-  if (granularity === "day") return DAY_MS;
-  if (granularity === "month") return MONTH_MS;
-  return WEEK_MS;
-}
-
 function normalizeGranularity(value: string): RetentionGranularity {
   if (
     value === "minute" ||
@@ -214,6 +201,7 @@ function formatCohortDate(
   locale: Locale,
   granularity: RetentionGranularity,
   bucket: number,
+  timeZone: string,
 ): string {
   const date = new Date(bucket);
   if (!Number.isFinite(date.getTime())) return "--";
@@ -229,7 +217,10 @@ function formatCohortDate(
             ? { month: "short", day: "numeric" }
             : { month: "short", day: "numeric" };
 
-  return new Intl.DateTimeFormat(intlLocale(locale), options).format(date);
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    ...options,
+    timeZone,
+  }).format(date);
 }
 
 function periodLabel(
@@ -245,10 +236,21 @@ function cohortMaxPeriodIndex(
   cohort: RetentionData["cohorts"][number],
   toMs: number,
   granularity: RetentionGranularity,
+  timeZone: string,
 ): number {
-  const periodMs = periodMsForGranularity(granularity);
-  const age = Math.max(0, toMs - Number(cohort.bucket ?? 0));
-  return Math.max(0, Math.floor(age / periodMs));
+  const start = Number(cohort.bucket ?? 0);
+  if (!Number.isFinite(start) || start > toMs) return 0;
+  const hardLimit = 2000;
+  let index = 0;
+  let current = start;
+  for (; index < hardLimit; index += 1) {
+    const next = addZonedInterval(current, granularity, timeZone);
+    if (!Number.isFinite(next) || next <= current || next > toMs) {
+      break;
+    }
+    current = next;
+  }
+  return index;
 }
 
 function buildRetentionViewModel(
@@ -276,7 +278,10 @@ function buildRetentionViewModel(
   );
   const maxAvailableIndex = sourceCohorts.reduce(
     (maxIndex, cohort) =>
-      Math.max(maxIndex, cohortMaxPeriodIndex(cohort, window.to, granularity)),
+      Math.max(
+        maxIndex,
+        cohortMaxPeriodIndex(cohort, window.to, granularity, window.timeZone),
+      ),
     0,
   );
   const maxIndex = Math.max(0, maxObservedIndex, maxAvailableIndex);
@@ -302,6 +307,7 @@ function buildRetentionViewModel(
       cohort,
       window.to,
       granularity,
+      window.timeZone,
     );
     const periodMap = new Map(
       cohort.periods.map((period) => [
@@ -360,6 +366,7 @@ function buildRetentionViewModel(
       locale,
       granularity,
       Number(cohort.bucket ?? 0),
+      window.timeZone,
     );
     const averagePostRate =
       cohortPostBase > 0 ? cohortPostVisitors / cohortPostBase : null;

@@ -26,6 +26,7 @@ interface RealtimeRollingTrendChartProps {
   data: RealtimeRollingTrendPoint[];
   viewsLabel: string;
   sessionsLabel: string;
+  timeZone: string;
   className?: string;
 }
 
@@ -89,6 +90,7 @@ export function RealtimeRollingTrendChart({
   data,
   viewsLabel,
   sessionsLabel,
+  timeZone,
   className,
 }: RealtimeRollingTrendChartProps) {
   const gradientId = useId().replace(/:/g, "");
@@ -159,20 +161,22 @@ export function RealtimeRollingTrendChart({
   const tickFormatter = useMemo(
     () =>
       new Intl.DateTimeFormat(localeCode, {
+        timeZone,
         hour: "2-digit",
         minute: "2-digit",
       }),
-    [localeCode],
+    [localeCode, timeZone],
   );
   const tooltipDateFormatter = useMemo(
     () =>
       new Intl.DateTimeFormat(localeCode, {
+        timeZone,
         month: "short",
         day: "numeric",
         hour: "2-digit",
         minute: "2-digit",
       }),
-    [localeCode],
+    [localeCode, timeZone],
   );
   const yAxisTickFormatter = useMemo(
     () => (value: number | string) =>

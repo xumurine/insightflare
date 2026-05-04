@@ -164,6 +164,12 @@ function parseSidebarRouteState(
     };
   }
 
+  if (localPath[0] === "account") {
+    return {
+      mode: "team",
+    };
+  }
+
   if (localPath[0] === "manage") {
     if (localPath[1] === "users") {
       return {
@@ -203,6 +209,7 @@ interface DashboardShellProps {
     name: string;
     email: string;
     systemRole: "admin" | "user";
+    timeZone?: string;
   };
   teams: TeamData[];
   activeTeamSlug: string;
@@ -265,6 +272,7 @@ export function DashboardShell({
   const localeSuffix = normalizeLocalePath(livePathname);
   const switchToEn = `/en${localeSuffix}`;
   const switchToZh = `/zh${localeSuffix}`;
+  const accountHref = `/${locale}/app/${activeTeamSlug}/account`;
   const teamRootHref = `/${locale}/app/${activeTeamSlug}`;
   const backToTeamLabel = messages.common.backToTeam;
   const activeTeamName =
@@ -316,7 +324,10 @@ export function DashboardShell({
 
   return (
     <SidebarProvider>
-      <DashboardQueryProvider scopeKey={activeSiteId}>
+      <DashboardQueryProvider
+        scopeKey={activeSiteId}
+        initialTimeZonePreference={user.timeZone || ""}
+      >
         <Sidebar variant="inset" collapsible="icon">
           <SidebarHeader className="group-data-[collapsible=icon]:hidden">
             <Link
@@ -465,6 +476,7 @@ export function DashboardShell({
               user={user}
               switchToEn={switchToEn}
               switchToZh={switchToZh}
+              accountHref={accountHref}
               messages={messages}
             />
           </SidebarFooter>

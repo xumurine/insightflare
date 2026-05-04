@@ -1,3 +1,16 @@
+import {
+  addCalendarMonths,
+  browserTimeZone,
+  endOfZonedDay,
+  resolveReportingTimeZone,
+  startOfZonedDay,
+  startOfZonedMonth,
+  startOfZonedWeek,
+  startOfZonedYear,
+  zonedParts,
+  zonedTimeToUtcMs,
+} from "@/lib/dashboard/time-zone";
+
 export type RangePreset =
   | "30m"
   | "1h"
@@ -27,6 +40,7 @@ export interface TimeWindow {
   from: number;
   to: number;
   interval: DashboardInterval;
+  timeZone: string;
 }
 
 export interface DashboardFilters {
@@ -110,53 +124,27 @@ function isValidCustomRange(
   );
 }
 
-function startOfDay(date: Date): number {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next.getTime();
-}
-
-function endOfDay(date: Date): number {
-  const next = new Date(date);
-  next.setHours(23, 59, 59, 999);
-  return next.getTime();
-}
-
-function startOfWeek(date: Date): number {
-  const next = new Date(date);
-  const weekday = (next.getDay() + 6) % 7;
-  next.setDate(next.getDate() - weekday);
-  next.setHours(0, 0, 0, 0);
-  return next.getTime();
-}
-
-function startOfMonth(date: Date): number {
-  const next = new Date(date);
-  next.setDate(1);
-  next.setHours(0, 0, 0, 0);
-  return next.getTime();
-}
-
-function startOfYear(date: Date): number {
-  const next = new Date(date);
-  next.setMonth(0, 1);
-  next.setHours(0, 0, 0, 0);
-  return next.getTime();
-}
-
-function subtractMonths(now: number, months: number): number {
-  const next = new Date(now);
-  next.setMonth(next.getMonth() - months);
-  return next.getTime();
+function subtractZonedMonths(
+  now: number,
+  months: number,
+  timeZone: string,
+): number {
+  const parts = zonedParts(now, timeZone);
+  const target = addCalendarMonths(parts, -months);
+  return zonedTimeToUtcMs(timeZone, {
+    ...parts,
+    year: target.year,
+    month: target.month,
+    day: target.day,
+  });
 }
 
 function rangeBounds(
   preset: RangePreset,
   now: number,
+  timeZone: string,
   customRange?: CustomTimeRange,
 ): { from: number; to: number } {
-  const current = new Date(now);
-
   if (preset === "30m") {
     return { from: now - 30 * MINUTE_MS, to: now };
   }
@@ -164,23 +152,24 @@ function rangeBounds(
     return { from: now - HOUR_MS, to: now };
   }
   if (preset === "today") {
-    return { from: startOfDay(current), to: now };
+    return { from: startOfZonedDay(now, timeZone), to: now };
   }
   if (preset === "yesterday") {
-    const startToday = startOfDay(current);
+    const startToday = startOfZonedDay(now, timeZone);
+    const startYesterday = startOfZonedDay(startToday - 1, timeZone);
     return {
-      from: startToday - DAY_MS,
+      from: startYesterday,
       to: startToday - 1,
     };
   }
   if (preset === "thisWeek") {
-    return { from: startOfWeek(current), to: now };
+    return { from: startOfZonedWeek(now, timeZone), to: now };
   }
   if (preset === "thisMonth") {
-    return { from: startOfMonth(current), to: now };
+    return { from: startOfZonedMonth(now, timeZone), to: now };
   }
   if (preset === "thisYear") {
-    return { from: startOfYear(current), to: now };
+    return { from: startOfZonedYear(now, timeZone), to: now };
   }
   if (preset === "24h") {
     return { from: now - DAY_MS, to: now };
@@ -192,10 +181,10 @@ function rangeBounds(
     return { from: now - 90 * DAY_MS, to: now };
   }
   if (preset === "6m") {
-    return { from: subtractMonths(now, 6), to: now };
+    return { from: subtractZonedMonths(now, 6, timeZone), to: now };
   }
   if (preset === "12m") {
-    return { from: subtractMonths(now, 12), to: now };
+    return { from: subtractZonedMonths(now, 12, timeZone), to: now };
   }
   if (preset === "all") {
     return { from: 0, to: now };
@@ -267,10 +256,15 @@ export function resolveTimeWindow(
   options?: {
     customRange?: CustomTimeRange;
     interval?: DashboardInterval | null;
+    timeZone?: string | null;
   },
 ): TimeWindow {
   const preset = resolveRangePreset(range);
-  const bounds = rangeBounds(preset, now, options?.customRange);
+  const timeZone = resolveReportingTimeZone(
+    options?.timeZone,
+    typeof window === "undefined" ? null : browserTimeZone(),
+  );
+  const bounds = rangeBounds(preset, now, timeZone, options?.customRange);
   const interval = clampIntervalForRange(
     options?.interval,
     bounds.from,
@@ -281,6 +275,7 @@ export function resolveTimeWindow(
     from: bounds.from,
     to: bounds.to,
     interval,
+    timeZone,
   };
 }
 
@@ -360,10 +355,34 @@ export function withRangeAndFilters(
 
 export function normalizeCustomDateRange(
   range: { from?: Date; to?: Date } | null | undefined,
+  timeZone?: string | null,
 ): CustomTimeRange | null {
   if (!range?.from || !range?.to) return null;
-  const from = startOfDay(range.from);
-  const to = endOfDay(range.to);
+  const resolvedTimeZone = resolveReportingTimeZone(
+    timeZone,
+    typeof window === "undefined" ? null : browserTimeZone(),
+  );
+  const from = zonedTimeToUtcMs(resolvedTimeZone, {
+    year: range.from.getFullYear(),
+    month: range.from.getMonth() + 1,
+    day: range.from.getDate(),
+    hour: 0,
+    minute: 0,
+    second: 0,
+    millisecond: 0,
+  });
+  const to = endOfZonedDay(
+    zonedTimeToUtcMs(resolvedTimeZone, {
+      year: range.to.getFullYear(),
+      month: range.to.getMonth() + 1,
+      day: range.to.getDate(),
+      hour: 12,
+      minute: 0,
+      second: 0,
+      millisecond: 0,
+    }),
+    resolvedTimeZone,
+  );
   if (!Number.isFinite(from) || !Number.isFinite(to) || from >= to) return null;
   return { from, to };
 }

@@ -4,6 +4,12 @@ import {
   buildRegionLocationValue,
   parseGeoLocationValue,
 } from "@/lib/dashboard/geo-location";
+import {
+  addZonedInterval,
+  resolveReportingTimeZone,
+  startOfZonedInterval,
+  zonedParts,
+} from "@/lib/dashboard/time-zone";
 
 import { requireSession } from "./session-auth";
 import type { Env } from "./types";
@@ -30,6 +36,7 @@ interface QueryWindow {
   fromMs: number;
   toMs: number;
   nowMs: number;
+  timeZone: string;
 }
 
 interface SiteRow {
@@ -101,6 +108,7 @@ interface OverviewAggregateRow {
 
 interface TrendAggregateRow extends OverviewAggregateRow {
   bucket: number;
+  timestampMs: number;
 }
 
 interface BrowserTrendSeriesRow {
@@ -286,6 +294,7 @@ interface PageCardTitleRow {
 interface PageCardTrendRow {
   pathname: string;
   bucket: number;
+  timestampMs: number;
   views: number;
   visitors: number;
 }
@@ -522,6 +531,9 @@ function parseWindow(url: URL): QueryWindow | null {
   const toMs = Math.floor(
     coerceNumber(url.searchParams.get("to"), nowMs) ?? nowMs,
   );
+  const timeZone = resolveReportingTimeZone(
+    url.searchParams.get("timeZone") || url.searchParams.get("tz"),
+  );
   if (
     !Number.isFinite(fromMs) ||
     !Number.isFinite(toMs) ||
@@ -530,7 +542,7 @@ function parseWindow(url: URL): QueryWindow | null {
   ) {
     return null;
   }
-  return { fromMs, toMs, nowMs };
+  return { fromMs, toMs, nowMs, timeZone };
 }
 
 function parseLimit(url: URL, fallback = 20, max = 500): number {
@@ -725,6 +737,75 @@ function intervalBucketMs(interval: Interval): number {
   if (interval === "day") return ONE_DAY_MS;
   if (interval === "week") return 7 * ONE_DAY_MS;
   return 30 * ONE_DAY_MS;
+}
+
+interface TimeBucket {
+  index: number;
+  timestampMs: number;
+  fromMs: number;
+  toMs: number;
+}
+
+interface TimeBucketCase {
+  sql: string;
+  bindings: number[];
+}
+
+function buildTimeBuckets(
+  window: QueryWindow,
+  interval: Interval,
+): TimeBucket[] {
+  const buckets: TimeBucket[] = [];
+  let current = startOfZonedInterval(window.fromMs, interval, window.timeZone);
+  const hardLimit = 2000;
+
+  for (let index = 0; index < hardLimit && current <= window.toMs; index += 1) {
+    let next = addZonedInterval(current, interval, window.timeZone);
+    if (!Number.isFinite(next) || next <= current) {
+      next = current + intervalBucketMs(interval);
+    }
+    buckets.push({
+      index,
+      timestampMs: current,
+      fromMs: current,
+      toMs: next,
+    });
+    current = next;
+  }
+
+  if (buckets.length === 0) {
+    const fallbackStart = Math.max(0, Math.floor(window.fromMs));
+    buckets.push({
+      index: 0,
+      timestampMs: fallbackStart,
+      fromMs: fallbackStart,
+      toMs: Math.max(fallbackStart + 1, Math.floor(window.toMs) + 1),
+    });
+  }
+
+  return buckets;
+}
+
+function timeBucketCase(
+  buckets: TimeBucket[],
+  columnExpression: string,
+): TimeBucketCase {
+  const bindings: number[] = [];
+  const clauses = buckets.map((bucket) => {
+    bindings.push(bucket.fromMs, bucket.toMs);
+    return `WHEN ${columnExpression} >= ? AND ${columnExpression} < ? THEN ${bucket.index}`;
+  });
+  return {
+    sql: `CASE ${clauses.join(" ")} ELSE NULL END`,
+    bindings,
+  };
+}
+
+function timeBucketTimestamp(
+  buckets: TimeBucket[],
+  bucketIndex: number,
+): number {
+  return buckets[bucketIndex]?.timestampMs ?? 0;
 }
 
 const SHARE_TREND_OTHER_KEY = "other";
@@ -955,13 +1036,11 @@ function mapPageCardMetrics(row: OverviewAggregateRow) {
 
 function mapTrendRows(
   rows: TrendAggregateRow[],
-  interval: Interval,
   source: "detail" | "archive" | "mixed",
 ) {
-  const bucketMs = intervalBucketMs(interval);
   return rows.map((row) => ({
     bucket: row.bucket,
-    timestampMs: row.bucket * bucketMs,
+    timestampMs: row.timestampMs,
     views: row.views,
     visitors: row.visitors,
     sessions: row.sessions,
@@ -1827,7 +1906,8 @@ async function queryPerformanceTrendFromD1(
   metric: PerformanceMetricKey,
 ): Promise<PerformanceTrendPointRow[]> {
   const filter = buildVisitFilterSql(filters);
-  const bucketDivisor = intervalBucketMs(interval);
+  const buckets = buildTimeBuckets(window, interval);
+  const bucket = timeBucketCase(buckets, "started_at");
   const column = performanceMetricColumn(metric);
   const filteredClause = appendSqlConditions(filter.clause, [
     `${column} IS NOT NULL`,
@@ -1837,7 +1917,7 @@ WITH
 ${buildVisitSourceCte()},
 metric_visits AS (
   SELECT
-    CAST(started_at / ${bucketDivisor} AS INTEGER) AS bucket,
+    ${bucket.sql} AS bucket,
     ${column} AS metricValue
   FROM visit_source
   ${filteredClause}
@@ -1874,15 +1954,15 @@ JOIN ordered_values ordered
 GROUP BY thresholds.bucket, thresholds.sampleCount, thresholds.avgValue
 ORDER BY thresholds.bucket ASC
 `;
-  const bucketMs = intervalBucketMs(interval);
   return (
     await queryD1All<Record<string, unknown>>(env, sql, [
       ...visitSourceBindings(siteId, window),
+      ...bucket.bindings,
       ...filter.bindings,
     ])
   ).map((row) => ({
     bucket: Number(row.bucket ?? 0),
-    timestampMs: Number(row.bucket ?? 0) * bucketMs,
+    timestampMs: timeBucketTimestamp(buckets, Number(row.bucket ?? 0)),
     avg: roundPerformanceValue(row.avgValue),
     p50: roundPerformanceValue(row.p50),
     p75: roundPerformanceValue(row.p75),
@@ -2190,7 +2270,9 @@ async function queryTrendFromD1(
   filters: DashboardFilters,
 ): Promise<TrendAggregateRow[]> {
   const filter = buildVisitFilterSql(filters);
-  const bucketDivisor = intervalBucketMs(interval);
+  const buckets = buildTimeBuckets(window, interval);
+  const visitBucket = timeBucketCase(buckets, "started_at");
+  const sessionBucket = timeBucketCase(buckets, "session_started_at");
   const sql = `
 WITH
 ${buildVisitSourceCte()},
@@ -2201,7 +2283,7 @@ filtered_visits AS (
 ),
 visit_bucket_rollup AS (
   SELECT
-    CAST(started_at / ${bucketDivisor} AS INTEGER) AS bucket,
+    ${visitBucket.sql} AS bucket,
     count(*) AS views,
     count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors,
     COALESCE(sum(CASE WHEN duration_ms IS NOT NULL AND duration_ms >= 0 THEN duration_ms ELSE 0 END), 0) AS totalDuration,
@@ -2220,7 +2302,7 @@ session_rollup AS (
 ),
 session_bucket_rollup AS (
   SELECT
-    CAST(session_started_at / ${bucketDivisor} AS INTEGER) AS bucket,
+    ${sessionBucket.sql} AS bucket,
     count(*) AS sessions,
     COALESCE(sum(CASE WHEN visit_count = 1 THEN 1 ELSE 0 END), 0) AS bounces
   FROM session_rollup
@@ -2247,9 +2329,12 @@ ORDER BY bucket ASC
     await queryD1All<Record<string, unknown>>(env, sql, [
       ...visitSourceBindings(siteId, window),
       ...filter.bindings,
+      ...visitBucket.bindings,
+      ...sessionBucket.bindings,
     ])
   ).map((row) => ({
     bucket: Number(row.bucket ?? 0),
+    timestampMs: timeBucketTimestamp(buckets, Number(row.bucket ?? 0)),
     views: Number(row.views ?? 0),
     visitors: Number(row.visitors ?? 0),
     sessions: Number(row.sessions ?? 0),
@@ -2883,7 +2968,8 @@ async function queryShareTrendFromD1(
   data: BrowserTrendPointRow[];
 }> {
   const filter = buildVisitFilterSql(filters);
-  const bucketDivisor = intervalBucketMs(interval);
+  const buckets = buildTimeBuckets(window, interval);
+  const bucket = timeBucketCase(buckets, "started_at");
   const normalizedLimit = Math.min(Math.max(1, limit), 12);
   const topSql = `
 WITH
@@ -3036,7 +3122,7 @@ WITH
 ${buildVisitSourceCte()},
 filtered_visits AS (
   SELECT
-    CAST(started_at / ${bucketDivisor} AS INTEGER) AS bucket,
+    ${bucket.sql} AS bucket,
     visit_id AS visitId,
     started_at AS startedAt,
     ${labelExpr} AS labelValue,
@@ -3090,6 +3176,7 @@ ORDER BY bucket ASC, label ASC
   const bucketRows = (
     await queryD1All<Record<string, unknown>>(env, bucketSql, [
       ...visitSourceBindings(siteId, window),
+      ...bucket.bindings,
       ...filter.bindings,
       ...topLabels,
     ])
@@ -3162,7 +3249,7 @@ ORDER BY bucket ASC, label ASC
 
   const createEmptyPoint = (bucket: number): BrowserTrendPointRow => ({
     bucket,
-    timestampMs: bucket * bucketDivisor,
+    timestampMs: timeBucketTimestamp(buckets, bucket),
     totalVisitors: 0,
     visitorsBySeries: Object.fromEntries(series.map((item) => [item.key, 0])),
   });
@@ -3178,14 +3265,9 @@ ORDER BY bucket ASC, label ASC
     pointsByBucket.set(row.bucket, point);
   }
 
-  const fromBucket = Math.floor(window.fromMs / bucketDivisor);
-  const toBucket = Math.max(
-    fromBucket,
-    Math.floor(window.toMs / bucketDivisor),
-  );
   const data: BrowserTrendPointRow[] = [];
-  for (let bucket = fromBucket; bucket <= toBucket; bucket += 1) {
-    data.push(pointsByBucket.get(bucket) ?? createEmptyPoint(bucket));
+  for (const item of buckets) {
+    data.push(pointsByBucket.get(item.index) ?? createEmptyPoint(item.index));
   }
 
   return {
@@ -3707,6 +3789,7 @@ GROUP BY siteId
 interface TeamTrendRow {
   siteId: string;
   bucket: number;
+  timestampMs: number;
   views: number;
   visitors: number;
 }
@@ -3718,13 +3801,14 @@ async function queryTeamTrendFromD1(
   interval: Interval,
 ): Promise<TeamTrendRow[]> {
   if (siteIds.length === 0) return [];
-  const bucketDivisor = intervalBucketMs(interval);
+  const buckets = buildTimeBuckets(window, interval);
+  const bucket = timeBucketCase(buckets, "started_at");
   const sql = `
 WITH
 ${buildVisitSourceCteForSites(siteIds.length)}
 SELECT
   site_id AS siteId,
-  CAST(started_at / ${bucketDivisor} AS INTEGER) AS bucket,
+  ${bucket.sql} AS bucket,
   count(*) AS views,
   count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors
 FROM visit_source
@@ -3732,14 +3816,14 @@ GROUP BY siteId, bucket
 ORDER BY bucket ASC, siteId ASC
 `;
   return (
-    await queryD1All<Record<string, unknown>>(
-      env,
-      sql,
-      visitSourceBindingsForSites(siteIds, window),
-    )
+    await queryD1All<Record<string, unknown>>(env, sql, [
+      ...visitSourceBindingsForSites(siteIds, window),
+      ...bucket.bindings,
+    ])
   ).map((row) => ({
     siteId: String(row.siteId ?? ""),
     bucket: Number(row.bucket ?? 0),
+    timestampMs: timeBucketTimestamp(buckets, Number(row.bucket ?? 0)),
     views: Number(row.views ?? 0),
     visitors: Number(row.visitors ?? 0),
   }));
@@ -4046,7 +4130,8 @@ async function queryPageCardTrendFromD1(
   if (requestedPathnames.length === 0) return [];
 
   const filter = buildVisitFilterSql(filters);
-  const bucketDivisor = intervalBucketMs(interval);
+  const buckets = buildTimeBuckets(window, interval);
+  const bucket = timeBucketCase(buckets, "startedAt");
   const filteredClause = appendSqlConditions(filter.clause, [
     `TRIM(COALESCE(pathname, '')) IN (${requestedPathnames.map(() => "?").join(", ")})`,
   ]);
@@ -4063,7 +4148,7 @@ filtered_visits AS (
 )
 SELECT
   pathname,
-  CAST(startedAt / ${bucketDivisor} AS INTEGER) AS bucket,
+  ${bucket.sql} AS bucket,
   count(*) AS views,
   count(DISTINCT CASE WHEN visitorId != '' THEN visitorId ELSE NULL END) AS visitors
 FROM filtered_visits
@@ -4075,10 +4160,12 @@ ORDER BY pathname ASC, bucket ASC
       ...visitSourceBindings(siteId, window),
       ...filter.bindings,
       ...requestedPathnames,
+      ...bucket.bindings,
     ])
   ).map((row) => ({
     pathname: String(row.pathname ?? ""),
     bucket: Number(row.bucket ?? 0),
+    timestampMs: timeBucketTimestamp(buckets, Number(row.bucket ?? 0)),
     views: Number(row.views ?? 0),
     visitors: Number(row.visitors ?? 0),
   }));
@@ -4212,6 +4299,7 @@ async function handleOverview(
       fromMs: previousFrom,
       toMs: previousTo,
       nowMs: window.nowMs,
+      timeZone: window.timeZone,
     };
     const previous = await queryOverviewAggregate(
       env,
@@ -4257,7 +4345,6 @@ async function handleOverview(
       interval,
       data: mapTrendRows(
         detail.value,
-        interval,
         detail.source === "ae" ? "detail" : sourceLabel(window),
       ),
     };
@@ -4287,7 +4374,6 @@ async function handleTrend(
     interval,
     data: mapTrendRows(
       trend.value,
-      interval,
       trend.source === "ae" ? "detail" : sourceLabel(window),
     ),
   });
@@ -5003,6 +5089,7 @@ async function handlePagesDashboard(
     fromMs: previousFrom,
     toMs: previousTo,
     nowMs: window.nowMs,
+    timeZone: window.timeZone,
   };
 
   const [previousRows, titleRows, trendRows] = await Promise.all([
@@ -5028,7 +5115,6 @@ async function handlePagesDashboard(
     titlesByPath.set(row.pathname, titles);
   }
 
-  const bucketMs = intervalBucketMs(interval);
   const trendByPath = new Map<
     string,
     Array<{
@@ -5040,7 +5126,7 @@ async function handlePagesDashboard(
   for (const row of trendRows) {
     const trend = trendByPath.get(row.pathname) ?? [];
     trend.push({
-      timestampMs: row.bucket * bucketMs,
+      timestampMs: row.timestampMs,
       views: row.views,
       visitors: row.visitors,
     });
@@ -5202,7 +5288,15 @@ async function handleVisitorDetail(
 ): Promise<Response> {
   const visitorId = (url.searchParams.get("visitorId") || "").trim();
   if (!visitorId) return badRequest("Missing visitorId");
-  const detail = await queryVisitorDetailFromD1(env, siteId, visitorId);
+  const timeZone = resolveReportingTimeZone(
+    url.searchParams.get("timeZone") || url.searchParams.get("tz"),
+  );
+  const detail = await queryVisitorDetailFromD1(
+    env,
+    siteId,
+    visitorId,
+    timeZone,
+  );
   return jsonResponse({ ok: true, data: detail });
 }
 
@@ -5238,8 +5332,8 @@ async function handleRetention(
       ? rawGranularity
       : "week";
 
-  const bucketDivisor = intervalBucketMs(granularity);
-  const bucketExpr = `CAST(started_at / ${bucketDivisor} AS INTEGER) * ${bucketDivisor}`;
+  const buckets = buildTimeBuckets(window, granularity);
+  const bucket = timeBucketCase(buckets, "started_at");
 
   const filter = buildVisitFilterSql(filters);
   const filterAndClause = filter.clause
@@ -5249,7 +5343,10 @@ async function handleRetention(
 WITH
 ${buildVisitSourceCte()},
 filtered_visits AS (
-  SELECT visitor_id, started_at
+  SELECT
+    visitor_id,
+    started_at,
+    ${bucket.sql} AS bucket
   FROM visit_source
   WHERE visitor_id != ''
   ${filterAndClause}
@@ -5257,17 +5354,19 @@ filtered_visits AS (
 cohort_assign AS (
   SELECT
     visitor_id,
-    MIN(${bucketExpr}) AS cohort_bucket
+    MIN(bucket) AS cohort_bucket
   FROM filtered_visits
+  WHERE bucket IS NOT NULL
   GROUP BY visitor_id
 ),
 return_data AS (
   SELECT
     ca.cohort_bucket,
-    ${bucketExpr} AS visit_bucket,
+    fv.bucket AS visit_bucket,
     fv.visitor_id
   FROM filtered_visits fv
   JOIN cohort_assign ca ON fv.visitor_id = ca.visitor_id
+  WHERE fv.bucket IS NOT NULL
 )
 SELECT
   cohort_bucket AS cohortBucket,
@@ -5280,6 +5379,7 @@ ORDER BY cohort_bucket ASC, visit_bucket ASC
 
   const rows = await queryD1All<Record<string, unknown>>(env, sql, [
     ...visitSourceBindings(siteId, window),
+    ...bucket.bindings,
     ...filter.bindings,
   ]);
 
@@ -5305,12 +5405,12 @@ ORDER BY cohort_bucket ASC, visit_bucket ASC
   const cohorts = Array.from(cohortMap.entries())
     .sort(([a], [b]) => a - b)
     .map(([bucket, { size, periods }]) => ({
-      bucket,
+      bucket: timeBucketTimestamp(buckets, bucket),
       size,
       periods: Array.from(periods.entries())
         .sort(([a], [b]) => a - b)
         .map(([vb, visitors]) => {
-          const index = Math.round((vb - bucket) / bucketDivisor);
+          const index = Math.max(0, vb - bucket);
           return {
             index,
             visitors,
@@ -5945,6 +6045,7 @@ async function handleTeamDashboard(
     fromMs: previousFrom,
     toMs: previousTo,
     nowMs: window.nowMs,
+    timeZone: window.timeZone,
   };
   const siteIds = sites.map((site) => site.id);
   const [currentOverview, previousOverview, trendRows] = await Promise.all([
@@ -5999,7 +6100,6 @@ async function handleTeamDashboard(
     };
   });
 
-  const bucketMs = intervalBucketMs(interval);
   const trendByBucket = new Map<
     number,
     {
@@ -6013,7 +6113,7 @@ async function handleTeamDashboard(
     const bucket = row.bucket;
     const existing = trendByBucket.get(bucket) ?? {
       bucket,
-      timestampMs: bucket * bucketMs,
+      timestampMs: row.timestampMs,
       sites: [],
     };
     existing.sites.push({
@@ -7381,11 +7481,21 @@ function summarizeJourneyPerformance(
   return summary;
 }
 
-function summarizeActivity(events: JourneyEventRow[]): VisitorActivityRow[] {
+function reportingDateKey(timestampMs: number, timeZone: string): string {
+  const parts = zonedParts(timestampMs, timeZone);
+  const month = String(parts.month).padStart(2, "0");
+  const day = String(parts.day).padStart(2, "0");
+  return `${parts.year}-${month}-${day}`;
+}
+
+function summarizeActivity(
+  events: JourneyEventRow[],
+  timeZone: string,
+): VisitorActivityRow[] {
   const counts = new Map<string, number>();
   for (const event of events) {
     if (!Number.isFinite(event.occurredAt) || event.occurredAt <= 0) continue;
-    const date = new Date(event.occurredAt).toISOString().slice(0, 10);
+    const date = reportingDateKey(event.occurredAt, timeZone);
     counts.set(date, (counts.get(date) ?? 0) + 1);
   }
   return Array.from(counts.entries())
@@ -7854,6 +7964,7 @@ async function queryVisitorDetailFromD1(
   env: Env,
   siteId: string,
   visitorId: string,
+  timeZone: string,
 ) {
   const [visitor, sessions, baseEvents] = await Promise.all([
     queryVisitorForDetailFromD1(env, siteId, visitorId),
@@ -7883,7 +7994,7 @@ async function queryVisitorDetailFromD1(
   const daysActive = new Set(
     events
       .filter((event) => event.occurredAt > 0)
-      .map((event) => new Date(event.occurredAt).toISOString().slice(0, 10)),
+      .map((event) => reportingDateKey(event.occurredAt, timeZone)),
   ).size;
 
   return {
@@ -7910,7 +8021,7 @@ async function queryVisitorDetailFromD1(
     events,
     visitedPages: summarizeVisitedPages(events),
     eventDistribution: summarizeEventDistribution(events),
-    activity: summarizeActivity(events),
+    activity: summarizeActivity(events, timeZone),
     performance: summarizeJourneyPerformance(events),
   };
 }

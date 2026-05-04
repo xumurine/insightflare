@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import {
   RealtimeRollingTrendChart,
   type RealtimeRollingTrendPoint,
@@ -76,6 +77,7 @@ export function RealtimeTrafficTrendCard({
   hasConnected,
   events,
 }: RealtimeTrafficTrendCardProps) {
+  const { timeZone } = useDashboardQueryControls();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -110,6 +112,7 @@ export function RealtimeTrafficTrendCard({
             data={trendData}
             viewsLabel={messages.common.views}
             sessionsLabel={messages.common.visitors}
+            timeZone={timeZone}
           />
           <AutoTransition
             type="fade"

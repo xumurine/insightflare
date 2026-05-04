@@ -16,6 +16,10 @@ import type {
   DashboardInterval,
   TimeWindow,
 } from "@/lib/dashboard/query-state";
+import {
+  addZonedInterval,
+  startOfZonedInterval,
+} from "@/lib/dashboard/time-zone";
 import type { Locale } from "@/lib/i18n/config";
 
 interface SiteOverviewMetrics {
@@ -171,21 +175,28 @@ function intervalStepMs(interval: DashboardInterval): number {
 }
 
 function buildZeroTrend(
-  window: Pick<TimeWindow, "from" | "to" | "interval">,
+  window: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">,
 ): SiteTrendPoint[] {
-  const stepMs = intervalStepMs(window.interval);
-  if (!Number.isFinite(stepMs) || stepMs <= 0) return [];
-
-  const fromBucket = Math.floor(window.from / stepMs);
-  const toBucket = Math.max(fromBucket, Math.floor(window.to / stepMs));
   const points: SiteTrendPoint[] = [];
+  const end = startOfZonedInterval(window.to, window.interval, window.timeZone);
+  let current = startOfZonedInterval(
+    window.from,
+    window.interval,
+    window.timeZone,
+  );
+  const hardLimit = 2000;
 
-  for (let bucket = fromBucket; bucket <= toBucket; bucket += 1) {
+  for (let index = 0; index < hardLimit && current <= end; index += 1) {
     points.push({
-      timestampMs: bucket * stepMs,
+      timestampMs: current,
       views: 0,
       visitors: 0,
     });
+    let next = addZonedInterval(current, window.interval, window.timeZone);
+    if (!Number.isFinite(next) || next <= current) {
+      next = current + intervalStepMs(window.interval);
+    }
+    current = next;
   }
 
   return points;
@@ -193,7 +204,7 @@ function buildZeroTrend(
 
 async function fetchTeamDashboard(
   teamId: string,
-  window: Pick<TimeWindow, "from" | "to" | "interval">,
+  window: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">,
   signal?: AbortSignal,
 ): Promise<TeamDashboardData> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
@@ -205,6 +216,7 @@ async function fetchTeamDashboard(
         from: window.from,
         to: window.to,
         interval: window.interval,
+        timeZone: window.timeZone,
       },
     }) as {
       ok: boolean;
@@ -223,6 +235,7 @@ async function fetchTeamDashboard(
     from: String(window.from),
     to: String(window.to),
     interval: window.interval,
+    timeZone: window.timeZone,
   });
   const response = await fetch(
     `/api/private/team-dashboard?${params.toString()}`,
@@ -264,11 +277,12 @@ export function SidebarSiteDetails({
   const { window } = useDashboardQuery();
   const [teamTrend, setTeamTrend] = useState<TeamDashboardTrendPoint[]>([]);
   const [chartWindow, setChartWindow] = useState<
-    Pick<TimeWindow, "from" | "to" | "interval">
+    Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">
   >(() => ({
     from: window.from,
     to: window.to,
     interval: window.interval,
+    timeZone: window.timeZone,
   }));
   const [shouldRenderCharts, setShouldRenderCharts] = useState(
     isMobile || sidebarState !== "collapsed",
@@ -299,6 +313,7 @@ export function SidebarSiteDetails({
         from: window.from,
         to: window.to,
         interval: window.interval,
+        timeZone: window.timeZone,
       });
       return;
     }
@@ -318,6 +333,7 @@ export function SidebarSiteDetails({
           from: window.from,
           to: window.to,
           interval: window.interval,
+          timeZone: window.timeZone,
         });
       })
       .catch((error: unknown) => {
@@ -328,6 +344,7 @@ export function SidebarSiteDetails({
           from: window.from,
           to: window.to,
           interval: window.interval,
+          timeZone: window.timeZone,
         });
       });
 
@@ -342,23 +359,41 @@ export function SidebarSiteDetails({
     window.from,
     window.to,
     window.interval,
+    window.timeZone,
   ]);
 
   const siteTrendById = useMemo(() => {
-    const stepMs = intervalStepMs(chartWindow.interval);
-    if (!Number.isFinite(stepMs) || stepMs <= 0) {
-      return {} as Record<string, SiteTrendPoint[]>;
-    }
-
-    const fromBucket = Math.floor(chartWindow.from / stepMs);
-    const toBucket = Math.max(fromBucket, Math.floor(chartWindow.to / stepMs));
     const siteBuckets = new Map<string, Map<number, SiteTrendPoint>>();
+    const starts: number[] = [];
+    const end = startOfZonedInterval(
+      chartWindow.to,
+      chartWindow.interval,
+      chartWindow.timeZone,
+    );
+    const hardLimit = 2000;
+    let current = startOfZonedInterval(
+      chartWindow.from,
+      chartWindow.interval,
+      chartWindow.timeZone,
+    );
+    for (let index = 0; index < hardLimit && current <= end; index += 1) {
+      starts.push(current);
+      let next = addZonedInterval(
+        current,
+        chartWindow.interval,
+        chartWindow.timeZone,
+      );
+      if (!Number.isFinite(next) || next <= current) {
+        next = current + intervalStepMs(chartWindow.interval);
+      }
+      current = next;
+    }
 
     for (const site of sites) {
       const bucketMap = new Map<number, SiteTrendPoint>();
-      for (let bucket = fromBucket; bucket <= toBucket; bucket += 1) {
-        bucketMap.set(bucket, {
-          timestampMs: bucket * stepMs,
+      for (const start of starts) {
+        bucketMap.set(start, {
+          timestampMs: start,
           views: 0,
           visitors: 0,
         });
@@ -367,16 +402,17 @@ export function SidebarSiteDetails({
     }
 
     for (const point of teamTrend) {
-      const bucket =
-        Number.isFinite(point.bucket) && point.bucket >= 0
-          ? point.bucket
-          : Math.floor(point.timestampMs / stepMs);
+      const bucket = startOfZonedInterval(
+        Number(point.timestampMs ?? 0),
+        chartWindow.interval,
+        chartWindow.timeZone,
+      );
 
       for (const sitePoint of point.sites) {
         const bucketMap = siteBuckets.get(sitePoint.siteId);
         if (!bucketMap) continue;
         const existing = bucketMap.get(bucket) ?? {
-          timestampMs: point.timestampMs || bucket * stepMs,
+          timestampMs: bucket,
           views: 0,
           visitors: 0,
         };
@@ -400,11 +436,17 @@ export function SidebarSiteDetails({
     chartWindow.from,
     chartWindow.to,
     chartWindow.interval,
+    chartWindow.timeZone,
   ]);
 
   const zeroTrend = useMemo(
     () => buildZeroTrend(chartWindow),
-    [chartWindow.from, chartWindow.to, chartWindow.interval],
+    [
+      chartWindow.from,
+      chartWindow.to,
+      chartWindow.interval,
+      chartWindow.timeZone,
+    ],
   );
 
   const cards = useMemo(
@@ -443,6 +485,7 @@ export function SidebarSiteDetails({
                       <TrafficPairBarChart
                         data={trend}
                         locale={locale}
+                        timeZone={chartWindow.timeZone}
                         interval={chartWindow.interval}
                         viewsLabel={labels.views}
                         visitorsLabel={labels.visitors}

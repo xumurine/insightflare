@@ -55,6 +55,10 @@ import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { fetchPerformance } from "@/lib/dashboard/client-data";
 import { intlLocale, numberFormat } from "@/lib/dashboard/format";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import {
+  addZonedInterval,
+  startOfZonedInterval,
+} from "@/lib/dashboard/time-zone";
 import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import type {
   PerformanceCountrySummary,
@@ -269,20 +273,27 @@ function intervalStepMs(interval: TimeWindow["interval"]): number {
   return 30 * 24 * 60 * 60_000;
 }
 
-function tickDateFormat(localeCode: string, interval: TimeWindow["interval"]) {
+function tickDateFormat(
+  localeCode: string,
+  interval: TimeWindow["interval"],
+  timeZone: string,
+) {
   if (interval === "minute" || interval === "hour") {
     return new Intl.DateTimeFormat(localeCode, {
+      timeZone,
       hour: "2-digit",
       minute: "2-digit",
     });
   }
   if (interval === "month") {
     return new Intl.DateTimeFormat(localeCode, {
+      timeZone,
       year: "numeric",
       month: "short",
     });
   }
   return new Intl.DateTimeFormat(localeCode, {
+    timeZone,
     month: "short",
     day: "numeric",
   });
@@ -291,9 +302,11 @@ function tickDateFormat(localeCode: string, interval: TimeWindow["interval"]) {
 function tooltipDateFormat(
   localeCode: string,
   interval: TimeWindow["interval"],
+  timeZone: string,
 ) {
   if (interval === "minute" || interval === "hour") {
     return new Intl.DateTimeFormat(localeCode, {
+      timeZone,
       month: "short",
       day: "numeric",
       hour: "2-digit",
@@ -302,11 +315,13 @@ function tooltipDateFormat(
   }
   if (interval === "month") {
     return new Intl.DateTimeFormat(localeCode, {
+      timeZone,
       year: "numeric",
       month: "long",
     });
   }
   return new Intl.DateTimeFormat(localeCode, {
+    timeZone,
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -733,9 +748,8 @@ function railSegments(
 
 function buildScoreTrend(
   performanceData: PerformanceData,
-  dataWindow: Pick<TimeWindow, "from" | "to" | "interval">,
+  dataWindow: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">,
 ): ChartPoint[] {
-  const stepMs = intervalStepMs(dataWindow.interval);
   const metricMaps = new Map<
     PerformanceMetricKey,
     Map<number, PerformanceTrendPoint>
@@ -746,24 +760,41 @@ function buildScoreTrend(
       metric,
       new Map(
         (performanceData.trends[metric] ?? []).map((point) => [
-          Math.floor(Number(point.timestampMs ?? 0) / stepMs),
+          startOfZonedInterval(
+            Number(point.timestampMs ?? 0),
+            dataWindow.interval,
+            dataWindow.timeZone,
+          ),
           point,
         ]),
       ),
     );
   }
 
-  const startBucket = Math.floor(dataWindow.from / stepMs);
-  const endBucketExclusive = Math.ceil(dataWindow.to / stepMs);
+  const startBucket = startOfZonedInterval(
+    dataWindow.from,
+    dataWindow.interval,
+    dataWindow.timeZone,
+  );
+  const endBucket = startOfZonedInterval(
+    dataWindow.to,
+    dataWindow.interval,
+    dataWindow.timeZone,
+  );
   const rows: ChartPoint[] = [];
 
-  for (let bucket = startBucket; bucket < endBucketExclusive; bucket += 1) {
+  const hardLimit = 2000;
+  for (
+    let index = 0, bucket = startBucket;
+    index < hardLimit && bucket <= endBucket;
+    index += 1
+  ) {
     const metricPoints = PERFORMANCE_METRICS.map((metric) => ({
       metric,
       point: metricMaps.get(metric)?.get(bucket),
     }));
     rows.push({
-      timestampMs: bucket * stepMs,
+      timestampMs: bucket,
       p50: averageScore(
         metricPoints.map(({ metric, point }) =>
           metricScore(metric, point?.p50),
@@ -789,6 +820,15 @@ function buildScoreTrend(
         ...metricPoints.map(({ point }) => point?.samples ?? 0),
       ),
     });
+    let next = addZonedInterval(
+      bucket,
+      dataWindow.interval,
+      dataWindow.timeZone,
+    );
+    if (!Number.isFinite(next) || next <= bucket) {
+      next = bucket + intervalStepMs(dataWindow.interval);
+    }
+    bucket = next;
   }
 
   return rows;
@@ -797,27 +837,55 @@ function buildScoreTrend(
 function buildMetricTrend(
   performanceData: PerformanceData,
   key: PerformanceMetricKey,
-  dataWindow: Pick<TimeWindow, "from" | "to" | "interval">,
+  dataWindow: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">,
 ): ChartPoint[] {
   const rows = performanceData.trends[key] ?? [];
-  const stepMs = intervalStepMs(dataWindow.interval);
   const byBucket = new Map(
-    rows.map((row) => [Math.floor(Number(row.timestampMs ?? 0) / stepMs), row]),
+    rows.map((row) => [
+      startOfZonedInterval(
+        Number(row.timestampMs ?? 0),
+        dataWindow.interval,
+        dataWindow.timeZone,
+      ),
+      row,
+    ]),
   );
-  const startBucket = Math.floor(dataWindow.from / stepMs);
-  const endBucketExclusive = Math.ceil(dataWindow.to / stepMs);
+  const startBucket = startOfZonedInterval(
+    dataWindow.from,
+    dataWindow.interval,
+    dataWindow.timeZone,
+  );
+  const endBucket = startOfZonedInterval(
+    dataWindow.to,
+    dataWindow.interval,
+    dataWindow.timeZone,
+  );
   const filled: ChartPoint[] = [];
 
-  for (let bucket = startBucket; bucket < endBucketExclusive; bucket += 1) {
+  const hardLimit = 2000;
+  for (
+    let index = 0, bucket = startBucket;
+    index < hardLimit && bucket <= endBucket;
+    index += 1
+  ) {
     const row = byBucket.get(bucket);
     filled.push({
-      timestampMs: bucket * stepMs,
+      timestampMs: bucket,
       p50: row?.p50 ?? null,
       p75: row?.p75 ?? null,
       p95: row?.p95 ?? null,
       avg: row?.avg ?? null,
       samples: row?.samples ?? 0,
     });
+    let next = addZonedInterval(
+      bucket,
+      dataWindow.interval,
+      dataWindow.timeZone,
+    );
+    if (!Number.isFinite(next) || next <= bucket) {
+      next = bucket + intervalStepMs(dataWindow.interval);
+    }
+    bucket = next;
   }
 
   return filled;
@@ -1503,17 +1571,18 @@ function PerformanceTrendCard({
   locale: Locale;
   messages: AppMessages;
   activePanel: PerformancePanelKey;
-  dataWindow: Pick<TimeWindow, "from" | "to" | "interval">;
+  dataWindow: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">;
   points: ChartPoint[];
 }) {
   const localeCode = intlLocale(locale);
   const axisTickFormatter = useMemo(
-    () => tickDateFormat(localeCode, dataWindow.interval),
-    [dataWindow.interval, localeCode],
+    () => tickDateFormat(localeCode, dataWindow.interval, dataWindow.timeZone),
+    [dataWindow.interval, dataWindow.timeZone, localeCode],
   );
   const tooltipFormatter = useMemo(
-    () => tooltipDateFormat(localeCode, dataWindow.interval),
-    [dataWindow.interval, localeCode],
+    () =>
+      tooltipDateFormat(localeCode, dataWindow.interval, dataWindow.timeZone),
+    [dataWindow.interval, dataWindow.timeZone, localeCode],
   );
   const chartConfig = useMemo(
     () =>
@@ -2485,11 +2554,12 @@ export function PerformanceClientPage({
     emptyPerformance(window.interval),
   );
   const [dataWindow, setDataWindow] = useState<
-    Pick<TimeWindow, "from" | "to" | "interval">
+    Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">
   >(() => ({
     from: window.from,
     to: window.to,
     interval: window.interval,
+    timeZone: window.timeZone,
   }));
 
   useEffect(() => {
@@ -2506,6 +2576,7 @@ export function PerformanceClientPage({
             from: window.from,
             to: window.to,
             interval: window.interval,
+            timeZone: window.timeZone,
           });
         });
       })
@@ -2518,7 +2589,14 @@ export function PerformanceClientPage({
     return () => {
       active = false;
     };
-  }, [filters, siteId, window.from, window.interval, window.to]);
+  }, [
+    filters,
+    siteId,
+    window.from,
+    window.interval,
+    window.timeZone,
+    window.to,
+  ]);
 
   const activeSummary = useMemo(() => {
     if (activePanel === "score") return scoreSummary(performanceData);

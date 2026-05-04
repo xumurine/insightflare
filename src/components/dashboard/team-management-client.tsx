@@ -64,6 +64,10 @@ import {
   shortDateTime,
 } from "@/lib/dashboard/format";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
+import {
+  addZonedInterval,
+  startOfZonedInterval,
+} from "@/lib/dashboard/time-zone";
 import type {
   MemberData,
   OverviewData,
@@ -313,7 +317,7 @@ const SITE_CARD_MAX_TREND_POINTS = 120;
 
 async function fetchTeamDashboard(
   teamId: string,
-  window: Pick<TimeWindow, "from" | "to" | "interval">,
+  window: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">,
 ): Promise<TeamDashboardData> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
@@ -324,6 +328,7 @@ async function fetchTeamDashboard(
         from: window.from,
         to: window.to,
         interval: window.interval,
+        timeZone: window.timeZone,
       },
     }) as {
       ok: boolean;
@@ -339,6 +344,7 @@ async function fetchTeamDashboard(
     from: String(window.from),
     to: String(window.to),
     interval: window.interval,
+    timeZone: window.timeZone,
   });
   const response = await fetch(
     `/api/private/team-dashboard?${params.toString()}`,
@@ -460,11 +466,12 @@ export function TeamManagementClient({
   >({});
   const [teamTrend, setTeamTrend] = useState<TeamDashboardTrendPoint[]>([]);
   const [chartWindow, setChartWindow] = useState<
-    Pick<TimeWindow, "from" | "to" | "interval">
+    Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">
   >(() => ({
     from: window.from,
     to: window.to,
     interval: window.interval,
+    timeZone: window.timeZone,
   }));
   const canManageSites = activeTeam.membershipRole === "owner";
 
@@ -512,6 +519,7 @@ export function TeamManagementClient({
       from: window.from,
       to: window.to,
       interval: window.interval,
+      timeZone: window.timeZone,
     });
   }, [activeTeam.id, activeTeam.name, activeTeam.slug]);
 
@@ -568,6 +576,7 @@ export function TeamManagementClient({
           from: window.from,
           to: window.to,
           interval: window.interval,
+          timeZone: window.timeZone,
         });
       })
       .catch(() => {
@@ -580,6 +589,7 @@ export function TeamManagementClient({
           from: window.from,
           to: window.to,
           interval: window.interval,
+          timeZone: window.timeZone,
         });
       })
       .finally(() => {
@@ -591,7 +601,14 @@ export function TeamManagementClient({
     return () => {
       active = false;
     };
-  }, [activeTeam.id, activeTab, window.from, window.to, window.interval]);
+  }, [
+    activeTeam.id,
+    activeTab,
+    window.from,
+    window.to,
+    window.interval,
+    window.timeZone,
+  ]);
 
   useEffect(() => {
     if (activeTab === "sites" || activeTab === "members") return;
@@ -744,11 +761,6 @@ export function TeamManagementClient({
   }
 
   const aggregateChartRenderData = useMemo(() => {
-    const stepMs = intervalStepMs(chartWindow.interval);
-    if (!Number.isFinite(stepMs) || stepMs <= 0) return [];
-
-    const fromBucket = Math.floor(chartWindow.from / stepMs);
-    const toBucket = Math.max(fromBucket, Math.floor(chartWindow.to / stepMs));
     const timeline = new Map<
       number,
       {
@@ -756,21 +768,42 @@ export function TeamManagementClient({
         sites: Map<string, { views: number; visitors: number }>;
       }
     >();
+    const end = startOfZonedInterval(
+      chartWindow.to,
+      chartWindow.interval,
+      chartWindow.timeZone,
+    );
+    let current = startOfZonedInterval(
+      chartWindow.from,
+      chartWindow.interval,
+      chartWindow.timeZone,
+    );
+    const hardLimit = 2000;
 
-    for (let bucket = fromBucket; bucket <= toBucket; bucket += 1) {
-      timeline.set(bucket, {
-        timestampMs: bucket * stepMs,
+    for (let index = 0; index < hardLimit && current <= end; index += 1) {
+      timeline.set(current, {
+        timestampMs: current,
         sites: new Map(),
       });
+      let next = addZonedInterval(
+        current,
+        chartWindow.interval,
+        chartWindow.timeZone,
+      );
+      if (!Number.isFinite(next) || next <= current) {
+        next = current + intervalStepMs(chartWindow.interval);
+      }
+      current = next;
     }
 
     for (const point of teamTrend) {
-      const bucket =
-        Number.isFinite(point.bucket) && point.bucket >= 0
-          ? point.bucket
-          : Math.floor(point.timestampMs / stepMs);
+      const bucket = startOfZonedInterval(
+        Number(point.timestampMs ?? 0),
+        chartWindow.interval,
+        chartWindow.timeZone,
+      );
       const current = timeline.get(bucket) ?? {
-        timestampMs: point.timestampMs || bucket * stepMs,
+        timestampMs: bucket,
         sites: new Map<string, { views: number; visitors: number }>(),
       };
 
@@ -797,32 +830,52 @@ export function TeamManagementClient({
           visitors: siteValue.visitors,
         })),
       }));
-  }, [teamTrend, chartWindow.from, chartWindow.to, chartWindow.interval]);
+  }, [
+    teamTrend,
+    chartWindow.from,
+    chartWindow.to,
+    chartWindow.interval,
+    chartWindow.timeZone,
+  ]);
 
   const siteTrendById = useMemo(() => {
-    const stepMs = intervalStepMs(chartWindow.interval);
-    if (!Number.isFinite(stepMs) || stepMs <= 0) {
-      return {} as Record<
-        string,
-        Array<{ timestampMs: number; views: number; visitors: number }>
-      >;
-    }
-
-    const fromBucket = Math.floor(chartWindow.from / stepMs);
-    const toBucket = Math.max(fromBucket, Math.floor(chartWindow.to / stepMs));
     const siteBuckets = new Map<
       string,
       Map<number, { timestampMs: number; views: number; visitors: number }>
     >();
+    const starts: number[] = [];
+    const end = startOfZonedInterval(
+      chartWindow.to,
+      chartWindow.interval,
+      chartWindow.timeZone,
+    );
+    let current = startOfZonedInterval(
+      chartWindow.from,
+      chartWindow.interval,
+      chartWindow.timeZone,
+    );
+    const hardLimit = 2000;
+    for (let index = 0; index < hardLimit && current <= end; index += 1) {
+      starts.push(current);
+      let next = addZonedInterval(
+        current,
+        chartWindow.interval,
+        chartWindow.timeZone,
+      );
+      if (!Number.isFinite(next) || next <= current) {
+        next = current + intervalStepMs(chartWindow.interval);
+      }
+      current = next;
+    }
 
     for (const site of sites) {
       const bucketMap = new Map<
         number,
         { timestampMs: number; views: number; visitors: number }
       >();
-      for (let bucket = fromBucket; bucket <= toBucket; bucket += 1) {
-        bucketMap.set(bucket, {
-          timestampMs: bucket * stepMs,
+      for (const start of starts) {
+        bucketMap.set(start, {
+          timestampMs: start,
           views: 0,
           visitors: 0,
         });
@@ -831,16 +884,17 @@ export function TeamManagementClient({
     }
 
     for (const point of teamTrend) {
-      const bucket =
-        Number.isFinite(point.bucket) && point.bucket >= 0
-          ? point.bucket
-          : Math.floor(point.timestampMs / stepMs);
+      const bucket = startOfZonedInterval(
+        Number(point.timestampMs ?? 0),
+        chartWindow.interval,
+        chartWindow.timeZone,
+      );
 
       for (const sitePoint of point.sites) {
         const bucketMap = siteBuckets.get(sitePoint.siteId);
         if (!bucketMap) continue;
         const existing = bucketMap.get(bucket) ?? {
-          timestampMs: point.timestampMs || bucket * stepMs,
+          timestampMs: bucket,
           views: 0,
           visitors: 0,
         };
@@ -864,6 +918,7 @@ export function TeamManagementClient({
     chartWindow.from,
     chartWindow.to,
     chartWindow.interval,
+    chartWindow.timeZone,
   ]);
 
   const siteDashboardCards = useMemo(() => {
@@ -1111,6 +1166,7 @@ export function TeamManagementClient({
                     data={aggregateChartRenderData}
                     sites={aggregateChartSites}
                     locale={locale}
+                    timeZone={chartWindow.timeZone}
                     interval={chartWindow.interval}
                     viewsLabel={messages.common.views}
                     visitorsLabel={messages.common.visitors}
@@ -1198,6 +1254,7 @@ export function TeamManagementClient({
                                 <TrafficPairBarChart
                                   data={trend}
                                   locale={locale}
+                                  timeZone={chartWindow.timeZone}
                                   interval={chartWindow.interval}
                                   viewsLabel={messages.common.views}
                                   visitorsLabel={messages.common.visitors}
@@ -1500,7 +1557,11 @@ export function TeamManagementClient({
                       <TableCell>{member.email}</TableCell>
                       <TableCell>{member.role}</TableCell>
                       <TableCell>
-                        {shortDateTime(locale, member.joinedAt)}
+                        {shortDateTime(
+                          locale,
+                          member.joinedAt,
+                          window.timeZone,
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <Clickable

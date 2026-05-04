@@ -83,20 +83,24 @@ function emptyTrendData(interval: DashboardInterval): BrowserTrendData {
 function tickDateFormat(
   localeCode: string,
   interval: DashboardInterval,
+  timeZone: string,
 ): Intl.DateTimeFormat {
   if (interval === "minute" || interval === "hour") {
     return new Intl.DateTimeFormat(localeCode, {
+      timeZone,
       hour: "2-digit",
       minute: "2-digit",
     });
   }
   if (interval === "month") {
     return new Intl.DateTimeFormat(localeCode, {
+      timeZone,
       year: "numeric",
       month: "short",
     });
   }
   return new Intl.DateTimeFormat(localeCode, {
+    timeZone,
     month: "short",
     day: "numeric",
   });
@@ -105,9 +109,11 @@ function tickDateFormat(
 function tooltipDateFormat(
   localeCode: string,
   interval: DashboardInterval,
+  timeZone: string,
 ): Intl.DateTimeFormat {
   if (interval === "minute" || interval === "hour") {
     return new Intl.DateTimeFormat(localeCode, {
+      timeZone,
       month: "short",
       day: "numeric",
       hour: "2-digit",
@@ -116,11 +122,13 @@ function tooltipDateFormat(
   }
   if (interval === "month") {
     return new Intl.DateTimeFormat(localeCode, {
+      timeZone,
       year: "numeric",
       month: "long",
     });
   }
   return new Intl.DateTimeFormat(localeCode, {
+    timeZone,
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -188,11 +196,12 @@ export function ShareTrendCard({
     emptyTrendData(window.interval),
   );
   const [dataWindow, setDataWindow] = useState<
-    Pick<TimeWindow, "from" | "to" | "interval">
+    Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">
   >(() => ({
     from: window.from,
     to: window.to,
     interval: window.interval,
+    timeZone: window.timeZone,
   }));
 
   useEffect(() => {
@@ -208,6 +217,7 @@ export function ShareTrendCard({
           from: window.from,
           to: window.to,
           interval: window.interval,
+          timeZone: window.timeZone,
         });
       })
       .finally(() => {
@@ -226,17 +236,19 @@ export function ShareTrendCard({
     siteId,
     window.from,
     window.interval,
+    window.timeZone,
     window.to,
   ]);
 
   const localeCode = intlLocale(locale);
   const axisTickFormatter = useMemo(
-    () => tickDateFormat(localeCode, dataWindow.interval),
-    [dataWindow.interval, localeCode],
+    () => tickDateFormat(localeCode, dataWindow.interval, dataWindow.timeZone),
+    [dataWindow.interval, dataWindow.timeZone, localeCode],
   );
   const tooltipFormatter = useMemo(
-    () => tooltipDateFormat(localeCode, dataWindow.interval),
-    [dataWindow.interval, localeCode],
+    () =>
+      tooltipDateFormat(localeCode, dataWindow.interval, dataWindow.timeZone),
+    [dataWindow.interval, dataWindow.timeZone, localeCode],
   );
   const chartSeries = useMemo(
     () =>
