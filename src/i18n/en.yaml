@@ -280,9 +280,6 @@ visitors:
 retention:
   title: Retention
   subtitle: Cohort-based visitor return analysis.
-  granularityDay: Daily
-  granularityWeek: Weekly
-  granularityMonth: Monthly
   cohortDate: Cohort
   cohortSize: Size
   periodLabel: "Period {n}"

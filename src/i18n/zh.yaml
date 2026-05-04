@@ -280,9 +280,6 @@ visitors:
 retention:
   title: 留存分析
   subtitle: 基于群组的访客回访分析。
-  granularityDay: 按天
-  granularityWeek: 按周
-  granularityMonth: 按月
   cohortDate: 群组
   cohortSize: 人数
   periodLabel: "第 {n} 期"

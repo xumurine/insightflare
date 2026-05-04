@@ -21,6 +21,7 @@ import type {
   PerformanceMetricKey,
   ReferrerRadarData,
   ReferrersData,
+  RetentionData,
   SessionDetailData,
   SessionsData,
   TrendData,
@@ -49,6 +50,7 @@ export type PagesDashboardRow = PagesDashboardData["data"][number];
 type SortDirection = "asc" | "desc";
 type VisitorListSortKey = "firstSeenAt" | "lastSeenAt" | "sessions" | "views";
 type SessionListSortKey = "startedAt" | "durationMs" | "views";
+export type RetentionGranularity = TimeWindow["interval"];
 
 function emptyOverview(): OverviewData {
   return {
@@ -522,6 +524,29 @@ export async function fetchPerformance(
       filters,
     ),
   ).catch(() => emptyPerformance(window.interval));
+}
+
+export async function fetchRetention(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+  options?: {
+    granularity?: RetentionGranularity;
+  },
+): Promise<RetentionData> {
+  const granularity = options?.granularity ?? "week";
+  return fetchPrivateJson<RetentionData>(
+    "/api/private/retention",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        granularity,
+      },
+      filters,
+    ),
+  );
 }
 
 export async function fetchPagesDashboard(

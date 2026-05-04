@@ -287,9 +287,6 @@ export interface AppMessages {
   retention: {
     title: string;
     subtitle: string;
-    granularityDay: string;
-    granularityWeek: string;
-    granularityMonth: string;
     cohortDate: string;
     cohortSize: string;
     periodLabel: string;

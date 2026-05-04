@@ -4794,6 +4794,118 @@ function generateDemoTrend(
   };
 }
 
+type DemoRetentionGranularity = "minute" | "hour" | "day" | "week" | "month";
+
+function parseDemoRetentionGranularity(
+  value: string | number | undefined,
+): DemoRetentionGranularity {
+  const normalized = String(value ?? "week")
+    .trim()
+    .toLowerCase();
+  if (
+    normalized === "minute" ||
+    normalized === "hour" ||
+    normalized === "day" ||
+    normalized === "week" ||
+    normalized === "month"
+  ) {
+    return normalized;
+  }
+  return "week";
+}
+
+function demoRetentionPeriodMs(granularity: DemoRetentionGranularity): number {
+  if (granularity === "minute") return 60 * 1000;
+  if (granularity === "hour") return 3600 * 1000;
+  if (granularity === "day") return 24 * 3600 * 1000;
+  if (granularity === "month") return 30 * 24 * 3600 * 1000;
+  return 7 * 24 * 3600 * 1000;
+}
+
+function demoRetentionBucket(
+  timestampMs: number,
+  granularity: DemoRetentionGranularity,
+): number {
+  const periodMs = demoRetentionPeriodMs(granularity);
+  return Math.floor(timestampMs / periodMs) * periodMs;
+}
+
+function generateDemoRetention(
+  siteId: string,
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const from = parseDemoNumber(params.from, Date.now() - 30 * 24 * 3600 * 1000);
+  const to = parseDemoNumber(params.to, Date.now());
+  const granularity = parseDemoRetentionGranularity(params.granularity);
+  const periodMs = demoRetentionPeriodMs(granularity);
+  const filters = parseDemoFilters(params);
+  const dataset = buildDemoFactDataset(siteId, from, to);
+  const filtered = applyDemoFilters(dataset, filters);
+
+  const cohortByVisitor = new Map<string, number>();
+  for (const visit of filtered.visits) {
+    const visitorId = visit.visitorId.trim();
+    if (!visitorId) continue;
+    const bucket = demoRetentionBucket(visit.startedAt, granularity);
+    const current = cohortByVisitor.get(visitorId);
+    if (current === undefined || bucket < current) {
+      cohortByVisitor.set(visitorId, bucket);
+    }
+  }
+
+  const periodsByCohort = new Map<number, Map<number, Set<string>>>();
+  for (const visit of filtered.visits) {
+    const visitorId = visit.visitorId.trim();
+    if (!visitorId) continue;
+    const cohortBucket = cohortByVisitor.get(visitorId);
+    if (cohortBucket === undefined) continue;
+    const visitBucket = demoRetentionBucket(visit.startedAt, granularity);
+    const index = Math.max(
+      0,
+      Math.round((visitBucket - cohortBucket) / periodMs),
+    );
+    const cohortPeriods =
+      periodsByCohort.get(cohortBucket) ?? new Map<number, Set<string>>();
+    const visitorSet = cohortPeriods.get(index) ?? new Set<string>();
+    visitorSet.add(visitorId);
+    cohortPeriods.set(index, visitorSet);
+    periodsByCohort.set(cohortBucket, cohortPeriods);
+  }
+
+  const cohorts = Array.from(periodsByCohort.entries())
+    .sort(([leftBucket], [rightBucket]) => leftBucket - rightBucket)
+    .map(([bucket, periods]) => {
+      const size = Math.max(
+        0,
+        Math.round(weightedVisitorCount(dataset, periods.get(0) ?? [])),
+      );
+      return {
+        bucket,
+        size,
+        periods: Array.from(periods.entries())
+          .sort(([leftIndex], [rightIndex]) => leftIndex - rightIndex)
+          .map(([index, visitorIds]) => {
+            const visitors = Math.max(
+              0,
+              Math.round(weightedVisitorCount(dataset, visitorIds)),
+            );
+            return {
+              index,
+              visitors,
+              rate: size > 0 ? visitors / size : 0,
+            };
+          }),
+      };
+    })
+    .filter((cohort) => cohort.size > 0);
+
+  return {
+    ok: true,
+    granularity,
+    cohorts,
+  };
+}
+
 type DemoPerformanceMetricKey = "ttfb" | "fcp" | "lcp" | "cls" | "inp";
 const DEMO_PERFORMANCE_METRICS: DemoPerformanceMetricKey[] = [
   "ttfb",
@@ -7354,6 +7466,9 @@ export function handleDemoRequest(options: {
   }
   if (path.includes("/pages-dashboard")) {
     return generateDemoPagesDashboard(siteId, params);
+  }
+  if (path.includes("/retention")) {
+    return generateDemoRetention(siteId, params);
   }
   if (path.includes("/performance")) {
     return generateDemoPerformance(siteId, params);

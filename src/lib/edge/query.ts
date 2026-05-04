@@ -5225,17 +5225,21 @@ async function handleRetention(
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
   const filters = parseFilters(url);
-  const granularity = (url.searchParams.get("granularity") || "week") as
-    | "day"
-    | "week"
-    | "month";
+  const rawGranularity =
+    url.searchParams.get("granularity") ||
+    url.searchParams.get("interval") ||
+    "week";
+  const granularity =
+    rawGranularity === "minute" ||
+    rawGranularity === "hour" ||
+    rawGranularity === "day" ||
+    rawGranularity === "week" ||
+    rawGranularity === "month"
+      ? rawGranularity
+      : "week";
 
-  const bucketExpr =
-    granularity === "day"
-      ? "started_at / 86400000 * 86400000"
-      : granularity === "month"
-        ? "(((started_at / 1000) - ((started_at / 1000) % 2592000)) * 1000)"
-        : "started_at / 604800000 * 604800000";
+  const bucketDivisor = intervalBucketMs(granularity);
+  const bucketExpr = `CAST(started_at / ${bucketDivisor} AS INTEGER) * ${bucketDivisor}`;
 
   const filter = buildVisitFilterSql(filters);
   const filterAndClause = filter.clause
@@ -5298,13 +5302,6 @@ ORDER BY cohort_bucket ASC, visit_bucket ASC
     }
   }
 
-  const divisor =
-    granularity === "day"
-      ? 86400000
-      : granularity === "month"
-        ? 2592000000
-        : 604800000;
-
   const cohorts = Array.from(cohortMap.entries())
     .sort(([a], [b]) => a - b)
     .map(([bucket, { size, periods }]) => ({
@@ -5313,7 +5310,7 @@ ORDER BY cohort_bucket ASC, visit_bucket ASC
       periods: Array.from(periods.entries())
         .sort(([a], [b]) => a - b)
         .map(([vb, visitors]) => {
-          const index = Math.round((vb - bucket) / divisor);
+          const index = Math.round((vb - bucket) / bucketDivisor);
           return {
             index,
             visitors,
@@ -6075,6 +6072,9 @@ async function routeQuery(
   }
   if (pathname === "visitors") {
     return handleVisitors(env, siteId, url);
+  }
+  if (pathname === "retention") {
+    return handleRetention(env, siteId, url);
   }
   if (pathname === "performance") {
     return handlePerformance(env, siteId, url);
