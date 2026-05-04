@@ -20,6 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { OverlayScrollbar } from "@/components/ui/overlay-scrollbar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -688,7 +689,7 @@ function RetentionMatrix({
       </CardHeader>
       <CardContent className="px-0">
         <TooltipProvider>
-          <div className="overflow-x-auto pb-1">
+          <OverlayScrollbar className="pb-1">
             <table
               className={cn(
                 RETENTION_TABLE_COLUMNS,
@@ -823,7 +824,7 @@ function RetentionMatrix({
                 </tr>
               </tfoot>
             </table>
-          </div>
+          </OverlayScrollbar>
         </TooltipProvider>
       </CardContent>
     </Card>
