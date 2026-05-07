@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RiLineChartLine } from "@remixicon/react";
 import { toast } from "sonner";
@@ -19,13 +19,6 @@ import {
 import { Clickable } from "@/components/ui/clickable";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { shortDateTime } from "@/lib/dashboard/format";
@@ -37,8 +30,7 @@ import { navigateWithTransition } from "@/lib/page-transition";
 interface AdminSitesManagementClientProps {
   locale: Locale;
   messages: AppMessages;
-  teams: TeamData[];
-  defaultTeamId: string;
+  activeTeam: TeamData;
 }
 
 interface ApiResponse<T> {
@@ -92,13 +84,11 @@ async function fetchSites(teamId: string): Promise<SiteData[]> {
 export function AdminSitesManagementClient({
   locale,
   messages,
-  teams,
-  defaultTeamId,
+  activeTeam,
 }: AdminSitesManagementClientProps) {
   const { timeZone } = useDashboardQueryControls();
   const router = useRouter();
   const t = messages.adminSites;
-  const [selectedTeamId, setSelectedTeamId] = useState(defaultTeamId);
   const [sites, setSites] = useState<SiteData[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -106,16 +96,11 @@ export function AdminSitesManagementClient({
   const [domain, setDomain] = useState("");
   const [publicSlug, setPublicSlug] = useState("");
 
-  const selectedTeam = useMemo(
-    () => teams.find((team) => team.id === selectedTeamId) || teams[0],
-    [teams, selectedTeamId],
-  );
-
   useEffect(() => {
-    if (!selectedTeam?.id) return;
+    if (!activeTeam.id) return;
     let active = true;
     setLoading(true);
-    fetchSites(selectedTeam.id)
+    fetchSites(activeTeam.id)
       .then((data) => {
         if (!active) return;
         setSites(data);
@@ -133,16 +118,16 @@ export function AdminSitesManagementClient({
     return () => {
       active = false;
     };
-  }, [selectedTeam?.id, t.loadFailed]);
+  }, [activeTeam.id, t.loadFailed]);
 
   async function refreshSites() {
-    if (!selectedTeam?.id) return;
-    const data = await fetchSites(selectedTeam.id);
+    if (!activeTeam.id) return;
+    const data = await fetchSites(activeTeam.id);
     setSites(data);
   }
 
   async function handleCreateSite() {
-    const team = selectedTeam;
+    const team = activeTeam;
     if (!team?.id) return;
     if (name.trim().length < 2 || domain.trim().length < 3) {
       toast.error(t.invalidInput);
@@ -208,21 +193,7 @@ export function AdminSitesManagementClient({
           >
             <div className="space-y-1.5 md:col-span-2">
               <Label htmlFor="admin-site-team">{t.team}</Label>
-              <Select
-                value={selectedTeam?.id || ""}
-                onValueChange={(value) => setSelectedTeamId(value)}
-              >
-                <SelectTrigger id="admin-site-team" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {teams.map((team) => (
-                    <SelectItem key={team.id} value={team.id}>
-                      {team.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input id="admin-site-team" value={activeTeam.name} readOnly />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="admin-site-name">{t.name}</Label>
@@ -251,7 +222,7 @@ export function AdminSitesManagementClient({
               />
             </div>
             <div className="md:col-span-2">
-              <Button type="submit" disabled={submitting || !selectedTeam}>
+              <Button type="submit" disabled={submitting}>
                 <AutoTransition className="inline-flex items-center gap-2">
                   {submitting ? (
                     <span
@@ -301,12 +272,12 @@ export function AdminSitesManagementClient({
                   {shortDateTime(locale, site.createdAt, timeZone)}
                 </TableCell>
                 <TableCell className="text-right">
-                  {selectedTeam ? (
+                  {activeTeam ? (
                     <Clickable
                       onClick={() => {
                         navigateWithTransition(
                           router,
-                          `/${locale}/app/${selectedTeam.slug}/${siteSlug(site)}`,
+                          `/${locale}/app/${activeTeam.slug}/${siteSlug(site)}`,
                         );
                       }}
                       className="size-6 text-muted-foreground hover:text-foreground"

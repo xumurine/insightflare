@@ -613,6 +613,23 @@ teamManagement:
     pagesPerSession: Pages / Session
     noSites: No site is available under this team.
     openAnalytics: Open analytics
+  widgets:
+    title: Widgets
+    subtitle: Manage widget configuration for sites in this team.
+    noSites: No site is available for widgets in this team.
+    openWidgets: Manage widgets
+  notifications:
+    title: Event Notifications
+    subtitle: Manage event notification rules for this team.
+    empty: No event notification rule exists for this team.
+  publicLinks:
+    title: Public Links
+    subtitle: Manage publicly accessible sharing links for this team.
+    empty: No public link exists for this team.
+  apiKeys:
+    title: API Keys
+    subtitle: Manage API access keys for this team.
+    empty: No API key exists for this team.
   settings:
     title: Settings
     subtitle: Update this team's display name and slug.
@@ -643,7 +660,16 @@ managementNav:
   users: User Management
   sites: Site Management
   teams: Team Management
+  versionUpdates: Version Updates
+  scheduledTasks: Scheduled Tasks
   systemPerformance: System Performance
+managementPages:
+  versionUpdates:
+    subtitle: View and manage system version update records.
+    empty: No version update record exists yet.
+  scheduledTasks:
+    subtitle: View and manage system scheduled tasks.
+    empty: No scheduled task exists yet.
 adminUsers:
   title: User Management
   subtitle: Only system admins can create and manage dashboard users.
@@ -678,7 +704,7 @@ adminUsers:
     action: Action
 adminSites:
   title: Site Management
-  subtitle: Only system admins can manage sites and ownership.
+  subtitle: Manage sites under the current team.
   team: Team
   createTitle: Create Site
   createSubtitle: The new site can be opened immediately.
@@ -688,7 +714,7 @@ adminSites:
   create: Create Site
   creating: Creating...
   listTitle: Sites
-  listSubtitle: All sites under the selected team.
+  listSubtitle: All sites under the current team.
   noData: No site found.
   loadFailed: Failed to load sites.
   createSuccess: Site created.

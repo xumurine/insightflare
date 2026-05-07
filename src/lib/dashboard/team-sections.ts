@@ -1,12 +1,20 @@
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
-export type TeamTab = "sites" | "settings" | "members";
+export type TeamTab =
+  | "sites"
+  | "site-management"
+  | "widgets"
+  | "notifications"
+  | "public-links"
+  | "api-keys"
+  | "settings";
 
 export type ManagementSectionKey =
   | "manage-users"
-  | "manage-sites"
   | "manage-teams"
+  | "version-updates"
+  | "scheduled-tasks"
   | "system-performance";
 
 export interface DashboardSectionItem {
@@ -15,12 +23,25 @@ export interface DashboardSectionItem {
   href: string;
 }
 
-const TEAM_TABS: readonly TeamTab[] = ["sites", "settings", "members"] as const;
+const TEAM_TABS: readonly TeamTab[] = [
+  "sites",
+  "widgets",
+  "notifications",
+  "public-links",
+  "api-keys",
+  "site-management",
+  "settings",
+] as const;
 
 function teamTabLabel(messages: AppMessages, tab: TeamTab): string {
   if (tab === "sites") return messages.teamManagement.sites.title;
-  if (tab === "settings") return messages.teamManagement.settings.title;
-  return messages.teamManagement.members.title;
+  if (tab === "site-management") return messages.managementNav.sites;
+  if (tab === "widgets") return messages.teamManagement.widgets.title;
+  if (tab === "notifications")
+    return messages.teamManagement.notifications.title;
+  if (tab === "public-links") return messages.teamManagement.publicLinks.title;
+  if (tab === "api-keys") return messages.teamManagement.apiKeys.title;
+  return messages.teamManagement.settings.title;
 }
 
 function managementLabel(
@@ -28,8 +49,9 @@ function managementLabel(
   key: ManagementSectionKey,
 ): string {
   if (key === "manage-users") return messages.managementNav.users;
-  if (key === "manage-sites") return messages.managementNav.sites;
   if (key === "manage-teams") return messages.managementNav.teams;
+  if (key === "version-updates") return messages.managementNav.versionUpdates;
+  if (key === "scheduled-tasks") return messages.managementNav.scheduledTasks;
   return messages.managementNav.systemPerformance;
 }
 
@@ -40,6 +62,7 @@ function buildTeamTabPath(
 ): string {
   const base = `/${locale}/app/${teamSlug}`;
   if (tab === "sites") return base;
+  if (tab === "site-management") return `${base}/manage/sites`;
   return `${base}/${tab}`;
 }
 
@@ -49,8 +72,11 @@ function buildManagementPath(
   key: ManagementSectionKey,
 ): string {
   if (key === "manage-users") return `/${locale}/app/${teamSlug}/manage/users`;
-  if (key === "manage-sites") return `/${locale}/app/${teamSlug}/manage/sites`;
   if (key === "manage-teams") return `/${locale}/app/${teamSlug}/manage/teams`;
+  if (key === "version-updates")
+    return `/${locale}/app/${teamSlug}/manage/version-updates`;
+  if (key === "scheduled-tasks")
+    return `/${locale}/app/${teamSlug}/manage/scheduled-tasks`;
   return `/${locale}/app/${teamSlug}/manage/system-performance`;
 }
 
@@ -73,8 +99,9 @@ export function buildManagementSections(
 ): DashboardSectionItem[] {
   const keys: readonly ManagementSectionKey[] = [
     "manage-users",
-    "manage-sites",
     "manage-teams",
+    "version-updates",
+    "scheduled-tasks",
     "system-performance",
   ] as const;
   return keys.map((key) => ({

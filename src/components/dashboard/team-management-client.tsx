@@ -476,7 +476,7 @@ export function TeamManagementClient({
   const canManageSites = activeTeam.membershipRole === "owner";
 
   useEffect(() => {
-    if (activeTab !== "members") return;
+    if (activeTab !== "settings" && activeTab !== "members") return;
     let active = true;
     setLoading(true);
 
@@ -611,7 +611,7 @@ export function TeamManagementClient({
   ]);
 
   useEffect(() => {
-    if (activeTab === "sites" || activeTab === "members") return;
+    if (activeTab === "sites" || activeTab === "settings") return;
     setLoading(false);
     setAnalyticsLoading(false);
   }, [activeTab]);
@@ -977,7 +977,10 @@ export function TeamManagementClient({
   );
 
   const memberCount = useMemo(
-    () => (activeTab === "members" ? members.length : activeTeam.memberCount),
+    () =>
+      activeTab === "settings" || activeTab === "members"
+        ? members.length
+        : activeTeam.memberCount,
     [activeTab, members.length, activeTeam.memberCount],
   );
 
@@ -995,6 +998,117 @@ export function TeamManagementClient({
         : copy.members.subtitle;
   const isSitesChartsLoading =
     activeTab === "sites" && (loading || analyticsLoading);
+  const memberManagementSection = (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>{copy.members.title}</CardTitle>
+          <CardDescription>{copy.members.subtitle}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form
+            className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleAddMember();
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="member-identifier">
+                {copy.members.identifierLabel}
+              </Label>
+              <Input
+                id="member-identifier"
+                value={memberIdentifier}
+                onChange={(event) => setMemberIdentifier(event.target.value)}
+                placeholder={copy.members.identifierPlaceholder}
+                minLength={2}
+                required
+              />
+            </div>
+            <Button type="submit" disabled={addingMember}>
+              <AutoTransition className="inline-flex items-center gap-2">
+                {addingMember ? (
+                  <span key="adding" className="inline-flex items-center gap-2">
+                    <Spinner className="size-4" />
+                    {copy.members.adding}
+                  </span>
+                ) : (
+                  <span key="add">{copy.members.add}</span>
+                )}
+              </AutoTransition>
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-4">
+          <DataTableSwitch
+            loading={loading}
+            hasContent={members.length > 0}
+            loadingLabel={messages.common.loading}
+            emptyLabel={copy.members.noMembers}
+            colSpan={6}
+            header={
+              <TableRow>
+                <TableHead>{copy.members.columns.name}</TableHead>
+                <TableHead>{copy.members.columns.username}</TableHead>
+                <TableHead>{copy.members.columns.email}</TableHead>
+                <TableHead>{copy.members.columns.role}</TableHead>
+                <TableHead>{copy.members.columns.joinedAt}</TableHead>
+                <TableHead className="text-right">
+                  {copy.members.columns.action}
+                </TableHead>
+              </TableRow>
+            }
+            rows={members.map((member) => (
+              <TableRow key={member.userId}>
+                <TableCell className="font-medium">
+                  {member.name || member.username}
+                </TableCell>
+                <TableCell>{member.username}</TableCell>
+                <TableCell>{member.email}</TableCell>
+                <TableCell>{member.role}</TableCell>
+                <TableCell>
+                  {shortDateTime(locale, member.joinedAt, window.timeZone)}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Clickable
+                    onClick={() => {
+                      void handleRemoveMember(member.userId);
+                    }}
+                    disabled={removingMemberId === member.userId}
+                    className="size-6 text-destructive/80 hover:text-destructive"
+                    aria-label={copy.members.remove}
+                    title={copy.members.remove}
+                  >
+                    <AutoTransition className="inline-flex items-center justify-center">
+                      {removingMemberId === member.userId ? (
+                        <span
+                          key="removing"
+                          className="inline-flex items-center justify-center"
+                        >
+                          <Spinner className="size-3.5" />
+                        </span>
+                      ) : (
+                        <span
+                          key="remove"
+                          className="inline-flex items-center justify-center"
+                        >
+                          <RiDeleteBinLine className="size-4" />
+                        </span>
+                      )}
+                    </AutoTransition>
+                  </Clickable>
+                </TableCell>
+              </TableRow>
+            ))}
+          />
+        </CardContent>
+      </Card>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -1347,139 +1461,147 @@ export function TeamManagementClient({
         ) : null}
 
         {activeTab === "settings" ? (
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card className="h-full">
-              <CardHeader>
-                <CardTitle>{copy.settings.title}</CardTitle>
-                <CardDescription>{copy.settings.subtitle}</CardDescription>
-              </CardHeader>
-              <CardContent className="flex h-full flex-col">
-                <form
-                  className="flex h-full flex-col gap-4"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void handleSaveTeamSettings();
-                  }}
-                >
-                  <div className="space-y-2">
-                    <Label htmlFor="team-name">{copy.settings.nameLabel}</Label>
-                    <Input
-                      id="team-name"
-                      value={teamName}
-                      onChange={(event) => setTeamName(event.target.value)}
-                      minLength={2}
-                      required
-                    />
-                  </div>
+          <div className="space-y-4">
+            {memberManagementSection}
 
-                  <div className="space-y-2">
-                    <Label htmlFor="team-slug">{copy.settings.slugLabel}</Label>
-                    <Input
-                      id="team-slug"
-                      value={teamSlug}
-                      onChange={(event) => setTeamSlug(event.target.value)}
-                    />
-                  </div>
-
-                  <Button
-                    type="submit"
-                    className="mt-auto self-start"
-                    disabled={savingTeam || deletingTeam}
-                  >
-                    <AutoTransition className="inline-flex items-center gap-2">
-                      {savingTeam ? (
-                        <span
-                          key="saving"
-                          className="inline-flex items-center gap-2"
-                        >
-                          <Spinner className="size-4" />
-                          {copy.settings.saving}
-                        </span>
-                      ) : (
-                        <span key="save">{copy.settings.save}</span>
-                      )}
-                    </AutoTransition>
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-
-            <AlertDialog
-              open={deleteTeamDialogOpen}
-              onOpenChange={(open) => {
-                if (deletingTeam) return;
-                setDeleteTeamDialogOpen(open);
-              }}
-            >
-              <Card className="h-full border-destructive/40">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card className="h-full">
                 <CardHeader>
-                  <CardTitle>{copy.settings.delete}</CardTitle>
-                  <CardDescription>
-                    {copy.settings.deleteConfirm}
-                  </CardDescription>
+                  <CardTitle>{copy.settings.title}</CardTitle>
+                  <CardDescription>{copy.settings.subtitle}</CardDescription>
                 </CardHeader>
-                <CardContent className="flex h-full items-end">
-                  <AlertDialogTrigger asChild>
+                <CardContent className="flex h-full flex-col">
+                  <form
+                    className="flex h-full flex-col gap-4"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void handleSaveTeamSettings();
+                    }}
+                  >
+                    <div className="space-y-2">
+                      <Label htmlFor="team-name">
+                        {copy.settings.nameLabel}
+                      </Label>
+                      <Input
+                        id="team-name"
+                        value={teamName}
+                        onChange={(event) => setTeamName(event.target.value)}
+                        minLength={2}
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="team-slug">
+                        {copy.settings.slugLabel}
+                      </Label>
+                      <Input
+                        id="team-slug"
+                        value={teamSlug}
+                        onChange={(event) => setTeamSlug(event.target.value)}
+                      />
+                    </div>
+
                     <Button
-                      type="button"
-                      variant="destructive"
+                      type="submit"
+                      className="mt-auto self-start"
                       disabled={savingTeam || deletingTeam}
+                    >
+                      <AutoTransition className="inline-flex items-center gap-2">
+                        {savingTeam ? (
+                          <span
+                            key="saving"
+                            className="inline-flex items-center gap-2"
+                          >
+                            <Spinner className="size-4" />
+                            {copy.settings.saving}
+                          </span>
+                        ) : (
+                          <span key="save">{copy.settings.save}</span>
+                        )}
+                      </AutoTransition>
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+
+              <AlertDialog
+                open={deleteTeamDialogOpen}
+                onOpenChange={(open) => {
+                  if (deletingTeam) return;
+                  setDeleteTeamDialogOpen(open);
+                }}
+              >
+                <Card className="h-full border-destructive/40">
+                  <CardHeader>
+                    <CardTitle>{copy.settings.delete}</CardTitle>
+                    <CardDescription>
+                      {copy.settings.deleteConfirm}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex h-full items-end">
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        disabled={savingTeam || deletingTeam}
+                      >
+                        <AutoTransition className="inline-flex items-center gap-2">
+                          {deletingTeam ? (
+                            <span
+                              key="deleting"
+                              className="inline-flex items-center gap-2"
+                            >
+                              <Spinner className="size-4" />
+                              {copy.settings.deleting}
+                            </span>
+                          ) : (
+                            <span key="delete">{copy.settings.delete}</span>
+                          )}
+                        </AutoTransition>
+                      </Button>
+                    </AlertDialogTrigger>
+                  </CardContent>
+                </Card>
+                <AlertDialogContent size="sm">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>{copy.settings.delete}</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {copy.settings.deleteConfirm}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={deletingTeam}>
+                      {messages.teamSelect.cancel}
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      variant="destructive"
+                      disabled={deletingTeam}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        void handleDeleteTeam();
+                      }}
                     >
                       <AutoTransition className="inline-flex items-center gap-2">
                         {deletingTeam ? (
                           <span
-                            key="deleting"
+                            key="deleting-dialog"
                             className="inline-flex items-center gap-2"
                           >
                             <Spinner className="size-4" />
                             {copy.settings.deleting}
                           </span>
                         ) : (
-                          <span key="delete">{copy.settings.delete}</span>
+                          <span key="confirm-delete-dialog">
+                            {copy.settings.delete}
+                          </span>
                         )}
                       </AutoTransition>
-                    </Button>
-                  </AlertDialogTrigger>
-                </CardContent>
-              </Card>
-              <AlertDialogContent size="sm">
-                <AlertDialogHeader>
-                  <AlertDialogTitle>{copy.settings.delete}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {copy.settings.deleteConfirm}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel disabled={deletingTeam}>
-                    {messages.teamSelect.cancel}
-                  </AlertDialogCancel>
-                  <AlertDialogAction
-                    variant="destructive"
-                    disabled={deletingTeam}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      void handleDeleteTeam();
-                    }}
-                  >
-                    <AutoTransition className="inline-flex items-center gap-2">
-                      {deletingTeam ? (
-                        <span
-                          key="deleting-dialog"
-                          className="inline-flex items-center gap-2"
-                        >
-                          <Spinner className="size-4" />
-                          {copy.settings.deleting}
-                        </span>
-                      ) : (
-                        <span key="confirm-delete-dialog">
-                          {copy.settings.delete}
-                        </span>
-                      )}
-                    </AutoTransition>
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           </div>
         ) : null}
 

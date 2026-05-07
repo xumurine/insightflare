@@ -616,6 +616,27 @@ export interface AppMessages {
       noSites: string;
       openAnalytics: string;
     };
+    widgets: {
+      title: string;
+      subtitle: string;
+      noSites: string;
+      openWidgets: string;
+    };
+    notifications: {
+      title: string;
+      subtitle: string;
+      empty: string;
+    };
+    publicLinks: {
+      title: string;
+      subtitle: string;
+      empty: string;
+    };
+    apiKeys: {
+      title: string;
+      subtitle: string;
+      empty: string;
+    };
     settings: {
       title: string;
       subtitle: string;
@@ -650,7 +671,19 @@ export interface AppMessages {
     users: string;
     sites: string;
     teams: string;
+    versionUpdates: string;
+    scheduledTasks: string;
     systemPerformance: string;
+  };
+  managementPages: {
+    versionUpdates: {
+      subtitle: string;
+      empty: string;
+    };
+    scheduledTasks: {
+      subtitle: string;
+      empty: string;
+    };
   };
   adminUsers: {
     title: string;

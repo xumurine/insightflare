@@ -613,6 +613,23 @@ teamManagement:
     pagesPerSession: 每会话页面数
     noSites: 当前团队还没有站点。
     openAnalytics: 查看分析
+  widgets:
+    title: 小组件
+    subtitle: 管理当前团队各站点的小组件配置。
+    noSites: 当前团队还没有可配置小组件的站点。
+    openWidgets: 管理小组件
+  notifications:
+    title: 事件通知
+    subtitle: 管理当前团队的事件通知规则。
+    empty: 当前团队还没有事件通知规则。
+  publicLinks:
+    title: 公开链接
+    subtitle: 管理当前团队可公开访问的分享链接。
+    empty: 当前团队还没有公开链接。
+  apiKeys:
+    title: API 密钥
+    subtitle: 管理当前团队用于接口访问的密钥。
+    empty: 当前团队还没有 API 密钥。
   settings:
     title: 团队设置
     subtitle: 更新团队显示名和 slug。
@@ -643,7 +660,16 @@ managementNav:
   users: 用户管理
   sites: 站点管理
   teams: 团队管理
+  versionUpdates: 版本更新
+  scheduledTasks: 定时任务
   systemPerformance: 系统性能
+managementPages:
+  versionUpdates:
+    subtitle: 查看和管理系统版本更新记录。
+    empty: 暂无版本更新记录。
+  scheduledTasks:
+    subtitle: 查看和管理系统定时任务。
+    empty: 暂无定时任务。
 adminUsers:
   title: 用户管理
   subtitle: 仅系统管理员可创建和管理后台用户。
@@ -678,7 +704,7 @@ adminUsers:
     action: 操作
 adminSites:
   title: 站点管理
-  subtitle: 仅系统管理员可管理站点及其归属团队。
+  subtitle: 管理当前团队下的站点。
   team: 团队
   createTitle: 新建站点
   createSubtitle: 新建后可直接进入分析页面。

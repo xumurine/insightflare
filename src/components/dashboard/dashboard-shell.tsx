@@ -4,13 +4,20 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  RiApps2Line,
   RiArrowLeftLine,
-  RiFolderLine,
+  RiBarChartBoxLine,
+  RiCalendarScheduleLine,
+  RiFileInfoLine,
   RiGlobalLine,
+  RiKey2Line,
+  RiLinksLine,
+  RiNotification3Line,
   RiSettings3Line,
   RiSpeedUpLine,
   RiTeamLine,
   RiUser3Line,
+  RiWindow2Line,
 } from "@remixicon/react";
 
 import { AnalyticsTabs } from "@/components/dashboard/analytics-tabs";
@@ -89,15 +96,20 @@ interface SidebarRouteState {
 }
 
 function getTeamSectionIcon(key: string) {
-  if (key === "sites") return RiGlobalLine;
+  if (key === "sites") return RiBarChartBoxLine;
+  if (key === "site-management") return RiWindow2Line;
+  if (key === "widgets") return RiApps2Line;
+  if (key === "notifications") return RiNotification3Line;
+  if (key === "public-links") return RiLinksLine;
+  if (key === "api-keys") return RiKey2Line;
   if (key === "settings") return RiSettings3Line;
-  if (key === "members") return RiTeamLine;
-  return RiFolderLine;
+  return RiGlobalLine;
 }
 
 function getManagementSectionIcon(key: string) {
   if (key === "manage-users") return RiUser3Line;
-  if (key === "manage-sites") return RiGlobalLine;
+  if (key === "version-updates") return RiFileInfoLine;
+  if (key === "scheduled-tasks") return RiCalendarScheduleLine;
   if (key === "system-performance") return RiSpeedUpLine;
   return RiTeamLine;
 }
@@ -159,10 +171,31 @@ function parseSidebarRouteState(
     };
   }
 
+  if (localPath[0] === "public-links") {
+    return {
+      mode: "team",
+      activeTeamSectionKey: "public-links",
+    };
+  }
+
+  if (localPath[0] === "api-keys") {
+    return {
+      mode: "team",
+      activeTeamSectionKey: "api-keys",
+    };
+  }
+
+  if (localPath[0] === "notifications") {
+    return {
+      mode: "team",
+      activeTeamSectionKey: "notifications",
+    };
+  }
+
   if (localPath[0] === "members") {
     return {
       mode: "team",
-      activeTeamSectionKey: "members",
+      activeTeamSectionKey: "settings",
     };
   }
 
@@ -182,7 +215,7 @@ function parseSidebarRouteState(
     if (localPath[1] === "sites") {
       return {
         mode: "team",
-        activeManagementSectionKey: "manage-sites",
+        activeTeamSectionKey: "site-management",
       };
     }
     if (localPath[1] === "teams") {
@@ -197,8 +230,27 @@ function parseSidebarRouteState(
         activeManagementSectionKey: "system-performance",
       };
     }
+    if (localPath[1] === "version-updates") {
+      return {
+        mode: "team",
+        activeManagementSectionKey: "version-updates",
+      };
+    }
+    if (localPath[1] === "scheduled-tasks") {
+      return {
+        mode: "team",
+        activeManagementSectionKey: "scheduled-tasks",
+      };
+    }
     return {
       mode: "team",
+    };
+  }
+
+  if (localPath[0] === "widgets") {
+    return {
+      mode: "team",
+      activeTeamSectionKey: "widgets",
     };
   }
 

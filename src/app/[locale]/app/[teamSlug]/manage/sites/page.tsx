@@ -20,7 +20,7 @@ export default async function ManageSitesPage({
   const messages = getMessages(resolvedLocale);
   const profile = await getDashboardProfile();
 
-  if (!profile || profile.user.systemRole !== "admin") {
+  if (!profile) {
     notFound();
   }
 
@@ -33,8 +33,7 @@ export default async function ManageSitesPage({
     <AdminSitesManagementClient
       locale={resolvedLocale}
       messages={messages}
-      teams={profile.teams}
-      defaultTeamId={activeTeam.id}
+      activeTeam={activeTeam}
     />
   );
 }
