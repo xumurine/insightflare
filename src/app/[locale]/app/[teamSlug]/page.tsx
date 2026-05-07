@@ -33,6 +33,8 @@ export default async function TeamRootPage({ params }: TeamRootPageProps) {
       messages={messages}
       activeTeam={activeTeam}
       activeTab="sites"
+      systemRole={profile.user.systemRole}
+      currentUserId={profile.user.id}
     />
   );
 }

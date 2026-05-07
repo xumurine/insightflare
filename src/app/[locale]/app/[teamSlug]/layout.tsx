@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { canManageTeam } from "@/lib/dashboard/permissions";
 import { getDashboardTeamContext } from "@/lib/dashboard/server";
 import {
   buildManagementSections,
@@ -54,6 +55,10 @@ export default async function TeamLayout({
         resolvedLocale,
         context.activeTeam.slug,
         messages,
+        canManageTeam(
+          context.activeTeam.membershipRole,
+          context.user.systemRole,
+        ),
       )}
       managementSections={managementSections}
     >

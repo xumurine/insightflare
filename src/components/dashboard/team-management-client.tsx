@@ -11,6 +11,7 @@ import {
   RiArrowUpLine,
   RiArrowUpSLine,
   RiDeleteBinLine,
+  RiLockLine,
 } from "@remixicon/react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
@@ -54,6 +55,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import {
@@ -63,6 +71,11 @@ import {
   percentFormat,
   shortDateTime,
 } from "@/lib/dashboard/format";
+import {
+  canAdministerTeam,
+  canManageTeam,
+  type TeamRole,
+} from "@/lib/dashboard/permissions";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
 import {
   addZonedInterval,
@@ -153,6 +166,8 @@ interface TeamManagementClientProps {
   messages: AppMessages;
   activeTeam: TeamData;
   activeTab: TeamTab;
+  systemRole: "admin" | "user";
+  currentUserId: string;
 }
 
 function safeSlug(value: string): string {
@@ -433,6 +448,8 @@ export function TeamManagementClient({
   messages,
   activeTeam,
   activeTab,
+  systemRole,
+  currentUserId,
 }: TeamManagementClientProps) {
   const router = useRouter();
   const { window } = useDashboardQuery();
@@ -457,6 +474,8 @@ export function TeamManagementClient({
   const [deleteTeamDialogOpen, setDeleteTeamDialogOpen] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+  const [changingRoleId, setChangingRoleId] = useState<string | null>(null);
+  const [addRole, setAddRole] = useState<"admin" | "member">("member");
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [siteOverviewById, setSiteOverviewById] = useState<
     Record<string, SiteOverviewMetrics>
@@ -473,7 +492,12 @@ export function TeamManagementClient({
     interval: window.interval,
     timeZone: window.timeZone,
   }));
-  const canManageSites = activeTeam.membershipRole === "owner";
+  const canManage = canManageTeam(activeTeam.membershipRole, systemRole);
+  const canAdminister = canAdministerTeam(
+    activeTeam.membershipRole,
+    systemRole,
+  );
+  const canManageSites = canManage;
 
   useEffect(() => {
     if (activeTab !== "settings" && activeTab !== "members") return;
@@ -708,8 +732,10 @@ export function TeamManagementClient({
       await postJson("/api/admin/member", {
         teamId: activeTeam.id,
         identifier,
+        role: addRole,
       });
       setMemberIdentifier("");
+      setAddRole("member");
       await refreshMembers();
       toast.success(copy.toasts.memberAdded);
     } catch (error) {
@@ -738,6 +764,29 @@ export function TeamManagementClient({
       toast.error(message || copy.toasts.teamDeleteFailed);
     } finally {
       setDeletingTeam(false);
+    }
+  }
+
+  async function handleChangeMemberRole(
+    userId: string,
+    nextRole: "admin" | "member",
+  ) {
+    setChangingRoleId(userId);
+    try {
+      await postJson("/api/admin/member", {
+        intent: "update_role",
+        teamId: activeTeam.id,
+        userId,
+        role: nextRole,
+      });
+      await refreshMembers();
+      toast.success(copy.toasts.roleChanged);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : copy.toasts.roleChangeFailed;
+      toast.error(message || copy.toasts.roleChangeFailed);
+    } finally {
+      setChangingRoleId(null);
     }
   }
 
@@ -1007,7 +1056,7 @@ export function TeamManagementClient({
         </CardHeader>
         <CardContent>
           <form
-            className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
+            className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end"
             onSubmit={(event) => {
               event.preventDefault();
               void handleAddMember();
@@ -1024,9 +1073,34 @@ export function TeamManagementClient({
                 placeholder={copy.members.identifierPlaceholder}
                 minLength={2}
                 required
+                disabled={!canManage}
               />
             </div>
-            <Button type="submit" disabled={addingMember}>
+            <div className="space-y-2">
+              <Label htmlFor="member-add-role">
+                {copy.members.columns.role}
+              </Label>
+              <Select
+                value={addRole}
+                onValueChange={(value) => {
+                  setAddRole(value === "admin" ? "admin" : "member");
+                }}
+                disabled={!canManage}
+              >
+                <SelectTrigger id="member-add-role" className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="member">
+                    {copy.members.roleLabels.member}
+                  </SelectItem>
+                  <SelectItem value="admin">
+                    {copy.members.roleLabels.admin}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="submit" disabled={addingMember || !canManage}>
               <AutoTransition className="inline-flex items-center gap-2">
                 {addingMember ? (
                   <span key="adding" className="inline-flex items-center gap-2">
@@ -1069,38 +1143,96 @@ export function TeamManagementClient({
                 </TableCell>
                 <TableCell>{member.username}</TableCell>
                 <TableCell>{member.email}</TableCell>
-                <TableCell>{member.role}</TableCell>
+                <TableCell>
+                  {member.role === "owner" ? (
+                    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                      <RiLockLine className="size-3.5" />
+                      {copy.members.roleLabels.owner}
+                    </span>
+                  ) : (
+                    <Select
+                      value={member.role === "admin" ? "admin" : "member"}
+                      disabled={!canManage || changingRoleId === member.userId}
+                      onValueChange={(value) => {
+                        const next: "admin" | "member" =
+                          value === "admin" ? "admin" : "member";
+                        const current: "admin" | "member" =
+                          member.role === "admin" ? "admin" : "member";
+                        if (next === current) return;
+                        const isSelfDemote =
+                          member.userId === currentUserId &&
+                          systemRole !== "admin" &&
+                          activeTeam.ownerUserId !== currentUserId &&
+                          next === "member";
+                        if (isSelfDemote) {
+                          toast.error(copy.toasts.roleChangeFailed);
+                          return;
+                        }
+                        void handleChangeMemberRole(member.userId, next);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-28 text-xs">
+                        <AutoTransition className="inline-flex items-center gap-1.5">
+                          {changingRoleId === member.userId ? (
+                            <span
+                              key="role-changing"
+                              className="inline-flex items-center gap-1.5"
+                            >
+                              <Spinner className="size-3" />
+                            </span>
+                          ) : (
+                            <span key="role-value">
+                              <SelectValue />
+                            </span>
+                          )}
+                        </AutoTransition>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="member">
+                          {copy.members.roleLabels.member}
+                        </SelectItem>
+                        <SelectItem value="admin">
+                          {copy.members.roleLabels.admin}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                </TableCell>
                 <TableCell>
                   {shortDateTime(locale, member.joinedAt, window.timeZone)}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Clickable
-                    onClick={() => {
-                      void handleRemoveMember(member.userId);
-                    }}
-                    disabled={removingMemberId === member.userId}
-                    className="size-6 text-destructive/80 hover:text-destructive"
-                    aria-label={copy.members.remove}
-                    title={copy.members.remove}
-                  >
-                    <AutoTransition className="inline-flex items-center justify-center">
-                      {removingMemberId === member.userId ? (
-                        <span
-                          key="removing"
-                          className="inline-flex items-center justify-center"
-                        >
-                          <Spinner className="size-3.5" />
-                        </span>
-                      ) : (
-                        <span
-                          key="remove"
-                          className="inline-flex items-center justify-center"
-                        >
-                          <RiDeleteBinLine className="size-4" />
-                        </span>
-                      )}
-                    </AutoTransition>
-                  </Clickable>
+                  {member.role === "owner" ? null : (
+                    <Clickable
+                      onClick={() => {
+                        void handleRemoveMember(member.userId);
+                      }}
+                      disabled={
+                        !canManage || removingMemberId === member.userId
+                      }
+                      className="size-6 text-destructive/80 hover:text-destructive"
+                      aria-label={copy.members.remove}
+                      title={copy.members.remove}
+                    >
+                      <AutoTransition className="inline-flex items-center justify-center">
+                        {removingMemberId === member.userId ? (
+                          <span
+                            key="removing"
+                            className="inline-flex items-center justify-center"
+                          >
+                            <Spinner className="size-3.5" />
+                          </span>
+                        ) : (
+                          <span
+                            key="remove"
+                            className="inline-flex items-center justify-center"
+                          >
+                            <RiDeleteBinLine className="size-4" />
+                          </span>
+                        )}
+                      </AutoTransition>
+                    </Clickable>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -1525,82 +1657,86 @@ export function TeamManagementClient({
                 </CardContent>
               </Card>
 
-              <AlertDialog
-                open={deleteTeamDialogOpen}
-                onOpenChange={(open) => {
-                  if (deletingTeam) return;
-                  setDeleteTeamDialogOpen(open);
-                }}
-              >
-                <Card className="h-full border-destructive/40">
-                  <CardHeader>
-                    <CardTitle>{copy.settings.delete}</CardTitle>
-                    <CardDescription>
-                      {copy.settings.deleteConfirm}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex h-full items-end">
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        type="button"
+              {canAdminister ? (
+                <AlertDialog
+                  open={deleteTeamDialogOpen}
+                  onOpenChange={(open) => {
+                    if (deletingTeam) return;
+                    setDeleteTeamDialogOpen(open);
+                  }}
+                >
+                  <Card className="h-full border-destructive/40">
+                    <CardHeader>
+                      <CardTitle>{copy.settings.delete}</CardTitle>
+                      <CardDescription>
+                        {copy.settings.deleteConfirm}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex h-full items-end">
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          disabled={savingTeam || deletingTeam}
+                        >
+                          <AutoTransition className="inline-flex items-center gap-2">
+                            {deletingTeam ? (
+                              <span
+                                key="deleting"
+                                className="inline-flex items-center gap-2"
+                              >
+                                <Spinner className="size-4" />
+                                {copy.settings.deleting}
+                              </span>
+                            ) : (
+                              <span key="delete">{copy.settings.delete}</span>
+                            )}
+                          </AutoTransition>
+                        </Button>
+                      </AlertDialogTrigger>
+                    </CardContent>
+                  </Card>
+                  <AlertDialogContent size="sm">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        {copy.settings.delete}
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {copy.settings.deleteConfirm}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={deletingTeam}>
+                        {messages.teamSelect.cancel}
+                      </AlertDialogCancel>
+                      <AlertDialogAction
                         variant="destructive"
-                        disabled={savingTeam || deletingTeam}
+                        disabled={deletingTeam}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          void handleDeleteTeam();
+                        }}
                       >
                         <AutoTransition className="inline-flex items-center gap-2">
                           {deletingTeam ? (
                             <span
-                              key="deleting"
+                              key="deleting-dialog"
                               className="inline-flex items-center gap-2"
                             >
                               <Spinner className="size-4" />
                               {copy.settings.deleting}
                             </span>
                           ) : (
-                            <span key="delete">{copy.settings.delete}</span>
+                            <span key="confirm-delete-dialog">
+                              {copy.settings.delete}
+                            </span>
                           )}
                         </AutoTransition>
-                      </Button>
-                    </AlertDialogTrigger>
-                  </CardContent>
-                </Card>
-                <AlertDialogContent size="sm">
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>{copy.settings.delete}</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      {copy.settings.deleteConfirm}
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel disabled={deletingTeam}>
-                      {messages.teamSelect.cancel}
-                    </AlertDialogCancel>
-                    <AlertDialogAction
-                      variant="destructive"
-                      disabled={deletingTeam}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        void handleDeleteTeam();
-                      }}
-                    >
-                      <AutoTransition className="inline-flex items-center gap-2">
-                        {deletingTeam ? (
-                          <span
-                            key="deleting-dialog"
-                            className="inline-flex items-center gap-2"
-                          >
-                            <Spinner className="size-4" />
-                            {copy.settings.deleting}
-                          </span>
-                        ) : (
-                          <span key="confirm-delete-dialog">
-                            {copy.settings.delete}
-                          </span>
-                        )}
-                      </AutoTransition>
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              ) : null}
             </div>
           </div>
         ) : null}

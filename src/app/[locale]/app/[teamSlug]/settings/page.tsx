@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { TeamManagementClient } from "@/components/dashboard/team-management-client";
+import { canManageTeam } from "@/lib/dashboard/permissions";
 import { getDashboardProfile } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
@@ -28,6 +29,9 @@ export default async function TeamSettingsPage({
   if (!activeTeam) {
     notFound();
   }
+  if (!canManageTeam(activeTeam.membershipRole, profile.user.systemRole)) {
+    notFound();
+  }
 
   return (
     <TeamManagementClient
@@ -35,6 +39,8 @@ export default async function TeamSettingsPage({
       messages={messages}
       activeTeam={activeTeam}
       activeTab="settings"
+      systemRole={profile.user.systemRole}
+      currentUserId={profile.user.id}
     />
   );
 }

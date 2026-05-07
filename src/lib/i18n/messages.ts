@@ -605,6 +605,8 @@ export interface AppMessages {
       memberAddFailed: string;
       memberRemoved: string;
       memberRemoveFailed: string;
+      roleChanged: string;
+      roleChangeFailed: string;
       invalidTeamName: string;
       invalidMemberIdentifier: string;
     };
@@ -664,6 +666,11 @@ export interface AppMessages {
         role: string;
         joinedAt: string;
         action: string;
+      };
+      roleLabels: {
+        owner: string;
+        admin: string;
+        member: string;
       };
     };
   };

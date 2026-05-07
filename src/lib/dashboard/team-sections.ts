@@ -23,8 +23,8 @@ export interface DashboardSectionItem {
   href: string;
 }
 
-const TEAM_TABS: readonly TeamTab[] = [
-  "sites",
+const TEAM_TABS_ALWAYS: readonly TeamTab[] = ["sites"] as const;
+const TEAM_TABS_MANAGE: readonly TeamTab[] = [
   "widgets",
   "notifications",
   "public-links",
@@ -84,8 +84,12 @@ export function buildTeamSections(
   locale: Locale,
   teamSlug: string,
   messages: AppMessages,
+  canManage: boolean,
 ): DashboardSectionItem[] {
-  return TEAM_TABS.map((tab) => ({
+  const tabs = canManage
+    ? [...TEAM_TABS_ALWAYS, ...TEAM_TABS_MANAGE]
+    : [...TEAM_TABS_ALWAYS];
+  return tabs.map((tab) => ({
     key: tab,
     label: teamTabLabel(messages, tab),
     href: buildTeamTabPath(locale, teamSlug, tab),

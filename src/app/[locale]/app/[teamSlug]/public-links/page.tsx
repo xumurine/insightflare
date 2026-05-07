@@ -3,6 +3,7 @@ import { RiLinksLine } from "@remixicon/react";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { Card, CardContent } from "@/components/ui/card";
+import { canManageTeam } from "@/lib/dashboard/permissions";
 import { getDashboardTeamContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
@@ -22,7 +23,10 @@ export default async function TeamPublicLinksPage({
   const messages = getMessages(resolvedLocale);
   const context = await getDashboardTeamContext(teamSlug);
 
-  if (!context) {
+  if (
+    !context ||
+    !canManageTeam(context.activeTeam.membershipRole, context.user.systemRole)
+  ) {
     notFound();
   }
 

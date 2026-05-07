@@ -1,3 +1,4 @@
+import type { TeamRole } from "@/lib/dashboard/permissions";
 import type { SiteScriptSettings } from "@/lib/site-settings";
 
 import { getSessionToken } from "./auth";
@@ -824,7 +825,7 @@ export interface TeamData {
   updatedAt?: number;
   siteCount: number;
   memberCount: number;
-  membershipRole?: string;
+  membershipRole?: TeamRole;
 }
 
 export interface SiteData {
@@ -841,7 +842,7 @@ export interface SiteData {
 export interface MemberData {
   teamId: string;
   userId: string;
-  role: string;
+  role: TeamRole;
   joinedAt: number;
   username: string;
   email: string;
@@ -1058,11 +1059,28 @@ export async function addAdminMember(input: {
   teamId: string;
   identifier: string;
   userId?: string;
+  role?: TeamRole;
 }): Promise<MemberData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: MemberData }>({
     method: "POST",
     path: "/api/private/admin/members",
     body: input,
+  });
+  return res.data;
+}
+
+export async function updateAdminMemberRole(input: {
+  teamId: string;
+  userId: string;
+  role: TeamRole;
+}): Promise<{ teamId: string; userId: string; role: TeamRole }> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: { teamId: string; userId: string; role: TeamRole };
+  }>({
+    method: "PATCH",
+    path: "/api/private/admin/members",
+    body: { ...input, intent: "update_role" },
   });
   return res.data;
 }

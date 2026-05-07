@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { addAdminMember, removeAdminMember } from "@/lib/edge-client";
+import { toTeamRole } from "@/lib/dashboard/permissions";
+import {
+  addAdminMember,
+  removeAdminMember,
+  updateAdminMemberRole,
+} from "@/lib/edge-client";
 import { bodyStr, parseRequestBody } from "@/lib/form-helpers";
 
 function normalizeErrorMessage(error: unknown): string {
@@ -50,6 +55,27 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
   }
 
+  if (intent === "update_role") {
+    const userId = bodyStr(body, "userId");
+    const role = toTeamRole(bodyStr(body, "role"));
+    if (teamId.length === 0 || userId.length === 0 || role === "owner") {
+      return NextResponse.json(
+        { ok: false, error: "invalid_member_role_input" },
+        { status: 400 },
+      );
+    }
+    try {
+      const result = await updateAdminMemberRole({ teamId, userId, role });
+      return NextResponse.json({ ok: true, data: result });
+    } catch (error) {
+      const msg = normalizeErrorMessage(error);
+      return NextResponse.json(
+        { ok: false, error: "update_member_role_failed", message: msg },
+        { status: 500 },
+      );
+    }
+  }
+
   const identifier = bodyStr(body, "identifier");
   if (teamId.length === 0 || identifier.length < 2) {
     return NextResponse.json(
@@ -58,8 +84,21 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
+  const requestedRoleRaw = bodyStr(body, "role");
+  const requestedRole = requestedRoleRaw ? toTeamRole(requestedRoleRaw) : null;
+  if (requestedRole === "owner") {
+    return NextResponse.json(
+      { ok: false, error: "invalid_member_input" },
+      { status: 400 },
+    );
+  }
+
   try {
-    const result = await addAdminMember({ teamId, identifier });
+    const result = await addAdminMember(
+      requestedRole
+        ? { teamId, identifier, role: requestedRole }
+        : { teamId, identifier },
+    );
     return NextResponse.json({ ok: true, data: result });
   } catch (error) {
     const msg = normalizeErrorMessage(error);

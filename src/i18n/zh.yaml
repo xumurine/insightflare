@@ -604,6 +604,8 @@ teamManagement:
     memberAddFailed: 添加成员失败。
     memberRemoved: 成员已移除。
     memberRemoveFailed: 移除成员失败。
+    roleChanged: 成员角色已更新。
+    roleChangeFailed: 更新成员角色失败。
     invalidTeamName: 团队名称至少 2 个字符。
     invalidMemberIdentifier: 请输入有效的用户名或邮箱。
   sites:
@@ -656,6 +658,10 @@ teamManagement:
       role: 角色
       joinedAt: 加入时间
       action: 操作
+    roleLabels:
+      owner: 所有者
+      admin: 管理员
+      member: 成员
 managementNav:
   users: 用户管理
   sites: 站点管理

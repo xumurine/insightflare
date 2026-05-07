@@ -1,5 +1,6 @@
 import { argon2id } from "@noble/hashes/argon2.js";
 
+import { type TeamRole, toTeamRole } from "@/lib/dashboard/permissions";
 import { normalizeTimeZone } from "@/lib/dashboard/time-zone";
 import { DEFAULT_SITE_SCRIPT_SETTINGS } from "@/lib/site-settings";
 import type {
@@ -316,7 +317,18 @@ async function canManageTeam(
   if (a.isAdmin) return true;
   const team = await teamById(env, teamId);
   if (team?.ownerUserId === a.user.id) return true;
-  return (await teamRole(env, teamId, a.user.id)) === "owner";
+  const r = toTeamRole(await teamRole(env, teamId, a.user.id));
+  return r === "owner" || r === "admin";
+}
+async function canAdministerTeam(
+  env: Env,
+  a: Actor,
+  teamId: string,
+): Promise<boolean> {
+  if (a.isAdmin) return true;
+  const team = await teamById(env, teamId);
+  if (team?.ownerUserId === a.user.id) return true;
+  return toTeamRole(await teamRole(env, teamId, a.user.id)) === "owner";
 }
 async function canReadSite(
   env: Env,
@@ -452,7 +464,10 @@ async function teamsFor(
   )
     .bind(userId)
     .all<Record<string, unknown>>();
-  return rows.results;
+  return rows.results.map((row) => ({
+    ...row,
+    membershipRole: toTeamRole(row.membershipRole),
+  }));
 }
 
 async function hAuthLogin(req: Request, env: Env): Promise<Response> {
@@ -680,7 +695,13 @@ async function hTeams(req: Request, env: Env): Promise<Response> {
       const rows = await env.DB.prepare(
         "SELECT t.id,t.name,t.slug,t.owner_user_id AS ownerUserId,t.created_at AS createdAt,t.updated_at AS updatedAt,'owner' AS membershipRole,(SELECT COUNT(*) FROM sites s WHERE s.team_id=t.id) AS siteCount,(SELECT COUNT(*) FROM team_members x WHERE x.team_id=t.id) AS memberCount FROM teams t ORDER BY t.created_at DESC",
       ).all<Record<string, unknown>>();
-      return j({ ok: true, data: rows.results });
+      return j({
+        ok: true,
+        data: rows.results.map((row) => ({
+          ...row,
+          membershipRole: toTeamRole(row.membershipRole),
+        })),
+      });
     }
     return j({ ok: true, data: await teamsFor(env, a.user.id) });
   }
@@ -737,6 +758,8 @@ async function hTeams(req: Request, env: Env): Promise<Response> {
     if (!existing) return nf("Team not found");
 
     if (intent === "remove" || intent === "delete") {
+      if (!(await canAdministerTeam(env, a, teamId)))
+        return forb("Only team owner can delete team");
       const siteRows = await env.DB.prepare(
         "SELECT id FROM sites WHERE team_id=?",
       )
@@ -991,31 +1014,39 @@ async function hMembers(req: Request, env: Env, url: URL): Promise<Response> {
         data: {
           teamId,
           userId: m.id,
-          role: "owner",
+          role: "owner" as TeamRole,
           username: m.username,
           email: m.email,
           name: m.name || "",
         },
       });
     }
+    const requestedRoleRaw = body.role;
+    const requestedRole: TeamRole | null =
+      requestedRoleRaw === undefined || requestedRoleRaw === null
+        ? null
+        : toTeamRole(requestedRoleRaw);
+    if (requestedRole === "owner")
+      return bad("Cannot assign owner via member add; use ownership transfer");
+    const targetRole: TeamRole = requestedRole ?? "member";
     const existingRole = await env.DB.prepare(
       "SELECT role FROM team_members WHERE team_id=? AND user_id=? LIMIT 1",
     )
       .bind(teamId, m.id)
       .first<{ role: string }>();
-    if (existingRole?.role === "owner")
+    if (existingRole && toTeamRole(existingRole.role) === "owner")
       return forb("Cannot change team owner membership");
     await env.DB.prepare(
-      "INSERT INTO team_members (team_id,user_id,role,joined_at) VALUES (?,?,'member',unixepoch()) ON CONFLICT(team_id,user_id) DO UPDATE SET role='member'",
+      "INSERT INTO team_members (team_id,user_id,role,joined_at) VALUES (?,?,?,unixepoch()) ON CONFLICT(team_id,user_id) DO UPDATE SET role=excluded.role",
     )
-      .bind(teamId, m.id)
+      .bind(teamId, m.id, targetRole)
       .run();
     return j({
       ok: true,
       data: {
         teamId,
         userId: m.id,
-        role: "member",
+        role: targetRole,
         username: m.username,
         email: m.email,
         name: m.name || "",
@@ -1024,6 +1055,10 @@ async function hMembers(req: Request, env: Env, url: URL): Promise<Response> {
   }
   if (req.method === "PATCH") {
     const body = await parseJson(req);
+    const intent = clampString(
+      String(body.intent || "remove"),
+      24,
+    ).toLowerCase();
     const teamId = clampString(String(body.teamId || ""), 120);
     const userId = clampString(String(body.userId || ""), 120);
     if (!teamId || !userId) return bad("teamId and userId are required");
@@ -1031,14 +1066,47 @@ async function hMembers(req: Request, env: Env, url: URL): Promise<Response> {
     if (!team) return nf("Team not found");
     if (!(await canManageTeam(env, a, teamId)))
       return forb("Only team owner can manage members");
-    if (userId === team.ownerUserId) return bad("Cannot remove team owner");
     const existing = await env.DB.prepare(
       "SELECT role FROM team_members WHERE team_id=? AND user_id=? LIMIT 1",
     )
       .bind(teamId, userId)
       .first<{ role: string }>();
     if (!existing) return nf("Member not found");
-    if (existing.role === "owner") return bad("Cannot remove team owner");
+    const existingRole = toTeamRole(existing.role);
+
+    if (intent === "update_role") {
+      if (existingRole === "owner" || userId === team.ownerUserId)
+        return bad("Cannot change team owner role");
+      const nextRole = toTeamRole(body.role);
+      if (nextRole === "owner")
+        return bad("Cannot promote to owner; use ownership transfer");
+      if (
+        userId === a.user.id &&
+        nextRole === "member" &&
+        !a.isAdmin &&
+        team.ownerUserId !== a.user.id
+      ) {
+        return bad("Cannot demote yourself; ask another admin or the owner");
+      }
+      if (nextRole === existingRole) {
+        return j({
+          ok: true,
+          data: { teamId, userId, role: nextRole, unchanged: true },
+        });
+      }
+      await env.DB.prepare(
+        "UPDATE team_members SET role=? WHERE team_id=? AND user_id=?",
+      )
+        .bind(nextRole, teamId, userId)
+        .run();
+      return j({
+        ok: true,
+        data: { teamId, userId, role: nextRole, updated: true },
+      });
+    }
+
+    if (userId === team.ownerUserId || existingRole === "owner")
+      return bad("Cannot remove team owner");
     await env.DB.prepare(
       "DELETE FROM team_members WHERE team_id=? AND user_id=?",
     )

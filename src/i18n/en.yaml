@@ -604,6 +604,8 @@ teamManagement:
     memberAddFailed: Failed to add member.
     memberRemoved: Member removed.
     memberRemoveFailed: Failed to remove member.
+    roleChanged: Member role updated.
+    roleChangeFailed: Failed to update member role.
     invalidTeamName: Team name must be at least 2 characters.
     invalidMemberIdentifier: Please provide a valid username or email.
   sites:
@@ -656,6 +658,10 @@ teamManagement:
       role: Role
       joinedAt: Joined
       action: Action
+    roleLabels:
+      owner: Owner
+      admin: Admin
+      member: Member
 managementNav:
   users: User Management
   sites: Site Management

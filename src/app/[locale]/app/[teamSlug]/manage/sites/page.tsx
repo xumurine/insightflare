@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { AdminSitesManagementClient } from "@/components/dashboard/admin-sites-management-client";
+import { canManageTeam } from "@/lib/dashboard/permissions";
 import { getDashboardProfile } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
@@ -26,6 +27,9 @@ export default async function ManageSitesPage({
 
   const activeTeam = profile.teams.find((team) => team.slug === teamSlug);
   if (!activeTeam) {
+    notFound();
+  }
+  if (!canManageTeam(activeTeam.membershipRole, profile.user.systemRole)) {
     notFound();
   }
 
