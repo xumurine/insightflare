@@ -1210,6 +1210,7 @@ export async function updateMyProfile(input: {
   username?: string;
   email?: string;
   name?: string;
+  currentPassword?: string;
   password?: string;
   timeZone?: string;
 }): Promise<AccountUserData> {

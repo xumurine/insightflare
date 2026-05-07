@@ -598,9 +598,9 @@ export function SettingsClientPage({
             <CardTitle>{copy.editTitle}</CardTitle>
             <CardDescription>{copy.editSubtitle}</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex h-full flex-col">
             <form
-              className="space-y-4"
+              className="flex h-full flex-col gap-4"
               onSubmit={(event) => {
                 event.preventDefault();
                 void handleSave();
@@ -662,6 +662,7 @@ export function SettingsClientPage({
 
               <Button
                 type="submit"
+                className="mt-auto self-start"
                 disabled={
                   saving ||
                   trackingSaving ||
@@ -731,7 +732,7 @@ export function SettingsClientPage({
               {copy.trackingStrengthDescription}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="flex h-full flex-col gap-4">
             {loadingSettings ? (
               <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                 <Spinner className="size-4" />
@@ -801,6 +802,7 @@ export function SettingsClientPage({
             </RadioGroup>
             <Button
               type="button"
+              className="mt-auto self-start"
               onClick={() => {
                 void handleSaveTrackingStrength();
               }}
@@ -835,7 +837,7 @@ export function SettingsClientPage({
             <CardTitle>{copy.queryHashGroupTitle}</CardTitle>
             <CardDescription>{copy.queryHashGroupDescription}</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="flex h-full flex-col gap-4">
             <div className="space-y-2">
               <Label htmlFor="site-settings-track-query">
                 {copy.trackQueryParamsLabel}
@@ -919,6 +921,7 @@ export function SettingsClientPage({
             </div>
             <Button
               type="button"
+              className="mt-auto self-start"
               onClick={() => {
                 void handleSaveQueryHash();
               }}
@@ -955,7 +958,7 @@ export function SettingsClientPage({
               {copy.performanceGroupDescription}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="flex h-full flex-col gap-4">
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <Label htmlFor="site-settings-performance-sample-rate">
@@ -993,6 +996,7 @@ export function SettingsClientPage({
             </div>
             <Button
               type="button"
+              className="mt-auto self-start"
               onClick={() => {
                 void handleSavePerformanceTracking();
               }}
@@ -1027,7 +1031,7 @@ export function SettingsClientPage({
             <CardTitle>{copy.domainWhitelistTitle}</CardTitle>
             <CardDescription>{copy.domainWhitelistDescription}</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="flex h-full flex-col gap-4">
             <div className="space-y-2">
               <Label htmlFor="site-settings-domain-whitelist">
                 {copy.domainWhitelistLabel}
@@ -1055,6 +1059,7 @@ export function SettingsClientPage({
             </div>
             <Button
               type="button"
+              className="mt-auto self-start"
               onClick={() => {
                 void handleSaveDomainWhitelist();
               }}
@@ -1089,7 +1094,7 @@ export function SettingsClientPage({
             <CardTitle>{copy.pathBlacklistTitle}</CardTitle>
             <CardDescription>{copy.pathBlacklistDescription}</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="flex h-full flex-col gap-4">
             <div className="space-y-2">
               <Label htmlFor="site-settings-path-blacklist">
                 {copy.pathBlacklistLabel}
@@ -1115,6 +1120,7 @@ export function SettingsClientPage({
             </div>
             <Button
               type="button"
+              className="mt-auto self-start"
               onClick={() => {
                 void handleSavePathBlacklist();
               }}
@@ -1149,9 +1155,9 @@ export function SettingsClientPage({
             <CardTitle>{copy.transferTitle}</CardTitle>
             <CardDescription>{copy.transferSubtitle}</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex h-full flex-col">
             <form
-              className="space-y-4"
+              className="flex h-full flex-col gap-4"
               onSubmit={(event) => {
                 event.preventDefault();
                 void handleTransfer();
@@ -1183,6 +1189,7 @@ export function SettingsClientPage({
 
               <Button
                 type="submit"
+                className="mt-auto self-start"
                 disabled={
                   saving ||
                   trackingSaving ||

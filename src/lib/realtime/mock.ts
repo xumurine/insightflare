@@ -7951,6 +7951,12 @@ export function handleDemoRequest(options: {
     if (path.includes("/profile")) {
       const body =
         options.body && typeof options.body === "object" ? options.body : {};
+      const profileBody = body as {
+        email?: unknown;
+        name?: unknown;
+        timeZone?: unknown;
+        username?: unknown;
+      };
       const hasTimeZone = Object.prototype.hasOwnProperty.call(
         body,
         "timeZone",
@@ -7960,10 +7966,11 @@ export function handleDemoRequest(options: {
         ok: true,
         data: {
           ...user,
+          username: String(profileBody.username ?? user.username),
+          email: String(profileBody.email ?? user.email),
+          name: String(profileBody.name ?? user.name),
           timeZone: hasTimeZone
-            ? normalizeTimeZone(
-                String((body as { timeZone?: unknown }).timeZone ?? ""),
-              )
+            ? normalizeTimeZone(String(profileBody.timeZone ?? ""))
             : user.timeZone,
         },
       };

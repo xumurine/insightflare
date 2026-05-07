@@ -625,6 +625,7 @@ async function hProfile(req: Request, env: Env): Promise<Response> {
     const username = normU(String(body.username ?? a.user.username));
     const email = normE(String(body.email ?? a.user.email));
     const name = clampString(String(body.name ?? a.user.name ?? ""), 120);
+    const currentPassword = String(body.currentPassword || "");
     const password = String(body.password || "");
     const rawTimeZone = String(
       body.timeZone ?? body.timezone ?? a.user.timezone ?? "",
@@ -635,6 +636,12 @@ async function hProfile(req: Request, env: Env): Promise<Response> {
     if (email.length < 3 || !email.includes("@"))
       return bad("A valid email is required");
     if (rawTimeZone && !timeZone) return bad("Invalid timezone");
+    if (password.length > 0) {
+      if (password.length < 8)
+        return bad("Password must be at least 8 characters");
+      if (!(await verifyPassword(currentPassword, a.user.password_hash)))
+        return bad("Current password is incorrect");
+    }
     if (
       await env.DB.prepare(
         "SELECT 1 AS ok FROM users WHERE lower(username)=? AND id<>? LIMIT 1",

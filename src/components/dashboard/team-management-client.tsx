@@ -1353,9 +1353,9 @@ export function TeamManagementClient({
                 <CardTitle>{copy.settings.title}</CardTitle>
                 <CardDescription>{copy.settings.subtitle}</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="flex h-full flex-col">
                 <form
-                  className="space-y-4"
+                  className="flex h-full flex-col gap-4"
                   onSubmit={(event) => {
                     event.preventDefault();
                     void handleSaveTeamSettings();
@@ -1381,7 +1381,11 @@ export function TeamManagementClient({
                     />
                   </div>
 
-                  <Button type="submit" disabled={savingTeam || deletingTeam}>
+                  <Button
+                    type="submit"
+                    className="mt-auto self-start"
+                    disabled={savingTeam || deletingTeam}
+                  >
                     <AutoTransition className="inline-flex items-center gap-2">
                       {savingTeam ? (
                         <span

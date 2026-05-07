@@ -514,7 +514,33 @@ siteSettings:
     invalidInput: 请填写有效的站点名称和域名。
 accountSettings:
   title: 账户设置
-  subtitle: 配置你的个人仪表盘时区。
+  subtitle: 管理你的个人信息、登录密码和仪表盘时区。
+  profileTitle: 个人信息
+  profileDescription: 更新昵称、用户名和邮箱。
+  nicknameLabel: 昵称
+  nicknamePlaceholder: 例如：产品分析师
+  usernameLabel: 用户名
+  usernamePlaceholder: 例如：alex
+  usernameDescription: 用户名也可用于登录。
+  emailLabel: 邮箱
+  emailPlaceholder: name@example.com
+  invalidProfile: 请填写有效的用户名和邮箱。
+  profileSave: 保存个人信息
+  profileSaving: 保存中...
+  profileSaved: 个人信息已保存。
+  profileSaveFailed: 保存个人信息失败。
+  passwordTitle: 登录密码
+  passwordDescription: 修改当前账号的登录密码。
+  currentPasswordLabel: 当前密码
+  newPasswordLabel: 新密码
+  confirmPasswordLabel: 确认新密码
+  currentPasswordRequired: 请输入当前密码。
+  passwordTooShort: 新密码至少需要 8 个字符。
+  passwordMismatch: 两次输入的新密码不一致。
+  passwordSave: 修改密码
+  passwordSaving: 修改中...
+  passwordSaved: 密码已修改。
+  passwordSaveFailed: 修改密码失败。
   timeZoneTitle: 报表时区
   timeZoneDescription: 仪表盘里的自然日期范围和聚合分桶都会使用这个时区。
   activeTimeZone: 当前生效时区

@@ -64,10 +64,49 @@ function SelectTrigger({
 function SelectContent({
   className,
   children,
-  position = "item-aligned",
+  position = "popper",
   align = "center",
+  ref,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
+  const [contentElement, setContentElement] =
+    React.useState<HTMLDivElement | null>(null);
+  const contentRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      setContentElement(node);
+      if (typeof ref === "function") {
+        ref(node);
+      } else if (ref) {
+        ref.current = node;
+      }
+    },
+    [ref],
+  );
+
+  React.useEffect(() => {
+    if (!contentElement) return;
+
+    const unlockBodyScroll = () => {
+      document.body.removeAttribute("data-scroll-locked");
+      if (document.body.style.pointerEvents === "none") {
+        document.body.style.pointerEvents = "";
+      }
+    };
+
+    unlockBodyScroll();
+    const frame = window.requestAnimationFrame(unlockBodyScroll);
+    const observer = new MutationObserver(unlockBodyScroll);
+    observer.observe(document.body, {
+      attributeFilter: ["data-scroll-locked", "style"],
+      attributes: true,
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [contentElement]);
+
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
@@ -81,6 +120,7 @@ function SelectContent({
         )}
         position={position}
         align={align}
+        ref={contentRef}
         {...props}
       >
         <SelectScrollUpButton />

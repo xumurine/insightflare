@@ -514,7 +514,33 @@ siteSettings:
     invalidInput: Please provide valid site name and domain.
 accountSettings:
   title: Account Settings
-  subtitle: Configure your personal dashboard timezone.
+  subtitle: Manage your personal details, login password, and dashboard timezone.
+  profileTitle: Personal Details
+  profileDescription: Update your display name, username, and email.
+  nicknameLabel: Display name
+  nicknamePlaceholder: e.g. Product Analyst
+  usernameLabel: Username
+  usernamePlaceholder: e.g. alex
+  usernameDescription: Username can also be used to sign in.
+  emailLabel: Email
+  emailPlaceholder: name@example.com
+  invalidProfile: Enter a valid username and email.
+  profileSave: Save details
+  profileSaving: Saving...
+  profileSaved: Personal details saved.
+  profileSaveFailed: Failed to save personal details.
+  passwordTitle: Login Password
+  passwordDescription: Change the password for your current account.
+  currentPasswordLabel: Current password
+  newPasswordLabel: New password
+  confirmPasswordLabel: Confirm new password
+  currentPasswordRequired: Enter your current password.
+  passwordTooShort: New password must be at least 8 characters.
+  passwordMismatch: New passwords do not match.
+  passwordSave: Change password
+  passwordSaving: Changing...
+  passwordSaved: Password changed.
+  passwordSaveFailed: Failed to change password.
   timeZoneTitle: Reporting Timezone
   timeZoneDescription: Calendar ranges and aggregation buckets use this timezone across the dashboard.
   activeTimeZone: Active timezone
