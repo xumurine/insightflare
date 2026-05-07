@@ -27,6 +27,8 @@ import {
   RiUser3Line,
 } from "@remixicon/react";
 import { motion } from "motion/react";
+import type { PartialOptions } from "overlayscrollbars";
+import { OverlayScrollbars } from "overlayscrollbars";
 
 import { cn } from "@/lib/utils";
 
@@ -56,6 +58,19 @@ interface AnalyticsTabItem {
 interface AnalyticsTabsProps {
   items: AnalyticsTabItem[];
 }
+
+const TABS_SCROLLBAR_OPTIONS = {
+  overflow: {
+    x: "scroll",
+    y: "hidden",
+  },
+  scrollbars: {
+    theme: "os-theme-insightflare",
+    autoHide: "move",
+    autoHideDelay: 420,
+    autoHideSuspend: false,
+  },
+} satisfies PartialOptions;
 
 function getAnalyticsSectionIcon(key: AnalyticsTabKey) {
   if (key === "overview") return RiDashboardLine;
@@ -91,8 +106,17 @@ function isTabActive(
 export function AnalyticsTabs({ items }: AnalyticsTabsProps) {
   const pathname = usePathname();
   const normalizedPathname = normalizePathname(pathname || "");
+  const scrollHostRef = useRef<HTMLDivElement | null>(null);
+  const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
+    null,
+  );
   const navRef = useRef<HTMLElement | null>(null);
   const linkRefs = useRef<Map<AnalyticsTabKey, HTMLAnchorElement>>(new Map());
+  const leftMaskRef = useRef<HTMLDivElement | null>(null);
+  const rightMaskRef = useRef<HTMLDivElement | null>(null);
+  const leftVisibleRef = useRef(false);
+  const rightVisibleRef = useRef(false);
+  const frameRef = useRef<number | null>(null);
   const [indicatorState, setIndicatorState] = useState({
     x: 0,
     width: 0,
@@ -107,6 +131,61 @@ export function AnalyticsTabs({ items }: AnalyticsTabsProps) {
   }, [items, normalizedPathname]);
 
   const resolvedActiveKey = pathActiveKey;
+
+  const applyMaskVisibility = useCallback(
+    (showLeft: boolean, showRight: boolean) => {
+      if (showLeft !== leftVisibleRef.current) {
+        leftVisibleRef.current = showLeft;
+        leftMaskRef.current?.classList.toggle("opacity-100", showLeft);
+        leftMaskRef.current?.classList.toggle("opacity-0", !showLeft);
+      }
+      if (showRight !== rightVisibleRef.current) {
+        rightVisibleRef.current = showRight;
+        rightMaskRef.current?.classList.toggle("opacity-100", showRight);
+        rightMaskRef.current?.classList.toggle("opacity-0", !showRight);
+      }
+    },
+    [],
+  );
+
+  const syncMasks = useCallback(
+    (container?: HTMLDivElement | null) => {
+      const current =
+        container ??
+        (scrollbarRef.current?.elements().viewport as
+          | HTMLDivElement
+          | undefined) ??
+        scrollHostRef.current;
+      if (!current) {
+        applyMaskVisibility(false, false);
+        return;
+      }
+
+      const { scrollLeft, scrollWidth, clientWidth } = current;
+      const maxScrollLeft = scrollWidth - clientWidth;
+      const canScroll = maxScrollLeft > 1;
+      if (!canScroll) {
+        applyMaskVisibility(false, false);
+        return;
+      }
+
+      applyMaskVisibility(scrollLeft > 10, scrollLeft < maxScrollLeft - 10);
+    },
+    [applyMaskVisibility],
+  );
+
+  const scheduleMaskSync = useCallback(
+    (container?: HTMLDivElement | null) => {
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+      }
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = null;
+        syncMasks(container);
+      });
+    },
+    [syncMasks],
+  );
 
   const syncIndicator = useCallback(() => {
     if (!resolvedActiveKey || !navRef.current) {
@@ -131,17 +210,76 @@ export function AnalyticsTabs({ items }: AnalyticsTabsProps) {
       return { x, width, visible: true };
     });
   }, [resolvedActiveKey]);
+  const syncIndicatorRef = useRef(syncIndicator);
 
   useLayoutEffect(() => {
+    syncIndicatorRef.current = syncIndicator;
     syncIndicator();
   }, [syncIndicator]);
+
+  useEffect(() => {
+    const host = scrollHostRef.current;
+    if (!host) return;
+
+    const existing = OverlayScrollbars(host);
+    const instance =
+      existing ?? OverlayScrollbars(host, TABS_SCROLLBAR_OPTIONS);
+
+    if (existing) {
+      existing.options(TABS_SCROLLBAR_OPTIONS);
+    }
+    scrollbarRef.current = instance;
+
+    const viewport = instance.elements().viewport as HTMLDivElement;
+    const sync = () => {
+      syncIndicatorRef.current();
+      scheduleMaskSync(viewport);
+    };
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.shiftKey) return;
+      const delta =
+        Math.abs(event.deltaY) >= Math.abs(event.deltaX)
+          ? event.deltaY
+          : event.deltaX;
+      if (delta === 0) return;
+      event.preventDefault();
+      viewport.scrollLeft += delta;
+    };
+
+    instance.on("scroll", sync);
+    instance.on("updated", sync);
+    viewport.addEventListener("wheel", handleWheel, { passive: false });
+    const animationFrame = requestAnimationFrame(() => {
+      syncIndicatorRef.current();
+      syncMasks(viewport);
+    });
+
+    return () => {
+      instance.off("scroll", sync);
+      instance.off("updated", sync);
+      viewport.removeEventListener("wheel", handleWheel);
+      cancelAnimationFrame(animationFrame);
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      if (!existing) {
+        instance.destroy();
+      }
+      if (scrollbarRef.current === instance) {
+        scrollbarRef.current = null;
+      }
+    };
+  }, [scheduleMaskSync, syncMasks]);
 
   useEffect(() => {
     if (!navRef.current) return;
     const observer = new ResizeObserver(() => {
       syncIndicator();
+      scheduleMaskSync();
     });
     observer.observe(navRef.current);
+    if (scrollHostRef.current) observer.observe(scrollHostRef.current);
 
     if (resolvedActiveKey) {
       const activeLink = linkRefs.current.get(resolvedActiveKey);
@@ -149,57 +287,75 @@ export function AnalyticsTabs({ items }: AnalyticsTabsProps) {
     }
 
     return () => observer.disconnect();
-  }, [resolvedActiveKey, syncIndicator]);
+  }, [resolvedActiveKey, scheduleMaskSync, syncIndicator]);
+
+  useEffect(() => {
+    scheduleMaskSync();
+  }, [items, scheduleMaskSync]);
 
   return (
-    <nav
-      ref={navRef}
-      className="no-scrollbar relative flex items-center gap-4 overflow-x-auto"
-    >
-      {items.map((item) => {
-        const isActive = resolvedActiveKey === item.key;
-        const AnalyticsIcon = getAnalyticsSectionIcon(item.key);
-
-        return (
-          <Link
-            key={item.key}
-            ref={(node) => {
-              if (node) {
-                linkRefs.current.set(item.key, node);
-              } else {
-                linkRefs.current.delete(item.key);
-              }
-            }}
-            href={item.href}
-            className={cn(
-              "relative inline-flex items-center gap-1.5 px-2 py-3 text-xs whitespace-nowrap transition-colors",
-              isActive
-                ? "text-primary"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <AnalyticsIcon className="size-3.5" />
-            <span>{item.label}</span>
-          </Link>
-        );
-      })}
-
-      <motion.div
-        aria-hidden
-        className="pointer-events-none absolute bottom-0 left-0 h-0.5 bg-primary"
-        initial={false}
-        animate={{
-          x: indicatorState.x,
-          width: indicatorState.width,
-          opacity: indicatorState.visible ? 1 : 0,
-        }}
-        transition={{
-          type: "spring",
-          stiffness: 520,
-          damping: 40,
-          mass: 0.5,
-        }}
+    <div className="relative">
+      <div
+        ref={leftMaskRef}
+        className="pointer-events-none absolute top-0 bottom-0 left-0 z-10 w-24 bg-gradient-to-r from-background/85 via-background/60 via-45% to-transparent opacity-0 transition-opacity duration-300"
       />
-    </nav>
+      <div
+        ref={rightMaskRef}
+        className="pointer-events-none absolute top-0 right-0 bottom-0 z-10 w-24 bg-gradient-to-l from-background/85 via-background/60 via-45% to-transparent opacity-0 transition-opacity duration-300"
+      />
+
+      <div
+        ref={scrollHostRef}
+        className="overflow-hidden"
+        data-overlayscrollbars-initialize
+      >
+        <nav ref={navRef} className="relative flex w-max items-center gap-4">
+          {items.map((item) => {
+            const isActive = resolvedActiveKey === item.key;
+            const AnalyticsIcon = getAnalyticsSectionIcon(item.key);
+
+            return (
+              <Link
+                key={item.key}
+                ref={(node) => {
+                  if (node) {
+                    linkRefs.current.set(item.key, node);
+                  } else {
+                    linkRefs.current.delete(item.key);
+                  }
+                }}
+                href={item.href}
+                className={cn(
+                  "relative inline-flex items-center gap-1.5 px-2 py-3 text-xs whitespace-nowrap transition-colors",
+                  isActive
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <AnalyticsIcon className="size-3.5" />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+
+          <motion.div
+            aria-hidden
+            className="pointer-events-none absolute bottom-0 left-0 h-0.5 bg-primary"
+            initial={false}
+            animate={{
+              x: indicatorState.x,
+              width: indicatorState.width,
+              opacity: indicatorState.visible ? 1 : 0,
+            }}
+            transition={{
+              type: "spring",
+              stiffness: 520,
+              damping: 40,
+              mass: 0.5,
+            }}
+          />
+        </nav>
+      </div>
+    </div>
   );
 }
