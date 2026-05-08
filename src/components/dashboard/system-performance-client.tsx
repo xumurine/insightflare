@@ -994,15 +994,78 @@ export function SystemPerformanceClient({
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)]">
-        <LatencyPercentileChart
-          locale={locale}
-          messages={messages}
-          timeZone={timeZone}
-          data={data}
-          loading={loading}
-        />
+      <LatencyPercentileChart
+        locale={locale}
+        messages={messages}
+        timeZone={timeZone}
+        data={data}
+        loading={loading}
+      />
 
+      <Card>
+        <CardHeader>
+          <CardTitle>{t.throughputTrend}</CardTitle>
+          <CardDescription>{t.throughputTrendDescription}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {(data?.trend ?? []).length > 0 ? (
+              data?.trend.map((point) => {
+                const visitWidth = `${(point.visits / maxTrendEvents) * 100}%`;
+                const customWidth = `${(point.customEvents / maxTrendEvents) * 100}%`;
+                const hasAnomaly =
+                  point.delayedEvents > 0 || point.futureSkewedEvents > 0;
+                return (
+                  <div
+                    key={point.bucket}
+                    className="grid grid-cols-[74px_minmax(0,1fr)_72px] items-center gap-3 text-xs"
+                  >
+                    <div className="text-muted-foreground tabular-nums">
+                      {bucketFormatter.format(new Date(point.timestampMs))}
+                    </div>
+                    <div className="flex h-7 min-w-0 items-center overflow-hidden border border-border bg-muted/25">
+                      <div
+                        className="h-full bg-primary/70"
+                        style={{ width: visitWidth }}
+                      />
+                      <div
+                        className="h-full bg-foreground/35"
+                        style={{ width: customWidth }}
+                      />
+                      {hasAnomaly ? (
+                        <div className="ml-1 h-3 w-1 bg-destructive" />
+                      ) : null}
+                    </div>
+                    <div className="text-right font-mono tabular-nums">
+                      {formatMetricNumber(locale, point.totalEvents)}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
+                {loading ? messages.common.loading : t.noData}
+              </div>
+            )}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <Badge variant="outline" className="gap-1">
+              <span className="size-2 bg-primary/70" />
+              {t.visits}
+            </Badge>
+            <Badge variant="outline" className="gap-1">
+              <span className="size-2 bg-foreground/35" />
+              {t.customEvents}
+            </Badge>
+            <Badge variant="outline" className="gap-1">
+              <span className="h-3 w-1 bg-destructive" />
+              {t.anomalyBucket}
+            </Badge>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>{t.openVisitHealth}</CardTitle>
@@ -1066,71 +1129,6 @@ export function SystemPerformanceClient({
               </div>
             </div>
             <p className="text-xs text-muted-foreground">{t.estimationNote}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)]">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t.throughputTrend}</CardTitle>
-            <CardDescription>{t.throughputTrendDescription}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {(data?.trend ?? []).length > 0 ? (
-                data?.trend.map((point) => {
-                  const visitWidth = `${(point.visits / maxTrendEvents) * 100}%`;
-                  const customWidth = `${(point.customEvents / maxTrendEvents) * 100}%`;
-                  const hasAnomaly =
-                    point.delayedEvents > 0 || point.futureSkewedEvents > 0;
-                  return (
-                    <div
-                      key={point.bucket}
-                      className="grid grid-cols-[74px_minmax(0,1fr)_72px] items-center gap-3 text-xs"
-                    >
-                      <div className="text-muted-foreground tabular-nums">
-                        {bucketFormatter.format(new Date(point.timestampMs))}
-                      </div>
-                      <div className="flex h-7 min-w-0 items-center overflow-hidden border border-border bg-muted/25">
-                        <div
-                          className="h-full bg-primary/70"
-                          style={{ width: visitWidth }}
-                        />
-                        <div
-                          className="h-full bg-foreground/35"
-                          style={{ width: customWidth }}
-                        />
-                        {hasAnomaly ? (
-                          <div className="ml-1 h-3 w-1 bg-destructive" />
-                        ) : null}
-                      </div>
-                      <div className="text-right font-mono tabular-nums">
-                        {formatMetricNumber(locale, point.totalEvents)}
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-                  {loading ? messages.common.loading : t.noData}
-                </div>
-              )}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <Badge variant="outline" className="gap-1">
-                <span className="size-2 bg-primary/70" />
-                {t.visits}
-              </Badge>
-              <Badge variant="outline" className="gap-1">
-                <span className="size-2 bg-foreground/35" />
-                {t.customEvents}
-              </Badge>
-              <Badge variant="outline" className="gap-1">
-                <span className="h-3 w-1 bg-destructive" />
-                {t.anomalyBucket}
-              </Badge>
-            </div>
           </CardContent>
         </Card>
 
