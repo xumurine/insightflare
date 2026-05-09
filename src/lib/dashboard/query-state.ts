@@ -174,17 +174,26 @@ function rangeBounds(
   if (preset === "24h") {
     return { from: now - DAY_MS, to: now };
   }
+  if (preset === "7d") {
+    return { from: startOfZonedDay(now, timeZone) - 7 * DAY_MS, to: now };
+  }
   if (preset === "30d") {
-    return { from: now - 30 * DAY_MS, to: now };
+    return { from: startOfZonedDay(now, timeZone) - 30 * DAY_MS, to: now };
   }
   if (preset === "90d") {
-    return { from: now - 90 * DAY_MS, to: now };
+    return { from: startOfZonedDay(now, timeZone) - 90 * DAY_MS, to: now };
   }
   if (preset === "6m") {
-    return { from: subtractZonedMonths(now, 6, timeZone), to: now };
+    return {
+      from: startOfZonedMonth(subtractZonedMonths(now, 6, timeZone), timeZone),
+      to: now,
+    };
   }
   if (preset === "12m") {
-    return { from: subtractZonedMonths(now, 12, timeZone), to: now };
+    return {
+      from: startOfZonedMonth(subtractZonedMonths(now, 12, timeZone), timeZone),
+      to: now,
+    };
   }
   if (preset === "all") {
     return { from: 0, to: now };
@@ -196,7 +205,7 @@ function rangeBounds(
     };
   }
   return {
-    from: now - 7 * DAY_MS,
+    from: startOfZonedDay(now, timeZone) - 7 * DAY_MS,
     to: now,
   };
 }
