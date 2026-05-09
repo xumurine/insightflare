@@ -88,13 +88,28 @@ InsightFlare 集采集、存储、查询、可视化于一体，前端是 Next.j
 
 > Windows 用户建议在 WSL / Linux / CI 中执行构建（OpenNext 官方建议）。
 
-### 1. 安装依赖
+### 一键部署到 Cloudflare
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/RavelloH/InsightFlare)
+
+Deploy Button 会在你的 Cloudflare 账户中自动创建并绑定 Worker、D1、KV、Durable Object、Assets 与 Cron。部署时只需要按页面提示填写 `.dev.vars.example` 中的 Secret：
+
+| 名称                       | 用途                    |
+| -------------------------- | ----------------------- |
+| `DAILY_SALT_SECRET`        | 每日访客标识 salt       |
+| `DASHBOARD_SESSION_SECRET` | 仪表板登录 session 签名 |
+
+部署完成后，如果要使用自定义域名，请在 Cloudflare 控制台为 Worker 绑定域名，并将 `INSIGHTFLARE_EDGE_URL` / `EDGE_PUBLIC_BASE_URL` 调整为最终访问地址。
+
+### 手动部署
+
+#### 1. 安装依赖
 
 ```bash
 npm ci
 ```
 
-### 2. 创建 D1 数据库（首次）
+#### 2. 创建 D1 数据库（首次）
 
 ```bash
 npm run cf:d1:create
@@ -102,27 +117,27 @@ npm run cf:d1:create
 
 将输出的 `database_id` 填入 `wrangler.toml` 的 `[[d1_databases]]`。
 
-### 3. 配置 `wrangler.toml`
+#### 3. 配置 `wrangler.toml`
 
 - `INSIGHTFLARE_EDGE_URL` 设为部署后的访问地址
 - 按需开启 `[[r2_buckets]]`（冷归档）
 
-### 4. 设置 Secret
+#### 4. 设置 Secret
 
-至少需要 `DAILY_SALT_SECRET`：
+至少需要 `DAILY_SALT_SECRET` 与 `DASHBOARD_SESSION_SECRET`：
 
 ```bash
 npm run cf:secret:daily-salt
+npm run cf:secret:session-secret
 ```
 
 可选：
 
 ```bash
 npm run cf:secret:bootstrap-admin-password   # 首个管理员密码
-npm run cf:secret:session-secret             # 仪表板会话签名
 ```
 
-### 5. 本地开发 / 构建 / 部署
+#### 5. 本地开发 / 构建 / 部署
 
 ```bash
 npm run dev               # 本地开发仪表板（next dev）
@@ -141,7 +156,7 @@ npm run cf:deploy         # 部署到 Cloudflare
 - **Build command**：`npm run ci:build`
 - **Deploy command**：`npm run ci:deploy`
 
-不要跳过 `prebuild`，否则 D1 迁移与远端配置注入不会执行。
+不要跳过 `build:pre:remote`，否则 D1 迁移与远端配置注入不会执行。
 
 ---
 
@@ -189,7 +204,7 @@ src/
   lib/                    # 业务逻辑（edge / realtime / archive / auth ...）
 workers/cf-worker.js      # Cloudflare Worker 入口（DO 导出 + WS 透传 + cron）
 migrations/               # D1 SQL 迁移
-scripts/                  # 构建与校验脚本（prebuild、i18n 检查等）
+scripts/                  # 构建与校验脚本（build:pre、i18n 检查等）
 ```
 
 ---
