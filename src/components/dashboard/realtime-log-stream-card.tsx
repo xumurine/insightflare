@@ -22,7 +22,10 @@ import {
   type GeoPointsMapCountryCount,
   type GeoPointsMapPoint,
 } from "@/components/dashboard/geo-points-map";
-import { resolveDeviceTypeMeta } from "@/components/dashboard/journey-display";
+import {
+  formatPathWithHash,
+  resolveDeviceTypeMeta,
+} from "@/components/dashboard/journey-display";
 import { useGeoStateTranslationBundle } from "@/components/dashboard/lazy-geo-location-label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clickable } from "@/components/ui/clickable";
@@ -109,6 +112,7 @@ type RealtimeVisitorVisitHistory = {
   startedAt: number;
   lastActivityAt: number;
   pathname: string;
+  hash: string;
   title: string;
   hostname: string;
   events: RealtimeEvent[];
@@ -158,11 +162,10 @@ function formatLogTitle(
 ): string {
   const separator = messages.realtime.logTitleSeparator;
   const prefix = eventTitlePrefix(messages, kind);
-  const pathname = event.pathname.trim() || "/";
   const content =
     kind === "custom"
       ? event.eventType.trim() || messages.common.unknown
-      : decodeUrlDisplayValue(pathname);
+      : formatPathWithHash(event.pathname, event.hash);
   return `${prefix}${separator}${content}`;
 }
 
@@ -642,6 +645,7 @@ function buildRealtimeVisitorVisitHistory(
         lastActivityAt: visit?.lastActivityAt ?? mostRecentEvent.eventAt,
         pathname:
           visit?.pathname.trim() || mostRecentEvent.pathname.trim() || "/",
+        hash: visit?.hash || mostRecentEvent.hash || "",
         title:
           visit?.title.trim() ||
           mostRecentEvent.title.trim() ||
@@ -946,7 +950,7 @@ function RealtimeVisitorHistorySection({
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                       <span className="truncate">
                         {messages.common.path}:{" "}
-                        {decodeUrlDisplayValue(visit.pathname || "/")}
+                        {formatPathWithHash(visit.pathname, visit.hash)}
                       </span>
                       <span className="truncate">
                         {messages.common.hostname}:{" "}
@@ -1199,7 +1203,7 @@ function RealtimeLogEventDetailsDialog({
       label: messages.common.path,
       value: (
         <RealtimeEventDetailValue
-          value={decodeUrlDisplayValue(event.pathname.trim() || "/")}
+          value={formatPathWithHash(event.pathname, event.hash)}
           mono
         />
       ),

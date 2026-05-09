@@ -328,6 +328,7 @@ function resolveSnapshotEvents(snapshot: RealtimeSnapshot): RealtimeEvent[] {
       visitId: visit.visitId,
       sessionId: visit.sessionId,
       pathname: visit.pathname,
+      hash: visit.hash,
       title: visit.title,
       hostname: visit.hostname,
       referrerUrl: visit.referrerUrl,
@@ -357,6 +358,7 @@ function resolveSnapshotEvents(snapshot: RealtimeSnapshot): RealtimeEvent[] {
     visitId: "",
     sessionId: "",
     pathname: "/",
+    hash: "",
     title: "",
     hostname: "",
     referrerUrl: "",
@@ -455,6 +457,7 @@ function upsertRecentVisit(
       startedAt: event.eventAt,
       lastActivityAt: event.eventAt,
       pathname: event.pathname,
+      hash: event.hash,
       title: event.title,
       hostname: event.hostname,
       referrerUrl: event.referrerUrl,
@@ -482,6 +485,7 @@ function upsertRecentVisit(
   previous.visitorId ||= event.visitorId;
   previous.sessionId ||= event.sessionId;
   previous.pathname ||= event.pathname;
+  previous.hash ||= event.hash;
   previous.title ||= event.title;
   previous.hostname ||= event.hostname;
   previous.referrerUrl ||= event.referrerUrl;
@@ -563,6 +567,7 @@ function normalizeRealtimeEvent(payload: unknown): RealtimeEvent | null {
     visitId: String(record.visitId ?? record.visit_id ?? ""),
     sessionId: String(record.sessionId ?? record.session_id ?? ""),
     pathname: String(record.pathname ?? "/"),
+    hash: String(record.hash ?? record.hash_fragment ?? ""),
     title: String(record.title ?? ""),
     hostname: String(record.hostname ?? ""),
     referrerUrl: String(record.referrerUrl ?? record.referrer_url ?? ""),
@@ -687,6 +692,7 @@ function normalizeRealtimeVisit(payload: unknown): RealtimeVisit | null {
       ? lastActivityAt
       : Date.now(),
     pathname: String(record.pathname ?? "/"),
+    hash: String(record.hash ?? record.hash_fragment ?? ""),
     title: String(record.title ?? ""),
     hostname: String(record.hostname ?? ""),
     referrerUrl: String(record.referrerUrl ?? record.referrer_url ?? ""),

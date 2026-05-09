@@ -587,6 +587,7 @@ export interface JourneyEvent {
   sessionId: string;
   visitorId: string;
   pathname: string;
+  hash: string;
   title: string;
   hostname: string;
   referrerHost: string;

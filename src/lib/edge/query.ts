@@ -381,6 +381,7 @@ interface JourneyEventRow {
   sessionId: string;
   visitorId: string;
   pathname: string;
+  hash: string;
   title: string;
   hostname: string;
   referrerHost: string;
@@ -1487,7 +1488,9 @@ event_source AS (
   SELECT
     ce.event_id, ce.site_id, ce.visit_id, fv.visitor_id, fv.session_id,
     ce.occurred_at, ce.event_name, ce.event_data_json,
-    fv.pathname, fv.query_string, fv.hash_fragment, fv.hostname, fv.title,
+    fv.pathname, fv.query_string,
+    COALESCE(NULLIF(ce.hash_fragment, ''), fv.hash_fragment) AS hash_fragment,
+    fv.hostname, fv.title,
     fv.referrer_url, fv.referrer_host, fv.country, fv.region, fv.city,
     fv.browser, fv.browser_version, fv.os, fv.os_version, fv.device_type,
     fv.language, fv.timezone, fv.screen_width, fv.screen_height,
@@ -1501,7 +1504,9 @@ event_source AS (
   SELECT
     ce.event_id, ce.site_id, ce.visit_id, fv.visitor_id, fv.session_id,
     ce.occurred_at, ce.event_name, ce.event_data_json,
-    fv.pathname, fv.query_string, fv.hash_fragment, fv.hostname, fv.title,
+    fv.pathname, fv.query_string,
+    COALESCE(NULLIF(ce.hash_fragment, ''), fv.hash_fragment) AS hash_fragment,
+    fv.hostname, fv.title,
     fv.referrer_url, fv.referrer_host, fv.country, fv.region, fv.city,
     fv.browser, fv.browser_version, fv.os, fv.os_version, fv.device_type,
     fv.language, fv.timezone, fv.screen_width, fv.screen_height,
@@ -7214,6 +7219,7 @@ function mapJourneyEventRow(row: Record<string, unknown>): JourneyEventRow {
     sessionId: String(row.sessionId ?? ""),
     visitorId: String(row.visitorId ?? ""),
     pathname: String(row.pathname ?? ""),
+    hash: String(row.hash ?? ""),
     title: String(row.title ?? ""),
     hostname: String(row.hostname ?? ""),
     referrerHost: String(row.referrerHost ?? ""),
@@ -7243,6 +7249,7 @@ function sessionStartEvent(session: SessionRow): JourneyEventRow {
     sessionId: session.sessionId,
     visitorId: session.visitorId,
     pathname: session.entryPath,
+    hash: "",
     title: "",
     hostname: "",
     referrerHost: session.referrerHost,
@@ -7338,6 +7345,7 @@ page_events AS (
     session_id AS sessionId,
     visitor_id AS visitorId,
     pathname,
+    hash_fragment AS hash,
     title,
     hostname,
     referrer_host AS referrerHost,
@@ -7370,6 +7378,7 @@ custom_event_rows AS (
     fv.session_id AS sessionId,
     fv.visitor_id AS visitorId,
     COALESCE(NULLIF(es.pathname, ''), fv.pathname) AS pathname,
+    COALESCE(NULLIF(es.hash_fragment, ''), fv.hash_fragment) AS hash,
     COALESCE(NULLIF(es.title, ''), fv.title) AS title,
     COALESCE(NULLIF(es.hostname, ''), fv.hostname) AS hostname,
     COALESCE(NULLIF(es.referrer_host, ''), fv.referrer_host) AS referrerHost,
@@ -7905,6 +7914,7 @@ page_events AS (
     session_id AS sessionId,
     visitor_id AS visitorId,
     pathname,
+    hash_fragment AS hash,
     title,
     hostname,
     referrer_host AS referrerHost,
@@ -7937,6 +7947,7 @@ custom_event_rows AS (
     session_id AS sessionId,
     visitor_id AS visitorId,
     pathname,
+    hash_fragment AS hash,
     title,
     hostname,
     referrer_host AS referrerHost,

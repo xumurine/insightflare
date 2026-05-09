@@ -33,6 +33,7 @@ import {
   DeviceMeta,
   formatDuration,
   formatPath,
+  formatPathWithHash,
   formatScreen,
   formatShortDateTime,
   OsMeta,
@@ -445,7 +446,7 @@ function eventKindLabel(labels: Labels, event: JourneyEvent): string {
 function eventTitle(labels: Labels, event: JourneyEvent): string {
   if (event.kind === "session_start") return labels.sessionStarted;
   if (event.kind === "pageview" || event.kind === "leave")
-    return formatPath(event.pathname);
+    return formatPathWithHash(event.pathname, event.hash);
   return event.eventType.trim() || labels.customEvent;
 }
 

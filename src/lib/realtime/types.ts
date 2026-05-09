@@ -11,6 +11,7 @@ export interface RealtimeEvent {
   visitId: string;
   sessionId: string;
   pathname: string;
+  hash: string;
   title: string;
   hostname: string;
   referrerUrl: string;
@@ -39,6 +40,7 @@ export interface RealtimeVisit {
   startedAt: number;
   lastActivityAt: number;
   pathname: string;
+  hash: string;
   title: string;
   hostname: string;
   referrerUrl: string;

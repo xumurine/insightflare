@@ -45,6 +45,7 @@ interface RealtimeSnapshotRecord {
   visitId: string;
   sessionId: string;
   pathname: string;
+  hash: string;
   title: string;
   hostname: string;
   referrerUrl: string;
@@ -424,6 +425,7 @@ function toRealtimePayload(
     visitId: record.visitId,
     sessionId: record.sessionId,
     pathname: record.pathname,
+    hash: record.hash,
     title: record.title,
     hostname: record.hostname,
     referrerUrl: record.referrerUrl,
@@ -454,6 +456,7 @@ function toRealtimeVisitPayload(
     | "sessionId"
     | "startedAt"
     | "pathname"
+    | "hashFragment"
     | "title"
     | "hostname"
     | "referrerUrl"
@@ -485,6 +488,7 @@ function toRealtimeVisitPayload(
     startedAt: visit.startedAt,
     lastActivityAt: visit.lastActivityAt,
     pathname: visit.pathname,
+    hash: visit.hashFragment,
     title: visit.title,
     hostname: visit.hostname,
     referrerUrl: visit.referrerUrl,
@@ -1222,6 +1226,7 @@ export class IngestDurableObject extends DurableObject {
       visitId: record.visitId,
       sessionId: record.sessionId,
       pathname: record.pathname,
+      hash: record.hashFragment,
       title: record.title,
       hostname: record.hostname,
       referrerUrl: record.referrerUrl,
@@ -1253,6 +1258,7 @@ export class IngestDurableObject extends DurableObject {
       siteId: string;
       sessionId: string;
       pathname: string;
+      hash: string;
       title: string;
       hostname: string;
       referrerUrl: string;
@@ -1275,7 +1281,7 @@ export class IngestDurableObject extends DurableObject {
     }>(
       `
         SELECT visit_id AS visitId, started_at AS startedAt, visitor_id AS visitorId, site_id AS siteId,
-               session_id AS sessionId, pathname, title, hostname,
+               session_id AS sessionId, pathname, hash_fragment AS hash, title, hostname,
                referrer_url AS referrerUrl, referrer_host AS referrerHost,
                country, region, region_code AS regionCode, city, continent, timezone,
                as_organization AS organization, browser, os, os_version AS osVersion,
@@ -1345,6 +1351,7 @@ export class IngestDurableObject extends DurableObject {
         visitId: visit.visitId,
         sessionId: visit.sessionId,
         pathname: visit.pathname,
+        hash: visit.hash,
         title: visit.title,
         hostname: visit.hostname,
         referrerUrl: visit.referrerUrl,
@@ -1430,6 +1437,7 @@ export class IngestDurableObject extends DurableObject {
       visitId: record.visitId,
       sessionId: record.sessionId,
       pathname: record.pathname,
+      hash: record.hashFragment,
       title: record.title,
       hostname: record.hostname,
       referrerUrl: record.referrerUrl,
@@ -1870,6 +1878,7 @@ export class IngestDurableObject extends DurableObject {
           visitId,
           sessionId,
           pathname,
+          hash,
           title,
           hostname,
           referrerUrl,
@@ -1898,6 +1907,7 @@ export class IngestDurableObject extends DurableObject {
             visit_id AS visitId,
             session_id AS sessionId,
             pathname,
+            hash_fragment AS hash,
             title,
             hostname,
             referrer_url AS referrerUrl,
@@ -1932,6 +1942,7 @@ export class IngestDurableObject extends DurableObject {
             COALESCE(v.visit_id, '') AS visitId,
             COALESCE(v.session_id, '') AS sessionId,
             COALESCE(v.pathname, '') AS pathname,
+            COALESCE(v.hash_fragment, '') AS hash,
             COALESCE(v.title, '') AS title,
             COALESCE(v.hostname, '') AS hostname,
             COALESCE(v.referrer_url, '') AS referrerUrl,
@@ -1969,6 +1980,7 @@ export class IngestDurableObject extends DurableObject {
             visit_id AS visitId,
             session_id AS sessionId,
             pathname,
+            hash_fragment AS hash,
             title,
             hostname,
             referrer_url AS referrerUrl,
@@ -2426,6 +2438,7 @@ export class IngestDurableObject extends DurableObject {
       startedAt: number;
       lastActivityAt: number;
       pathname: string;
+      hash: string;
       title: string;
       hostname: string;
       referrerUrl: string;
@@ -2455,6 +2468,7 @@ export class IngestDurableObject extends DurableObject {
           started_at AS startedAt,
           last_activity_at AS lastActivityAt,
           pathname,
+          hash_fragment AS hash,
           title,
           hostname,
           referrer_url AS referrerUrl,
@@ -2517,6 +2531,7 @@ export class IngestDurableObject extends DurableObject {
           visitId: visit.visitId,
           sessionId: visit.sessionId,
           pathname: visit.pathname,
+          hash: visit.hash,
           title: visit.title,
           hostname: visit.hostname,
           referrerUrl: visit.referrerUrl,

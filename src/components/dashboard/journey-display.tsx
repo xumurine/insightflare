@@ -623,6 +623,19 @@ export function formatPath(pathname: string): string {
   return decodeUrlDisplayValue(pathname.trim() || "/");
 }
 
+export function formatPathWithHash(
+  pathname: string,
+  hash: string | null | undefined,
+): string {
+  const path = formatPath(pathname);
+  const trimmedHash = (hash ?? "").trim();
+  if (!trimmedHash) return path;
+  const normalized = trimmedHash.startsWith("#")
+    ? trimmedHash
+    : `#${trimmedHash}`;
+  return `${path}${decodeUrlDisplayValue(normalized)}`;
+}
+
 export function formatScreen(
   screenWidth: number | null | undefined,
   screenHeight: number | null | undefined,

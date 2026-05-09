@@ -39,7 +39,7 @@ import {
   BrowserMeta,
   DeviceMeta,
   formatDuration,
-  formatPath,
+  formatPathWithHash,
   formatRelativeTime,
   formatScreen,
   formatShortDateTime,
@@ -734,9 +734,12 @@ function eventKindLabel(labels: Labels, event: JourneyEvent): string {
 function eventTitle(labels: Labels, event: JourneyEvent): string {
   if (event.kind === "session_start") return labels.sessionStarted;
   if (event.kind === "leave") {
-    return event.pathname.trim() ? formatPath(event.pathname) : labels.exitPage;
+    return event.pathname.trim()
+      ? formatPathWithHash(event.pathname, event.hash)
+      : labels.exitPage;
   }
-  if (event.kind === "pageview") return formatPath(event.pathname);
+  if (event.kind === "pageview")
+    return formatPathWithHash(event.pathname, event.hash);
   return event.eventType.trim() || labels.customEvent;
 }
 
@@ -1028,6 +1031,7 @@ function visitorSessionLeaveEvent(
     sessionId: session.sessionId,
     visitorId: session.visitorId,
     pathname,
+    hash: latestPageEvent?.hash ?? base?.hash ?? "",
     title: latestPageEvent?.title ?? base?.title ?? "",
     hostname: latestPageEvent?.hostname ?? base?.hostname ?? "",
     referrerHost:
