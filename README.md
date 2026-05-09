@@ -90,7 +90,7 @@ InsightFlare 集采集、存储、查询、可视化于一体，前端是 Next.j
 
 ### 一键部署到 Cloudflare
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/RavelloH/InsightFlare)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2FRavelloH%2FInsightFlare)
 
 Deploy Button 会在你的 Cloudflare 账户中自动创建并绑定 Worker、D1、KV、Durable Object、Assets 与 Cron。部署时只需要按页面提示填写 `.dev.vars.example` 中的 Secret：
 

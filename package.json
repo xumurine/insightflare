@@ -105,6 +105,25 @@
   "optionalDependencies": {
     "@ast-grep/napi-linux-x64-gnu": "0.41.0"
   },
+  "cloudflare": {
+    "bindings": {
+      "DAILY_SALT_SECRET": {
+        "description": "Generate a random string for privacy-preserving visitor IDs, for example `openssl rand -hex 32`."
+      },
+      "DASHBOARD_SESSION_SECRET": {
+        "description": "Generate a random string for signing dashboard login sessions, for example `openssl rand -hex 32`."
+      },
+      "DB": {
+        "description": "D1 database used for analytics data, account data, and migrations."
+      },
+      "SITE_SETTINGS_KV": {
+        "description": "KV namespace used for site tracking configuration read by `/script.js`."
+      },
+      "INGEST_DO": {
+        "description": "Durable Object namespace used for ingest buffering, realtime state, and batched D1 writes."
+      }
+    }
+  },
   "lint-staged": {
     "*.{js,jsx,ts,tsx,json,css,md}": "prettier --write"
   }
