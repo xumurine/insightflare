@@ -8,6 +8,7 @@ import type { Env } from "./types";
 const SCRIPT_RESPONSE_CACHE_NAME = "insightflare-script-cache";
 const SCRIPT_RESPONSE_CACHE_TTL_SECONDS = 60 * 60;
 const SCRIPT_CACHE_VERSION = "client-ua-hints-v1";
+const MAX_SCRIPT_RESPONSE_CACHE_TTL_SECONDS = 24 * 60 * 60;
 
 function isEUCountry(request: Request): boolean {
   const cf = (request as Request & { cf?: { isEUCountry?: boolean } }).cf;
@@ -92,6 +93,17 @@ function scriptCacheKeyRequest(
   );
 }
 
+function resolveScriptCacheTtlSeconds(env: Env): number {
+  const raw = Number(env.SCRIPT_CACHE_TTL_SECONDS || "");
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return SCRIPT_RESPONSE_CACHE_TTL_SECONDS;
+  }
+  return Math.max(
+    1,
+    Math.min(MAX_SCRIPT_RESPONSE_CACHE_TTL_SECONDS, Math.floor(raw)),
+  );
+}
+
 export async function handleTrackerScriptRequest(
   request: Request,
   env: Env,
@@ -127,7 +139,7 @@ export async function handleTrackerScriptRequest(
     if (!Number.isFinite(raw) || raw <= 0) return 30;
     return Math.max(1, Math.min(24 * 60, Math.floor(raw)));
   })();
-  const ttlSeconds = SCRIPT_RESPONSE_CACHE_TTL_SECONDS;
+  const ttlSeconds = resolveScriptCacheTtlSeconds(env);
   const performanceSampleRate = Math.max(
     0,
     Math.min(100, Number(settings.performanceSampleRate || 0)),
