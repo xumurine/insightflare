@@ -176,7 +176,12 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
   }
 
   function send(payload, useBeacon) {
-    const body = JSON.stringify(withUaClientHints(payload));
+    let body = "";
+    try {
+      body = JSON.stringify(withUaClientHints(payload));
+    } catch {
+      return;
+    }
     if (useBeacon && typeof navigator.sendBeacon === "function") {
       navigator.sendBeacon(collectUrl, new Blob([body], { type: "application/json" }));
       return;

@@ -26,6 +26,7 @@ const SUPPORTED_KINDS = new Set<TrackerPayloadKind>([
   "leave",
   "custom_event",
 ]);
+const MAX_EVENT_DATA_JSON_LENGTH = 4000;
 
 function pickSiteIdFromPayload(
   payload: TrackerClientPayload,
@@ -58,6 +59,18 @@ function isSupportedKind(input: unknown): input is TrackerPayloadKind {
     typeof input === "string" &&
     SUPPORTED_KINDS.has(input as TrackerPayloadKind)
   );
+}
+
+function validateEventData(input: unknown): string | null {
+  try {
+    const serialized = JSON.stringify(input ?? null);
+    if (serialized.length > MAX_EVENT_DATA_JSON_LENGTH) {
+      return "eventData is too large";
+    }
+    return null;
+  } catch {
+    return "eventData must be JSON serializable";
+  }
 }
 
 function normalizeClientHostname(input: unknown): string {
@@ -326,6 +339,16 @@ function noContent(origin: string | null): Response {
   return new Response(null, { status: 204, headers: toCorsHeaders(origin) });
 }
 
+function badRequest(origin: string | null, message: string): Response {
+  return new Response(JSON.stringify({ ok: false, error: message }), {
+    status: 400,
+    headers: {
+      ...toCorsHeaders(origin),
+      "content-type": "application/json; charset=utf-8",
+    },
+  });
+}
+
 export async function OPTIONS(request: Request): Promise<Response> {
   return noContent(parseOrigin(request));
 }
@@ -349,7 +372,14 @@ export async function POST(request: Request): Promise<Response> {
     try {
       payload = sanitizeInputPayload(JSON.parse(body));
     } catch {
-      payload = null;
+      return badRequest(origin, "Invalid JSON payload");
+    }
+  }
+
+  if (payload?.kind === "custom_event") {
+    const eventDataError = validateEventData(payload.eventData);
+    if (eventDataError) {
+      return badRequest(origin, eventDataError);
     }
   }
 

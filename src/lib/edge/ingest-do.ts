@@ -37,6 +37,7 @@ const MAX_CLIENT_EVENT_LAG_MS = 30 * 1000;
 const DIAGNOSTIC_STALE_MS = 30 * 60 * 1000;
 const DIAGNOSTIC_HARD_AGE_MS = 36 * 60 * 60 * 1000;
 const DIAGNOSTIC_STUCK_FLUSH_ATTEMPTS = 5;
+const MAX_EVENT_DATA_JSON_LENGTH = 4000;
 
 interface RealtimeSnapshotRecord {
   id: string;
@@ -385,9 +386,11 @@ function normalizePerformancePayload(
 
 function toEventDataJson(input: unknown): string {
   try {
-    return JSON.stringify(input ?? null).slice(0, 4000);
+    const json = JSON.stringify(input ?? null);
+    if (json.length > MAX_EVENT_DATA_JSON_LENGTH) return "";
+    return json;
   } catch {
-    return "null";
+    return "";
   }
 }
 
@@ -1112,6 +1115,8 @@ export class IngestDurableObject extends DurableObject {
       if (!visitId) return null;
       const eventName = clampString(coerceString(client.eventName), 120);
       if (!eventName) return null;
+      const eventDataJson = toEventDataJson(client.eventData);
+      if (!eventDataJson) return null;
       const visit = await this.getVisitContext(siteId, visitId);
       if (!visit) return null;
       return {
@@ -1123,7 +1128,7 @@ export class IngestDurableObject extends DurableObject {
         receivedAt,
         eventAt,
         eventName,
-        eventDataJson: toEventDataJson(client.eventData),
+        eventDataJson,
         siteId: visit.siteId,
         visitId: visit.visitId,
         visitorId: visit.visitorId,
