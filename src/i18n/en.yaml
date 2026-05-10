@@ -608,6 +608,9 @@ teamManagement:
     roleChangeFailed: Failed to update member role.
     invalidTeamName: Team name must be at least 2 characters.
     invalidMemberIdentifier: Please provide a valid username or email.
+    ownerTransferred: Ownership transferred.
+    ownerTransferFailed: Failed to transfer ownership.
+    invalidTransferTarget: Please choose a new owner.
   sites:
     title: Site Dashboard
     subtitle: Aggregated traffic view across all sites in this team.
@@ -642,6 +645,14 @@ teamManagement:
     delete: Delete team
     deleting: Deleting...
     deleteConfirm: Delete this team and all its data? This action cannot be undone.
+    transferTitle: Transfer Ownership
+    transferSubtitle: Transfer team ownership to another member. The current owner will be demoted to admin.
+    transferTargetLabel: New Owner
+    transferTargetPlaceholder: Choose a team member
+    transfer: Transfer ownership
+    transferring: Transferring...
+    transferConfirm: This action cannot be undone. You will lose ownership but keep admin access. Continue?
+    noTransferableMembers: No other members are available to transfer to. Add a member first.
   members:
     title: Members
     subtitle: Add members or remove existing members.

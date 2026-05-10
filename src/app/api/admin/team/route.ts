@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   createAdminTeam,
   removeAdminTeam,
+  transferAdminTeamOwner,
   updateAdminTeam,
 } from "@/lib/edge-client";
 import { bodyStr, parseRequestBody } from "@/lib/form-helpers";
@@ -35,6 +36,27 @@ export async function POST(request: Request): Promise<NextResponse> {
   const teamId = bodyStr(body, "teamId");
   const name = bodyStr(body, "name");
   const slug = bodyStr(body, "slug");
+
+  if (intent === "transfer_owner") {
+    const newOwnerUserId = bodyStr(body, "newOwnerUserId");
+    if (teamId.length === 0 || newOwnerUserId.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "missing_transfer_input" },
+        { status: 400 },
+      );
+    }
+
+    try {
+      const result = await transferAdminTeamOwner({ teamId, newOwnerUserId });
+      return NextResponse.json({ ok: true, data: result });
+    } catch (error) {
+      const msg = normalizeErrorMessage(error);
+      return NextResponse.json(
+        { ok: false, error: "transfer_team_failed", message: msg },
+        { status: 500 },
+      );
+    }
+  }
 
   if (intent === "remove" || intent === "delete") {
     if (teamId.length === 0) {

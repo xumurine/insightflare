@@ -609,6 +609,9 @@ export interface AppMessages {
       roleChangeFailed: string;
       invalidTeamName: string;
       invalidMemberIdentifier: string;
+      ownerTransferred: string;
+      ownerTransferFailed: string;
+      invalidTransferTarget: string;
     };
     sites: {
       title: string;
@@ -649,6 +652,14 @@ export interface AppMessages {
       delete: string;
       deleting: string;
       deleteConfirm: string;
+      transferTitle: string;
+      transferSubtitle: string;
+      transferTargetLabel: string;
+      transferTargetPlaceholder: string;
+      transfer: string;
+      transferring: string;
+      transferConfirm: string;
+      noTransferableMembers: string;
     };
     members: {
       title: string;

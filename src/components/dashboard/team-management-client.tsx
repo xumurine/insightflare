@@ -484,6 +484,9 @@ export function TeamManagementClient({
     Record<string, SiteMetricChangeRates>
   >({});
   const [teamTrend, setTeamTrend] = useState<TeamDashboardTrendPoint[]>([]);
+  const [transferTargetId, setTransferTargetId] = useState<string>("");
+  const [transferring, setTransferring] = useState(false);
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [chartWindow, setChartWindow] = useState<
     Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">
   >(() => ({
@@ -498,6 +501,11 @@ export function TeamManagementClient({
     systemRole,
   );
   const canManageSites = canManage;
+  const isRealOwner = activeTeam.ownerUserId === currentUserId;
+  const transferableMembers = useMemo(
+    () => members.filter((m) => m.userId !== activeTeam.ownerUserId),
+    [members, activeTeam.ownerUserId],
+  );
 
   useEffect(() => {
     if (activeTab !== "settings" && activeTab !== "members") return;
@@ -539,6 +547,8 @@ export function TeamManagementClient({
     setSiteOverviewById({});
     setSiteChangeRatesById({});
     setTeamTrend([]);
+    setTransferTargetId("");
+    setTransferDialogOpen(false);
     setChartWindow({
       from: window.from,
       to: window.to,
@@ -764,6 +774,34 @@ export function TeamManagementClient({
       toast.error(message || copy.toasts.teamDeleteFailed);
     } finally {
       setDeletingTeam(false);
+    }
+  }
+
+  async function handleTransferOwner() {
+    if (!transferTargetId) {
+      toast.error(copy.toasts.invalidTransferTarget);
+      return;
+    }
+    setTransferring(true);
+    try {
+      await postJson<TeamData>("/api/admin/team", {
+        intent: "transfer_owner",
+        teamId: activeTeam.id,
+        newOwnerUserId: transferTargetId,
+      });
+      toast.success(copy.toasts.ownerTransferred);
+      setTransferDialogOpen(false);
+      setTransferTargetId("");
+      await refreshMembers();
+      router.refresh();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : copy.toasts.ownerTransferFailed;
+      toast.error(message || copy.toasts.ownerTransferFailed);
+    } finally {
+      setTransferring(false);
     }
   }
 
@@ -1656,6 +1694,128 @@ export function TeamManagementClient({
                   </form>
                 </CardContent>
               </Card>
+
+              {isRealOwner ? (
+                <AlertDialog
+                  open={transferDialogOpen}
+                  onOpenChange={(open) => {
+                    if (transferring) return;
+                    setTransferDialogOpen(open);
+                  }}
+                >
+                  <Card className="h-full border-amber-500/40">
+                    <CardHeader>
+                      <CardTitle>{copy.settings.transferTitle}</CardTitle>
+                      <CardDescription>
+                        {copy.settings.transferSubtitle}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex h-full flex-col gap-3">
+                      {transferableMembers.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          {copy.settings.noTransferableMembers}
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          <Label htmlFor="transfer-target">
+                            {copy.settings.transferTargetLabel}
+                          </Label>
+                          <Select
+                            value={transferTargetId}
+                            onValueChange={setTransferTargetId}
+                            disabled={transferring}
+                          >
+                            <SelectTrigger id="transfer-target">
+                              <SelectValue
+                                placeholder={
+                                  copy.settings.transferTargetPlaceholder
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {transferableMembers.map((member) => (
+                                <SelectItem
+                                  key={member.userId}
+                                  value={member.userId}
+                                >
+                                  {member.name || member.username} ·{" "}
+                                  {member.email}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      <div className="mt-auto flex pt-2">
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            type="button"
+                            disabled={
+                              transferring ||
+                              !transferTargetId ||
+                              transferableMembers.length === 0
+                            }
+                          >
+                            <AutoTransition className="inline-flex items-center gap-2">
+                              {transferring ? (
+                                <span
+                                  key="transferring"
+                                  className="inline-flex items-center gap-2"
+                                >
+                                  <Spinner className="size-4" />
+                                  {copy.settings.transferring}
+                                </span>
+                              ) : (
+                                <span key="transfer">
+                                  {copy.settings.transfer}
+                                </span>
+                              )}
+                            </AutoTransition>
+                          </Button>
+                        </AlertDialogTrigger>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <AlertDialogContent size="sm">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        {copy.settings.transferTitle}
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {copy.settings.transferConfirm}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={transferring}>
+                        {messages.teamSelect.cancel}
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        disabled={transferring}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          void handleTransferOwner();
+                        }}
+                      >
+                        <AutoTransition className="inline-flex items-center gap-2">
+                          {transferring ? (
+                            <span
+                              key="transferring-dialog"
+                              className="inline-flex items-center gap-2"
+                            >
+                              <Spinner className="size-4" />
+                              {copy.settings.transferring}
+                            </span>
+                          ) : (
+                            <span key="confirm-transfer-dialog">
+                              {copy.settings.transfer}
+                            </span>
+                          )}
+                        </AutoTransition>
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              ) : null}
 
               {canAdminister ? (
                 <AlertDialog

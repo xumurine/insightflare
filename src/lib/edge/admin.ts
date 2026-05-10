@@ -757,6 +757,51 @@ async function hTeams(req: Request, env: Env): Promise<Response> {
       }>();
     if (!existing) return nf("Team not found");
 
+    if (intent === "transfer_owner") {
+      if (existing.ownerUserId !== a.user.id) {
+        return forb("Only the team owner can transfer ownership");
+      }
+      const newOwnerUserId = clampString(
+        String(body.newOwnerUserId || ""),
+        120,
+      );
+      if (!newOwnerUserId) return bad("newOwnerUserId is required");
+      if (newOwnerUserId === existing.ownerUserId) {
+        return bad("Already the team owner");
+      }
+      const targetMembership = await env.DB.prepare(
+        "SELECT role FROM team_members WHERE team_id=? AND user_id=? LIMIT 1",
+      )
+        .bind(teamId, newOwnerUserId)
+        .first<{ role: string }>();
+      if (!targetMembership) return bad("Target user is not a team member");
+
+      await env.DB.batch([
+        env.DB.prepare(
+          "UPDATE teams SET owner_user_id=?,updated_at=unixepoch() WHERE id=?",
+        ).bind(newOwnerUserId, teamId),
+        env.DB.prepare(
+          "INSERT INTO team_members (team_id,user_id,role,joined_at) VALUES (?,?,'owner',unixepoch()) ON CONFLICT(team_id,user_id) DO UPDATE SET role='owner'",
+        ).bind(teamId, newOwnerUserId),
+        env.DB.prepare(
+          "UPDATE team_members SET role='admin' WHERE team_id=? AND user_id=?",
+        ).bind(teamId, existing.ownerUserId),
+      ]);
+
+      return j({
+        ok: true,
+        data: {
+          id: teamId,
+          name: existing.name,
+          slug: existing.slug,
+          ownerUserId: newOwnerUserId,
+          createdAt: existing.createdAt,
+          updatedAt: Math.floor(Date.now() / 1000),
+          transferred: true,
+        },
+      });
+    }
+
     if (intent === "remove" || intent === "delete") {
       if (!(await canAdministerTeam(env, a, teamId)))
         return forb("Only team owner can delete team");

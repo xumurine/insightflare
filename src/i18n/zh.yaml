@@ -608,6 +608,9 @@ teamManagement:
     roleChangeFailed: 更新成员角色失败。
     invalidTeamName: 团队名称至少 2 个字符。
     invalidMemberIdentifier: 请输入有效的用户名或邮箱。
+    ownerTransferred: 所有权已转移。
+    ownerTransferFailed: 转移所有权失败。
+    invalidTransferTarget: 请选择新的所有者。
   sites:
     title: 仪表盘
     subtitle: 聚合查看该团队下所有站点的访问表现。
@@ -642,6 +645,14 @@ teamManagement:
     delete: 删除团队
     deleting: 删除中...
     deleteConfirm: 确认删除该团队及其所有数据吗？此操作不可撤销。
+    transferTitle: 转移所有权
+    transferSubtitle: 将团队所有权转移给另一位成员。当前所有者会自动降为管理员。
+    transferTargetLabel: 新的所有者
+    transferTargetPlaceholder: 选择团队成员
+    transfer: 转移所有权
+    transferring: 转移中...
+    transferConfirm: 此操作不可撤销，你将失去对该团队的所有权（仍保留管理员权限）。确认继续吗？
+    noTransferableMembers: 当前团队没有其他可转移的成员，请先添加成员。
   members:
     title: 成员管理
     subtitle: 添加成员或移除成员。

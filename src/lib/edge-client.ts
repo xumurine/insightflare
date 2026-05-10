@@ -992,6 +992,24 @@ export async function removeAdminTeam(input: {
   return res.data;
 }
 
+export async function transferAdminTeamOwner(input: {
+  teamId: string;
+  newOwnerUserId: string;
+}): Promise<TeamData & { transferred: boolean }> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: TeamData & { transferred: boolean };
+  }>({
+    method: "PATCH",
+    path: "/api/private/admin/teams",
+    body: {
+      ...input,
+      intent: "transfer_owner",
+    },
+  });
+  return res.data;
+}
+
 export async function fetchAdminSites(teamId: string): Promise<SiteData[]> {
   const res = await fetchEdgeJson<{ ok: boolean; data: SiteData[] }>({
     path: "/api/private/admin/sites",
