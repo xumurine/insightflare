@@ -23,6 +23,22 @@ async function moveVisitsToArchive(
 
   if (rows.results.length === 0) return 0;
 
+  await env.DB.prepare(
+    `
+      DELETE FROM custom_events
+      WHERE visit_id IN (
+        SELECT visit_id
+        FROM visits
+        WHERE started_at < ?
+          AND status != 'open'
+        ORDER BY started_at ASC
+        LIMIT ?
+      )
+    `,
+  )
+    .bind(cutoffMs, ARCHIVE_BATCH_SIZE)
+    .run();
+
   const statements = rows.results.flatMap((row) => [
     env.DB.prepare(
       `
@@ -98,49 +114,6 @@ async function moveVisitsToArchive(
   return rows.results.length;
 }
 
-async function moveCustomEventsToArchive(
-  env: Env,
-  cutoffMs: number,
-): Promise<number> {
-  const rows = await env.DB.prepare(
-    `
-      SELECT *
-      FROM custom_events
-      WHERE occurred_at < ?
-      ORDER BY occurred_at ASC
-      LIMIT ?
-    `,
-  )
-    .bind(cutoffMs, ARCHIVE_BATCH_SIZE)
-    .all<Record<string, unknown>>();
-
-  if (rows.results.length === 0) return 0;
-
-  const statements = rows.results.flatMap((row) => [
-    env.DB.prepare(
-      `
-        INSERT OR REPLACE INTO custom_events_archive (
-          event_id, site_id, visit_id, occurred_at, event_name, event_data_json, ae_synced_at, archived_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch())
-      `,
-    ).bind(
-      row.event_id,
-      row.site_id,
-      row.visit_id,
-      row.occurred_at,
-      row.event_name,
-      row.event_data_json,
-      row.ae_synced_at,
-    ),
-    env.DB.prepare("DELETE FROM custom_events WHERE event_id = ?").bind(
-      row.event_id,
-    ),
-  ]);
-
-  await env.DB.batch(statements);
-  return rows.results.length;
-}
-
 export async function runHourlyArchive(
   env: Env,
   scheduledTime?: number,
@@ -153,8 +126,7 @@ export async function runHourlyArchive(
 
   while (true) {
     const movedVisits = await moveVisitsToArchive(env, cutoffMs);
-    const movedEvents = await moveCustomEventsToArchive(env, cutoffMs);
-    if (movedVisits < ARCHIVE_BATCH_SIZE && movedEvents < ARCHIVE_BATCH_SIZE) {
+    if (movedVisits < ARCHIVE_BATCH_SIZE) {
       return;
     }
   }

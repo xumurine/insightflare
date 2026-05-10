@@ -58,6 +58,7 @@ export interface TrackerClientPayload {
   sessionId?: string;
   performanceVisitId?: string;
   eventId?: string;
+  sequence?: number;
   timestamp?: number;
   startedAt?: number;
   pathname?: string;
@@ -155,6 +156,7 @@ export interface NormalizedLeave {
 export interface NormalizedCustomEvent extends NormalizedVisitContext {
   kind: "custom_event";
   eventId: string;
+  sequence: number;
   receivedAt: number;
   eventAt: number;
   eventName: string;

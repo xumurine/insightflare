@@ -1433,14 +1433,6 @@ const VISIT_SOURCE_COLUMNS = `
     ae_synced_at
   `;
 
-const CUSTOM_EVENT_SOURCE_COLUMNS = `
-  event_id, site_id, visit_id, visitor_id, session_id, occurred_at,
-  event_name, event_data_json, pathname, query_string, hash_fragment, hostname,
-  title, referrer_url, referrer_host, country, region, city, browser, os,
-  os_version, device_type, language, timezone, screen_width, screen_height,
-  ae_synced_at
-`;
-
 function buildVisitSourceCte(): string {
   return `
 visit_source AS (
@@ -1457,13 +1449,41 @@ visit_source AS (
 function buildCustomEventSourceCte(): string {
   return `
 event_source AS (
-  SELECT ${CUSTOM_EVENT_SOURCE_COLUMNS}
-  FROM custom_events
-  WHERE site_id = ? AND occurred_at BETWEEN ? AND ?
-  UNION ALL
-  SELECT ${CUSTOM_EVENT_SOURCE_COLUMNS}
-  FROM custom_events_archive
-  WHERE site_id = ? AND occurred_at BETWEEN ? AND ?
+  SELECT
+    ce.event_id,
+    ce.site_id,
+    ce.visit_id,
+    v.visitor_id,
+    v.session_id,
+    ce.occurred_at,
+    cen.name AS event_name,
+    '{}' AS event_data_json,
+    v.pathname,
+    v.query_string,
+    v.hash_fragment,
+    v.hostname,
+    v.title,
+    v.referrer_url,
+    v.referrer_host,
+    v.country,
+    v.region,
+    v.city,
+    v.browser,
+    v.os,
+    v.os_version,
+    v.device_type,
+    v.language,
+    v.timezone,
+    v.screen_width,
+    v.screen_height,
+    ce.ae_synced_at
+  FROM custom_events ce
+  INNER JOIN custom_event_names cen
+    ON cen.id = ce.event_name_id
+  INNER JOIN visits v
+    ON v.site_id = ce.site_id
+   AND v.visit_id = ce.visit_id
+  WHERE ce.site_id = ? AND ce.occurred_at BETWEEN ? AND ?
 )`;
 }
 
@@ -1487,9 +1507,9 @@ function buildDetailCustomEventSourceCte(): string {
 event_source AS (
   SELECT
     ce.event_id, ce.site_id, ce.visit_id, fv.visitor_id, fv.session_id,
-    ce.occurred_at, ce.event_name, ce.event_data_json,
+    ce.occurred_at, cen.name AS event_name, '{}' AS event_data_json,
     fv.pathname, fv.query_string,
-    COALESCE(NULLIF(ce.hash_fragment, ''), fv.hash_fragment) AS hash_fragment,
+    fv.hash_fragment,
     fv.hostname, fv.title,
     fv.referrer_url, fv.referrer_host, fv.country, fv.region, fv.city,
     fv.browser, fv.browser_version, fv.os, fv.os_version, fv.device_type,
@@ -1497,22 +1517,8 @@ event_source AS (
     fv.perf_ttfb_ms, fv.perf_fcp_ms, fv.perf_lcp_ms, fv.perf_cls, fv.perf_inp_ms,
     ce.ae_synced_at
   FROM custom_events ce
-  INNER JOIN filtered_visits fv
-    ON fv.site_id = ce.site_id AND fv.visit_id = ce.visit_id
-  WHERE ce.site_id = ?
-  UNION ALL
-  SELECT
-    ce.event_id, ce.site_id, ce.visit_id, fv.visitor_id, fv.session_id,
-    ce.occurred_at, ce.event_name, ce.event_data_json,
-    fv.pathname, fv.query_string,
-    COALESCE(NULLIF(ce.hash_fragment, ''), fv.hash_fragment) AS hash_fragment,
-    fv.hostname, fv.title,
-    fv.referrer_url, fv.referrer_host, fv.country, fv.region, fv.city,
-    fv.browser, fv.browser_version, fv.os, fv.os_version, fv.device_type,
-    fv.language, fv.timezone, fv.screen_width, fv.screen_height,
-    fv.perf_ttfb_ms, fv.perf_fcp_ms, fv.perf_lcp_ms, fv.perf_cls, fv.perf_inp_ms,
-    ce.ae_synced_at
-  FROM custom_events_archive ce
+  INNER JOIN custom_event_names cen
+    ON cen.id = ce.event_name_id
   INNER JOIN filtered_visits fv
     ON fv.site_id = ce.site_id AND fv.visit_id = ce.visit_id
   WHERE ce.site_id = ?
@@ -1537,14 +1543,7 @@ function eventSourceBindings(
   siteId: string,
   window: QueryWindow,
 ): Array<string | number> {
-  return [
-    siteId,
-    window.fromMs,
-    window.toMs,
-    siteId,
-    window.fromMs,
-    window.toMs,
-  ];
+  return [siteId, window.fromMs, window.toMs];
 }
 
 function targetVisitSourceBindings(
@@ -1557,7 +1556,7 @@ function targetVisitSourceBindings(
 function detailCustomEventSourceBindings(
   siteId: string,
 ): Array<string | number> {
-  return [siteId, siteId];
+  return [siteId];
 }
 
 function buildVisitSourceCteForSites(siteCount: number): string {

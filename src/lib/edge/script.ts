@@ -340,6 +340,7 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
       href,
       routeKey: routeKey(href),
       referrerUrl,
+      eventSequence: 0,
     };
 
     if (!performanceVisitId) {
@@ -434,6 +435,7 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
     const normalizedName = String(eventName || "").trim();
     if (!normalizedName || !currentVisit) return;
     flushPendingRouteChange();
+    currentVisit.eventSequence = (currentVisit.eventSequence || 0) + 1;
     send(
       {
         ...pagePayloadBase(
@@ -444,8 +446,9 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
         ),
         kind: "custom_event",
         eventId: crypto.randomUUID(),
+        sequence: currentVisit.eventSequence,
         eventName: normalizedName,
-        eventData: eventData ?? null,
+        eventData: eventData === undefined ? {} : eventData,
       },
       false,
     );

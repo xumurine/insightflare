@@ -2,6 +2,11 @@ import { DurableObject } from "cloudflare:workers";
 import { UAParser } from "ua-parser-js";
 
 import { mergeUaClientHintsIntoHeaders } from "./client-hints";
+import {
+  expandCustomEventData,
+  expandCustomEventDataJson,
+  type ExpandedCustomEventData,
+} from "./custom-event-json";
 import type {
   Env,
   IngestEnvelopePayload,
@@ -37,7 +42,7 @@ const MAX_CLIENT_EVENT_LAG_MS = 30 * 1000;
 const DIAGNOSTIC_STALE_MS = 30 * 60 * 1000;
 const DIAGNOSTIC_HARD_AGE_MS = 36 * 60 * 60 * 1000;
 const DIAGNOSTIC_STUCK_FLUSH_ATTEMPTS = 5;
-const MAX_EVENT_DATA_JSON_LENGTH = 4000;
+const D1_FLUSH_CUSTOM_EVENT_BATCH_SIZE = 10;
 
 interface RealtimeSnapshotRecord {
   id: string;
@@ -138,6 +143,8 @@ interface BufferedCustomEventRow {
   siteId: string;
   visitId: string;
   occurredAt: number;
+  receivedAt: number;
+  sequence: number;
   eventName: string;
   eventDataJson: string;
   dirty: number;
@@ -146,6 +153,7 @@ interface BufferedCustomEventRow {
 }
 
 type SqlBinding = string | number | null;
+type DictionaryKind = "name" | "key" | "path";
 
 const INSERT_VISIT_SQL = `
   INSERT OR IGNORE INTO visits (
@@ -227,19 +235,14 @@ const UPSERT_VISIT_SQL = `
     updated_at = excluded.updated_at
 `;
 
-const INSERT_CUSTOM_EVENT_SQL = `
-  INSERT INTO custom_events (
-    event_id, site_id, visit_id, occurred_at, event_name, event_data_json, ae_synced_at, created_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  ON CONFLICT(event_id) DO NOTHING
-`;
-
 const CREATE_BUFFERED_CUSTOM_EVENTS_SQL = `
   CREATE TABLE IF NOT EXISTS buffered_custom_events (
     event_id TEXT PRIMARY KEY,
     site_id TEXT NOT NULL,
     visit_id TEXT NOT NULL,
     occurred_at INTEGER NOT NULL,
+    received_at INTEGER NOT NULL,
+    sequence INTEGER NOT NULL DEFAULT 0,
     event_name TEXT NOT NULL,
     event_data_json TEXT NOT NULL DEFAULT '{}',
     dirty INTEGER NOT NULL DEFAULT 1,
@@ -311,19 +314,6 @@ function visitBindings(row: BufferedVisitRow): SqlBinding[] {
   ];
 }
 
-function customEventBindings(row: BufferedCustomEventRow): SqlBinding[] {
-  return [
-    row.eventId,
-    row.siteId,
-    row.visitId,
-    row.occurredAt,
-    row.eventName,
-    row.eventDataJson,
-    null,
-    row.createdAt,
-  ];
-}
-
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
     status,
@@ -382,16 +372,6 @@ function normalizePerformancePayload(
     ...(cls !== null ? { cls } : {}),
     ...(inp !== null ? { inp } : {}),
   };
-}
-
-function toEventDataJson(input: unknown): string {
-  try {
-    const json = JSON.stringify(input ?? null);
-    if (json.length > MAX_EVENT_DATA_JSON_LENGTH) return "";
-    return json;
-  } catch {
-    return "";
-  }
 }
 
 function toRealtimeScreenSize(
@@ -517,6 +497,7 @@ export class IngestDurableObject extends DurableObject {
   private readonly doState: DurableObjectState;
   private readonly doEnv: Env;
   private readonly schemaReady: Promise<void>;
+  private readonly dictionaryIds = new Map<string, number>();
   private sockets = new Set<WebSocket>();
 
   constructor(state: DurableObjectState, env: Env) {
@@ -910,6 +891,7 @@ export class IngestDurableObject extends DurableObject {
     const eventColumns = sql
       .exec("PRAGMA table_info(buffered_custom_events)")
       .toArray() as Array<{ name?: string }>;
+    const eventColumnNames = new Set(eventColumns.map((row) => row.name ?? ""));
     const hasLegacyEventContextColumns = eventColumns.some(
       (row) =>
         row.name === "visitor_id" ||
@@ -917,23 +899,11 @@ export class IngestDurableObject extends DurableObject {
         row.name === "pathname" ||
         row.name === "hostname",
     );
-    if (hasLegacyEventContextColumns) {
-      sql.exec("DROP TABLE IF EXISTS buffered_custom_events_legacy");
-      sql.exec(
-        "ALTER TABLE buffered_custom_events RENAME TO buffered_custom_events_legacy",
-      );
+    const hasCurrentEventColumns =
+      eventColumnNames.has("received_at") && eventColumnNames.has("sequence");
+    if (hasLegacyEventContextColumns || !hasCurrentEventColumns) {
+      sql.exec("DROP TABLE buffered_custom_events");
       sql.exec(CREATE_BUFFERED_CUSTOM_EVENTS_SQL);
-      sql.exec(`
-        INSERT INTO buffered_custom_events (
-          event_id, site_id, visit_id, occurred_at, event_name, event_data_json,
-          dirty, flush_attempts, last_flush_error, created_at
-        )
-        SELECT
-          event_id, site_id, visit_id, occurred_at, event_name, event_data_json,
-          dirty, flush_attempts, last_flush_error, created_at
-        FROM buffered_custom_events_legacy
-      `);
-      sql.exec("DROP TABLE buffered_custom_events_legacy");
     }
     sql.exec(`
       CREATE INDEX IF NOT EXISTS idx_buffered_custom_events_dirty_occurred
@@ -1115,20 +1085,38 @@ export class IngestDurableObject extends DurableObject {
       if (!visitId) return null;
       const eventName = clampString(coerceString(client.eventName), 120);
       if (!eventName) return null;
-      const eventDataJson = toEventDataJson(client.eventData);
-      if (!eventDataJson) return null;
+      const eventDataResult = expandCustomEventData(client.eventData);
+      if (!eventDataResult.ok) return null;
       const visit = await this.getVisitContext(siteId, visitId);
-      if (!visit) return null;
+      const sequence = Math.max(
+        0,
+        Math.floor(coerceNumber(client.sequence, 0) ?? 0),
+      );
+      const eventId = clampString(
+        coerceString(client.eventId || crypto.randomUUID()),
+        128,
+      );
+      if (!visit) {
+        this.insertBufferedCustomEvent({
+          eventId,
+          siteId,
+          visitId,
+          occurredAt: eventAt,
+          receivedAt,
+          sequence,
+          eventName,
+          eventDataJson: eventDataResult.data.json,
+        });
+        return null;
+      }
       return {
         kind: "custom_event",
-        eventId: clampString(
-          coerceString(client.eventId || crypto.randomUUID()),
-          128,
-        ),
+        eventId,
+        sequence,
         receivedAt,
         eventAt,
         eventName,
-        eventDataJson,
+        eventDataJson: eventDataResult.data.json,
         siteId: visit.siteId,
         visitId: visit.visitId,
         visitorId: visit.visitorId,
@@ -1469,7 +1457,14 @@ export class IngestDurableObject extends DurableObject {
     siteId: string,
     visitId: string,
   ): Promise<StoredOpenVisit | null> {
-    const row = await this.readVisitRow(siteId, visitId);
+    let row = await this.readVisitRow(siteId, visitId);
+    if (!row) {
+      const persisted = await this.readPersistedVisitRow(siteId, visitId);
+      if (persisted) {
+        this.insertBufferedVisitRow(persisted);
+        row = persisted;
+      }
+    }
     if (!row) return null;
     return {
       siteId: row.siteId,
@@ -1789,18 +1784,43 @@ export class IngestDurableObject extends DurableObject {
   private async insertCustomEvent(
     record: NormalizedCustomEvent,
   ): Promise<boolean> {
+    return this.insertBufferedCustomEvent({
+      eventId: record.eventId,
+      siteId: record.siteId,
+      visitId: record.visitId,
+      occurredAt: record.eventAt,
+      receivedAt: record.receivedAt,
+      sequence: record.sequence,
+      eventName: record.eventName,
+      eventDataJson: record.eventDataJson,
+    });
+  }
+
+  private insertBufferedCustomEvent(record: {
+    eventId: string;
+    siteId: string;
+    visitId: string;
+    occurredAt: number;
+    receivedAt: number;
+    sequence: number;
+    eventName: string;
+    eventDataJson: string;
+  }): boolean {
     const createdAt = toUnixSeconds(record.receivedAt);
     const rowsWritten = this.sqlRun(
       `
         INSERT OR IGNORE INTO buffered_custom_events (
-          event_id, site_id, visit_id, occurred_at, event_name, event_data_json,
+          event_id, site_id, visit_id, occurred_at, received_at, sequence,
+          event_name, event_data_json,
           dirty, flush_attempts, last_flush_error, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 1, 0, NULL, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0, NULL, ?)
       `,
       record.eventId,
       record.siteId,
       record.visitId,
-      record.eventAt,
+      record.occurredAt,
+      record.receivedAt,
+      record.sequence,
       record.eventName,
       record.eventDataJson,
       createdAt,
@@ -1812,14 +1832,19 @@ export class IngestDurableObject extends DurableObject {
     visitId: string,
     eventAt: number,
   ): Promise<void> {
+    const updatedAt = toUnixSeconds(Date.now());
     this.sqlRun(
       `
         UPDATE buffered_visits
-        SET last_activity_at = CASE WHEN last_activity_at > ? THEN last_activity_at ELSE ? END
+        SET last_activity_at = CASE WHEN last_activity_at > ? THEN last_activity_at ELSE ? END,
+            dirty = 1,
+            updated_at = CASE WHEN updated_at > ? THEN updated_at ELSE ? END
         WHERE visit_id = ? AND status = 'open'
       `,
       eventAt,
       eventAt,
+      updatedAt,
+      updatedAt,
       visitId,
     );
   }
@@ -2223,6 +2248,8 @@ export class IngestDurableObject extends DurableObject {
             site_id AS siteId,
             visit_id AS visitId,
             occurred_at AS occurredAt,
+            received_at AS receivedAt,
+            sequence,
             event_name AS eventName,
             event_data_json AS eventDataJson,
             dirty,
@@ -2233,31 +2260,32 @@ export class IngestDurableObject extends DurableObject {
           ORDER BY created_at ASC, occurred_at ASC
           LIMIT ?
         `,
-        D1_FLUSH_BATCH_SIZE,
+        D1_FLUSH_CUSTOM_EVENT_BATCH_SIZE,
       );
 
       if (visitRows.length === 0 && eventRows.length === 0) {
         return;
       }
 
-      try {
-        const statements = [
-          ...visitRows.map((row) => this.prepareVisitStatement(row)),
-          ...eventRows.map((row) => this.prepareCustomEventStatement(row)),
-        ];
-        if (statements.length > 0) {
-          await this.doEnv.DB.batch(statements);
+      if (visitRows.length > 0) {
+        try {
+          await this.doEnv.DB.batch(
+            visitRows.map((row) => this.prepareVisitStatement(row)),
+          );
+          this.markVisitRowsFlushed(visitRows);
+        } catch (error) {
+          console.error("d1_flush_visit_batch_failed", error);
+          await this.flushRowsIndividually(visitRows, []);
         }
-        this.markVisitRowsFlushed(visitRows);
-        this.markCustomEventRowsFlushed(eventRows);
-      } catch (error) {
-        console.error("d1_flush_batch_failed", error);
-        await this.flushRowsIndividually(visitRows, eventRows);
+      }
+
+      for (const eventRow of eventRows) {
+        await this.flushCustomEventRowIndividually(eventRow);
       }
 
       if (
         visitRows.length < D1_FLUSH_BATCH_SIZE &&
-        eventRows.length < D1_FLUSH_BATCH_SIZE
+        eventRows.length < D1_FLUSH_CUSTOM_EVENT_BATCH_SIZE
       ) {
         return;
       }
@@ -2314,12 +2342,185 @@ export class IngestDurableObject extends DurableObject {
     return this.doEnv.DB.prepare(UPSERT_VISIT_SQL).bind(...visitBindings(row));
   }
 
-  private prepareCustomEventStatement(
+  private dictionarySql(kind: DictionaryKind): {
+    table: string;
+    column: string;
+  } {
+    if (kind === "name") {
+      return { table: "custom_event_names", column: "name" };
+    }
+    if (kind === "key") {
+      return { table: "custom_event_json_keys", column: '"key"' };
+    }
+    return { table: "custom_event_json_paths", column: "path" };
+  }
+
+  private async resolveDictionaryId(
+    kind: DictionaryKind,
+    siteId: string,
+    value: string,
+    seenAt: number,
+  ): Promise<number> {
+    const cacheKey = `${kind}:${siteId}:${value}`;
+    const cached = this.dictionaryIds.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const spec = this.dictionarySql(kind);
+    await this.doEnv.DB.prepare(
+      `
+        INSERT INTO ${spec.table} (site_id, ${spec.column}, created_at, last_seen_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(site_id, ${spec.column}) DO UPDATE SET
+          last_seen_at = excluded.last_seen_at
+      `,
+    )
+      .bind(siteId, value, seenAt, seenAt)
+      .run();
+
+    const row = await this.doEnv.DB.prepare(
+      `
+        SELECT id
+        FROM ${spec.table}
+        WHERE site_id = ? AND ${spec.column} = ?
+        LIMIT 1
+      `,
+    )
+      .bind(siteId, value)
+      .first<{ id: number }>();
+    const id = Number(row?.id ?? 0);
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new Error(`Failed to resolve custom event ${kind} dictionary id`);
+    }
+    this.dictionaryIds.set(cacheKey, id);
+    return id;
+  }
+
+  private async resolveCustomEventDictionaryIds(
     row: BufferedCustomEventRow,
-  ): D1PreparedStatement {
-    return this.doEnv.DB.prepare(INSERT_CUSTOM_EVENT_SQL).bind(
-      ...customEventBindings(row),
+    expanded: ExpandedCustomEventData,
+  ): Promise<{
+    eventNameId: number;
+    keyIds: Map<string, number>;
+    pathIds: Map<string, number>;
+  }> {
+    const seenAt = row.createdAt;
+    const eventNameId = await this.resolveDictionaryId(
+      "name",
+      row.siteId,
+      row.eventName,
+      seenAt,
     );
+    const keyIds = new Map<string, number>();
+    for (const key of expanded.keys) {
+      keyIds.set(
+        key,
+        await this.resolveDictionaryId("key", row.siteId, key, seenAt),
+      );
+    }
+    const pathIds = new Map<string, number>();
+    for (const path of expanded.paths) {
+      pathIds.set(
+        path,
+        await this.resolveDictionaryId("path", row.siteId, path, seenAt),
+      );
+    }
+    return { eventNameId, keyIds, pathIds };
+  }
+
+  private prepareCustomEventStatements(
+    row: BufferedCustomEventRow,
+    expanded: ExpandedCustomEventData,
+    ids: {
+      eventNameId: number;
+      keyIds: Map<string, number>;
+      pathIds: Map<string, number>;
+    },
+  ): D1PreparedStatement[] {
+    const eventStatement = this.doEnv.DB.prepare(
+      `
+        INSERT OR IGNORE INTO custom_events (
+          event_id, site_id, visit_id, event_name_id, occurred_at, received_at,
+          sequence, node_count, value_count, ae_synced_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+      `,
+    ).bind(
+      row.eventId,
+      row.siteId,
+      row.visitId,
+      ids.eventNameId,
+      row.occurredAt,
+      row.receivedAt,
+      row.sequence,
+      expanded.nodes.length,
+      expanded.values.length,
+      row.createdAt,
+    );
+
+    const nodeStatements = expanded.nodes.map((node) => {
+      const pathId = ids.pathIds.get(node.path);
+      if (pathId === undefined) {
+        throw new Error(`Missing custom event path id for ${node.path}`);
+      }
+      const keyId = node.key === null ? null : ids.keyIds.get(node.key);
+      if (node.key !== null && keyId === undefined) {
+        throw new Error(`Missing custom event key id for ${node.key}`);
+      }
+      return this.doEnv.DB.prepare(
+        `
+          INSERT OR IGNORE INTO custom_event_json_nodes (
+            event_pk, node_id, parent_node_id, key_id, path_id, value_type,
+            member_order, array_index, depth
+          )
+          SELECT event_pk, ?, ?, ?, ?, ?, ?, ?, ?
+          FROM custom_events
+          WHERE event_id = ?
+        `,
+      ).bind(
+        node.nodeId,
+        node.parentNodeId,
+        keyId ?? null,
+        pathId,
+        node.valueType,
+        node.memberOrder,
+        node.arrayIndex,
+        node.depth,
+        row.eventId,
+      );
+    });
+
+    const valueStatements = expanded.values.map((value) => {
+      const pathId = ids.pathIds.get(value.path);
+      if (pathId === undefined) {
+        throw new Error(`Missing custom event value path id for ${value.path}`);
+      }
+      return this.doEnv.DB.prepare(
+        `
+          INSERT OR IGNORE INTO custom_event_json_values (
+            event_pk, node_id, site_id, event_name_id, path_id, occurred_at,
+            scope_node_id, value_type, string_value, string_hash, number_value,
+            boolean_value
+          )
+          SELECT event_pk, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          FROM custom_events
+          WHERE event_id = ?
+        `,
+      ).bind(
+        value.nodeId,
+        row.siteId,
+        ids.eventNameId,
+        pathId,
+        row.occurredAt,
+        value.scopeNodeId,
+        value.valueType,
+        value.stringValue,
+        value.stringHash,
+        value.numberValue,
+        value.booleanValue,
+        row.eventId,
+      );
+    });
+
+    return [eventStatement, ...nodeStatements, ...valueStatements];
   }
 
   private deleteFlushedVisitRows(rows: BufferedVisitRow[]): void {
@@ -2394,7 +2595,17 @@ export class IngestDurableObject extends DurableObject {
     row: BufferedCustomEventRow,
   ): Promise<void> {
     try {
-      await this.doEnv.DB.batch([this.prepareCustomEventStatement(row)]);
+      const expanded = expandCustomEventDataJson(row.eventDataJson);
+      if (!expanded.ok) {
+        throw new Error(expanded.error);
+      }
+      const ids = await this.resolveCustomEventDictionaryIds(
+        row,
+        expanded.data,
+      );
+      await this.doEnv.DB.batch(
+        this.prepareCustomEventStatements(row, expanded.data, ids),
+      );
       this.markCustomEventRowsFlushed([row]);
     } catch (error) {
       const message = clampString(

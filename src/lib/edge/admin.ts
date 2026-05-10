@@ -815,12 +815,12 @@ async function hTeams(req: Request, env: Env): Promise<Response> {
       if (siteIds.length > 0) {
         const sitePlaceholders = siteIds.map(() => "?").join(",");
         await env.DB.prepare(
-          `DELETE FROM visits WHERE site_id IN (${sitePlaceholders})`,
+          `DELETE FROM custom_event_json_values WHERE site_id IN (${sitePlaceholders})`,
         )
           .bind(...siteIds)
           .run();
         await env.DB.prepare(
-          `DELETE FROM visits_archive WHERE site_id IN (${sitePlaceholders})`,
+          `DELETE FROM custom_event_json_nodes WHERE event_pk IN (SELECT event_pk FROM custom_events WHERE site_id IN (${sitePlaceholders}))`,
         )
           .bind(...siteIds)
           .run();
@@ -830,7 +830,27 @@ async function hTeams(req: Request, env: Env): Promise<Response> {
           .bind(...siteIds)
           .run();
         await env.DB.prepare(
-          `DELETE FROM custom_events_archive WHERE site_id IN (${sitePlaceholders})`,
+          `DELETE FROM custom_event_names WHERE site_id IN (${sitePlaceholders})`,
+        )
+          .bind(...siteIds)
+          .run();
+        await env.DB.prepare(
+          `DELETE FROM custom_event_json_keys WHERE site_id IN (${sitePlaceholders})`,
+        )
+          .bind(...siteIds)
+          .run();
+        await env.DB.prepare(
+          `DELETE FROM custom_event_json_paths WHERE site_id IN (${sitePlaceholders})`,
+        )
+          .bind(...siteIds)
+          .run();
+        await env.DB.prepare(
+          `DELETE FROM visits WHERE site_id IN (${sitePlaceholders})`,
+        )
+          .bind(...siteIds)
+          .run();
+        await env.DB.prepare(
+          `DELETE FROM visits_archive WHERE site_id IN (${sitePlaceholders})`,
         )
           .bind(...siteIds)
           .run();
@@ -961,16 +981,34 @@ async function hSites(req: Request, env: Env, url: URL): Promise<Response> {
       await env.DB.prepare("DELETE FROM configs WHERE config_key=?")
         .bind(`site:${siteId}`)
         .run();
+      await env.DB.prepare(
+        "DELETE FROM custom_event_json_values WHERE site_id=?",
+      )
+        .bind(siteId)
+        .run();
+      await env.DB.prepare(
+        "DELETE FROM custom_event_json_nodes WHERE event_pk IN (SELECT event_pk FROM custom_events WHERE site_id=?)",
+      )
+        .bind(siteId)
+        .run();
+      await env.DB.prepare("DELETE FROM custom_events WHERE site_id=?")
+        .bind(siteId)
+        .run();
+      await env.DB.prepare("DELETE FROM custom_event_names WHERE site_id=?")
+        .bind(siteId)
+        .run();
+      await env.DB.prepare("DELETE FROM custom_event_json_keys WHERE site_id=?")
+        .bind(siteId)
+        .run();
+      await env.DB.prepare(
+        "DELETE FROM custom_event_json_paths WHERE site_id=?",
+      )
+        .bind(siteId)
+        .run();
       await env.DB.prepare("DELETE FROM visits_archive WHERE site_id=?")
         .bind(siteId)
         .run();
       await env.DB.prepare("DELETE FROM visits WHERE site_id=?")
-        .bind(siteId)
-        .run();
-      await env.DB.prepare("DELETE FROM custom_events_archive WHERE site_id=?")
-        .bind(siteId)
-        .run();
-      await env.DB.prepare("DELETE FROM custom_events WHERE site_id=?")
         .bind(siteId)
         .run();
       await env.DB.prepare("DELETE FROM sites WHERE id=?").bind(siteId).run();
