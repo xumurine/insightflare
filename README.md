@@ -123,7 +123,7 @@ npm run cf:d1:create
 
 - `INSIGHTFLARE_EDGE_URL` 设为部署后的访问地址
 - 按需开启 `[[r2_buckets]]`（可选，仅冷归档到 R2 时需要）
-- 维护者部署带 R2 的实例时使用 `npm run deploy:ravelloh`
+- 维护者在 Cloudflare Git 部署带 R2 的实例时使用 `npm run deploy:ravelloh`，本地完整构建并部署时使用 `npm run cf:deploy:ravelloh`
 
 #### 4. 设置 Secret
 
