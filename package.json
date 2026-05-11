@@ -9,7 +9,8 @@
     "build:pre": "tsx scripts/prebuild.ts",
     "build:pre:local": "npm run build:pre -- --config wrangler.toml --target local",
     "build:pre:remote": "npm run build:pre -- --config wrangler.toml --target remote",
-    "build": "cross-env NEXT_IGNORE_INCORRECT_LOCKFILE=1 next build --webpack",
+    "build": "npm run ci:build",
+    "build:next": "cross-env NEXT_IGNORE_INCORRECT_LOCKFILE=1 next build --webpack",
     "lint": "eslint --max-warnings 0 .",
     "lint:fix": "eslint --max-warnings 0 . --fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,css,md}\" --log-level warn",
@@ -26,6 +27,7 @@
     "ci:deploy:dry-run": "npm run build:pre:remote && wrangler deploy --config wrangler.toml --dry-run",
     "ci:deploy": "npm run build:pre:remote -- --database DB && wrangler deploy --config wrangler.toml",
     "deploy": "npm run ci:deploy",
+    "deploy:ravelloh": "npm run build:pre:remote -- --database DB --env ravelloh && npm run cf:build:raw && wrangler deploy --config wrangler.toml --env ravelloh",
     "cf:d1:create": "wrangler d1 create insightflare --config wrangler.toml",
     "cf:secret:daily-salt": "wrangler secret put DAILY_SALT_SECRET --config wrangler.toml",
     "cf:secret:bootstrap-admin-password": "wrangler secret put BOOTSTRAP_ADMIN_PASSWORD --config wrangler.toml",
@@ -107,10 +109,13 @@
   "cloudflare": {
     "bindings": {
       "DAILY_SALT_SECRET": {
-        "description": "Generate a random string for privacy-preserving visitor IDs, for example `openssl rand -hex 32`."
+        "description": "Enter a random string longer than 16 characters for privacy-preserving visitor IDs."
       },
       "DASHBOARD_SESSION_SECRET": {
-        "description": "Generate a random string for signing dashboard login sessions, for example `openssl rand -hex 32`."
+        "description": "Enter a random string longer than 16 characters for signing dashboard login sessions."
+      },
+      "BOOTSTRAP_ADMIN_PASSWORD": {
+        "description": "Password for the default admin account. The default username is `admin`; if this is left empty, the default password is `insightflare`."
       },
       "DB": {
         "description": "D1 database used for analytics data, account data, and migrations."
@@ -120,6 +125,9 @@
       },
       "INGEST_DO": {
         "description": "Durable Object namespace used for ingest buffering, realtime state, and batched D1 writes."
+      },
+      "ARCHIVE_BUCKET": {
+        "description": "Optional R2 bucket for cold archive storage. Leave it unbound unless you want to enable archive-to-R2."
       }
     }
   },

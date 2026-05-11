@@ -101,6 +101,8 @@ Deploy Button 会在你的 Cloudflare 账户中自动创建并绑定 Worker、D1
 
 部署完成后，如果要使用自定义域名，请在 Cloudflare 控制台为 Worker 绑定域名，并将 `INSIGHTFLARE_EDGE_URL` / `EDGE_PUBLIC_BASE_URL` 调整为最终访问地址。
 
+R2 是可选项，Deploy Button 默认不会要求绑定 R2。只有需要启用冷归档到 R2 时，才需要手动创建 R2 bucket，并在 `wrangler.toml` 中配置 `[[r2_buckets]]`。维护者自己的实例使用 `ravelloh` 环境绑定 R2，不影响默认部署流程。
+
 ### 手动部署
 
 #### 1. 安装依赖
@@ -120,7 +122,8 @@ npm run cf:d1:create
 #### 3. 配置 `wrangler.toml`
 
 - `INSIGHTFLARE_EDGE_URL` 设为部署后的访问地址
-- 按需开启 `[[r2_buckets]]`（冷归档）
+- 按需开启 `[[r2_buckets]]`（可选，仅冷归档到 R2 时需要）
+- 维护者部署带 R2 的实例时使用 `npm run deploy:ravelloh`
 
 #### 4. 设置 Secret
 
@@ -153,8 +156,8 @@ npm run cf:deploy         # 部署到 Cloudflare
 
 如果在 Cloudflare 控制台使用 Git 集成，请设置：
 
-- **Build command**：`npm run ci:build`
-- **Deploy command**：`npm run ci:deploy`
+- **Build command**：`npm run build`
+- **Deploy command**：`npm run deploy`
 
 不要跳过 `build:pre:remote`，否则 D1 迁移与远端配置注入不会执行。
 
@@ -188,6 +191,7 @@ npm run cf:deploy         # 部署到 Cloudflare
 | `DAILY_SALT_SECRET`（Secret）        | 每日访客标识 salt           |
 | `DASHBOARD_SESSION_SECRET`（Secret） | 仪表板会话签名              |
 | `BOOTSTRAP_ADMIN_PASSWORD`（Secret） | 初始化管理员密码            |
+| `ARCHIVE_BUCKET`（R2，可选）         | 冷归档存储桶                |
 
 ---
 
