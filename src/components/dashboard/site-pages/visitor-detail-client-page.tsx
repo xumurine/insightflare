@@ -2239,15 +2239,15 @@ export function VisitorDetailClientPage({
   pathname,
 }: VisitorDetailClientPageProps) {
   const labels = copy(locale);
-  const { timeZone } = useDashboardQueryControls();
+  const { timeZone, window } = useDashboardQueryControls();
   const searchParams = useSearchParams();
   const visitorId = searchParams.get("visitorId")?.trim() || "";
   const [detail, setDetail] = useState<VisitorDetail | null>(null);
   const [loading, setLoading] = useState(Boolean(visitorId));
   const [error, setError] = useState(false);
   const requestKey = useMemo(
-    () => [siteId, visitorId, timeZone].join(":"),
-    [siteId, timeZone, visitorId],
+    () => [siteId, visitorId, timeZone, window.from, window.to].join(":"),
+    [siteId, timeZone, visitorId, window.from, window.to],
   );
 
   useEffect(() => {
@@ -2259,7 +2259,7 @@ export function VisitorDetailClientPage({
     let active = true;
     setLoading(true);
     setError(false);
-    fetchVisitorDetail(siteId, visitorId, timeZone)
+    fetchVisitorDetail(siteId, visitorId, timeZone, window)
       .then((payload) => {
         if (!active) return;
         setDetail(payload.data);

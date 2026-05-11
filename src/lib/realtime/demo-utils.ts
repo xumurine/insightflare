@@ -29,6 +29,20 @@ export function createDemoRng(siteId: string, endpoint: string): () => number {
   return mulberry32(fnv1a(`${todayKey()}:${siteId}:${endpoint}`));
 }
 
+/**
+ * Stable bucket key for a time window. Rounds both endpoints to the nearest
+ * minute so two calls that differ only by sub-second `Date.now()` drift land
+ * in the same bucket — this keeps list and detail endpoints in sync even if
+ * one of them falls back to `Date.now() - 7d ~ Date.now()`.
+ *
+ * Window length is preserved (the rounding is symmetric), so "today" and
+ * "last 7 days" remain distinct buckets.
+ */
+export function windowBucket(from: number, to: number): string {
+  const MIN_MS = 60_000;
+  return `${Math.floor(from / MIN_MS)}:${Math.floor(to / MIN_MS)}`;
+}
+
 export function sInt(rng: () => number, min: number, max: number): number {
   return Math.floor(rng() * (max - min + 1)) + min;
 }

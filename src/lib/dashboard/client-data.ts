@@ -468,12 +468,14 @@ export async function fetchVisitorDetail(
   siteId: string,
   visitorId: string,
   timeZone?: string,
+  window?: TimeWindow,
 ): Promise<VisitorDetailData> {
   const normalizedVisitorId = visitorId.trim();
   if (!normalizedVisitorId) return emptyVisitorDetail();
   return fetchPrivateJson<VisitorDetailData>("/api/private/visitor-detail", {
     siteId,
     visitorId: normalizedVisitorId,
+    ...(window ? { from: window.from, to: window.to } : {}),
     ...(timeZone ? { timeZone } : {}),
   });
 }
@@ -523,12 +525,14 @@ export async function fetchSessionDetail(
   siteId: string,
   sessionId: string,
   timeZone?: string,
+  window?: TimeWindow,
 ): Promise<SessionDetailData> {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) return emptySessionDetail();
   return fetchPrivateJson<SessionDetailData>("/api/private/session-detail", {
     siteId,
     sessionId: normalizedSessionId,
+    ...(window ? { from: window.from, to: window.to } : {}),
     ...(timeZone ? { timeZone } : {}),
   });
 }

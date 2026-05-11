@@ -28,7 +28,83 @@ import {
   weightedDistribution,
   weightedDistributionFromWeights,
   weightedPickLabel,
+  windowBucket,
 } from "@/lib/realtime/demo-utils";
+import {
+  buildCountryPool,
+  buildReferrerPool,
+  DEMO_CITIES_BY_COUNTRY,
+  DEMO_REGIONS_BY_COUNTRY,
+  filterGeoLabelsByCountries,
+  groupGeoLabelsByCountry,
+  isMobileBrowserLabel,
+  normalizeLongitude,
+  parseDemoCityLabel,
+  parseDemoRegionLabel,
+  pickCountryGeoCluster,
+  pickDemoBrowser,
+  pickDemoBrowserVersion,
+  pickDemoContinent,
+  pickDemoDeviceType,
+  pickDemoGeoContext,
+  pickDemoLanguage,
+  pickDemoOrganization,
+  pickDemoOsVersion,
+  pickDemoScreenSize,
+  pickDemoTimezone,
+  pickFromList,
+  pickReferrerByCountry,
+  randomGaussian,
+  sampleGeoPointByCountry,
+  weightedPickCountry,
+  weightedPickIndex,
+} from "@/lib/realtime/mock/dimension-pickers";
+import {
+  ALL_BROWSERS,
+  ALL_CITIES,
+  ALL_CONTINENTS,
+  ALL_LANGUAGES,
+  ALL_ORGS,
+  ALL_OS,
+  ALL_REGIONS,
+  ALL_SCREEN_SIZES,
+  ALL_TIMEZONES,
+  BROWSER_MARKET_WEIGHTS,
+  COUNTRY_COORDINATE_ANCHORS,
+  COUNTRY_GEO_CLUSTERS,
+  DEMO_COUNTRY_TO_CONTINENT,
+  DEMO_COUNTRY_TO_LANGUAGES,
+  DEMO_COUNTRY_TO_TIMEZONES,
+  DEMO_DESKTOP_OS,
+  DEMO_DESKTOP_SCREENS,
+  DEMO_GEO_SEGMENT_SEPARATOR,
+  DEMO_MOBILE_OS,
+  DEMO_MOBILE_SCREENS,
+  DEMO_TABLET_SCREENS,
+  type GeoCluster,
+  GLOBAL_COUNTRY_LONG_TAIL,
+  GLOBAL_REFERRER_LONG_TAIL,
+} from "@/lib/realtime/mock/dimension-pools";
+import {
+  buildPathTransitionGraph,
+  nextPath,
+} from "@/lib/realtime/mock/path-markov";
+import {
+  computeMetrics,
+  dailyMetricFactor,
+  dailyViewCount,
+  demoIntervalStepMs,
+  integrateViews,
+  sampleTimestampByCurve,
+  siteDayIntegral,
+  siteHourShapeIntegral,
+  type SiteMetricRatios,
+  siteRatios,
+} from "@/lib/realtime/mock/site-curves";
+import {
+  getVisitorFingerprint,
+  sampleActiveVisitors,
+} from "@/lib/realtime/mock/visitor-pool";
 import type {
   RealtimeEvent,
   RealtimeVisit,
@@ -86,6 +162,9 @@ function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+const FUTURE_PRELOAD_MS = 30 * 60 * 1000;
+const MIN_INTER_EVENT_MS = 220;
+
 class MockRealtimeSocket implements RealtimeSocketLike {
   readyState: WebSocket["readyState"] = READY_STATE.CONNECTING;
   onopen: WebSocket["onopen"] = null;
@@ -93,13 +172,19 @@ class MockRealtimeSocket implements RealtimeSocketLike {
   onerror: WebSocket["onerror"] = null;
   onclose: WebSocket["onclose"] = null;
 
-  private readonly activeWindowMs: number;
   private readonly siteId: string;
-  private readonly visitors = new Map<string, RealtimeVisit>();
+  private readonly activeWindowMs: number;
+  private windowStart: number;
+  private windowEnd: number;
+  // Stable visit fact slice; events are derived from this by replaying
+  // `startedAt` as `eventAt`. Same site/time → same data, even across reconnects.
+  private futureVisits: DemoVisitFact[] = [];
+  private visitorsByVisitorId = new Map<string, RealtimeVisit>();
   private recentEvents: RealtimeEvent[] = [];
   private sequence = 0;
+  private lastEmitAt = 0;
   private handshakeTimer: ReturnType<typeof setTimeout> | null = null;
-  private eventTimer: ReturnType<typeof setInterval> | null = null;
+  private nextEmitTimer: ReturnType<typeof setTimeout> | null = null;
   private dropTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor({
@@ -108,7 +193,10 @@ class MockRealtimeSocket implements RealtimeSocketLike {
   }: MockRealtimeSocketOptions) {
     this.siteId = siteId;
     this.activeWindowMs = activeWindowMs;
-    this.seedSnapshot();
+    const now = Date.now();
+    this.windowStart = now - RECENT_RECORD_WINDOW_MS;
+    this.windowEnd = now + FUTURE_PRELOAD_MS;
+    this.loadWindowSlice(now);
     this.beginHandshake();
   }
 
@@ -138,28 +226,104 @@ class MockRealtimeSocket implements RealtimeSocketLike {
       this.readyState = READY_STATE.OPEN;
       this.emitOpen();
       this.emitSnapshot();
-      this.startEventStream();
+      this.scheduleNextEmit();
       this.scheduleDisconnect();
     }, handshakeDelayMs);
   }
 
-  private startEventStream(): void {
-    this.eventTimer = setInterval(() => {
-      if (this.readyState !== READY_STATE.OPEN) return;
-      const burst = randomInt(1, 3);
-      const now = Date.now();
-      for (let i = 0; i < burst; i += 1) {
-        const event = this.generateEvent(now);
-        this.emitMessage({
-          type: "event",
-          data: event,
-        });
-      }
+  /**
+   * Pull the seeded fact-table slice for [windowStart, windowEnd) and
+   * partition it into the already-replayed past (used to seed the initial
+   * snapshot) and the future emit queue.
+   */
+  private loadWindowSlice(now: number): void {
+    const dataset = buildDemoFactDataset(
+      this.siteId,
+      this.windowStart,
+      this.windowEnd,
+    );
+    const past: DemoVisitFact[] = [];
+    const future: DemoVisitFact[] = [];
+    for (const visit of dataset.visits) {
+      if (visit.startedAt <= now) past.push(visit);
+      else future.push(visit);
+    }
+    past.sort((a, b) => a.startedAt - b.startedAt);
+    future.sort((a, b) => a.startedAt - b.startedAt);
+    this.futureVisits = future;
+    this.visitorsByVisitorId.clear();
+    this.recentEvents = [];
 
-      if (Math.random() < 0.08) {
-        this.emitSnapshot();
+    const recordCutoff = now - RECENT_RECORD_WINDOW_MS;
+    const activeCutoff = now - this.activeWindowMs;
+    for (const visit of past) {
+      if (visit.startedAt < recordCutoff) continue;
+      const event = this.demoVisitToEvent(visit);
+      this.recentEvents.push(event);
+      if (visit.startedAt >= activeCutoff) {
+        this.visitorsByVisitorId.set(
+          visit.visitorId,
+          this.demoVisitToVisit(visit),
+        );
       }
-    }, 850);
+    }
+  }
+
+  private scheduleNextEmit(): void {
+    if (this.readyState !== READY_STATE.OPEN) return;
+    if (this.nextEmitTimer) return;
+
+    const now = Date.now();
+    if (this.futureVisits.length === 0) {
+      // Future queue empty — slide the window forward and try again.
+      this.windowStart = now - RECENT_RECORD_WINDOW_MS;
+      this.windowEnd = now + FUTURE_PRELOAD_MS;
+      this.loadWindowSlice(now);
+      if (this.futureVisits.length === 0) return;
+    }
+
+    const next = this.futureVisits[0];
+    if (!next) return;
+    const desiredDelay = Math.max(0, next.startedAt - now);
+    // Throttle bursts so the browser console / chart isn't flooded.
+    const delay = Math.max(
+      desiredDelay,
+      MIN_INTER_EVENT_MS - (now - this.lastEmitAt),
+    );
+    this.nextEmitTimer = setTimeout(
+      () => {
+        this.nextEmitTimer = null;
+        this.emitNextVisit();
+      },
+      Math.max(0, delay),
+    );
+  }
+
+  private emitNextVisit(): void {
+    if (this.readyState !== READY_STATE.OPEN) return;
+    const visit = this.futureVisits.shift();
+    if (!visit) {
+      this.scheduleNextEmit();
+      return;
+    }
+    const now = Date.now();
+    // Stamp the event with "now" rather than the seeded startedAt so the
+    // chart timestamps match wall time; the seeded order still drives
+    // *which* visit comes next.
+    const event = this.demoVisitToEvent(visit, now);
+    this.recentEvents.push(event);
+    this.visitorsByVisitorId.set(
+      visit.visitorId,
+      this.demoVisitToVisit(visit, now),
+    );
+    this.lastEmitAt = now;
+    this.prune(now);
+    this.emitMessage({ type: "event", data: event });
+
+    if (this.recentEvents.length > 0 && this.recentEvents.length % 12 === 0) {
+      this.emitSnapshot();
+    }
+    this.scheduleNextEmit();
   }
 
   private scheduleDisconnect(): void {
@@ -203,7 +367,7 @@ class MockRealtimeSocket implements RealtimeSocketLike {
     if (this.readyState !== READY_STATE.OPEN) return;
     const now = Date.now();
     this.prune(now);
-    const activeNow = this.visitors.size;
+    const activeNow = this.visitorsByVisitorId.size;
     const events = [...this.recentEvents].sort(
       (left, right) => right.eventAt - left.eventAt,
     );
@@ -218,106 +382,6 @@ class MockRealtimeSocket implements RealtimeSocketLike {
     });
   }
 
-  private seedSnapshot(): void {
-    const now = Date.now();
-    const windowViews = integrateViews(
-      this.siteId,
-      now - RECENT_RECORD_WINDOW_MS,
-      now,
-    );
-    const r = siteRatios(this.siteId);
-    const targetViews = Math.min(
-      960,
-      Math.max(72, Math.round(windowViews * 0.38)),
-    );
-    const targetVisitors = Math.min(
-      targetViews,
-      Math.max(
-        24,
-        Math.round(targetViews * r.sessionsPerView * r.visitorsPerSession),
-      ),
-    );
-    const visitorIds = Array.from({ length: targetVisitors }, () =>
-      this.nextVisitorId(),
-    );
-    const timestamps = Array.from(
-      { length: targetViews },
-      () => now - randomInt(0, Math.max(1, RECENT_RECORD_WINDOW_MS - 1000)),
-    ).sort((left, right) => left - right);
-
-    for (let i = 0; i < timestamps.length; i += 1) {
-      const visitorId =
-        i < visitorIds.length
-          ? (visitorIds[i] ?? this.nextVisitorId())
-          : (visitorIds[randomInt(0, visitorIds.length - 1)] ??
-            this.nextVisitorId());
-      const event = this.buildEvent({
-        visitorId,
-        eventAt: timestamps[i] ?? now,
-        previousVisit: this.visitors.get(visitorId) ?? null,
-        eventType: "pageview",
-      });
-      this.trackEvent(event);
-    }
-    this.prune(now);
-  }
-
-  private generateEvent(now: number): RealtimeEvent {
-    const useExisting = this.visitors.size > 0 && Math.random() < 0.72;
-    let visitorId = this.nextVisitorId();
-    let previousVisit: RealtimeVisit | null = null;
-    if (useExisting) {
-      const ids = Array.from(this.visitors.keys());
-      visitorId = ids[randomInt(0, ids.length - 1)];
-      previousVisit = this.visitors.get(visitorId) ?? null;
-    }
-
-    const event = this.buildEvent({
-      visitorId,
-      eventAt: now,
-      previousVisit,
-    });
-    this.trackEvent(event);
-    this.prune(now);
-    return event;
-  }
-
-  private trackEvent(event: RealtimeEvent): void {
-    const previousVisit = this.visitors.get(event.visitorId);
-    const visitId =
-      event.visitId || previousVisit?.visitId || `${event.visitorId}-visit`;
-    const sessionId = event.sessionId || previousVisit?.sessionId || visitId;
-
-    this.visitors.set(event.visitorId, {
-      visitId,
-      visitorId: event.visitorId,
-      sessionId,
-      startedAt: previousVisit?.startedAt ?? event.eventAt,
-      lastActivityAt: event.eventAt,
-      pathname: event.pathname,
-      hash: event.hash,
-      title: event.title,
-      hostname: event.hostname,
-      referrerUrl: event.referrerUrl,
-      referrerHost: event.referrerHost,
-      country: event.country,
-      region: event.region,
-      regionCode: event.regionCode,
-      city: event.city,
-      continent: event.continent,
-      timezone: event.timezone,
-      organization: event.organization,
-      browser: event.browser,
-      osVersion: event.osVersion,
-      deviceType: event.deviceType,
-      language: event.language,
-      screenSize: event.screenSize,
-      latitude: event.latitude,
-      longitude: event.longitude,
-    });
-    this.recentEvents.push(event);
-  }
-
   private prune(now: number): void {
     const activeCutoff = now - this.activeWindowMs;
     const recordCutoff = now - RECENT_RECORD_WINDOW_MS;
@@ -325,137 +389,97 @@ class MockRealtimeSocket implements RealtimeSocketLike {
     this.recentEvents = this.recentEvents.filter(
       (item) => item.eventAt >= recordCutoff,
     );
-    for (const [visitorId, visit] of this.visitors.entries()) {
+    for (const [visitorId, visit] of this.visitorsByVisitorId.entries()) {
       if (visit.lastActivityAt < activeCutoff) {
-        this.visitors.delete(visitorId);
+        this.visitorsByVisitorId.delete(visitorId);
       }
     }
   }
 
-  private nextVisitorId(): string {
-    const suffix = this.sequence.toString(36);
-    this.sequence += 1;
-    return `${this.siteId}-visitor-${suffix}`;
-  }
-
   private nextEventId(): string {
-    const suffix = this.sequence.toString(36);
-    this.sequence += 1;
+    const suffix = (this.sequence++).toString(36);
     return `${this.siteId}-event-${suffix}`;
   }
 
-  private buildEvent(input: {
-    visitorId: string;
-    eventAt: number;
-    previousVisit?: RealtimeVisit | null;
-    eventType?: string;
-  }): RealtimeEvent {
+  private demoVisitToEvent(
+    visit: DemoVisitFact,
+    overrideEventAt?: number,
+  ): RealtimeEvent {
     const profile = findSiteProfile(this.siteId);
-    const customEventTypes = profile.eventNames.slice(0, 4);
-    const paths = profile.paths;
-    const previousVisit = input.previousVisit ?? null;
-    const country =
-      previousVisit?.country ||
-      weightedPickCountry(Math.random, profile.topCountries);
-    const geo = previousVisit
-      ? {
-          regionCode: previousVisit.regionCode,
-          regionName: "",
-          region: previousVisit.region,
-          cityName: "",
-          city: previousVisit.city,
-          continent: previousVisit.continent,
-          timezone: previousVisit.timezone,
-          organization: previousVisit.organization,
-          latitude:
-            previousVisit.latitude ??
-            sampleGeoPointByCountry(Math.random, country).latitude,
-          longitude:
-            previousVisit.longitude ??
-            sampleGeoPointByCountry(Math.random, country).longitude,
-        }
-      : pickDemoGeoContext(Math.random, country);
-    const pathname =
-      previousVisit?.pathname && Math.random() < 0.58
-        ? previousVisit.pathname
-        : (paths[randomInt(0, paths.length - 1)] ?? "/");
-    const pathIndex = profile.paths.indexOf(pathname);
-    const title =
-      String(profile.titles[pathIndex] || "").trim() || titleFromPath(pathname);
-    const deviceType =
-      previousVisit?.deviceType || pickDemoDeviceType(Math.random, profile);
-    const browser =
-      previousVisit?.browser || pickDemoBrowser(Math.random, deviceType);
-    const osVersion =
-      previousVisit?.osVersion || pickDemoOsVersion(Math.random, deviceType);
-    const language =
-      previousVisit?.language || pickDemoLanguage(Math.random, country);
-    const screenSize =
-      previousVisit?.screenSize || pickDemoScreenSize(Math.random, deviceType);
-    const visitId = previousVisit?.visitId || `${input.visitorId}-visit`;
-    const sessionId = previousVisit?.sessionId || visitId;
-
-    const selectedReferrer =
-      previousVisit?.referrerHost ||
-      weightedPickLabel(
-        Math.random,
-        profile.topReferrers.map((item) => ({
-          label: item.name,
-          weight: item.weight,
-        })),
-        "(direct)",
-      );
-    const isDirect = selectedReferrer === "(direct)";
-    const referrerHost = isDirect ? "" : selectedReferrer.toLowerCase();
-    const keyword = encodeURIComponent(
-      title.toLowerCase().replace(/\s+/g, "-"),
-    );
-    const referrerUrl = isDirect
-      ? ""
-      : `https://${referrerHost}/search/${keyword}`;
-    const eventType =
-      input.eventType ??
-      (!previousVisit || customEventTypes.length === 0 || Math.random() < 0.68
-        ? "pageview"
-        : (customEventTypes[randomInt(0, customEventTypes.length - 1)] ??
-          "pageview"));
-
     return {
       id: this.nextEventId(),
-      eventType,
-      eventAt: input.eventAt,
-      visitId,
-      sessionId,
-      pathname,
-      hash: previousVisit?.hash || "",
-      title,
-      hostname: previousVisit?.hostname || profile.domain,
-      referrerUrl: previousVisit?.referrerUrl || referrerUrl,
-      referrerHost: previousVisit?.referrerHost || referrerHost,
-      visitorId: input.visitorId,
-      country,
-      region: previousVisit?.region || geo.region,
-      regionCode: previousVisit?.regionCode || geo.regionCode,
-      city: previousVisit?.city || geo.city,
-      continent: previousVisit?.continent || geo.continent,
-      timezone: previousVisit?.timezone || geo.timezone,
-      organization: previousVisit?.organization || geo.organization,
-      browser,
-      osVersion,
-      deviceType,
-      language,
-      screenSize,
-      latitude: previousVisit?.latitude ?? geo.latitude,
-      longitude: previousVisit?.longitude ?? geo.longitude,
+      eventType: visit.eventType,
+      eventAt: overrideEventAt ?? visit.startedAt,
+      visitId: visit.visitId,
+      sessionId: visit.sessionId,
+      pathname: visit.pathname,
+      hash: "",
+      title: visit.title,
+      hostname: visit.hostname || profile.domain,
+      referrerUrl: visit.referrerUrl,
+      referrerHost: visit.referrerHost,
+      visitorId: visit.visitorId,
+      country: visit.country,
+      region: visit.region,
+      regionCode: visit.regionCode,
+      city: visit.city,
+      continent: visit.continent,
+      timezone: visit.timezone,
+      organization: visit.organization,
+      browser: visit.browser,
+      osVersion: visit.osVersion,
+      deviceType: visit.deviceType,
+      language: visit.language,
+      screenSize: visit.screenSize,
+      latitude: Number.isFinite(visit.latitude) ? visit.latitude : null,
+      longitude: Number.isFinite(visit.longitude) ? visit.longitude : null,
+    };
+  }
+
+  private demoVisitToVisit(
+    visit: DemoVisitFact,
+    overrideActivityAt?: number,
+  ): RealtimeVisit {
+    const profile = findSiteProfile(this.siteId);
+    const previous = this.visitorsByVisitorId.get(visit.visitorId);
+    const activityAt = overrideActivityAt ?? visit.startedAt;
+    return {
+      visitId: visit.visitId,
+      visitorId: visit.visitorId,
+      sessionId: visit.sessionId,
+      startedAt: previous?.startedAt ?? activityAt,
+      lastActivityAt: activityAt,
+      pathname: visit.pathname,
+      hash: "",
+      title: visit.title,
+      hostname: visit.hostname || profile.domain,
+      referrerUrl: visit.referrerUrl,
+      referrerHost: visit.referrerHost,
+      country: visit.country,
+      region: visit.region,
+      regionCode: visit.regionCode,
+      city: visit.city,
+      continent: visit.continent,
+      timezone: visit.timezone,
+      organization: visit.organization,
+      browser: visit.browser,
+      osVersion: visit.osVersion,
+      deviceType: visit.deviceType,
+      language: visit.language,
+      screenSize: visit.screenSize,
+      latitude: Number.isFinite(visit.latitude) ? visit.latitude : null,
+      longitude: Number.isFinite(visit.longitude) ? visit.longitude : null,
     };
   }
 
   private buildSnapshotPoints(): RealtimeVisitorPoint[] {
     const points: RealtimeVisitorPoint[] = [];
-    for (const visit of Array.from(this.visitors.values()).sort(
+    for (const visit of Array.from(this.visitorsByVisitorId.values()).sort(
       (a, b) => b.lastActivityAt - a.lastActivityAt,
     )) {
       if (
+        visit.latitude == null ||
+        visit.longitude == null ||
         !Number.isFinite(visit.latitude) ||
         !Number.isFinite(visit.longitude)
       ) {
@@ -473,7 +497,7 @@ class MockRealtimeSocket implements RealtimeSocketLike {
   }
 
   private buildSnapshotVisits(): RealtimeVisit[] {
-    return Array.from(this.visitors.values()).sort(
+    return Array.from(this.visitorsByVisitorId.values()).sort(
       (left, right) => right.lastActivityAt - left.lastActivityAt,
     );
   }
@@ -483,9 +507,9 @@ class MockRealtimeSocket implements RealtimeSocketLike {
       clearTimeout(this.handshakeTimer);
       this.handshakeTimer = null;
     }
-    if (this.eventTimer) {
-      clearInterval(this.eventTimer);
-      this.eventTimer = null;
+    if (this.nextEmitTimer) {
+      clearTimeout(this.nextEmitTimer);
+      this.nextEmitTimer = null;
     }
     if (this.dropTimer) {
       clearTimeout(this.dropTimer);
@@ -503,1036 +527,6 @@ export function createMockRealtimeSocket(
 // ---------------------------------------------------------------------------
 //  Demo mode — seeded PRNG & data generators
 // ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-//  Shared data constants
-// ---------------------------------------------------------------------------
-
-const ALL_BROWSERS = [
-  "Chrome",
-  "Safari",
-  "Edge",
-  "Firefox",
-  "Samsung Internet",
-  "Opera",
-  "Brave",
-  "Arc",
-  "Mobile Safari",
-  "Chrome Mobile",
-  "Firefox Mobile",
-  "Opera Mobile",
-  "Yandex Browser",
-  "UC Browser",
-  "QQ Browser",
-  "Vivaldi",
-  "DuckDuckGo Browser",
-  "Whale",
-  "Huawei Browser",
-  "Mi Browser",
-] as const;
-const ALL_OS = [
-  "Windows 11",
-  "Windows 10",
-  "macOS 15",
-  "macOS 14",
-  "Ubuntu 24.04",
-  "Ubuntu 22.04",
-  "Fedora 40",
-  "Debian 12",
-  "iOS 18",
-  "iOS 17",
-  "Android 15",
-  "Android 14",
-  "Chrome OS",
-  "HarmonyOS 5",
-] as const;
-const ALL_LANGUAGES = [
-  "en-US",
-  "en-GB",
-  "zh-CN",
-  "zh-TW",
-  "de-DE",
-  "ja-JP",
-  "fr-FR",
-  "es-ES",
-  "es-419",
-  "pt-BR",
-  "ko-KR",
-  "ru-RU",
-  "nl-NL",
-  "it-IT",
-  "pl-PL",
-  "tr-TR",
-  "id-ID",
-  "vi-VN",
-  "th-TH",
-  "ar-SA",
-] as const;
-const ALL_SCREEN_SIZES = [
-  "1920x1080",
-  "2560x1440",
-  "1440x900",
-  "1366x768",
-  "1536x864",
-  "1600x900",
-  "3840x2160",
-  "390x844",
-  "393x852",
-  "412x915",
-  "430x932",
-  "360x780",
-  "360x800",
-  "768x1024",
-  "834x1194",
-  "1024x1366",
-] as const;
-const ALL_CONTINENTS = [
-  "North America",
-  "Europe",
-  "Asia",
-  "South America",
-  "Oceania",
-  "Africa",
-] as const;
-const ALL_TIMEZONES = [
-  "America/New_York",
-  "America/Los_Angeles",
-  "America/Chicago",
-  "America/Denver",
-  "America/Toronto",
-  "America/Mexico_City",
-  "America/Sao_Paulo",
-  "America/Bogota",
-  "Europe/London",
-  "Europe/Berlin",
-  "Europe/Paris",
-  "Europe/Amsterdam",
-  "Europe/Madrid",
-  "Europe/Warsaw",
-  "Europe/Istanbul",
-  "Asia/Tokyo",
-  "Asia/Shanghai",
-  "Asia/Hong_Kong",
-  "Asia/Singapore",
-  "Asia/Kolkata",
-  "Asia/Seoul",
-  "Asia/Jakarta",
-  "Asia/Manila",
-  "Asia/Bangkok",
-  "Australia/Sydney",
-  "Australia/Melbourne",
-  "Pacific/Auckland",
-  "Africa/Johannesburg",
-  "Africa/Lagos",
-  "Africa/Nairobi",
-] as const;
-const ALL_ORGS = [
-  "Cloudflare Inc.",
-  "Google LLC",
-  "Amazon.com Inc.",
-  "Microsoft Corp.",
-  "Comcast Cable",
-  "AT&T Services",
-  "Deutsche Telekom",
-  "Telefonica",
-  "China Telecom",
-  "China Unicom",
-  "China Mobile",
-  "NTT Communications",
-  "Vodafone Group",
-  "British Telecom",
-  "Orange S.A.",
-  "SK Broadband",
-  "Reliance Jio",
-  "Airtel Broadband",
-  "Telstra",
-  "Rogers Communications",
-  "Bell Canada",
-  "Singtel",
-  "KPN",
-  "TIM Brasil",
-  "Claro",
-] as const;
-const BROWSER_MARKET_WEIGHTS: Array<{ label: string; weight: number }> = [
-  { label: "Chrome", weight: 0.49 },
-  { label: "Safari", weight: 0.22 },
-  { label: "Edge", weight: 0.09 },
-  { label: "Firefox", weight: 0.06 },
-  { label: "Samsung Internet", weight: 0.04 },
-  { label: "Chrome Mobile", weight: 0.03 },
-  { label: "Mobile Safari", weight: 0.025 },
-  { label: "Opera", weight: 0.02 },
-  { label: "Brave", weight: 0.012 },
-  { label: "Arc", weight: 0.01 },
-  { label: "Firefox Mobile", weight: 0.008 },
-  { label: "Opera Mobile", weight: 0.006 },
-  { label: "Yandex Browser", weight: 0.005 },
-  { label: "UC Browser", weight: 0.004 },
-  { label: "QQ Browser", weight: 0.004 },
-  { label: "Vivaldi", weight: 0.003 },
-  { label: "DuckDuckGo Browser", weight: 0.003 },
-  { label: "Whale", weight: 0.0025 },
-  { label: "Huawei Browser", weight: 0.0025 },
-  { label: "Mi Browser", weight: 0.002 },
-];
-const GLOBAL_REFERRER_LONG_TAIL: Array<{ name: string; weight: number }> = [
-  { name: "duckduckgo.com", weight: 0.06 },
-  { name: "search.yahoo.com", weight: 0.055 },
-  { name: "yandex.com", weight: 0.04 },
-  { name: "ecosia.org", weight: 0.035 },
-  { name: "news.ycombinator.com", weight: 0.03 },
-  { name: "medium.com", weight: 0.03 },
-  { name: "substack.com", weight: 0.025 },
-  { name: "discord.com", weight: 0.024 },
-  { name: "slack.com", weight: 0.02 },
-  { name: "notion.so", weight: 0.018 },
-  { name: "youtube.com", weight: 0.016 },
-  { name: "wechat.com", weight: 0.014 },
-  { name: "x.com", weight: 0.014 },
-  { name: "threads.net", weight: 0.012 },
-  { name: "quora.com", weight: 0.012 },
-  { name: "npmjs.com", weight: 0.011 },
-  { name: "producthunt.com", weight: 0.011 },
-  { name: "baidu.com", weight: 0.01 },
-  { name: "zhihu.com", weight: 0.01 },
-  { name: "weibo.com", weight: 0.009 },
-  { name: "line.me", weight: 0.008 },
-  { name: "kakao.com", weight: 0.008 },
-  { name: "dev.to", weight: 0.008 },
-  { name: "stackoverflow.com", weight: 0.008 },
-  { name: "l.facebook.com", weight: 0.007 },
-  { name: "m.facebook.com", weight: 0.007 },
-];
-const GLOBAL_COUNTRY_LONG_TAIL: Array<{ code: string; weight: number }> = [
-  { code: "US", weight: 0.18 },
-  { code: "IN", weight: 0.11 },
-  { code: "BR", weight: 0.08 },
-  { code: "DE", weight: 0.06 },
-  { code: "GB", weight: 0.055 },
-  { code: "CA", weight: 0.05 },
-  { code: "FR", weight: 0.045 },
-  { code: "JP", weight: 0.04 },
-  { code: "AU", weight: 0.035 },
-  { code: "ES", weight: 0.03 },
-  { code: "IT", weight: 0.03 },
-  { code: "NL", weight: 0.025 },
-  { code: "SE", weight: 0.02 },
-  { code: "PL", weight: 0.02 },
-  { code: "MX", weight: 0.02 },
-  { code: "TR", weight: 0.02 },
-  { code: "ID", weight: 0.02 },
-  { code: "PH", weight: 0.018 },
-  { code: "VN", weight: 0.018 },
-  { code: "KR", weight: 0.018 },
-  { code: "SG", weight: 0.016 },
-  { code: "MY", weight: 0.015 },
-  { code: "TH", weight: 0.015 },
-  { code: "NG", weight: 0.015 },
-  { code: "ZA", weight: 0.014 },
-  { code: "KE", weight: 0.014 },
-  { code: "EG", weight: 0.014 },
-  { code: "CO", weight: 0.014 },
-  { code: "AR", weight: 0.013 },
-  { code: "CL", weight: 0.012 },
-  { code: "AE", weight: 0.012 },
-  { code: "PK", weight: 0.012 },
-  { code: "HK", weight: 0.01 },
-  { code: "TW", weight: 0.01 },
-  { code: "IE", weight: 0.01 },
-  { code: "NZ", weight: 0.01 },
-  { code: "PT", weight: 0.01 },
-];
-// Region format matches real backend: "country::stateCode::stateName"
-const ALL_REGIONS = [
-  "US::CA::California",
-  "US::TX::Texas",
-  "US::NY::New York",
-  "US::FL::Florida",
-  "US::WA::Washington",
-  "CA::ON::Ontario",
-  "CA::BC::British Columbia",
-  "CA::QC::Quebec",
-  "GB::ENG::England",
-  "DE::BE::Berlin",
-  "DE::BY::Bavaria",
-  "DE::NW::North Rhine-Westphalia",
-  "FR::IDF::Ile-de-France",
-  "FR::ARA::Auvergne-Rhone-Alpes",
-  "NL::NH::North Holland",
-  "ES::MD::Madrid",
-  "IT::62::Lazio",
-  "PL::14::Mazowieckie",
-  "SE::AB::Stockholm County",
-  "JP::13::Tokyo",
-  "JP::27::Osaka",
-  "CN::BJ::Beijing",
-  "CN::SH::Shanghai",
-  "CN::GD::Guangdong",
-  "IN::MH::Maharashtra",
-  "IN::KA::Karnataka",
-  "IN::DL::Delhi",
-  "KR::11::Seoul",
-  "SG::01::Singapore",
-  "AU::NSW::New South Wales",
-  "AU::VIC::Victoria",
-  "NZ::AUK::Auckland",
-  "BR::SP::Sao Paulo",
-  "BR::RJ::Rio de Janeiro",
-  "MX::CMX::Ciudad de Mexico",
-  "AR::B::Buenos Aires",
-  "CO::DC::Bogota",
-  "ZA::GT::Gauteng",
-  "NG::LA::Lagos",
-  "KE::110::Nairobi",
-  "EG::C::Cairo",
-  "TR::34::Istanbul",
-  "ID::JK::Jakarta",
-  "PH::00::Metro Manila",
-  "VN::HN::Hanoi",
-] as const;
-// City format matches real backend: "country::stateCode::stateName::cityName"
-const ALL_CITIES = [
-  "US::CA::California::San Francisco",
-  "US::NY::New York::New York",
-  "US::CA::California::Los Angeles",
-  "US::TX::Texas::Austin",
-  "US::IL::Illinois::Chicago",
-  "US::WA::Washington::Seattle",
-  "US::MA::Massachusetts::Boston",
-  "CA::ON::Ontario::Toronto",
-  "CA::BC::British Columbia::Vancouver",
-  "CA::QC::Quebec::Montreal",
-  "GB::ENG::England::London",
-  "GB::ENG::England::Manchester",
-  "DE::BE::Berlin::Berlin",
-  "DE::BY::Bavaria::Munich",
-  "DE::HH::Hamburg::Hamburg",
-  "FR::IDF::Ile-de-France::Paris",
-  "FR::ARA::Auvergne-Rhone-Alpes::Lyon",
-  "NL::NH::North Holland::Amsterdam",
-  "ES::MD::Madrid::Madrid",
-  "IT::62::Lazio::Rome",
-  "SE::AB::Stockholm County::Stockholm",
-  "PL::14::Mazowieckie::Warsaw",
-  "JP::13::Tokyo::Tokyo",
-  "JP::27::Osaka::Osaka",
-  "CN::BJ::Beijing::Beijing",
-  "CN::SH::Shanghai::Shanghai",
-  "CN::GD::Guangdong::Shenzhen",
-  "CN::GD::Guangdong::Guangzhou",
-  "IN::MH::Maharashtra::Mumbai",
-  "IN::DL::Delhi::New Delhi",
-  "IN::KA::Karnataka::Bengaluru",
-  "IN::TG::Telangana::Hyderabad",
-  "KR::11::Seoul::Seoul",
-  "SG::01::Singapore::Singapore",
-  "AU::NSW::New South Wales::Sydney",
-  "AU::VIC::Victoria::Melbourne",
-  "NZ::AUK::Auckland::Auckland",
-  "BR::SP::Sao Paulo::Sao Paulo",
-  "BR::RJ::Rio de Janeiro::Rio de Janeiro",
-  "MX::CMX::Ciudad de Mexico::Mexico City",
-  "AR::B::Buenos Aires::Buenos Aires",
-  "CO::DC::Bogota::Bogota",
-  "ZA::GT::Gauteng::Johannesburg",
-  "NG::LA::Lagos::Lagos",
-  "KE::110::Nairobi::Nairobi",
-  "EG::C::Cairo::Cairo",
-  "TR::34::Istanbul::Istanbul",
-  "ID::JK::Jakarta::Jakarta",
-  "PH::00::Metro Manila::Manila",
-  "VN::HN::Hanoi::Hanoi",
-  "TW::TPE::Taipei::Taipei",
-  "HK::HK::Hong Kong::Hong Kong",
-  "MY::14::Kuala Lumpur::Kuala Lumpur",
-] as const;
-
-const COUNTRY_COORDINATE_ANCHORS: Record<
-  string,
-  { latitude: number; longitude: number }
-> = {
-  US: { latitude: 39.5, longitude: -98.35 },
-  CA: { latitude: 56.13, longitude: -106.35 },
-  GB: { latitude: 54.8, longitude: -2.3 },
-  DE: { latitude: 51.16, longitude: 10.45 },
-  FR: { latitude: 46.23, longitude: 2.21 },
-  JP: { latitude: 36.2, longitude: 138.25 },
-  CN: { latitude: 35.86, longitude: 104.2 },
-  IN: { latitude: 20.59, longitude: 78.96 },
-  BR: { latitude: -14.24, longitude: -51.93 },
-  AU: { latitude: -25.27, longitude: 133.77 },
-  NL: { latitude: 52.13, longitude: 5.29 },
-  KR: { latitude: 35.91, longitude: 127.77 },
-  SG: { latitude: 1.35, longitude: 103.82 },
-  SE: { latitude: 60.13, longitude: 18.64 },
-  IT: { latitude: 41.87, longitude: 12.57 },
-  RU: { latitude: 61.52, longitude: 105.32 },
-  IE: { latitude: 53.14, longitude: -7.69 },
-  NZ: { latitude: -40.9, longitude: 174.89 },
-  ZA: { latitude: -30.56, longitude: 22.94 },
-  PH: { latitude: 12.88, longitude: 121.77 },
-  NG: { latitude: 9.08, longitude: 8.68 },
-  PL: { latitude: 51.92, longitude: 19.15 },
-  ES: { latitude: 40.46, longitude: -3.75 },
-  PT: { latitude: 39.4, longitude: -8.22 },
-  ID: { latitude: -0.79, longitude: 113.92 },
-  MX: { latitude: 23.63, longitude: -102.55 },
-  TR: { latitude: 38.96, longitude: 35.24 },
-  TW: { latitude: 23.7, longitude: 121.0 },
-  HK: { latitude: 22.32, longitude: 114.17 },
-  MY: { latitude: 4.21, longitude: 101.98 },
-  PK: { latitude: 30.38, longitude: 69.35 },
-  KE: { latitude: -0.02, longitude: 37.91 },
-  EG: { latitude: 26.82, longitude: 30.8 },
-  VN: { latitude: 14.06, longitude: 108.28 },
-  CO: { latitude: 4.57, longitude: -74.3 },
-  AR: { latitude: -38.42, longitude: -63.62 },
-  CL: { latitude: -35.68, longitude: -71.54 },
-  AE: { latitude: 23.42, longitude: 53.85 },
-  TH: { latitude: 15.87, longitude: 100.99 },
-};
-
-interface GeoCluster {
-  latitude: number;
-  longitude: number;
-  weight: number;
-  spreadKm: number;
-}
-
-const COUNTRY_GEO_CLUSTERS: Record<string, GeoCluster[]> = {
-  US: [
-    { latitude: 40.7128, longitude: -74.006, weight: 0.24, spreadKm: 38 },
-    { latitude: 34.0522, longitude: -118.2437, weight: 0.21, spreadKm: 42 },
-    { latitude: 41.8781, longitude: -87.6298, weight: 0.15, spreadKm: 36 },
-    { latitude: 32.7767, longitude: -96.797, weight: 0.13, spreadKm: 34 },
-    { latitude: 33.749, longitude: -84.388, weight: 0.12, spreadKm: 33 },
-    { latitude: 47.6062, longitude: -122.3321, weight: 0.1, spreadKm: 31 },
-    { latitude: 42.3601, longitude: -71.0589, weight: 0.05, spreadKm: 30 },
-  ],
-  CA: [
-    { latitude: 43.6532, longitude: -79.3832, weight: 0.46, spreadKm: 28 },
-    { latitude: 49.2827, longitude: -123.1207, weight: 0.29, spreadKm: 26 },
-    { latitude: 45.5017, longitude: -73.5673, weight: 0.25, spreadKm: 24 },
-  ],
-  GB: [
-    { latitude: 51.5074, longitude: -0.1278, weight: 0.58, spreadKm: 24 },
-    { latitude: 53.4808, longitude: -2.2426, weight: 0.24, spreadKm: 20 },
-    { latitude: 52.4862, longitude: -1.8904, weight: 0.18, spreadKm: 20 },
-  ],
-  DE: [
-    { latitude: 52.52, longitude: 13.405, weight: 0.34, spreadKm: 22 },
-    { latitude: 48.1351, longitude: 11.582, weight: 0.26, spreadKm: 20 },
-    { latitude: 50.1109, longitude: 8.6821, weight: 0.24, spreadKm: 18 },
-    { latitude: 53.5511, longitude: 9.9937, weight: 0.16, spreadKm: 18 },
-  ],
-  FR: [
-    { latitude: 48.8566, longitude: 2.3522, weight: 0.62, spreadKm: 21 },
-    { latitude: 45.764, longitude: 4.8357, weight: 0.2, spreadKm: 19 },
-    { latitude: 43.2965, longitude: 5.3698, weight: 0.18, spreadKm: 20 },
-  ],
-  JP: [
-    { latitude: 35.6762, longitude: 139.6503, weight: 0.58, spreadKm: 20 },
-    { latitude: 34.6937, longitude: 135.5023, weight: 0.25, spreadKm: 19 },
-    { latitude: 35.1815, longitude: 136.9066, weight: 0.17, spreadKm: 18 },
-  ],
-  CN: [
-    { latitude: 39.9042, longitude: 116.4074, weight: 0.27, spreadKm: 32 },
-    { latitude: 31.2304, longitude: 121.4737, weight: 0.29, spreadKm: 30 },
-    { latitude: 22.5431, longitude: 114.0579, weight: 0.2, spreadKm: 27 },
-    { latitude: 23.1291, longitude: 113.2644, weight: 0.14, spreadKm: 25 },
-    { latitude: 30.5728, longitude: 104.0668, weight: 0.1, spreadKm: 24 },
-  ],
-  IN: [
-    { latitude: 19.076, longitude: 72.8777, weight: 0.28, spreadKm: 29 },
-    { latitude: 28.6139, longitude: 77.209, weight: 0.25, spreadKm: 30 },
-    { latitude: 12.9716, longitude: 77.5946, weight: 0.2, spreadKm: 26 },
-    { latitude: 17.385, longitude: 78.4867, weight: 0.15, spreadKm: 24 },
-    { latitude: 13.0827, longitude: 80.2707, weight: 0.12, spreadKm: 23 },
-  ],
-  BR: [
-    { latitude: -23.5505, longitude: -46.6333, weight: 0.52, spreadKm: 33 },
-    { latitude: -22.9068, longitude: -43.1729, weight: 0.28, spreadKm: 30 },
-    { latitude: -15.7939, longitude: -47.8828, weight: 0.2, spreadKm: 28 },
-  ],
-  AU: [
-    { latitude: -33.8688, longitude: 151.2093, weight: 0.45, spreadKm: 26 },
-    { latitude: -37.8136, longitude: 144.9631, weight: 0.32, spreadKm: 25 },
-    { latitude: -27.4698, longitude: 153.0251, weight: 0.15, spreadKm: 23 },
-    { latitude: -31.9523, longitude: 115.8613, weight: 0.08, spreadKm: 22 },
-  ],
-  NL: [
-    { latitude: 52.3676, longitude: 4.9041, weight: 0.69, spreadKm: 17 },
-    { latitude: 51.9244, longitude: 4.4777, weight: 0.31, spreadKm: 16 },
-  ],
-  KR: [
-    { latitude: 37.5665, longitude: 126.978, weight: 0.72, spreadKm: 17 },
-    { latitude: 35.1796, longitude: 129.0756, weight: 0.28, spreadKm: 16 },
-  ],
-  SG: [{ latitude: 1.3521, longitude: 103.8198, weight: 1, spreadKm: 11 }],
-  SE: [
-    { latitude: 59.3293, longitude: 18.0686, weight: 0.74, spreadKm: 16 },
-    { latitude: 57.7089, longitude: 11.9746, weight: 0.26, spreadKm: 15 },
-  ],
-  IT: [
-    { latitude: 41.9028, longitude: 12.4964, weight: 0.58, spreadKm: 18 },
-    { latitude: 45.4642, longitude: 9.19, weight: 0.42, spreadKm: 18 },
-  ],
-  RU: [
-    { latitude: 55.7558, longitude: 37.6173, weight: 0.7, spreadKm: 24 },
-    { latitude: 59.9311, longitude: 30.3609, weight: 0.3, spreadKm: 22 },
-  ],
-  IE: [{ latitude: 53.3498, longitude: -6.2603, weight: 1, spreadKm: 16 }],
-  NZ: [
-    { latitude: -36.8485, longitude: 174.7633, weight: 0.7, spreadKm: 16 },
-    { latitude: -41.2865, longitude: 174.7762, weight: 0.3, spreadKm: 15 },
-  ],
-  ZA: [
-    { latitude: -26.2041, longitude: 28.0473, weight: 0.65, spreadKm: 20 },
-    { latitude: -33.9249, longitude: 18.4241, weight: 0.35, spreadKm: 20 },
-  ],
-  PH: [
-    { latitude: 14.5995, longitude: 120.9842, weight: 0.78, spreadKm: 22 },
-    { latitude: 10.3157, longitude: 123.8854, weight: 0.22, spreadKm: 20 },
-  ],
-  NG: [
-    { latitude: 6.5244, longitude: 3.3792, weight: 0.72, spreadKm: 24 },
-    { latitude: 9.0765, longitude: 7.3986, weight: 0.28, spreadKm: 22 },
-  ],
-  PL: [
-    { latitude: 52.2297, longitude: 21.0122, weight: 0.64, spreadKm: 17 },
-    { latitude: 50.0647, longitude: 19.945, weight: 0.36, spreadKm: 16 },
-  ],
-  ES: [
-    { latitude: 40.4168, longitude: -3.7038, weight: 0.56, spreadKm: 19 },
-    { latitude: 41.3874, longitude: 2.1686, weight: 0.44, spreadKm: 19 },
-  ],
-  PT: [
-    { latitude: 38.7223, longitude: -9.1393, weight: 0.68, spreadKm: 16 },
-    { latitude: 41.1579, longitude: -8.6291, weight: 0.32, spreadKm: 15 },
-  ],
-  ID: [
-    { latitude: -6.2088, longitude: 106.8456, weight: 0.57, spreadKm: 28 },
-    { latitude: -7.2575, longitude: 112.7521, weight: 0.23, spreadKm: 24 },
-    { latitude: -6.9175, longitude: 107.6191, weight: 0.2, spreadKm: 22 },
-  ],
-  MX: [
-    { latitude: 19.4326, longitude: -99.1332, weight: 0.55, spreadKm: 24 },
-    { latitude: 20.6597, longitude: -103.3496, weight: 0.25, spreadKm: 22 },
-    { latitude: 25.6866, longitude: -100.3161, weight: 0.2, spreadKm: 21 },
-  ],
-  TR: [
-    { latitude: 41.0082, longitude: 28.9784, weight: 0.64, spreadKm: 21 },
-    { latitude: 39.9334, longitude: 32.8597, weight: 0.22, spreadKm: 20 },
-    { latitude: 38.4237, longitude: 27.1428, weight: 0.14, spreadKm: 19 },
-  ],
-  TW: [
-    { latitude: 25.033, longitude: 121.5654, weight: 0.73, spreadKm: 14 },
-    { latitude: 24.1477, longitude: 120.6736, weight: 0.27, spreadKm: 13 },
-  ],
-  HK: [{ latitude: 22.3193, longitude: 114.1694, weight: 1, spreadKm: 9 }],
-  MY: [
-    { latitude: 3.139, longitude: 101.6869, weight: 0.72, spreadKm: 16 },
-    { latitude: 5.4141, longitude: 100.3288, weight: 0.16, spreadKm: 14 },
-    { latitude: 1.4927, longitude: 103.7414, weight: 0.12, spreadKm: 14 },
-  ],
-  PK: [
-    { latitude: 24.8607, longitude: 67.0011, weight: 0.48, spreadKm: 22 },
-    { latitude: 31.5497, longitude: 74.3436, weight: 0.34, spreadKm: 21 },
-    { latitude: 33.6844, longitude: 73.0479, weight: 0.18, spreadKm: 20 },
-  ],
-  KE: [
-    { latitude: -1.2921, longitude: 36.8219, weight: 0.78, spreadKm: 18 },
-    { latitude: -4.0435, longitude: 39.6682, weight: 0.22, spreadKm: 17 },
-  ],
-  EG: [
-    { latitude: 30.0444, longitude: 31.2357, weight: 0.74, spreadKm: 20 },
-    { latitude: 31.2001, longitude: 29.9187, weight: 0.26, spreadKm: 18 },
-  ],
-  VN: [
-    { latitude: 10.8231, longitude: 106.6297, weight: 0.47, spreadKm: 21 },
-    { latitude: 21.0278, longitude: 105.8342, weight: 0.43, spreadKm: 21 },
-    { latitude: 16.0544, longitude: 108.2022, weight: 0.1, spreadKm: 18 },
-  ],
-  CO: [
-    { latitude: 4.711, longitude: -74.0721, weight: 0.62, spreadKm: 19 },
-    { latitude: 6.2442, longitude: -75.5812, weight: 0.38, spreadKm: 18 },
-  ],
-  AR: [
-    { latitude: -34.6037, longitude: -58.3816, weight: 0.7, spreadKm: 21 },
-    { latitude: -31.4201, longitude: -64.1888, weight: 0.3, spreadKm: 19 },
-  ],
-  CL: [{ latitude: -33.4489, longitude: -70.6693, weight: 1, spreadKm: 18 }],
-  AE: [
-    { latitude: 25.2048, longitude: 55.2708, weight: 0.62, spreadKm: 14 },
-    { latitude: 24.4539, longitude: 54.3773, weight: 0.38, spreadKm: 13 },
-  ],
-  TH: [
-    { latitude: 13.7563, longitude: 100.5018, weight: 0.76, spreadKm: 19 },
-    { latitude: 18.7883, longitude: 98.9853, weight: 0.24, spreadKm: 16 },
-  ],
-};
-
-function normalizeLongitude(longitude: number): number {
-  if (!Number.isFinite(longitude)) return 0;
-  let value = longitude;
-  while (value > 180) value -= 360;
-  while (value < -180) value += 360;
-  return value;
-}
-
-function weightedPickIndex(rng: () => number, weights: number[]): number {
-  if (weights.length === 0) return 0;
-  const safeWeights = weights.map((weight) => Math.max(0, Number(weight) || 0));
-  const totalWeight = safeWeights.reduce((sum, weight) => sum + weight, 0);
-  if (totalWeight <= 0) return 0;
-  let hit = rng() * totalWeight;
-  for (let index = 0; index < safeWeights.length; index += 1) {
-    hit -= safeWeights[index] ?? 0;
-    if (hit <= 0) return index;
-  }
-  return safeWeights.length - 1;
-}
-
-function randomGaussian(rng: () => number): number {
-  const u = Math.max(rng(), Number.EPSILON);
-  const v = Math.max(rng(), Number.EPSILON);
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-}
-
-function pickCountryGeoCluster(
-  rng: () => number,
-  countryCode: string,
-): GeoCluster {
-  const clusters = COUNTRY_GEO_CLUSTERS[countryCode];
-  if (!clusters || clusters.length === 0) {
-    const anchor = COUNTRY_COORDINATE_ANCHORS[countryCode] ?? {
-      latitude: 20,
-      longitude: 0,
-    };
-    return {
-      latitude: anchor.latitude,
-      longitude: anchor.longitude,
-      weight: 1,
-      spreadKm: 170,
-    };
-  }
-  const index = weightedPickIndex(
-    rng,
-    clusters.map((cluster) => cluster.weight),
-  );
-  return clusters[index] ?? clusters[0];
-}
-
-function sampleGeoPointByCountry(
-  rng: () => number,
-  countryCode: string,
-): { latitude: number; longitude: number } {
-  const cluster = pickCountryGeoCluster(rng, countryCode);
-  const outskirtsBoost = rng() < 0.08 ? 1.8 + rng() * 1.8 : 1;
-  const spreadKm = cluster.spreadKm * outskirtsBoost;
-  const latSigma = spreadKm / 111;
-  const cosLat = Math.max(0.22, Math.cos((cluster.latitude * Math.PI) / 180));
-  const lonSigma = spreadKm / (111 * cosLat);
-  const latitude = Math.max(
-    -85,
-    Math.min(85, cluster.latitude + randomGaussian(rng) * latSigma),
-  );
-  const longitude = normalizeLongitude(
-    cluster.longitude + randomGaussian(rng) * lonSigma,
-  );
-  return {
-    latitude: Number(latitude.toFixed(5)),
-    longitude: Number(longitude.toFixed(5)),
-  };
-}
-
-function weightedPickCountry(
-  rng: () => number,
-  countries: Array<{ code: string; weight: number }>,
-): string {
-  const totalWeight = countries.reduce(
-    (sum, item) => sum + Math.max(0, item.weight),
-    0,
-  );
-  if (totalWeight <= 0 || countries.length === 0) return "US";
-  let hit = rng() * totalWeight;
-  for (const item of countries) {
-    const weight = Math.max(0, item.weight);
-    hit -= weight;
-    if (hit <= 0) return item.code;
-  }
-  return countries[countries.length - 1]?.code || "US";
-}
-
-function buildCountryPool(
-  rng: () => number,
-  baseCountries: Array<{ code: string; weight: number }>,
-  targetCount: number,
-): Array<{ code: string; weight: number }> {
-  const normalizedTarget = Math.max(4, targetCount);
-  const pool = new Map<string, number>();
-  for (const country of baseCountries) {
-    const code = String(country.code || "")
-      .trim()
-      .toUpperCase();
-    const weight = Math.max(0, Number(country.weight) || 0);
-    if (!code || weight <= 0) continue;
-    pool.set(code, (pool.get(code) ?? 0) + weight);
-  }
-  if (pool.size === 0) pool.set("US", 1);
-
-  const baseWeightSum = Array.from(pool.values()).reduce(
-    (sum, value) => sum + value,
-    0,
-  );
-  const longTailScale = Math.max(0.08, baseWeightSum * 0.22);
-
-  for (const candidate of sShuffle(rng, [...GLOBAL_COUNTRY_LONG_TAIL])) {
-    if (pool.size >= normalizedTarget) break;
-    if (pool.has(candidate.code)) continue;
-    const weight = candidate.weight * longTailScale * (0.7 + rng() * 0.7);
-    pool.set(candidate.code, weight);
-  }
-
-  return Array.from(pool.entries())
-    .map(([code, weight]) => ({ code, weight }))
-    .sort((left, right) => right.weight - left.weight);
-}
-
-function buildReferrerPool(
-  rng: () => number,
-  baseReferrers: Array<{ name: string; weight: number }>,
-  targetCount: number,
-): Array<{ label: string; weight: number }> {
-  const normalizedTarget = Math.max(6, targetCount);
-  const pool = new Map<string, number>();
-  for (const referrer of baseReferrers) {
-    const label = String(referrer.name || "").trim();
-    const weight = Math.max(0, Number(referrer.weight) || 0);
-    if (!label || weight <= 0) continue;
-    pool.set(label, (pool.get(label) ?? 0) + weight);
-  }
-  if (!pool.has("(direct)")) pool.set("(direct)", 0.2);
-
-  const baseWeightSum = Array.from(pool.values()).reduce(
-    (sum, value) => sum + value,
-    0,
-  );
-  const longTailScale = Math.max(0.04, baseWeightSum * 0.16);
-
-  for (const candidate of sShuffle(rng, [...GLOBAL_REFERRER_LONG_TAIL])) {
-    if (pool.size >= normalizedTarget) break;
-    if (pool.has(candidate.name)) continue;
-    const weight = candidate.weight * longTailScale * (0.65 + rng() * 0.9);
-    pool.set(candidate.name, weight);
-  }
-
-  return Array.from(pool.entries())
-    .map(([label, weight]) => ({ label, weight }))
-    .sort((left, right) => right.weight - left.weight);
-}
-
-function filterGeoLabelsByCountries(
-  labels: readonly string[],
-  countries: string[],
-): string[] {
-  const allowed = new Set(
-    countries.map((country) => country.trim().toUpperCase()).filter(Boolean),
-  );
-  const filtered = labels.filter((label) =>
-    allowed.has(String(label).split("::")[0] || ""),
-  );
-  if (filtered.length >= 6) return filtered;
-  return [...labels];
-}
-
-// ---------------------------------------------------------------------------
-//  Core integration: per-site deterministic traffic rate function
-//
-//  Each site has an hourProfile { riseHour, activeWidth, baseLevel } that
-//  defines a unique 24h traffic shape:
-//    - Active zone [riseHour, riseHour + activeWidth]: sine peak
-//    - Outside: flat at baseLevel
-//    - Supports midnight wrapping (riseHour + activeWidth > 24)
-//
-//  r(t) = dailyViewCount(day) × siteHourShape(hourOfDay) / siteDayIntegral
-//
-//  Views for any [from, to] = Σ over each overlapping day d:
-//    dailyViewCount(siteId, d) × siteHourShapeIntegral(h1, h2, ...) / siteDayIntegral(siteId)
-//
-//  Guarantees:
-//    1. Same window → same result (deterministic)
-//    2. Sub-windows sum to parent window (additive)
-//    3. Data changes with time window (integration-dependent)
-//    4. Each site has a distinct 24h curve shape
-// ---------------------------------------------------------------------------
-
-/**
- * Closed-form integral of a per-site hour shape over [h1, h2] (hour-of-day, 0–24).
- *
- * Shape: baseLevel outside active zone; baseLevel + (1-baseLevel)·sin(phase·π/activeWidth) inside.
- * Active zone wraps around midnight when riseHour + activeWidth > 24.
- */
-function siteHourShapeIntegral(
-  h1: number,
-  h2: number,
-  riseHour: number,
-  activeWidth: number,
-  baseLevel: number,
-): number {
-  if (h1 >= h2) return 0;
-  const constPart = baseLevel * (h2 - h1);
-  const endHour = riseHour + activeWidth;
-
-  // Define active segments in [0, 24] space, each with a phase offset.
-  // Segment format: [segStart, segEnd, offset]
-  //   phase(h) = h - riseHour + offset
-  const segments: Array<[number, number, number]> = [];
-  if (endHour <= 24) {
-    segments.push([riseHour, endHour, 0]);
-  } else {
-    // Wraps midnight: [riseHour..24] continues as [0..endHour-24]
-    segments.push([riseHour, 24, 0]);
-    segments.push([0, endHour - 24, 24]);
-  }
-
-  let sinPart = 0;
-  const k = Math.PI / activeWidth;
-  for (const [segStart, segEnd, offset] of segments) {
-    const oStart = Math.max(h1, segStart);
-    const oEnd = Math.min(h2, segEnd);
-    if (oStart >= oEnd) continue;
-    // ∫ sin((h - riseHour + offset) · k) dh = (1/k)(cos(start) - cos(end))
-    sinPart +=
-      (1 / k) *
-      (Math.cos((oStart - riseHour + offset) * k) -
-        Math.cos((oEnd - riseHour + offset) * k));
-  }
-
-  return constPart + (1 - baseLevel) * sinPart;
-}
-
-const _siteDayIntegralCache = new Map<string, number>();
-
-/** Cached full-day integral for a site's hour shape */
-function siteDayIntegral(siteId: string): number {
-  const cached = _siteDayIntegralCache.get(siteId);
-  if (cached !== undefined) return cached;
-  const hp = findSiteProfile(siteId).hourProfile;
-  const val = siteHourShapeIntegral(
-    0,
-    24,
-    hp.riseHour,
-    hp.activeWidth,
-    hp.baseLevel,
-  );
-  _siteDayIntegralCache.set(siteId, val);
-  return val;
-}
-
-/** Deterministic daily view count for a site on a given day number (since epoch) */
-function dailyViewCount(siteId: string, dayNum: number): number {
-  const profile = findSiteProfile(siteId);
-  const rng = mulberry32(fnv1a(`${siteId}:day:${dayNum}`));
-  let pv = sInt(rng, profile.dailyPvRange[0], profile.dailyPvRange[1]);
-  // 1970-01-01 (dayNum 0) = Thursday (dow 4). 0=Sun…6=Sat
-  const dow = (4 + (((dayNum % 7) + 7) % 7)) % 7;
-  if (dow === 0 || dow === 6) pv = Math.round(pv * profile.weekendFactor);
-  return pv;
-}
-
-/** Integrate views for a site over [fromMs, toMs) using per-site hour shape */
-function integrateViews(siteId: string, fromMs: number, toMs: number): number {
-  if (fromMs >= toMs) return 0;
-  const HOUR_MS = 3600000;
-  const DAY_H = 24;
-  const fromH = fromMs / HOUR_MS;
-  const toH = toMs / HOUR_MS;
-  const fromDay = Math.floor(fromH / DAY_H);
-  const toDay = Math.floor((toH - 1e-9) / DAY_H);
-  const hp = findSiteProfile(siteId).hourProfile;
-  const dayInt = siteDayIntegral(siteId);
-  let total = 0;
-  for (let d = fromDay; d <= toDay; d++) {
-    const dayStartH = d * DAY_H;
-    const h1 = Math.max(fromH - dayStartH, 0);
-    const h2 = Math.min(toH - dayStartH, DAY_H);
-    if (h1 >= h2) continue;
-    total +=
-      (dailyViewCount(siteId, d) *
-        siteHourShapeIntegral(
-          h1,
-          h2,
-          hp.riseHour,
-          hp.activeWidth,
-          hp.baseLevel,
-        )) /
-      dayInt;
-  }
-  return Math.round(total);
-}
-
-interface SiteMetricRatios {
-  sessionsPerView: number;
-  visitorsPerSession: number;
-  bounceRate: number;
-  avgDurationMs: number;
-}
-
-const _siteRatiosCache = new Map<string, SiteMetricRatios>();
-
-/** Per-site metric ratios — deterministic, fixed for each site */
-function siteRatios(siteId: string): SiteMetricRatios {
-  const cached = _siteRatiosCache.get(siteId);
-  if (cached) return cached;
-  const profile = findSiteProfile(siteId);
-  const rng = mulberry32(fnv1a(`${siteId}:ratios`));
-  const ratios: SiteMetricRatios = {
-    sessionsPerView: 0.4 + rng() * 0.25,
-    visitorsPerSession: 0.65 + rng() * 0.25,
-    bounceRate: sFloat(
-      rng,
-      profile.bounceRateRange[0],
-      profile.bounceRateRange[1],
-    ),
-    avgDurationMs: sInt(
-      rng,
-      profile.avgDurationMsRange[0],
-      profile.avgDurationMsRange[1],
-    ),
-  };
-  _siteRatiosCache.set(siteId, ratios);
-  return ratios;
-}
-
-/**
- * Daily variation factor for a given metric.
- * Returns a deterministic multiplier around 1.0 that varies per day,
- * making bounce rate, avg duration, etc. change across time windows.
- */
-function dailyMetricFactor(
-  siteId: string,
-  dayNum: number,
-  metric: string,
-): number {
-  const rng = mulberry32(fnv1a(`${siteId}:dfactor:${metric}:${dayNum}`));
-  switch (metric) {
-    case "sessions":
-      return 0.88 + rng() * 0.24; // 0.88–1.12
-    case "visitors":
-      return 0.9 + rng() * 0.2; // 0.90–1.10
-    case "bounce":
-      return 0.78 + rng() * 0.44; // 0.78–1.22
-    case "duration":
-      return 0.65 + rng() * 0.7; // 0.65–1.35
-    default:
-      return 1.0;
-  }
-}
-
-/** Compute all six overview metrics via day-by-day integration with daily factors */
-function computeMetrics(siteId: string, fromMs: number, toMs: number) {
-  if (fromMs >= toMs) {
-    return {
-      views: 0,
-      sessions: 0,
-      visitors: 0,
-      bounces: 0,
-      totalDurationMs: 0,
-      avgDurationMs: 0,
-      bounceRate: 0,
-      approximateVisitors: false,
-    };
-  }
-  const HOUR_MS = 3600000;
-  const DAY_H = 24;
-  const hp = findSiteProfile(siteId).hourProfile;
-  const dayInt = siteDayIntegral(siteId);
-  const base = siteRatios(siteId);
-
-  const fromH = fromMs / HOUR_MS;
-  const toH = toMs / HOUR_MS;
-  const fromDay = Math.floor(fromH / DAY_H);
-  const toDay = Math.floor((toH - 1e-9) / DAY_H);
-
-  let sumViews = 0;
-  let sumSessions = 0;
-  let sumVisitors = 0;
-  let sumBounces = 0;
-  let sumDurationMs = 0;
-
-  for (let d = fromDay; d <= toDay; d++) {
-    const dayStartH = d * DAY_H;
-    const h1 = Math.max(fromH - dayStartH, 0);
-    const h2 = Math.min(toH - dayStartH, DAY_H);
-    if (h1 >= h2) continue;
-
-    const viewsFrac =
-      (dailyViewCount(siteId, d) *
-        siteHourShapeIntegral(
-          h1,
-          h2,
-          hp.riseHour,
-          hp.activeWidth,
-          hp.baseLevel,
-        )) /
-      dayInt;
-
-    const sf = dailyMetricFactor(siteId, d, "sessions");
-    const vf = dailyMetricFactor(siteId, d, "visitors");
-    const bf = dailyMetricFactor(siteId, d, "bounce");
-    const df = dailyMetricFactor(siteId, d, "duration");
-
-    const sessionsFrac = viewsFrac * base.sessionsPerView * sf;
-    const visitorsFrac = sessionsFrac * base.visitorsPerSession * vf;
-    // Bounce rate is defined as bounces / sessions.
-    // Cap daily bounce rate at 100% so bounces never exceed sessions.
-    const bouncesFrac = sessionsFrac * Math.min(1, base.bounceRate * bf);
-    const durationFrac = sessionsFrac * base.avgDurationMs * df;
-
-    sumViews += viewsFrac;
-    sumSessions += sessionsFrac;
-    sumVisitors += visitorsFrac;
-    sumBounces += bouncesFrac;
-    sumDurationMs += durationFrac;
-  }
-
-  const views = Math.round(sumViews);
-  const sessions = Math.max(views > 0 ? 1 : 0, Math.round(sumSessions));
-  const visitors = Math.max(sessions > 0 ? 1 : 0, Math.round(sumVisitors));
-  const bounces = Math.min(sessions, Math.round(sumBounces));
-  const totalDurationMs = Math.round(sumDurationMs);
-  const bounceRate =
-    sessions > 0 ? Math.round((bounces / sessions) * 10000) / 10000 : 0;
-  const avgDurationMs =
-    sessions > 0 ? Math.round(totalDurationMs / sessions) : 0;
-
-  return {
-    views,
-    sessions,
-    visitors,
-    bounces,
-    totalDurationMs,
-    avgDurationMs,
-    bounceRate,
-    approximateVisitors: false,
-  };
-}
-
-function demoIntervalStepMs(interval: string): number {
-  switch (interval) {
-    case "minute":
-      return 60_000;
-    case "hour":
-      return 3_600_000;
-    case "week":
-      return 7 * 86_400_000;
-    case "month":
-      return 30 * 86_400_000;
-    default:
-      return 86_400_000;
-  }
-}
 
 interface DemoQueryFilters {
   country?: string;
@@ -1631,186 +625,9 @@ interface DemoDimensionRow {
   sessions: number;
 }
 
-const DEMO_GEO_SEGMENT_SEPARATOR = "::";
 const DEMO_DIRECT_REFERRER_FILTER_VALUE = "__direct__";
 const DEMO_INTERVALS = new Set(["minute", "hour", "day", "week", "month"]);
 
-const DEMO_DESKTOP_OS = [
-  "Windows 11",
-  "Windows 10",
-  "macOS 15",
-  "macOS 14",
-  "Ubuntu 24.04",
-  "Ubuntu 22.04",
-  "Fedora 40",
-  "Debian 12",
-  "Chrome OS",
-] as const;
-const DEMO_MOBILE_OS = [
-  "iOS 18",
-  "iOS 17",
-  "Android 15",
-  "Android 14",
-  "HarmonyOS 5",
-] as const;
-const DEMO_DESKTOP_SCREENS = [
-  "1920x1080",
-  "2560x1440",
-  "1440x900",
-  "1366x768",
-  "1536x864",
-  "1600x900",
-  "3840x2160",
-] as const;
-const DEMO_MOBILE_SCREENS = [
-  "390x844",
-  "393x852",
-  "412x915",
-  "430x932",
-  "360x780",
-  "360x800",
-] as const;
-const DEMO_TABLET_SCREENS = ["768x1024", "834x1194", "1024x1366"] as const;
-
-const DEMO_COUNTRY_TO_CONTINENT: Record<string, string> = {
-  US: "North America",
-  CA: "North America",
-  MX: "North America",
-  GB: "Europe",
-  DE: "Europe",
-  FR: "Europe",
-  NL: "Europe",
-  ES: "Europe",
-  IT: "Europe",
-  PL: "Europe",
-  SE: "Europe",
-  IE: "Europe",
-  PT: "Europe",
-  RU: "Europe",
-  TR: "Europe",
-  CN: "Asia",
-  JP: "Asia",
-  IN: "Asia",
-  KR: "Asia",
-  SG: "Asia",
-  PH: "Asia",
-  ID: "Asia",
-  VN: "Asia",
-  TH: "Asia",
-  MY: "Asia",
-  PK: "Asia",
-  TW: "Asia",
-  HK: "Asia",
-  AE: "Asia",
-  BR: "South America",
-  AR: "South America",
-  CL: "South America",
-  CO: "South America",
-  AU: "Oceania",
-  NZ: "Oceania",
-  ZA: "Africa",
-  NG: "Africa",
-  KE: "Africa",
-  EG: "Africa",
-};
-
-const DEMO_COUNTRY_TO_TIMEZONES: Record<string, string[]> = {
-  US: [
-    "America/New_York",
-    "America/Chicago",
-    "America/Denver",
-    "America/Los_Angeles",
-  ],
-  CA: ["America/Toronto", "America/Vancouver"],
-  MX: ["America/Mexico_City"],
-  BR: ["America/Sao_Paulo"],
-  CO: ["America/Bogota"],
-  GB: ["Europe/London"],
-  DE: ["Europe/Berlin"],
-  FR: ["Europe/Paris"],
-  NL: ["Europe/Amsterdam"],
-  ES: ["Europe/Madrid"],
-  PL: ["Europe/Warsaw"],
-  TR: ["Europe/Istanbul"],
-  JP: ["Asia/Tokyo"],
-  CN: ["Asia/Shanghai", "Asia/Hong_Kong"],
-  HK: ["Asia/Hong_Kong"],
-  TW: ["Asia/Hong_Kong"],
-  SG: ["Asia/Singapore"],
-  IN: ["Asia/Kolkata"],
-  KR: ["Asia/Seoul"],
-  ID: ["Asia/Jakarta"],
-  PH: ["Asia/Manila"],
-  TH: ["Asia/Bangkok"],
-  AU: ["Australia/Sydney", "Australia/Melbourne"],
-  NZ: ["Pacific/Auckland"],
-  ZA: ["Africa/Johannesburg"],
-  NG: ["Africa/Lagos"],
-  KE: ["Africa/Nairobi"],
-};
-
-const DEMO_COUNTRY_TO_LANGUAGES: Record<string, string[]> = {
-  US: ["en-US"],
-  GB: ["en-GB"],
-  CA: ["en-US", "fr-FR"],
-  DE: ["de-DE"],
-  FR: ["fr-FR"],
-  NL: ["nl-NL"],
-  ES: ["es-ES"],
-  IT: ["it-IT"],
-  PL: ["pl-PL"],
-  SE: ["en-GB", "de-DE"],
-  IE: ["en-GB"],
-  PT: ["pt-BR", "en-GB"],
-  RU: ["ru-RU"],
-  TR: ["tr-TR"],
-  CN: ["zh-CN"],
-  TW: ["zh-TW"],
-  HK: ["zh-TW", "en-US"],
-  JP: ["ja-JP"],
-  KR: ["ko-KR"],
-  IN: ["en-US", "en-GB"],
-  SG: ["en-US", "zh-CN"],
-  BR: ["pt-BR"],
-  MX: ["es-419"],
-  CO: ["es-419"],
-  AR: ["es-419"],
-  CL: ["es-419"],
-  AU: ["en-US"],
-  NZ: ["en-US"],
-  ID: ["id-ID"],
-  PH: ["en-US"],
-  VN: ["vi-VN"],
-  TH: ["th-TH"],
-  MY: ["en-US", "zh-CN"],
-  PK: ["en-US", "ar-SA"],
-  ZA: ["en-US", "en-GB"],
-  NG: ["en-US"],
-  KE: ["en-US"],
-  EG: ["ar-SA", "en-US"],
-  AE: ["ar-SA", "en-US"],
-};
-
-function groupGeoLabelsByCountry(
-  labels: readonly string[],
-): Map<string, string[]> {
-  const grouped = new Map<string, string[]>();
-  for (const label of labels) {
-    const country =
-      String(label)
-        .split(DEMO_GEO_SEGMENT_SEPARATOR)[0]
-        ?.trim()
-        .toUpperCase() || "";
-    if (!country) continue;
-    const list = grouped.get(country) ?? [];
-    list.push(String(label));
-    grouped.set(country, list);
-  }
-  return grouped;
-}
-
-const DEMO_REGIONS_BY_COUNTRY = groupGeoLabelsByCountry(ALL_REGIONS);
-const DEMO_CITIES_BY_COUNTRY = groupGeoLabelsByCountry(ALL_CITIES);
 const DEMO_FACT_DATASET_CACHE = new Map<string, DemoFactDataset>();
 
 function normalizeDemoFilterValue(
@@ -1986,252 +803,6 @@ function parseDemoInterval(
   return "day";
 }
 
-function pickFromList<T>(
-  rng: () => number,
-  values: readonly T[],
-  fallback: T,
-): T {
-  if (!values.length) return fallback;
-  return values[Math.floor(rng() * values.length)] ?? fallback;
-}
-
-function isMobileBrowserLabel(label: string): boolean {
-  return (
-    label.includes("Mobile") ||
-    label.includes("Samsung") ||
-    label.includes("UC") ||
-    label.includes("QQ") ||
-    label.includes("Huawei") ||
-    label.includes("Mi")
-  );
-}
-
-function pickDemoDeviceType(
-  rng: () => number,
-  profile: DemoSiteProfile,
-): string {
-  const entries = Object.entries(profile.deviceWeights).map(
-    ([label, weight]) => ({ label, weight }),
-  );
-  const index = weightedPickIndex(
-    rng,
-    entries.map((entry) => entry.weight),
-  );
-  return entries[index]?.label ?? "Desktop";
-}
-
-function pickDemoBrowser(rng: () => number, deviceType: string): string {
-  const adjusted = BROWSER_MARKET_WEIGHTS.map((entry) => {
-    let weight = entry.weight;
-    const mobileBrowser = isMobileBrowserLabel(entry.label);
-    if (deviceType === "Mobile") {
-      weight *= mobileBrowser ? 2.1 : 0.56;
-    } else if (deviceType === "Tablet") {
-      weight *= mobileBrowser ? 1.35 : 0.82;
-    } else {
-      weight *= mobileBrowser ? 0.38 : 1.15;
-    }
-    return {
-      label: entry.label,
-      weight,
-    };
-  });
-  return weightedPickLabel(rng, adjusted, "Chrome");
-}
-
-function pickDemoBrowserVersion(rng: () => number, browser: string): string {
-  const normalized = browser.trim().toLowerCase();
-  if (normalized.includes("samsung internet")) {
-    return pickFromList(rng, ["27", "26", "25", "24"], "27");
-  }
-  if (normalized.includes("mobile safari") || normalized === "safari") {
-    return pickFromList(rng, ["18", "17", "16", "15"], "17");
-  }
-  if (normalized.includes("firefox")) {
-    return pickFromList(rng, ["137", "136", "135", "134"], "137");
-  }
-  if (normalized.includes("edge")) {
-    return pickFromList(rng, ["138", "137", "136", "135"], "138");
-  }
-  if (normalized.includes("opera")) {
-    return pickFromList(rng, ["117", "116", "115", "114"], "117");
-  }
-  if (normalized.includes("yandex")) {
-    return pickFromList(rng, ["25", "24", "23"], "25");
-  }
-  if (normalized.includes("uc browser")) {
-    return pickFromList(rng, ["16", "15", "14"], "16");
-  }
-  return pickFromList(rng, ["138", "137", "136", "135"], "138");
-}
-
-function pickDemoOsVersion(rng: () => number, deviceType: string): string {
-  if (deviceType === "Mobile")
-    return pickFromList(rng, DEMO_MOBILE_OS, "Android 15");
-  if (deviceType === "Tablet") {
-    return rng() < 0.5
-      ? pickFromList(rng, DEMO_MOBILE_OS, "iOS 18")
-      : pickFromList(rng, DEMO_DESKTOP_OS, "Windows 11");
-  }
-  return pickFromList(rng, DEMO_DESKTOP_OS, "Windows 11");
-}
-
-function pickDemoScreenSize(rng: () => number, deviceType: string): string {
-  if (deviceType === "Mobile")
-    return pickFromList(rng, DEMO_MOBILE_SCREENS, "390x844");
-  if (deviceType === "Tablet")
-    return pickFromList(rng, DEMO_TABLET_SCREENS, "834x1194");
-  return pickFromList(rng, DEMO_DESKTOP_SCREENS, "1920x1080");
-}
-
-function pickDemoLanguage(rng: () => number, country: string): string {
-  const candidates = DEMO_COUNTRY_TO_LANGUAGES[country] ?? [];
-  return pickFromList(
-    rng,
-    candidates.length > 0 ? candidates : ALL_LANGUAGES,
-    ALL_LANGUAGES[0],
-  );
-}
-
-function pickDemoTimezone(rng: () => number, country: string): string {
-  const candidates = DEMO_COUNTRY_TO_TIMEZONES[country] ?? [];
-  return pickFromList(
-    rng,
-    candidates.length > 0 ? candidates : ALL_TIMEZONES,
-    ALL_TIMEZONES[0],
-  );
-}
-
-function pickDemoContinent(rng: () => number, country: string): string {
-  return (
-    DEMO_COUNTRY_TO_CONTINENT[country] ??
-    pickFromList(rng, ALL_CONTINENTS, "North America")
-  );
-}
-
-function pickDemoOrganization(rng: () => number, country: string): string {
-  const offset = fnv1a(country || "US") % ALL_ORGS.length;
-  const index =
-    (offset + sInt(rng, 0, Math.min(4, ALL_ORGS.length - 1))) % ALL_ORGS.length;
-  return ALL_ORGS[index];
-}
-
-function parseDemoRegionLabel(label: string): {
-  country: string;
-  regionCode: string;
-  regionName: string;
-  region: string;
-} | null {
-  const segments = String(label)
-    .split(DEMO_GEO_SEGMENT_SEPARATOR)
-    .map((segment) => segment.trim());
-  const country = (segments[0] || "").toUpperCase();
-  const regionCode = segments[1] || "";
-  const regionName = segments.slice(2).join(DEMO_GEO_SEGMENT_SEPARATOR).trim();
-  if (!country || (!regionCode && !regionName)) return null;
-  const regionToken = regionCode || regionName;
-  return {
-    country,
-    regionCode,
-    regionName,
-    region: `${country}${DEMO_GEO_SEGMENT_SEPARATOR}${regionToken}${DEMO_GEO_SEGMENT_SEPARATOR}${regionName || regionToken}`,
-  };
-}
-
-function parseDemoCityLabel(label: string): {
-  country: string;
-  regionCode: string;
-  regionName: string;
-  region: string;
-  cityName: string;
-  city: string;
-} | null {
-  const segments = String(label)
-    .split(DEMO_GEO_SEGMENT_SEPARATOR)
-    .map((segment) => segment.trim());
-  const country = (segments[0] || "").toUpperCase();
-  const regionCode = segments[1] || "";
-  const regionName = segments[2] || "";
-  const cityName = segments.slice(3).join(DEMO_GEO_SEGMENT_SEPARATOR).trim();
-  if (!country || !cityName || (!regionCode && !regionName)) return null;
-  const regionToken = regionCode || regionName;
-  const normalizedRegionName = regionName || regionToken;
-  const region = `${country}${DEMO_GEO_SEGMENT_SEPARATOR}${regionToken}${DEMO_GEO_SEGMENT_SEPARATOR}${normalizedRegionName}`;
-  return {
-    country,
-    regionCode,
-    regionName: normalizedRegionName,
-    region,
-    cityName,
-    city: `${region}${DEMO_GEO_SEGMENT_SEPARATOR}${cityName}`,
-  };
-}
-
-function pickDemoGeoContext(
-  rng: () => number,
-  country: string,
-): {
-  regionCode: string;
-  regionName: string;
-  region: string;
-  cityName: string;
-  city: string;
-  continent: string;
-  timezone: string;
-  organization: string;
-  latitude: number;
-  longitude: number;
-} {
-  const regionCandidates = DEMO_REGIONS_BY_COUNTRY.get(country) ?? [];
-  const cityCandidates = DEMO_CITIES_BY_COUNTRY.get(country) ?? [];
-  let regionCode = "";
-  let regionName = "";
-  let region = "";
-  let cityName = "";
-  let city = "";
-
-  const preferCity =
-    cityCandidates.length > 0 &&
-    (regionCandidates.length === 0 || rng() < 0.72);
-  if (preferCity) {
-    const parsedCity = parseDemoCityLabel(
-      pickFromList(rng, cityCandidates, cityCandidates[0] || ""),
-    );
-    if (parsedCity) {
-      regionCode = parsedCity.regionCode;
-      regionName = parsedCity.regionName;
-      region = parsedCity.region;
-      cityName = parsedCity.cityName;
-      city = parsedCity.city;
-    }
-  }
-
-  if (!region && regionCandidates.length > 0) {
-    const parsedRegion = parseDemoRegionLabel(
-      pickFromList(rng, regionCandidates, regionCandidates[0] || ""),
-    );
-    if (parsedRegion) {
-      regionCode = parsedRegion.regionCode;
-      regionName = parsedRegion.regionName;
-      region = parsedRegion.region;
-    }
-  }
-
-  const point = sampleGeoPointByCountry(rng, country);
-  return {
-    regionCode,
-    regionName,
-    region,
-    cityName,
-    city,
-    continent: pickDemoContinent(rng, country),
-    timezone: pickDemoTimezone(rng, country),
-    organization: pickDemoOrganization(rng, country),
-    latitude: point.latitude,
-    longitude: point.longitude,
-  };
-}
-
 function buildDemoPathTitleMap(
   profile: DemoSiteProfile,
   expandedPaths: string[],
@@ -2272,7 +843,8 @@ function buildDemoFactDataset(
   }
 
   const day = todayKey();
-  const cacheKey = `${day}:${siteId}:${from}:${to}`;
+  const bucket = windowBucket(from, to);
+  const cacheKey = `${day}:${siteId}:${bucket}`;
   const cached = DEMO_FACT_DATASET_CACHE.get(cacheKey);
   if (cached) return cached;
 
@@ -2284,7 +856,7 @@ function buildDemoFactDataset(
     return empty;
   }
 
-  const rng = createDemoRng(siteId, `facts:${from}:${to}`);
+  const rng = createDemoRng(siteId, `facts:${bucket}`);
   const sampledViewsTarget = Math.max(
     320,
     Math.min(12_000, Math.round(Math.sqrt(metrics.views + 1) * 46)),
@@ -2362,6 +934,9 @@ function buildDemoFactDataset(
   );
   const pathWeights = expandedPaths.map((_, index) => 1 / (1 + index * 0.85));
   const pathTitleMap = buildDemoPathTitleMap(profile, expandedPaths);
+  // C2 方案 — 一阶马尔可夫路径转移图,从 profile.paths 顺序推断,
+  // 或由 profile.pathFlow 显式定义。会话内的连续 pageview 服从该图。
+  const pathGraph = buildPathTransitionGraph(profile, expandedPaths);
   const eventPool = ["pageview", ...profile.eventNames];
   const span = Math.max(1, to - from);
   const fallbackAvgDuration = Math.max(
@@ -2369,11 +944,7 @@ function buildDemoFactDataset(
     Math.round(siteRatios(siteId).avgDurationMs),
   );
 
-  const visitorIds = Array.from(
-    { length: sampledVisitors },
-    (_, index) =>
-      `v-${siteId.slice(-3)}-${index.toString(36).padStart(4, "0")}`,
-  );
+  const visitorIds = sampleActiveVisitors(siteId, from, to, sampledVisitors);
   const visitorOrder = sShuffle(rng, [...visitorIds]);
   const visitors = new Map<string, DemoVisitorFact>();
   for (const visitorId of visitorIds) {
@@ -2394,18 +965,33 @@ function buildDemoFactDataset(
       visitorOrder[sessionIndex % visitorOrder.length] ??
       visitorOrder[0] ??
       `${siteId}-v-0`;
-    const country = weightedPickCountry(rng, countryPool);
-    const geo = pickDemoGeoContext(rng, country);
-    const deviceType = pickDemoDeviceType(rng, profile);
-    const browser = pickDemoBrowser(rng, deviceType);
-    const browserVersion = pickDemoBrowserVersion(rng, browser);
-    const osVersion = pickDemoOsVersion(rng, deviceType);
-    const language = pickDemoLanguage(rng, country);
-    const screenSize = pickDemoScreenSize(rng, deviceType);
+    // B方案 — 跨日稳定的 visitor 指纹:同一 visitorId 永远是同一份 DNA。
+    const fingerprint = getVisitorFingerprint(siteId, visitorId);
+    const country = fingerprint.country;
+    const geo = {
+      regionCode: fingerprint.regionCode,
+      regionName: fingerprint.regionName,
+      region: fingerprint.region,
+      cityName: fingerprint.cityName,
+      city: fingerprint.city,
+      continent: fingerprint.continent,
+      timezone: fingerprint.timezone,
+      organization: fingerprint.organization,
+      latitude: fingerprint.latitude,
+      longitude: fingerprint.longitude,
+    };
+    const deviceType = fingerprint.deviceType;
+    const browser = fingerprint.browser;
+    const browserVersion = fingerprint.browserVersion;
+    const osVersion = fingerprint.osVersion;
+    const language = fingerprint.language;
+    const screenSize = fingerprint.screenSize;
 
-    const selectedReferrer = weightedPickLabel(
+    // C3 方案 — referrer 受访客国别弱影响(CN→baidu/qq, RU→yandex 等)。
+    const selectedReferrer = pickReferrerByCountry(
       rng,
-      referrerPool.map((item) => ({ label: item.label, weight: item.weight })),
+      referrerPool,
+      country,
       "(direct)",
     );
     const isDirect = selectedReferrer === "(direct)";
@@ -2419,7 +1005,8 @@ function buildDemoFactDataset(
       ? ""
       : `https://${referrerHost}/${pickFromList(rng, ["search", "r", "ref", "posts", "share"], "search")}/${keyword}`;
 
-    let cursor = from + Math.floor(rng() * span);
+    // C1 方案 — 反 CDF 时间采样,会话起点按昼夜曲线分布。
+    let cursor = sampleTimestampByCurve(siteId, from, to, rng);
     let previousPath = "";
     let entryPath = "/";
     let exitPath = "/";
@@ -2431,12 +1018,15 @@ function buildDemoFactDataset(
     );
 
     for (let visitIndex = 0; visitIndex < viewCount; visitIndex += 1) {
-      const pathIndex = weightedPickIndex(rng, pathWeights);
-      const pickedPath = expandedPaths[pathIndex] ?? expandedPaths[0] ?? "/";
-      const pathname =
-        visitIndex > 0 && previousPath && rng() < 0.28
-          ? previousPath
-          : pickedPath;
+      let pathname: string;
+      if (visitIndex === 0) {
+        // 入口仍按 pathWeights 加权挑选,保留多样化的 entry pages。
+        const pathIndex = weightedPickIndex(rng, pathWeights);
+        pathname = expandedPaths[pathIndex] ?? expandedPaths[0] ?? "/";
+      } else {
+        // 后续 pageview 按一阶马尔可夫从上一页转移。
+        pathname = nextPath(pathGraph, previousPath, rng);
+      }
       const title = pathTitleMap.get(pathname) ?? titleFromPath(pathname);
       const increment =
         visitIndex === 0 ? sInt(rng, 0, 12_000) : sInt(rng, 8_000, 160_000);

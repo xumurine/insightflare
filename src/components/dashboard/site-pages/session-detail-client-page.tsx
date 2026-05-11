@@ -1646,15 +1646,15 @@ export function SessionDetailClientPage({
   pathname,
 }: SessionDetailClientPageProps) {
   const labels = copy(locale);
-  const { timeZone } = useDashboardQueryControls();
+  const { timeZone, window } = useDashboardQueryControls();
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("sessionId")?.trim() || "";
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [loading, setLoading] = useState(Boolean(sessionId));
   const [error, setError] = useState(false);
   const requestKey = useMemo(
-    () => [siteId, sessionId, timeZone].join(":"),
-    [sessionId, siteId, timeZone],
+    () => [siteId, sessionId, timeZone, window.from, window.to].join(":"),
+    [sessionId, siteId, timeZone, window.from, window.to],
   );
 
   useEffect(() => {
@@ -1666,7 +1666,7 @@ export function SessionDetailClientPage({
     let active = true;
     setLoading(true);
     setError(false);
-    fetchSessionDetail(siteId, sessionId, timeZone)
+    fetchSessionDetail(siteId, sessionId, timeZone, window)
       .then((payload) => {
         if (!active) return;
         setDetail(payload.data);

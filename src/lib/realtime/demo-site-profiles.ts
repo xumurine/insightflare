@@ -27,6 +27,18 @@ export interface DemoSiteProfile {
   weekendFactor: number;
   eventNames: string[];
   hourProfile: DemoSiteHourProfile;
+  /**
+   * Share of a visit window's visitors drawn from the "returning" head of the
+   * site's visitor universe (0–1). High = sticky audience (forum / SaaS),
+   * low = drive-by traffic (marketing page / portfolio). Defaults to 0.25.
+   */
+  visitorReturnRate?: number;
+  /**
+   * Optional override for the path Markov transition graph. When omitted the
+   * graph is derived from `paths` order — first path is the entry node, each
+   * subsequent path carries a slightly lower forward weight.
+   */
+  pathFlow?: Record<string, Array<{ to: string; weight: number }>>;
 }
 
 export const DEMO_TEAMS = [
@@ -104,6 +116,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
       "contact_form",
     ],
     hourProfile: { riseHour: 10, activeWidth: 12, baseLevel: 0.12 },
+    visitorReturnRate: 0.18,
   },
   {
     id: "demo-site-002",
@@ -178,6 +191,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
       "review_submit",
     ],
     hourProfile: { riseHour: 5, activeWidth: 17, baseLevel: 0.22 },
+    visitorReturnRate: 0.22,
   },
   {
     id: "demo-site-003",
@@ -246,6 +260,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
       "bookmark",
     ],
     hourProfile: { riseHour: 6, activeWidth: 17, baseLevel: 0.25 },
+    visitorReturnRate: 0.3,
   },
   {
     id: "demo-site-004",
@@ -303,6 +318,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
       "cta_click",
     ],
     hourProfile: { riseHour: 12, activeWidth: 9, baseLevel: 0.06 },
+    visitorReturnRate: 0.05,
   },
 
   {
@@ -378,6 +394,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
       "example_run",
     ],
     hourProfile: { riseHour: 3, activeWidth: 18, baseLevel: 0.2 },
+    visitorReturnRate: 0.42,
   },
   {
     id: "demo-site-006",
@@ -445,6 +462,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
       "plan_upgrade",
     ],
     hourProfile: { riseHour: 8, activeWidth: 11, baseLevel: 0.08 },
+    visitorReturnRate: 0.55,
   },
   {
     id: "demo-site-007",
@@ -515,6 +533,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
       "issue_create",
     ],
     hourProfile: { riseHour: 20, activeWidth: 16, baseLevel: 0.18 },
+    visitorReturnRate: 0.45,
   },
   {
     id: "demo-site-008",
@@ -585,6 +604,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
       "feedback",
     ],
     hourProfile: { riseHour: 4, activeWidth: 15, baseLevel: 0.15 },
+    visitorReturnRate: 0.5,
   },
 
   {
@@ -653,6 +673,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
       "comment",
     ],
     hourProfile: { riseHour: 21, activeWidth: 13, baseLevel: 0.1 },
+    visitorReturnRate: 0.2,
   },
   {
     id: "demo-site-010",
@@ -723,6 +744,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
       "upload",
     ],
     hourProfile: { riseHour: 7, activeWidth: 18, baseLevel: 0.28 },
+    visitorReturnRate: 0.62,
   },
   {
     id: "demo-site-011",
@@ -788,6 +810,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
       "social_click",
     ],
     hourProfile: { riseHour: 10, activeWidth: 11, baseLevel: 0.08 },
+    visitorReturnRate: 0.1,
   },
   {
     id: "demo-site-012",
@@ -866,6 +889,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
       "hint_request",
     ],
     hourProfile: { riseHour: 0, activeWidth: 20, baseLevel: 0.22 },
+    visitorReturnRate: 0.48,
   },
 ];
 
