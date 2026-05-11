@@ -103,6 +103,19 @@ Deploy Button 会在你的 Cloudflare 账户中自动创建并绑定 Worker、D1
 
 R2 是可选项，Deploy Button 默认不会要求绑定 R2。只有需要启用冷归档到 R2 时，才需要手动创建 R2 bucket，并在 `wrangler.toml` 中配置 `[[r2_buckets]]`。维护者自己的实例使用 `ravelloh` 环境绑定 R2，不影响默认部署流程。
 
+### 接收上游更新
+
+通过 Deploy Button 创建的仓库是 **clone**（不是 fork），所以 GitHub 自带的 "Sync fork" 按钮不可用。本仓库内置了 [`.github/workflows/sync-upstream.yml`](./.github/workflows/sync-upstream.yml)：
+
+- 每周一 03:17 UTC 自动运行一次；也可以在仓库的 **Actions → Sync upstream → Run workflow** 手动触发。
+- 同时兼容三种仓库形态：
+  - **Fork**（GitHub Fork 按钮创建）和**干净 clone**（`git clone` 后改 remote）：和上游有共同 git 历史，workflow 走 `merge` 模式，用 `git merge --no-ff upstream/main` 同步，上游每个 commit 的作者与历史都被保留。
+  - **Snapshot clone**（Cloudflare Deploy Button 创建）：只有一个 `source repo import` commit、与上游无共同历史，workflow 走 `squash` 模式：先用文件树比对（忽略 `wrangler.toml`）从上游历史反查出"克隆时的虚拟 base"，然后把该 base 到 `upstream/main` 之间的累积 diff 用 `git apply --3way` 应用为单个 squash commit，避免把上游全部历史塞进你的仓库。
+- 模式选择是自动的：workflow 先跑 `git merge-base origin/main upstream/main`，能拿到就走 merge，拿不到就走 squash。
+- 不论哪种模式，同步成功后会在你仓库打/更新一个 `upstream-sync-base` tag 指向已同步到的上游 commit，便于诊断。
+- 检测到 `RavelloH/InsightFlare:main` 有新提交时，会自动创建（或更新）一个 PR；分支名固定为 `chore/sync-upstream`，所以同一个 PR 会被反复 force-update，不会刷屏。冲突文件会保留 `<<<<<<<` 标记进 commit，PR body 顶部用单独段落标记并给出本地解决步骤。
+- 想跳过某次更新只需关闭 PR；想长期禁用，在 **Actions** 页停用此 workflow 即可。
+
 ### 手动部署
 
 #### 1. 安装依赖

@@ -111,13 +111,13 @@
   "cloudflare": {
     "bindings": {
       "DAILY_SALT_SECRET": {
-        "description": "Enter a random string longer than 16 characters for privacy-preserving visitor IDs."
+        "description": "Enter a random string longer than 16 characters for privacy-preserving visitor IDs. Generate one by visiting [https://random.ravelloh.com/str/32](https://random.ravelloh.com/str/32) and copy-pasting the result here."
       },
       "DASHBOARD_SESSION_SECRET": {
-        "description": "Enter a random string longer than 16 characters for signing dashboard login sessions."
+        "description": "Enter a random string longer than 16 characters for signing dashboard login sessions. Generate one by visiting [https://random.ravelloh.com/str/32](https://random.ravelloh.com/str/32) and copy-pasting the result here."
       },
       "BOOTSTRAP_ADMIN_PASSWORD": {
-        "description": "Password for the default admin account. The default username is `admin`; if this is left empty, the default password is `insightflare`."
+        "description": "Password for the default admin account. The default username is `admin`."
       },
       "DB": {
         "description": "D1 database used for analytics data, account data, and migrations."
