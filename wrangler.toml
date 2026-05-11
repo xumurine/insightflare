@@ -12,7 +12,8 @@ binding = "ASSETS"
 SESSION_WINDOW_MINUTES = "30" # 会话窗口大小，单位：分钟
 SCRIPT_CACHE_TTL_SECONDS = "3600" # 脚本缓存时间，单位：秒
 PARQUET_WASM_URL = "https://cdn.jsdelivr.net/npm/parquet-wasm@0.7.1/esm/parquet_wasm_bg.wasm" # Parquet WASM 模块 URL
-INSIGHTFLARE_EDGE_URL="https://insight.ravelloh.com" # InsightFlare 服务基准 URL（可指向当前后端域名）
+# INSIGHTFLARE_EDGE_URL 默认留空：运行时会从当前请求 host 自动推导，指向本部署自身。
+# 只有当前端与后端分离部署、或通过反代访问且需要显式指向某个地址时，才需要设置。
 
 [triggers]
 crons = ["0 * * * *"]

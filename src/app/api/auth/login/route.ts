@@ -53,10 +53,22 @@ export async function POST(request: Request): Promise<NextResponse> {
       maxAge: SESSION_DURATION_SECONDS,
     });
     return response;
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const statusMatch = message.match(/Edge API failed \((\d{3})\b/);
+    const upstreamStatus = statusMatch ? Number(statusMatch[1]) : 0;
+
+    if (upstreamStatus === 401) {
+      return NextResponse.json(
+        { ok: false, error: "invalid_credentials" },
+        { status: 401 },
+      );
+    }
+
+    console.error("login_upstream_failed", { message });
     return NextResponse.json(
-      { ok: false, error: "invalid_credentials" },
-      { status: 401 },
+      { ok: false, error: "login_upstream_failed", message },
+      { status: upstreamStatus >= 400 ? upstreamStatus : 502 },
     );
   }
 }
