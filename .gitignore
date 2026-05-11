@@ -1,0 +1,12 @@
+node_modules
+.wrangler
+dist
+.cache
+.next
+.open-next
+*.tsbuildinfo
+.env
+.env.*
+*.log
+*.vars
+next-env.d.ts

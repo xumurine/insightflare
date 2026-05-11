@@ -1,0 +1,956 @@
+"use client";
+
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import {
+  type RemixiconComponentType,
+  RiCalendarLine,
+  RiGroupLine,
+  RiPercentLine,
+  RiPulseLine,
+  RiRepeat2Line,
+} from "@remixicon/react";
+
+import { PageHeading } from "@/components/dashboard/page-heading";
+import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+import { AutoTransition } from "@/components/ui/auto-transition";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { OverlayScrollbar } from "@/components/ui/overlay-scrollbar";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  fetchRetention,
+  type RetentionGranularity,
+} from "@/lib/dashboard/client-data";
+import {
+  intlLocale,
+  numberFormat,
+  percentFormat,
+} from "@/lib/dashboard/format";
+import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import { addZonedInterval } from "@/lib/dashboard/time-zone";
+import type { RetentionData } from "@/lib/edge-client";
+import type { Locale } from "@/lib/i18n/config";
+import type { AppMessages } from "@/lib/i18n/messages";
+import { formatI18nTemplate } from "@/lib/i18n/template";
+import { cn } from "@/lib/utils";
+
+interface RetentionClientPageProps {
+  locale: Locale;
+  messages: AppMessages;
+  siteId: string;
+  pathname: string;
+}
+
+interface RetentionCopy {
+  matrixTitle: string;
+  matrixSubtitle: string;
+  cohortsMetric: string;
+  visitorsMetric: string;
+  periodOneMetric: string;
+  averageReturnMetric: string;
+  strongestCohortMetric: string;
+  eligibleVisitors: string;
+  periodsAnalyzed: string;
+  noEligibleCohorts: string;
+  weightedAverage: string;
+  legendLow: string;
+  legendHigh: string;
+  periodZero: string;
+  empty: string;
+  emptyHint: string;
+  loadError: string;
+  unavailableCell: string;
+  visitorsDetail: string;
+  rateDetail: string;
+  cohortDetail: string;
+  sizeDetail: string;
+}
+
+interface RetentionCellView {
+  index: number;
+  visitors: number;
+  rate: number;
+  available: boolean;
+}
+
+interface RetentionCohortView {
+  bucket: number;
+  label: string;
+  size: number;
+  cells: RetentionCellView[];
+  averagePostRate: number | null;
+}
+
+interface RetentionPeriodAverage {
+  index: number;
+  visitors: number;
+  base: number;
+  rate: number | null;
+}
+
+interface RetentionSummary {
+  cohortCount: number;
+  totalVisitors: number;
+  periodOneRate: number | null;
+  periodOneBase: number;
+  averageReturnRate: number | null;
+  analyzedPeriods: number;
+  strongestCohort: {
+    label: string;
+    rate: number;
+  } | null;
+}
+
+interface RetentionViewModel {
+  columns: number[];
+  cohorts: RetentionCohortView[];
+  periodAverages: RetentionPeriodAverage[];
+  summary: RetentionSummary;
+}
+
+const RETENTION_TABLE_COLUMNS =
+  "[--retention-cohort-width:8rem] [--retention-size-width:5rem] [--retention-period-width:4.5rem]";
+const RETENTION_COHORT_COLUMN =
+  "w-[var(--retention-cohort-width)] min-w-[var(--retention-cohort-width)] max-w-[var(--retention-cohort-width)]";
+const RETENTION_SIZE_COLUMN =
+  "w-[var(--retention-size-width)] min-w-[var(--retention-size-width)] max-w-[var(--retention-size-width)]";
+const RETENTION_PERIOD_COLUMN =
+  "w-[var(--retention-period-width)] min-w-[var(--retention-period-width)] max-w-[var(--retention-period-width)]";
+
+function copy(locale: Locale): RetentionCopy {
+  return locale === "zh"
+    ? {
+        matrixTitle: "留存矩阵",
+        matrixSubtitle:
+          "每一行是首次进入该周期的访客群组，每一列是后续周期的回访比例。",
+        cohortsMetric: "群组数",
+        visitorsMetric: "群组访客",
+        periodOneMetric: "首期回访",
+        averageReturnMetric: "平均回访",
+        strongestCohortMetric: "最佳群组",
+        eligibleVisitors: "符合统计的访客",
+        periodsAnalyzed: "已分析周期",
+        noEligibleCohorts: "暂无足够历史",
+        weightedAverage: "加权平均",
+        legendLow: "低",
+        legendHigh: "高",
+        periodZero: "初始",
+        empty: "当前时间范围内没有足够的回访数据。",
+        emptyHint:
+          "扩大时间范围，或在顶部选择更粗的时间间隔，可以更快看到留存形态。",
+        loadError: "无法加载留存数据。",
+        unavailableCell: "该群组还没有进入这个周期。",
+        visitorsDetail: "访客",
+        rateDetail: "留存率",
+        cohortDetail: "群组",
+        sizeDetail: "人数",
+      }
+    : {
+        matrixTitle: "Retention Matrix",
+        matrixSubtitle:
+          "Each row is a first-seen cohort; each column shows the share that returned in a later period.",
+        cohortsMetric: "Cohorts",
+        visitorsMetric: "Cohort Visitors",
+        periodOneMetric: "First Return",
+        averageReturnMetric: "Average Return",
+        strongestCohortMetric: "Best Cohort",
+        eligibleVisitors: "eligible visitors",
+        periodsAnalyzed: "periods analyzed",
+        noEligibleCohorts: "Not enough history",
+        weightedAverage: "Weighted average",
+        legendLow: "Low",
+        legendHigh: "High",
+        periodZero: "Initial",
+        empty: "Not enough return data in this time range.",
+        emptyHint:
+          "Use a wider range or choose a coarser interval from the top selector to reveal the retention shape sooner.",
+        loadError: "Unable to load retention data.",
+        unavailableCell: "This cohort has not reached this period yet.",
+        visitorsDetail: "Visitors",
+        rateDetail: "Retention",
+        cohortDetail: "Cohort",
+        sizeDetail: "Size",
+      };
+}
+
+function normalizeGranularity(value: string): RetentionGranularity {
+  if (
+    value === "minute" ||
+    value === "hour" ||
+    value === "day" ||
+    value === "week" ||
+    value === "month"
+  ) {
+    return value;
+  }
+  return "week";
+}
+
+function formatCohortDate(
+  locale: Locale,
+  granularity: RetentionGranularity,
+  bucket: number,
+  timeZone: string,
+): string {
+  const date = new Date(bucket);
+  if (!Number.isFinite(date.getTime())) return "--";
+
+  const options: Intl.DateTimeFormatOptions =
+    granularity === "month"
+      ? { month: "short", year: "numeric" }
+      : granularity === "minute"
+        ? { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }
+        : granularity === "hour"
+          ? { month: "short", day: "numeric", hour: "2-digit" }
+          : granularity === "week"
+            ? { month: "short", day: "numeric" }
+            : { month: "short", day: "numeric" };
+
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    ...options,
+    timeZone,
+  }).format(date);
+}
+
+function periodLabel(
+  messages: AppMessages,
+  labels: RetentionCopy,
+  index: number,
+): string {
+  if (index === 0) return labels.periodZero;
+  return formatI18nTemplate(messages.retention.periodLabel, { n: index });
+}
+
+function cohortMaxPeriodIndex(
+  cohort: RetentionData["cohorts"][number],
+  toMs: number,
+  granularity: RetentionGranularity,
+  timeZone: string,
+): number {
+  const start = Number(cohort.bucket ?? 0);
+  if (!Number.isFinite(start) || start > toMs) return 0;
+  const hardLimit = 2000;
+  let index = 0;
+  let current = start;
+  for (; index < hardLimit; index += 1) {
+    const next = addZonedInterval(current, granularity, timeZone);
+    if (!Number.isFinite(next) || next <= current || next > toMs) {
+      break;
+    }
+    current = next;
+  }
+  return index;
+}
+
+function buildRetentionViewModel(
+  payload: RetentionData | null,
+  locale: Locale,
+  messages: AppMessages,
+  labels: RetentionCopy,
+  requestedGranularity: RetentionGranularity,
+  window: TimeWindow,
+): RetentionViewModel {
+  const granularity = normalizeGranularity(
+    String(payload?.granularity || requestedGranularity),
+  );
+  const sourceCohorts = Array.isArray(payload?.cohorts)
+    ? payload.cohorts.filter((cohort) => Number(cohort.size ?? 0) > 0)
+    : [];
+
+  const maxObservedIndex = sourceCohorts.reduce(
+    (maxIndex, cohort) =>
+      Math.max(
+        maxIndex,
+        ...cohort.periods.map((period) => Number(period.index ?? 0)),
+      ),
+    0,
+  );
+  const maxAvailableIndex = sourceCohorts.reduce(
+    (maxIndex, cohort) =>
+      Math.max(
+        maxIndex,
+        cohortMaxPeriodIndex(cohort, window.to, granularity, window.timeZone),
+      ),
+    0,
+  );
+  const maxIndex = Math.max(0, maxObservedIndex, maxAvailableIndex);
+  const columns = Array.from({ length: maxIndex + 1 }, (_, index) => index);
+
+  const periodAverages = columns.map((index) => ({
+    index,
+    visitors: 0,
+    base: 0,
+    rate: null as number | null,
+  }));
+
+  let periodOneVisitors = 0;
+  let periodOneBase = 0;
+  let postPeriodVisitors = 0;
+  let postPeriodBase = 0;
+  let analyzedPeriods = 0;
+  let strongestCohort: RetentionSummary["strongestCohort"] = null;
+
+  const cohorts = sourceCohorts.map((cohort) => {
+    const size = Math.max(0, Number(cohort.size ?? 0));
+    const availableMaxIndex = cohortMaxPeriodIndex(
+      cohort,
+      window.to,
+      granularity,
+      window.timeZone,
+    );
+    const periodMap = new Map(
+      cohort.periods.map((period) => [
+        Number(period.index ?? 0),
+        {
+          visitors: Math.max(0, Number(period.visitors ?? 0)),
+          rate: Math.max(0, Math.min(1, Number(period.rate ?? 0))),
+        },
+      ]),
+    );
+
+    let cohortPostVisitors = 0;
+    let cohortPostBase = 0;
+    const cells = columns.map((index) => {
+      const available = index <= availableMaxIndex;
+      if (!available) {
+        return {
+          index,
+          visitors: 0,
+          rate: 0,
+          available: false,
+        };
+      }
+
+      const period = periodMap.get(index);
+      const visitors = period?.visitors ?? (index === 0 && size > 0 ? size : 0);
+      const rate = period?.rate ?? (index === 0 && size > 0 ? 1 : 0);
+      const average = periodAverages[index];
+      if (average) {
+        average.visitors += visitors;
+        average.base += size;
+      }
+
+      if (index === 1) {
+        periodOneVisitors += visitors;
+        periodOneBase += size;
+      }
+
+      if (index > 0) {
+        postPeriodVisitors += visitors;
+        postPeriodBase += size;
+        analyzedPeriods += 1;
+        cohortPostVisitors += visitors;
+        cohortPostBase += size;
+      }
+
+      return {
+        index,
+        visitors,
+        rate,
+        available: true,
+      };
+    });
+
+    const label = formatCohortDate(
+      locale,
+      granularity,
+      Number(cohort.bucket ?? 0),
+      window.timeZone,
+    );
+    const averagePostRate =
+      cohortPostBase > 0 ? cohortPostVisitors / cohortPostBase : null;
+    if (
+      averagePostRate !== null &&
+      (!strongestCohort || averagePostRate > strongestCohort.rate)
+    ) {
+      strongestCohort = {
+        label,
+        rate: averagePostRate,
+      };
+    }
+
+    return {
+      bucket: Number(cohort.bucket ?? 0),
+      label,
+      size,
+      cells,
+      averagePostRate,
+    };
+  });
+
+  for (const average of periodAverages) {
+    average.rate = average.base > 0 ? average.visitors / average.base : null;
+  }
+
+  return {
+    columns,
+    cohorts,
+    periodAverages,
+    summary: {
+      cohortCount: cohorts.length,
+      totalVisitors: cohorts.reduce((sum, cohort) => sum + cohort.size, 0),
+      periodOneRate:
+        periodOneBase > 0 ? periodOneVisitors / periodOneBase : null,
+      periodOneBase,
+      averageReturnRate:
+        postPeriodBase > 0 ? postPeriodVisitors / postPeriodBase : null,
+      analyzedPeriods,
+      strongestCohort,
+    },
+  };
+}
+
+function retentionCellStyle(rate: number, available: boolean): CSSProperties {
+  if (!available) return {};
+  const normalized = Math.max(0, Math.min(1, rate));
+  const visibleDepth =
+    normalized <= 0
+      ? 0
+      : normalized <= 0.08
+        ? Math.pow(normalized / 0.08, 0.64)
+        : 1 + Math.pow((normalized - 0.08) / 0.92, 0.58) * 0.36;
+  const mix = Math.round(8 + Math.min(1.36, visibleDepth) * 34);
+  return {
+    backgroundColor:
+      normalized <= 0
+        ? "color-mix(in oklab, var(--color-muted) 82%, var(--color-background))"
+        : `color-mix(in oklab, var(--color-chart-4) ${mix}%, var(--color-muted))`,
+    color: mix >= 42 ? "oklch(0.985 0 0)" : "var(--color-foreground)",
+  };
+}
+
+function RetentionMetricCell({
+  icon: Icon,
+  label,
+  value,
+  detail,
+}: {
+  icon: RemixiconComponentType;
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="min-w-0 bg-card p-4">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="inline-flex shrink-0 items-center justify-center text-muted-foreground">
+          <Icon className="size-[11px]" />
+        </span>
+        <p className="min-w-0 truncate text-[11px] uppercase text-muted-foreground">
+          {label}
+        </p>
+      </div>
+      <p className="mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground">
+        {value}
+      </p>
+      <p className="mt-3 min-w-0 truncate text-[11px] leading-[14px] text-muted-foreground">
+        {detail}
+      </p>
+    </div>
+  );
+}
+
+function RetentionSummaryGrid({
+  locale,
+  labels,
+  viewModel,
+}: {
+  locale: Locale;
+  labels: RetentionCopy;
+  viewModel: RetentionViewModel;
+}) {
+  const { summary } = viewModel;
+
+  return (
+    <Card className="py-0">
+      <CardContent className="p-0">
+        <div className="grid gap-px overflow-hidden bg-border/70 sm:grid-cols-2 xl:grid-cols-4">
+          <RetentionMetricCell
+            icon={RiCalendarLine}
+            label={labels.cohortsMetric}
+            value={numberFormat(locale, summary.cohortCount)}
+            detail={`${numberFormat(locale, viewModel.columns.length)} ${labels.periodsAnalyzed}`}
+          />
+          <RetentionMetricCell
+            icon={RiGroupLine}
+            label={labels.visitorsMetric}
+            value={numberFormat(locale, summary.totalVisitors)}
+            detail={labels.cohortDetail}
+          />
+          <RetentionMetricCell
+            icon={RiPercentLine}
+            label={labels.periodOneMetric}
+            value={
+              summary.periodOneRate === null
+                ? "--"
+                : percentFormat(locale, summary.periodOneRate)
+            }
+            detail={
+              summary.periodOneBase > 0
+                ? `${numberFormat(locale, summary.periodOneBase)} ${labels.eligibleVisitors}`
+                : labels.noEligibleCohorts
+            }
+          />
+          <RetentionMetricCell
+            icon={RiRepeat2Line}
+            label={labels.averageReturnMetric}
+            value={
+              summary.averageReturnRate === null
+                ? "--"
+                : percentFormat(locale, summary.averageReturnRate)
+            }
+            detail={
+              summary.strongestCohort
+                ? `${labels.strongestCohortMetric}: ${summary.strongestCohort.label} ${percentFormat(
+                    locale,
+                    summary.strongestCohort.rate,
+                  )}`
+                : labels.noEligibleCohorts
+            }
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RetentionStateCard({
+  title,
+  subtitle,
+  icon: Icon,
+}: {
+  title: string;
+  subtitle: string;
+  icon: RemixiconComponentType;
+}) {
+  return (
+    <Card>
+      <CardContent className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
+        <span className="inline-flex size-10 items-center justify-center border bg-muted/50 text-muted-foreground">
+          <Icon className="size-5" />
+        </span>
+        <div className="space-y-1">
+          <p className="font-medium">{title}</p>
+          <p className="max-w-md text-muted-foreground">{subtitle}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RetentionLoading() {
+  return (
+    <div className="space-y-4" aria-hidden="true">
+      <Card className="py-0">
+        <CardContent className="p-0">
+          <div className="grid gap-px overflow-hidden bg-border/70 sm:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }, (_, index) => (
+              <div key={index} className="bg-card p-4">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="size-[11px]" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+                <Skeleton className="mt-3 h-7 w-24" />
+                <Skeleton className="mt-3 h-3 w-32" />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-3 w-80 max-w-full" />
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {Array.from({ length: 8 }, (_, rowIndex) => (
+            <div key={rowIndex} className="flex items-center gap-2">
+              <Skeleton className="h-8 w-28 shrink-0" />
+              <Skeleton className="h-8 w-16 shrink-0" />
+              {Array.from({ length: 8 }, (_, cellIndex) => (
+                <Skeleton
+                  key={`${rowIndex}-${cellIndex}`}
+                  className="h-8 w-16 shrink-0"
+                />
+              ))}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function RetentionCell({
+  locale,
+  labels,
+  messages,
+  cohort,
+  cell,
+}: {
+  locale: Locale;
+  labels: RetentionCopy;
+  messages: AppMessages;
+  cohort: RetentionCohortView;
+  cell: RetentionCellView;
+}) {
+  const label = periodLabel(messages, labels, cell.index);
+
+  if (!cell.available) {
+    return (
+      <td
+        className={cn(
+          RETENTION_PERIOD_COLUMN,
+          "border-b border-r p-1 align-middle",
+        )}
+      >
+        <div
+          className="h-8 w-16 border border-dashed border-border/70 bg-muted/20"
+          title={labels.unavailableCell}
+          aria-label={labels.unavailableCell}
+        />
+      </td>
+    );
+  }
+
+  const tooltip = [
+    `${labels.cohortDetail}: ${cohort.label}`,
+    `${label}`,
+    `${labels.sizeDetail}: ${numberFormat(locale, cohort.size)}`,
+    `${labels.visitorsDetail}: ${numberFormat(locale, cell.visitors)}`,
+    `${labels.rateDetail}: ${percentFormat(locale, cell.rate)}`,
+  ].join("\n");
+
+  return (
+    <td
+      className={cn(
+        RETENTION_PERIOD_COLUMN,
+        "border-b border-r p-1 align-middle",
+      )}
+    >
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="flex h-8 w-16 items-center justify-center font-mono text-[11px] tabular-nums outline-none ring-0 transition-transform hover:scale-[1.035] focus-visible:ring-2 focus-visible:ring-ring/70"
+            style={retentionCellStyle(cell.rate, cell.available)}
+            aria-label={tooltip}
+            title={tooltip}
+          >
+            {percentFormat(locale, cell.rate)}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="whitespace-pre-line">
+          {tooltip}
+        </TooltipContent>
+      </Tooltip>
+    </td>
+  );
+}
+
+function RetentionMatrix({
+  locale,
+  messages,
+  labels,
+  viewModel,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  labels: RetentionCopy;
+  viewModel: RetentionViewModel;
+}) {
+  return (
+    <Card>
+      <CardHeader className="gap-3 md:grid-cols-[1fr_auto]">
+        <div className="space-y-1">
+          <CardTitle>{labels.matrixTitle}</CardTitle>
+          <CardDescription>{labels.matrixSubtitle}</CardDescription>
+        </div>
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground md:justify-self-end">
+          <span>{labels.legendLow}</span>
+          <span
+            aria-hidden="true"
+            className="relative h-2 w-28 overflow-hidden border bg-muted"
+          >
+            <span
+              className="absolute inset-y-0 right-0 w-[76%]"
+              style={{
+                background:
+                  "linear-gradient(90deg, var(--color-muted) 0%, color-mix(in oklab, var(--color-chart-4) 16%, var(--color-muted)) 22%, color-mix(in oklab, var(--color-chart-4) 28%, var(--color-muted)) 46%, color-mix(in oklab, var(--color-chart-4) 42%, var(--color-muted)) 72%, color-mix(in oklab, var(--color-chart-4) 54%, var(--color-muted)) 100%)",
+              }}
+            />
+          </span>
+          <span>{labels.legendHigh}</span>
+        </div>
+      </CardHeader>
+      <CardContent className="px-0">
+        <TooltipProvider>
+          <OverlayScrollbar className="pb-1">
+            <table
+              className={cn(
+                RETENTION_TABLE_COLUMNS,
+                "w-max min-w-full border-separate border-spacing-0 text-left text-xs",
+              )}
+            >
+              <colgroup>
+                <col className={RETENTION_COHORT_COLUMN} />
+                <col className={RETENTION_SIZE_COLUMN} />
+                {viewModel.columns.map((index) => (
+                  <col key={index} className={RETENTION_PERIOD_COLUMN} />
+                ))}
+              </colgroup>
+              <thead>
+                <tr>
+                  <th
+                    className={cn(
+                      RETENTION_COHORT_COLUMN,
+                      "sticky left-0 z-40 border-b bg-card py-2 pr-2 pl-4 font-medium text-muted-foreground",
+                    )}
+                  >
+                    {messages.retention.cohortDate}
+                  </th>
+                  <th
+                    className={cn(
+                      RETENTION_SIZE_COLUMN,
+                      "sticky left-[var(--retention-cohort-width)] z-40 border-r border-b bg-card px-2 py-2 text-right font-medium text-muted-foreground",
+                    )}
+                  >
+                    {messages.retention.cohortSize}
+                  </th>
+                  {viewModel.columns.map((index) => (
+                    <th
+                      key={index}
+                      className={cn(
+                        RETENTION_PERIOD_COLUMN,
+                        "border-b px-1 py-2 text-center font-medium text-muted-foreground",
+                      )}
+                    >
+                      <span className="inline-block w-16 truncate">
+                        {periodLabel(messages, labels, index)}
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {viewModel.cohorts.map((cohort) => (
+                  <tr key={cohort.bucket} className="group">
+                    <th
+                      className={cn(
+                        RETENTION_COHORT_COLUMN,
+                        "sticky left-0 z-30 border-b bg-card py-2 pr-2 pl-4 font-mono font-medium group-hover:bg-muted",
+                      )}
+                    >
+                      {cohort.label}
+                    </th>
+                    <td
+                      className={cn(
+                        RETENTION_SIZE_COLUMN,
+                        "sticky left-[var(--retention-cohort-width)] z-30 border-r border-b bg-card px-2 py-2 text-right font-mono tabular-nums text-muted-foreground group-hover:bg-muted",
+                      )}
+                    >
+                      {numberFormat(locale, cohort.size)}
+                    </td>
+                    {cohort.cells.map((cell) => (
+                      <RetentionCell
+                        key={`${cohort.bucket}-${cell.index}`}
+                        locale={locale}
+                        labels={labels}
+                        messages={messages}
+                        cohort={cohort}
+                        cell={cell}
+                      />
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th
+                    className={cn(
+                      RETENTION_COHORT_COLUMN,
+                      "sticky left-0 z-30 border-t bg-card py-2 pr-2 pl-4 font-medium text-muted-foreground",
+                    )}
+                  >
+                    {labels.weightedAverage}
+                  </th>
+                  <td
+                    className={cn(
+                      RETENTION_SIZE_COLUMN,
+                      "sticky left-[var(--retention-cohort-width)] z-30 border-r border-t bg-card px-2 py-2 text-right font-mono text-muted-foreground",
+                    )}
+                  >
+                    {numberFormat(locale, viewModel.summary.totalVisitors)}
+                  </td>
+                  {viewModel.periodAverages.map((average) => (
+                    <td
+                      key={average.index}
+                      className={cn(
+                        RETENTION_PERIOD_COLUMN,
+                        "border-t border-r p-1 align-middle",
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "flex h-8 w-16 items-center justify-center font-mono text-[11px] tabular-nums",
+                          average.rate === null && "text-muted-foreground",
+                        )}
+                        style={retentionCellStyle(
+                          average.rate ?? 0,
+                          average.rate !== null,
+                        )}
+                        title={
+                          average.rate === null
+                            ? labels.unavailableCell
+                            : `${labels.weightedAverage}\n${labels.visitorsDetail}: ${numberFormat(
+                                locale,
+                                average.visitors,
+                              )}\n${labels.rateDetail}: ${percentFormat(
+                                locale,
+                                average.rate,
+                              )}`
+                        }
+                      >
+                        {average.rate === null
+                          ? "--"
+                          : percentFormat(locale, average.rate)}
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              </tfoot>
+            </table>
+          </OverlayScrollbar>
+        </TooltipProvider>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function RetentionClientPage({
+  locale,
+  messages,
+  siteId,
+}: RetentionClientPageProps) {
+  const labels = useMemo(() => copy(locale), [locale]);
+  const { filters, window: timeWindow } = useDashboardQuery() as {
+    filters: DashboardFilters;
+    window: TimeWindow;
+  };
+  const [payload, setPayload] = useState<RetentionData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const granularity = timeWindow.interval;
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(false);
+
+    fetchRetention(siteId, timeWindow, filters, { granularity })
+      .then((data) => {
+        if (cancelled) return;
+        setPayload(data);
+        setError(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPayload(null);
+        setError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    filters,
+    filtersKey,
+    granularity,
+    siteId,
+    timeWindow.from,
+    timeWindow.to,
+    timeWindow.interval,
+  ]);
+
+  const viewModel = useMemo(
+    () =>
+      buildRetentionViewModel(
+        payload,
+        locale,
+        messages,
+        labels,
+        granularity,
+        timeWindow,
+      ),
+    [payload, locale, messages, labels, granularity, timeWindow],
+  );
+  const isEmpty = !loading && !error && viewModel.cohorts.length === 0;
+  const bodyState = loading
+    ? "loading"
+    : error
+      ? "error"
+      : isEmpty
+        ? "empty"
+        : "ready";
+
+  return (
+    <div className="space-y-6">
+      <PageHeading
+        title={messages.retention.title}
+        subtitle={messages.retention.subtitle}
+      />
+
+      <AutoTransition
+        transitionKey={bodyState}
+        duration={0.18}
+        type="fade"
+        presenceMode="wait"
+      >
+        {loading ? (
+          <RetentionLoading />
+        ) : error ? (
+          <RetentionStateCard
+            title={labels.loadError}
+            subtitle={messages.retention.subtitle}
+            icon={RiPulseLine}
+          />
+        ) : isEmpty ? (
+          <RetentionStateCard
+            title={labels.empty}
+            subtitle={labels.emptyHint}
+            icon={RiRepeat2Line}
+          />
+        ) : (
+          <div className="space-y-4">
+            <RetentionSummaryGrid
+              locale={locale}
+              labels={labels}
+              viewModel={viewModel}
+            />
+            <RetentionMatrix
+              locale={locale}
+              messages={messages}
+              labels={labels}
+              viewModel={viewModel}
+            />
+          </div>
+        )}
+      </AutoTransition>
+    </div>
+  );
+}

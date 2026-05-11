@@ -1,0 +1,871 @@
+appName: InsightFlare
+navigation:
+  overview: Overview
+  realtime: Realtime
+  pages: Pages
+  referrers: Referrers
+  sessions: Sessions
+  events: Events
+  funnels: Funnels
+  campaigns: Campaigns
+  visitors: Visitors
+  retention: Retention
+  geo: Location
+  devices: Devices
+  browsers: Browsers
+  performance: Performance
+  settings: Settings
+common:
+  id: ID
+  views: Views
+  sessions: Sessions
+  visitors: Visitors
+  bounceRate: Bounce Rate
+  avgDuration: Avg. Duration
+  page: Page
+  path: Path
+  title: Title
+  hostname: Hostname
+  referrerHost: Referrer Host
+  entryPage: Entry Page
+  exitPage: Exit Page
+  referrer: Referrer
+  startedAt: Started
+  endedAt: Ended
+  event: Event
+  location: Location
+  browser: Browser
+  operatingSystem: Operating System
+  device: Device
+  deviceType: Device Type
+  country: Country
+  region: Region
+  regionCode: Region Code
+  city: City
+  continent: Continent
+  latitude: Latitude
+  longitude: Longitude
+  continentLabels:
+    AF: Africa
+    AN: Antarctica
+    AS: Asia
+    EU: Europe
+    NA: North America
+    OC: Oceania
+    SA: South America
+    AFRICA: Africa
+    ANTARCTICA: Antarctica
+    ASIA: Asia
+    EUROPE: Europe
+    NORTH AMERICA: North America
+    OCEANIA: Oceania
+    SOUTH AMERICA: South America
+  timezone: Timezone
+  organization: Organization
+  screenSize: Screen Size
+  loading: Loading
+  noData: No data
+  unknown: Unknown
+  lastUpdated: Last updated
+  site: Site
+  team: Team
+  management: Management
+  backToTeam: Back to Team
+  system: System
+  account: Account
+  theme: Theme
+  language: Language
+  role: Role
+  admin: Admin
+  user: User
+  search: Search
+  time: Time
+  cycle: Cycle
+  close: Close
+ranges:
+  last30m: 30m
+  last1h: 1h
+  today: Today
+  yesterday: Yesterday
+  thisWeek: This Week
+  thisMonth: This Month
+  thisYear: This Year
+  last24h: Last 24 hours
+  last7d: Last 7 days
+  last30d: Last 30 days
+  last90d: Last 90 days
+  last6m: Last 6 months
+  last12m: Last 12 months
+  allTime: All Time
+  custom: Custom Range
+intervals:
+  minute: Minute
+  hour: Hour
+  day: Day
+  week: Week
+  month: Month
+dashboardHeader:
+  range: Time Range
+  interval: Interval
+  filters: Filters
+  customRange: Select Custom Range
+  customHint: Please select a start and end date.
+  customPendingEnd: Start date selected. Please pick an end date.
+  customApply: Apply
+  rangeGroupQuick: Quick Ranges
+  rangeGroupCalendar: Calendar Periods
+  rangeGroupRolling: Rolling Windows
+  rangeGroupAdvanced: Advanced
+  intervalDisabledMinute: Minute interval is only available within 1 hour.
+  intervalDisabledHour: Hour interval is only available within 7 days.
+  intervalDisabledDay: Day interval is only available within the last 90 days.
+  intervalDisabledWeek: Week interval is only available within the last 12 months.
+  filterTitle: Filters
+  filterSubtitle: Filters are applied to current overview data queries in real time.
+  previousPeriod: Previous period
+  nextPeriod: Next period
+  customSelectionSummary: "Selected range: {from} to {to} ({days} days)"
+filters:
+  country: Country
+  device: Device
+  browser: Browser
+  all: All
+  clear: Clear
+realtime:
+  title: Realtime
+  subtitle: View traffic from the last 30 minutes.
+  logTitleSeparator: ":"
+  activeNow: Active now
+  liveMetrics: Active / 30m Visitors / 30m Views
+  connected: Connected
+  connecting: Connecting
+  reconnecting: Reconnecting
+  failed: Failed
+  recentEvents: Recent live events
+  enterPage: Enter page
+  leavePage: Exit page
+  viewPage: View page
+  customEvent: Event
+  detailsTitle: Event details
+  detailsSection: Information
+  visitorHistorySection: Visitor activity
+  visitorHistorySubtitle: All records for this visitor in the current realtime window.
+  visitorHistoryEmpty: No additional records are available for this visitor yet.
+  visitorMapSection: Visitor location
+  visitorMapSubtitle: Approximate location inferred from this event's coordinates.
+  visitorMapUnavailable: This event does not include usable coordinates.
+  mapZoomIn: Zoom in
+  mapZoomOut: Zoom out
+  visitorId: Visitor ID
+  sessionId: Session ID
+  visitId: Visit ID
+  eventType: Event type
+  eventTime: Event time
+overview:
+  title: Traffic Overview
+  subtitle: Monitor high-level performance and audience behavior.
+  trendTitle: Traffic Trend
+  topPages: Top Pages
+  topReferrers: Top Referrers
+  sourceTab: Source
+  sourceDomainColumn: Source (Domain)
+  sourceLinkTab: Source Link
+  sourceLinkColumn: Source Link
+  direct: Direct
+  searchInTab: "Search {tab}"
+pages:
+  title: Pages
+  subtitle: Most visited paths in the selected range.
+  pagesPerSession: Pages / Session
+  untitled: Untitled Page
+  empty: No page data matches the current filters.
+  loading: Loading page cards...
+  loadingMore: Loading more pages...
+  loadError: Failed to load page data. Please try again later.
+  loadMoreError: Failed to load more pages.
+  retry: Retry
+  tabPages: Pages
+  tabEntryPages: Entry Pages
+  tabExitPages: Exit Pages
+  trendTitle: Page Traffic Trend
+  otherPages: Other Pages
+  hashTab: Anchor
+  noHash: No Anchor
+  queryTab: Query Params
+  noQuery: No Query Params
+  eventTab: Events
+  eventsMetric: Events
+  viewDetails: View details
+referrers:
+  title: Referrers
+  subtitle: Where traffic comes from.
+  summaryTitle: Source Summary
+  splitTitle: Traffic Split
+  chartTitle: Source Mix
+  radarTitle: Top 24 Source Radar
+  radarSubtitle: Compare the leading referrers across behavioral metrics.
+  radarDuration: Duration
+  radarEngagement: Engagement
+  radarDepth: Depth
+  radarLoyalty: Loyalty
+  radarFrequency: Frequency
+  radarTraffic: Traffic
+  directSourceNote: This traffic arrived without an external referring website.
+  breakdownTitle: Source Breakdown
+  directViews: Direct Views
+  directShare: Direct Share
+  uniqueDomains: Unique Domains
+  uniqueLinks: Unique Links
+  topSource: Top External Source
+  topSourceShare: Share of Views
+  noExternalSource: No external source
+  externalViews: External Views
+  externalShare: External Share
+  externalLabel: External
+  nextSources: Next 4 Sources
+  longTail: Long Tail
+campaigns:
+  title: Campaigns
+  subtitle: UTM campaign performance and traffic attribution.
+  trendTitle: UTM Share Trend
+  tabSource: Source
+  tabMedium: Medium
+  tabCampaign: Campaign
+  tabTerm: Term
+  tabContent: Content
+  overviewAcquisitionTitle: Acquisition Surface
+  overviewAcquisitionSubtitle: Track which tagged sources and media are driving traffic.
+  overviewSignalsTitle: Campaign Signals
+  overviewSignalsSubtitle: Review the strongest campaign, term, and creative combinations.
+  topSource: Top Source
+  topMedium: Top Medium
+  topCampaign: Top Campaign
+  topTerm: Top Term
+  topContent: Top Content
+  breakdownTitle: UTM Breakdown
+  notSet: Not set
+  noTaggedTraffic: No tagged campaign traffic in the selected range.
+sessions:
+  title: Sessions
+  subtitle: Session-level detail for quality analysis.
+events:
+  title: Events
+  subtitle: Raw event stream for diagnostics.
+funnels:
+  title: Funnels
+  subtitle: Measure conversion through multi-step user journeys.
+  createFunnel: Create Funnel
+  editFunnel: Edit Funnel
+  funnelName: Funnel Name
+  funnelNamePlaceholder: "e.g. Signup Flow"
+  addStep: Add Step
+  removeStep: Remove
+  stepType: Step Type
+  stepValue: Value
+  pageview: Pageview
+  event: Custom Event
+  save: Save
+  cancel: Cancel
+  delete: Delete Funnel
+  deleteConfirm: Are you sure you want to delete this funnel?
+  noFunnels: No funnels configured yet. Create one to start tracking conversions.
+  selectFunnel: Select a funnel
+  conversionRate: Conversion
+  dropOff: Drop-off
+  overallConversion: Overall Conversion
+  step: "Step {n}"
+visitors:
+  title: Visitors
+  subtitle: Visitor-level breakdown and recency.
+retention:
+  title: Retention
+  subtitle: Cohort-based visitor return analysis.
+  cohortDate: Cohort
+  cohortSize: Size
+  periodLabel: "Period {n}"
+geo:
+  title: Location Analysis
+  subtitle: Study traffic performance for any location.
+  mapTitle: Request Geo Distribution
+  countryLabel: Country
+  regionLabel: Region
+  cityLabel: City
+  back: Back
+  viewOnWikipedia: View on Wikipedia
+  investigationNotice: This data comes from the web and may contain errors.
+  timezoneDeltaVsLocal: "{delta} vs local"
+  investigation:
+    capital: Capital
+    population: Population
+    gdp: GDP
+    gdpPerCapita: GDP per capita
+    marketPenetration: Market Penetration
+    region: Region
+    currency: Currency
+    phonecode: Phone code
+    timezone: Timezone
+    type: Type
+    iso: ISO
+    coordinates: Coordinates
+    unavailable: N/A
+    gdpValue: "{value} million USD"
+    gdpPerCapitaValue: "{value} USD/person"
+    gdpPerCapitaNearAverage: "{value} USD/person (near the world average)"
+    gdpPerCapitaAboveAverage: "{value} USD/person ({percent}% above average)"
+    gdpPerCapitaBelowAverage: "{value} USD/person ({percent}% below average)"
+    marketPenetrationWindow: "{label} ({days} days)"
+    timezoneCount: "{count} timezones"
+    typeLabels:
+      country: Country
+      state: State
+      province: Province
+      prefecture: Prefecture
+      city: City
+      county: County
+      district: District
+      town: Town
+      village: Village
+      municipality: Municipality
+      territory: Territory
+      section: Section
+      adm1: Admin Level 1
+      adm2: Admin Level 2
+      adm3: Admin Level 3
+      adm4: Admin Level 4
+      adm5: Admin Level 5
+devices:
+  title: Devices
+  subtitle: Understand visitors by device type, operating system, and screen size.
+  deviceShareTitle: Device Type Share
+  osShareTitle: Operating System Share
+  deviceTrendTitle: Device Type Trend
+  osTrendTitle: Operating System Trend
+  screenDistributionTitle: Screen Size Distribution
+  screenDistributionSubtitle: Surface the most common viewports and responsive breakpoints.
+  topSizesCoverageLabel: Top size coverage
+  screenBucketTitle: Breakpoint Buckets
+  screenPreviewTitle: Screen Preview
+  selectedViewportLabel: Selected viewport
+  openSiteLabel: Open site
+  previewUnavailableLabel: No previewable screen sizes are available right now.
+  browserByDeviceTitle: Device Type x Browser
+  osByDeviceTitle: Device Type x Operating System
+  priorityTitle: Adaptation Priority
+  prioritySubtitle: Turn current visitor structure into a focused device test matrix.
+  dominantSegmentLabel: Dominant Segment
+  dominantOsLabel: Dominant OS
+  responsiveFocusLabel: Responsive Focus
+  testMatrixTitle: Test Matrix
+  shareLabel: Share
+  otherLabel: Other
+  screenBucketLabels:
+    phoneCompact: Compact Phone
+    phone: Phone
+    tablet: Tablet
+    laptop: Laptop
+    desktopWide: Wide Desktop
+    unclassified: Unclassified
+browsers:
+  title: Browsers
+  subtitle: Browser distribution and share.
+  trendTitle: Browser Share Trend
+  engineTrendTitle: Engine Share Trend
+  versionBreakdownTitle: Browser Version Breakdown
+  osBreakdownTitle: Browser x Operating System
+  deviceTypeBreakdownTitle: Browser x Device Type
+  trendSubtitle: Compare how each browser contributes across the selected window.
+  topBrowserLabel: Top Browser
+  shareLabel: Share
+  otherLabel: Other
+  browserShareTitle: Browser Share
+  engineShareTitle: Engine Share
+  caniuseTitle: Feature Compatibility
+  caniuseSubtitle: Check browser support for web features based on your site's visitor data.
+  caniuseSearchPlaceholder: Search web features...
+  caniuseHotFeatures: Popular Features
+  caniuseTrendingFeatures: Recently Changed
+  caniuseSiteSupport: Your Site
+  caniuseGlobalSupport: Global
+  caniuseClearSelection: Clear
+  caniuseNoMatch: No matching features found.
+  caniuseFullSupport: Full Support
+  caniusePartialSupport: Partial Support
+  caniuseNoSupport: No Support
+  radarTitle: Browser Performance Radar
+  radarSubtitle: Compare top browsers across behavioral metrics.
+  radarDuration: Duration
+  radarEngagement: Engagement
+  radarDepth: Depth
+  radarLoyalty: Loyalty
+  radarFrequency: Frequency
+  radarTraffic: Traffic
+performance:
+  title: Performance
+  subtitle: Review real visitor performance by metric, trend, and path.
+  chartTitle: Performance Trend
+  avgLabel: Average
+  samplesLabel: Samples
+  p50Label: P50
+  p75Label: P75
+  p95Label: P95
+  ttfb: Time to First Byte
+  fcp: First Contentful Paint
+  lcp: Largest Contentful Paint
+  cls: Cumulative Layout Shift
+  inp: Interaction to Next Paint
+  ttfbDescription: Measures how long the browser waits before receiving the first byte from the server. It reflects backend latency, network delay, and cache effectiveness.
+  fcpDescription: Measures when the first text or image is painted. It reflects how quickly visitors see that the page is starting to load.
+  lcpDescription: Measures when the largest visible content element finishes rendering. It is the main loading speed signal for perceived page readiness.
+  clsDescription: Measures unexpected layout movement during the page lifecycle. Lower values mean the page is visually stable.
+  inpDescription: Measures the latency of user interactions before the next paint. It reflects how responsive the page feels after loading.
+  msUnit: ms
+  secondsUnit: s
+  clsUnit: score
+  score: Experience Score
+  scoreDescription: Combines P75 loading, stability, and interaction metrics into a 0 to 100 experience score. Higher is better.
+  great: Great
+  needsImprovement: Needs Improvement
+  poor: Poor
+  datasetTitle: Dataset Overview
+  interpretationTitle: Current Reading
+  currentReading: "{metric} is {value} at P75 with an experience score of {score} across {samples} samples. Current status: {status}."
+  metricThresholdText: "Great is at or below {good}; needs improvement is between {good} and {poor}; poor is above {poor}."
+  scoreThresholdText: Great is above 90, needs improvement is 50 to 90, and poor is below 50.
+  countryHealthTitle: Country Health
+  countryHealthSubtitle: Boundary fill shows {metric} health by country or region.
+  pathsTitle: Path Performance
+  pathsAnalyzedLabel: Paths analyzed
+  metricValueColumn: P75 value
+  statusColumn: Status
+siteSettings:
+  title: Site Settings
+  subtitle: Configure this site's basic information and lifecycle.
+  editTitle: Update Site Info
+  editSubtitle: Keep display name, domain and public slug up to date.
+  nameLabel: Site Name
+  domainLabel: Domain
+  publicSlugLabel: Public Slug (optional)
+  trackingStrengthGroupTitle: Tracking Strength
+  trackingStrengthDescription: Choose how aggressively the tracker identifies visitors.
+  trackingStrengthLabel: Tracking Strength Mode
+  trackingStrengthStrong: Strong
+  trackingStrengthSmart: Smart
+  trackingStrengthWeak: Weak
+  trackingStrengthStrongDescription: Always use high-precision visitor tracking. This may violate regulations in some countries, such as GDPR.
+  trackingStrengthSmartDescription: Automatically switch tracking strength based on the visitor's country.
+  trackingStrengthWeakDescription: Always reduce tracking precision. This can count the same visitor multiple times across visits and make retention impossible.
+  queryHashGroupTitle: Query and Hash Tracking
+  queryHashGroupDescription: Control how query strings, URL hashes, and Do Not Track are handled.
+  trackQueryParamsLabel: Track Query Parameters
+  trackHashLabel: Track URL Hash
+  domainWhitelistTitle: Domain Whitelist
+  domainWhitelistDescription: Events are sent only when the current hostname is in this list.
+  domainWhitelistLabel: Domain Whitelist (one per line)
+  domainWhitelistPlaceholder: |
+    example.com
+    www.example.com
+  domainWhitelistHint: Leave empty to allow all domains; exact matches only (no subdomains).
+  pathBlacklistTitle: Path Blacklist
+  pathBlacklistDescription: Events are blocked when the current pathname matches a blocked prefix.
+  pathBlacklistLabel: Path Blacklist (one per line)
+  pathBlacklistPlaceholder: |
+    /admin
+    /private
+  pathBlacklistHint: Uses startsWith prefix matching; matched paths are not reported.
+  ignoreDoNotTrackLabel: Ignore Browser Do Not Track
+  performanceGroupTitle: Performance Tracking
+  performanceGroupDescription: Control Web performance metric collection with one sampling rate.
+  performanceSampleRateLabel: Performance Sample Rate (%)
+  performanceSampleRateHint: A sampled visit records TTFB, FCP, LCP, CLS, and INP on leave. Use 0 to disable sampling or 100 for full coverage.
+  booleanOn: On
+  booleanOff: Off
+  loadingSettings: Loading script settings...
+  saveTracking: Save Tracking Settings
+  savingTracking: Saving Tracking Settings...
+  save: Save Changes
+  saving: Saving...
+  transferTitle: Transfer to Another Team
+  transferSubtitle: Move this site to another team you can manage.
+  transferTeamLabel: Target Team
+  transfer: Transfer Site
+  transferring: Transferring...
+  scriptTitle: Install Tracking Script
+  scriptSubtitle: Add this script to your website to start collecting analytics.
+  scriptHint: Recommended before </head>; if needed you can place it before </body>, but ensure it's loaded once per page.
+  copyScript: Copy Script
+  copiedScript: Script copied.
+  loadingScript: Loading script...
+  scriptUnavailable: Script is currently unavailable.
+  deleteTitle: Delete Site
+  deleteSubtitle: This action will remove the site from this team.
+  delete: Delete Site
+  deleting: Deleting...
+  deleteConfirm: This action cannot be undone. Continue?
+  toasts:
+    saved: Site settings saved.
+    saveFailed: Failed to save site settings.
+    transferred: Site transferred.
+    transferFailed: Failed to transfer site.
+    scriptLoadFailed: Failed to load script snippet.
+    settingsLoadFailed: Failed to load script settings.
+    settingsPropagationHint: Global propagation to edge nodes may take up to 1 hour.
+    deleted: Site deleted.
+    deleteFailed: Failed to delete site.
+    invalidInput: Please provide valid site name and domain.
+accountSettings:
+  title: Account Settings
+  subtitle: Manage your personal details, login password, and dashboard timezone.
+  profileTitle: Personal Details
+  profileDescription: Update your display name, username, and email.
+  nicknameLabel: Display name
+  nicknamePlaceholder: e.g. Product Analyst
+  usernameLabel: Username
+  usernamePlaceholder: e.g. alex
+  usernameDescription: Username can also be used to sign in.
+  emailLabel: Email
+  emailPlaceholder: name@example.com
+  invalidProfile: Enter a valid username and email.
+  profileSave: Save details
+  profileSaving: Saving...
+  profileSaved: Personal details saved.
+  profileSaveFailed: Failed to save personal details.
+  passwordTitle: Login Password
+  passwordDescription: Change the password for your current account.
+  currentPasswordLabel: Current password
+  newPasswordLabel: New password
+  confirmPasswordLabel: Confirm new password
+  currentPasswordRequired: Enter your current password.
+  passwordTooShort: New password must be at least 8 characters.
+  passwordMismatch: New passwords do not match.
+  passwordSave: Change password
+  passwordSaving: Changing...
+  passwordSaved: Password changed.
+  passwordSaveFailed: Failed to change password.
+  timeZoneTitle: Reporting Timezone
+  timeZoneDescription: Calendar ranges and aggregation buckets use this timezone across the dashboard.
+  activeTimeZone: Active timezone
+  browserTimeZone: Browser timezone
+  browserUnavailable: Not detected
+  browserSource: Browser
+  manualSource: Manual
+  preferenceLabel: Timezone preference
+  preferenceDescription: Browser mode follows this device. Manual mode keeps the same timezone on every device.
+  useBrowser: Use browser timezone
+  useCustom: Choose a timezone
+  customTimeZoneLabel: Timezone
+  customTimeZoneDescription: Choose from supported IANA timezones.
+  invalidTimeZone: Please choose a valid IANA timezone.
+  save: Save preference
+  saving: Saving...
+  saved: Timezone preference saved.
+  saveFailed: Failed to save timezone preference.
+login:
+  title: Sign in
+  subtitle: Use your InsightFlare account.
+  username: Username or Email
+  password: Password
+  signIn: Sign in
+  invalidCredentials: Invalid username or password.
+empty:
+  noTeams: No team available yet.
+  noSites: No site is available under this team.
+  siteNotFound: Team or site not found.
+actions:
+  logout: Logout
+  switchToEnglish: English
+  switchToChinese: 中文
+  switchToLight: Light
+  switchToDark: Dark
+teamSelect:
+  groupLabel: Team
+  createHint: Create team
+  createTitle: Create Team
+  createDescription: You will be switched to the new team after creation.
+  nameLabel: Team Name
+  namePlaceholder: e.g. Growth Team
+  slugLabel: Team Slug (optional)
+  slugPlaceholder: e.g. growth-team
+  create: Create
+  creating: Creating...
+  cancel: Cancel
+  invalidName: Team name must be at least 2 characters.
+  createFailed: Failed to create team. Please try again.
+  createSuccess: Team created.
+teamManagement:
+  stats:
+    sites: Sites
+    members: Members
+  toasts:
+    teamSaved: Team settings saved.
+    teamSaveFailed: Failed to save team settings.
+    teamDeleted: Team deleted.
+    teamDeleteFailed: Failed to delete team.
+    memberAdded: Member added.
+    memberAddFailed: Failed to add member.
+    memberRemoved: Member removed.
+    memberRemoveFailed: Failed to remove member.
+    roleChanged: Member role updated.
+    roleChangeFailed: Failed to update member role.
+    invalidTeamName: Team name must be at least 2 characters.
+    invalidMemberIdentifier: Please provide a valid username or email.
+    ownerTransferred: Ownership transferred.
+    ownerTransferFailed: Failed to transfer ownership.
+    invalidTransferTarget: Please choose a new owner.
+  sites:
+    title: Site Dashboard
+    subtitle: Aggregated traffic view across all sites in this team.
+    aggregateTitle: Total Visits
+    pagesPerSession: Pages / Session
+    noSites: No site is available under this team.
+    openAnalytics: Open analytics
+  widgets:
+    title: Widgets
+    subtitle: Manage widget configuration for sites in this team.
+    noSites: No site is available for widgets in this team.
+    openWidgets: Manage widgets
+  notifications:
+    title: Event Notifications
+    subtitle: Manage event notification rules for this team.
+    empty: No event notification rule exists for this team.
+  publicLinks:
+    title: Public Links
+    subtitle: Manage publicly accessible sharing links for this team.
+    empty: No public link exists for this team.
+  apiKeys:
+    title: API Keys
+    subtitle: Manage API access keys for this team.
+    empty: No API key exists for this team.
+  settings:
+    title: Settings
+    subtitle: Update this team's display name and slug.
+    nameLabel: Team Display Name
+    slugLabel: Team Slug
+    save: Save settings
+    saving: Saving...
+    delete: Delete team
+    deleting: Deleting...
+    deleteConfirm: Delete this team and all its data? This action cannot be undone.
+    transferTitle: Transfer Ownership
+    transferSubtitle: Transfer team ownership to another member. The current owner will be demoted to admin.
+    transferTargetLabel: New Owner
+    transferTargetPlaceholder: Choose a team member
+    transfer: Transfer ownership
+    transferring: Transferring...
+    transferConfirm: This action cannot be undone. You will lose ownership but keep admin access. Continue?
+    noTransferableMembers: No other members are available to transfer to. Add a member first.
+  members:
+    title: Members
+    subtitle: Add members or remove existing members.
+    identifierLabel: Username or Email
+    identifierPlaceholder: "For example: alice or alice@example.com"
+    add: Add member
+    adding: Adding...
+    remove: Remove
+    noMembers: No members found for this team.
+    columns:
+      name: Name
+      username: Username
+      email: Email
+      role: Role
+      joinedAt: Joined
+      action: Action
+    roleLabels:
+      owner: Owner
+      admin: Admin
+      member: Member
+managementNav:
+  users: User Management
+  sites: Site Management
+  teams: Team Management
+  versionUpdates: Version Updates
+  scheduledTasks: Scheduled Tasks
+  systemPerformance: System Performance
+managementPages:
+  versionUpdates:
+    subtitle: View and manage system version update records.
+    empty: No version update record exists yet.
+  scheduledTasks:
+    subtitle: View and manage system scheduled tasks.
+    empty: No scheduled task exists yet.
+adminUsers:
+  title: User Management
+  subtitle: Only system admins can create and manage dashboard users.
+  createTitle: Create User
+  createSubtitle: The new account can sign in immediately.
+  username: Username
+  email: Email
+  name: Display Name (optional)
+  password: Password (min 8 chars)
+  role: System Role
+  create: Create User
+  creating: Creating...
+  delete: Delete
+  deleting: Deleting...
+  deleteConfirm: Delete this user account?
+  deleteSuccess: User deleted.
+  deleteFailed: Failed to delete user.
+  listTitle: Users
+  listSubtitle: All users in the system.
+  noData: No users found.
+  loadFailed: Failed to load users.
+  createSuccess: User created.
+  createFailed: Failed to create user.
+  invalidInput: Please provide valid username, email and password.
+  columns:
+    name: Name
+    username: Username
+    email: Email
+    role: Role
+    teams: Teams
+    created: Created
+    action: Action
+adminSites:
+  title: Site Management
+  subtitle: Manage sites under the current team.
+  team: Team
+  createTitle: Create Site
+  createSubtitle: The new site can be opened immediately.
+  name: Site Name
+  domain: Domain
+  publicSlug: Public Slug (optional)
+  create: Create Site
+  creating: Creating...
+  listTitle: Sites
+  listSubtitle: All sites under the current team.
+  noData: No site found.
+  loadFailed: Failed to load sites.
+  createSuccess: Site created.
+  createFailed: Failed to create site.
+  invalidInput: Please provide valid site name and domain.
+  open: Open analytics
+  columns:
+    name: Name
+    domain: Domain
+    slug: Slug
+    created: Created
+    action: Action
+adminTeams:
+  title: Team Management
+  subtitle: Only system admins can create and view all teams.
+  createTitle: Create Team
+  createSubtitle: After creation, you can manage settings and members.
+  name: Team Name
+  slug: Team Slug (optional)
+  create: Create Team
+  creating: Creating...
+  listTitle: Teams
+  listSubtitle: All teams in the system.
+  noData: No teams found.
+  loadFailed: Failed to load teams.
+  createSuccess: Team created.
+  createFailed: Failed to create team.
+  invalidInput: Team name must be at least 2 characters.
+  open: Open team
+  settings: Settings
+  columns:
+    name: Name
+    slug: Slug
+    sites: Sites
+    members: Members
+    created: Created
+    action: Action
+systemPerformance:
+  title: System Performance
+  subtitle: Monitor InsightFlare collection, buffering, and write health from existing analytics rows.
+  refresh: Refresh
+  loadFailed: Failed to load system performance data.
+  noData: No system performance data in this window.
+  range15m: Last 15 minutes
+  range1h: Last 1 hour
+  range6h: Last 6 hours
+  range24h: Last 24 hours
+  totalEvents: Accepted Events
+  p95Latency: P95 Estimated Delay
+  p50Latency: P50
+  p75Latency: P75
+  p50Label: P50
+  p75Label: P75
+  p95Label: P95
+  dataFreshness: Data Freshness
+  noRecentWrite: No recent write
+  clockAnomalies: Clock / Delay Anomalies
+  delayed: Delayed
+  future: Future clock
+  latencyPercentileTrend: Latency Percentile Trend
+  latencyPercentileTrendDescription: P50, P75, and P95 estimated delay for trusted samples grouped by server write time.
+  throughputTrend: Accepted Event Throughput
+  throughputTrendDescription: Rows grouped by server write time. Bars combine visits and custom events.
+  visits: Visits
+  customEvents: Custom Events
+  anomalyBucket: Anomaly bucket
+  openVisitHealth: Open Visit Backlog
+  openVisitHealthDescription: Open rows that have not been closed by leave, route change, or timeout finalization.
+  open: Open
+  stale: Stale
+  timedOut: Timed out
+  oldestOpen: Oldest open
+  latestActivity: Latest activity
+  estimationNote: Estimated delay is server write time minus client event time, so browser queueing and wrong client clocks are included.
+  latencySampleHealth: Latency Sample Health
+  latencySampleHealthDescription: Counts only non-negative delay samples below the trusted upper bound.
+  trustedSamples: Trusted samples
+  topSitesTitle: Top Sites by System Load
+  topSitesDescription: Sites producing the most accepted rows in the selected window.
+  events: Events
+  avgLatency: Avg delay
+  slowestEventsTitle: Slowest Estimated Events
+  slowestEventsDescription: Highest positive write-time minus event-time gaps in the selected window.
+  eventTime: Event time
+  serverTime: Server write time
+  estimatedDelay: Estimated delay
+  doDiagnosticTitle: DO Buffer Diagnostic
+  doDiagnosticDescription: Asks each site's Durable Object directly for the state of buffered_visits / buffered_custom_events to surface stale rows, future-skewed timestamps, or stuck dirty rows.
+  doDiagnosticLoadFailed: Failed to load DO diagnostic data.
+  doDiagnosticLoading: Fetching DO state per site…
+  doDiagnosticEmpty: No DO state available.
+  doDiagnosticUnreachable: Some DOs unreachable
+  doDiagnosticReachableSites: Reachable DOs
+  doDiagnosticTotalSites: Total sites
+  doDiagnosticActiveAlarms: Active alarms
+  doDiagnosticBufferedVisits: Buffered visits
+  doDiagnosticOpenVisits: Buffered open rows
+  doDiagnosticOpenStale: Open idle >30m
+  doDiagnosticOpenTimedOut: Open idle >12h
+  doDiagnosticOpenHardAged: Started >36h ago
+  doDiagnosticOpenFutureSkew: Future timestamps
+  doDiagnosticDirtyVisits: Dirty visits
+  doDiagnosticStuckDirty: Stuck dirty
+  doDiagnosticMaxFlushAttempts: Max retry attempts
+  doDiagnosticBufferedCustomEvents: Buffered custom events
+  doDiagnosticDirtyCustomEvents: Dirty custom events
+  doDiagnosticStuckDirtyCustomEvents: Stuck dirty custom events
+  doDiagnosticOldestOpen: Oldest open started_at
+  doDiagnosticFutureMaxActivity: Farthest future last_activity
+  doDiagnosticSiteList: Top risk sites
+  doDiagnosticSiteListDescription: Top 20 sites by risk score, snapshotted from per-DO buffered state.
+  doDiagnosticSiteOk: Responded
+  doDiagnosticSiteFailed: Unreachable
+  doDiagnosticSiteOpen: open
+  doDiagnosticSiteStuck: stuck
+  doDiagnosticSiteFuture: future
+  doDiagnosticSiteHardAged: aged
+  doDiagnosticSiteAlarm: alarm
+  doDiagnosticSiteAlarmNone: none
+  doDiagnosticSiteAlarmDue: due
+  doDiagnosticSiteResponseMs: Response time
+  doDiagnosticThresholdsHint: Thresholds — stale {stale}, timeout {timeout}, hardAged {hardAged}, stuck flush_attempts ≥ {stuck}
+  doDiagnosticHealthy: No abnormal buffered rows detected.
+loginForm:
+  signingIn: Signing in...
+  failed: Sign in failed. Please try again.
+logoutAction:
+  pending: Signing out...
+  success: Signed out.
+  failed: Failed to sign out. Please try again.
+sidebarFooter:
+  loggingOut: Signing out...
+  logoutSuccess: Signed out.
+  logoutFailed: Failed to sign out. Please try again.
+teamEntry:
+  title: Choose a Team
+  description: You have access to multiple teams. Choose where to continue.

@@ -1,0 +1,12 @@
+.cache
+.next
+.open-next
+.playwright-cli
+.wrangler
+dist
+node_modules
+output
+tmp
+*.log
+*.tsbuildinfo
+next-env.d.ts

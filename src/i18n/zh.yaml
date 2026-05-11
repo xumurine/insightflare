@@ -1,0 +1,871 @@
+appName: InsightFlare
+navigation:
+  overview: 总览
+  realtime: 实时
+  pages: 页面
+  referrers: 来源
+  sessions: 会话
+  events: 事件
+  funnels: 漏斗
+  campaigns: 推广
+  visitors: 访客
+  retention: 留存
+  geo: 位置
+  devices: 设备
+  browsers: 浏览器
+  performance: 性能
+  settings: 设置
+common:
+  id: ID
+  views: 浏览量
+  sessions: 会话数
+  visitors: 访客数
+  bounceRate: 跳出率
+  avgDuration: 平均停留
+  page: 页面
+  path: 路径
+  title: 标题
+  hostname: 主机名
+  referrerHost: 来源主机
+  entryPage: 入口页面
+  exitPage: 出口页面
+  referrer: 来源
+  startedAt: 开始时间
+  endedAt: 结束时间
+  event: 事件
+  location: 地区
+  browser: 浏览器
+  operatingSystem: 操作系统
+  device: 设备
+  deviceType: 设备类型
+  country: 国家
+  region: 地区
+  regionCode: 地区代码
+  city: 城市
+  continent: 大陆
+  latitude: 纬度
+  longitude: 经度
+  continentLabels:
+    AF: 非洲
+    AN: 南极洲
+    AS: 亚洲
+    EU: 欧洲
+    NA: 北美洲
+    OC: 大洋洲
+    SA: 南美洲
+    AFRICA: 非洲
+    ANTARCTICA: 南极洲
+    ASIA: 亚洲
+    EUROPE: 欧洲
+    NORTH AMERICA: 北美洲
+    OCEANIA: 大洋洲
+    SOUTH AMERICA: 南美洲
+  timezone: 时区
+  organization: 运营商组织
+  screenSize: 屏幕大小
+  loading: 加载中
+  noData: 暂无数据
+  unknown: 未知
+  lastUpdated: 更新时间
+  site: 站点
+  team: 团队
+  management: 管理
+  backToTeam: 返回团队
+  system: 系统
+  account: 账户
+  theme: 主题
+  language: 语言
+  role: 角色
+  admin: 管理员
+  user: 普通用户
+  search: 搜索
+  time: 时间
+  cycle: 周期
+  close: 关闭
+ranges:
+  last30m: 30分钟
+  last1h: 1小时
+  today: 今天
+  yesterday: 昨天
+  thisWeek: 本周
+  thisMonth: 本月
+  thisYear: 今年
+  last24h: 最近 24 小时
+  last7d: 最近 7 天
+  last30d: 最近 30 天
+  last90d: 最近 90 天
+  last6m: 最近 6 个月
+  last12m: 最近 12 个月
+  allTime: 所有时间
+  custom: 自定义时间段
+intervals:
+  minute: 分钟
+  hour: 小时
+  day: 日
+  week: 周
+  month: 月
+dashboardHeader:
+  range: 时间范围
+  interval: 时间间隔
+  filters: 筛选
+  customRange: 选择自定义区间
+  customHint: 请选择开始和结束日期。
+  customPendingEnd: 已选择开始日期，请继续选择结束日期。
+  customApply: 确定
+  rangeGroupQuick: 快速范围
+  rangeGroupCalendar: 自然周期
+  rangeGroupRolling: 滚动窗口
+  rangeGroupAdvanced: 高级
+  intervalDisabledMinute: 仅在 1 小时内可选分钟间隔。
+  intervalDisabledHour: 仅在 7 天内可选小时间隔。
+  intervalDisabledDay: 仅在最近 90 天内可选日间隔。
+  intervalDisabledWeek: 仅在最近 12 个月内可选周间隔。
+  filterTitle: 筛选条件
+  filterSubtitle: 筛选条件会实时参与当前总览数据查询。
+  previousPeriod: 上个周期
+  nextPeriod: 下个周期
+  customSelectionSummary: "当前选择：{from} 至 {to}（共 {days} 天）"
+filters:
+  country: 国家
+  device: 设备
+  browser: 浏览器
+  all: 全部
+  clear: 清除
+realtime:
+  title: 实时
+  subtitle: 查看最近 30 分钟的访问情况
+  logTitleSeparator: "："
+  activeNow: 当前在线
+  liveMetrics: 在线 / 30 分钟访客 / 30 分钟访问
+  connected: 已连接
+  connecting: 连接中
+  reconnecting: 重连中
+  failed: 连接失败
+  recentEvents: 实时事件
+  enterPage: 进入页面
+  leavePage: 退出页面
+  viewPage: 访问页面
+  customEvent: 事件
+  detailsTitle: 事件详情
+  detailsSection: 信息
+  visitorHistorySection: 访客记录
+  visitorHistorySubtitle: 查看该访客在当前实时窗口内的全部访问记录。
+  visitorHistoryEmpty: 当前还没有更多该访客的访问记录。
+  visitorMapSection: 访客位置
+  visitorMapSubtitle: 根据当前事件里的经纬度展示该访客的大致位置。
+  visitorMapUnavailable: 当前事件没有可用的定位坐标。
+  mapZoomIn: 放大地图
+  mapZoomOut: 缩小地图
+  visitorId: 访客 ID
+  sessionId: 会话 ID
+  visitId: 访问 ID
+  eventType: 事件类型
+  eventTime: 事件时间
+overview:
+  title: 访问总览
+  subtitle: 查看核心指标与访问趋势。
+  trendTitle: 访问趋势
+  topPages: 热门页面
+  topReferrers: 热门来源
+  sourceTab: 来源
+  sourceDomainColumn: 来源（域名）
+  sourceLinkTab: 来源链接
+  sourceLinkColumn: 来源链接
+  direct: 直接访问
+  searchInTab: "搜索{tab}"
+pages:
+  title: 页面分析
+  subtitle: 选定时间范围内访问最多的路径。
+  pagesPerSession: 每会话页面数
+  untitled: 未命名页面
+  empty: 当前筛选条件下暂无页面数据。
+  loading: 正在加载页面卡片...
+  loadingMore: 正在加载更多页面...
+  loadError: 页面数据加载失败，请稍后重试。
+  loadMoreError: 加载更多页面失败。
+  retry: 重试
+  tabPages: 页面
+  tabEntryPages: 入口页面
+  tabExitPages: 出口页面
+  trendTitle: 页面访问趋势
+  otherPages: 其他页面
+  hashTab: 锚点
+  noHash: 无锚点
+  queryTab: 查询参数
+  noQuery: 无查询参数
+  eventTab: 事件
+  eventsMetric: 事件数
+  viewDetails: 查看详情
+referrers:
+  title: 来源分析
+  subtitle: 流量来源渠道分布。
+  summaryTitle: 来源概览
+  splitTitle: 来源拆分
+  chartTitle: 来源结构
+  radarTitle: 前 24 来源雷达图
+  radarSubtitle: 对比头部来源在多项行为指标上的表现
+  radarDuration: 停留时长
+  radarEngagement: 互动率
+  radarDepth: 浏览深度
+  radarLoyalty: 回访率
+  radarFrequency: 访问频次
+  radarTraffic: 流量占比
+  directSourceNote: 这部分流量没有外部来源站点，属于直接访问。
+  breakdownTitle: 来源明细
+  directViews: 直接访问量
+  directShare: 直接访问占比
+  uniqueDomains: 来源域名数
+  uniqueLinks: 来源链接数
+  topSource: 头部外部来源
+  topSourceShare: 访问占比
+  noExternalSource: 暂无外部来源
+  externalViews: 外部来源访问量
+  externalShare: 外部来源占比
+  externalLabel: 外部来源
+  nextSources: 后续 4 个来源
+  longTail: 长尾来源
+campaigns:
+  title: 推广活动
+  subtitle: UTM 推广活动表现与流量归因。
+  trendTitle: UTM 占比趋势
+  tabSource: 来源
+  tabMedium: 媒介
+  tabCampaign: 活动
+  tabTerm: 关键词
+  tabContent: 内容
+  overviewAcquisitionTitle: 获取面概览
+  overviewAcquisitionSubtitle: 查看带标签的来源与媒介分别带来了多少流量。
+  overviewSignalsTitle: 活动信号
+  overviewSignalsSubtitle: 快速识别表现最强的活动、关键词与创意内容。
+  topSource: 头部来源
+  topMedium: 头部媒介
+  topCampaign: 头部活动
+  topTerm: 头部关键词
+  topContent: 头部内容
+  breakdownTitle: UTM 明细
+  notSet: 未设置
+  noTaggedTraffic: 当前筛选范围内暂无带 UTM 标签的流量。
+sessions:
+  title: 会话列表
+  subtitle: 用于分析访问质量的会话明细。
+events:
+  title: 事件流
+  subtitle: 用于排查问题的原始事件列表。
+funnels:
+  title: 漏斗分析
+  subtitle: 衡量多步骤用户旅程的转化情况。
+  createFunnel: 创建漏斗
+  editFunnel: 编辑漏斗
+  funnelName: 漏斗名称
+  funnelNamePlaceholder: "例如：注册流程"
+  addStep: 添加步骤
+  removeStep: 删除
+  stepType: 步骤类型
+  stepValue: 值
+  pageview: 页面浏览
+  event: 自定义事件
+  save: 保存
+  cancel: 取消
+  delete: 删除漏斗
+  deleteConfirm: 确定要删除这个漏斗吗？
+  noFunnels: 尚未配置漏斗。创建一个以开始跟踪转化。
+  selectFunnel: 选择漏斗
+  conversionRate: 转化率
+  dropOff: 流失率
+  overallConversion: 整体转化率
+  step: "步骤 {n}"
+visitors:
+  title: 访客分析
+  subtitle: 访客级别明细与最近活跃情况。
+retention:
+  title: 留存分析
+  subtitle: 基于群组的访客回访分析。
+  cohortDate: 群组
+  cohortSize: 人数
+  periodLabel: "第 {n} 期"
+geo:
+  title: 位置分析
+  subtitle: 研究任意地点的访问效果
+  mapTitle: 请求地理分布
+  countryLabel: 国家/地区
+  regionLabel: 州/省
+  cityLabel: 市/县
+  back: 返回上一级
+  viewOnWikipedia: 查看维基百科
+  investigationNotice: 这些数据来源于网络，可能存在错误。
+  timezoneDeltaVsLocal: 较本地 {delta}
+  investigation:
+    capital: 首都
+    population: 人口
+    gdp: GDP
+    gdpPerCapita: 人均 GDP
+    marketPenetration: 市场渗透率
+    region: 所属区域
+    currency: 货币
+    phonecode: 电话区号
+    timezone: 时区
+    type: 类型
+    iso: ISO
+    coordinates: 坐标
+    unavailable: 暂无
+    gdpValue: "{value} 百万美元"
+    gdpPerCapitaValue: "{value} 美元/人"
+    gdpPerCapitaNearAverage: "{value} 美元/人（接近全球平均）"
+    gdpPerCapitaAboveAverage: "{value} 美元/人（高于平均 {percent}%）"
+    gdpPerCapitaBelowAverage: "{value} 美元/人（低于平均 {percent}%）"
+    marketPenetrationWindow: "{label}({days}天)"
+    timezoneCount: "{count} 个时区"
+    typeLabels:
+      country: 国家
+      state: 州
+      province: 省
+      prefecture: 地级市
+      city: 市
+      county: 县
+      district: 区
+      town: 镇
+      village: 村
+      municipality: 市镇
+      territory: 地区
+      section: 片区
+      adm1: 一级行政区
+      adm2: 二级行政区
+      adm3: 三级行政区
+      adm4: 四级行政区
+      adm5: 五级行政区
+devices:
+  title: 设备分析
+  subtitle: 从设备类型、系统和屏幕尺寸观察访客结构。
+  deviceShareTitle: 设备类型占比
+  osShareTitle: 操作系统占比
+  deviceTrendTitle: 设备类型趋势
+  osTrendTitle: 操作系统趋势
+  screenDistributionTitle: 屏幕尺寸分布
+  screenDistributionSubtitle: 识别最常见的视口尺寸和响应式断点。
+  topSizesCoverageLabel: 头部尺寸覆盖率
+  screenBucketTitle: 断点分桶
+  screenPreviewTitle: 屏幕预览
+  selectedViewportLabel: 当前视口
+  openSiteLabel: 打开站点
+  previewUnavailableLabel: 当前没有可预览的屏幕尺寸。
+  browserByDeviceTitle: 设备类型 × 浏览器
+  osByDeviceTitle: 设备类型 × 操作系统
+  priorityTitle: 适配优先级
+  prioritySubtitle: 根据当前访客结构整理出优先测试的设备组合。
+  dominantSegmentLabel: 主导设备段
+  dominantOsLabel: 主导系统
+  responsiveFocusLabel: 响应式重点
+  testMatrixTitle: 首测矩阵
+  shareLabel: 占比
+  otherLabel: 其他
+  screenBucketLabels:
+    phoneCompact: 小屏手机
+    phone: 手机
+    tablet: 平板
+    laptop: 笔记本
+    desktopWide: 宽屏桌面
+    unclassified: 未归类
+browsers:
+  title: 浏览器分析
+  subtitle: 按浏览器查看访问分布。
+  trendTitle: 浏览器占比趋势
+  engineTrendTitle: 内核占比趋势
+  versionBreakdownTitle: 浏览器版本分布
+  osBreakdownTitle: 浏览器 × 系统
+  deviceTypeBreakdownTitle: 浏览器 × 设备类型
+  trendSubtitle: 观察所选时间范围内各浏览器流量占比的变化。
+  topBrowserLabel: 头部浏览器
+  shareLabel: 占比
+  otherLabel: 其他
+  browserShareTitle: 浏览器占比
+  engineShareTitle: 内核占比
+  caniuseTitle: 特性兼容性
+  caniuseSubtitle: 根据站点访客数据检查 Web 特性的浏览器支持情况。
+  caniuseSearchPlaceholder: 搜索 Web 特性…
+  caniuseHotFeatures: 热门特性
+  caniuseTrendingFeatures: 近期变动
+  caniuseSiteSupport: 本站支持率
+  caniuseGlobalSupport: 全球支持率
+  caniuseClearSelection: 清除
+  caniuseNoMatch: 未找到匹配的特性。
+  caniuseFullSupport: 完全支持
+  caniusePartialSupport: 部分支持
+  caniuseNoSupport: 不支持
+  radarTitle: 浏览器行为雷达图
+  radarSubtitle: 对比主流浏览器在多项行为指标上的表现
+  radarDuration: 停留时长
+  radarEngagement: 互动率
+  radarDepth: 浏览深度
+  radarLoyalty: 回访率
+  radarFrequency: 访问频次
+  radarTraffic: 流量占比
+performance:
+  title: 性能追踪
+  subtitle: 按指标、趋势与路径查看真实访客性能。
+  chartTitle: 性能趋势
+  avgLabel: 平均值
+  samplesLabel: 样本数
+  p50Label: P50
+  p75Label: P75
+  p95Label: P95
+  ttfb: 首字节时间
+  fcp: 首次内容绘制
+  lcp: 最大内容绘制
+  cls: 累积布局偏移
+  inp: 下次绘制交互
+  ttfbDescription: 衡量浏览器在收到服务器第一个字节前等待了多久，反映后端响应、网络延迟和缓存效果。
+  fcpDescription: 衡量页面首次绘制文本或图片的时间，反映访客多久能看到页面开始加载。
+  lcpDescription: 衡量视口内最大内容元素完成渲染的时间，是感知加载速度的核心指标。
+  clsDescription: 衡量页面生命周期中非预期布局位移的程度，数值越低表示视觉越稳定。
+  inpDescription: 衡量用户交互到下一次绘制之间的延迟，反映页面加载后的响应能力。
+  msUnit: 毫秒
+  secondsUnit: 秒
+  clsUnit: 分值
+  score: 体验评分
+  scoreDescription: 将加载、稳定性和交互指标的 P75 数值合成为 0 到 100 的体验评分，分数越高越好。
+  great: 优秀
+  needsImprovement: 需要改进
+  poor: 较差
+  datasetTitle: 数据集概览
+  interpretationTitle: 当前解读
+  currentReading: "{metric} 当前 P75 为 {value}，体验评分为 {score}，覆盖 {samples} 个样本。当前判定：{status}。"
+  metricThresholdText: "优秀为不高于 {good}；需要改进为 {good} 到 {poor}；较差为高于 {poor}。"
+  scoreThresholdText: 优秀为高于 90，需要改进为 50 到 90，较差为低于 50。
+  countryHealthTitle: 国家和地区健康度
+  countryHealthSubtitle: 根据 {metric} 对国家或地区边界进行健康度着色。
+  pathsTitle: 路径性能
+  pathsAnalyzedLabel: 已分析路径
+  metricValueColumn: P75 数值
+  statusColumn: 状态
+siteSettings:
+  title: 站点设置
+  subtitle: 管理当前站点的基础信息与生命周期。
+  editTitle: 修改站点信息
+  editSubtitle: 更新站点名称、域名和公开 Slug。
+  nameLabel: 站点名称
+  domainLabel: 域名
+  publicSlugLabel: 公开 Slug（可选）
+  trackingStrengthGroupTitle: 跟踪强度
+  trackingStrengthDescription: 选择脚本对访客标识与统计精度的处理方式。
+  trackingStrengthLabel: 跟踪强度策略
+  trackingStrengthStrong: 强
+  trackingStrengthSmart: 智能
+  trackingStrengthWeak: 弱
+  trackingStrengthStrongDescription: 始终进行针对访客的高精度追踪。这可能违反某些国家的法规，例如 GDPR。
+  trackingStrengthSmartDescription: 自动根据访客所处国家切换追踪强度。
+  trackingStrengthWeakDescription: 始终降低对访客的追踪精度。这可能导致同一访客在不同时间访问时被计数多次、且无法计算留存率。
+  queryHashGroupTitle: 查询参数与 Hash 跟踪
+  queryHashGroupDescription: 控制 URL 查询参数、Hash 与 Do Not Track 的处理方式。
+  trackQueryParamsLabel: 开启查询参数跟踪
+  trackHashLabel: 开启 Hash 跟踪
+  domainWhitelistTitle: 域名白名单
+  domainWhitelistDescription: 仅当当前域名命中白名单时才会上报事件。
+  domainWhitelistLabel: 域名白名单（每行一个）
+  domainWhitelistPlaceholder: |
+    example.com
+    www.example.com
+  domainWhitelistHint: 留空表示不限制域名；仅支持精确匹配，不匹配子域名。
+  pathBlacklistTitle: 路径黑名单
+  pathBlacklistDescription: 当前路径命中前缀规则时将阻止事件上报。
+  pathBlacklistLabel: 路径黑名单（每行一个）
+  pathBlacklistPlaceholder: |
+    /admin
+    /private
+  pathBlacklistHint: 采用 startsWith 前缀匹配；命中后不发送采集事件。
+  ignoreDoNotTrackLabel: 忽略浏览器 Do Not Track
+  performanceGroupTitle: 性能追踪
+  performanceGroupDescription: 通过一个采样率控制 Web 性能指标采集。
+  performanceSampleRateLabel: 性能采样率（%）
+  performanceSampleRateHint: 被采样的访问会在 leave 时记录 TTFB、FCP、LCP、CLS 和 INP。填 0 表示不采样，100 表示全量采集。
+  booleanOn: 开启
+  booleanOff: 关闭
+  loadingSettings: 正在加载脚本设置...
+  saveTracking: 保存追踪设置
+  savingTracking: 保存追踪设置中...
+  save: 保存修改
+  saving: 保存中...
+  transferTitle: 转移到其他 Team
+  transferSubtitle: 将当前站点迁移到你可管理的其他团队。
+  transferTeamLabel: 目标 Team
+  transfer: 转移站点
+  transferring: 转移中...
+  scriptTitle: 安装统计脚本
+  scriptSubtitle: 将此脚本添加到你的网站后即可开始采集分析数据。
+  scriptHint: 推荐放在 </head> 结束标签前；若不方便，也可放在 </body> 前，但请确保每页只加载一次。
+  copyScript: 复制脚本
+  copiedScript: 脚本已复制。
+  loadingScript: 正在加载脚本...
+  scriptUnavailable: 当前无法获取脚本。
+  deleteTitle: 删除站点
+  deleteSubtitle: 此操作会将当前站点从团队中移除。
+  delete: 删除站点
+  deleting: 删除中...
+  deleteConfirm: 该操作不可撤销，是否继续？
+  toasts:
+    saved: 站点设置已保存。
+    saveFailed: 站点设置保存失败。
+    transferred: 站点已转移。
+    transferFailed: 站点转移失败。
+    scriptLoadFailed: 加载脚本片段失败。
+    settingsLoadFailed: 加载脚本设置失败。
+    settingsPropagationHint: 设置分发到全球节点可能需要最多 1 小时。
+    deleted: 站点已删除。
+    deleteFailed: 删除站点失败。
+    invalidInput: 请填写有效的站点名称和域名。
+accountSettings:
+  title: 账户设置
+  subtitle: 管理你的个人信息、登录密码和仪表盘时区。
+  profileTitle: 个人信息
+  profileDescription: 更新昵称、用户名和邮箱。
+  nicknameLabel: 昵称
+  nicknamePlaceholder: 例如：产品分析师
+  usernameLabel: 用户名
+  usernamePlaceholder: 例如：alex
+  usernameDescription: 用户名也可用于登录。
+  emailLabel: 邮箱
+  emailPlaceholder: name@example.com
+  invalidProfile: 请填写有效的用户名和邮箱。
+  profileSave: 保存个人信息
+  profileSaving: 保存中...
+  profileSaved: 个人信息已保存。
+  profileSaveFailed: 保存个人信息失败。
+  passwordTitle: 登录密码
+  passwordDescription: 修改当前账号的登录密码。
+  currentPasswordLabel: 当前密码
+  newPasswordLabel: 新密码
+  confirmPasswordLabel: 确认新密码
+  currentPasswordRequired: 请输入当前密码。
+  passwordTooShort: 新密码至少需要 8 个字符。
+  passwordMismatch: 两次输入的新密码不一致。
+  passwordSave: 修改密码
+  passwordSaving: 修改中...
+  passwordSaved: 密码已修改。
+  passwordSaveFailed: 修改密码失败。
+  timeZoneTitle: 报表时区
+  timeZoneDescription: 仪表盘里的自然日期范围和聚合分桶都会使用这个时区。
+  activeTimeZone: 当前生效时区
+  browserTimeZone: 浏览器时区
+  browserUnavailable: 未检测到
+  browserSource: 跟随浏览器
+  manualSource: 手动设置
+  preferenceLabel: 时区偏好
+  preferenceDescription: 跟随浏览器会使用当前设备时区；手动设置会在所有设备上保持同一时区。
+  useBrowser: 跟随浏览器时区
+  useCustom: 选择时区
+  customTimeZoneLabel: 时区
+  customTimeZoneDescription: 从支持的 IANA 时区中选择。
+  invalidTimeZone: 请选择有效的 IANA 时区。
+  save: 保存偏好
+  saving: 保存中...
+  saved: 时区偏好已保存。
+  saveFailed: 保存时区偏好失败。
+login:
+  title: 登录
+  subtitle: 使用 InsightFlare 账号登录。
+  username: 用户名或邮箱
+  password: 密码
+  signIn: 登录
+  invalidCredentials: 用户名或密码错误。
+empty:
+  noTeams: 当前账号还没有可访问的团队。
+  noSites: 该团队下暂无可访问站点。
+  siteNotFound: 未找到对应团队或站点。
+actions:
+  logout: 退出登录
+  switchToEnglish: English
+  switchToChinese: 中文
+  switchToLight: 浅色
+  switchToDark: 深色
+teamSelect:
+  groupLabel: 团队
+  createHint: 新建团队
+  createTitle: 新建团队
+  createDescription: 创建后会自动切换到新团队。
+  nameLabel: 团队名称
+  namePlaceholder: 例如：增长团队
+  slugLabel: 团队 Slug（可选）
+  slugPlaceholder: 例如：growth-team
+  create: 创建
+  creating: 创建中...
+  cancel: 取消
+  invalidName: 团队名称至少 2 个字符。
+  createFailed: 创建失败，请稍后重试。
+  createSuccess: 团队已创建。
+teamManagement:
+  stats:
+    sites: 站点
+    members: 成员
+  toasts:
+    teamSaved: 团队设置已保存。
+    teamSaveFailed: 团队设置保存失败。
+    teamDeleted: 团队已删除。
+    teamDeleteFailed: 删除团队失败。
+    memberAdded: 成员已添加。
+    memberAddFailed: 添加成员失败。
+    memberRemoved: 成员已移除。
+    memberRemoveFailed: 移除成员失败。
+    roleChanged: 成员角色已更新。
+    roleChangeFailed: 更新成员角色失败。
+    invalidTeamName: 团队名称至少 2 个字符。
+    invalidMemberIdentifier: 请输入有效的用户名或邮箱。
+    ownerTransferred: 所有权已转移。
+    ownerTransferFailed: 转移所有权失败。
+    invalidTransferTarget: 请选择新的所有者。
+  sites:
+    title: 仪表盘
+    subtitle: 聚合查看该团队下所有站点的访问表现。
+    aggregateTitle: 总访问量
+    pagesPerSession: 每会话页面数
+    noSites: 当前团队还没有站点。
+    openAnalytics: 查看分析
+  widgets:
+    title: 小组件
+    subtitle: 管理当前团队各站点的小组件配置。
+    noSites: 当前团队还没有可配置小组件的站点。
+    openWidgets: 管理小组件
+  notifications:
+    title: 事件通知
+    subtitle: 管理当前团队的事件通知规则。
+    empty: 当前团队还没有事件通知规则。
+  publicLinks:
+    title: 公开链接
+    subtitle: 管理当前团队可公开访问的分享链接。
+    empty: 当前团队还没有公开链接。
+  apiKeys:
+    title: API 密钥
+    subtitle: 管理当前团队用于接口访问的密钥。
+    empty: 当前团队还没有 API 密钥。
+  settings:
+    title: 团队设置
+    subtitle: 更新团队显示名和 slug。
+    nameLabel: 团队显示名
+    slugLabel: 团队 Slug
+    save: 保存设置
+    saving: 保存中...
+    delete: 删除团队
+    deleting: 删除中...
+    deleteConfirm: 确认删除该团队及其所有数据吗？此操作不可撤销。
+    transferTitle: 转移所有权
+    transferSubtitle: 将团队所有权转移给另一位成员。当前所有者会自动降为管理员。
+    transferTargetLabel: 新的所有者
+    transferTargetPlaceholder: 选择团队成员
+    transfer: 转移所有权
+    transferring: 转移中...
+    transferConfirm: 此操作不可撤销，你将失去对该团队的所有权（仍保留管理员权限）。确认继续吗？
+    noTransferableMembers: 当前团队没有其他可转移的成员，请先添加成员。
+  members:
+    title: 成员管理
+    subtitle: 添加成员或移除成员。
+    identifierLabel: 用户名或邮箱
+    identifierPlaceholder: 例如：alice 或 alice@example.com
+    add: 添加成员
+    adding: 添加中...
+    remove: 移除
+    noMembers: 当前团队暂无成员。
+    columns:
+      name: 名称
+      username: 用户名
+      email: 邮箱
+      role: 角色
+      joinedAt: 加入时间
+      action: 操作
+    roleLabels:
+      owner: 所有者
+      admin: 管理员
+      member: 成员
+managementNav:
+  users: 用户管理
+  sites: 站点管理
+  teams: 团队管理
+  versionUpdates: 版本更新
+  scheduledTasks: 定时任务
+  systemPerformance: 系统性能
+managementPages:
+  versionUpdates:
+    subtitle: 查看和管理系统版本更新记录。
+    empty: 暂无版本更新记录。
+  scheduledTasks:
+    subtitle: 查看和管理系统定时任务。
+    empty: 暂无定时任务。
+adminUsers:
+  title: 用户管理
+  subtitle: 仅系统管理员可创建和管理后台用户。
+  createTitle: 新建用户
+  createSubtitle: 创建后可立即用于登录后台。
+  username: 用户名
+  email: 邮箱
+  name: 名称（可选）
+  password: 密码（至少 8 位）
+  role: 系统角色
+  create: 创建用户
+  creating: 创建中...
+  delete: 删除
+  deleting: 删除中...
+  deleteConfirm: 确认删除该用户账号吗？
+  deleteSuccess: 用户已删除。
+  deleteFailed: 删除用户失败。
+  listTitle: 用户列表
+  listSubtitle: 当前系统内所有用户。
+  noData: 暂无用户数据。
+  loadFailed: 加载用户列表失败。
+  createSuccess: 用户创建成功。
+  createFailed: 用户创建失败。
+  invalidInput: 请填写有效的用户名、邮箱和密码。
+  columns:
+    name: 名称
+    username: 用户名
+    email: 邮箱
+    role: 角色
+    teams: 团队数
+    created: 创建时间
+    action: 操作
+adminSites:
+  title: 站点管理
+  subtitle: 管理当前团队下的站点。
+  team: 团队
+  createTitle: 新建站点
+  createSubtitle: 新建后可直接进入分析页面。
+  name: 站点名称
+  domain: 域名
+  publicSlug: 公开 Slug（可选）
+  create: 创建站点
+  creating: 创建中...
+  listTitle: 站点列表
+  listSubtitle: 当前团队下所有站点。
+  noData: 暂无站点数据。
+  loadFailed: 加载站点失败。
+  createSuccess: 站点创建成功。
+  createFailed: 站点创建失败。
+  invalidInput: 请填写有效的站点名称和域名。
+  open: 打开分析
+  columns:
+    name: 名称
+    domain: 域名
+    slug: Slug
+    created: 创建时间
+    action: 操作
+adminTeams:
+  title: 团队管理
+  subtitle: 仅系统管理员可创建与查看所有团队。
+  createTitle: 新建团队
+  createSubtitle: 创建后可进入团队配置与成员管理。
+  name: 团队名称
+  slug: 团队 Slug（可选）
+  create: 创建团队
+  creating: 创建中...
+  listTitle: 团队列表
+  listSubtitle: 系统中所有团队。
+  noData: 暂无团队数据。
+  loadFailed: 加载团队失败。
+  createSuccess: 团队创建成功。
+  createFailed: 团队创建失败。
+  invalidInput: 团队名称至少 2 个字符。
+  open: 进入团队
+  settings: 设置
+  columns:
+    name: 名称
+    slug: Slug
+    sites: 站点数
+    members: 成员数
+    created: 创建时间
+    action: 操作
+systemPerformance:
+  title: 系统性能
+  subtitle: 基于现有分析行监控 InsightFlare 的采集、缓冲和写入健康度。
+  refresh: 刷新
+  loadFailed: 加载系统性能数据失败。
+  noData: 当前时间窗口内暂无系统性能数据。
+  range15m: 最近 15 分钟
+  range1h: 最近 1 小时
+  range6h: 最近 6 小时
+  range24h: 最近 24 小时
+  totalEvents: 已接收事件
+  p95Latency: P95 估算延迟
+  p50Latency: P50
+  p75Latency: P75
+  p50Label: P50
+  p75Label: P75
+  p95Label: P95
+  dataFreshness: 数据新鲜度
+  noRecentWrite: 暂无最近写入
+  clockAnomalies: 时钟/延迟异常
+  delayed: 延迟
+  future: 未来时钟
+  latencyPercentileTrend: 延迟分位趋势
+  latencyPercentileTrendDescription: 按服务端写入时间分桶，展示可信样本的 P50、P75、P95 估算延迟。
+  throughputTrend: 已接收事件吞吐
+  throughputTrendDescription: 按服务端写入时间分桶，柱条合并访问和自定义事件。
+  visits: 访问
+  customEvents: 自定义事件
+  anomalyBucket: 异常分桶
+  openVisitHealth: 未关闭访问堆积
+  openVisitHealthDescription: 尚未被离开事件、路由切换或超时收尾关闭的访问行。
+  open: 未关闭
+  stale: 停滞
+  timedOut: 已超时
+  oldestOpen: 最早未关闭
+  latestActivity: 最近活动
+  estimationNote: 估算延迟等于服务端写入时间减客户端事件时间，因此会包含浏览器排队和错误客户端时钟。
+  latencySampleHealth: 延迟样本健康度
+  latencySampleHealthDescription: 只统计非负且未超过可信上限的延迟样本。
+  trustedSamples: 可信样本
+  topSitesTitle: 系统负载最高的站点
+  topSitesDescription: 当前窗口内产生最多已接收行的站点。
+  events: 事件
+  avgLatency: 平均延迟
+  slowestEventsTitle: 估算最慢事件
+  slowestEventsDescription: 当前窗口内服务端写入时间与事件时间正向差值最大的记录。
+  eventTime: 事件时间
+  serverTime: 服务端写入时间
+  estimatedDelay: 估算延迟
+  doDiagnosticTitle: DO 内部缓冲诊断
+  doDiagnosticDescription: 直接询问每个站点的 Durable Object，统计 buffered_visits / buffered_custom_events 是否存在停滞、未来时间戳或永久 dirty 行。
+  doDiagnosticLoadFailed: 加载 DO 诊断数据失败。
+  doDiagnosticLoading: 正在拉取每个 DO 的状态…
+  doDiagnosticEmpty: 暂无站点 DO 状态。
+  doDiagnosticUnreachable: 部分站点 DO 不可达
+  doDiagnosticReachableSites: 可达 DO
+  doDiagnosticTotalSites: 总站点
+  doDiagnosticActiveAlarms: 活跃 alarm
+  doDiagnosticBufferedVisits: 缓冲访问
+  doDiagnosticOpenVisits: 缓冲 open 行
+  doDiagnosticOpenStale: open >30 分钟无活动
+  doDiagnosticOpenTimedOut: open >12 小时无活动
+  doDiagnosticOpenHardAged: 起始 >36 小时
+  doDiagnosticOpenFutureSkew: 未来时间戳
+  doDiagnosticDirtyVisits: dirty 访问
+  doDiagnosticStuckDirty: dirty 卡住
+  doDiagnosticMaxFlushAttempts: 最大重试次数
+  doDiagnosticBufferedCustomEvents: 缓冲自定义事件
+  doDiagnosticDirtyCustomEvents: dirty 自定义事件
+  doDiagnosticStuckDirtyCustomEvents: dirty 自定义事件卡住
+  doDiagnosticOldestOpen: 最早 open 起始
+  doDiagnosticFutureMaxActivity: 最远未来 last_activity
+  doDiagnosticSiteList: 风险靠前的站点
+  doDiagnosticSiteListDescription: 按风险评分排序，前 20 个站点的 DO 内部缓冲快照。
+  doDiagnosticSiteOk: 已响应
+  doDiagnosticSiteFailed: 不可达
+  doDiagnosticSiteOpen: open
+  doDiagnosticSiteStuck: 卡住
+  doDiagnosticSiteFuture: 未来
+  doDiagnosticSiteHardAged: 老旧
+  doDiagnosticSiteAlarm: alarm
+  doDiagnosticSiteAlarmNone: 无
+  doDiagnosticSiteAlarmDue: 到期
+  doDiagnosticSiteResponseMs: 响应耗时
+  doDiagnosticThresholdsHint: 阈值：stale {stale}，timeout {timeout}，hardAged {hardAged}，stuck flush_attempts ≥ {stuck}
+  doDiagnosticHealthy: 当前未发现异常缓冲行。
+loginForm:
+  signingIn: 登录中...
+  failed: 登录失败，请稍后重试。
+logoutAction:
+  pending: 退出中...
+  success: 已退出登录。
+  failed: 退出登录失败，请稍后重试。
+sidebarFooter:
+  loggingOut: 退出中...
+  logoutSuccess: 已退出登录。
+  logoutFailed: 退出登录失败，请稍后重试。
+teamEntry:
+  title: 选择团队
+  description: 你当前可访问多个团队，请先选择要进入的团队。

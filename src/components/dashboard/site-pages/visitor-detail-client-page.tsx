@@ -1,0 +1,2340 @@
+"use client";
+
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import Map, { useControl } from "react-map-gl/maplibre";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useTheme } from "next-themes";
+import { ScatterplotLayer } from "@deck.gl/layers";
+import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
+import {
+  RiArrowLeftLine,
+  RiCalendarEventLine,
+  RiCheckboxCircleFill,
+  RiCloseCircleFill,
+  RiErrorWarningFill,
+  RiLogoutBoxRLine,
+  RiPulseLine,
+  RiTimeLine,
+} from "@remixicon/react";
+import type { StyleSpecification } from "maplibre-gl";
+
+import {
+  AsyncDimensionBreakdownCard,
+  type AsyncDimensionBreakdownRow,
+} from "@/components/dashboard/async-dimension-breakdown-card";
+import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
+import {
+  JourneyDetailLoadingState,
+  JourneyDetailStateSwitch,
+} from "@/components/dashboard/journey-detail-state";
+import {
+  BrowserMeta,
+  DeviceMeta,
+  formatDuration,
+  formatPathWithHash,
+  formatRelativeTime,
+  formatScreen,
+  formatShortDateTime,
+  OsMeta,
+  ReferrerMeta,
+  VisitorAvatar,
+} from "@/components/dashboard/journey-display";
+import {
+  JourneyGeoLocationCard,
+  type JourneyGeoLocationInput,
+} from "@/components/dashboard/journey-geo-location-card";
+import { LazyGeoCityBreadcrumbLabel } from "@/components/dashboard/lazy-geo-location-label";
+import {
+  type SessionSortKey,
+  type SessionSortState,
+  SessionsTableCard,
+} from "@/components/dashboard/sessions-table-card";
+import {
+  OverviewPagesSection,
+  type OverviewPagesSectionCardData,
+} from "@/components/dashboard/site-pages/overview-client-page";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Clickable } from "@/components/ui/clickable";
+import {
+  fetchVisitorDetail,
+  type OverviewTabRows,
+} from "@/lib/dashboard/client-data";
+import {
+  durationFormat,
+  intlLocale,
+  numberFormat,
+  percentFormat,
+} from "@/lib/dashboard/format";
+import { zonedParts } from "@/lib/dashboard/time-zone";
+import type {
+  JourneyEvent,
+  JourneyPerformanceMetricSummary,
+  JourneyPerformanceSummary,
+  JourneySession,
+  PerformanceMetricKey,
+  VisitorActivityDay,
+  VisitorDetailData,
+} from "@/lib/edge-client";
+import {
+  resolveCountryFlagCode,
+  resolveCountryLabel,
+} from "@/lib/i18n/code-labels";
+import type { Locale } from "@/lib/i18n/config";
+import type { AppMessages } from "@/lib/i18n/messages";
+import { cn } from "@/lib/utils";
+
+interface VisitorDetailClientPageProps {
+  locale: Locale;
+  messages: AppMessages;
+  siteId: string;
+  pathname: string;
+}
+
+type VisitorDetail = NonNullable<VisitorDetailData["data"]>;
+type VisitorRow = VisitorDetail["visitor"];
+type Labels = ReturnType<typeof copy>;
+type EffectiveMapTheme = "light" | "dark";
+type VisitorPerformancePanelKey = PerformanceMetricKey | "score";
+type VisitorPerformanceStatus = "great" | "needs-improvement" | "poor" | "none";
+
+const VISITOR_MAP_VIEW_STATE = {
+  longitude: 0,
+  latitude: 20,
+  zoom: 1.05,
+  minZoom: 0.3,
+  maxZoom: 6,
+  pitch: 0,
+  bearing: 0,
+} as const;
+const VISITOR_MAP_MAX_RENDERED_POINTS = 320;
+const VISITOR_MAP_POINT_RGB = [52, 211, 153] as const;
+const VISITOR_MAP_POINT_BASE_RADIUS_PX = 4.8;
+const VISITOR_DETAIL_OVERVIEW_FILTERS = {};
+const VISITOR_OVERVIEW_PAGE_CARD_TABS = ["path", "title"] as const;
+const VISITOR_ACTIVITY_DAYS = 365;
+const VISITOR_SESSION_SORT: SessionSortState = {
+  key: "startedAt",
+  direction: "desc",
+};
+const VISITOR_PERFORMANCE_METRICS: PerformanceMetricKey[] = [
+  "ttfb",
+  "fcp",
+  "lcp",
+  "cls",
+  "inp",
+];
+const VISITOR_PERFORMANCE_THRESHOLDS: Record<
+  PerformanceMetricKey,
+  { good: number; poor: number }
+> = {
+  ttfb: { good: 800, poor: 1800 },
+  fcp: { good: 1800, poor: 3000 },
+  lcp: { good: 2500, poor: 4000 },
+  cls: { good: 0.1, poor: 0.25 },
+  inp: { good: 200, poor: 500 },
+};
+const VISITOR_PERFORMANCE_STATUS_STYLE = {
+  great: {
+    labelClassName: "text-chart-4",
+    softClassName: "bg-chart-4/10 text-chart-4",
+    icon: RiCheckboxCircleFill,
+  },
+  "needs-improvement": {
+    labelClassName: "text-[oklch(0.75_0.16_80)]",
+    softClassName: "bg-[oklch(0.75_0.16_80_/_0.12)] text-[oklch(0.75_0.16_80)]",
+    icon: RiErrorWarningFill,
+  },
+  poor: {
+    labelClassName: "text-destructive",
+    softClassName: "bg-destructive/10 text-destructive",
+    icon: RiCloseCircleFill,
+  },
+  none: {
+    labelClassName: "text-muted-foreground",
+    softClassName: "bg-muted text-muted-foreground",
+    icon: RiPulseLine,
+  },
+} satisfies Record<
+  VisitorPerformanceStatus,
+  {
+    labelClassName: string;
+    softClassName: string;
+    icon: typeof RiCheckboxCircleFill;
+  }
+>;
+const EMPTY_VISITOR_PERFORMANCE_METRIC_SUMMARY: JourneyPerformanceMetricSummary =
+  {
+    avg: null,
+    p75: null,
+    min: null,
+    max: null,
+    samples: 0,
+  };
+const EMPTY_VISIT_PERFORMANCE: JourneyEvent["performance"] = {
+  ttfb: null,
+  fcp: null,
+  lcp: null,
+  cls: null,
+  inp: null,
+};
+
+interface VisitorLocationPoint {
+  latitude: number;
+  longitude: number;
+  timestampMs: number;
+}
+
+interface RenderedVisitorLocationPoint extends VisitorLocationPoint {
+  id: string;
+  radius: number;
+  fillColor: [number, number, number, number];
+}
+
+interface VisitorActivityDayItem {
+  date: Date;
+  key: string;
+  count: number;
+  title: string;
+}
+
+type VisitorActivityCalendarCell =
+  | { type: "empty"; key: string }
+  | VisitorActivityCalendarDayCell;
+
+interface VisitorActivityCalendarDayCell extends VisitorActivityDayItem {
+  type: "day";
+}
+
+interface VisitorActivityCalendarSection {
+  cells: VisitorActivityCalendarCell[];
+  monthLabels: string[];
+  weekCount: number;
+}
+
+function buildRasterStyle(theme: EffectiveMapTheme): StyleSpecification {
+  const sourceId = `insightflare-visitor-map-source-${theme}`;
+  const layerId = `insightflare-visitor-map-layer-${theme}`;
+  const endpoint = `/api/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
+
+  return {
+    version: 8,
+    name: `insightflare-visitor-map-${theme}`,
+    sources: {
+      [sourceId]: {
+        type: "raster",
+        tiles: [endpoint],
+        tileSize: 256,
+        attribution: "OpenStreetMap contributors CARTO",
+      },
+    },
+    layers: [
+      {
+        id: layerId,
+        type: "raster",
+        source: sourceId,
+        minzoom: 0,
+        maxzoom: 22,
+      },
+    ],
+  };
+}
+
+function copy(locale: Locale) {
+  return locale === "zh"
+    ? {
+        anonymous: "匿名访客",
+        back: "返回访客",
+        missing: "缺少 visitorId。",
+        notFound: "没有找到这个访客。",
+        loadError: "无法加载访客详情。",
+        totalDuration: "总时长",
+        events: "事件",
+        sessions: "会话",
+        views: "页面浏览",
+        uniquePages: "唯一页面",
+        avgPagesPerSession: "平均页面/会话",
+        avgEventsPerSession: "平均事件/会话",
+        avgStay: "平均停留",
+        p90Duration: "P90 会话时长",
+        firstSeen: "首次出现",
+        lastSeen: "最近出现",
+        daysActive: "活跃天数",
+        conversionEvents: "转化事件",
+        avgTimeBetweenSessions: "平均会话间隔",
+        activity: "活跃记录",
+        sessionRecords: "会话记录",
+        started: "开始时间",
+        visitor: "访客",
+        duration: "时长",
+        referrer: "来源",
+        pageViews: "页面浏览",
+        visitDetailsTitle: "访问明细",
+        visitDetailsSubtitle:
+          "按发生顺序展示该访客的会话开始、页面访问、退出和自定义事件。",
+        path: "路径",
+        title: "标题",
+        customEvents: "自定义事件",
+        emptyEvents: "没有事件记录。",
+        emptyCustomEvents: "暂无自定义事件",
+        emptySessions: "没有会话记录。",
+        visitorId: "访客 ID",
+        sessionId: "会话 ID",
+        referrerName: "来源名称",
+        referrerUrl: "来源链接",
+        location: "位置",
+        browser: "浏览器",
+        os: "系统",
+        device: "设备",
+        screen: "屏幕",
+        entryPath: "入口路径",
+        exitPath: "退出路径",
+        bounce: "跳出",
+        status: "状态",
+        active: "进行中",
+        inactive: "已结束",
+        yes: "是",
+        no: "否",
+        sessionStarted: "会话开始",
+        pageview: "访问页面",
+        exitPage: "退出页面",
+        customEvent: "自定义事件",
+        eventTitleSeparator: "：",
+        sincePrevious: "距上个事件",
+        geoLocationTitle: "地理位置",
+        performanceTitle: "当前访客性能",
+        range: "范围",
+      }
+    : {
+        anonymous: "Anonymous",
+        back: "Back to visitors",
+        missing: "Missing visitorId.",
+        notFound: "Visitor not found.",
+        loadError: "Unable to load visitor detail.",
+        totalDuration: "Total Duration",
+        events: "Events",
+        sessions: "Sessions",
+        views: "Pageviews",
+        uniquePages: "Unique Pages",
+        avgPagesPerSession: "Avg Pages/Session",
+        avgEventsPerSession: "Avg Events/Session",
+        avgStay: "Avg Stay",
+        p90Duration: "Session Duration (P90)",
+        firstSeen: "First seen",
+        lastSeen: "Last seen",
+        daysActive: "Days Active",
+        conversionEvents: "Conversion Events",
+        avgTimeBetweenSessions: "Avg Time Between Sessions",
+        activity: "Activity",
+        sessionRecords: "Session records",
+        started: "Start Time",
+        visitor: "Visitor",
+        duration: "Duration",
+        referrer: "Referrer",
+        pageViews: "Page Views",
+        visitDetailsTitle: "Visit details",
+        visitDetailsSubtitle:
+          "Session starts, pageviews, exits, and custom events for this visitor in the order they happened.",
+        path: "Path",
+        title: "Title",
+        customEvents: "Custom events",
+        emptyEvents: "No events recorded.",
+        emptyCustomEvents: "No custom events.",
+        emptySessions: "No sessions recorded.",
+        visitorId: "Visitor ID",
+        sessionId: "Session ID",
+        referrerName: "Referrer Name",
+        referrerUrl: "Referrer URL",
+        location: "Location",
+        browser: "Browser",
+        os: "OS",
+        device: "Device",
+        screen: "Screen",
+        entryPath: "Entry Path",
+        exitPath: "Exit Path",
+        bounce: "Bounce",
+        status: "Status",
+        active: "Active",
+        inactive: "Ended",
+        yes: "Yes",
+        no: "No",
+        sessionStarted: "Session started",
+        pageview: "Pageview",
+        exitPage: "Exit page",
+        customEvent: "Custom event",
+        eventTitleSeparator: ": ",
+        sincePrevious: "Since previous",
+        geoLocationTitle: "Geo location",
+        performanceTitle: "Current visitor performance",
+        range: "Range",
+      };
+}
+
+function hasValidCoordinate(
+  latitude: number | null | undefined,
+  longitude: number | null | undefined,
+): boolean {
+  if (typeof latitude !== "number" || typeof longitude !== "number") {
+    return false;
+  }
+  return (
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180
+  );
+}
+
+function resolveVisitorMapFillColor(
+  opacity: number,
+): [number, number, number, number] {
+  return [
+    VISITOR_MAP_POINT_RGB[0],
+    VISITOR_MAP_POINT_RGB[1],
+    VISITOR_MAP_POINT_RGB[2],
+    Math.round(Math.max(0, Math.min(1, opacity)) * 255),
+  ];
+}
+
+function getRenderedVisitorPointPosition(
+  point: Pick<RenderedVisitorLocationPoint, "longitude" | "latitude">,
+): [number, number] {
+  return [point.longitude, point.latitude];
+}
+
+function visitorLocationPoints(
+  sessions: JourneySession[],
+): VisitorLocationPoint[] {
+  return sessions.flatMap((session) =>
+    hasValidCoordinate(session.latitude, session.longitude) &&
+    typeof session.latitude === "number" &&
+    typeof session.longitude === "number"
+      ? [
+          {
+            latitude: session.latitude,
+            longitude: session.longitude,
+            timestampMs: session.startedAt,
+          },
+        ]
+      : [],
+  );
+}
+
+function visitorGeoLocationInputs(
+  detail: VisitorDetail,
+): JourneyGeoLocationInput[] {
+  return detail.sessions.map((session) => ({
+    country: session.country,
+    region: session.region,
+    regionCode: session.regionCode,
+    city: session.city,
+    latitude: session.latitude,
+    longitude: session.longitude,
+  }));
+}
+
+function DeckOverlay(props: MapboxOverlayProps) {
+  const overlay = useControl<MapboxOverlay>(() => new MapboxOverlay(props));
+  overlay.setProps(props);
+  return null;
+}
+
+function VisitorMapStage({
+  mapStyle,
+  points,
+}: {
+  mapStyle: StyleSpecification;
+  points: VisitorLocationPoint[];
+}) {
+  const renderedPoints = useMemo<RenderedVisitorLocationPoint[]>(
+    () =>
+      points.slice(0, VISITOR_MAP_MAX_RENDERED_POINTS).map((point, index) => ({
+        ...point,
+        id: `${point.timestampMs}:${index}`,
+        radius: VISITOR_MAP_POINT_BASE_RADIUS_PX,
+        fillColor: resolveVisitorMapFillColor(0.56),
+      })),
+    [points],
+  );
+  const layers = useMemo(
+    () => [
+      new ScatterplotLayer<RenderedVisitorLocationPoint>({
+        id: "visitor-location-point",
+        data: renderedPoints,
+        getFillColor: (point) => point.fillColor,
+        getPosition: getRenderedVisitorPointPosition,
+        getRadius: (point) => point.radius,
+        radiusUnits: "pixels",
+        radiusMinPixels: 0,
+        radiusMaxPixels: VISITOR_MAP_POINT_BASE_RADIUS_PX,
+        pickable: false,
+      }),
+    ],
+    [renderedPoints],
+  );
+
+  return (
+    <Map
+      initialViewState={VISITOR_MAP_VIEW_STATE}
+      mapStyle={mapStyle}
+      attributionControl={false}
+      interactive={false}
+      reuseMaps
+    >
+      <DeckOverlay interleaved={false} layers={layers} />
+    </Map>
+  );
+}
+
+function formatDetailedDateTime(
+  locale: Locale,
+  timestampMs: number,
+  timeZone: string,
+): string {
+  if (!Number.isFinite(timestampMs) || timestampMs <= 0) return "--";
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(timestampMs));
+}
+
+function formatSeenDateTime(
+  locale: Locale,
+  timestampMs: number,
+  timeZone: string,
+  now = Date.now(),
+): string {
+  if (!Number.isFinite(timestampMs) || timestampMs <= 0) return "--";
+  const absolute = new Intl.DateTimeFormat(intlLocale(locale), {
+    timeZone,
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(timestampMs));
+  const relative = formatRelativeTime(locale, timestampMs, now);
+  return locale === "zh"
+    ? `${absolute}（${relative}）`
+    : `${absolute} (${relative})`;
+}
+
+function EmptyState({ children }: { children: ReactNode }) {
+  return (
+    <div className="py-8 text-center text-sm text-muted-foreground">
+      {children}
+    </div>
+  );
+}
+
+function VisitorPerformanceCell({
+  label,
+  value,
+  status,
+  details,
+}: {
+  label: string;
+  value: string;
+  status: VisitorPerformanceStatus;
+  details: string[];
+}) {
+  const statusStyle = VISITOR_PERFORMANCE_STATUS_STYLE[status];
+  const StatusIcon = statusStyle.icon;
+
+  return (
+    <div className="min-w-0 bg-card p-4">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <p className="min-w-0 truncate text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+          {label}
+        </p>
+        <span
+          className={cn(
+            "inline-flex size-7 shrink-0 items-center justify-center rounded-full",
+            statusStyle.softClassName,
+          )}
+        >
+          <StatusIcon className="size-3.5" />
+        </span>
+      </div>
+      <p className="mt-3 min-w-0 truncate font-mono text-xl font-semibold leading-7 text-foreground">
+        {value}
+      </p>
+      <div className="mt-3 flex min-w-0 flex-col gap-1 text-[11px] leading-[14px] text-muted-foreground">
+        {details.map((detail) => (
+          <span key={detail} className="min-w-0 truncate">
+            {detail}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VisitorPerformanceMetricCell({
+  locale,
+  messages,
+  labels,
+  metric,
+  summary,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  labels: Labels;
+  metric: PerformanceMetricKey;
+  summary: JourneyPerformanceMetricSummary;
+}) {
+  const value = summary.p75;
+  const status = visitorMetricStatus(metric, value);
+
+  return (
+    <VisitorPerformanceCell
+      label={messages.performance[metric]}
+      value={formatVisitorMetricValue(locale, messages, metric, value)}
+      status={status}
+      details={visitorMetricDetailRows(
+        locale,
+        messages,
+        labels,
+        metric,
+        summary,
+      )}
+    />
+  );
+}
+
+function VisitorPerformancePanel({
+  locale,
+  messages,
+  labels,
+  performance,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  labels: Labels;
+  performance: JourneyPerformanceSummary | null | undefined;
+}) {
+  const hasSamples = hasVisitorPerformanceSamples(performance);
+  if (!hasSamples) return null;
+
+  const score = visitorPerformanceScore(performance);
+  const samples = visitorPerformanceSamples(performance);
+  const scoreStatus = visitorScoreStatus(score);
+  const statusStyle = VISITOR_PERFORMANCE_STATUS_STYLE[scoreStatus];
+  const StatusIcon = statusStyle.icon;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <CardTitle>{labels.performanceTitle}</CardTitle>
+          </div>
+          <div
+            className={cn(
+              "inline-flex shrink-0 items-center gap-2 self-start rounded-full px-3 py-1 text-xs font-medium",
+              statusStyle.softClassName,
+            )}
+          >
+            <StatusIcon className="size-3.5" />
+            <span>{visitorPerformanceStatusLabel(messages, scoreStatus)}</span>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="grid grid-cols-2 gap-px overflow-hidden bg-border/70 text-xs md:grid-cols-3">
+          <VisitorPerformanceCell
+            label={messages.performance.score}
+            value={visitorPerformancePanelValue(
+              locale,
+              messages,
+              "score",
+              score,
+            )}
+            status={scoreStatus}
+            details={visitorScoreDetailRows(locale, messages, labels, samples)}
+          />
+          {VISITOR_PERFORMANCE_METRICS.map((metric) => (
+            <VisitorPerformanceMetricCell
+              key={metric}
+              locale={locale}
+              messages={messages}
+              labels={labels}
+              metric={metric}
+              summary={
+                performance?.[metric] ??
+                EMPTY_VISITOR_PERFORMANCE_METRIC_SUMMARY
+              }
+            />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SummaryGridItem({
+  label,
+  value,
+  mono = false,
+  prominent = false,
+  className,
+}: {
+  label: string;
+  value: ReactNode;
+  mono?: boolean;
+  prominent?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={cn("min-w-0 bg-card p-4", className)}>
+      <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </p>
+      <div
+        className={cn(
+          "mt-2 min-w-0 text-foreground [overflow-wrap:anywhere]",
+          mono && "font-mono",
+          prominent
+            ? "text-xl font-semibold leading-tight"
+            : "text-xs leading-relaxed",
+        )}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function eventKindLabel(labels: Labels, event: JourneyEvent): string {
+  if (event.kind === "session_start") return labels.sessionStarted;
+  if (event.kind === "pageview") return labels.pageview;
+  if (event.kind === "leave") return labels.exitPage;
+  return labels.customEvent;
+}
+
+function eventTitle(labels: Labels, event: JourneyEvent): string {
+  if (event.kind === "session_start") return labels.sessionStarted;
+  if (event.kind === "leave") {
+    return event.pathname.trim()
+      ? formatPathWithHash(event.pathname, event.hash)
+      : labels.exitPage;
+  }
+  if (event.kind === "pageview")
+    return formatPathWithHash(event.pathname, event.hash);
+  return event.eventType.trim() || labels.customEvent;
+}
+
+function eventDisplayTitle(labels: Labels, event: JourneyEvent): string {
+  const prefix = eventKindLabel(labels, event);
+  const title = eventTitle(labels, event);
+  if (!title || title === prefix) return prefix;
+  return `${prefix}${labels.eventTitleSeparator}${title}`;
+}
+
+function eventChronologyRank(event: JourneyEvent): number {
+  if (event.kind === "session_start") return 0;
+  if (event.kind === "pageview") return 1;
+  if (event.kind === "custom") return 2;
+  return 3;
+}
+
+function pageviewSubtitle(
+  locale: Locale,
+  event: JourneyEvent,
+  unknownLabel: string,
+): string {
+  const base =
+    event.title.trim() ||
+    event.hostname.trim() ||
+    event.pathname.trim() ||
+    unknownLabel;
+  if (event.durationMs > 0) {
+    return `${base} · ${formatDuration(locale, event.durationMs)}`;
+  }
+  return base;
+}
+
+function eventSubtitle(
+  locale: Locale,
+  event: JourneyEvent,
+  unknownLabel: string,
+  timeZone: string,
+): string {
+  if (event.kind === "session_start" || event.kind === "leave") {
+    return formatDetailedDateTime(locale, event.occurredAt, timeZone);
+  }
+  if (event.kind === "pageview") {
+    return pageviewSubtitle(locale, event, unknownLabel);
+  }
+  return event.title.trim() || event.hostname.trim() || unknownLabel;
+}
+
+function visitorPerformanceStatusLabel(
+  messages: AppMessages,
+  status: VisitorPerformanceStatus,
+): string {
+  if (status === "great") return messages.performance.great;
+  if (status === "needs-improvement")
+    return messages.performance.needsImprovement;
+  if (status === "poor") return messages.performance.poor;
+  return messages.common.noData;
+}
+
+function visitorScoreStatus(
+  score: number | null | undefined,
+): VisitorPerformanceStatus {
+  if (score == null || !Number.isFinite(score)) return "none";
+  if (score >= 90) return "great";
+  if (score >= 50) return "needs-improvement";
+  return "poor";
+}
+
+function visitorMetricStatus(
+  metric: PerformanceMetricKey,
+  value: number | null | undefined,
+): VisitorPerformanceStatus {
+  if (value == null || !Number.isFinite(value)) return "none";
+  const thresholds = VISITOR_PERFORMANCE_THRESHOLDS[metric];
+  if (value <= thresholds.good) return "great";
+  if (value <= thresholds.poor) return "needs-improvement";
+  return "poor";
+}
+
+function visitorMetricScore(
+  metric: PerformanceMetricKey,
+  value: number | null | undefined,
+): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const thresholds = VISITOR_PERFORMANCE_THRESHOLDS[metric];
+  if (value <= thresholds.good) {
+    const ratio = thresholds.good > 0 ? value / thresholds.good : 0;
+    return Math.max(90, Math.min(100, 100 - ratio * 10));
+  }
+  if (value <= thresholds.poor) {
+    const ratio =
+      (value - thresholds.good) / (thresholds.poor - thresholds.good);
+    return Math.max(50, Math.min(90, 90 - ratio * 40));
+  }
+
+  const poorWindow = Math.max(
+    thresholds.poor - thresholds.good,
+    thresholds.poor,
+    1,
+  );
+  const ratio = (value - thresholds.poor) / poorWindow;
+  return Math.max(0, Math.min(50, 50 - ratio * 50));
+}
+
+function averageVisitorPerformanceScore(
+  values: Array<number | null | undefined>,
+): number | null {
+  const scores = values.filter(
+    (value): value is number => value != null && Number.isFinite(value),
+  );
+  if (scores.length === 0) return null;
+  return scores.reduce((sum, value) => sum + value, 0) / scores.length;
+}
+
+function visitorPerformanceScore(
+  performance: JourneyPerformanceSummary | null | undefined,
+): number | null {
+  return averageVisitorPerformanceScore(
+    VISITOR_PERFORMANCE_METRICS.map((metric) =>
+      visitorMetricScore(metric, performance?.[metric]?.p75),
+    ),
+  );
+}
+
+function visitorPerformanceSamples(
+  performance: JourneyPerformanceSummary | null | undefined,
+): number {
+  return Math.max(
+    0,
+    ...VISITOR_PERFORMANCE_METRICS.map(
+      (metric) => performance?.[metric]?.samples ?? 0,
+    ),
+  );
+}
+
+function hasVisitorPerformanceSamples(
+  performance: JourneyPerformanceSummary | null | undefined,
+): boolean {
+  return VISITOR_PERFORMANCE_METRICS.some(
+    (metric) => (performance?.[metric]?.samples ?? 0) > 0,
+  );
+}
+
+function formatVisitorMetricValue(
+  locale: Locale,
+  messages: AppMessages,
+  metric: PerformanceMetricKey,
+  value: number | null | undefined,
+): string {
+  if (value == null || !Number.isFinite(value)) return "--";
+  if (metric === "cls") {
+    const formatted = new Intl.NumberFormat(intlLocale(locale), {
+      maximumFractionDigits: 3,
+    }).format(value);
+    return `${formatted} ${messages.performance.clsUnit}`;
+  }
+  if (metric === "inp") {
+    return `${numberFormat(locale, Math.round(value))} ${messages.performance.msUnit}`;
+  }
+  const seconds = value / 1000;
+  const formatted = new Intl.NumberFormat(intlLocale(locale), {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: seconds < 10 ? 2 : 1,
+  }).format(seconds);
+  return `${formatted} ${messages.performance.secondsUnit}`;
+}
+
+function visitorPerformancePanelValue(
+  locale: Locale,
+  messages: AppMessages,
+  key: VisitorPerformancePanelKey,
+  value: number | null | undefined,
+): string {
+  if (key === "score") {
+    return value == null || !Number.isFinite(value)
+      ? "--"
+      : numberFormat(locale, Math.round(value));
+  }
+  return formatVisitorMetricValue(locale, messages, key, value);
+}
+
+function formatVisitorMetricRange(
+  locale: Locale,
+  messages: AppMessages,
+  metric: PerformanceMetricKey,
+  summary: JourneyPerformanceMetricSummary,
+): string {
+  if (
+    summary.min == null ||
+    summary.max == null ||
+    !Number.isFinite(summary.min) ||
+    !Number.isFinite(summary.max)
+  ) {
+    return "--";
+  }
+  return `${formatVisitorMetricValue(
+    locale,
+    messages,
+    metric,
+    summary.min,
+  )} - ${formatVisitorMetricValue(locale, messages, metric, summary.max)}`;
+}
+
+function visitorScoreRange(): string {
+  return "0 - 100";
+}
+
+function visitorMetricDetailRows(
+  locale: Locale,
+  messages: AppMessages,
+  labels: Labels,
+  metric: PerformanceMetricKey,
+  summary: JourneyPerformanceMetricSummary,
+): string[] {
+  return [
+    `${labels.range}: ${formatVisitorMetricRange(
+      locale,
+      messages,
+      metric,
+      summary,
+    )}`,
+    `${messages.performance.samplesLabel}: ${numberFormat(
+      locale,
+      summary.samples,
+    )}`,
+  ];
+}
+
+function visitorScoreDetailRows(
+  locale: Locale,
+  messages: AppMessages,
+  labels: Labels,
+  samples: number,
+): string[] {
+  return [
+    `${labels.range}: ${visitorScoreRange()}`,
+    `${messages.performance.samplesLabel}: ${numberFormat(locale, samples)}`,
+  ];
+}
+
+function visitorSessionLeaveEvent(
+  session: JourneySession,
+  events: JourneyEvent[],
+): JourneyEvent | null {
+  if (session.active) return null;
+  if (!Number.isFinite(session.endedAt) || session.endedAt <= 0) return null;
+  if (
+    Number.isFinite(session.startedAt) &&
+    session.endedAt < session.startedAt
+  ) {
+    return null;
+  }
+  if (
+    events.some(
+      (event) =>
+        event.kind === "leave" && event.sessionId === session.sessionId,
+    )
+  ) {
+    return null;
+  }
+
+  const latestPageEvent = events.reduce<JourneyEvent | null>(
+    (latest, event) =>
+      event.kind === "pageview" &&
+      event.sessionId === session.sessionId &&
+      (!latest || event.occurredAt > latest.occurredAt)
+        ? event
+        : latest,
+    null,
+  );
+  const sessionStart = events.find(
+    (event) =>
+      event.kind === "session_start" && event.sessionId === session.sessionId,
+  );
+  const pathname =
+    session.exitPath.trim() ||
+    latestPageEvent?.pathname.trim() ||
+    session.entryPath.trim();
+
+  if (!pathname) return null;
+
+  const base = latestPageEvent ?? sessionStart;
+  return {
+    id: `visitor-session-leave:${session.sessionId}`,
+    kind: "leave",
+    eventType: "leave",
+    occurredAt: Math.max(session.endedAt, session.startedAt),
+    visitId: latestPageEvent?.visitId ?? "",
+    sessionId: session.sessionId,
+    visitorId: session.visitorId,
+    pathname,
+    hash: latestPageEvent?.hash ?? base?.hash ?? "",
+    title: latestPageEvent?.title ?? base?.title ?? "",
+    hostname: latestPageEvent?.hostname ?? base?.hostname ?? "",
+    referrerHost:
+      latestPageEvent?.referrerHost ??
+      base?.referrerHost ??
+      session.referrerHost,
+    referrerUrl:
+      latestPageEvent?.referrerUrl ?? base?.referrerUrl ?? session.referrerUrl,
+    country: latestPageEvent?.country ?? base?.country ?? session.country,
+    region: latestPageEvent?.region ?? base?.region ?? session.region,
+    city: latestPageEvent?.city ?? base?.city ?? session.city,
+    browser: latestPageEvent?.browser ?? base?.browser ?? session.browser,
+    browserVersion:
+      latestPageEvent?.browserVersion ??
+      base?.browserVersion ??
+      session.browserVersion,
+    os: latestPageEvent?.os ?? base?.os ?? session.os,
+    osVersion:
+      latestPageEvent?.osVersion ?? base?.osVersion ?? session.osVersion,
+    deviceType:
+      latestPageEvent?.deviceType ?? base?.deviceType ?? session.deviceType,
+    screenWidth:
+      latestPageEvent?.screenWidth ?? base?.screenWidth ?? session.screenWidth,
+    screenHeight:
+      latestPageEvent?.screenHeight ??
+      base?.screenHeight ??
+      session.screenHeight,
+    durationMs: 0,
+    performance: EMPTY_VISIT_PERFORMANCE,
+  };
+}
+
+function visitorDisplayEvents(detail: VisitorDetail): JourneyEvent[] {
+  const leaveEvents = detail.sessions
+    .map((session) => visitorSessionLeaveEvent(session, detail.events))
+    .filter((event): event is JourneyEvent => event !== null);
+
+  return [...detail.events, ...leaveEvents];
+}
+
+function EventIcon({ event }: { event: JourneyEvent }) {
+  const isCustom = event.kind === "custom";
+  const isSessionStart = event.kind === "session_start";
+  const isLeave = event.kind === "leave";
+  return (
+    <span
+      className={cn(
+        "inline-flex size-[34px] shrink-0 self-center items-center justify-center rounded-none",
+        isSessionStart && "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+        event.kind === "pageview" &&
+          "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+        isLeave && "bg-rose-500/15 text-rose-600 dark:text-rose-400",
+        isCustom && "bg-sky-500/15 text-sky-600 dark:text-sky-400",
+      )}
+    >
+      {isSessionStart ? (
+        <RiTimeLine className="size-4" />
+      ) : isLeave ? (
+        <RiLogoutBoxRLine className="size-4" />
+      ) : isCustom ? (
+        <RiPulseLine className="size-4" />
+      ) : (
+        <RiCalendarEventLine className="size-4" />
+      )}
+    </span>
+  );
+}
+
+function VisitorGeoBreadcrumb({
+  locale,
+  messages,
+  visitor,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  visitor: VisitorRow;
+}) {
+  const country = resolveCountryLabel(
+    visitor.country ?? "",
+    locale,
+    messages.common.unknown,
+  );
+  const flagCode = resolveCountryFlagCode(country.code, locale);
+  const regionLabel =
+    (visitor.region ?? "").trim() ||
+    (visitor.regionCode ?? "").trim() ||
+    messages.common.unknown;
+  const cityLabel = (visitor.city ?? "").trim() || messages.common.unknown;
+  const hasRegion = Boolean(
+    (visitor.region ?? "").trim() || (visitor.regionCode ?? "").trim(),
+  );
+  const hasCity = Boolean((visitor.city ?? "").trim());
+
+  return (
+    <LazyGeoCityBreadcrumbLabel
+      locale={locale}
+      countryLabel={country.label}
+      countryIconName={flagCode ? `flagpack:${flagCode.toLowerCase()}` : null}
+      regionLabel={regionLabel}
+      cityLabel={cityLabel}
+      countryCode={country.code ?? visitor.country ?? ""}
+      stateCode={visitor.regionCode || visitor.region || ""}
+      cityNameDefault={visitor.city ?? ""}
+      hideRegion={!hasRegion}
+      hideCity={!hasCity}
+    />
+  );
+}
+
+function VisitorMapHero({
+  locale,
+  labels,
+  visitor,
+  metrics,
+  sessions,
+  backHref,
+}: {
+  locale: Locale;
+  labels: Labels;
+  visitor: VisitorRow;
+  metrics: VisitorDetail["metrics"];
+  sessions: JourneySession[];
+  backHref: string;
+}) {
+  const router = useRouter();
+  const { resolvedTheme } = useTheme();
+  const effectiveTheme: EffectiveMapTheme =
+    resolvedTheme === "dark" ? "dark" : "light";
+  const mapStyle = useMemo(
+    () => buildRasterStyle(effectiveTheme),
+    [effectiveTheme],
+  );
+  const points = useMemo(() => visitorLocationPoints(sessions), [sessions]);
+
+  return (
+    <div className="relative h-[17rem] overflow-hidden sm:h-[19rem]">
+      <VisitorMapStage mapStyle={mapStyle} points={points} />
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-background via-background/70 to-transparent" />
+
+      <div className="absolute inset-x-4 top-4 z-10 flex items-center justify-between gap-4 sm:inset-x-5 sm:top-5">
+        <Clickable
+          className="inline-flex items-center gap-1 text-xs text-foreground/80 hover:text-foreground"
+          enableHoverScale={false}
+          tapScale={0.98}
+          aria-label={labels.back}
+          title={labels.back}
+          onClick={() => router.push(backHref)}
+        >
+          <RiArrowLeftLine className="size-3.5" />
+          {labels.back}
+        </Clickable>
+        <div className="min-w-0 truncate text-right font-mono text-[11px] text-foreground/70">
+          {labels.visitorId}: {visitor.visitorId}
+        </div>
+      </div>
+
+      <div className="absolute bottom-4 left-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-3 sm:bottom-5 sm:left-5">
+        <VisitorAvatar seed={visitor.visitorId} className="size-12" />
+        <div className="min-w-0">
+          <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight text-foreground">
+            {labels.anonymous}
+          </h1>
+          <p className="mt-1 truncate font-mono text-[11px] text-foreground/70">
+            {labels.lastSeen}:{" "}
+            {formatRelativeTime(locale, metrics.lastSeenAt, Date.now())}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VisitorMetaPanel({
+  locale,
+  messages,
+  labels,
+  detail,
+  timeZone,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  labels: Labels;
+  detail: VisitorDetail;
+  timeZone: string;
+}) {
+  const { visitor, metrics } = detail;
+  const totalDurationMs = detail.sessions.reduce(
+    (sum, session) => sum + Math.max(0, Number(session.durationMs || 0)),
+    0,
+  );
+  const avgPagesPerSession =
+    metrics.sessions > 0 ? metrics.views / metrics.sessions : 0;
+
+  return (
+    <Card className="py-0">
+      <CardContent className="p-0">
+        <div className="grid grid-cols-2 gap-px overflow-hidden bg-border/70 text-xs text-muted-foreground xl:grid-cols-4">
+          <SummaryGridItem
+            label={labels.totalDuration}
+            prominent
+            mono
+            value={durationFormat(locale, totalDurationMs)}
+          />
+          <SummaryGridItem
+            label={labels.views}
+            prominent
+            mono
+            value={numberFormat(locale, metrics.views)}
+          />
+          <SummaryGridItem
+            label={labels.events}
+            prominent
+            mono
+            value={numberFormat(locale, metrics.totalEvents)}
+          />
+          <SummaryGridItem
+            label={labels.uniquePages}
+            prominent
+            mono
+            value={numberFormat(locale, detail.visitedPages.length)}
+          />
+          <SummaryGridItem
+            label={labels.avgPagesPerSession}
+            prominent
+            mono
+            value={avgPagesPerSession.toFixed(1)}
+          />
+          <SummaryGridItem
+            label={labels.avgEventsPerSession}
+            prominent
+            mono
+            value={metrics.avgEventsPerSession.toFixed(1)}
+          />
+          <SummaryGridItem
+            label={messages.common.bounceRate}
+            prominent
+            mono
+            value={percentFormat(locale, metrics.bounceRate)}
+          />
+          <SummaryGridItem
+            label={labels.avgStay}
+            prominent
+            mono
+            value={durationFormat(locale, metrics.avgDurationMs)}
+          />
+          <SummaryGridItem
+            label={labels.referrerName}
+            value={
+              <ReferrerMeta
+                referrerHost={visitor.referrerHost || ""}
+                referrerUrl={visitor.referrerUrl}
+                directLabel={messages.overview.direct}
+              />
+            }
+          />
+          <SummaryGridItem
+            label={labels.referrerUrl}
+            mono
+            value={visitor.referrerUrl || messages.overview.direct}
+          />
+          <SummaryGridItem
+            label={labels.location}
+            className="col-span-2"
+            value={
+              <VisitorGeoBreadcrumb
+                locale={locale}
+                messages={messages}
+                visitor={visitor}
+              />
+            }
+          />
+          <SummaryGridItem
+            label={labels.browser}
+            value={
+              <BrowserMeta
+                browser={visitor.browser || ""}
+                version={visitor.browserVersion}
+                unknownLabel={messages.common.unknown}
+              />
+            }
+          />
+          <SummaryGridItem
+            label={labels.os}
+            value={
+              <OsMeta
+                os={visitor.os || ""}
+                version={visitor.osVersion}
+                unknownLabel={messages.common.unknown}
+              />
+            }
+          />
+          <SummaryGridItem
+            label={labels.device}
+            value={
+              <DeviceMeta
+                deviceType={visitor.deviceType || ""}
+                locale={locale}
+                unknownLabel={messages.common.unknown}
+              />
+            }
+          />
+          <SummaryGridItem
+            label={labels.screen}
+            mono
+            value={formatScreen(visitor.screenWidth, visitor.screenHeight)}
+          />
+          <SummaryGridItem
+            label={labels.firstSeen}
+            prominent
+            mono
+            value={formatSeenDateTime(locale, metrics.firstSeenAt, timeZone)}
+          />
+          <SummaryGridItem
+            label={labels.lastSeen}
+            prominent
+            mono
+            value={formatSeenDateTime(locale, metrics.lastSeenAt, timeZone)}
+          />
+          <SummaryGridItem
+            label={labels.daysActive}
+            prominent
+            mono
+            value={numberFormat(locale, metrics.daysActive)}
+          />
+          <SummaryGridItem
+            label={labels.avgTimeBetweenSessions}
+            prominent
+            mono
+            value={durationFormat(locale, metrics.avgTimeBetweenSessionsMs)}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function activityDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function ActivityGrid({
+  activity,
+  locale,
+  timeZone,
+}: {
+  activity: VisitorActivityDay[];
+  locale: Locale;
+  timeZone: string;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const { desktopSection, mobileSections, weekdayLabels, mobileWeekCount } =
+    useMemo(() => {
+      const monthFormatter = new Intl.DateTimeFormat(intlLocale(locale), {
+        month: "short",
+      });
+      const dateFormatter = new Intl.DateTimeFormat(intlLocale(locale), {
+        month: "short",
+        day: "numeric",
+      });
+      const weekdayFormatter = new Intl.DateTimeFormat(intlLocale(locale), {
+        weekday: "narrow",
+      });
+      const buildSection = (
+        days: VisitorActivityDayItem[],
+      ): VisitorActivityCalendarSection => {
+        if (days.length === 0) {
+          return {
+            cells: [],
+            monthLabels: [],
+            weekCount: 0,
+          };
+        }
+
+        const leadingEmptyDays = days[0]?.date.getDay() ?? 0;
+        const cells: VisitorActivityCalendarCell[] = [
+          ...Array.from({ length: leadingEmptyDays }, (_, index) => ({
+            type: "empty" as const,
+            key: `empty-${days[0]?.key ?? "section"}-${index}`,
+          })),
+          ...days.map((day) => ({ type: "day" as const, ...day })),
+        ];
+        const weekCount = Math.ceil(cells.length / 7);
+        const seenMonthKeys = new Set<string>();
+        const monthLabels = Array.from(
+          { length: weekCount },
+          (_, weekIndex) => {
+            const weekCells = cells.slice(weekIndex * 7, weekIndex * 7 + 7);
+            const firstMonthDay = weekCells.find((cell) => {
+              if (cell.type !== "day") return false;
+              const monthKey = `${cell.date.getFullYear()}-${cell.date.getMonth()}`;
+              if (seenMonthKeys.has(monthKey)) return false;
+              return weekIndex === 0 || cell.date.getDate() <= 7;
+            });
+            if (firstMonthDay?.type === "day") {
+              seenMonthKeys.add(
+                `${firstMonthDay.date.getFullYear()}-${firstMonthDay.date.getMonth()}`,
+              );
+            }
+            return firstMonthDay?.type === "day"
+              ? monthFormatter.format(firstMonthDay.date)
+              : "";
+          },
+        );
+
+        return {
+          cells,
+          monthLabels,
+          weekCount,
+        };
+      };
+      const byDate = new globalThis.Map(
+        activity.map((item) => [item.date, item.count]),
+      );
+      const endParts = zonedParts(Date.now(), timeZone);
+      const end = new Date(endParts.year, endParts.month - 1, endParts.day);
+      const start = new Date(end);
+      start.setDate(start.getDate() - (VISITOR_ACTIVITY_DAYS - 1));
+      const dayItems: VisitorActivityDayItem[] = [];
+
+      for (
+        let cursor = new Date(start);
+        cursor <= end;
+        cursor.setDate(cursor.getDate() + 1)
+      ) {
+        const date = activityDateKey(cursor);
+        const count = byDate.get(date) ?? 0;
+        dayItems.push({
+          date: new Date(cursor),
+          key: date,
+          count,
+          title: `${dateFormatter.format(cursor)}: ${numberFormat(
+            locale,
+            count,
+          )}`,
+        });
+      }
+
+      const splitIndex = Math.ceil(dayItems.length / 2);
+      const nextMobileSections = [
+        buildSection(dayItems.slice(0, splitIndex)),
+        buildSection(dayItems.slice(splitIndex)),
+      ];
+      const weekdayNames = Array.from({ length: 7 }, (_, index) => {
+        const date = new Date(2024, 0, 7 + index);
+        return weekdayFormatter.format(date);
+      });
+
+      return {
+        desktopSection: buildSection(dayItems),
+        mobileSections: nextMobileSections,
+        weekdayLabels: weekdayNames,
+        mobileWeekCount: Math.max(
+          1,
+          ...nextMobileSections.map((section) => section.weekCount),
+        ),
+      };
+    }, [activity, locale, timeZone]);
+  const max = Math.max(
+    1,
+    ...desktopSection.cells.map((cell) =>
+      cell.type === "day" ? cell.count : 0,
+    ),
+  );
+  const cellSizePx = useMemo(() => {
+    if (containerWidth <= 0) return 8;
+    const weekdayLabelWidth = 20;
+    const labelGap = 8;
+    const columnGap = 4;
+    const available =
+      containerWidth -
+      weekdayLabelWidth -
+      labelGap -
+      Math.max(0, desktopSection.weekCount - 1) * columnGap;
+    return Math.max(
+      7,
+      Math.min(16, available / Math.max(1, desktopSection.weekCount)),
+    );
+  }, [containerWidth, desktopSection.weekCount]);
+  const mobileCellSizePx = useMemo(() => {
+    if (containerWidth <= 0) return 10;
+    const weekdayLabelWidth = 20;
+    const labelGap = 8;
+    const columnGap = 3;
+    const available =
+      containerWidth -
+      weekdayLabelWidth -
+      labelGap -
+      Math.max(0, mobileWeekCount - 1) * columnGap;
+    return Math.max(7, Math.min(14, available / Math.max(1, mobileWeekCount)));
+  }, [containerWidth, mobileWeekCount]);
+  const activityStyle = {
+    scrollbarGutter: "stable",
+    "--activity-cell-size": `${cellSizePx}px`,
+    "--activity-mobile-cell-size": `${mobileCellSizePx}px`,
+  } as CSSProperties;
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+
+    const updateWidth = () => setContainerWidth(node.clientWidth);
+    updateWidth();
+
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const renderActivityCells = (
+    section: VisitorActivityCalendarSection,
+    cellClassName: string,
+  ) =>
+    section.cells.map((cell) => {
+      if (cell.type === "empty") {
+        return <span key={cell.key} className={cellClassName} />;
+      }
+      const intensity = cell.count / max;
+      return (
+        <span
+          key={cell.key}
+          title={cell.title}
+          className={cn(
+            cellClassName,
+            "rounded-[2px] ring-1 ring-border/70",
+            cell.count === 0 && "bg-muted",
+          )}
+          style={
+            cell.count > 0
+              ? {
+                  backgroundColor: `rgba(16, 185, 129, ${
+                    0.28 + intensity * 0.72
+                  })`,
+                }
+              : undefined
+          }
+        />
+      );
+    });
+  const renderActivityMonthLabels = (
+    section: VisitorActivityCalendarSection,
+    gridAutoColumnClassName: string,
+  ) => (
+    <div
+      className={cn(
+        "ml-7 grid grid-flow-col grid-rows-1 gap-1",
+        gridAutoColumnClassName,
+      )}
+    >
+      {section.monthLabels.map((label, index) => (
+        <span
+          key={`${label}-${index}`}
+          className="h-4 text-[10px] leading-4 text-muted-foreground"
+        >
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full max-w-full overflow-x-auto pb-1"
+      style={activityStyle}
+    >
+      <div className="mx-auto hidden w-max min-w-max sm:block">
+        {renderActivityMonthLabels(
+          desktopSection,
+          "[grid-auto-columns:var(--activity-cell-size)]",
+        )}
+        <div className="flex gap-2">
+          <div className="grid grid-rows-7 gap-1">
+            {weekdayLabels.map((label, index) => (
+              <span
+                key={`${label}-${index}`}
+                className="flex h-[var(--activity-cell-size)] w-5 items-center justify-end text-[10px] leading-none text-muted-foreground"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+          <div className="grid grid-flow-col grid-rows-7 gap-1 [grid-auto-columns:var(--activity-cell-size)]">
+            {renderActivityCells(
+              desktopSection,
+              "size-[var(--activity-cell-size)]",
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4 sm:hidden">
+        {mobileSections.map((section, sectionIndex) => (
+          <div
+            key={`activity-mobile-${sectionIndex}`}
+            className="mx-auto w-max max-w-full"
+          >
+            {renderActivityMonthLabels(
+              section,
+              "[grid-auto-columns:var(--activity-mobile-cell-size)]",
+            )}
+            <div className="flex gap-2">
+              <div className="grid grid-rows-7 gap-[3px]">
+                {weekdayLabels.map((label, index) => (
+                  <span
+                    key={`${label}-${sectionIndex}-${index}`}
+                    className="flex h-[var(--activity-mobile-cell-size)] w-5 items-center justify-end text-[10px] leading-none text-muted-foreground"
+                  >
+                    {index % 2 === 1 ? label : ""}
+                  </span>
+                ))}
+              </div>
+              <div className="grid grid-flow-col grid-rows-7 gap-[3px] [grid-auto-columns:var(--activity-mobile-cell-size)]">
+                {renderActivityCells(
+                  section,
+                  "size-[var(--activity-mobile-cell-size)]",
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VisitorEventCard({
+  locale,
+  messages,
+  labels,
+  event,
+  deltaMs,
+  siteBasePath,
+  timeZone,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  labels: Labels;
+  event: JourneyEvent;
+  deltaMs: number | null;
+  siteBasePath: string;
+  timeZone: string;
+}) {
+  const sessionHref = `${siteBasePath}/sessions/detail?sessionId=${encodeURIComponent(
+    event.sessionId,
+  )}`;
+
+  return (
+    <Card size="sm" className="py-0">
+      <CardContent className="p-0">
+        <div className="flex items-center gap-2 px-1.5 py-1">
+          <EventIcon event={event} />
+          <div className="flex min-w-0 flex-1 items-stretch justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="min-w-0 truncate text-sm font-medium leading-5 text-foreground">
+                {eventDisplayTitle(labels, event)}
+              </p>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-[11px] leading-[14px] text-muted-foreground">
+                <span className="min-w-0 truncate leading-[14px]">
+                  {eventSubtitle(
+                    locale,
+                    event,
+                    messages.common.unknown,
+                    timeZone,
+                  )}
+                </span>
+              </div>
+            </div>
+            <div className="flex h-[34px] min-w-0 w-[42%] shrink-0 flex-col items-end justify-between text-right sm:w-auto sm:max-w-[24rem]">
+              <p className="font-mono text-[11px] leading-[14px] text-foreground">
+                {formatShortDateTime(locale, event.occurredAt, timeZone)}
+              </p>
+              <div className="max-w-full truncate font-mono text-[10px] leading-[13px] text-muted-foreground">
+                {deltaMs !== null && deltaMs > 0 ? (
+                  <span>
+                    {labels.sincePrevious}: {formatDuration(locale, deltaMs)}
+                  </span>
+                ) : event.sessionId.trim() ? (
+                  <Link
+                    href={sessionHref}
+                    className="hover:text-foreground hover:underline"
+                  >
+                    {labels.sessionId}: {event.sessionId}
+                  </Link>
+                ) : (
+                  <span aria-hidden="true">--</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function VisitDetailsCard({
+  locale,
+  messages,
+  labels,
+  events,
+  siteBasePath,
+  timeZone,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  labels: Labels;
+  events: JourneyEvent[];
+  siteBasePath: string;
+  timeZone: string;
+}) {
+  const chronologicalEvents = useMemo(
+    () =>
+      [...events].sort((left, right) => {
+        return (
+          left.occurredAt - right.occurredAt ||
+          eventChronologyRank(left) - eventChronologyRank(right) ||
+          left.id.localeCompare(right.id)
+        );
+      }),
+    [events],
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{labels.visitDetailsTitle}</CardTitle>
+        <CardDescription>{labels.visitDetailsSubtitle}</CardDescription>
+      </CardHeader>
+      <CardContent className="px-4">
+        {chronologicalEvents.length === 0 ? (
+          <EmptyState>{labels.emptyEvents}</EmptyState>
+        ) : (
+          <div className="space-y-1.5">
+            {chronologicalEvents.map((event, index) => (
+              <VisitorEventCard
+                key={event.id}
+                locale={locale}
+                messages={messages}
+                labels={labels}
+                event={event}
+                siteBasePath={siteBasePath}
+                timeZone={timeZone}
+                deltaMs={
+                  index > 0
+                    ? event.occurredAt -
+                      chronologicalEvents[index - 1].occurredAt
+                    : null
+                }
+              />
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function sortVisitorSessions(
+  rows: JourneySession[],
+  sort: SessionSortState,
+): JourneySession[] {
+  const direction = sort.direction === "asc" ? 1 : -1;
+
+  return [...rows].sort((left, right) => {
+    const primary =
+      sort.key === "durationMs"
+        ? left.durationMs - right.durationMs
+        : sort.key === "views"
+          ? left.views - right.views
+          : left.startedAt - right.startedAt;
+
+    if (primary !== 0) return primary * direction;
+    return (
+      right.startedAt - left.startedAt ||
+      left.sessionId.localeCompare(right.sessionId)
+    );
+  });
+}
+
+function ActivityAndSessionsSection({
+  locale,
+  labels,
+  messages,
+  detail,
+  siteBasePath,
+  timeZone,
+}: {
+  locale: Locale;
+  labels: Labels;
+  messages: AppMessages;
+  detail: VisitorDetail;
+  siteBasePath: string;
+  timeZone: string;
+}) {
+  const [sessionSort, setSessionSort] =
+    useState<SessionSortState>(VISITOR_SESSION_SORT);
+  const sortedSessions = useMemo(
+    () => sortVisitorSessions(detail.sessions, sessionSort),
+    [detail.sessions, sessionSort],
+  );
+  const toggleSessionSort = (key: SessionSortKey) => {
+    setSessionSort((current) =>
+      current.key === key
+        ? {
+            key,
+            direction: current.direction === "desc" ? "asc" : "desc",
+          }
+        : {
+            key,
+            direction: "desc",
+          },
+    );
+  };
+
+  return (
+    <section className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>{labels.activity}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ActivityGrid
+            activity={detail.activity}
+            locale={locale}
+            timeZone={timeZone}
+          />
+        </CardContent>
+      </Card>
+
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold tracking-tight">
+          {labels.sessionRecords}
+        </h2>
+        <SessionsTableCard
+          locale={locale}
+          messages={messages}
+          labels={{
+            started: labels.started,
+            sessionId: labels.sessionId,
+            visitor: labels.visitor,
+            anonymous: labels.anonymous,
+            entryPage: labels.entryPath,
+            exitPage: labels.exitPath,
+            duration: labels.duration,
+            referrer: labels.referrer,
+            location: labels.location,
+            os: labels.os,
+            browser: labels.browser,
+            device: labels.device,
+            pageViews: labels.pageViews,
+            loadError: labels.loadError,
+            empty: labels.emptySessions,
+          }}
+          rows={sortedSessions}
+          pathname={`${siteBasePath}/sessions`}
+          sort={sessionSort}
+          onSort={toggleSessionSort}
+          hasMore={false}
+        />
+      </section>
+    </section>
+  );
+}
+
+interface VisitorOverviewRowInput {
+  label: string;
+  views?: number;
+  sessionId?: string;
+}
+
+function aggregateOverviewRows(
+  rows: VisitorOverviewRowInput[],
+  fallbackLabel: string,
+): OverviewTabRows {
+  const rowByLabel = new globalThis.Map<
+    string,
+    { label: string; views: number; sessionIds: Set<string> }
+  >();
+
+  for (const row of rows) {
+    const label = row.label.trim() || fallbackLabel;
+    if (!label) continue;
+    const views = Math.max(1, Math.floor(Number(row.views ?? 1)));
+    const existing = rowByLabel.get(label);
+
+    if (existing) {
+      existing.views += views;
+      if (row.sessionId) existing.sessionIds.add(row.sessionId);
+      continue;
+    }
+
+    rowByLabel.set(label, {
+      label,
+      views,
+      sessionIds: row.sessionId ? new Set([row.sessionId]) : new Set(),
+    });
+  }
+
+  return Array.from(rowByLabel.values())
+    .map((row) => ({
+      label: row.label,
+      views: row.views,
+      sessions: Math.max(1, row.sessionIds.size),
+      visitors: 1,
+    }))
+    .sort(
+      (left, right) =>
+        right.views - left.views || left.label.localeCompare(right.label),
+    );
+}
+
+function buildVisitorOverviewPageCardData(
+  detail: VisitorDetail,
+  unknownLabel: string,
+): OverviewPagesSectionCardData {
+  const pageviewEvents = detail.events.filter(
+    (event) => event.kind === "pageview",
+  );
+  const pathRows =
+    detail.visitedPages.length > 0
+      ? aggregateOverviewRows(
+          detail.visitedPages.map((page) => ({
+            label: page.pathname || "/",
+            views: page.views,
+          })),
+          "/",
+        )
+      : aggregateOverviewRows(
+          pageviewEvents.map((event) => ({
+            label: event.pathname || "/",
+            sessionId: event.sessionId,
+          })),
+          "/",
+        );
+
+  return {
+    page: {
+      path: pathRows,
+      query: [],
+      title: aggregateOverviewRows(
+        pageviewEvents.map((event) => ({
+          label: event.title,
+          sessionId: event.sessionId,
+        })),
+        unknownLabel,
+      ),
+      hostname: aggregateOverviewRows(
+        pageviewEvents.map((event) => ({
+          label: event.hostname,
+          sessionId: event.sessionId,
+        })),
+        unknownLabel,
+      ),
+      entry: aggregateOverviewRows(
+        detail.sessions.map((session) => ({
+          label: session.entryPath || "/",
+          sessionId: session.sessionId,
+        })),
+        "/",
+      ),
+      exit: aggregateOverviewRows(
+        detail.sessions.map((session) => ({
+          label: session.exitPath || "/",
+          sessionId: session.sessionId,
+        })),
+        "/",
+      ),
+    },
+    source: {
+      domain: [],
+      link: [],
+    },
+    client: {
+      browser: [],
+      osVersion: [],
+      deviceType: [],
+      language: [],
+      screenSize: [],
+    },
+    geo: {
+      country: [],
+      region: [],
+      city: [],
+      continent: [],
+      timezone: [],
+      organization: [],
+    },
+  };
+}
+
+function resolveVisitorSiteDomain(detail: VisitorDetail): string {
+  for (const event of detail.events) {
+    const hostname = event.hostname.trim();
+    if (hostname) return hostname;
+  }
+  return "";
+}
+
+function buildVisitorEventBreakdownRows(
+  events: JourneyEvent[],
+  labels: Labels,
+): AsyncDimensionBreakdownRow[] {
+  const rowByLabel = new globalThis.Map<string, AsyncDimensionBreakdownRow>();
+
+  for (const event of events) {
+    if (event.kind !== "custom") continue;
+    const label = event.eventType.trim() || labels.customEvent;
+    const existing = rowByLabel.get(label);
+
+    if (existing) {
+      existing.views += 1;
+      continue;
+    }
+
+    rowByLabel.set(label, {
+      key: label,
+      label,
+      views: 1,
+      visitors: 1,
+      mono: true,
+    });
+  }
+
+  return Array.from(rowByLabel.values()).sort(
+    (left, right) =>
+      right.views - left.views || left.label.localeCompare(right.label),
+  );
+}
+
+function VisitorDetailBottomCards({
+  locale,
+  messages,
+  labels,
+  detail,
+  siteId,
+  siteBasePath,
+  siteDomain,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  labels: Labels;
+  detail: VisitorDetail;
+  siteId: string;
+  siteBasePath: string;
+  siteDomain: string;
+}) {
+  const pageCardData = useMemo(
+    () => buildVisitorOverviewPageCardData(detail, messages.common.unknown),
+    [detail, messages.common.unknown],
+  );
+  const eventRows = useMemo(
+    () => buildVisitorEventBreakdownRows(detail.events, labels),
+    [detail.events, labels],
+  );
+  const eventTabs = useMemo(
+    () =>
+      [
+        {
+          value: "event",
+          label: labels.customEvents,
+          columnLabel: labels.customEvents,
+          primaryMetricLabel: labels.customEvents,
+        },
+      ] as const,
+    [labels.customEvents],
+  );
+  const loadEventRows = useMemo(() => async () => eventRows, [eventRows]);
+
+  return (
+    <section className="grid items-stretch gap-6 xl:grid-cols-2">
+      <div className="min-w-0 h-full [&>section]:h-full [&>section]:!grid-cols-1 [&>section>div]:h-full">
+        <OverviewPagesSection
+          locale={locale}
+          messages={messages}
+          siteId={siteId}
+          siteDomain={siteDomain}
+          pathname={siteBasePath}
+          filters={VISITOR_DETAIL_OVERVIEW_FILTERS}
+          cardDataOverride={pageCardData}
+          visibleCards={["page"]}
+          pageCardTabs={VISITOR_OVERVIEW_PAGE_CARD_TABS}
+          pageCardShowVisitors={false}
+        />
+      </div>
+
+      <div className="min-w-0 h-full">
+        <AsyncDimensionBreakdownCard
+          locale={locale}
+          messages={messages}
+          tabs={eventTabs}
+          loadRows={loadEventRows}
+          requestKey={`visitor-detail-events:${detail.visitor.visitorId}:${locale}`}
+          className="h-full"
+          showVisitors={false}
+          emptyLabel={labels.emptyCustomEvents}
+        />
+      </div>
+    </section>
+  );
+}
+
+function DetailContent({
+  locale,
+  messages,
+  labels,
+  detail,
+  siteId,
+  pathname,
+  timeZone,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  labels: Labels;
+  detail: VisitorDetail;
+  siteId: string;
+  pathname: string;
+  timeZone: string;
+}) {
+  const visitorListPath = pathname.replace(/\/detail$/, "");
+  const siteBasePath = visitorListPath.replace(/\/visitors$/, "");
+  const visitorSiteDomain = useMemo(
+    () => resolveVisitorSiteDomain(detail),
+    [detail],
+  );
+  const displayEvents = useMemo(() => visitorDisplayEvents(detail), [detail]);
+  const geoLocations = useMemo(
+    () => visitorGeoLocationInputs(detail),
+    [detail],
+  );
+
+  return (
+    <div className="pb-6">
+      <VisitorMapHero
+        locale={locale}
+        labels={labels}
+        visitor={detail.visitor}
+        metrics={detail.metrics}
+        sessions={detail.sessions}
+        backHref={visitorListPath}
+      />
+
+      <div className="mx-auto mt-6 w-full max-w-[1400px] space-y-6 px-4 md:px-6">
+        <VisitorMetaPanel
+          locale={locale}
+          messages={messages}
+          labels={labels}
+          detail={detail}
+          timeZone={timeZone}
+        />
+
+        <ActivityAndSessionsSection
+          locale={locale}
+          labels={labels}
+          messages={messages}
+          detail={detail}
+          siteBasePath={siteBasePath}
+          timeZone={timeZone}
+        />
+
+        <VisitDetailsCard
+          locale={locale}
+          messages={messages}
+          labels={labels}
+          events={displayEvents}
+          siteBasePath={siteBasePath}
+          timeZone={timeZone}
+        />
+
+        <VisitorDetailBottomCards
+          locale={locale}
+          messages={messages}
+          labels={labels}
+          detail={detail}
+          siteId={siteId}
+          siteBasePath={siteBasePath}
+          siteDomain={visitorSiteDomain}
+        />
+
+        <JourneyGeoLocationCard
+          locale={locale}
+          messages={messages}
+          title={labels.geoLocationTitle}
+          locations={geoLocations}
+        />
+
+        <VisitorPerformancePanel
+          locale={locale}
+          messages={messages}
+          labels={labels}
+          performance={detail.performance}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function VisitorDetailClientPage({
+  locale,
+  messages,
+  siteId,
+  pathname,
+}: VisitorDetailClientPageProps) {
+  const labels = copy(locale);
+  const { timeZone, window } = useDashboardQueryControls();
+  const searchParams = useSearchParams();
+  const visitorId = searchParams.get("visitorId")?.trim() || "";
+  const [detail, setDetail] = useState<VisitorDetail | null>(null);
+  const [loading, setLoading] = useState(Boolean(visitorId));
+  const [error, setError] = useState(false);
+  const requestKey = useMemo(
+    () => [siteId, visitorId, timeZone, window.from, window.to].join(":"),
+    [siteId, timeZone, visitorId, window.from, window.to],
+  );
+
+  useEffect(() => {
+    if (!visitorId) {
+      setDetail(null);
+      setLoading(false);
+      return;
+    }
+    let active = true;
+    setLoading(true);
+    setError(false);
+    fetchVisitorDetail(siteId, visitorId, timeZone, window)
+      .then((payload) => {
+        if (!active) return;
+        setDetail(payload.data);
+      })
+      .catch(() => {
+        if (!active) return;
+        setDetail(null);
+        setError(true);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [requestKey, siteId, visitorId]);
+
+  if (!visitorId) {
+    return (
+      <JourneyDetailStateSwitch stateKey="visitor-missing">
+        <Card>
+          <CardContent className="py-8 text-sm text-muted-foreground">
+            {labels.missing}
+          </CardContent>
+        </Card>
+      </JourneyDetailStateSwitch>
+    );
+  }
+
+  if (loading) {
+    return (
+      <JourneyDetailStateSwitch stateKey="visitor-loading">
+        <JourneyDetailLoadingState
+          kind="visitor"
+          loadingLabel={messages.common.loading}
+        />
+      </JourneyDetailStateSwitch>
+    );
+  }
+
+  if (error) {
+    return (
+      <JourneyDetailStateSwitch stateKey="visitor-error">
+        <Card>
+          <CardContent className="py-8 text-sm text-muted-foreground">
+            {labels.loadError}
+          </CardContent>
+        </Card>
+      </JourneyDetailStateSwitch>
+    );
+  }
+
+  if (!detail) {
+    return (
+      <JourneyDetailStateSwitch stateKey="visitor-not-found">
+        <Card>
+          <CardContent className="py-8 text-sm text-muted-foreground">
+            {labels.notFound}
+          </CardContent>
+        </Card>
+      </JourneyDetailStateSwitch>
+    );
+  }
+
+  return (
+    <JourneyDetailStateSwitch stateKey={`visitor-content-${requestKey}`}>
+      <DetailContent
+        locale={locale}
+        messages={messages}
+        labels={labels}
+        detail={detail}
+        siteId={siteId}
+        pathname={pathname}
+        timeZone={timeZone}
+      />
+    </JourneyDetailStateSwitch>
+  );
+}
