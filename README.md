@@ -116,6 +116,44 @@ R2 是可选项，Deploy Button 默认不会要求绑定 R2。只有需要启用
 - 检测到 `RavelloH/InsightFlare:main` 有新提交时，会自动创建（或更新）一个 PR；分支名固定为 `chore/sync-upstream`，所以同一个 PR 会被反复 force-update，不会刷屏。冲突文件会保留 `<<<<<<<` 标记进 commit，PR body 顶部用单独段落标记并给出本地解决步骤。
 - 想跳过某次更新只需关闭 PR；想长期禁用，在 **Actions** 页停用此 workflow 即可。
 
+> ⚠️ **Deploy Button 用户必读：一次性安装步骤**
+>
+> Cloudflare 的 Deploy Button 在创建 snapshot clone 时会**剥离整个 `.github/` 目录**（行为未在官方文档明说，但稳定可观察），所以上面的 workflow 文件不会自动出现在你的仓库里。需要跑一次安装脚本（脚本本身在 `scripts/` 下，Cloudflare 不剥离）。
+>
+> 默认会**自动**完成下载 → commit → push → 触发首次 workflow 运行，全程无需手动 git 命令。任选一种方式：
+>
+> **方式 A：用 GitHub Codespaces（推荐给不熟悉 git 的用户）**
+>
+> 1. 打开你刚创建的仓库（`https://github.com/<你的用户名>/<你的仓库名>`）。
+> 2. 点绿色 **Code** 按钮 → **Codespaces** 标签 → **Create codespace on main**。等 30~60 秒 Codespace 启动。
+> 3. 在 Codespace 的终端里依次跑：
+>    ```bash
+>    npm install
+>    npm run setup:sync-upstream
+>    ```
+> 4. 脚本会自动 commit、push，并通过 Codespace 预装的 `gh` 触发首次 workflow 运行（终端会打印 Actions 页面 URL）。完成后可以关掉 Codespace。
+>
+> **方式 B：本地 clone**
+>
+> ```bash
+> git clone https://github.com/<你的用户名>/<你的仓库名>.git
+> cd <你的仓库名>
+> npm install
+> npm run setup:sync-upstream
+> ```
+>
+> 同样会自动 commit、push。如果本地装了 [GitHub CLI](https://cli.github.com) 并已 `gh auth login`，会顺带触发首次 workflow 运行；否则脚本会打印 Actions 页面 URL 让你点一下 **Run workflow** 即可。
+>
+> **想自己审一遍再 commit**：加 `-- --stage-only` 参数：
+>
+> ```bash
+> npm run setup:sync-upstream -- --stage-only
+> ```
+>
+> 脚本只下载并 `git add`，剩下的 `git commit && git push` 你来。
+>
+> Fork 和干净 `git clone` 创建的仓库**不需要**这一步——它们已经从上游继承了完整的 `.github/` 目录。
+
 ### 手动部署
 
 #### 1. 安装依赖

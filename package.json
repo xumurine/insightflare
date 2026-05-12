@@ -39,7 +39,8 @@
     "check:i18n": "tsx scripts/check-i18n.ts",
     "d1:migrate:local": "wrangler d1 migrations apply insightflare --config wrangler.toml --local",
     "d1:migrate:remote": "wrangler d1 migrations apply insightflare --config wrangler.toml --remote",
-    "d1:migration:create": "wrangler d1 migrations create insightflare --config wrangler.toml"
+    "d1:migration:create": "wrangler d1 migrations create insightflare --config wrangler.toml",
+    "setup:sync-upstream": "node scripts/install-sync-workflow.mjs"
   },
   "dependencies": {
     "@deck.gl/core": "^9.2.11",
