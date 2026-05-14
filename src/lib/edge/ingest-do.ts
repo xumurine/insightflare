@@ -32,6 +32,7 @@ const RECENT_EVENT_RETENTION_MS = 30 * 60 * 1000;
 const RECENT_EVENT_QUERY_SCAN_LIMIT = 20_000;
 const ACTIVE_NOW_WINDOW_MS = 5 * 60 * 1000;
 const VISIT_TIMEOUT_MS = 12 * 60 * 60 * 1000;
+const ORPHAN_CUSTOM_EVENT_TIMEOUT_MS = VISIT_TIMEOUT_MS;
 const WS_PRESENCE_LEAVE_EVENT = "__presence_leave";
 const WRITE_BUDGET_PER_INVOCATION = 200;
 const D1_FLUSH_INTERVAL_MS = 60 * 1000;
@@ -532,6 +533,7 @@ export class IngestDurableObject extends DurableObject {
     if (url.pathname === "/flush" && request.method === "POST") {
       await this.flushTimeouts();
       await this.flushPendingToD1();
+      await this.cleanupBufferedRows();
       return jsonResponse({ ok: true });
     }
 
@@ -746,6 +748,7 @@ export class IngestDurableObject extends DurableObject {
       thresholds: {
         staleMs: DIAGNOSTIC_STALE_MS,
         timeoutMs: VISIT_TIMEOUT_MS,
+        orphanCustomEventTimeoutMs: ORPHAN_CUSTOM_EVENT_TIMEOUT_MS,
         hardAgedMs: DIAGNOSTIC_HARD_AGE_MS,
         stuckFlushAttempts: DIAGNOSTIC_STUCK_FLUSH_ATTEMPTS,
       },
@@ -1097,7 +1100,7 @@ export class IngestDurableObject extends DurableObject {
         128,
       );
       if (!visit) {
-        this.insertBufferedCustomEvent({
+        const inserted = this.insertBufferedCustomEvent({
           eventId,
           siteId,
           visitId,
@@ -1107,6 +1110,9 @@ export class IngestDurableObject extends DurableObject {
           eventName,
           eventDataJson: eventDataResult.data.json,
         });
+        if (inserted) {
+          await this.ensureAlarm();
+        }
         return null;
       }
       return {
@@ -2618,6 +2624,7 @@ export class IngestDurableObject extends DurableObject {
   }
 
   private async cleanupBufferedRows(): Promise<void> {
+    const now = Date.now();
     const visitCutoff = Date.now() - FLUSHED_BUFFER_RETENTION_MS;
     const eventCutoff = visitCutoff;
     this.sqlRun(
@@ -2641,6 +2648,56 @@ export class IngestDurableObject extends DurableObject {
           AND occurred_at < ?
       `,
       eventCutoff,
+    );
+    await this.cleanupOrphanedCustomEvents(now);
+  }
+
+  private async cleanupOrphanedCustomEvents(now: number): Promise<void> {
+    const cutoffMs = now - ORPHAN_CUSTOM_EVENT_TIMEOUT_MS;
+    const rows = this.sqlAll<{
+      eventId: string;
+      siteId: string;
+      visitId: string;
+    }>(
+      `
+        SELECT
+          e.event_id AS eventId,
+          e.site_id AS siteId,
+          e.visit_id AS visitId
+        FROM buffered_custom_events e
+        WHERE e.dirty = 1
+          AND e.occurred_at <= ?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM buffered_visits v
+            WHERE v.site_id = e.site_id
+              AND v.visit_id = e.visit_id
+          )
+        ORDER BY e.occurred_at ASC, e.created_at ASC
+        LIMIT ?
+      `,
+      cutoffMs,
+      D1_FLUSH_CUSTOM_EVENT_BATCH_SIZE,
+    );
+    if (rows.length === 0) return;
+
+    const orphanEventIds: string[] = [];
+    for (const row of rows) {
+      const persistedVisit = await this.readPersistedVisitRow(
+        row.siteId,
+        row.visitId,
+      );
+      if (persistedVisit) {
+        this.insertBufferedVisitRow(persistedVisit);
+        continue;
+      }
+      orphanEventIds.push(row.eventId);
+    }
+
+    if (orphanEventIds.length === 0) return;
+    this.sqlRun(
+      `DELETE FROM buffered_custom_events WHERE event_id IN (${orphanEventIds.map(() => "?").join(",")})`,
+      ...orphanEventIds,
     );
   }
 
