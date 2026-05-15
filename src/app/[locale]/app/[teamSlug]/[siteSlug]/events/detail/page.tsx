@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 
-import { EventsClientPage } from "@/components/dashboard/site-pages/events-client-page";
+import { EventTypeDetailClientPage } from "@/components/dashboard/site-pages/event-type-detail-client-page";
 import { buildSitePath, getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 
-interface EventsPageProps {
+interface EventTypeDetailPageProps {
   params: Promise<{
     locale: string;
     teamSlug: string;
@@ -13,7 +13,9 @@ interface EventsPageProps {
   }>;
 }
 
-export default async function EventsPage({ params }: EventsPageProps) {
+export default async function EventTypeDetailPage({
+  params,
+}: EventTypeDetailPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
@@ -21,15 +23,15 @@ export default async function EventsPage({ params }: EventsPageProps) {
   const context = await getTeamSiteContext(teamSlug, siteSlug);
   if (!context) notFound();
 
-  const pathname = buildSitePath(
+  const pathname = `${buildSitePath(
     resolvedLocale,
     context.activeTeam.slug,
     context.activeSite.slug,
     "events",
-  );
+  )}/detail`;
 
   return (
-    <EventsClientPage
+    <EventTypeDetailClientPage
       locale={resolvedLocale}
       messages={messages}
       siteId={context.activeSite.id}

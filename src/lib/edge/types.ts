@@ -26,7 +26,11 @@ export interface SerializedRequestPayload {
   receivedAt: number;
 }
 
-export type TrackerPayloadKind = "pageview" | "leave" | "custom_event";
+export type TrackerPayloadKind =
+  | "pageview"
+  | "leave"
+  | "custom_event"
+  | "identify";
 
 export interface TrackerPerformancePayload {
   ttfb?: number;
@@ -72,6 +76,8 @@ export interface TrackerClientPayload {
   screenHeight?: number;
   referrerUrl?: string;
   visitorId?: string;
+  userId?: string;
+  userName?: string;
   durationMs?: number;
   exitReason?: string;
   eventName?: string;
@@ -99,6 +105,8 @@ export interface NormalizedVisitContext {
   siteId: string;
   visitId: string;
   visitorId: string;
+  userId?: string;
+  userName?: string;
   sessionId: string;
   startedAt: number;
   pathname: string;
@@ -163,7 +171,18 @@ export interface NormalizedCustomEvent extends NormalizedVisitContext {
   eventDataJson: string;
 }
 
+export interface NormalizedIdentify {
+  kind: "identify";
+  siteId: string;
+  visitId: string;
+  sessionId: string;
+  userId: string;
+  userName: string;
+  receivedAt: number;
+}
+
 export type NormalizedIngestRecord =
   | NormalizedPageview
   | NormalizedLeave
-  | NormalizedCustomEvent;
+  | NormalizedCustomEvent
+  | NormalizedIdentify;

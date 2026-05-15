@@ -11,6 +11,7 @@ import {
   zonedParts,
 } from "@/lib/dashboard/time-zone";
 
+import { readCustomEventDetail } from "./custom-event-read";
 import { withDashboardCache } from "./dashboard-cache";
 import { requireSession } from "./session-auth";
 import type { Env } from "./types";
@@ -83,6 +84,7 @@ interface DashboardFilters {
 type SortDirection = "asc" | "desc";
 type VisitorListSortKey = "firstSeenAt" | "lastSeenAt" | "sessions" | "views";
 type SessionListSortKey = "startedAt" | "durationMs" | "views";
+type EventRecordSortKey = "occurredAt" | "eventName" | "pathname";
 
 interface ListSort<Key extends string> {
   key: Key;
@@ -95,6 +97,10 @@ const DEFAULT_VISITOR_LIST_SORT: ListSort<VisitorListSortKey> = {
 };
 const DEFAULT_SESSION_LIST_SORT: ListSort<SessionListSortKey> = {
   key: "startedAt",
+  direction: "desc",
+};
+const DEFAULT_EVENT_RECORD_SORT: ListSort<EventRecordSortKey> = {
+  key: "occurredAt",
   direction: "desc",
 };
 
@@ -274,6 +280,29 @@ interface GeoTabRow {
   visitors: number;
 }
 
+interface EventAnalyticsContextCards {
+  page: {
+    path: DimensionRow[];
+    query: DimensionRow[];
+    title: DimensionRow[];
+    hostname: DimensionRow[];
+    entry: DimensionRow[];
+    exit: DimensionRow[];
+  };
+  source: {
+    domain: DimensionRow[];
+    link: DimensionRow[];
+  };
+  client: ClientDimensionTabs;
+  geo: GeoDimensionTabs;
+}
+
+interface EventAnalyticsCards extends EventAnalyticsContextCards {
+  event: {
+    name: DimensionRow[];
+  };
+}
+
 interface PageRow {
   pathname: string;
   query: string;
@@ -408,6 +437,62 @@ interface JourneyPageCountRow {
 interface JourneyEventCountRow {
   eventType: string;
   count: number;
+}
+
+interface EventSummaryRow {
+  events: number;
+  eventTypes: number;
+  sessions: number;
+  visitors: number;
+}
+
+interface EventRecordRow {
+  eventId: string;
+  eventName: string;
+  occurredAt: number;
+  receivedAt: number;
+  sequence: number;
+  visitId: string;
+  sessionId: string;
+  visitorId: string;
+  pathname: string;
+  title: string;
+  hostname: string;
+  referrerHost: string;
+  country: string;
+  region: string;
+  browser: string;
+  browserVersion: string;
+  os: string;
+  osVersion: string;
+  deviceType: string;
+  nodeCount: number;
+  valueCount: number;
+}
+
+interface EventTrendSeriesRow {
+  eventName: string;
+  events: number;
+  sessions: number;
+  visitors: number;
+}
+
+interface EventTrendPointRow {
+  bucket: number;
+  seriesKey: string;
+  events: number;
+}
+
+interface EventFieldRow {
+  path: string;
+  valueType: number;
+  events: number;
+  occurrences: number;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  stringValue: string | null;
+  numberValue: number | null;
+  booleanValue: number | null;
 }
 
 interface VisitorActivityRow {
@@ -608,10 +693,32 @@ function parseSessionListSort(url: URL): ListSort<SessionListSortKey> {
   return DEFAULT_SESSION_LIST_SORT;
 }
 
+function parseEventRecordSort(url: URL): ListSort<EventRecordSortKey> {
+  const key = (url.searchParams.get("sortBy") || "").trim();
+  if (key === "occurredAt" || key === "eventName" || key === "pathname") {
+    return { key, direction: parseSortDirection(url) };
+  }
+  return DEFAULT_EVENT_RECORD_SORT;
+}
+
 function parseListSearch(url: URL): string | undefined {
   const raw = url.searchParams.get("search") ?? url.searchParams.get("q");
   if (typeof raw !== "string") return undefined;
   const normalized = raw.trim().slice(0, 160);
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function parseEventName(url: URL): string | undefined {
+  const raw = url.searchParams.get("eventName");
+  if (typeof raw !== "string") return undefined;
+  const normalized = raw.trim().slice(0, 120);
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function parseEventId(url: URL): string | undefined {
+  const raw = url.searchParams.get("eventId");
+  if (typeof raw !== "string") return undefined;
+  const normalized = raw.trim().slice(0, 128);
   return normalized.length > 0 ? normalized : undefined;
 }
 
@@ -1087,6 +1194,102 @@ function mapGeoTabs(rows: GeoTabRow[]) {
   }));
 }
 
+function mapEventAnalyticsContextCards(cards: EventAnalyticsContextCards) {
+  return {
+    page: {
+      path: mapTabs(cards.page.path),
+      query: mapTabs(cards.page.query),
+      title: mapTabs(cards.page.title),
+      hostname: mapTabs(cards.page.hostname),
+      entry: mapTabs(cards.page.entry),
+      exit: mapTabs(cards.page.exit),
+    },
+    source: {
+      domain: mapTabs(cards.source.domain),
+      link: mapTabs(cards.source.link),
+    },
+    client: {
+      browser: mapTabs(cards.client.browser),
+      osVersion: mapTabs(cards.client.osVersion),
+      deviceType: mapTabs(cards.client.deviceType),
+      language: mapTabs(cards.client.language),
+      screenSize: mapTabs(cards.client.screenSize),
+    },
+    geo: {
+      country: mapGeoTabs(cards.geo.country),
+      region: mapGeoTabs(cards.geo.region),
+      city: mapGeoTabs(cards.geo.city),
+      continent: mapGeoTabs(cards.geo.continent),
+      timezone: mapGeoTabs(cards.geo.timezone),
+      organization: mapGeoTabs(cards.geo.organization),
+    },
+  };
+}
+
+function mapEventAnalyticsCards(cards: EventAnalyticsCards) {
+  return {
+    event: {
+      name: mapTabs(cards.event.name),
+    },
+    ...mapEventAnalyticsContextCards(cards),
+  };
+}
+
+function mapEventRecord(row: EventRecordRow) {
+  return {
+    eventId: row.eventId,
+    eventName: row.eventName,
+    occurredAt: row.occurredAt,
+    receivedAt: row.receivedAt,
+    sequence: row.sequence,
+    visitId: row.visitId,
+    sessionId: row.sessionId,
+    visitorId: row.visitorId,
+    pathname: row.pathname,
+    title: row.title,
+    hostname: row.hostname,
+    referrerHost: row.referrerHost,
+    country: row.country,
+    region: row.region,
+    browser: row.browser,
+    browserVersion: row.browserVersion,
+    os: row.os,
+    osVersion: row.osVersion,
+    deviceType: row.deviceType,
+    nodeCount: row.nodeCount,
+    valueCount: row.valueCount,
+  };
+}
+
+function customEventJsonTypeLabel(valueType: number): string {
+  if (valueType === 1) return "string";
+  if (valueType === 2) return "number";
+  if (valueType === 3) return "boolean";
+  if (valueType === 4) return "object";
+  if (valueType === 5) return "array";
+  return "null";
+}
+
+function mapEventField(row: EventFieldRow) {
+  let exampleValue: string | number | boolean | null = null;
+  if (row.valueType === 1 && row.stringValue !== null) {
+    exampleValue = row.stringValue;
+  } else if (row.valueType === 2 && row.numberValue !== null) {
+    exampleValue = row.numberValue;
+  } else if (row.valueType === 3 && row.booleanValue !== null) {
+    exampleValue = row.booleanValue === 1;
+  }
+  return {
+    path: row.path,
+    valueType: customEventJsonTypeLabel(row.valueType),
+    events: row.events,
+    occurrences: row.occurrences,
+    firstSeenAt: row.firstSeenAt,
+    lastSeenAt: row.lastSeenAt,
+    exampleValue,
+  };
+}
+
 function mapReferrers(rows: ReferrerRow[]) {
   return rows.map((row) => ({
     referrer: row.referrer,
@@ -1525,6 +1728,82 @@ event_source AS (
 )`;
 }
 
+function buildEventAnalyticsSourceCte(): string {
+  return `
+event_source AS (
+  SELECT
+    ce.event_pk,
+    ce.event_id,
+    ce.site_id,
+    ce.visit_id,
+    cen.name AS event_name,
+    ce.occurred_at,
+    ce.received_at,
+    ce.sequence,
+    ce.node_count,
+    ce.value_count,
+    v.visitor_id,
+    v.session_id,
+    v.pathname,
+    v.query_string,
+    v.hash_fragment,
+    v.hostname,
+    v.title,
+    v.referrer_url,
+    v.referrer_host,
+    v.country,
+    v.region,
+    v.region_code,
+    v.city,
+    v.continent,
+    v.browser,
+    v.browser_version,
+    v.os,
+    v.os_version,
+    v.device_type,
+    v.language,
+    v.timezone,
+    v.screen_width,
+    v.screen_height,
+    v.as_organization
+  FROM custom_events ce
+  INNER JOIN custom_event_names cen
+    ON cen.id = ce.event_name_id
+  INNER JOIN visits v
+    ON v.site_id = ce.site_id
+   AND v.visit_id = ce.visit_id
+  WHERE ce.site_id = ? AND ce.occurred_at BETWEEN ? AND ?
+)`;
+}
+
+function buildEventFilteredSourceCte(
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+  eventName?: string,
+): {
+  cte: string;
+  bindings: Array<string | number>;
+} {
+  const filter = buildEventFilterSql(filters, "es", { eventName });
+  return {
+    cte: `
+WITH
+${buildVisitSourceCte()},
+${buildEventAnalyticsSourceCte()},
+filtered_events AS (
+  SELECT *
+  FROM event_source es
+  ${filter.clause}
+)`,
+    bindings: [
+      ...visitSourceBindings(siteId, window),
+      ...eventSourceBindings(siteId, window),
+      ...filter.bindings,
+    ],
+  };
+}
+
 function visitSourceBindings(
   siteId: string,
   window: QueryWindow,
@@ -1742,7 +2021,57 @@ function buildVisitFilterSql(
     : { clause: "", bindings: [] };
 }
 
-async function queryD1All<T extends Record<string, unknown>>(
+function buildEventFilterSql(
+  filters: DashboardFilters,
+  alias = "es",
+  options?: { eventName?: string; search?: string },
+): { clause: string; bindings: string[] } {
+  const visitFilter = buildVisitFilterSql(filters, alias);
+  const clauses: string[] = visitFilter.clause
+    ? [visitFilter.clause.replace(/^WHERE\s+/i, "")]
+    : [];
+  const bindings: string[] = [...visitFilter.bindings];
+  const prefix = alias ? `${alias}.` : "";
+
+  if (options?.eventName) {
+    clauses.push(`TRIM(COALESCE(${prefix}event_name, '')) = ?`);
+    bindings.push(options.eventName);
+  }
+
+  if (options?.search) {
+    const token = `%${options.search.toLowerCase()}%`;
+    clauses.push(
+      `(
+        LOWER(TRIM(COALESCE(${prefix}event_name, ''))) LIKE ?
+        OR LOWER(TRIM(COALESCE(${prefix}event_id, ''))) LIKE ?
+        OR LOWER(TRIM(COALESCE(${prefix}visit_id, ''))) LIKE ?
+        OR LOWER(TRIM(COALESCE(${prefix}session_id, ''))) LIKE ?
+        OR LOWER(TRIM(COALESCE(${prefix}visitor_id, ''))) LIKE ?
+        OR LOWER(TRIM(COALESCE(${prefix}pathname, ''))) LIKE ?
+        OR LOWER(TRIM(COALESCE(${prefix}title, ''))) LIKE ?
+        OR LOWER(TRIM(COALESCE(${prefix}hostname, ''))) LIKE ?
+      )`,
+    );
+    bindings.push(token, token, token, token, token, token, token, token);
+  }
+
+  return clauses.length > 0
+    ? { clause: `WHERE ${clauses.join(" AND ")}`, bindings }
+    : { clause: "", bindings };
+}
+
+function eventRecordOrderBy(sort: ListSort<EventRecordSortKey>): string {
+  const direction = sort.direction === "asc" ? "ASC" : "DESC";
+  if (sort.key === "eventName") {
+    return `eventName ${direction}, occurredAt DESC, eventId DESC`;
+  }
+  if (sort.key === "pathname") {
+    return `pathname ${direction}, occurredAt DESC, eventId DESC`;
+  }
+  return `occurredAt ${direction}, eventId ${direction}`;
+}
+
+async function queryD1All<T extends object>(
   env: Env,
   sql: string,
   bindings: Array<string | number | null>,
@@ -4253,6 +4582,787 @@ async function queryEventTypeAggregate(
   return queryCustomEventNamesFromD1(env, siteId, window, filters, limit);
 }
 
+async function queryEventsSummaryFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+): Promise<{
+  summary: EventSummaryRow;
+  topEvents: DimensionRow[];
+  pages: DimensionRow[];
+  countries: DimensionRow[];
+  devices: DimensionRow[];
+  browsers: DimensionRow[];
+}> {
+  const filter = buildEventFilterSql(filters, "es");
+  const bindings = [
+    ...visitSourceBindings(siteId, window),
+    ...eventSourceBindings(siteId, window),
+    ...filter.bindings,
+  ];
+  const baseCte = `
+WITH
+${buildVisitSourceCte()},
+${buildEventAnalyticsSourceCte()},
+filtered_events AS (
+  SELECT *
+  FROM event_source es
+  ${filter.clause}
+)`;
+  const [summaryRow] = await queryD1All<EventSummaryRow>(
+    env,
+    `${baseCte}
+SELECT
+  count(*) AS events,
+  count(DISTINCT event_name) AS eventTypes,
+  count(DISTINCT CASE WHEN session_id != '' THEN session_id ELSE NULL END) AS sessions,
+  count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors
+FROM filtered_events
+`,
+    bindings,
+  );
+
+  const dimensionSql = (expr: string) => `${baseCte}
+SELECT
+  ${expr} AS value,
+  count(*) AS views,
+  count(DISTINCT CASE WHEN session_id != '' THEN session_id ELSE NULL END) AS sessions,
+  count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors
+FROM filtered_events
+GROUP BY value
+HAVING TRIM(COALESCE(value, '')) != ''
+ORDER BY views DESC, sessions DESC, value ASC
+LIMIT 8
+`;
+  const readDimension = (expr: string) =>
+    queryD1All<DimensionRow>(env, dimensionSql(expr), bindings);
+
+  const [topEvents, pages, countries, devices, browsers] = await Promise.all([
+    readDimension("event_name"),
+    readDimension("pathname"),
+    readDimension("country"),
+    readDimension("device_type"),
+    readDimension("browser"),
+  ]);
+
+  return {
+    summary: summaryRow ?? {
+      events: 0,
+      eventTypes: 0,
+      sessions: 0,
+      visitors: 0,
+    },
+    topEvents,
+    pages,
+    countries,
+    devices,
+    browsers,
+  };
+}
+
+async function queryEventDimensionRowsFromFilteredEvents(
+  env: Env,
+  baseCte: string,
+  bindings: Array<string | number>,
+  expr: string,
+  limit: number,
+  options?: {
+    includeEmpty?: boolean;
+  },
+): Promise<DimensionRow[]> {
+  const havingClause = options?.includeEmpty
+    ? ""
+    : "HAVING TRIM(COALESCE(value, '')) != ''";
+  const sql = `${baseCte}
+SELECT
+  ${expr} AS value,
+  count(*) AS views,
+  count(DISTINCT CASE WHEN session_id != '' THEN session_id ELSE NULL END) AS sessions,
+  count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors
+FROM filtered_events
+GROUP BY value
+${havingClause}
+ORDER BY views DESC, sessions DESC, visitors DESC, value ASC
+LIMIT ?
+`;
+  return queryD1All<DimensionRow>(env, sql, [...bindings, limit]);
+}
+
+async function queryEventGeoRowsFromFilteredEvents(
+  env: Env,
+  baseCte: string,
+  bindings: Array<string | number>,
+  valueExpr: string,
+  labelExpr: string,
+  limit: number,
+): Promise<GeoTabRow[]> {
+  const sql = `${baseCte}
+SELECT
+  ${valueExpr} AS value,
+  ${labelExpr} AS label,
+  count(*) AS views,
+  count(DISTINCT CASE WHEN session_id != '' THEN session_id ELSE NULL END) AS sessions,
+  count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors
+FROM filtered_events
+GROUP BY value, label
+HAVING TRIM(COALESCE(value, '')) != ''
+ORDER BY views DESC, sessions DESC, visitors DESC, label ASC
+LIMIT ?
+`;
+  return queryD1All<GeoTabRow>(env, sql, [...bindings, limit]);
+}
+
+async function queryEventSessionBoundaryRowsFromFilteredEvents(
+  env: Env,
+  baseCte: string,
+  bindings: Array<string | number>,
+  kind: "entry" | "exit",
+  limit: number,
+): Promise<DimensionRow[]> {
+  const direction = kind === "entry" ? "ASC" : "DESC";
+  const sql = `${baseCte},
+event_with_session_edge AS (
+  SELECT
+    COALESCE((
+      SELECT edge.pathname
+      FROM visit_source edge
+      WHERE edge.session_id = filtered_events.session_id
+        AND TRIM(COALESCE(edge.pathname, '')) != ''
+      ORDER BY edge.started_at ${direction}, edge.visit_id ${direction}
+      LIMIT 1
+    ), '') AS value,
+    session_id,
+    visitor_id
+  FROM filtered_events
+  WHERE TRIM(COALESCE(session_id, '')) != ''
+)
+SELECT
+  value,
+  count(*) AS views,
+  count(DISTINCT CASE WHEN session_id != '' THEN session_id ELSE NULL END) AS sessions,
+  count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors
+FROM event_with_session_edge
+GROUP BY value
+HAVING TRIM(COALESCE(value, '')) != ''
+ORDER BY views DESC, sessions DESC, visitors DESC, value ASC
+LIMIT ?
+`;
+  return queryD1All<DimensionRow>(env, sql, [...bindings, limit]);
+}
+
+async function queryEventAnalyticsContextCardsFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+  limit: number,
+  eventName?: string,
+): Promise<EventAnalyticsContextCards> {
+  const source = buildEventFilteredSourceCte(
+    siteId,
+    window,
+    filters,
+    eventName,
+  );
+  const dimension = (expr: string) =>
+    queryEventDimensionRowsFromFilteredEvents(
+      env,
+      source.cte,
+      source.bindings,
+      expr,
+      limit,
+    );
+  const geo = (valueExpr: string, labelExpr = valueExpr) =>
+    queryEventGeoRowsFromFilteredEvents(
+      env,
+      source.cte,
+      source.bindings,
+      valueExpr,
+      labelExpr,
+      limit,
+    );
+
+  const [
+    path,
+    query,
+    title,
+    hostname,
+    entry,
+    exit,
+    sourceDomain,
+    sourceLink,
+    browser,
+    osVersion,
+    deviceType,
+    language,
+    screenSize,
+    country,
+    region,
+    city,
+    continent,
+    timezone,
+    organization,
+  ] = await Promise.all([
+    dimension("pathname"),
+    dimension("query_string"),
+    dimension("title"),
+    dimension("hostname"),
+    queryEventSessionBoundaryRowsFromFilteredEvents(
+      env,
+      source.cte,
+      source.bindings,
+      "entry",
+      limit,
+    ),
+    queryEventSessionBoundaryRowsFromFilteredEvents(
+      env,
+      source.cte,
+      source.bindings,
+      "exit",
+      limit,
+    ),
+    queryEventDimensionRowsFromFilteredEvents(
+      env,
+      source.cte,
+      source.bindings,
+      "referrer_host",
+      limit,
+      { includeEmpty: true },
+    ),
+    queryEventDimensionRowsFromFilteredEvents(
+      env,
+      source.cte,
+      source.bindings,
+      "referrer_url",
+      limit,
+      { includeEmpty: true },
+    ),
+    dimension(clientDimensionDefinition("browser").labelExpr),
+    dimension(clientDimensionDefinition("osVersion").labelExpr),
+    dimension(clientDimensionDefinition("deviceType").labelExpr),
+    dimension(clientDimensionDefinition("language").labelExpr),
+    dimension(clientDimensionDefinition("screenSize").labelExpr),
+    geo("country"),
+    geo(regionValueExpr()),
+    geo(cityValueExpr()),
+    geo("continent"),
+    geo("timezone"),
+    geo("as_organization"),
+  ]);
+
+  return {
+    page: {
+      path,
+      query,
+      title,
+      hostname,
+      entry,
+      exit,
+    },
+    source: {
+      domain: sourceDomain,
+      link: sourceLink,
+    },
+    client: {
+      browser,
+      osVersion,
+      deviceType,
+      language,
+      screenSize,
+    },
+    geo: {
+      country,
+      region,
+      city,
+      continent,
+      timezone,
+      organization,
+    },
+  };
+}
+
+async function queryEventAnalyticsCardsFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+  limit: number,
+): Promise<EventAnalyticsCards> {
+  const source = buildEventFilteredSourceCte(siteId, window, filters);
+  const [context, events] = await Promise.all([
+    queryEventAnalyticsContextCardsFromD1(env, siteId, window, filters, limit),
+    queryEventDimensionRowsFromFilteredEvents(
+      env,
+      source.cte,
+      source.bindings,
+      "event_name",
+      limit,
+    ),
+  ]);
+
+  return {
+    event: {
+      name: events,
+    },
+    ...context,
+  };
+}
+
+async function queryEventsTrendFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  interval: Interval,
+  filters: DashboardFilters,
+  limit: number,
+  eventName?: string,
+) {
+  const filter = buildEventFilterSql(filters, "es", { eventName });
+  const sourceBindings = [
+    ...visitSourceBindings(siteId, window),
+    ...eventSourceBindings(siteId, window),
+  ];
+  const filterBindings = filter.bindings;
+  const baseCte = `
+WITH
+${buildVisitSourceCte()},
+${buildEventAnalyticsSourceCte()},
+filtered_events AS (
+  SELECT *
+  FROM event_source es
+  ${filter.clause}
+)`;
+  const seriesRows = await queryD1All<EventTrendSeriesRow>(
+    env,
+    `${baseCte}
+SELECT
+  event_name AS eventName,
+  count(*) AS events,
+  count(DISTINCT CASE WHEN session_id != '' THEN session_id ELSE NULL END) AS sessions,
+  count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors
+FROM filtered_events
+GROUP BY event_name
+ORDER BY events DESC, sessions DESC, eventName ASC
+LIMIT ?
+`,
+    [...sourceBindings, ...filterBindings, limit],
+  );
+  const buckets = buildTimeBuckets(window, interval);
+  const bucket = timeBucketCase(buckets, "occurred_at");
+  const seriesKeyByName = new Map<string, string>();
+  const usedKeys = new Set<string>();
+  for (const row of seriesRows) {
+    seriesKeyByName.set(
+      row.eventName,
+      shareTrendSeriesKey(row.eventName, usedKeys, "event"),
+    );
+  }
+  const seriesNames = seriesRows.map((row) => row.eventName);
+  const namesClause =
+    seriesNames.length > 0
+      ? `CASE WHEN event_name IN (${seriesNames.map(() => "?").join(", ")}) THEN event_name ELSE ? END`
+      : "?";
+  const trendRows = await queryD1All<EventTrendPointRow>(
+    env,
+    `${baseCte},
+bucketed AS (
+  SELECT
+    ${bucket.sql} AS bucket,
+    ${namesClause} AS seriesName,
+    count(*) AS events
+  FROM filtered_events
+  GROUP BY bucket, seriesName
+)
+SELECT
+  bucket,
+  seriesName AS seriesKey,
+  events
+FROM bucketed
+WHERE bucket IS NOT NULL
+ORDER BY bucket ASC
+`,
+    [
+      ...sourceBindings,
+      ...filterBindings,
+      ...seriesNames,
+      SHARE_TREND_OTHER_TOKEN,
+    ],
+  );
+  const hasOther = trendRows.some(
+    (row) => String(row.seriesKey) === SHARE_TREND_OTHER_TOKEN,
+  );
+  const [otherSeriesRow] = hasOther
+    ? await queryD1All<EventTrendSeriesRow>(
+        env,
+        `${baseCte}
+SELECT
+  ? AS eventName,
+  count(*) AS events,
+  count(DISTINCT CASE WHEN session_id != '' THEN session_id ELSE NULL END) AS sessions,
+  count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors
+FROM filtered_events
+${seriesNames.length > 0 ? `WHERE event_name NOT IN (${seriesNames.map(() => "?").join(", ")})` : ""}
+`,
+        [
+          ...sourceBindings,
+          ...filterBindings,
+          SHARE_TREND_OTHER_LABEL,
+          ...seriesNames,
+        ],
+      )
+    : [];
+  const series: Array<{
+    key: string;
+    eventName: string;
+    label: string;
+    events: number;
+    sessions: number;
+    visitors: number;
+    isOther?: boolean;
+  }> = seriesRows.map((row) => ({
+    key: seriesKeyByName.get(row.eventName) ?? row.eventName,
+    eventName: row.eventName,
+    label: row.eventName,
+    events: row.events,
+    sessions: row.sessions,
+    visitors: row.visitors,
+  }));
+  if (hasOther) {
+    series.push({
+      key: SHARE_TREND_OTHER_KEY,
+      eventName: SHARE_TREND_OTHER_LABEL,
+      label: SHARE_TREND_OTHER_LABEL,
+      events:
+        Number(otherSeriesRow?.events ?? 0) ||
+        trendRows
+          .filter((row) => String(row.seriesKey) === SHARE_TREND_OTHER_TOKEN)
+          .reduce((sum, row) => sum + Number(row.events ?? 0), 0),
+      sessions: Number(otherSeriesRow?.sessions ?? 0),
+      visitors: Number(otherSeriesRow?.visitors ?? 0),
+      isOther: true,
+    });
+  }
+  const data = buckets.map((item) => ({
+    bucket: item.index,
+    timestampMs: item.timestampMs,
+    totalEvents: 0,
+    eventsBySeries: {} as Record<string, number>,
+  }));
+  for (const row of trendRows) {
+    const bucketIndex = Number(row.bucket ?? -1);
+    const point = data[bucketIndex];
+    if (!point) continue;
+    const rawSeries = String(row.seriesKey ?? "");
+    const key =
+      rawSeries === SHARE_TREND_OTHER_TOKEN
+        ? SHARE_TREND_OTHER_KEY
+        : (seriesKeyByName.get(rawSeries) ?? rawSeries);
+    const events = Number(row.events ?? 0);
+    point.eventsBySeries[key] = events;
+    point.totalEvents += events;
+  }
+  return { series, data };
+}
+
+async function queryEventRecordsFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+  options: {
+    limit: number;
+    offset: number;
+    sort: ListSort<EventRecordSortKey>;
+    search?: string;
+    eventName?: string;
+  },
+): Promise<EventRecordRow[]> {
+  const filter = buildEventFilterSql(filters, "es", {
+    eventName: options.eventName,
+    search: options.search,
+  });
+  const sql = `
+WITH
+${buildVisitSourceCte()},
+${buildEventAnalyticsSourceCte()},
+filtered_events AS (
+  SELECT *
+  FROM event_source es
+  ${filter.clause}
+)
+SELECT
+  event_id AS eventId,
+  event_name AS eventName,
+  occurred_at AS occurredAt,
+  received_at AS receivedAt,
+  sequence,
+  visit_id AS visitId,
+  session_id AS sessionId,
+  visitor_id AS visitorId,
+  pathname,
+  title,
+  hostname,
+  referrer_host AS referrerHost,
+  country,
+  region,
+  browser,
+  browser_version AS browserVersion,
+  os,
+  os_version AS osVersion,
+  device_type AS deviceType,
+  node_count AS nodeCount,
+  value_count AS valueCount
+FROM filtered_events
+ORDER BY ${eventRecordOrderBy(options.sort)}
+LIMIT ?
+OFFSET ?
+`;
+  return queryD1All<EventRecordRow>(env, sql, [
+    ...visitSourceBindings(siteId, window),
+    ...eventSourceBindings(siteId, window),
+    ...filter.bindings,
+    options.limit,
+    options.offset,
+  ]);
+}
+
+async function queryEventTypeOverviewFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+  eventName: string,
+) {
+  const scoped = await queryEventsSummaryFromD1(env, siteId, window, {
+    ...filters,
+  });
+  const eventFilter = buildEventFilterSql(filters, "es", { eventName });
+  const bindings = [
+    ...visitSourceBindings(siteId, window),
+    ...eventSourceBindings(siteId, window),
+    ...eventFilter.bindings,
+  ];
+  const baseCte = `
+WITH
+${buildVisitSourceCte()},
+${buildEventAnalyticsSourceCte()},
+filtered_events AS (
+  SELECT *
+  FROM event_source es
+  ${eventFilter.clause}
+)`;
+  const [summaryRow] = await queryD1All<EventSummaryRow>(
+    env,
+    `${baseCte}
+SELECT
+  count(*) AS events,
+  count(DISTINCT event_name) AS eventTypes,
+  count(DISTINCT CASE WHEN session_id != '' THEN session_id ELSE NULL END) AS sessions,
+  count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors
+FROM filtered_events
+`,
+    bindings,
+  );
+  const dimensionSql = (expr: string) => `${baseCte}
+SELECT
+  ${expr} AS value,
+  count(*) AS views,
+  count(DISTINCT CASE WHEN session_id != '' THEN session_id ELSE NULL END) AS sessions,
+  count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors
+FROM filtered_events
+GROUP BY value
+HAVING TRIM(COALESCE(value, '')) != ''
+ORDER BY views DESC, sessions DESC, value ASC
+LIMIT 8
+`;
+  const readDimension = (expr: string) =>
+    queryD1All<DimensionRow>(env, dimensionSql(expr), bindings);
+  const [pages, countries, devices, browsers] = await Promise.all([
+    readDimension("pathname"),
+    readDimension("country"),
+    readDimension("device_type"),
+    readDimension("browser"),
+  ]);
+  const summary = summaryRow ?? {
+    events: 0,
+    eventTypes: 0,
+    sessions: 0,
+    visitors: 0,
+  };
+  return {
+    summary: {
+      events: Number(summary.events ?? 0),
+      eventTypes: Number(summary.eventTypes ?? 0),
+      sessions: Number(summary.sessions ?? 0),
+      visitors: Number(summary.visitors ?? 0),
+      avgEventsPerSession:
+        Number(summary.sessions ?? 0) > 0
+          ? Number(summary.events ?? 0) / Number(summary.sessions ?? 0)
+          : 0,
+      shareOfAllEvents:
+        Number(scoped.summary.events ?? 0) > 0
+          ? Number(summary.events ?? 0) / Number(scoped.summary.events ?? 0)
+          : 0,
+    },
+    breakdowns: {
+      pages,
+      countries,
+      devices,
+      browsers,
+    },
+  };
+}
+
+async function queryEventFieldsFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+  eventName: string,
+  limit: number,
+): Promise<EventFieldRow[]> {
+  const filter = buildEventFilterSql(filters, "es", { eventName });
+  const sql = `
+WITH
+${buildVisitSourceCte()},
+${buildEventAnalyticsSourceCte()},
+filtered_events AS (
+  SELECT *
+  FROM event_source es
+  ${filter.clause}
+),
+field_rows AS (
+  SELECT
+    p.path,
+    v.value_type AS valueType,
+    v.event_pk,
+    v.occurred_at,
+    v.string_value AS stringValue,
+    v.number_value AS numberValue,
+    v.boolean_value AS booleanValue
+  FROM custom_event_json_values v
+  INNER JOIN custom_event_json_paths p
+    ON p.id = v.path_id
+  INNER JOIN filtered_events fe
+    ON fe.event_pk = v.event_pk
+)
+SELECT
+  path,
+  valueType,
+  count(DISTINCT event_pk) AS events,
+  count(*) AS occurrences,
+  MIN(occurred_at) AS firstSeenAt,
+  MAX(occurred_at) AS lastSeenAt,
+  MIN(stringValue) AS stringValue,
+  MIN(numberValue) AS numberValue,
+  MIN(booleanValue) AS booleanValue
+FROM field_rows
+GROUP BY path, valueType
+ORDER BY events DESC, occurrences DESC, path ASC
+LIMIT ?
+`;
+  return queryD1All<EventFieldRow>(env, sql, [
+    ...visitSourceBindings(siteId, window),
+    ...eventSourceBindings(siteId, window),
+    ...filter.bindings,
+    limit,
+  ]);
+}
+
+async function queryEventRecordDetailFromD1(
+  env: Env,
+  siteId: string,
+  eventId: string,
+) {
+  const rows = await queryD1All<EventRecordRow>(
+    env,
+    `
+WITH
+event_source AS (
+  SELECT
+    ce.event_id,
+    ce.site_id,
+    ce.visit_id,
+    cen.name AS event_name,
+    ce.occurred_at,
+    ce.received_at,
+    ce.sequence,
+    ce.node_count,
+    ce.value_count,
+    v.visitor_id,
+    v.session_id,
+    v.pathname,
+    v.hostname,
+    v.title,
+    v.referrer_host,
+    v.country,
+    v.region,
+    v.browser,
+    v.browser_version,
+    v.os,
+    v.os_version,
+    v.device_type
+  FROM custom_events ce
+  INNER JOIN custom_event_names cen
+    ON cen.id = ce.event_name_id
+  INNER JOIN visits v
+    ON v.site_id = ce.site_id
+   AND v.visit_id = ce.visit_id
+  WHERE ce.site_id = ? AND ce.event_id = ?
+)
+SELECT
+  event_id AS eventId,
+  event_name AS eventName,
+  occurred_at AS occurredAt,
+  received_at AS receivedAt,
+  sequence,
+  visit_id AS visitId,
+  session_id AS sessionId,
+  visitor_id AS visitorId,
+  pathname,
+  title,
+  hostname,
+  referrer_host AS referrerHost,
+  country,
+  region,
+  browser,
+  browser_version AS browserVersion,
+  os,
+  os_version AS osVersion,
+  device_type AS deviceType,
+  node_count AS nodeCount,
+  value_count AS valueCount
+FROM event_source
+LIMIT 1
+`,
+    [siteId, eventId],
+  );
+  const record = rows[0];
+  if (!record) return null;
+  const detail = await readCustomEventDetail(env, siteId, eventId);
+  return {
+    event: mapEventRecord(record),
+    context: {
+      visitId: record.visitId,
+      sessionId: record.sessionId,
+      visitorId: record.visitorId,
+      pathname: record.pathname,
+      title: record.title,
+      hostname: record.hostname,
+      referrerHost: record.referrerHost,
+      country: record.country,
+      region: record.region,
+      browser: record.browser,
+      browserVersion: record.browserVersion,
+      os: record.os,
+      osVersion: record.osVersion,
+      deviceType: record.deviceType,
+    },
+    eventData: detail?.eventData ?? {},
+  };
+}
+
 async function buildOverviewClientDimensionTabs(
   env: Env,
   siteId: string,
@@ -5706,6 +6816,159 @@ async function handleEventTypes(
   return jsonResponse({ ok: true, data: mapTabs(rows) });
 }
 
+async function handleEventsSummary(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const [data, cards] = await Promise.all([
+    queryEventsSummaryFromD1(env, siteId, window, filters),
+    queryEventAnalyticsCardsFromD1(env, siteId, window, filters, 100),
+  ]);
+  return jsonResponse({
+    ok: true,
+    summary: {
+      events: Number(data.summary.events ?? 0),
+      eventTypes: Number(data.summary.eventTypes ?? 0),
+      sessions: Number(data.summary.sessions ?? 0),
+      visitors: Number(data.summary.visitors ?? 0),
+      avgEventsPerSession:
+        Number(data.summary.sessions ?? 0) > 0
+          ? Number(data.summary.events ?? 0) /
+            Number(data.summary.sessions ?? 0)
+          : 0,
+    },
+    topEvents: mapTabs(data.topEvents),
+    breakdowns: {
+      pages: mapTabs(data.pages),
+      countries: mapTabs(data.countries),
+      devices: mapTabs(data.devices),
+      browsers: mapTabs(data.browsers),
+    },
+    cards: mapEventAnalyticsCards(cards),
+  });
+}
+
+async function handleEventsTrend(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const interval = parseInterval(url);
+  const limit = parseLimit(url, 8, 12);
+  const eventName = parseEventName(url);
+  const trend = await queryEventsTrendFromD1(
+    env,
+    siteId,
+    window,
+    interval,
+    filters,
+    limit,
+    eventName,
+  );
+  return jsonResponse({ ok: true, interval, ...trend });
+}
+
+async function handleEventsRecords(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const page = parseQueryLimit(url, "page", 1, 1, 10_000);
+  const pageSize = parseQueryLimit(url, "pageSize", 80, 1, 120);
+  const sort = parseEventRecordSort(url);
+  const search = parseListSearch(url);
+  const eventName = parseEventName(url);
+  const rows = await queryEventRecordsFromD1(env, siteId, window, filters, {
+    limit: pageSize + 1,
+    offset: (page - 1) * pageSize,
+    sort,
+    search,
+    eventName,
+  });
+  const hasMore = rows.length > pageSize;
+  const currentRows = hasMore ? rows.slice(0, pageSize) : rows;
+  return jsonResponse({
+    ok: true,
+    data: currentRows.map(mapEventRecord),
+    meta: {
+      page,
+      pageSize,
+      returned: currentRows.length,
+      hasMore,
+      nextPage: hasMore ? page + 1 : null,
+    },
+  });
+}
+
+async function handleEventTypeDetail(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const eventName = parseEventName(url);
+  if (!eventName) return badRequest("eventName is required");
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const interval = parseInterval(url);
+  const [overview, trend, fields, cards] = await Promise.all([
+    queryEventTypeOverviewFromD1(env, siteId, window, filters, eventName),
+    queryEventsTrendFromD1(
+      env,
+      siteId,
+      window,
+      interval,
+      filters,
+      1,
+      eventName,
+    ),
+    queryEventFieldsFromD1(env, siteId, window, filters, eventName, 100),
+    queryEventAnalyticsContextCardsFromD1(
+      env,
+      siteId,
+      window,
+      filters,
+      100,
+      eventName,
+    ),
+  ]);
+  return jsonResponse({
+    ok: true,
+    eventName,
+    summary: overview.summary,
+    trend,
+    breakdowns: {
+      pages: mapTabs(overview.breakdowns.pages),
+      countries: mapTabs(overview.breakdowns.countries),
+      devices: mapTabs(overview.breakdowns.devices),
+      browsers: mapTabs(overview.breakdowns.browsers),
+    },
+    cards: mapEventAnalyticsContextCards(cards),
+    fields: fields.map(mapEventField),
+  });
+}
+
+async function handleEventRecordDetail(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const eventId = parseEventId(url);
+  if (!eventId) return badRequest("eventId is required");
+  const detail = await queryEventRecordDetailFromD1(env, siteId, eventId);
+  return jsonResponse({ ok: true, data: detail });
+}
+
 type OverviewPageTabKey = "path" | "title" | "hostname" | "entry" | "exit";
 type OverviewSourceTabKey = "domain" | "link";
 type OverviewClientTabKey = Exclude<ClientDimensionKey, "operatingSystem">;
@@ -6170,6 +7433,21 @@ async function routeQuery(
   }
   if (pathname === "event-types") {
     return handleEventTypes(env, siteId, url);
+  }
+  if (pathname === "events-summary") {
+    return handleEventsSummary(env, siteId, url);
+  }
+  if (pathname === "events-trend") {
+    return handleEventsTrend(env, siteId, url);
+  }
+  if (pathname === "events-records") {
+    return handleEventsRecords(env, siteId, url);
+  }
+  if (pathname === "event-type-detail") {
+    return handleEventTypeDetail(env, siteId, url);
+  }
+  if (pathname === "event-record-detail") {
+    return handleEventRecordDetail(env, siteId, url);
   }
   if (pathname === "sessions") {
     return handleSessions(env, siteId, url);

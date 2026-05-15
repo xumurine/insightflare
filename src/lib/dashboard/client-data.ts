@@ -9,6 +9,11 @@ import type {
   DashboardFilterOption,
   DashboardFilterOptionsData,
   DimensionData,
+  EventRecordDetailData,
+  EventsRecordsData,
+  EventsSummaryData,
+  EventsTrendData,
+  EventTypeDetailData,
   OverviewClientDimensionTabsData as OverviewClientDimensionTabsResponse,
   OverviewData,
   OverviewGeoDimensionTabsData as OverviewGeoDimensionTabsResponse,
@@ -50,6 +55,7 @@ export type PagesDashboardRow = PagesDashboardData["data"][number];
 type SortDirection = "asc" | "desc";
 type VisitorListSortKey = "firstSeenAt" | "lastSeenAt" | "sessions" | "views";
 type SessionListSortKey = "startedAt" | "durationMs" | "views";
+type EventRecordSortKey = "occurredAt" | "eventName" | "pathname";
 export type RetentionGranularity = TimeWindow["interval"];
 
 function emptyOverview(): OverviewData {
@@ -162,6 +168,114 @@ function emptyVisitorDetail(): VisitorDetailData {
 }
 
 function emptySessionDetail(): SessionDetailData {
+  return { ok: true, data: null };
+}
+
+function emptyEventsSummary(): EventsSummaryData {
+  const emptyCards = emptyEventAnalyticsContextCards();
+  return {
+    ok: true,
+    summary: {
+      events: 0,
+      eventTypes: 0,
+      sessions: 0,
+      visitors: 0,
+      avgEventsPerSession: 0,
+    },
+    topEvents: [],
+    breakdowns: {
+      pages: [],
+      countries: [],
+      devices: [],
+      browsers: [],
+    },
+    cards: {
+      event: {
+        name: [],
+      },
+      ...emptyCards,
+    },
+  };
+}
+
+function emptyEventsTrend(interval: TimeWindow["interval"]): EventsTrendData {
+  return {
+    ok: true,
+    interval,
+    series: [],
+    data: [],
+  };
+}
+
+function emptyEventsRecords(pageSize = 0): EventsRecordsData {
+  return {
+    ok: true,
+    data: [],
+    meta: {
+      page: 1,
+      pageSize,
+      returned: 0,
+      hasMore: false,
+      nextPage: null,
+    },
+  };
+}
+
+function emptyEventTypeDetail(
+  eventName = "",
+  interval: TimeWindow["interval"] = "day",
+): EventTypeDetailData {
+  return {
+    ok: true,
+    eventName,
+    summary: {
+      events: 0,
+      eventTypes: eventName ? 1 : 0,
+      sessions: 0,
+      visitors: 0,
+      avgEventsPerSession: 0,
+      shareOfAllEvents: 0,
+    },
+    trend: emptyEventsTrend(interval),
+    breakdowns: emptyEventsSummary().breakdowns,
+    cards: emptyEventAnalyticsContextCards(),
+    fields: [],
+  };
+}
+
+function emptyEventAnalyticsContextCards(): EventTypeDetailData["cards"] {
+  return {
+    page: {
+      path: [],
+      query: [],
+      title: [],
+      hostname: [],
+      entry: [],
+      exit: [],
+    },
+    source: {
+      domain: [],
+      link: [],
+    },
+    client: {
+      browser: [],
+      osVersion: [],
+      deviceType: [],
+      language: [],
+      screenSize: [],
+    },
+    geo: {
+      country: [],
+      region: [],
+      city: [],
+      continent: [],
+      timezone: [],
+      organization: [],
+    },
+  };
+}
+
+function emptyEventRecordDetail(): EventRecordDetailData {
   return { ok: true, data: null };
 }
 
@@ -535,6 +649,127 @@ export async function fetchSessionDetail(
     ...(window ? { from: window.from, to: window.to } : {}),
     ...(timeZone ? { timeZone } : {}),
   });
+}
+
+export async function fetchEventsSummary(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+): Promise<EventsSummaryData> {
+  return fetchPrivateJson<EventsSummaryData>(
+    "/api/private/events-summary",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        timeZone: window.timeZone,
+      },
+      filters,
+    ),
+  ).catch(emptyEventsSummary);
+}
+
+export async function fetchEventsTrend(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+  options?: {
+    limit?: number;
+    eventName?: string;
+  },
+): Promise<EventsTrendData> {
+  const params: Record<string, string | number> = {
+    siteId,
+    from: window.from,
+    to: window.to,
+    timeZone: window.timeZone,
+    interval: window.interval,
+    limit: options?.limit ?? 8,
+  };
+  const eventName = options?.eventName?.trim();
+  if (eventName) params.eventName = eventName;
+  return fetchPrivateJson<EventsTrendData>(
+    "/api/private/events-trend",
+    withFilters(params, filters),
+  ).catch(() => emptyEventsTrend(window.interval));
+}
+
+export async function fetchEventsRecords(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+  options?: {
+    page?: number;
+    pageSize?: number;
+    sortBy?: EventRecordSortKey;
+    sortDir?: SortDirection;
+    search?: string;
+    eventName?: string;
+  },
+): Promise<EventsRecordsData> {
+  const pageSize = options?.pageSize ?? 80;
+  const params: Record<string, string | number> = {
+    siteId,
+    from: window.from,
+    to: window.to,
+    timeZone: window.timeZone,
+    page: options?.page ?? 1,
+    pageSize,
+  };
+  if (options?.sortBy) params.sortBy = options.sortBy;
+  if (options?.sortDir) params.sortDir = options.sortDir;
+  const search = options?.search?.trim();
+  if (search) params.search = search;
+  const eventName = options?.eventName?.trim();
+  if (eventName) params.eventName = eventName;
+  return fetchPrivateJson<EventsRecordsData>(
+    "/api/private/events-records",
+    withFilters(params, filters),
+  ).catch(() => emptyEventsRecords(pageSize));
+}
+
+export async function fetchEventTypeDetail(
+  siteId: string,
+  window: TimeWindow,
+  eventName: string,
+  filters?: DashboardFilters,
+): Promise<EventTypeDetailData> {
+  const normalizedEventName = eventName.trim();
+  if (!normalizedEventName) {
+    return emptyEventTypeDetail("", window.interval);
+  }
+  return fetchPrivateJson<EventTypeDetailData>(
+    "/api/private/event-type-detail",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        timeZone: window.timeZone,
+        interval: window.interval,
+        eventName: normalizedEventName,
+      },
+      filters,
+    ),
+  ).catch(() => emptyEventTypeDetail(normalizedEventName, window.interval));
+}
+
+export async function fetchEventRecordDetail(
+  siteId: string,
+  eventId: string,
+  window?: TimeWindow,
+): Promise<EventRecordDetailData> {
+  const normalizedEventId = eventId.trim();
+  if (!normalizedEventId) return emptyEventRecordDetail();
+  return fetchPrivateJson<EventRecordDetailData>(
+    "/api/private/event-record-detail",
+    {
+      siteId,
+      eventId: normalizedEventId,
+      ...(window ? { from: window.from, to: window.to } : {}),
+    },
+  ).catch(emptyEventRecordDetail);
 }
 
 export async function fetchPerformance(

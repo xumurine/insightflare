@@ -249,8 +249,62 @@ sessions:
   title: 会话列表
   subtitle: 用于分析访问质量的会话明细。
 events:
-  title: 事件流
-  subtitle: 用于排查问题的原始事件列表。
+  title: 自定义事件
+  subtitle: 查看事件规模、上下文、Payload 字段与原始触发记录。
+  detailTitle: 事件详情
+  detailSubtitle: 查看单次事件的上下文与 payload。
+  typeDetailSubtitle: 查看该事件的趋势、上下文分布、Payload 结构与触发记录。
+  backToEvents: 返回事件总览
+  totalEvents: 事件总数
+  eventTypes: 事件类型
+  sessions: 触发会话
+  visitors: 触发访客
+  avgEventsPerSession: 平均事件/会话
+  shareOfAllEvents: 事件占比
+  trendTitle: 事件趋势
+  topEvents: 事件排行
+  topPages: 页面分布
+  topCountries: 国家/地区
+  topDevices: 设备分布
+  topBrowsers: 浏览器分布
+  recordsTitle: 事件记录
+  fieldsTitle: Payload 字段
+  fieldsSubtitle: 按 JSON path 汇总出现频率、类型和样本值。
+  breakdownTitle: 上下文分布
+  search: 搜索事件名、ID、访客、会话、页面...
+  eventName: 事件名
+  eventId: 事件 ID
+  occurredAt: 发生时间
+  receivedAt: 接收时间
+  page: 页面
+  context: 上下文
+  visitor: 访客
+  session: 会话
+  visit: 访问
+  referrer: 来源
+  location: 地区
+  browser: 浏览器
+  os: 系统
+  device: 设备
+  payload: Payload
+  payloadFields: Payload 字段
+  values: 值
+  nodes: 节点
+  jsonPath: JSON path
+  type: 类型
+  occurrences: 出现次数
+  firstSeen: 首次出现
+  lastSeen: 最后出现
+  sample: 样本值
+  openVisitor: 打开访客
+  openSession: 打开会话
+  loadError: 无法加载事件数据。
+  empty: 当前筛选范围内没有自定义事件。
+  emptyFields: 当前事件暂无 payload 字段。
+  noEventName: 缺少事件名。
+  loading: 加载中
+  other: 其他
+  unknown: 未知
 funnels:
   title: 漏斗分析
   subtitle: 衡量多步骤用户旅程的转化情况。
@@ -473,6 +527,10 @@ siteSettings:
     /private
   pathBlacklistHint: 采用 startsWith 前缀匹配；命中后不发送采集事件。
   ignoreDoNotTrackLabel: 忽略浏览器 Do Not Track
+  autoTrackGroupTitle: 自动追踪
+  autoTrackGroupDescription: 控制自动事件捕获行为。
+  autoTrackOutboundLinksLabel: 自动追踪外链点击
+  autoTrackOutboundLinksHint: 开启后，点击指向外部域名的链接将自动上报 outbound_click 事件。
   performanceGroupTitle: 性能追踪
   performanceGroupDescription: 通过一个采样率控制 Web 性能指标采集。
   performanceSampleRateLabel: 性能采样率（%）

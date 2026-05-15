@@ -26,6 +26,7 @@ const SUPPORTED_KINDS = new Set<TrackerPayloadKind>([
   "pageview",
   "leave",
   "custom_event",
+  "identify",
 ]);
 
 function pickSiteIdFromPayload(
