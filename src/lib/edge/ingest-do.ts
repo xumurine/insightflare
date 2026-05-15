@@ -1011,6 +1011,32 @@ export class IngestDurableObject extends DurableObject {
     );
     return Boolean(events);
   }
+  private parseUtmFromQuery(queryString: string): {
+    utmSource: string;
+    utmMedium: string;
+    utmCampaign: string;
+    utmTerm: string;
+    utmContent: string;
+  } {
+    if (!queryString) {
+      return {
+        utmSource: "",
+        utmMedium: "",
+        utmCampaign: "",
+        utmTerm: "",
+        utmContent: "",
+      };
+    }
+    const params = new URLSearchParams(queryString);
+    return {
+      utmSource: clampString(params.get("utm_source") || "", 255),
+      utmMedium: clampString(params.get("utm_medium") || "", 255),
+      utmCampaign: clampString(params.get("utm_campaign") || "", 255),
+      utmTerm: clampString(params.get("utm_term") || "", 255),
+      utmContent: clampString(params.get("utm_content") || "", 255),
+    };
+  }
+
   private async normalizeRecord(
     envelope: IngestEnvelopePayload,
   ): Promise<NormalizedIngestRecord | null> {
@@ -1109,6 +1135,7 @@ export class IngestDurableObject extends DurableObject {
       const referrerHost = referrerIsSameHostname ? "" : rawReferrerHost;
       const sessionId =
         clampString(coerceString(client.sessionId), 128) || crypto.randomUUID();
+      const queryString = clampString(coerceString(client.query || ""), 2048);
       return {
         kind: "pageview",
         receivedAt,
@@ -1118,17 +1145,13 @@ export class IngestDurableObject extends DurableObject {
         sessionId,
         startedAt,
         pathname,
-        queryString: clampString(coerceString(client.query || ""), 2048),
+        queryString,
         hashFragment: clampString(coerceString(client.hash || ""), 1024),
         hostname,
         title: clampString(coerceString(client.title || ""), 1024),
         referrerUrl,
         referrerHost,
-        utmSource: clampString(coerceString(client.utmSource || ""), 255),
-        utmMedium: clampString(coerceString(client.utmMedium || ""), 255),
-        utmCampaign: clampString(coerceString(client.utmCampaign || ""), 255),
-        utmTerm: clampString(coerceString(client.utmTerm || ""), 255),
-        utmContent: clampString(coerceString(client.utmContent || ""), 255),
+        ...this.parseUtmFromQuery(queryString),
         userId:
           clampString(coerceString(client.userId || ""), 255) || undefined,
         userName:
@@ -2454,7 +2477,7 @@ export class IngestDurableObject extends DurableObject {
             created_at AS createdAt
           FROM buffered_custom_events
           WHERE dirty = 1
-          ORDER BY created_at ASC, occurred_at ASC
+          ORDER BY flush_attempts ASC, created_at ASC, occurred_at ASC
           LIMIT ?
         `,
         D1_FLUSH_CUSTOM_EVENT_BATCH_SIZE,
@@ -2476,8 +2499,15 @@ export class IngestDurableObject extends DurableObject {
         }
       }
 
+      let flushedAnyEvent = false;
       for (const eventRow of eventRows) {
-        await this.flushCustomEventRowIndividually(eventRow);
+        flushedAnyEvent =
+          (await this.flushCustomEventRowIndividually(eventRow)) ||
+          flushedAnyEvent;
+      }
+
+      if (visitRows.length === 0 && eventRows.length > 0 && !flushedAnyEvent) {
+        return;
       }
 
       if (
@@ -2624,6 +2654,36 @@ export class IngestDurableObject extends DurableObject {
     return { eventNameId, keyIds, pathIds };
   }
 
+  private async hasPersistedVisit(
+    row: Pick<BufferedCustomEventRow, "siteId" | "visitId">,
+  ): Promise<boolean> {
+    const persisted = await this.doEnv.DB.prepare(
+      `
+        SELECT 1 AS ok
+        FROM visits
+        WHERE site_id = ? AND visit_id = ?
+        LIMIT 1
+      `,
+    )
+      .bind(row.siteId, row.visitId)
+      .first<{ ok: number }>();
+    return persisted !== null;
+  }
+
+  private async hasPersistedCustomEvent(eventId: string): Promise<boolean> {
+    const persisted = await this.doEnv.DB.prepare(
+      `
+        SELECT 1 AS ok
+        FROM custom_events
+        WHERE event_id = ?
+        LIMIT 1
+      `,
+    )
+      .bind(eventId)
+      .first<{ ok: number }>();
+    return persisted !== null;
+  }
+
   private prepareCustomEventStatements(
     row: BufferedCustomEventRow,
     expanded: ExpandedCustomEventData,
@@ -2638,7 +2698,11 @@ export class IngestDurableObject extends DurableObject {
         INSERT OR IGNORE INTO custom_events (
           event_id, site_id, visit_id, event_name_id, occurred_at, received_at,
           sequence, node_count, value_count, user_id, ae_synced_at, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+        )
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?
+        FROM visits
+        WHERE site_id = ? AND visit_id = ?
+        LIMIT 1
       `,
     ).bind(
       row.eventId,
@@ -2652,6 +2716,8 @@ export class IngestDurableObject extends DurableObject {
       expanded.values.length,
       row.userId || null,
       row.createdAt,
+      row.siteId,
+      row.visitId,
     );
 
     const nodeStatements = expanded.nodes.map((node) => {
@@ -2791,8 +2857,12 @@ export class IngestDurableObject extends DurableObject {
 
   private async flushCustomEventRowIndividually(
     row: BufferedCustomEventRow,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
+      if (!(await this.hasPersistedVisit(row))) {
+        this.markCustomEventRowsFailed([row], "waiting_for_visit");
+        return false;
+      }
       const expanded = expandCustomEventDataJson(row.eventDataJson);
       if (!expanded.ok) {
         throw new Error(expanded.error);
@@ -2804,7 +2874,12 @@ export class IngestDurableObject extends DurableObject {
       await this.doEnv.DB.batch(
         this.prepareCustomEventStatements(row, expanded.data, ids),
       );
+      if (!(await this.hasPersistedCustomEvent(row.eventId))) {
+        this.markCustomEventRowsFailed([row], "waiting_for_visit");
+        return false;
+      }
       this.markCustomEventRowsFlushed([row]);
+      return true;
     } catch (error) {
       const message = clampString(
         String(error instanceof Error ? error.message : error),
@@ -2812,6 +2887,7 @@ export class IngestDurableObject extends DurableObject {
       );
       this.markCustomEventRowsFailed([row], message);
       console.error("d1_flush_custom_event_failed", row.eventId, error);
+      return false;
     }
   }
 

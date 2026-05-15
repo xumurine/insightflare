@@ -278,21 +278,6 @@ function pagePayloadBase(
     screenHeight: (window.screen as any)?.height ?? null,
     referrerUrl: String(referrerUrl || ""),
     visitorId,
-    utmSource: (TRACK_QUERY_PARAMS as unknown as string)
-      ? url.searchParams.get("utm_source") || ""
-      : "",
-    utmMedium: (TRACK_QUERY_PARAMS as unknown as string)
-      ? url.searchParams.get("utm_medium") || ""
-      : "",
-    utmCampaign: (TRACK_QUERY_PARAMS as unknown as string)
-      ? url.searchParams.get("utm_campaign") || ""
-      : "",
-    utmTerm: (TRACK_QUERY_PARAMS as unknown as string)
-      ? url.searchParams.get("utm_term") || ""
-      : "",
-    utmContent: (TRACK_QUERY_PARAMS as unknown as string)
-      ? url.searchParams.get("utm_content") || ""
-      : "",
     ...(userIdentifiedId
       ? { userId: userIdentifiedId, userName: userIdentifiedName }
       : {}),
