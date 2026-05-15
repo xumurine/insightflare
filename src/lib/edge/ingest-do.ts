@@ -160,34 +160,74 @@ interface BufferedCustomEventRow {
 type SqlBinding = string | number | null;
 type DictionaryKind = "name" | "key" | "path";
 
+const VISIT_D1_COLUMNS = [
+  "visit_id",
+  "site_id",
+  "visitor_id",
+  "session_id",
+  "status",
+  "started_at",
+  "last_activity_at",
+  "ended_at",
+  "finalized_at",
+  "duration_ms",
+  "duration_source",
+  "exit_reason",
+  "pathname",
+  "query_string",
+  "hash_fragment",
+  "hostname",
+  "title",
+  "referrer_url",
+  "referrer_host",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "is_eu",
+  "country",
+  "region",
+  "region_code",
+  "city",
+  "continent",
+  "latitude",
+  "longitude",
+  "postal_code",
+  "metro_code",
+  "timezone",
+  "as_organization",
+  "ua_raw",
+  "browser",
+  "browser_version",
+  "os",
+  "os_version",
+  "device_type",
+  "screen_width",
+  "screen_height",
+  "language",
+  "user_id",
+  "user_name",
+  "perf_ttfb_ms",
+  "perf_fcp_ms",
+  "perf_lcp_ms",
+  "perf_cls",
+  "perf_inp_ms",
+  "ae_synced_at",
+  "created_at",
+  "updated_at",
+] as const;
+const VISIT_D1_COLUMN_SQL = VISIT_D1_COLUMNS.join(", ");
+const VISIT_D1_PLACEHOLDER_SQL = VISIT_D1_COLUMNS.map(() => "?").join(", ");
+
 const INSERT_VISIT_SQL = `
-  INSERT OR IGNORE INTO visits (
-    visit_id, site_id, visitor_id, session_id, status, started_at, last_activity_at,
-    ended_at, finalized_at, duration_ms, duration_source, exit_reason,
-    pathname, query_string, hash_fragment, hostname, title, referrer_url, referrer_host,
-    utm_source, utm_medium, utm_campaign, utm_term, utm_content,
-    is_eu, country, region, region_code, city, continent, latitude, longitude,
-    postal_code, metro_code, timezone, as_organization, ua_raw, browser, browser_version,
-    os, os_version, device_type, screen_width, screen_height, language,
-    user_id, user_name,
-    perf_ttfb_ms, perf_fcp_ms, perf_lcp_ms, perf_cls, perf_inp_ms,
-    ae_synced_at, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT OR IGNORE INTO visits (${VISIT_D1_COLUMN_SQL})
+  VALUES (${VISIT_D1_PLACEHOLDER_SQL})
 `;
 
 const UPSERT_VISIT_SQL = `
-  INSERT INTO visits (
-    visit_id, site_id, visitor_id, session_id, status, started_at, last_activity_at,
-    ended_at, finalized_at, duration_ms, duration_source, exit_reason,
-    pathname, query_string, hash_fragment, hostname, title, referrer_url, referrer_host,
-    utm_source, utm_medium, utm_campaign, utm_term, utm_content,
-    is_eu, country, region, region_code, city, continent, latitude, longitude,
-    postal_code, metro_code, timezone, as_organization, ua_raw, browser, browser_version,
-    os, os_version, device_type, screen_width, screen_height, language,
-    user_id, user_name,
-    perf_ttfb_ms, perf_fcp_ms, perf_lcp_ms, perf_cls, perf_inp_ms,
-    ae_synced_at, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO visits (${VISIT_D1_COLUMN_SQL})
+  VALUES (${VISIT_D1_PLACEHOLDER_SQL})
   ON CONFLICT(visit_id) DO UPDATE SET
     site_id = excluded.site_id,
     visitor_id = excluded.visitor_id,
@@ -1880,7 +1920,7 @@ export class IngestDurableObject extends DurableObject {
           user_id, user_name,
           perf_ttfb_ms, perf_fcp_ms, perf_lcp_ms, perf_cls, perf_inp_ms,
           dirty, flush_attempts, last_flush_error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, 1, 0, NULL, ?, ?)
+        ) VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, 1, 0, NULL, ?, ?)
       `,
       record.visitId,
       record.siteId,
@@ -2143,6 +2183,8 @@ export class IngestDurableObject extends DurableObject {
             COALESCE(v.os_version, '') AS osVersion,
             COALESCE(v.device_type, '') AS deviceType,
             COALESCE(v.language, '') AS language,
+            COALESCE(NULLIF(e.user_id, ''), v.user_id, '') AS user_id,
+            COALESCE(v.user_name, '') AS user_name,
             CASE
               WHEN v.screen_width IS NOT NULL AND v.screen_height IS NOT NULL
                 THEN CAST(v.screen_width AS TEXT) || 'x' || CAST(v.screen_height AS TEXT)
