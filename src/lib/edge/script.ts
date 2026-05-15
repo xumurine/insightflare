@@ -353,10 +353,10 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
       startPerformanceCollection(currentVisit.id);
     }
 
-    sendWhenUaClientHintsReady(
     if (debugEnabled) {
       console.log("[InsightFlare]", "pageview:", (new URL(currentVisit.href, window.location.href)).pathname || "/");
     }
+    sendWhenUaClientHintsReady(
       {
         ...pagePayloadBase(
           currentVisit.href,
@@ -689,7 +689,7 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
     identify,
     setGlobalProperties,
     clearGlobalProperties,
-    trackOnce
+    trackOnce,
     debug,
   };
   window.insightflare = {
@@ -697,7 +697,7 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
     identify,
     setGlobalProperties,
     clearGlobalProperties,
-    trackOnce
+    trackOnce,
     debug,
   };
 })();`;
