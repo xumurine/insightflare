@@ -164,6 +164,12 @@ interface BufferedCustomEventRow {
 type SqlBinding = string | number | null;
 type DictionaryKind = "name" | "key" | "path";
 
+interface NormalizeResult {
+  record: NormalizedIngestRecord | null;
+  reason?: string;
+  detail?: Record<string, unknown>;
+}
+
 const VISIT_D1_COLUMNS = [
   "visit_id",
   "site_id",
@@ -308,6 +314,49 @@ const CREATE_BUFFERED_CUSTOM_EVENTS_SQL = `
 
 function toUnixSeconds(ms: number): number {
   return Math.max(0, Math.floor(ms / 1000));
+}
+
+function errorToMessage(error: unknown): string {
+  return String(error instanceof Error ? error.message : error);
+}
+
+function logDoTrace(
+  event: string,
+  fields: Record<string, unknown> = {},
+  level: "info" | "warn" | "error" = "info",
+): void {
+  const payload = {
+    event,
+    at: new Date().toISOString(),
+    ...fields,
+  };
+  const line = JSON.stringify(payload);
+  if (level === "error") {
+    console.error(line);
+    return;
+  }
+  if (level === "warn") {
+    console.warn(line);
+    return;
+  }
+  console.log(line);
+}
+
+function compactClientForLog(
+  client: TrackerClientPayload | undefined,
+): Record<string, unknown> {
+  if (!client) return {};
+  return {
+    kind: client.kind || "",
+    siteId: client.siteId || "",
+    visitId: client.visitId || "",
+    sessionId: client.sessionId || "",
+    eventId: client.eventId || "",
+    eventName: client.eventName || "",
+    pathname: client.pathname || "",
+    hostname: client.hostname || "",
+    timestamp: client.timestamp ?? null,
+  };
 }
 
 function visitBindings(row: BufferedVisitRow): SqlBinding[] {
@@ -586,9 +635,11 @@ export class IngestDurableObject extends DurableObject {
     }
 
     if (url.pathname === "/flush" && request.method === "POST") {
+      logDoTrace("do_manual_flush_start");
       await this.flushTimeouts();
       await this.flushPendingToD1();
       await this.cleanupBufferedRows();
+      logDoTrace("do_manual_flush_done");
       return jsonResponse({ ok: true });
     }
 
@@ -597,27 +648,57 @@ export class IngestDurableObject extends DurableObject {
 
   async alarm(): Promise<void> {
     await this.schemaReady;
+    logDoTrace("do_alarm_start");
     await this.flushTimeouts();
     await this.flushPendingToD1();
     await this.cleanupBufferedRows();
     if ((await this.hasOpenVisits()) || this.hasDirtyRows()) {
-      await this.doState.storage.setAlarm(Date.now() + D1_FLUSH_INTERVAL_MS);
+      const scheduledAt = Date.now() + D1_FLUSH_INTERVAL_MS;
+      await this.doState.storage.setAlarm(scheduledAt);
+      logDoTrace("do_alarm_rescheduled", { scheduledAt });
       return;
     }
     await this.doState.storage.deleteAlarm();
+    logDoTrace("do_alarm_cleared");
   }
 
   private async handleIngest(request: Request): Promise<Response> {
     let envelope: IngestEnvelopePayload;
     try {
       envelope = (await request.json()) as IngestEnvelopePayload;
-    } catch {
+    } catch (error) {
+      logDoTrace(
+        "do_ingest_bad_request",
+        { error: errorToMessage(error) },
+        "warn",
+      );
       return new Response("Bad Request", { status: 400 });
     }
 
-    const record = await this.normalizeRecord(envelope);
+    const traceId = envelope.trace?.id || "";
+    logDoTrace("do_ingest_received", {
+      traceId,
+      acceptedAt: envelope.trace?.acceptedAt ?? null,
+      receivedAt: envelope.request?.receivedAt ?? null,
+      ...compactClientForLog(envelope.client),
+    });
+
+    const normalized = await this.normalizeRecord(envelope);
+    const record = normalized.record;
     if (!record) {
-      return new Response("ignored", { status: 202 });
+      logDoTrace(
+        "do_ingest_ignored",
+        {
+          traceId,
+          reason: normalized.reason || "unknown",
+          ...(normalized.detail || {}),
+          ...compactClientForLog(envelope.client),
+        },
+        "warn",
+      );
+      return new Response(`ignored:${normalized.reason || "unknown"}`, {
+        status: 202,
+      });
     }
 
     if (record.kind === "pageview") {
@@ -631,6 +712,13 @@ export class IngestDurableObject extends DurableObject {
     }
 
     await this.ensureAlarm();
+    logDoTrace("do_ingest_handled", {
+      traceId: record.traceId || traceId,
+      kind: record.kind,
+      siteId: record.siteId,
+      visitId: record.visitId,
+      eventId: record.kind === "custom_event" ? record.eventId : "",
+    });
     return new Response("ok", { status: 202 });
   }
 
@@ -643,6 +731,11 @@ export class IngestDurableObject extends DurableObject {
     if (this.doEnv.ADMIN_WS_TOKEN) {
       const tokenFromQuery = url.searchParams.get("token");
       if (tokenFromQuery !== this.doEnv.ADMIN_WS_TOKEN) {
+        logDoTrace(
+          "do_ws_rejected",
+          { reason: "invalid_token", sockets: this.sockets.size },
+          "warn",
+        );
         return new Response("Unauthorized", { status: 401 });
       }
     }
@@ -653,13 +746,26 @@ export class IngestDurableObject extends DurableObject {
 
     server.accept();
     this.sockets.add(server);
+    logDoTrace("do_ws_connected", {
+      sockets: this.sockets.size,
+      siteId: url.searchParams.get("siteId") || "",
+    });
     void this.pushInitialSnapshotToSocket(server);
 
     server.addEventListener("close", () => {
       this.sockets.delete(server);
+      logDoTrace("do_ws_disconnected", {
+        sockets: this.sockets.size,
+        reason: "close",
+      });
     });
     server.addEventListener("error", () => {
       this.sockets.delete(server);
+      logDoTrace(
+        "do_ws_disconnected",
+        { sockets: this.sockets.size, reason: "error" },
+        "warn",
+      );
       try {
         server.close();
       } catch {
@@ -1043,10 +1149,11 @@ export class IngestDurableObject extends DurableObject {
 
   private async normalizeRecord(
     envelope: IngestEnvelopePayload,
-  ): Promise<NormalizedIngestRecord | null> {
+  ): Promise<NormalizeResult> {
     const client = envelope.client ?? ({} as TrackerClientPayload);
+    const traceId = envelope.trace?.id || "";
     const siteId = clampString(coerceString(client.siteId), 120);
-    if (!siteId) return null;
+    if (!siteId) return { record: null, reason: "missing_site_id" };
 
     const requestHeaders = envelope.request.headers ?? {};
     const nowMs = Date.now();
@@ -1117,14 +1224,14 @@ export class IngestDurableObject extends DurableObject {
     };
 
     if (kind === "pageview") {
-      if (!visitId) return null;
+      if (!visitId) return { record: null, reason: "missing_visit_id" };
       const pathname = clampString(coerceString(client.pathname || "/"), 2048);
       const hostname = clampString(
         coerceString(client.hostname || ""),
         255,
       ).toLowerCase();
       if (!hostname) {
-        return null;
+        return { record: null, reason: "missing_hostname" };
       }
       const rawReferrerUrl = clampString(
         coerceString(client.referrerUrl),
@@ -1141,57 +1248,63 @@ export class IngestDurableObject extends DurableObject {
         clampString(coerceString(client.sessionId), 128) || crypto.randomUUID();
       const queryString = clampString(coerceString(client.query || ""), 2048);
       return {
-        kind: "pageview",
-        receivedAt,
-        siteId,
-        visitId,
-        visitorId,
-        sessionId,
-        startedAt,
-        pathname,
-        queryString,
-        hashFragment: clampString(coerceString(client.hash || ""), 1024),
-        hostname,
-        title: clampString(coerceString(client.title || ""), 1024),
-        referrerUrl,
-        referrerHost,
-        ...this.parseUtmFromQuery(queryString),
-        userId:
-          clampString(coerceString(client.userId || ""), 255) || undefined,
-        userName:
-          clampString(coerceString(client.userName || ""), 255) || undefined,
-        screenWidth: coerceNumber(client.screenWidth, null),
-        screenHeight: coerceNumber(client.screenHeight, null),
-        language: clampString(coerceString(client.language || ""), 120),
-        ...contextGeoBase,
-      } satisfies NormalizedPageview;
+        record: {
+          kind: "pageview",
+          traceId,
+          receivedAt,
+          siteId,
+          visitId,
+          visitorId,
+          sessionId,
+          startedAt,
+          pathname,
+          queryString,
+          hashFragment: clampString(coerceString(client.hash || ""), 1024),
+          hostname,
+          title: clampString(coerceString(client.title || ""), 1024),
+          referrerUrl,
+          referrerHost,
+          ...this.parseUtmFromQuery(queryString),
+          userId:
+            clampString(coerceString(client.userId || ""), 255) || undefined,
+          userName:
+            clampString(coerceString(client.userName || ""), 255) || undefined,
+          screenWidth: coerceNumber(client.screenWidth, null),
+          screenHeight: coerceNumber(client.screenHeight, null),
+          language: clampString(coerceString(client.language || ""), 120),
+          ...contextGeoBase,
+        } satisfies NormalizedPageview,
+      };
     }
 
     if (kind === "leave") {
-      if (!visitId) return null;
+      if (!visitId) return { record: null, reason: "missing_visit_id" };
       const sessionId = clampString(coerceString(client.sessionId), 128);
       const performanceVisitId =
         clampString(coerceString(client.performanceVisitId), 128) || visitId;
       return {
-        kind: "leave",
-        siteId,
-        visitId,
-        sessionId,
-        performanceVisitId,
-        receivedAt,
-        leaveAt: eventAt,
-        durationMs: coerceNumber(client.durationMs, null),
-        performance: normalizePerformancePayload(client.performance),
-      } satisfies NormalizedLeave;
+        record: {
+          kind: "leave",
+          traceId,
+          siteId,
+          visitId,
+          sessionId,
+          performanceVisitId,
+          receivedAt,
+          leaveAt: eventAt,
+          durationMs: coerceNumber(client.durationMs, null),
+          performance: normalizePerformancePayload(client.performance),
+        } satisfies NormalizedLeave,
+      };
     }
 
     if (kind === "identify") {
-      if (!visitId) return null;
+      if (!visitId) return { record: null, reason: "missing_visit_id" };
       const identifyUserId = clampString(
         coerceString(client.userId || ""),
         255,
       );
-      if (!identifyUserId) return null;
+      if (!identifyUserId) return { record: null, reason: "missing_user_id" };
       const identifyUserName = clampString(
         coerceString(client.userName || ""),
         255,
@@ -1201,22 +1314,31 @@ export class IngestDurableObject extends DurableObject {
         128,
       );
       return {
-        kind: "identify",
-        siteId,
-        visitId,
-        sessionId: identifySessionId,
-        userId: identifyUserId,
-        userName: identifyUserName,
-        receivedAt,
-      } satisfies NormalizedIdentify;
+        record: {
+          kind: "identify",
+          traceId,
+          siteId,
+          visitId,
+          sessionId: identifySessionId,
+          userId: identifyUserId,
+          userName: identifyUserName,
+          receivedAt,
+        } satisfies NormalizedIdentify,
+      };
     }
 
     if (kind === "custom_event") {
-      if (!visitId) return null;
+      if (!visitId) return { record: null, reason: "missing_visit_id" };
       const eventName = clampString(coerceString(client.eventName), 120);
-      if (!eventName) return null;
+      if (!eventName) return { record: null, reason: "missing_event_name" };
       const eventDataResult = expandCustomEventData(client.eventData);
-      if (!eventDataResult.ok) return null;
+      if (!eventDataResult.ok) {
+        return {
+          record: null,
+          reason: "invalid_custom_event_data",
+          detail: { error: eventDataResult.error },
+        };
+      }
       const visit = await this.getVisitContext(siteId, visitId);
       const sequence = Math.max(
         0,
@@ -1241,66 +1363,87 @@ export class IngestDurableObject extends DurableObject {
         if (inserted) {
           await this.ensureAlarm();
         }
-        return null;
+        logDoTrace(
+          inserted
+            ? "do_custom_event_buffered_waiting_for_visit"
+            : "do_custom_event_duplicate_waiting_for_visit",
+          {
+            traceId,
+            eventId,
+            siteId,
+            visitId,
+            eventName,
+            occurredAt: eventAt,
+            buffered: inserted,
+          },
+        );
+        return {
+          record: null,
+          reason: "waiting_for_visit",
+          detail: { eventId, eventName, buffered: inserted },
+        };
       }
       return {
-        kind: "custom_event",
-        eventId,
-        sequence,
-        receivedAt,
-        eventAt,
-        eventName,
-        eventDataJson: eventDataResult.data.json,
-        siteId: visit.siteId,
-        visitId: visit.visitId,
-        visitorId: visit.visitorId,
-        sessionId: visit.sessionId,
-        startedAt: visit.startedAt,
-        pathname: visit.pathname,
-        queryString: visit.queryString,
-        hashFragment: visit.hashFragment,
-        hostname: visit.hostname,
-        title: visit.title,
-        referrerUrl: visit.referrerUrl,
-        referrerHost: visit.referrerHost,
-        utmSource: visit.utmSource,
-        utmMedium: visit.utmMedium,
-        utmCampaign: visit.utmCampaign,
-        utmTerm: visit.utmTerm,
-        utmContent: visit.utmContent,
-        isEU: visit.isEU,
-        country: visit.country,
-        region: visit.region,
-        regionCode: visit.regionCode,
-        city: visit.city,
-        continent: visit.continent,
-        latitude: visit.latitude,
-        longitude: visit.longitude,
-        postalCode: visit.postalCode,
-        metroCode: visit.metroCode,
-        timezone: visit.timezone,
-        asOrganization: visit.asOrganization,
-        uaRaw: visit.uaRaw,
-        browser: visit.browser,
-        browserVersion: visit.browserVersion,
-        os: visit.os,
-        osVersion: visit.osVersion,
-        deviceType: visit.deviceType,
-        screenWidth: visit.screenWidth,
-        screenHeight: visit.screenHeight,
-        language: visit.language,
-        userId:
-          clampString(coerceString(client.userId || ""), 255) ||
-          visit.userId ||
-          undefined,
-        userName:
-          clampString(coerceString(client.userName || ""), 255) ||
-          visit.userName ||
-          undefined,
-      } satisfies NormalizedCustomEvent;
+        record: {
+          kind: "custom_event",
+          traceId,
+          eventId,
+          sequence,
+          receivedAt,
+          eventAt,
+          eventName,
+          eventDataJson: eventDataResult.data.json,
+          siteId: visit.siteId,
+          visitId: visit.visitId,
+          visitorId: visit.visitorId,
+          sessionId: visit.sessionId,
+          startedAt: visit.startedAt,
+          pathname: visit.pathname,
+          queryString: visit.queryString,
+          hashFragment: visit.hashFragment,
+          hostname: visit.hostname,
+          title: visit.title,
+          referrerUrl: visit.referrerUrl,
+          referrerHost: visit.referrerHost,
+          utmSource: visit.utmSource,
+          utmMedium: visit.utmMedium,
+          utmCampaign: visit.utmCampaign,
+          utmTerm: visit.utmTerm,
+          utmContent: visit.utmContent,
+          isEU: visit.isEU,
+          country: visit.country,
+          region: visit.region,
+          regionCode: visit.regionCode,
+          city: visit.city,
+          continent: visit.continent,
+          latitude: visit.latitude,
+          longitude: visit.longitude,
+          postalCode: visit.postalCode,
+          metroCode: visit.metroCode,
+          timezone: visit.timezone,
+          asOrganization: visit.asOrganization,
+          uaRaw: visit.uaRaw,
+          browser: visit.browser,
+          browserVersion: visit.browserVersion,
+          os: visit.os,
+          osVersion: visit.osVersion,
+          deviceType: visit.deviceType,
+          screenWidth: visit.screenWidth,
+          screenHeight: visit.screenHeight,
+          language: visit.language,
+          userId:
+            clampString(coerceString(client.userId || ""), 255) ||
+            visit.userId ||
+            undefined,
+          userName:
+            clampString(coerceString(client.userName || ""), 255) ||
+            visit.userName ||
+            undefined,
+        } satisfies NormalizedCustomEvent,
+      };
     }
 
-    return null;
+    return { record: null, reason: "unsupported_kind", detail: { kind } };
   }
 
   private async handlePageview(record: NormalizedPageview): Promise<void> {
@@ -1328,7 +1471,7 @@ export class IngestDurableObject extends DurableObject {
     );
     if (prevVisit) {
       const durationMs = Math.max(0, record.startedAt - prevVisit.startedAt);
-      this.sqlRun(
+      const closedPrevious = this.sqlRun(
         `
           UPDATE buffered_visits
           SET status = 'complete',
@@ -1348,12 +1491,38 @@ export class IngestDurableObject extends DurableObject {
         now,
         prevVisit.visitId,
       );
+      if (closedPrevious > 0) {
+        logDoTrace("do_previous_visit_closed", {
+          traceId: record.traceId || "",
+          siteId: record.siteId,
+          visitId: prevVisit.visitId,
+          nextVisitId: record.visitId,
+          durationMs,
+        });
+      }
     }
 
     const inserted = await this.insertVisit(record);
     if (!inserted) {
+      logDoTrace("do_pageview_duplicate_or_not_inserted", {
+        traceId: record.traceId || "",
+        siteId: record.siteId,
+        visitId: record.visitId,
+        sessionId: record.sessionId,
+        pathname: record.pathname,
+      });
       return;
     }
+    logDoTrace("do_pageview_buffered", {
+      traceId: record.traceId || "",
+      siteId: record.siteId,
+      visitId: record.visitId,
+      sessionId: record.sessionId,
+      visitorId: record.visitorId,
+      startedAt: record.startedAt,
+      pathname: record.pathname,
+      sockets: this.sockets.size,
+    });
     await this.pushRealtimeRecord({
       id: record.visitId,
       eventType: "visit",
@@ -1465,6 +1634,17 @@ export class IngestDurableObject extends DurableObject {
         visit.visitId,
       );
       closedVisit = rowsWritten > 0;
+      logDoTrace(
+        closedVisit ? "do_leave_closed_visit" : "do_leave_no_rows_updated",
+        {
+          traceId: record.traceId || "",
+          siteId: record.siteId,
+          visitId: record.visitId,
+          sessionId: record.sessionId,
+          leaveAt,
+          durationMs,
+        },
+      );
     }
 
     if (record.performance) {
@@ -1476,7 +1656,15 @@ export class IngestDurableObject extends DurableObject {
       );
     }
 
-    if (!visit || !closedVisit) return;
+    if (!visit || !closedVisit) {
+      logDoTrace("do_leave_ignored", {
+        traceId: record.traceId || "",
+        siteId: record.siteId,
+        visitId: record.visitId,
+        reason: visit ? "visit_not_open" : "visit_not_found",
+      });
+      return;
+    }
 
     if (!this.hasOpenVisitsForVisitor(visit.siteId, visit.visitorId)) {
       await this.pushRealtimeRecord({
@@ -1562,8 +1750,24 @@ export class IngestDurableObject extends DurableObject {
   ): Promise<void> {
     const inserted = await this.insertCustomEvent(record);
     if (!inserted) {
+      logDoTrace("do_custom_event_duplicate_or_not_inserted", {
+        traceId: record.traceId || "",
+        siteId: record.siteId,
+        visitId: record.visitId,
+        eventId: record.eventId,
+        eventName: record.eventName,
+      });
       return;
     }
+    logDoTrace("do_custom_event_buffered", {
+      traceId: record.traceId || "",
+      siteId: record.siteId,
+      visitId: record.visitId,
+      eventId: record.eventId,
+      eventName: record.eventName,
+      occurredAt: record.eventAt,
+      sockets: this.sockets.size,
+    });
     await this.updateOpenVisitActivity(record.visitId, record.eventAt);
     await this.pushRealtimeRecord({
       id: record.eventId,
@@ -1658,6 +1862,14 @@ export class IngestDurableObject extends DurableObject {
         record.visitId,
       );
     }
+    logDoTrace("do_identify_applied", {
+      traceId: record.traceId || "",
+      siteId: record.siteId,
+      visitId: record.visitId,
+      sessionId: record.sessionId,
+      bufferedVisitRowsUpdated: rowsUpdated,
+      updatedPersistedVisit: rowsUpdated === 0,
+    });
   }
 
   private async getVisitContext(
@@ -2077,7 +2289,12 @@ export class IngestDurableObject extends DurableObject {
     const now = Date.now();
     const existing = await this.doState.storage.getAlarm();
     if (!existing || existing <= now) {
-      await this.doState.storage.setAlarm(now + D1_FLUSH_INTERVAL_MS);
+      const scheduledAt = now + D1_FLUSH_INTERVAL_MS;
+      await this.doState.storage.setAlarm(scheduledAt);
+      logDoTrace("do_alarm_scheduled", {
+        existing: existing ?? null,
+        scheduledAt,
+      });
     }
   }
 
@@ -2364,25 +2581,45 @@ export class IngestDurableObject extends DurableObject {
           },
         }),
       );
+      logDoTrace("do_ws_snapshot_sent", {
+        sockets: this.sockets.size,
+        activeNow,
+        events: events.length,
+        visits: visits.length,
+      });
     } catch (error) {
-      console.error("ws_snapshot_init_failed", error);
+      logDoTrace(
+        "ws_snapshot_init_failed",
+        { error: errorToMessage(error), sockets: this.sockets.size },
+        "error",
+      );
     }
   }
 
   private async pushToWebsocketClients(
     record: RealtimeSnapshotRecord,
   ): Promise<void> {
-    if (this.sockets.size === 0) return;
+    if (this.sockets.size === 0) {
+      logDoTrace("do_ws_event_skipped", {
+        reason: "no_sockets",
+        eventType: record.eventType,
+        id: record.id,
+        visitId: record.visitId,
+      });
+      return;
+    }
 
     const payload = JSON.stringify({
       type: "event",
       data: toRealtimePayload(record),
     });
     const staleSockets: WebSocket[] = [];
+    let sent = 0;
 
     for (const socket of this.sockets) {
       try {
         socket.send(payload);
+        sent += 1;
       } catch {
         staleSockets.push(socket);
       }
@@ -2396,6 +2633,14 @@ export class IngestDurableObject extends DurableObject {
         // no-op
       }
     }
+    logDoTrace("do_ws_event_sent", {
+      eventType: record.eventType,
+      id: record.id,
+      visitId: record.visitId,
+      sent,
+      stale: staleSockets.length,
+      sockets: this.sockets.size,
+    });
   }
 
   private async flushPendingToD1(): Promise<void> {
@@ -2492,15 +2737,36 @@ export class IngestDurableObject extends DurableObject {
       if (visitRows.length === 0 && eventRows.length === 0) {
         return;
       }
+      logDoTrace("d1_flush_batch_start", {
+        batch: batches,
+        visitRows: visitRows.length,
+        customEventRows: eventRows.length,
+        visitIds: visitRows.slice(0, 10).map((row) => row.visitId),
+        eventIds: eventRows.slice(0, 10).map((row) => row.eventId),
+      });
 
       if (visitRows.length > 0) {
         try {
           await this.doEnv.DB.batch(
             visitRows.map((row) => this.prepareVisitStatement(row)),
           );
+          logDoTrace("d1_flush_visit_batch_ok", {
+            batch: batches,
+            count: visitRows.length,
+            visitIds: visitRows.slice(0, 10).map((row) => row.visitId),
+          });
           this.markVisitRowsFlushed(visitRows);
         } catch (error) {
-          console.error("d1_flush_visit_batch_failed", error);
+          logDoTrace(
+            "d1_flush_visit_batch_failed",
+            {
+              batch: batches,
+              count: visitRows.length,
+              visitIds: visitRows.slice(0, 10).map((row) => row.visitId),
+              error: errorToMessage(error),
+            },
+            "error",
+          );
           await this.flushRowsIndividually(visitRows, []);
         }
       }
@@ -2528,20 +2794,30 @@ export class IngestDurableObject extends DurableObject {
   private markVisitRowsFlushed(rows: BufferedVisitRow[]): void {
     if (rows.length === 0) return;
     const ids = rows.map((row) => row.visitId);
-    this.sqlRun(
+    const updated = this.sqlRun(
       `UPDATE buffered_visits SET dirty = 0, flush_attempts = 0, last_flush_error = NULL WHERE visit_id IN (${ids.map(() => "?").join(",")})`,
       ...ids,
     );
+    logDoTrace("do_visit_rows_marked_flushed", {
+      count: rows.length,
+      updated,
+      visitIds: ids.slice(0, 10),
+    });
     this.deleteFlushedVisitRows(rows);
   }
 
   private markCustomEventRowsFlushed(rows: BufferedCustomEventRow[]): void {
     if (rows.length === 0) return;
     const ids = rows.map((row) => row.eventId);
-    this.sqlRun(
+    const updated = this.sqlRun(
       `UPDATE buffered_custom_events SET dirty = 0, flush_attempts = 0, last_flush_error = NULL WHERE event_id IN (${ids.map(() => "?").join(",")})`,
       ...ids,
     );
+    logDoTrace("do_custom_event_rows_marked_flushed", {
+      count: rows.length,
+      updated,
+      eventIds: ids.slice(0, 10),
+    });
     this.deleteFlushedCustomEventRows(rows);
   }
 
@@ -2555,11 +2831,15 @@ export class IngestDurableObject extends DurableObject {
       `DELETE FROM buffered_visits WHERE visit_id IN (${ids.map(() => "?").join(",")})`,
       ...ids,
     );
-    console.error("do_failed_visit_rows_deleted", {
-      count: deleted,
-      reason: errorMessage,
-      visitIds: ids,
-    });
+    logDoTrace(
+      "do_failed_visit_rows_deleted",
+      {
+        count: deleted,
+        reason: errorMessage,
+        visitIds: ids.slice(0, 20),
+      },
+      "error",
+    );
   }
 
   private markCustomEventRowsFailed(
@@ -2572,11 +2852,15 @@ export class IngestDurableObject extends DurableObject {
       `DELETE FROM buffered_custom_events WHERE event_id IN (${ids.map(() => "?").join(",")})`,
       ...ids,
     );
-    console.error("do_failed_custom_event_rows_deleted", {
-      count: deleted,
-      reason: errorMessage,
-      eventIds: ids,
-    });
+    logDoTrace(
+      "do_failed_custom_event_rows_deleted",
+      {
+        count: deleted,
+        reason: errorMessage,
+        eventIds: ids.slice(0, 20),
+      },
+      "error",
+    );
   }
 
   private prepareVisitStatement(row: BufferedVisitRow): D1PreparedStatement {
@@ -2811,10 +3095,15 @@ export class IngestDurableObject extends DurableObject {
       )
       .map((row) => row.visitId);
     if (ids.length === 0) return;
-    this.sqlRun(
+    const deleted = this.sqlRun(
       `DELETE FROM buffered_visits WHERE visit_id IN (${ids.map(() => "?").join(",")})`,
       ...ids,
     );
+    logDoTrace("do_flushed_visit_rows_deleted", {
+      count: deleted,
+      cutoffMs,
+      visitIds: ids.slice(0, 20),
+    });
   }
 
   private deleteFlushedCustomEventRows(rows: BufferedCustomEventRow[]): void {
@@ -2823,10 +3112,15 @@ export class IngestDurableObject extends DurableObject {
       .filter((row) => row.occurredAt < cutoffMs)
       .map((row) => row.eventId);
     if (ids.length === 0) return;
-    this.sqlRun(
+    const deleted = this.sqlRun(
       `DELETE FROM buffered_custom_events WHERE event_id IN (${ids.map(() => "?").join(",")})`,
       ...ids,
     );
+    logDoTrace("do_flushed_custom_event_rows_deleted", {
+      count: deleted,
+      cutoffMs,
+      eventIds: ids.slice(0, 20),
+    });
   }
 
   private visitEndedBeforeRealtimeCutoff(
@@ -2858,21 +3152,32 @@ export class IngestDurableObject extends DurableObject {
   ): Promise<void> {
     try {
       await this.doEnv.DB.batch([this.prepareVisitStatement(row)]);
+      logDoTrace("d1_flush_visit_ok", {
+        visitId: row.visitId,
+        siteId: row.siteId,
+        status: row.status,
+        startedAt: row.startedAt,
+        updatedAt: row.updatedAt,
+      });
       this.markVisitRowsFlushed([row]);
     } catch (error) {
       const message = clampString(
         String(error instanceof Error ? error.message : error),
         400,
       );
-      console.error("d1_flush_visit_failed", {
-        visitId: row.visitId,
-        siteId: row.siteId,
-        status: row.status,
-        startedAt: row.startedAt,
-        updatedAt: row.updatedAt,
-        flushAttempts: row.flushAttempts,
-        error: message,
-      });
+      logDoTrace(
+        "d1_flush_visit_failed",
+        {
+          visitId: row.visitId,
+          siteId: row.siteId,
+          status: row.status,
+          startedAt: row.startedAt,
+          updatedAt: row.updatedAt,
+          flushAttempts: row.flushAttempts,
+          error: message,
+        },
+        "error",
+      );
       this.markVisitRowsFailed([row], message);
     }
   }
@@ -2882,16 +3187,20 @@ export class IngestDurableObject extends DurableObject {
   ): Promise<boolean> {
     try {
       if (!(await this.hasPersistedVisit(row))) {
-        console.error("d1_flush_custom_event_skipped", {
-          eventId: row.eventId,
-          siteId: row.siteId,
-          visitId: row.visitId,
-          eventName: row.eventName,
-          occurredAt: row.occurredAt,
-          createdAt: row.createdAt,
-          flushAttempts: row.flushAttempts,
-          reason: "waiting_for_visit",
-        });
+        logDoTrace(
+          "d1_flush_custom_event_skipped",
+          {
+            eventId: row.eventId,
+            siteId: row.siteId,
+            visitId: row.visitId,
+            eventName: row.eventName,
+            occurredAt: row.occurredAt,
+            createdAt: row.createdAt,
+            flushAttempts: row.flushAttempts,
+            reason: "waiting_for_visit",
+          },
+          "warn",
+        );
         this.markCustomEventRowsFailed([row], "waiting_for_visit");
         return false;
       }
@@ -2907,19 +3216,31 @@ export class IngestDurableObject extends DurableObject {
         this.prepareCustomEventStatements(row, expanded.data, ids),
       );
       if (!(await this.hasPersistedCustomEvent(row.eventId))) {
-        console.error("d1_flush_custom_event_skipped", {
-          eventId: row.eventId,
-          siteId: row.siteId,
-          visitId: row.visitId,
-          eventName: row.eventName,
-          occurredAt: row.occurredAt,
-          createdAt: row.createdAt,
-          flushAttempts: row.flushAttempts,
-          reason: "insert_did_not_create_event",
-        });
+        logDoTrace(
+          "d1_flush_custom_event_skipped",
+          {
+            eventId: row.eventId,
+            siteId: row.siteId,
+            visitId: row.visitId,
+            eventName: row.eventName,
+            occurredAt: row.occurredAt,
+            createdAt: row.createdAt,
+            flushAttempts: row.flushAttempts,
+            reason: "insert_did_not_create_event",
+          },
+          "warn",
+        );
         this.markCustomEventRowsFailed([row], "insert_did_not_create_event");
         return false;
       }
+      logDoTrace("d1_flush_custom_event_ok", {
+        eventId: row.eventId,
+        siteId: row.siteId,
+        visitId: row.visitId,
+        eventName: row.eventName,
+        nodes: expanded.data.nodes.length,
+        values: expanded.data.values.length,
+      });
       this.markCustomEventRowsFlushed([row]);
       return true;
     } catch (error) {
@@ -2927,16 +3248,20 @@ export class IngestDurableObject extends DurableObject {
         String(error instanceof Error ? error.message : error),
         400,
       );
-      console.error("d1_flush_custom_event_failed", {
-        eventId: row.eventId,
-        siteId: row.siteId,
-        visitId: row.visitId,
-        eventName: row.eventName,
-        occurredAt: row.occurredAt,
-        createdAt: row.createdAt,
-        flushAttempts: row.flushAttempts,
-        error: message,
-      });
+      logDoTrace(
+        "d1_flush_custom_event_failed",
+        {
+          eventId: row.eventId,
+          siteId: row.siteId,
+          visitId: row.visitId,
+          eventName: row.eventName,
+          occurredAt: row.occurredAt,
+          createdAt: row.createdAt,
+          flushAttempts: row.flushAttempts,
+          error: message,
+        },
+        "error",
+      );
       this.markCustomEventRowsFailed([row], message);
       return false;
     }
@@ -2946,7 +3271,7 @@ export class IngestDurableObject extends DurableObject {
     const now = Date.now();
     const visitCutoff = Date.now() - FLUSHED_BUFFER_RETENTION_MS;
     const eventCutoff = visitCutoff;
-    this.sqlRun(
+    const deletedVisits = this.sqlRun(
       `
         DELETE FROM buffered_visits
         WHERE dirty = 0
@@ -2960,6 +3285,12 @@ export class IngestDurableObject extends DurableObject {
       `,
       visitCutoff,
     );
+    if (deletedVisits > 0) {
+      logDoTrace("do_visit_rows_deleted", {
+        count: deletedVisits,
+        cutoffMs: visitCutoff,
+      });
+    }
     const deletedEvents = this.sqlRun(
       `
         DELETE FROM buffered_custom_events
@@ -2969,7 +3300,7 @@ export class IngestDurableObject extends DurableObject {
       eventCutoff,
     );
     if (deletedEvents > 0) {
-      console.error("do_custom_event_rows_deleted", {
+      logDoTrace("do_custom_event_rows_deleted", {
         count: deletedEvents,
         cutoffMs: eventCutoff,
       });
@@ -3020,9 +3351,18 @@ export class IngestDurableObject extends DurableObject {
     }
 
     if (orphanEventIds.length === 0) return;
-    this.sqlRun(
+    const deleted = this.sqlRun(
       `DELETE FROM buffered_custom_events WHERE event_id IN (${orphanEventIds.map(() => "?").join(",")})`,
       ...orphanEventIds,
+    );
+    logDoTrace(
+      "do_orphan_custom_event_rows_deleted",
+      {
+        count: deleted,
+        eventIds: orphanEventIds.slice(0, 20),
+        cutoffMs,
+      },
+      "warn",
     );
   }
 
@@ -3099,6 +3439,13 @@ export class IngestDurableObject extends DurableObject {
       now - VISIT_TIMEOUT_MS,
       TIMEOUT_FINALIZE_BATCH_SIZE,
     );
+    if (rows.length > 0) {
+      logDoTrace("do_timeout_flush_found", {
+        count: rows.length,
+        cutoffMs: now - VISIT_TIMEOUT_MS,
+        visitIds: rows.slice(0, 20).map((row) => row.visitId),
+      });
+    }
 
     for (const visit of rows) {
       const rowsWritten = this.sqlRun(
@@ -3122,6 +3469,14 @@ export class IngestDurableObject extends DurableObject {
         visit.visitId,
       );
       if (rowsWritten === 0) continue;
+      logDoTrace("do_visit_timed_out", {
+        siteId: visit.siteId,
+        visitId: visit.visitId,
+        visitorId: visit.visitorId,
+        startedAt: visit.startedAt,
+        lastActivityAt: visit.lastActivityAt,
+        finalizedAt: now,
+      });
       if (!this.hasOpenVisitsForVisitor(visit.siteId, visit.visitorId)) {
         await this.pushRealtimeRecord({
           id: `leave:${visit.visitId}`,
