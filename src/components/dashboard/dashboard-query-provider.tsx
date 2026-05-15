@@ -86,6 +86,7 @@ function normalizeFilters(
     device: clampFilter(filters?.device),
     browser: clampFilter(filters?.browser),
     path: clampFilter(filters?.path),
+    query: clampFilter(filters?.query),
     title: clampFilter(filters?.title),
     hostname: clampFilter(filters?.hostname),
     entry: clampFilter(filters?.entry),

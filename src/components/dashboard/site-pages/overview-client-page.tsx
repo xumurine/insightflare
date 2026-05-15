@@ -386,6 +386,7 @@ export interface OverviewPagesSectionCardData {
 interface PageCardTabMeta {
   label: string;
   columnLabel: string;
+  primaryMetricLabel?: string;
   mono: boolean;
   showIcon: boolean;
 }
@@ -401,6 +402,12 @@ type PageCardTargetUrlResolver = (params: {
   value: string;
   unknownLabel: string;
   fallbackHostname: string;
+}) => string | null;
+type PageCardDetailHrefResolver = (params: {
+  tab: PageCardDetailTab;
+  value: string;
+  unknownLabel: string;
+  basePath: string;
 }) => string | null;
 
 interface PageCardRow {
@@ -930,6 +937,7 @@ function isPageCardDetailTab(tab: PageCardTab): tab is PageCardDetailTab {
 }
 
 function resolvePageCardDetailHref(params: {
+  tab?: PageCardDetailTab;
   basePath: string;
   value: string;
   unknownLabel: string;
@@ -1900,8 +1908,13 @@ interface OverviewPagesSectionProps extends OverviewClientPageProps {
   pageCardTargetUrlResolvers?: Partial<
     Record<PageCardTab, PageCardTargetUrlResolver>
   >;
+  pageCardDetailHrefResolvers?: Partial<
+    Record<PageCardDetailTab, PageCardDetailHrefResolver>
+  >;
   pageCardShowVisitors?: boolean;
+  primaryMetricLabel?: string;
   geoPageBasePathname?: string;
+  sectionClassName?: string;
 }
 
 export function OverviewPagesSection({
@@ -1920,8 +1933,11 @@ export function OverviewPagesSection({
   pageCardDetailTabs,
   pageCardFetchers,
   pageCardTargetUrlResolvers,
+  pageCardDetailHrefResolvers,
   pageCardShowVisitors = true,
+  primaryMetricLabel,
   geoPageBasePathname,
+  sectionClassName,
 }: OverviewPagesSectionProps) {
   const router = useRouter();
   const searchParams = useLiveSearchParams();
@@ -2911,6 +2927,8 @@ export function OverviewPagesSection({
     clientDimensionCardTabMeta[clientDimensionCardTab];
   const activeGeoDimensionTabMeta =
     geoDimensionCardTabMeta[geoDimensionCardTab];
+  const resolvedPrimaryMetricLabel =
+    primaryMetricLabel ?? messages.common.views;
   const sortedClientDimensionCardRows = useMemo(() => {
     const direction = clientDimensionCardSort.direction === "asc" ? 1 : -1;
     return [...clientDimensionCardRows[clientDimensionCardTab]].sort(
@@ -3319,7 +3337,7 @@ export function OverviewPagesSection({
             )}
             onClick={() => togglePageCardSort("views")}
           >
-            {messages.common.views}
+            {activePageTabMeta.primaryMetricLabel ?? resolvedPrimaryMetricLabel}
             {renderSortIndicator("views")}
           </button>
         </div>
@@ -3376,7 +3394,11 @@ export function OverviewPagesSection({
         const rowDetailHref =
           isPageCardDetailTab(pageCardTab) &&
           resolvedPageCardDetailTabs.has(pageCardTab)
-            ? resolvePageCardDetailHref({
+            ? (
+                pageCardDetailHrefResolvers?.[pageCardTab] ??
+                resolvePageCardDetailHref
+              )({
+                tab: pageCardTab,
                 basePath: pageDetailBasePath,
                 value: item.label,
                 unknownLabel: messages.common.unknown,
@@ -3495,7 +3517,7 @@ export function OverviewPagesSection({
             )}
             onClick={() => toggleSourceCardSort("views")}
           >
-            {messages.common.views}
+            {resolvedPrimaryMetricLabel}
             {renderSourceSortIndicator("views")}
           </button>
         </div>
@@ -3660,7 +3682,7 @@ export function OverviewPagesSection({
             )}
             onClick={() => toggleClientDimensionCardSort("views")}
           >
-            {messages.common.views}
+            {resolvedPrimaryMetricLabel}
             {renderClientDimensionSortIndicator("views")}
           </button>
         </div>
@@ -3831,7 +3853,7 @@ export function OverviewPagesSection({
             )}
             onClick={() => toggleGeoDimensionCardSort("views")}
           >
-            {messages.common.views}
+            {resolvedPrimaryMetricLabel}
             {renderGeoDimensionSortIndicator("views")}
           </button>
         </div>
@@ -4109,7 +4131,12 @@ export function OverviewPagesSection({
 
   return (
     <>
-      <section className="grid items-stretch gap-6 xl:grid-cols-2">
+      <section
+        className={cn(
+          "grid items-stretch gap-6 xl:grid-cols-2",
+          sectionClassName,
+        )}
+      >
         {resolvedVisibleCards.has("page") ? (
           <div className="min-w-0">
             <TabbedScrollMaskCard

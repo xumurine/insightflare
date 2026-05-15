@@ -103,6 +103,7 @@ function serializeSiteTrackingConfig(
     trackingStrength: settings.trackingStrength,
     trackQueryParams: settings.trackQueryParams,
     trackHash: settings.trackHash,
+    autoTrackOutboundLinks: settings.autoTrackOutboundLinks,
     domainWhitelist: settings.domainWhitelist,
     pathBlacklist: settings.pathBlacklist,
     ignoreDoNotTrack: settings.ignoreDoNotTrack,

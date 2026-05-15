@@ -674,6 +674,184 @@ export interface SessionDetailData {
   } | null;
 }
 
+export interface EventDimensionRow {
+  label: string;
+  views: number;
+  sessions: number;
+  visitors: number;
+}
+
+export interface EventGeoDimensionRow extends EventDimensionRow {
+  value: string;
+}
+
+export interface EventAnalyticsContextCardsData {
+  page: {
+    path: EventDimensionRow[];
+    query: EventDimensionRow[];
+    title: EventDimensionRow[];
+    hostname: EventDimensionRow[];
+    entry: EventDimensionRow[];
+    exit: EventDimensionRow[];
+  };
+  source: {
+    domain: EventDimensionRow[];
+    link: EventDimensionRow[];
+  };
+  client: {
+    browser: EventDimensionRow[];
+    osVersion: EventDimensionRow[];
+    deviceType: EventDimensionRow[];
+    language: EventDimensionRow[];
+    screenSize: EventDimensionRow[];
+  };
+  geo: {
+    country: EventGeoDimensionRow[];
+    region: EventGeoDimensionRow[];
+    city: EventGeoDimensionRow[];
+    continent: EventGeoDimensionRow[];
+    timezone: EventGeoDimensionRow[];
+    organization: EventGeoDimensionRow[];
+  };
+}
+
+export interface EventAnalyticsCardsData extends EventAnalyticsContextCardsData {
+  event: {
+    name: EventDimensionRow[];
+  };
+}
+
+export interface EventSummaryMetrics {
+  events: number;
+  eventTypes: number;
+  sessions: number;
+  visitors: number;
+  avgEventsPerSession: number;
+}
+
+export interface EventsSummaryData {
+  ok: boolean;
+  summary: EventSummaryMetrics;
+  topEvents: EventDimensionRow[];
+  breakdowns: {
+    pages: EventDimensionRow[];
+    countries: EventDimensionRow[];
+    devices: EventDimensionRow[];
+    browsers: EventDimensionRow[];
+  };
+  cards: EventAnalyticsCardsData;
+}
+
+export interface EventTrendSeries {
+  key: string;
+  eventName: string;
+  label: string;
+  events: number;
+  sessions: number;
+  visitors: number;
+  isOther?: boolean;
+}
+
+export interface EventTrendPoint {
+  bucket: number;
+  timestampMs: number;
+  totalEvents: number;
+  eventsBySeries: Record<string, number>;
+}
+
+export interface EventsTrendData {
+  ok: boolean;
+  interval: "minute" | "hour" | "day" | "week" | "month";
+  series: EventTrendSeries[];
+  data: EventTrendPoint[];
+}
+
+export interface EventRecord {
+  eventId: string;
+  eventName: string;
+  occurredAt: number;
+  receivedAt: number;
+  sequence: number;
+  visitId: string;
+  sessionId: string;
+  visitorId: string;
+  pathname: string;
+  title: string;
+  hostname: string;
+  referrerHost: string;
+  country: string;
+  region: string;
+  browser: string;
+  browserVersion: string;
+  os: string;
+  osVersion: string;
+  deviceType: string;
+  nodeCount: number;
+  valueCount: number;
+}
+
+export interface EventsRecordsMeta {
+  page: number;
+  pageSize: number;
+  returned: number;
+  hasMore: boolean;
+  nextPage: number | null;
+}
+
+export interface EventsRecordsData {
+  ok: boolean;
+  data: EventRecord[];
+  meta: EventsRecordsMeta;
+}
+
+export interface EventTypeSummaryMetrics extends EventSummaryMetrics {
+  shareOfAllEvents: number;
+}
+
+export interface EventField {
+  path: string;
+  valueType: "string" | "number" | "boolean" | "object" | "array" | "null";
+  events: number;
+  occurrences: number;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  exampleValue?: string | number | boolean | null;
+}
+
+export interface EventTypeDetailData {
+  ok: boolean;
+  eventName: string;
+  summary: EventTypeSummaryMetrics;
+  trend: Omit<EventsTrendData, "ok" | "interval">;
+  breakdowns: EventsSummaryData["breakdowns"];
+  cards: EventAnalyticsContextCardsData;
+  fields: EventField[];
+}
+
+export interface EventRecordDetailData {
+  ok: boolean;
+  data: {
+    event: EventRecord;
+    context: {
+      visitId: string;
+      sessionId: string;
+      visitorId: string;
+      pathname: string;
+      title: string;
+      hostname: string;
+      referrerHost: string;
+      country: string;
+      region: string;
+      browser: string;
+      browserVersion: string;
+      os: string;
+      osVersion: string;
+      deviceType: string;
+    };
+    eventData: unknown;
+  } | null;
+}
+
 export interface DimensionData {
   ok: boolean;
   data: Array<{

@@ -792,6 +792,17 @@ type DemoClientDimensionKey =
   | "language"
   | "screenSize";
 
+type DemoEventRecordSortKey = "occurredAt" | "eventName" | "pathname";
+
+interface DemoCustomEventFact {
+  eventId: string;
+  eventName: string;
+  occurredAt: number;
+  receivedAt: number;
+  sequence: number;
+  visit: DemoVisitFact;
+}
+
 function createDemoShareTrendSeriesKey(
   label: string,
   usedKeys: Set<string>,
@@ -1171,6 +1182,835 @@ function generateDemoReferrerTrend(
     getLabel: (visit) =>
       visit.referrerHost.trim() || DEMO_DIRECT_REFERRER_FILTER_VALUE,
   });
+}
+
+function demoCustomEventOccurredAt(visit: DemoVisitFact): number {
+  return Math.min(
+    visit.startedAt + 1000,
+    visit.startedAt + Math.max(1000, visit.durationMs),
+  );
+}
+
+function createDemoCustomEventFacts(
+  visits: DemoVisitFact[],
+): DemoCustomEventFact[] {
+  const eventCounters = new Map<string, number>();
+  return visits
+    .filter((visit) => visit.eventType !== "pageview")
+    .map((visit) => {
+      const sequence = (eventCounters.get(visit.visitId) ?? 0) + 1;
+      eventCounters.set(visit.visitId, sequence);
+      return {
+        eventId: `${visit.visitId}:${visit.eventType}`,
+        eventName: visit.eventType,
+        occurredAt: demoCustomEventOccurredAt(visit),
+        receivedAt: demoCustomEventOccurredAt(visit) + 120,
+        sequence,
+        visit,
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.occurredAt - left.occurredAt ||
+        right.eventId.localeCompare(left.eventId),
+    );
+}
+
+function demoEventRecordPayload(event: DemoCustomEventFact) {
+  const visit = event.visit;
+  const screen = parseDemoScreenSize(visit.screenSize);
+  const eventScore = fnv1a(event.eventId);
+  const rng = mulberry32(eventScore);
+  const base = {
+    plan: sPick(rng, ["free", "pro", "team", "enterprise"]),
+    surface: sPick(rng, ["hero", "nav", "pricing_table", "inline_card"]),
+    value: sInt(rng, 1, 12),
+    page: {
+      path: visit.pathname,
+      title: visit.title,
+    },
+    device: {
+      type: visit.deviceType,
+      screen: {
+        width: screen.screenWidth,
+        height: screen.screenHeight,
+      },
+    },
+    flags: {
+      signedIn: eventScore % 3 === 0,
+      experiment: sPick(rng, ["control", "variant_a", "variant_b"]),
+    },
+    items: [
+      { id: `sku_${eventScore % 97}`, quantity: 1 },
+      null,
+      eventScore % 2 === 0,
+    ],
+  };
+
+  if (event.eventName.includes("purchase")) {
+    return {
+      ...base,
+      order: {
+        currency: "USD",
+        amount: Math.round((20 + rng() * 260) * 100) / 100,
+        couponApplied: eventScore % 4 === 0,
+      },
+    };
+  }
+
+  if (event.eventName.includes("cart")) {
+    return {
+      ...base,
+      product: {
+        id: `product_${eventScore % 31}`,
+        category: sPick(rng, ["audio", "wearables", "workspace"]),
+        price: Math.round((12 + rng() * 180) * 100) / 100,
+      },
+    };
+  }
+
+  return base;
+}
+
+function demoJsonTypeLabel(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  const valueType = typeof value;
+  if (valueType === "string") return "string";
+  if (valueType === "number") return "number";
+  if (valueType === "boolean") return "boolean";
+  return "object";
+}
+
+function collectDemoEventFields(
+  eventFacts: DemoCustomEventFact[],
+  limit: number,
+) {
+  const rows = new Map<
+    string,
+    {
+      path: string;
+      valueType: string;
+      events: Set<string>;
+      occurrences: number;
+      firstSeenAt: number;
+      lastSeenAt: number;
+      exampleValue?: string | number | boolean | null;
+    }
+  >();
+
+  const addValue = (
+    event: DemoCustomEventFact,
+    path: string,
+    value: unknown,
+  ) => {
+    const valueType = demoJsonTypeLabel(value);
+    const rowKey = `${path}:${valueType}`;
+    const current = rows.get(rowKey) ?? {
+      path,
+      valueType,
+      events: new Set<string>(),
+      occurrences: 0,
+      firstSeenAt: event.occurredAt,
+      lastSeenAt: event.occurredAt,
+    };
+    current.events.add(event.eventId);
+    current.occurrences += 1;
+    current.firstSeenAt = Math.min(current.firstSeenAt, event.occurredAt);
+    current.lastSeenAt = Math.max(current.lastSeenAt, event.occurredAt);
+    if (
+      current.exampleValue === undefined &&
+      (value === null ||
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean")
+    ) {
+      current.exampleValue = value;
+    }
+    rows.set(rowKey, current);
+  };
+
+  const walk = (
+    event: DemoCustomEventFact,
+    value: unknown,
+    pathSegments: string[],
+  ) => {
+    const path = `/${pathSegments.join("/")}`;
+    addValue(event, path === "/" ? "" : path, value);
+    if (Array.isArray(value)) {
+      value.forEach((item) => walk(event, item, [...pathSegments, "*"]));
+      return;
+    }
+    if (value && typeof value === "object") {
+      for (const [key, child] of Object.entries(value)) {
+        walk(event, child, [...pathSegments, key]);
+      }
+    }
+  };
+
+  for (const event of eventFacts) {
+    walk(event, demoEventRecordPayload(event), []);
+  }
+
+  return [...rows.values()]
+    .map((row) => ({
+      path: row.path,
+      valueType: row.valueType,
+      events: row.events.size,
+      occurrences: row.occurrences,
+      firstSeenAt: row.firstSeenAt,
+      lastSeenAt: row.lastSeenAt,
+      exampleValue: row.exampleValue ?? null,
+    }))
+    .sort(
+      (left, right) =>
+        right.events - left.events ||
+        right.occurrences - left.occurrences ||
+        left.path.localeCompare(right.path) ||
+        left.valueType.localeCompare(right.valueType),
+    )
+    .slice(0, limit);
+}
+
+function demoEventRecordFromFact(event: DemoCustomEventFact) {
+  const visit = event.visit;
+  return {
+    eventId: event.eventId,
+    eventName: event.eventName,
+    occurredAt: event.occurredAt,
+    receivedAt: event.receivedAt,
+    sequence: event.sequence,
+    visitId: visit.visitId,
+    sessionId: visit.sessionId,
+    visitorId: visit.visitorId,
+    pathname: visit.pathname,
+    title: visit.title,
+    hostname: visit.hostname,
+    referrerHost: visit.referrerHost,
+    country: visit.country,
+    region: visit.regionName || visit.region,
+    browser: visit.browser,
+    browserVersion: visit.browserVersion,
+    os: demoOperatingSystemLabel(visit.osVersion),
+    osVersion: visit.osVersion,
+    deviceType: visit.deviceType,
+    nodeCount: 18,
+    valueCount: 13,
+  };
+}
+
+function demoEventDimensionRows(
+  dataset: DemoFactDataset,
+  events: DemoCustomEventFact[],
+  limit: number,
+  getLabel: (event: DemoCustomEventFact) => string,
+) {
+  const buckets = new Map<
+    string,
+    { events: number; sessions: Set<string>; visitors: Set<string> }
+  >();
+  for (const event of events) {
+    const label = String(getLabel(event) ?? "").trim();
+    if (!label) continue;
+    const bucket = buckets.get(label) ?? {
+      events: 0,
+      sessions: new Set<string>(),
+      visitors: new Set<string>(),
+    };
+    bucket.events += 1;
+    bucket.sessions.add(event.visit.sessionId);
+    bucket.visitors.add(event.visit.visitorId);
+    buckets.set(label, bucket);
+  }
+  return [...buckets.entries()]
+    .map(([label, bucket]) => ({
+      label,
+      views: bucket.events,
+      sessions: Math.max(
+        0,
+        Math.round(weightedSessionCount(dataset, bucket.sessions)),
+      ),
+      visitors: Math.max(
+        0,
+        Math.round(weightedVisitorCount(dataset, bucket.visitors)),
+      ),
+    }))
+    .sort(
+      (left, right) =>
+        right.views - left.views ||
+        right.sessions - left.sessions ||
+        left.label.localeCompare(right.label),
+    )
+    .slice(0, limit);
+}
+
+function demoEventGeoRows(
+  dataset: DemoFactDataset,
+  events: DemoCustomEventFact[],
+  limit: number,
+  getValue: (event: DemoCustomEventFact) => string,
+  getLabel: (event: DemoCustomEventFact) => string = getValue,
+) {
+  const buckets = new Map<
+    string,
+    {
+      label: string;
+      events: number;
+      sessions: Set<string>;
+      visitors: Set<string>;
+    }
+  >();
+  for (const event of events) {
+    const value = String(getValue(event) ?? "").trim();
+    if (!value) continue;
+    const bucket = buckets.get(value) ?? {
+      label: String(getLabel(event) ?? value).trim() || value,
+      events: 0,
+      sessions: new Set<string>(),
+      visitors: new Set<string>(),
+    };
+    bucket.events += 1;
+    bucket.sessions.add(event.visit.sessionId);
+    bucket.visitors.add(event.visit.visitorId);
+    buckets.set(value, bucket);
+  }
+  return [...buckets.entries()]
+    .map(([value, bucket]) => ({
+      value,
+      label: bucket.label,
+      views: bucket.events,
+      sessions: Math.max(
+        0,
+        Math.round(weightedSessionCount(dataset, bucket.sessions)),
+      ),
+      visitors: Math.max(
+        0,
+        Math.round(weightedVisitorCount(dataset, bucket.visitors)),
+      ),
+    }))
+    .sort(
+      (left, right) =>
+        right.views - left.views ||
+        right.sessions - left.sessions ||
+        left.label.localeCompare(right.label),
+    )
+    .slice(0, limit);
+}
+
+function demoEventContextCards(
+  dataset: DemoFactDataset,
+  events: DemoCustomEventFact[],
+  limit: number,
+) {
+  return {
+    page: {
+      path: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.pathname,
+      ),
+      query: demoEventDimensionRows(dataset, events, limit, (event) =>
+        demoQueryStringForVisit(event.visit),
+      ),
+      title: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.title,
+      ),
+      hostname: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.hostname,
+      ),
+      entry: demoEventDimensionRows(dataset, events, limit, (event) => {
+        const session = dataset.sessions.get(event.visit.sessionId);
+        return session?.entryPath ?? event.visit.pathname;
+      }),
+      exit: demoEventDimensionRows(dataset, events, limit, (event) => {
+        const session = dataset.sessions.get(event.visit.sessionId);
+        return session?.exitPath ?? event.visit.pathname;
+      }),
+    },
+    source: {
+      domain: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.referrerHost,
+      ),
+      link: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.referrerUrl,
+      ),
+    },
+    client: {
+      browser: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.browser,
+      ),
+      osVersion: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.osVersion,
+      ),
+      deviceType: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.deviceType,
+      ),
+      language: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.language,
+      ),
+      screenSize: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.screenSize,
+      ),
+    },
+    geo: {
+      country: demoEventGeoRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.country,
+      ),
+      region: demoEventGeoRows(
+        dataset,
+        events,
+        limit,
+        (event) =>
+          event.visit.country ||
+          event.visit.regionCode ||
+          event.visit.regionName
+            ? `${event.visit.country}${DEMO_GEO_SEGMENT_SEPARATOR}${event.visit.regionCode || event.visit.regionName}${DEMO_GEO_SEGMENT_SEPARATOR}${event.visit.regionName || event.visit.regionCode}`
+            : "",
+        (event) => event.visit.regionName || event.visit.region,
+      ),
+      city: demoEventGeoRows(
+        dataset,
+        events,
+        limit,
+        (event) =>
+          event.visit.country ||
+          event.visit.regionCode ||
+          event.visit.regionName ||
+          event.visit.cityName
+            ? `${event.visit.country}${DEMO_GEO_SEGMENT_SEPARATOR}${event.visit.regionCode || event.visit.regionName}${DEMO_GEO_SEGMENT_SEPARATOR}${event.visit.regionName || event.visit.regionCode}${DEMO_GEO_SEGMENT_SEPARATOR}${event.visit.cityName || event.visit.city}`
+            : "",
+        (event) => event.visit.cityName || event.visit.city,
+      ),
+      continent: demoEventGeoRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.continent,
+      ),
+      timezone: demoEventGeoRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.timezone,
+      ),
+      organization: demoEventGeoRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.organization,
+      ),
+    },
+  };
+}
+
+function demoEventCards(
+  dataset: DemoFactDataset,
+  events: DemoCustomEventFact[],
+  limit: number,
+) {
+  return {
+    event: {
+      name: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.eventName,
+      ),
+    },
+    ...demoEventContextCards(dataset, events, limit),
+  };
+}
+
+function generateDemoEventsSummary(
+  siteId: string,
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const from = parseDemoNumber(params.from, 0);
+  const to = parseDemoNumber(params.to, Date.now());
+  const filters = parseDemoFilters(params);
+  const dataset = buildDemoFactDataset(siteId, from, to);
+  const filtered = applyDemoFilters(dataset, filters);
+  const events = createDemoCustomEventFacts(filtered.visits);
+  const sessions = new Set(events.map((event) => event.visit.sessionId));
+  const visitors = new Set(events.map((event) => event.visit.visitorId));
+  const eventNames = new Set(events.map((event) => event.eventName));
+  const sessionCount = Math.max(
+    0,
+    Math.round(weightedSessionCount(dataset, sessions)),
+  );
+
+  return {
+    ok: true,
+    summary: {
+      events: events.length,
+      eventTypes: eventNames.size,
+      sessions: sessionCount,
+      visitors: Math.max(
+        0,
+        Math.round(weightedVisitorCount(dataset, visitors)),
+      ),
+      avgEventsPerSession: sessionCount > 0 ? events.length / sessionCount : 0,
+    },
+    topEvents: demoEventDimensionRows(
+      dataset,
+      events,
+      8,
+      (event) => event.eventName,
+    ),
+    breakdowns: {
+      pages: demoEventDimensionRows(
+        dataset,
+        events,
+        8,
+        (event) => event.visit.pathname,
+      ),
+      countries: demoEventDimensionRows(
+        dataset,
+        events,
+        8,
+        (event) => event.visit.country,
+      ),
+      devices: demoEventDimensionRows(
+        dataset,
+        events,
+        8,
+        (event) => event.visit.deviceType,
+      ),
+      browsers: demoEventDimensionRows(
+        dataset,
+        events,
+        8,
+        (event) => event.visit.browser,
+      ),
+    },
+    cards: demoEventCards(dataset, events, 100),
+  };
+}
+
+function generateDemoEventsTrend(
+  siteId: string,
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const from = parseDemoNumber(params.from, 0);
+  const to = parseDemoNumber(params.to, Date.now());
+  const interval = parseDemoInterval(params.interval);
+  const limit = parseDemoLimit(params.limit, 8, 1, 12);
+  const filters = parseDemoFilters(params);
+  const eventName = normalizeDemoFilterValue(params.eventName);
+  const timeZone = parseDemoTimeZone(params);
+  const dataset = buildDemoFactDataset(siteId, from, to);
+  const filtered = applyDemoFilters(dataset, filters);
+  const allEvents = createDemoCustomEventFacts(filtered.visits).filter(
+    (event) => !eventName || event.eventName === eventName,
+  );
+  const buckets = buildDemoTimeBuckets(from, to, interval, timeZone);
+  const seriesRows = demoEventDimensionRows(
+    dataset,
+    allEvents,
+    limit,
+    (event) => event.eventName,
+  );
+  const topNames = new Set(seriesRows.map((row) => row.label));
+  const usedKeys = new Set<string>([DEMO_SHARE_TREND_OTHER_KEY]);
+  const keyByName = new Map<string, string>();
+  const series: Array<{
+    key: string;
+    eventName: string;
+    label: string;
+    events: number;
+    sessions: number;
+    visitors: number;
+    isOther?: boolean;
+  }> = seriesRows.map((row) => {
+    const key = createDemoShareTrendSeriesKey(row.label, usedKeys, "event");
+    keyByName.set(row.label, key);
+    return {
+      key,
+      eventName: row.label,
+      label: row.label,
+      events: row.views,
+      sessions: row.sessions,
+      visitors: row.visitors,
+    };
+  });
+
+  const hasOther = allEvents.some((event) => !topNames.has(event.eventName));
+  if (hasOther) {
+    const otherEvents = allEvents.filter(
+      (event) => !topNames.has(event.eventName),
+    );
+    const otherSessions = new Set(
+      otherEvents.map((event) => event.visit.sessionId),
+    );
+    const otherVisitors = new Set(
+      otherEvents.map((event) => event.visit.visitorId),
+    );
+    series.push({
+      key: DEMO_SHARE_TREND_OTHER_KEY,
+      eventName: DEMO_SHARE_TREND_OTHER_LABEL,
+      label: DEMO_SHARE_TREND_OTHER_LABEL,
+      events: otherEvents.length,
+      sessions: Math.max(
+        0,
+        Math.round(weightedSessionCount(dataset, otherSessions)),
+      ),
+      visitors: Math.max(
+        0,
+        Math.round(weightedVisitorCount(dataset, otherVisitors)),
+      ),
+      isOther: true,
+    });
+  }
+
+  const data = buckets.map((bucket) => ({
+    bucket: bucket.index,
+    timestampMs: bucket.timestampMs,
+    totalEvents: 0,
+    eventsBySeries: Object.fromEntries(series.map((item) => [item.key, 0])),
+  }));
+
+  for (const event of allEvents) {
+    const bucket = findDemoTimeBucketIndex(buckets, event.occurredAt);
+    if (bucket === null) continue;
+    const key =
+      keyByName.get(event.eventName) ??
+      (hasOther ? DEMO_SHARE_TREND_OTHER_KEY : null);
+    if (!key) continue;
+    const point = data[bucket];
+    if (!point) continue;
+    point.eventsBySeries[key] = Number(point.eventsBySeries[key] ?? 0) + 1;
+    point.totalEvents += 1;
+  }
+
+  return {
+    ok: true,
+    interval,
+    series,
+    data,
+  };
+}
+
+function parseDemoEventRecordSort(params: Record<string, string | number>): {
+  key: DemoEventRecordSortKey;
+  direction: DemoSortDirection;
+} {
+  const key = String(params.sortBy ?? "").trim();
+  const direction =
+    String(params.sortDir ?? "")
+      .trim()
+      .toLowerCase() === "asc"
+      ? "asc"
+      : "desc";
+  if (key === "eventName" || key === "pathname") return { key, direction };
+  return { key: "occurredAt", direction };
+}
+
+function sortDemoEventRecords(
+  rows: DemoCustomEventFact[],
+  sort: { key: DemoEventRecordSortKey; direction: DemoSortDirection },
+) {
+  const factor = sort.direction === "asc" ? 1 : -1;
+  return [...rows].sort((left, right) => {
+    if (sort.key === "eventName") {
+      const byName = left.eventName.localeCompare(right.eventName);
+      if (byName !== 0) return byName * factor;
+    } else if (sort.key === "pathname") {
+      const byPath = left.visit.pathname.localeCompare(right.visit.pathname);
+      if (byPath !== 0) return byPath * factor;
+    } else if (left.occurredAt !== right.occurredAt) {
+      return (left.occurredAt - right.occurredAt) * factor;
+    }
+    return right.occurredAt - left.occurredAt;
+  });
+}
+
+function generateDemoEventsRecords(
+  siteId: string,
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const from = parseDemoNumber(params.from, 0);
+  const to = parseDemoNumber(params.to, Date.now());
+  const page = parseDemoLimit(params.page, 1, 1, 10_000);
+  const pageSize = parseDemoLimit(params.pageSize, 80, 1, 120);
+  const filters = parseDemoFilters(params);
+  const eventName = normalizeDemoFilterValue(params.eventName);
+  const search = normalizeDemoSearch(params);
+  const dataset = buildDemoFactDataset(siteId, from, to);
+  const filtered = applyDemoFilters(dataset, filters);
+  const events = createDemoCustomEventFacts(filtered.visits).filter((event) => {
+    if (eventName && event.eventName !== eventName) return false;
+    return demoValuesIncludeSearch(search, [
+      event.eventName,
+      event.eventId,
+      event.visit.visitId,
+      event.visit.sessionId,
+      event.visit.visitorId,
+      event.visit.pathname,
+      event.visit.title,
+      event.visit.hostname,
+    ]);
+  });
+  const sorted = sortDemoEventRecords(events, parseDemoEventRecordSort(params));
+  const offset = (page - 1) * pageSize;
+  const requestedRows = sorted.slice(offset, offset + pageSize + 1);
+  const hasMore = requestedRows.length > pageSize;
+  const currentRows = requestedRows.slice(0, pageSize);
+
+  return {
+    ok: true,
+    data: currentRows.map(demoEventRecordFromFact),
+    meta: {
+      page,
+      pageSize,
+      returned: currentRows.length,
+      hasMore,
+      nextPage: hasMore ? page + 1 : null,
+    },
+  };
+}
+
+function generateDemoEventTypeDetail(
+  siteId: string,
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const eventName = normalizeDemoFilterValue(params.eventName) ?? "";
+  const from = parseDemoNumber(params.from, 0);
+  const to = parseDemoNumber(params.to, Date.now());
+  const filters = parseDemoFilters(params);
+  const dataset = buildDemoFactDataset(siteId, from, to);
+  const filtered = applyDemoFilters(dataset, filters);
+  const allEvents = createDemoCustomEventFacts(filtered.visits);
+  const events = allEvents.filter((event) => event.eventName === eventName);
+  const sessions = new Set(events.map((event) => event.visit.sessionId));
+  const visitors = new Set(events.map((event) => event.visit.visitorId));
+  const sessionCount = Math.max(
+    0,
+    Math.round(weightedSessionCount(dataset, sessions)),
+  );
+  const trend = generateDemoEventsTrend(siteId, {
+    ...params,
+    eventName,
+    limit: 1,
+  }) as { series?: unknown[]; data?: unknown[] };
+
+  return {
+    ok: true,
+    eventName,
+    summary: {
+      events: events.length,
+      eventTypes: eventName ? 1 : 0,
+      sessions: sessionCount,
+      visitors: Math.max(
+        0,
+        Math.round(weightedVisitorCount(dataset, visitors)),
+      ),
+      avgEventsPerSession: sessionCount > 0 ? events.length / sessionCount : 0,
+      shareOfAllEvents:
+        allEvents.length > 0 ? events.length / allEvents.length : 0,
+    },
+    trend: {
+      series: trend.series ?? [],
+      data: trend.data ?? [],
+    },
+    breakdowns: {
+      pages: demoEventDimensionRows(
+        dataset,
+        events,
+        8,
+        (event) => event.visit.pathname,
+      ),
+      countries: demoEventDimensionRows(
+        dataset,
+        events,
+        8,
+        (event) => event.visit.country,
+      ),
+      devices: demoEventDimensionRows(
+        dataset,
+        events,
+        8,
+        (event) => event.visit.deviceType,
+      ),
+      browsers: demoEventDimensionRows(
+        dataset,
+        events,
+        8,
+        (event) => event.visit.browser,
+      ),
+    },
+    cards: demoEventContextCards(dataset, events, 100),
+    fields: collectDemoEventFields(events, 100),
+  };
+}
+
+function generateDemoEventRecordDetail(
+  siteId: string,
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const from = parseDemoNumber(params.from, Date.now() - 30 * 24 * 3600 * 1000);
+  const to = parseDemoNumber(params.to, Date.now());
+  const eventId = normalizeDemoFilterValue(params.eventId) ?? "";
+  const dataset = buildDemoFactDataset(siteId, from, to);
+  const event =
+    createDemoCustomEventFacts(dataset.visits).find(
+      (item) => item.eventId === eventId,
+    ) ?? createDemoCustomEventFacts(dataset.visits)[0];
+  if (!event) return { ok: true, data: null };
+  const record = demoEventRecordFromFact(event);
+  return {
+    ok: true,
+    data: {
+      event: record,
+      context: {
+        visitId: record.visitId,
+        sessionId: record.sessionId,
+        visitorId: record.visitorId,
+        pathname: record.pathname,
+        title: record.title,
+        hostname: record.hostname,
+        referrerHost: record.referrerHost,
+        country: record.country,
+        region: record.region,
+        browser: record.browser,
+        browserVersion: record.browserVersion,
+        os: record.os,
+        osVersion: record.osVersion,
+        deviceType: record.deviceType,
+      },
+      eventData: demoEventRecordPayload(event),
+    },
+  };
 }
 
 function generateDemoBrowserVersionBreakdown(
@@ -5402,6 +6242,21 @@ export function handleDemoRequest(options: {
   }
   if (path.includes("/overview-geo-points")) {
     return generateDemoGeoPoints(siteId, params);
+  }
+  if (path.includes("/event-record-detail")) {
+    return generateDemoEventRecordDetail(siteId, params);
+  }
+  if (path.includes("/event-type-detail")) {
+    return generateDemoEventTypeDetail(siteId, params);
+  }
+  if (path.includes("/events-summary")) {
+    return generateDemoEventsSummary(siteId, params);
+  }
+  if (path.includes("/events-trend")) {
+    return generateDemoEventsTrend(siteId, params);
+  }
+  if (path.includes("/events-records")) {
+    return generateDemoEventsRecords(siteId, params);
   }
   if (path.includes("/team-dashboard")) {
     const tid = teamId || getDemoTeams()[0].id;

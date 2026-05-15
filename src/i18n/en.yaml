@@ -249,8 +249,62 @@ sessions:
   title: Sessions
   subtitle: Session-level detail for quality analysis.
 events:
-  title: Events
-  subtitle: Raw event stream for diagnostics.
+  title: Custom Events
+  subtitle: Event volume, context, payload fields, and raw trigger records.
+  detailTitle: Event Detail
+  detailSubtitle: Inspect one event with context and payload.
+  typeDetailSubtitle: Trend, context, payload schema, and trigger records for this event.
+  backToEvents: Back to Events
+  totalEvents: Total Events
+  eventTypes: Event Types
+  sessions: Sessions
+  visitors: Visitors
+  avgEventsPerSession: Avg Events / Session
+  shareOfAllEvents: Share of All Events
+  trendTitle: Event Trend
+  topEvents: Top Events
+  topPages: Top Pages
+  topCountries: Countries
+  topDevices: Devices
+  topBrowsers: Browsers
+  recordsTitle: Event Records
+  fieldsTitle: Payload Fields
+  fieldsSubtitle: JSON paths by frequency, type, and sample value.
+  breakdownTitle: Context Breakdown
+  search: Search event name, IDs, visitor, session, page...
+  eventName: Event Name
+  eventId: Event ID
+  occurredAt: Occurred
+  receivedAt: Received
+  page: Page
+  context: Context
+  visitor: Visitor
+  session: Session
+  visit: Visit
+  referrer: Referrer
+  location: Location
+  browser: Browser
+  os: OS
+  device: Device
+  payload: Payload
+  payloadFields: Payload Fields
+  values: Values
+  nodes: Nodes
+  jsonPath: JSON path
+  type: Type
+  occurrences: Occurrences
+  firstSeen: First Seen
+  lastSeen: Last Seen
+  sample: Sample
+  openVisitor: Open Visitor
+  openSession: Open Session
+  loadError: Unable to load event data.
+  empty: No custom events in this range.
+  emptyFields: No payload fields for this event.
+  noEventName: Missing event name.
+  loading: Loading
+  other: Other
+  unknown: Unknown
 funnels:
   title: Funnels
   subtitle: Measure conversion through multi-step user journeys.
@@ -473,6 +527,10 @@ siteSettings:
     /private
   pathBlacklistHint: Uses startsWith prefix matching; matched paths are not reported.
   ignoreDoNotTrackLabel: Ignore Browser Do Not Track
+  autoTrackGroupTitle: Auto Tracking
+  autoTrackGroupDescription: Control automatic event capture behavior.
+  autoTrackOutboundLinksLabel: Auto-track outbound link clicks
+  autoTrackOutboundLinksHint: When enabled, clicking links to external domains automatically reports outbound_click events.
   performanceGroupTitle: Performance Tracking
   performanceGroupDescription: Control Web performance metric collection with one sampling rate.
   performanceSampleRateLabel: Performance Sample Rate (%)
