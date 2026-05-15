@@ -38,6 +38,10 @@ const WS_PRESENCE_LEAVE_EVENT = "__presence_leave";
 const WRITE_BUDGET_PER_INVOCATION = 200;
 const D1_FLUSH_INTERVAL_MS = 60 * 1000;
 const D1_FLUSH_BATCH_SIZE = 100;
+const D1_FLUSH_MAX_BATCHES_PER_ALARM = Math.max(
+  1,
+  Math.floor(WRITE_BUDGET_PER_INVOCATION / D1_FLUSH_BATCH_SIZE),
+);
 const TIMEOUT_FINALIZE_BATCH_SIZE = WRITE_BUDGET_PER_INVOCATION;
 const FLUSHED_BUFFER_RETENTION_MS = RECENT_EVENT_RETENTION_MS;
 const MAX_CLIENT_EVENT_LAG_MS = 30 * 1000;
@@ -2395,7 +2399,9 @@ export class IngestDurableObject extends DurableObject {
   }
 
   private async flushPendingToD1(): Promise<void> {
-    while (true) {
+    let batches = 0;
+    while (batches < D1_FLUSH_MAX_BATCHES_PER_ALARM) {
+      batches += 1;
       const visitRows = this.sqlAll<BufferedVisitRow>(
         `
           SELECT
@@ -2456,7 +2462,7 @@ export class IngestDurableObject extends DurableObject {
             updated_at AS updatedAt
           FROM buffered_visits
           WHERE dirty = 1
-          ORDER BY updated_at ASC, started_at ASC
+          ORDER BY flush_attempts ASC, updated_at ASC, started_at ASC
           LIMIT ?
         `,
         D1_FLUSH_BATCH_SIZE,
@@ -2545,11 +2551,15 @@ export class IngestDurableObject extends DurableObject {
   ): void {
     if (rows.length === 0) return;
     const ids = rows.map((row) => row.visitId);
-    this.sqlRun(
-      `UPDATE buffered_visits SET flush_attempts = flush_attempts + 1, last_flush_error = ? WHERE visit_id IN (${ids.map(() => "?").join(",")})`,
-      errorMessage,
+    const deleted = this.sqlRun(
+      `DELETE FROM buffered_visits WHERE visit_id IN (${ids.map(() => "?").join(",")})`,
       ...ids,
     );
+    console.error("do_failed_visit_rows_deleted", {
+      count: deleted,
+      reason: errorMessage,
+      visitIds: ids,
+    });
   }
 
   private markCustomEventRowsFailed(
@@ -2558,11 +2568,15 @@ export class IngestDurableObject extends DurableObject {
   ): void {
     if (rows.length === 0) return;
     const ids = rows.map((row) => row.eventId);
-    this.sqlRun(
-      `UPDATE buffered_custom_events SET flush_attempts = flush_attempts + 1, last_flush_error = ? WHERE event_id IN (${ids.map(() => "?").join(",")})`,
-      errorMessage,
+    const deleted = this.sqlRun(
+      `DELETE FROM buffered_custom_events WHERE event_id IN (${ids.map(() => "?").join(",")})`,
       ...ids,
     );
+    console.error("do_failed_custom_event_rows_deleted", {
+      count: deleted,
+      reason: errorMessage,
+      eventIds: ids,
+    });
   }
 
   private prepareVisitStatement(row: BufferedVisitRow): D1PreparedStatement {
@@ -2850,8 +2864,16 @@ export class IngestDurableObject extends DurableObject {
         String(error instanceof Error ? error.message : error),
         400,
       );
+      console.error("d1_flush_visit_failed", {
+        visitId: row.visitId,
+        siteId: row.siteId,
+        status: row.status,
+        startedAt: row.startedAt,
+        updatedAt: row.updatedAt,
+        flushAttempts: row.flushAttempts,
+        error: message,
+      });
       this.markVisitRowsFailed([row], message);
-      console.error("d1_flush_visit_failed", row.visitId, error);
     }
   }
 
@@ -2860,6 +2882,16 @@ export class IngestDurableObject extends DurableObject {
   ): Promise<boolean> {
     try {
       if (!(await this.hasPersistedVisit(row))) {
+        console.error("d1_flush_custom_event_skipped", {
+          eventId: row.eventId,
+          siteId: row.siteId,
+          visitId: row.visitId,
+          eventName: row.eventName,
+          occurredAt: row.occurredAt,
+          createdAt: row.createdAt,
+          flushAttempts: row.flushAttempts,
+          reason: "waiting_for_visit",
+        });
         this.markCustomEventRowsFailed([row], "waiting_for_visit");
         return false;
       }
@@ -2875,7 +2907,17 @@ export class IngestDurableObject extends DurableObject {
         this.prepareCustomEventStatements(row, expanded.data, ids),
       );
       if (!(await this.hasPersistedCustomEvent(row.eventId))) {
-        this.markCustomEventRowsFailed([row], "waiting_for_visit");
+        console.error("d1_flush_custom_event_skipped", {
+          eventId: row.eventId,
+          siteId: row.siteId,
+          visitId: row.visitId,
+          eventName: row.eventName,
+          occurredAt: row.occurredAt,
+          createdAt: row.createdAt,
+          flushAttempts: row.flushAttempts,
+          reason: "insert_did_not_create_event",
+        });
+        this.markCustomEventRowsFailed([row], "insert_did_not_create_event");
         return false;
       }
       this.markCustomEventRowsFlushed([row]);
@@ -2885,8 +2927,17 @@ export class IngestDurableObject extends DurableObject {
         String(error instanceof Error ? error.message : error),
         400,
       );
+      console.error("d1_flush_custom_event_failed", {
+        eventId: row.eventId,
+        siteId: row.siteId,
+        visitId: row.visitId,
+        eventName: row.eventName,
+        occurredAt: row.occurredAt,
+        createdAt: row.createdAt,
+        flushAttempts: row.flushAttempts,
+        error: message,
+      });
       this.markCustomEventRowsFailed([row], message);
-      console.error("d1_flush_custom_event_failed", row.eventId, error);
       return false;
     }
   }
@@ -2909,7 +2960,7 @@ export class IngestDurableObject extends DurableObject {
       `,
       visitCutoff,
     );
-    this.sqlRun(
+    const deletedEvents = this.sqlRun(
       `
         DELETE FROM buffered_custom_events
         WHERE dirty = 0
@@ -2917,6 +2968,12 @@ export class IngestDurableObject extends DurableObject {
       `,
       eventCutoff,
     );
+    if (deletedEvents > 0) {
+      console.error("do_custom_event_rows_deleted", {
+        count: deletedEvents,
+        cutoffMs: eventCutoff,
+      });
+    }
     await this.cleanupOrphanedCustomEvents(now);
   }
 
