@@ -527,6 +527,10 @@ siteSettings:
     /private
   pathBlacklistHint: Uses startsWith prefix matching; matched paths are not reported.
   ignoreDoNotTrackLabel: Ignore Browser Do Not Track
+  autoTrackGroupTitle: Auto Tracking
+  autoTrackGroupDescription: Control automatic event capture behavior.
+  autoTrackOutboundLinksLabel: Auto-track outbound link clicks
+  autoTrackOutboundLinksHint: When enabled, clicking links to external domains automatically reports outbound_click events.
   performanceGroupTitle: Performance Tracking
   performanceGroupDescription: Control Web performance metric collection with one sampling rate.
   performanceSampleRateLabel: Performance Sample Rate (%)

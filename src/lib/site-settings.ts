@@ -4,6 +4,7 @@ export interface SiteScriptSettings {
   trackingStrength: TrackingStrength;
   trackQueryParams: boolean;
   trackHash: boolean;
+  autoTrackOutboundLinks: boolean;
   domainWhitelist: string[];
   pathBlacklist: string[];
   ignoreDoNotTrack: boolean;
@@ -20,6 +21,7 @@ export const DEFAULT_SITE_SCRIPT_SETTINGS: SiteScriptSettings = {
   trackingStrength: "smart",
   trackQueryParams: true,
   trackHash: true,
+  autoTrackOutboundLinks: false,
   domainWhitelist: [],
   pathBlacklist: [],
   ignoreDoNotTrack: true,
@@ -189,6 +191,10 @@ export function normalizeSiteScriptSettings(
     trackHash: normalizeBoolean(
       record.trackHash,
       DEFAULT_SITE_SCRIPT_SETTINGS.trackHash,
+    ),
+    autoTrackOutboundLinks: normalizeBoolean(
+      record.autoTrackOutboundLinks,
+      DEFAULT_SITE_SCRIPT_SETTINGS.autoTrackOutboundLinks,
     ),
     domainWhitelist: parseDomainWhitelist(record.domainWhitelist),
     pathBlacklist: parsePathBlacklist(record.pathBlacklist),

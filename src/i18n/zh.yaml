@@ -527,6 +527,10 @@ siteSettings:
     /private
   pathBlacklistHint: 采用 startsWith 前缀匹配；命中后不发送采集事件。
   ignoreDoNotTrackLabel: 忽略浏览器 Do Not Track
+  autoTrackGroupTitle: 自动追踪
+  autoTrackGroupDescription: 控制自动事件捕获行为。
+  autoTrackOutboundLinksLabel: 自动追踪外链点击
+  autoTrackOutboundLinksHint: 开启后，点击指向外部域名的链接将自动上报 outbound_click 事件。
   performanceGroupTitle: 性能追踪
   performanceGroupDescription: 通过一个采样率控制 Web 性能指标采集。
   performanceSampleRateLabel: 性能采样率（%）

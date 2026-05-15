@@ -66,6 +66,7 @@ function settingsFingerprint(input: {
   trackQueryParams: boolean;
   trackHash: boolean;
   ignoreDoNotTrack: boolean;
+  autoTrackOutboundLinks: boolean;
   performanceSampleRate: number;
   siteDomain: string;
   sessionWindowMinutes: number;
@@ -75,6 +76,7 @@ function settingsFingerprint(input: {
     input.trackQueryParams ? "1" : "0",
     input.trackHash ? "1" : "0",
     input.ignoreDoNotTrack ? "1" : "0",
+    input.autoTrackOutboundLinks ? "1" : "0",
     String(input.performanceSampleRate),
     input.siteDomain,
     String(input.sessionWindowMinutes),
@@ -148,6 +150,7 @@ export async function handleTrackerScriptRequest(
     SCRIPT_CACHE_VERSION,
     settingsFingerprint({
       ...settings,
+      autoTrackOutboundLinks: settings.autoTrackOutboundLinks,
       performanceSampleRate,
       sessionWindowMinutes,
     }),
@@ -167,6 +170,7 @@ export async function handleTrackerScriptRequest(
     trackQueryParams: settings.trackQueryParams,
     trackHash: settings.trackHash,
     ignoreDoNotTrack: settings.ignoreDoNotTrack,
+    autoTrackOutboundLinks: settings.autoTrackOutboundLinks,
     performanceSampleRate,
     sessionWindowMinutes,
   });

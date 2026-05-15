@@ -520,6 +520,10 @@ export interface AppMessages {
     pathBlacklistPlaceholder: string;
     pathBlacklistHint: string;
     ignoreDoNotTrackLabel: string;
+    autoTrackGroupTitle: string;
+    autoTrackGroupDescription: string;
+    autoTrackOutboundLinksLabel: string;
+    autoTrackOutboundLinksHint: string;
     performanceGroupTitle: string;
     performanceGroupDescription: string;
     performanceSampleRateLabel: string;

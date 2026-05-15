@@ -4,6 +4,7 @@ interface BuildTrackerScriptOptions {
   trackQueryParams: boolean;
   trackHash: boolean;
   ignoreDoNotTrack: boolean;
+  autoTrackOutboundLinks: boolean;
   performanceSampleRate: number;
   sessionWindowMinutes: number;
 }
@@ -14,6 +15,9 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
   const trackQueryParamsLiteral = options.trackQueryParams ? "true" : "false";
   const trackHashLiteral = options.trackHash ? "true" : "false";
   const ignoreDoNotTrackLiteral = options.ignoreDoNotTrack ? "true" : "false";
+  const autoTrackOutboundLinksLiteral = options.autoTrackOutboundLinks
+    ? "true"
+    : "false";
   const performanceSampleRateLiteral = String(
     Math.max(0, Math.min(100, Number(options.performanceSampleRate) || 0)),
   );
@@ -30,6 +34,7 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
   const TRACK_HASH = ${trackHashLiteral};
   const IGNORE_DO_NOT_TRACK = ${ignoreDoNotTrackLiteral};
   const PERFORMANCE_SAMPLE_RATE = ${performanceSampleRateLiteral};
+  const AUTO_TRACK_OUTBOUND_LINKS = ${autoTrackOutboundLinksLiteral};
   const INSTALL_KEY = "__insightflare_tracker_v6__";
   const VISITOR_KEY = "__insightflare_visitor_" + SITE_ID + "__";
   const SESSION_KEY = "__insightflare_session_" + SITE_ID + "__";
@@ -171,7 +176,8 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
       utmMedium: TRACK_QUERY_PARAMS ? url.searchParams.get("utm_medium") || "" : "",
       utmCampaign: TRACK_QUERY_PARAMS ? url.searchParams.get("utm_campaign") || "" : "",
       utmTerm: TRACK_QUERY_PARAMS ? url.searchParams.get("utm_term") || "" : "",
-      utmContent: TRACK_QUERY_PARAMS ? url.searchParams.get("utm_content") || "" : ""
+      utmContent: TRACK_QUERY_PARAMS ? url.searchParams.get("utm_content") || "" : "",
+      ...(userIdentifiedId ? { userId: userIdentifiedId, userName: userIdentifiedName } : {})
     };
   }
 
@@ -348,6 +354,9 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
     }
 
     sendWhenUaClientHintsReady(
+    if (debugEnabled) {
+      console.log("[InsightFlare]", "pageview:", (new URL(currentVisit.href, window.location.href)).pathname || "/");
+    }
       {
         ...pagePayloadBase(
           currentVisit.href,
@@ -431,9 +440,63 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
     };
   }
 
+  function identify(userId, opts) {
+    if (!currentVisit) return;
+    const id = String(userId || "").trim().slice(0, 255);
+    if (!id) return;
+    const name = String(
+      (opts && typeof opts === "object" && typeof opts.name === "string"
+        ? opts.name
+        : "") || ""
+    ).trim().slice(0, 255);
+    userIdentifiedId = id;
+    userIdentifiedName = name;
+    if (debugEnabled) {
+      console.log("[InsightFlare]", "identify:", JSON.stringify(id), name ? JSON.stringify(name) : "");
+    }
+    flushPendingRouteChange();
+    send(
+      {
+        ...pagePayloadBase(
+          currentVisit.href,
+          currentVisit.referrerUrl,
+          currentVisit.startedAt,
+          Date.now(),
+        ),
+        kind: "identify",
+        userId: id,
+        userName: name || "",
+      },
+      false,
+    );
+  }
+
+  function setGlobalProperties(props) {
+    if (!props || typeof props !== "object" || Array.isArray(props)) return;
+    for (var key in props) {
+      if (!Object.prototype.hasOwnProperty.call(props, key)) continue;
+      globalProperties[key] = props[key];
+    }
+  }
+
+  function clearGlobalProperties() {
+    globalProperties = {};
+  }
+
+  function trackOnce(eventName, eventData) {
+    var normalizedName = String(eventName || "").trim();
+    if (!normalizedName) return;
+    if (trackedOnce.has(normalizedName)) return;
+    trackedOnce.add(normalizedName);
+    track(normalizedName, eventData);
+  }
+
   function track(eventName, eventData) {
     const normalizedName = String(eventName || "").trim();
     if (!normalizedName || !currentVisit) return;
+    if (debugEnabled) {
+      console.log("[InsightFlare]", "track:", JSON.stringify(normalizedName), JSON.stringify(Object.assign({}, globalProperties, eventData === undefined ? {} : eventData)));
+    }
     flushPendingRouteChange();
     currentVisit.eventSequence = (currentVisit.eventSequence || 0) + 1;
     send(
@@ -448,7 +511,7 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
         eventId: crypto.randomUUID(),
         sequence: currentVisit.eventSequence,
         eventName: normalizedName,
-        eventData: eventData === undefined ? {} : eventData,
+        eventData: Object.assign({}, globalProperties, eventData === undefined ? {} : eventData),
       },
       false,
     );
@@ -458,6 +521,11 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
   let pendingRouteChange = null;
   let routeChangeTimer = 0;
   let leaveSent = false;
+  let userIdentifiedId = "";
+  let userIdentifiedName = "";
+  let globalProperties = {};
+  let trackedOnce = new Set();
+  let debugEnabled = false;
   let uaClientHints = null;
   let uaClientHintsSettled = false;
   let performanceVisitId = "";
@@ -505,13 +573,132 @@ export function buildTrackerScript(options: BuildTrackerScriptOptions): string {
     sendLeave();
   });
 
+  function initAutoTrack() {
+    function extractEventData(el) {
+      var data = {};
+      var rawData = el.getAttribute("data-insightflare-event-data");
+      if (rawData) {
+        try {
+          var parsed = JSON.parse(rawData);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            data = parsed;
+          }
+        } catch {}
+      }
+      var ds = el.dataset;
+      if (ds) {
+        for (var key in ds) {
+          if (!Object.prototype.hasOwnProperty.call(ds, key)) continue;
+          if (key.indexOf("insightflareEvent") !== 0) continue;
+          var suffix = key.slice(17);
+          if (!suffix || suffix === "Trigger" || suffix === "Data") continue;
+          var dataKey = suffix.charAt(0).toLowerCase() + suffix.slice(1);
+          data[dataKey] = ds[key];
+        }
+      }
+      return data;
+    }
+
+    var visibilityObserver = null;
+    function observeVisibility(root) {
+      if (typeof IntersectionObserver !== "function") return;
+      if (!visibilityObserver) {
+        visibilityObserver = new IntersectionObserver(function(entries) {
+          for (var i = 0; i < entries.length; i++) {
+            if (!entries[i].isIntersecting) continue;
+            var el = entries[i].target;
+            var eventName = el.getAttribute("data-insightflare-event");
+            if (eventName) track(eventName, extractEventData(el));
+            visibilityObserver.unobserve(el);
+          }
+        });
+      }
+      var candidates = (root || document).querySelectorAll('[data-insightflare-event][data-insightflare-event-trigger="enterviewport"]');
+      for (var i = 0; i < candidates.length; i++) {
+        visibilityObserver.observe(candidates[i]);
+      }
+    }
+
+    document.addEventListener("click", function(e) {
+      var el = e.target.closest('[data-insightflare-event]');
+      if (!el) return;
+      var trigger = el.getAttribute("data-insightflare-event-trigger") || "click";
+      if (trigger !== "click") return;
+      var eventName = el.getAttribute("data-insightflare-event");
+      if (!eventName) return;
+      track(eventName, extractEventData(el));
+    }, true);
+
+    if (AUTO_TRACK_OUTBOUND_LINKS) {
+      var currentHostname = window.location.hostname.toLowerCase();
+      document.addEventListener("click", function(e) {
+        var anchor = e.target.closest("a[href]");
+        if (!anchor) return;
+        var href = anchor.getAttribute("href") || "";
+        if (!href) return;
+        var url;
+        try {
+          url = new URL(href, window.location.href);
+        } catch {
+          return;
+        }
+        if (url.protocol !== "http:" && url.protocol !== "https:") return;
+        var targetHostname = url.hostname.toLowerCase();
+        if (!targetHostname || targetHostname === currentHostname) return;
+        track("outbound_click", {
+          url: url.href,
+          domain: targetHostname,
+        });
+      }, true);
+    }
+
+    observeVisibility(document);
+
+    document.addEventListener("submit", function(e) {
+      var form = e.target.closest('[data-insightflare-event][data-insightflare-event-trigger="submit"]');
+      if (!form) return;
+      var eventName = form.getAttribute("data-insightflare-event");
+      if (!eventName) return;
+      track(eventName, extractEventData(form));
+    }, true);
+
+    if (typeof MutationObserver === "function") {
+      new MutationObserver(function(mutations) {
+        for (var i = 0; i < mutations.length; i++) {
+          var addedNodes = mutations[i].addedNodes;
+          for (var j = 0; j < addedNodes.length; j++) {
+            if (addedNodes[j].nodeType === 1) {
+              observeVisibility(addedNodes[j]);
+            }
+          }
+        }
+      }).observe(document.documentElement, { childList: true, subtree: true });
+    }
+  }
+
+  function debug() {
+    debugEnabled = true;
+  }
+
+  initAutoTrack();
+
   window[INSTALL_KEY] = {
     version: "6",
     siteId: SITE_ID,
-    track
+    track,
+    identify,
+    setGlobalProperties,
+    clearGlobalProperties,
+    trackOnce
+    debug,
   };
   window.insightflare = {
-    track
+    track,
+    identify,
+    setGlobalProperties,
+    clearGlobalProperties,
+    trackOnce
+    debug,
   };
 })();`;
 }

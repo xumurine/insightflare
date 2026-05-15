@@ -198,6 +198,10 @@ export function SettingsClientPage({
   const [ignoreDoNotTrack, setIgnoreDoNotTrack] = useState(
     DEFAULT_SITE_SCRIPT_SETTINGS.ignoreDoNotTrack,
   );
+  const [autoTrackOutboundLinks, setAutoTrackOutboundLinks] = useState(
+    DEFAULT_SITE_SCRIPT_SETTINGS.autoTrackOutboundLinks,
+  );
+  const [savingAutoTracking, setSavingAutoTracking] = useState(false);
   const [performanceSampleRate, setPerformanceSampleRate] = useState(
     DEFAULT_SITE_SCRIPT_SETTINGS.performanceSampleRate,
   );
@@ -211,12 +215,16 @@ export function SettingsClientPage({
     DEFAULT_SITE_SCRIPT_SETTINGS,
   );
 
+  const hasAutoTrackingChanges =
+    autoTrackOutboundLinks !== persistedSettings.autoTrackOutboundLinks;
+
   const trackingSaving =
     savingTrackingStrength ||
     savingQueryHash ||
     savingPerformanceTracking ||
     savingDomainWhitelist ||
-    savingPathBlacklist;
+    savingPathBlacklist ||
+    savingAutoTracking;
 
   function equalStringArray(a: string[], b: string[]): boolean {
     if (a.length !== b.length) return false;
@@ -263,6 +271,7 @@ export function SettingsClientPage({
     setTrackQueryParams(normalized.trackQueryParams);
     setTrackHash(normalized.trackHash);
     setIgnoreDoNotTrack(normalized.ignoreDoNotTrack);
+    setAutoTrackOutboundLinks(normalized.autoTrackOutboundLinks);
     setPerformanceSampleRate(normalized.performanceSampleRate);
     setDomainWhitelistInput(formatListInput(normalized.domainWhitelist));
     setPathBlacklistInput(formatListInput(normalized.pathBlacklist));
@@ -472,6 +481,22 @@ export function SettingsClientPage({
       toast.error(message || copy.toasts.saveFailed);
     } finally {
       setSavingQueryHash(false);
+    }
+  }
+
+  async function handleSaveAutoTracking() {
+    if (!hasAutoTrackingChanges) return;
+    setSavingAutoTracking(true);
+    try {
+      await persistTrackingSettings({
+        autoTrackOutboundLinks,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : copy.toasts.saveFailed;
+      toast.error(message || copy.toasts.saveFailed);
+    } finally {
+      setSavingAutoTracking(false);
     }
   }
 
@@ -945,6 +970,76 @@ export function SettingsClientPage({
                   </span>
                 ) : (
                   <span key="save-query-hash">{copy.saveTracking}</span>
+                )}
+              </AutoTransition>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="h-full order-4">
+          <CardHeader>
+            <CardTitle>{copy.autoTrackGroupTitle}</CardTitle>
+            <CardDescription>{copy.autoTrackGroupDescription}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex h-full flex-col gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="site-settings-auto-track-outbound">
+                {copy.autoTrackOutboundLinksLabel}
+              </Label>
+              <Select
+                value={autoTrackOutboundLinks ? "true" : "false"}
+                onValueChange={(value) => {
+                  setAutoTrackOutboundLinks(value === "true");
+                }}
+                disabled={
+                  saving ||
+                  trackingSaving ||
+                  transferring ||
+                  deleting ||
+                  loadingSettings
+                }
+              >
+                <SelectTrigger
+                  id="site-settings-auto-track-outbound"
+                  className="w-full"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">{copy.booleanOn}</SelectItem>
+                  <SelectItem value="false">{copy.booleanOff}</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {copy.autoTrackOutboundLinksHint}
+              </p>
+            </div>
+            <Button
+              type="button"
+              className="mt-auto self-start"
+              onClick={() => {
+                void handleSaveAutoTracking();
+              }}
+              disabled={
+                saving ||
+                trackingSaving ||
+                transferring ||
+                deleting ||
+                loadingSettings ||
+                !hasAutoTrackingChanges
+              }
+            >
+              <AutoTransition className="inline-flex items-center gap-2">
+                {savingAutoTracking ? (
+                  <span
+                    key="saving-auto-tracking"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <Spinner className="size-4" />
+                    {copy.savingTracking}
+                  </span>
+                ) : (
+                  <span key="save-auto-tracking">{copy.saveTracking}</span>
                 )}
               </AutoTransition>
             </Button>
