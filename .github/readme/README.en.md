@@ -1,9 +1,7 @@
 # InsightFlare
 
 <!-- auto-readme-i18n-switcher start -->
-
 | English | [中文](/.github/readme/README.zh.md) |
-
 <!-- auto-readme-i18n-switcher end -->
 
 > A powerful, privacy-friendly open source web analytics tool that runs entirely on Cloudflare.
