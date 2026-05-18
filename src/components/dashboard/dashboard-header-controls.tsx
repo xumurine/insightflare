@@ -615,7 +615,7 @@ function PanelScrollbar({
       existing.options(PANEL_SCROLLBAR_OPTIONS);
     }
     scrollbarRef.current = instance;
-    instance.update(true);
+    instance.update();
 
     return () => {
       if (!existing) {
@@ -628,7 +628,7 @@ function PanelScrollbar({
   }, []);
 
   useEffect(() => {
-    scrollbarRef.current?.update(true);
+    scrollbarRef.current?.update();
   }, [syncKey]);
 
   return (

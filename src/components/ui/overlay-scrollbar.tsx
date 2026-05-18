@@ -48,6 +48,7 @@ export function OverlayScrollbar({
     slot.style.width = "0";
     slot.style.height = "12px";
     slot.style.zIndex = "99999";
+    slot.style.setProperty("overflow-anchor", "none");
     document.body.appendChild(slot);
 
     const existing = OverlayScrollbars(host);
@@ -91,19 +92,23 @@ export function OverlayScrollbar({
         slot.style.left = `${left}px`;
       }
     };
+    const updateAndSyncSlotBounds = () => {
+      instance.update();
+      syncSlotBounds();
+    };
 
     syncSlotBoundsRef.current = syncSlotBounds;
-    const resizeObserver = new ResizeObserver(syncSlotBounds);
+    const resizeObserver = new ResizeObserver(updateAndSyncSlotBounds);
 
     resizeObserver.observe(host);
-    window.addEventListener("resize", syncSlotBounds);
+    window.addEventListener("resize", updateAndSyncSlotBounds);
     window.addEventListener("scroll", syncSlotBounds, true);
-    instance.update(true);
+    instance.update();
     syncSlotBounds();
 
     return () => {
       resizeObserver.disconnect();
-      window.removeEventListener("resize", syncSlotBounds);
+      window.removeEventListener("resize", updateAndSyncSlotBounds);
       window.removeEventListener("scroll", syncSlotBounds, true);
       if (!existing) {
         instance.destroy();
@@ -119,12 +124,11 @@ export function OverlayScrollbar({
   }, [options]);
 
   useEffect(() => {
-    scrollbarRef.current?.update(true);
     syncSlotBoundsRef.current?.();
   });
 
   useEffect(() => {
-    scrollbarRef.current?.update(true);
+    scrollbarRef.current?.update();
     syncSlotBoundsRef.current?.();
   }, [syncKey]);
 
