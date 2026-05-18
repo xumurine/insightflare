@@ -1,46 +1,160 @@
 # InsightFlare
 
-> 运行在 Cloudflare 上的开源、隐私友好的网站访问分析平台。
+> 功能强大、隐私友好的开源网站访问分析工具，完全运行于 Cloudflare 上。
 
-InsightFlare 集采集、存储、查询、可视化于一体，前端是 Next.js 16 + React 19 的多语言仪表板，后端是 Cloudflare Workers / Durable Objects / D1 / R2 / KV 组成的边缘架构。整套系统可以一键部署到一个 Cloudflare 账户中，无需自建服务器，也无需额外数据库。
+Demo: [http://insight-demo.ravelloh.com](http://insight-demo.ravelloh.com/)
+
+![ScreenShot](/.github/screenshot/001.webp)
+
+完全符合 GDPR、CCPA 等隐私法规要求，无任何 Cookie ，无需用户同意即可合法追踪访问数据。独创的智能跟踪强度机制，可根据不同地区的隐私法规自动调整访客标识的持久性，最大程度兼顾数据完整性与用户隐私保护。
+
+前端统计脚本 SDK 在 gzip 压缩后仅约 3kb，通过 Cloudflare 全球 CDN 分发，访问性能优秀。SDK 自带自定义事件追踪（`data-insightflare-event`）和性能指标追踪。
+
+多语言的仪表盘使用前所未有的可视化效果，让你对访问数据了如指掌。独创的地名多语言翻译功能，自动翻译全球 95% 以上的地名，让你轻松了解访客的地理分布。
+
+Cloudflare 的免费额度可提供每日 10 万次访问的免费追踪，结合边缘计算带来极佳性能。
+
+我们不存储原始 IP 信息，依靠 Cloudflare 进行地理位置解析，在保护用户隐私的同时提供极高精准度的分析。
 
 ---
+
+## 快速开始
+
+只需点击以下按钮：
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2FRavelloH%2FInsightFlare)
+
+Cloudflare 会自动 Clone 这个仓库、创建并绑定所需要的资源。其中，你需要填写下面三个变量：
+
+| 名称                       | 用途                    |
+| -------------------------- | ----------------------- |
+| `DAILY_SALT_SECRET`        | 每日访客标识 salt       |
+| `DASHBOARD_SESSION_SECRET` | 仪表板登录 session 签名 |
+| `BOOTSTRAP_ADMIN_PASSWORD` | 初始化管理员密码        |
+
+其中，前两个 secret 用于安全相关的功能，必须是长度超过 16 的随机字符串。可以通过访问 [https://random.ravelloh.com/str/32](https://random.ravelloh.com/str/32) 来生成一个随机字符串。（刷新页面可以得到一个新的字符串）
+
+`BOOTSTRAP_ADMIN_PASSWORD` 是你的默认账号管理员密码。你需要使用 `admin` 账号和这个密码登录仪表板，此后可以在个人设置页面修改用户名和密码。
+
+填写完毕后，等待 3 分钟让项目部署完毕，你就可以登录到仪表盘并开始追踪访问数据了。此外，你可以在项目的设置页面自定义其域名。默认的访问地址是 `https://insightflare.<your-cloudflare-username>.workers.dev`
 
 ## 特性
 
-### 数据采集
+### 完整的访问维度追踪
 
-- 动态 `GET /script.js`：根据 `request.cf.isEUCountry` 自动切换 EU 模式
-- `POST /collect`：客户端事件上报
-- Durable Object 并行写入：内存缓冲、WebSocket 广播、Alarm 调度
-- 每日 salt 轮换的访客标识，无 Cookie、无跨站追踪
+![001](/.github/screenshot/001.webp)
+![002](/.github/screenshot/002.webp)
+![003](/.github/screenshot/003.webp)
 
-### 存储与归档
+### 实时查看访客情况
 
-- Alarm 批量落盘 D1，避免高频小写
-- 每小时归档：热归档（D1 小时聚合）+ 冷归档（可选 R2 Parquet）
-- Parquet 文件查询走 HTTP Range Requests，按需流式读取
+![004](/.github/screenshot/004.webp)
+![005](/.github/screenshot/005.webp)
 
-### 仪表板
+### 分页面查看访问情况
 
-内置一个完整的 Next.js 多语言（中文 / English）控制台，覆盖以下视图：
+![006](/.github/screenshot/006.webp)
 
-- **总览 / 实时**：在线人数、实时事件流（WebSocket）
-- **页面 / 来源 / 活动 (UTM)**
-- **会话 / 访客**：含详情页与时间线
-- **事件 / 漏斗 / 留存**
-- **地理位置**：deck.gl + maplibre 矢量地图、国家/城市下钻
-- **设备 / 浏览器 / 操作系统**
-- **性能**：Core Web Vitals 与 Durable Object 堆积分析
-- **站点设置 / 成员 / 团队 / 系统性能**
+### 追踪访客的真实访问性能
 
-### 多租户与权限
+![007](/.github/screenshot/007.webp)
+![008](/.github/screenshot/008.webp)
+![009](/.github/screenshot/009.webp)
 
-- Team / Site / Member 三级组织模型
-- 角色化权限（管理员、成员、只读等）
-- 每个站点独立配置，团队间数据隔离
+### 对比各个来源的访问质量
+
+![010](/.github/screenshot/010.webp)
+![011](/.github/screenshot/011.webp)
+![012](/.github/screenshot/012.webp)
+
+### 追踪 UTM 活动效果
+
+![013](/.github/screenshot/013.webp)
+![014](/.github/screenshot/014.webp)
+
+### 记录并分析自定义事件
+
+![015](/.github/screenshot/015.webp)
+![016](/.github/screenshot/016.webp)
+![017](/.github/screenshot/017.webp)
+
+### 洞察每一次会话
+
+![018](/.github/screenshot/018.webp)
+![019](/.github/screenshot/019.webp)
+![020](/.github/screenshot/020.webp)
+![021](/.github/screenshot/021.webp)
+
+### 了解你的每一位访客
+
+![022](/.github/screenshot/022.webp)
+![023](/.github/screenshot/023.webp)
+
+### 追踪站点的回访情况
+
+![024](/.github/screenshot/024.webp)
+![025](/.github/screenshot/025.webp)
+
+### 了解访客的地理分布与市场情报
+
+![026](/.github/screenshot/026.webp)
+![027](/.github/screenshot/027.webp)
+![028](/.github/screenshot/028.webp)
+
+### 查看访客的设备情况
+
+![029](/.github/screenshot/029.webp)
+![030](/.github/screenshot/030.webp)
+![031](/.github/screenshot/031.webp)
+
+### 了解用户的浏览器及其能力
+
+![032](/.github/screenshot/032.webp)
+![033](/.github/screenshot/033.webp)
+![034](/.github/screenshot/034.webp)
+![035](/.github/screenshot/035.webp)
+![036](/.github/screenshot/036.webp)
+
+### 随时调整你的追踪设置————无需修改前端 SDK
+
+![037](/.github/screenshot/037.webp)
+![038](/.github/screenshot/038.webp)
+
+### 为团队协作而设计
+
+![039](/.github/screenshot/039.webp)
+![040](/.github/screenshot/040.webp)
+
+### 轻松了解系统的运行状况
+
+![041](/.github/screenshot/041.webp)
+![042](/.github/screenshot/042.webp)
+
+### 完整的多语言翻译
+
+![043](/.github/screenshot/043.webp)
+![044](/.github/screenshot/044.webp)
 
 ---
+
+## 进阶配置
+
+### 配置 R2 存储桶用于冷归档
+
+默认情况下，访问数据保存 1 年，超时的数据将被压缩保存（可查看访问趋势、数据，但无法进行筛选）。R2 是可选项，Deploy Button 默认不会要求绑定 R2。启用 R2 后，可对超出 1 年的数据进行详细查询。
+
+在 Cloudflare 内创建名为 只有需要启用冷归档到 R2 时，才需要手动创建 R2 bucket，并在 `wrangler.toml` 中配置 `[[r2_buckets]]`。
+
+### 保持更新
+
+我们使用了开创性的 GitHub App 自动更新系统，带给你最简单的更新体验。
+
+保持更新仅需要两步：
+
+1. 为你的仓库安装 GitHub App（只需一次，请 **仅选择你部署的 InsightFlare 的仓库**）: [Install InsightFlare Sync](https://github.com/apps/insightflare-sync/installations/new)
+2. 当上游存在更新时，会自动向你的仓库提交一个 PR。你只需要合并这个请求即可。
+
+_想要让自己的项目也能方便的同步到下游？实现细节：[RavelloH/upstream-sync-bot](https://github.com/RavelloH/upstream-sync-bot)（开源模板）+ [RavelloH/InsightFlare-Bot](https://github.com/RavelloH/InsightFlare-Bot)（本项目的 bot 实例）。_
 
 ## 技术栈
 
@@ -49,133 +163,29 @@ InsightFlare 集采集、存储、查询、可视化于一体，前端是 Next.j
 | 前端 | Next.js 16, React 19, Tailwind CSS 4, Radix UI, shadcn, Recharts, deck.gl, maplibre-gl, Motion |
 | 后端 | Cloudflare Workers, Durable Objects, D1, R2, KV                                                |
 | 构建 | OpenNext for Cloudflare, Wrangler 4, TypeScript 5                                              |
-| i18n | 自研 YAML 方案（`src/i18n/{en,zh}.yaml`），脚本校验完整性                                      |
 
 ---
 
-## 架构概览
+## 手动部署
 
-单应用、单 `wrangler.toml`：
+不使用部署按钮，请使用下面的方法来部署：
 
-```
-                     ┌───────────────────────────┐
-   浏览器 ──script──▶ │  Cloudflare Worker (entry)│
-   浏览器 ──collect──▶│   workers/cf-worker.js    │
-                     └────────────┬──────────────┘
-                                  │
-         ┌─────────────┬──────────┼──────────┐
-         ▼             ▼          ▼          ▼
-    Next.js         Durable      D1          R2
-    Dashboard       Object     (热数据)    (冷归档)
-    (App Router)   (缓冲/广播)    │        Parquet
-                                  ▼
-                              KV (站点配置)
-```
+1. Fork 或者 Clone 这个仓库到你的 GitHub 账号下
+2. 在 Cloudflare 中创建以下资源：
+   - D1 数据库
+   - KV Namespace
+   - R2 存储桶（可选，仅冷归档到 R2 时需要）
+3. 编辑 `wrangler.toml`，将 D1 和 KV 资源绑定到 Worker 上
+4. 在 Worker 页面导入这个仓库
 
-主要入口：
+### 本地开发
 
-- `/script.js`、`/collect`
-- `/api/public/*`、`/api/private/*`、`/api/admin/*`、`/api/auth/*`、`/api/archive/*`
-- `/api/geo-*`、`/map-tiles/*`、`/world-countries`（地图相关）
-- `/healthz`
-- `/admin/ws`（实时 WebSocket，由 `cf-worker.js` 透传到 DO）
+1. 克隆这个仓库到本地 : `git clone https://github.com/RavelloH/InsightFlare`
+2. 安装依赖 : `npm install`
+3. 创建本地数据库 : `npm run d1:migrate:local`
+4. 运行开发服务器 : `npm run dev`
 
-`workers/cf-worker.js` 负责：导出 Durable Object 类、透传 `/admin/ws`、执行定时归档（cron `0 * * * *`）。
-
----
-
-## 快速开始
-
-> Windows 用户建议在 WSL / Linux / CI 中执行构建（OpenNext 官方建议）。
-
-### 一键部署到 Cloudflare
-
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2FRavelloH%2FInsightFlare)
-
-Deploy Button 会在你的 Cloudflare 账户中自动创建并绑定 Worker、D1、KV、Durable Object、Assets 与 Cron。部署时只需要按页面提示填写 `.dev.vars.example` 中的 Secret：
-
-| 名称                       | 用途                    |
-| -------------------------- | ----------------------- |
-| `DAILY_SALT_SECRET`        | 每日访客标识 salt       |
-| `DASHBOARD_SESSION_SECRET` | 仪表板登录 session 签名 |
-
-部署完成后，如果要使用自定义域名，请在 Cloudflare 控制台为 Worker 绑定域名，并将 `INSIGHTFLARE_EDGE_URL` / `EDGE_PUBLIC_BASE_URL` 调整为最终访问地址。
-
-R2 是可选项，Deploy Button 默认不会要求绑定 R2。只有需要启用冷归档到 R2 时，才需要手动创建 R2 bucket，并在 `wrangler.toml` 中配置 `[[r2_buckets]]`。维护者自己的实例使用 `ravelloh` 环境绑定 R2，不影响默认部署流程。
-
-### 接收上游更新
-
-部署后想让仓库自动跟随上游 [`RavelloH/InsightFlare`](https://github.com/RavelloH/InsightFlare) 的更新？安装 GitHub App 即可：
-
-[**Install InsightFlare Sync**](https://github.com/apps/insightflare-sync/installations/new)
-
-点链接 → 勾选你的 InsightFlare 仓库 → **Install**。完成后每次上游有新提交，bot 会自动开一个 PR（分支 `chore/sync-upstream`，标题 `chore: sync upstream RavelloH/InsightFlare`），审过点 Merge 即可。同一个 PR 在合并前会被反复 force-update，不会刷屏。
-
-- 同时兼容 fork、干净 clone、Cloudflare Deploy Button snapshot clone 三种仓库形态——bot 自动识别并选 `merge` 或 `squash` 模式同步。
-- 全程通过 PR 操作，**不会直接 push 到你的 main**；冲突文件会保留 `<<<<<<<` 标记进 commit，PR body 顶部会列出受影响文件和本地解决步骤。
-- 想跳过某次更新就关闭 PR；想长期停用就到 **Settings → Integrations → Applications** 卸载 App。
-- 零额外配置——**不需要** PAT、不需要勾仓库设置、不需要跑安装脚本。
-- 实现细节：[`RavelloH/upstream-sync-bot`](https://github.com/RavelloH/upstream-sync-bot)（开源模板）+ [`RavelloH/InsightFlare-Bot`](https://github.com/RavelloH/InsightFlare-Bot)（本项目的 bot 实例）。
-
-### 手动部署
-
-#### 1. 安装依赖
-
-```bash
-npm ci
-```
-
-#### 2. 创建 D1 数据库（首次）
-
-```bash
-npm run cf:d1:create
-```
-
-将输出的 `database_id` 填入 `wrangler.toml` 的 `[[d1_databases]]`。
-
-#### 3. 配置 `wrangler.toml`
-
-- `INSIGHTFLARE_EDGE_URL` 设为部署后的访问地址
-- 按需开启 `[[r2_buckets]]`（可选，仅冷归档到 R2 时需要）
-- 维护者在 Cloudflare Git 部署带 R2 的实例时使用 `npm run deploy:ravelloh`，本地完整构建并部署时使用 `npm run cf:deploy:ravelloh`
-
-#### 4. 设置 Secret
-
-至少需要 `DAILY_SALT_SECRET` 与 `DASHBOARD_SESSION_SECRET`：
-
-```bash
-npm run cf:secret:daily-salt
-npm run cf:secret:session-secret
-```
-
-可选：
-
-```bash
-npm run cf:secret:bootstrap-admin-password   # 首个管理员密码
-```
-
-#### 5. 本地开发 / 构建 / 部署
-
-```bash
-npm run dev               # 本地开发仪表板（next dev）
-npm run cf:preview        # 本地用 wrangler dev 预览完整 Worker
-npm run cf:build          # 本地构建验证
-npm run cf:deploy:dry-run # 部署前 dry-run
-npm run cf:deploy         # 部署到 Cloudflare
-```
-
----
-
-## Cloudflare Git 自动部署
-
-如果在 Cloudflare 控制台使用 Git 集成，请设置：
-
-- **Build command**：`npm run build`
-- **Deploy command**：`npm run deploy`
-
-不要跳过 `build:pre:remote`，否则 D1 迁移与远端配置注入不会执行。
-
----
+（默认情况下，开发服务器会自动启用 Demo 模式，使用前端模拟数据用于测试 UI 界面。要连接到本地 D1 数据库并使用真实数据，请设置环境变量 `NEXT_PUBLIC_DEMO_MODE=0`）
 
 ## 常用命令
 
@@ -186,7 +196,7 @@ npm run cf:deploy         # 部署到 Cloudflare
 | `npm run typecheck`               | TypeScript 类型检查                            |
 | `npm run lint` / `lint:fix`       | ESLint                                         |
 | `npm run format` / `format:check` | Prettier                                       |
-| `npm run check:i18n`              | 校验中英文翻译键的完整性                       |
+| `npm run check:i18n`              | 校验翻译键的完整性                             |
 | `npm run d1:migrate:local`        | 本地 D1 迁移                                   |
 | `npm run d1:migrate:remote`       | 线上 D1 迁移                                   |
 | `npm run d1:migration:create`     | 新建迁移文件                                   |
@@ -205,25 +215,6 @@ npm run cf:deploy         # 部署到 Cloudflare
 | `DAILY_SALT_SECRET`（Secret）        | 每日访客标识 salt           |
 | `DASHBOARD_SESSION_SECRET`（Secret） | 仪表板会话签名              |
 | `BOOTSTRAP_ADMIN_PASSWORD`（Secret） | 初始化管理员密码            |
-| `ARCHIVE_BUCKET`（R2，可选）         | 冷归档存储桶                |
-
----
-
-## 目录结构
-
-```
-src/
-  app/                    # Next.js App Router
-    [locale]/             # 多语言路由（en / zh）
-      app/[teamSlug]/...  # 仪表板（团队 → 站点 → 模块）
-    api/                  # Route Handlers（public / private / admin / auth / archive ...）
-  components/             # UI 组件（仪表板、图表、地图、设置等）
-  i18n/                   # 多语言 YAML
-  lib/                    # 业务逻辑（edge / realtime / archive / auth ...）
-workers/cf-worker.js      # Cloudflare Worker 入口（DO 导出 + WS 透传 + cron）
-migrations/               # D1 SQL 迁移
-scripts/                  # 构建与校验脚本（build:pre、i18n 检查等）
-```
 
 ---
 
