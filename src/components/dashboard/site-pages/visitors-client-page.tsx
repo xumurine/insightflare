@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  type KeyboardEvent,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import {
   RiArrowDownSLine,
   RiArrowUpSLine,
@@ -24,6 +16,7 @@ import {
   ReferrerMeta,
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
+import { LinkedTableCell } from "@/components/dashboard/linked-table-cell";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -43,7 +36,6 @@ import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type { VisitorsData, VisitorsMeta } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
-import { navigateWithTransition } from "@/lib/page-transition";
 import { cn } from "@/lib/utils";
 
 interface VisitorsClientPageProps {
@@ -263,7 +255,6 @@ export function VisitorsClientPage({
   siteId,
   pathname,
 }: VisitorsClientPageProps) {
-  const router = useRouter();
   const labels = copy(locale);
   const { filters, window: timeWindow } = useDashboardQuery() as {
     filters: DashboardFilters;
@@ -445,10 +436,6 @@ export function VisitorsClientPage({
     sentinelNode,
   ]);
 
-  const openVisitor = (href: string) => {
-    navigateWithTransition(router, href);
-  };
-
   const toggleSort = (key: VisitorSortKey) => {
     setSort((current) =>
       current.key === key
@@ -458,15 +445,6 @@ export function VisitorsClientPage({
           }
         : { key, direction: "desc" },
     );
-  };
-
-  const handleVisitorKeyDown = (
-    event: KeyboardEvent<HTMLTableRowElement>,
-    href: string,
-  ) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    openVisitor(href);
   };
   const bodyState = replacingRows
     ? "loading"
@@ -578,14 +556,15 @@ export function VisitorsClientPage({
                     return (
                       <TableRow
                         key={row.visitorId}
-                        role="link"
-                        tabIndex={0}
-                        aria-label={`${labels.visitor}: ${row.visitorId}`}
-                        className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-                        onClick={() => openVisitor(href)}
-                        onKeyDown={(event) => handleVisitorKeyDown(event, href)}
+                        className="group cursor-pointer"
                       >
-                        <TableCell className="w-32 pl-4">
+                        <LinkedTableCell
+                          href={href}
+                          className="w-32"
+                          linkClassName="pl-4"
+                          focusable
+                          ariaLabel={`${labels.visitor}: ${row.visitorId}`}
+                        >
                           <div className="flex w-28 items-center gap-2">
                             <VisitorAvatar
                               seed={row.visitorId}
@@ -593,32 +572,41 @@ export function VisitorsClientPage({
                             />
                             <span className="truncate">{labels.anonymous}</span>
                           </div>
-                        </TableCell>
-                        <TableCell>
+                        </LinkedTableCell>
+                        <LinkedTableCell href={href}>
                           <SessionIdValue value={row.sessionId} />
-                        </TableCell>
-                        <TableCell className="font-mono text-muted-foreground">
+                        </LinkedTableCell>
+                        <LinkedTableCell
+                          href={href}
+                          className="font-mono text-muted-foreground"
+                        >
                           {formatRelativeTime(locale, row.firstSeenAt, now)}
-                        </TableCell>
-                        <TableCell className="font-mono text-muted-foreground">
+                        </LinkedTableCell>
+                        <LinkedTableCell
+                          href={href}
+                          className="font-mono text-muted-foreground"
+                        >
                           {formatRelativeTime(locale, row.lastSeenAt, now)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono tabular-nums">
+                        </LinkedTableCell>
+                        <LinkedTableCell
+                          href={href}
+                          className="text-right font-mono tabular-nums"
+                        >
                           {numberFormat(locale, row.sessions)}
-                        </TableCell>
-                        <TableCell className="text-center">
+                        </LinkedTableCell>
+                        <LinkedTableCell href={href} className="text-center">
                           <span className="font-mono tabular-nums">
                             {numberFormat(locale, row.views)}
                           </span>
-                        </TableCell>
-                        <TableCell className="max-w-48">
+                        </LinkedTableCell>
+                        <LinkedTableCell href={href} className="max-w-48">
                           <ReferrerMeta
                             referrerHost={row.referrerHost || ""}
                             referrerUrl={row.referrerUrl}
                             directLabel={messages.overview.direct}
                           />
-                        </TableCell>
-                        <TableCell className="max-w-52">
+                        </LinkedTableCell>
+                        <LinkedTableCell href={href} className="max-w-52">
                           <CountryRegionMeta
                             locale={locale}
                             messages={messages}
@@ -626,28 +614,32 @@ export function VisitorsClientPage({
                             region={row.region}
                             regionCode={row.regionCode}
                           />
-                        </TableCell>
-                        <TableCell className="max-w-40">
+                        </LinkedTableCell>
+                        <LinkedTableCell href={href} className="max-w-40">
                           <OsMeta
                             os={row.os || ""}
                             version={row.osVersion}
                             unknownLabel={messages.common.unknown}
                           />
-                        </TableCell>
-                        <TableCell className="max-w-40">
+                        </LinkedTableCell>
+                        <LinkedTableCell href={href} className="max-w-40">
                           <BrowserMeta
                             browser={row.browser || ""}
                             version={row.browserVersion}
                             unknownLabel={messages.common.unknown}
                           />
-                        </TableCell>
-                        <TableCell className="max-w-36 pr-4">
+                        </LinkedTableCell>
+                        <LinkedTableCell
+                          href={href}
+                          className="max-w-36"
+                          linkClassName="pr-4"
+                        >
                           <DeviceMeta
                             deviceType={row.deviceType || ""}
                             locale={locale}
                             unknownLabel={messages.common.unknown}
                           />
-                        </TableCell>
+                        </LinkedTableCell>
                       </TableRow>
                     );
                   })}
