@@ -34,7 +34,7 @@ export function LinkedTableCell({
         aria-label={ariaLabel}
         data-skip-page-transition={skipPageTransition ? "" : undefined}
         className={cn(
-          "block min-h-9 min-w-0 max-w-full px-2 py-2 text-inherit no-underline outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
+          "block min-w-0 max-w-full px-2 py-2 text-inherit no-underline outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
           linkClassName,
         )}
       >
