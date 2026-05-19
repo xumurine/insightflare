@@ -543,7 +543,10 @@ export function DashboardShell({
           </SidebarFooter>
         </Sidebar>
 
-        <SidebarInset>
+        <SidebarInset
+          data-dashboard-scroll-container=""
+          className="h-svh min-h-0 overflow-y-auto overscroll-contain"
+        >
           <div className="sticky top-0 z-20 border-b bg-background/90 backdrop-blur">
             <div className="p-3">
               <div className="flex min-w-0 items-center gap-2">

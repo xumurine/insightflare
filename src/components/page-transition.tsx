@@ -16,6 +16,25 @@ function isDashboardDetailRoute(pathname: string): boolean {
   return /\/(?:visitors|sessions)\/detail(?:\/|$)/.test(pathname);
 }
 
+function scrollPageToTop(behavior: ScrollBehavior) {
+  const dashboardScrollContainer = document.querySelector<HTMLElement>(
+    "[data-dashboard-scroll-container]",
+  );
+
+  if (dashboardScrollContainer) {
+    dashboardScrollContainer.scrollTo({
+      top: 0,
+      behavior,
+    });
+    return;
+  }
+
+  window.scrollTo({
+    top: 0,
+    behavior,
+  });
+}
+
 export function PageTransition({ children }: PageTransitionProps) {
   const EXIT_DURATION_MS = 280;
   const ENTER_DURATION_MS = 320;
@@ -195,10 +214,7 @@ export function PageTransition({ children }: PageTransitionProps) {
       return;
     }
 
-    window.scrollTo({
-      top: 0,
-      behavior: reduceMotion.current ? "auto" : "smooth",
-    });
+    scrollPageToTop(reduceMotion.current ? "auto" : "smooth");
   }, [pathname]);
 
   return (
