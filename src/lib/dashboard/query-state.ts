@@ -66,6 +66,8 @@ export interface DashboardFilters {
   geoOrganization?: string;
 }
 
+export const DEFAULT_RANGE_PRESET: RangePreset = "30d";
+
 const RANGE_PRESETS: readonly RangePreset[] = [
   "30m",
   "1h",
@@ -204,10 +206,7 @@ function rangeBounds(
       to: Math.max(customRange.from + 1, customRange.to),
     };
   }
-  return {
-    from: startOfZonedDay(now, timeZone) - 7 * DAY_MS,
-    to: now,
-  };
+  return rangeBounds(DEFAULT_RANGE_PRESET, now, timeZone);
 }
 
 function spanMs(from: number, to: number): number {
@@ -217,8 +216,8 @@ function spanMs(from: number, to: number): number {
 export function resolveRangePreset(
   value: string | null | undefined,
 ): RangePreset {
-  if (!value) return "7d";
-  return isRangePreset(value) ? value : "7d";
+  if (!value) return DEFAULT_RANGE_PRESET;
+  return isRangePreset(value) ? value : DEFAULT_RANGE_PRESET;
 }
 
 export function allowedIntervalsForRange(

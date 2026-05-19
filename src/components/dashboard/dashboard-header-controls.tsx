@@ -238,7 +238,7 @@ function rangeLabel(messages: AppMessages, range: RangePreset): string {
   if (range === "12m") return messages.ranges.last12m;
   if (range === "all") return messages.ranges.allTime;
   if (range === "custom") return messages.ranges.custom;
-  return messages.ranges.last7d;
+  return messages.ranges.last30d;
 }
 
 function intervalLabel(
