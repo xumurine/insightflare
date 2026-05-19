@@ -10,7 +10,7 @@ import {
 } from "react";
 import Map, { useControl } from "react-map-gl/maplibre";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
@@ -57,6 +57,7 @@ import {
   type SessionSortState,
   SessionsTableCard,
 } from "@/components/dashboard/sessions-table-card";
+import { useInterceptedDetailModalClose } from "@/components/dashboard/site-pages/intercepted-detail-modal";
 import {
   OverviewPagesSection,
   type OverviewPagesSectionCardData,
@@ -1148,6 +1149,7 @@ function VisitorMapHero({
   metrics,
   sessions,
   backHref,
+  onBack,
 }: {
   locale: Locale;
   labels: Labels;
@@ -1155,8 +1157,8 @@ function VisitorMapHero({
   metrics: VisitorDetail["metrics"];
   sessions: JourneySession[];
   backHref: string;
+  onBack?: () => void;
 }) {
-  const router = useRouter();
   const { resolvedTheme } = useTheme();
   const effectiveTheme: EffectiveMapTheme =
     resolvedTheme === "dark" ? "dark" : "light";
@@ -1173,17 +1175,29 @@ function VisitorMapHero({
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-background via-background/70 to-transparent" />
 
       <div className="absolute inset-x-4 top-4 z-10 flex items-center justify-between gap-4 sm:inset-x-5 sm:top-5">
-        <Clickable
-          className="inline-flex items-center gap-1 text-xs text-foreground/80 hover:text-foreground"
-          enableHoverScale={false}
-          tapScale={0.98}
-          aria-label={labels.back}
-          title={labels.back}
-          onClick={() => router.push(backHref)}
-        >
-          <RiArrowLeftLine className="size-3.5" />
-          {labels.back}
-        </Clickable>
+        {onBack ? (
+          <Clickable
+            className="inline-flex items-center gap-1 text-xs text-foreground/80 hover:text-foreground"
+            enableHoverScale={false}
+            tapScale={0.98}
+            aria-label={labels.back}
+            title={labels.back}
+            onClick={onBack}
+          >
+            <RiArrowLeftLine className="size-3.5" />
+            {labels.back}
+          </Clickable>
+        ) : (
+          <Link
+            href={backHref}
+            className="inline-flex items-center gap-1 text-xs text-foreground/80 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/60"
+            aria-label={labels.back}
+            title={labels.back}
+          >
+            <RiArrowLeftLine className="size-3.5" />
+            {labels.back}
+          </Link>
+        )}
         <div className="min-w-0 truncate text-right font-mono text-[11px] text-foreground/70">
           {labels.visitorId}: {visitor.visitorId}
         </div>
@@ -1715,6 +1729,7 @@ function VisitorEventCard({
                 ) : event.sessionId.trim() ? (
                   <Link
                     href={sessionHref}
+                    data-skip-page-transition=""
                     className="hover:text-foreground hover:underline"
                   >
                     {labels.sessionId}: {event.sessionId}
@@ -2154,6 +2169,7 @@ function DetailContent({
   pathname: string;
   timeZone: string;
 }) {
+  const modalClose = useInterceptedDetailModalClose();
   const visitorListPath = pathname.replace(/\/detail$/, "");
   const siteBasePath = visitorListPath.replace(/\/visitors$/, "");
   const visitorSiteDomain = useMemo(
@@ -2175,6 +2191,7 @@ function DetailContent({
         metrics={detail.metrics}
         sessions={detail.sessions}
         backHref={visitorListPath}
+        onBack={modalClose ?? undefined}
       />
 
       <div className="mx-auto mt-6 w-full max-w-[1400px] space-y-6 px-4 md:px-6">

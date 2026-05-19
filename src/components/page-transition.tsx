@@ -12,6 +12,10 @@ interface PageTransitionProps {
   children: React.ReactNode;
 }
 
+function isDashboardDetailRoute(pathname: string): boolean {
+  return /\/(?:visitors|sessions)\/detail(?:\/|$)/.test(pathname);
+}
+
 export function PageTransition({ children }: PageTransitionProps) {
   const EXIT_DURATION_MS = 280;
   const ENTER_DURATION_MS = 320;
@@ -22,6 +26,7 @@ export function PageTransition({ children }: PageTransitionProps) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<NavigateRequest | null>(null);
+  const previousPathnameRef = useRef(pathname);
   const [transitionState, setTransitionState] = useState<
     "idle" | "enter" | "exit"
   >("idle");
@@ -108,6 +113,7 @@ export function PageTransition({ children }: PageTransitionProps) {
       const target = event.target as HTMLElement | null;
       const link = target?.closest("a[href]") as HTMLAnchorElement | null;
       if (!link) return;
+      if (link.closest("[data-skip-page-transition]")) return;
       if (link.target && link.target !== "_self") return;
       if (link.hasAttribute("download")) return;
 
@@ -180,6 +186,15 @@ export function PageTransition({ children }: PageTransitionProps) {
   }, []);
 
   useEffect(() => {
+    const previousPathname = previousPathnameRef.current;
+    previousPathnameRef.current = pathname;
+    if (
+      isDashboardDetailRoute(previousPathname) ||
+      isDashboardDetailRoute(pathname)
+    ) {
+      return;
+    }
+
     window.scrollTo({
       top: 0,
       behavior: reduceMotion.current ? "auto" : "smooth",

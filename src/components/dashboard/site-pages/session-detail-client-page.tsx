@@ -3,7 +3,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import Map, { useControl } from "react-map-gl/maplibre";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
@@ -45,6 +45,7 @@ import {
   type JourneyGeoLocationInput,
 } from "@/components/dashboard/journey-geo-location-card";
 import { LazyGeoCityBreadcrumbLabel } from "@/components/dashboard/lazy-geo-location-label";
+import { useInterceptedDetailModalClose } from "@/components/dashboard/site-pages/intercepted-detail-modal";
 import {
   OverviewPagesSection,
   type OverviewPagesSectionCardData,
@@ -975,14 +976,15 @@ function SessionMapHero({
   locationPoints,
   backHref,
   visitorHref,
+  onBack,
 }: {
   labels: Labels;
   session: JourneySession;
   locationPoints: SessionDetail["locationPoints"] | undefined;
   backHref: string;
   visitorHref: string;
+  onBack?: () => void;
 }) {
-  const router = useRouter();
   const { resolvedTheme } = useTheme();
   const effectiveTheme: EffectiveMapTheme =
     resolvedTheme === "dark" ? "dark" : "light";
@@ -1002,17 +1004,29 @@ function SessionMapHero({
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-background via-background/70 to-transparent" />
 
       <div className="absolute inset-x-4 top-4 z-10 flex items-center justify-between gap-4 sm:inset-x-5 sm:top-5">
-        <Clickable
-          className="inline-flex items-center gap-1 text-xs text-foreground/80 hover:text-foreground"
-          enableHoverScale={false}
-          tapScale={0.98}
-          aria-label={labels.back}
-          title={labels.back}
-          onClick={() => router.push(backHref)}
-        >
-          <RiArrowLeftLine className="size-3.5" />
-          {labels.back}
-        </Clickable>
+        {onBack ? (
+          <Clickable
+            className="inline-flex items-center gap-1 text-xs text-foreground/80 hover:text-foreground"
+            enableHoverScale={false}
+            tapScale={0.98}
+            aria-label={labels.back}
+            title={labels.back}
+            onClick={onBack}
+          >
+            <RiArrowLeftLine className="size-3.5" />
+            {labels.back}
+          </Clickable>
+        ) : (
+          <Link
+            href={backHref}
+            className="inline-flex items-center gap-1 text-xs text-foreground/80 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/60"
+            aria-label={labels.back}
+            title={labels.back}
+          >
+            <RiArrowLeftLine className="size-3.5" />
+            {labels.back}
+          </Link>
+        )}
         <div className="min-w-0 truncate text-right font-mono text-[11px] text-foreground/70">
           {labels.sessionId}: {session.sessionId}
         </div>
@@ -1021,6 +1035,7 @@ function SessionMapHero({
       {session.visitorId.trim() ? (
         <Link
           href={visitorHref}
+          data-skip-page-transition=""
           className="absolute bottom-4 left-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-3 outline-none focus-visible:ring-2 focus-visible:ring-ring/70 sm:bottom-5 sm:left-5"
         >
           <VisitorAvatar seed={session.visitorId} className="size-12" />
@@ -1565,6 +1580,7 @@ function DetailContent({
   pathname: string;
   timeZone: string;
 }) {
+  const modalClose = useInterceptedDetailModalClose();
   const session = detail.session;
   const sessionsPath = pathname.replace(/\/detail$/, "");
   const siteBasePath = sessionsPath.replace(/\/sessions$/, "");
@@ -1589,6 +1605,7 @@ function DetailContent({
         locationPoints={detail.locationPoints}
         backHref={sessionsPath}
         visitorHref={visitorHref}
+        onBack={modalClose ?? undefined}
       />
 
       <div className="mx-auto mt-6 w-full max-w-[1400px] space-y-6 px-4 md:px-6">

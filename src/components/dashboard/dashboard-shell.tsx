@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSelectedLayoutSegments } from "next/navigation";
 import {
   RiApps2Line,
   RiArrowLeftLine,
@@ -260,6 +260,10 @@ function parseSidebarRouteState(
   };
 }
 
+function visibleLayoutSegments(segments: string[]): string[] {
+  return segments.filter((segment) => !segment.startsWith("("));
+}
+
 interface DashboardShellProps {
   locale: Locale;
   pathname: string;
@@ -276,6 +280,7 @@ interface DashboardShellProps {
   sites: SidebarSite[];
   teamSections?: TeamSectionNavItem[];
   managementSections?: TeamSectionNavItem[];
+  detail?: ReactNode;
   children: ReactNode;
 }
 
@@ -289,9 +294,13 @@ export function DashboardShell({
   sites,
   teamSections,
   managementSections,
+  detail,
   children,
 }: DashboardShellProps) {
   const livePathname = usePathname() || pathname;
+  const mainLayoutSegments = visibleLayoutSegments(useSelectedLayoutSegments());
+  const mainSiteSection = mainLayoutSegments[1] || "";
+  const mainSiteSubSection = mainLayoutSegments[2] || "";
   const routeState = parseSidebarRouteState(livePathname, activeTeamSlug);
   const hasManagementSections = Boolean(
     managementSections && managementSections.length > 0,
@@ -345,28 +354,22 @@ export function DashboardShell({
     ? sites.find((site) => site.slug === resolvedActiveSiteSlug)?.id || ""
     : "";
   const isRealtimeRoute = Boolean(
-    hasActiveSite &&
-    activeSiteBase &&
-    (livePathname === `${activeSiteBase}/realtime` ||
-      livePathname.startsWith(`${activeSiteBase}/realtime/`)),
+    hasActiveSite && activeSiteBase && mainSiteSection === "realtime",
   );
   const isGeoRoute = Boolean(
-    hasActiveSite &&
-    activeSiteBase &&
-    (livePathname === `${activeSiteBase}/geo` ||
-      livePathname.startsWith(`${activeSiteBase}/geo/`)),
+    hasActiveSite && activeSiteBase && mainSiteSection === "geo",
   );
   const isSessionDetailRoute = Boolean(
     hasActiveSite &&
     activeSiteBase &&
-    (livePathname === `${activeSiteBase}/sessions/detail` ||
-      livePathname.startsWith(`${activeSiteBase}/sessions/detail/`)),
+    mainSiteSection === "sessions" &&
+    mainSiteSubSection === "detail",
   );
   const isVisitorDetailRoute = Boolean(
     hasActiveSite &&
     activeSiteBase &&
-    (livePathname === `${activeSiteBase}/visitors/detail` ||
-      livePathname.startsWith(`${activeSiteBase}/visitors/detail/`)),
+    mainSiteSection === "visitors" &&
+    mainSiteSubSection === "detail",
   );
   const contentContainerClassName = isGeoRoute
     ? "flex min-h-0 flex-1 min-w-0 w-full flex-col [&>[data-page-transition]]:h-full"
@@ -628,10 +631,11 @@ export function DashboardShell({
               </AutoTransition>
             </AutoResizer>
           </div>
-          <div className={contentContainerClassName}>
+          <div data-dashboard-content="" className={contentContainerClassName}>
             <PageTransition>{children}</PageTransition>
           </div>
         </SidebarInset>
+        {detail}
       </DashboardQueryProvider>
     </SidebarProvider>
   );
