@@ -413,21 +413,43 @@ function toQueryString(params?: Record<string, string | number>): string {
 // settles so subsequent retries / re-fetches still hit the network.
 const inflightPrivateRequests = new Map<string, Promise<unknown>>();
 
+interface FetchPrivateJsonOptions {
+  signal?: AbortSignal;
+  dedupe?: boolean;
+}
+
+function throwAbortError(): never {
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  throw error;
+}
+
 async function fetchPrivateJson<T>(
   path: string,
   params?: Record<string, string | number>,
+  options?: FetchPrivateJsonOptions,
 ): Promise<T> {
+  if (options?.signal?.aborted) {
+    throwAbortError();
+  }
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
+    if (options?.signal?.aborted) {
+      throwAbortError();
+    }
     return handleDemoRequest({ path, params }) as T;
   }
   const url = `${path}${toQueryString(params)}`;
-  const existing = inflightPrivateRequests.get(url) as Promise<T> | undefined;
+  const shouldDedupe = options?.dedupe !== false && !options?.signal;
+  const existing = shouldDedupe
+    ? (inflightPrivateRequests.get(url) as Promise<T> | undefined)
+    : undefined;
   if (existing) return existing;
   const promise = (async () => {
     const res = await fetch(url, {
       method: "GET",
       credentials: "include",
+      signal: options?.signal,
     });
     if (!res.ok) {
       const text = await res.text();
@@ -435,12 +457,14 @@ async function fetchPrivateJson<T>(
     }
     return (await res.json()) as T;
   })();
-  inflightPrivateRequests.set(url, promise);
-  void promise.finally(() => {
-    if (inflightPrivateRequests.get(url) === promise) {
-      inflightPrivateRequests.delete(url);
-    }
-  });
+  if (shouldDedupe) {
+    inflightPrivateRequests.set(url, promise);
+    void promise.finally(() => {
+      if (inflightPrivateRequests.get(url) === promise) {
+        inflightPrivateRequests.delete(url);
+      }
+    });
+  }
   return promise;
 }
 
@@ -583,15 +607,20 @@ export async function fetchVisitorDetail(
   visitorId: string,
   timeZone?: string,
   window?: TimeWindow,
+  options?: { signal?: AbortSignal },
 ): Promise<VisitorDetailData> {
   const normalizedVisitorId = visitorId.trim();
   if (!normalizedVisitorId) return emptyVisitorDetail();
-  return fetchPrivateJson<VisitorDetailData>("/api/private/visitor-detail", {
-    siteId,
-    visitorId: normalizedVisitorId,
-    ...(window ? { from: window.from, to: window.to } : {}),
-    ...(timeZone ? { timeZone } : {}),
-  });
+  return fetchPrivateJson<VisitorDetailData>(
+    "/api/private/visitor-detail",
+    {
+      siteId,
+      visitorId: normalizedVisitorId,
+      ...(window ? { from: window.from, to: window.to } : {}),
+      ...(timeZone ? { timeZone } : {}),
+    },
+    { signal: options?.signal, dedupe: false },
+  );
 }
 
 export async function fetchSessions(
@@ -640,15 +669,20 @@ export async function fetchSessionDetail(
   sessionId: string,
   timeZone?: string,
   window?: TimeWindow,
+  options?: { signal?: AbortSignal },
 ): Promise<SessionDetailData> {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) return emptySessionDetail();
-  return fetchPrivateJson<SessionDetailData>("/api/private/session-detail", {
-    siteId,
-    sessionId: normalizedSessionId,
-    ...(window ? { from: window.from, to: window.to } : {}),
-    ...(timeZone ? { timeZone } : {}),
-  });
+  return fetchPrivateJson<SessionDetailData>(
+    "/api/private/session-detail",
+    {
+      siteId,
+      sessionId: normalizedSessionId,
+      ...(window ? { from: window.from, to: window.to } : {}),
+      ...(timeZone ? { timeZone } : {}),
+    },
+    { signal: options?.signal, dedupe: false },
+  );
 }
 
 export async function fetchEventsSummary(

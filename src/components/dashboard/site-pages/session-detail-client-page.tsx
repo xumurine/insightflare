@@ -1,11 +1,9 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import Map, { useControl } from "react-map-gl/maplibre";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { ScatterplotLayer } from "@deck.gl/layers";
-import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
 import {
   RiArrowLeftLine,
   RiCalendarEventLine,
@@ -16,7 +14,6 @@ import {
   RiPulseLine,
   RiTimeLine,
 } from "@remixicon/react";
-import type { StyleSpecification } from "maplibre-gl";
 
 import {
   AsyncDimensionBreakdownCard,
@@ -44,11 +41,18 @@ import {
   type JourneyGeoLocationInput,
 } from "@/components/dashboard/journey-geo-location-card";
 import { LazyGeoCityBreadcrumbLabel } from "@/components/dashboard/lazy-geo-location-label";
-import { useDetailModalClose } from "@/components/dashboard/site-pages/detail-query-modal";
+import {
+  useDetailModalClose,
+  useDetailModalReady,
+} from "@/components/dashboard/site-pages/detail-query-modal";
 import {
   OverviewPagesSection,
   type OverviewPagesSectionCardData,
 } from "@/components/dashboard/site-pages/overview-client-page";
+import type {
+  SessionDetailMapTheme,
+  SessionLocationPoint,
+} from "@/components/dashboard/site-pages/session-detail-map-stage";
 import {
   Card,
   CardContent,
@@ -89,22 +93,9 @@ interface SessionDetailClientPageProps {
 
 type SessionDetail = NonNullable<SessionDetailData["data"]>;
 type Labels = ReturnType<typeof copy>;
-type EffectiveMapTheme = "light" | "dark";
 type SessionPerformancePanelKey = PerformanceMetricKey | "score";
 type SessionPerformanceStatus = "great" | "needs-improvement" | "poor" | "none";
 
-const SESSION_MAP_VIEW_STATE = {
-  longitude: 0,
-  latitude: 20,
-  zoom: 1.05,
-  minZoom: 0.3,
-  maxZoom: 6,
-  pitch: 0,
-  bearing: 0,
-} as const;
-const SESSION_MAP_MAX_RENDERED_POINTS = 320;
-const SESSION_MAP_POINT_RGB = [52, 211, 153] as const;
-const SESSION_MAP_POINT_BASE_RADIUS_PX = 4.8;
 const SESSION_PERFORMANCE_METRICS: PerformanceMetricKey[] = [
   "ttfb",
   "fcp",
@@ -152,45 +143,16 @@ const SESSION_PERFORMANCE_STATUS_STYLE = {
   }
 >;
 
-interface SessionLocationPoint {
-  latitude: number;
-  longitude: number;
-  timestampMs: number;
-}
-
-interface RenderedSessionLocationPoint extends SessionLocationPoint {
-  id: string;
-  radius: number;
-  fillColor: [number, number, number, number];
-}
-
-function buildRasterStyle(theme: EffectiveMapTheme): StyleSpecification {
-  const sourceId = `insightflare-session-map-source-${theme}`;
-  const layerId = `insightflare-session-map-layer-${theme}`;
-  const endpoint = `/api/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
-
-  return {
-    version: 8,
-    name: `insightflare-session-map-${theme}`,
-    sources: {
-      [sourceId]: {
-        type: "raster",
-        tiles: [endpoint],
-        tileSize: 256,
-        attribution: "OpenStreetMap contributors CARTO",
-      },
-    },
-    layers: [
-      {
-        id: layerId,
-        type: "raster",
-        source: sourceId,
-        minzoom: 0,
-        maxzoom: 22,
-      },
-    ],
-  };
-}
+const SessionDetailMapStage = dynamic(
+  () =>
+    import("@/components/dashboard/site-pages/session-detail-map-stage").then(
+      (module) => module.SessionDetailMapStage,
+    ),
+  {
+    ssr: false,
+    loading: () => <DetailMapPlaceholder />,
+  },
+);
 
 function hasValidCoordinate(
   latitude: number | null | undefined,
@@ -207,23 +169,6 @@ function hasValidCoordinate(
     longitude >= -180 &&
     longitude <= 180
   );
-}
-
-function resolveSessionMapFillColor(
-  opacity: number,
-): [number, number, number, number] {
-  return [
-    SESSION_MAP_POINT_RGB[0],
-    SESSION_MAP_POINT_RGB[1],
-    SESSION_MAP_POINT_RGB[2],
-    Math.round(Math.max(0, Math.min(1, opacity)) * 255),
-  ];
-}
-
-function getRenderedSessionPointPosition(
-  point: Pick<RenderedSessionLocationPoint, "longitude" | "latitude">,
-): [number, number] {
-  return [point.longitude, point.latitude];
 }
 
 function sessionLocationPoint(
@@ -284,59 +229,6 @@ function sessionGeoLocationInputs(
       longitude: point.longitude,
     })),
   ];
-}
-
-function DeckOverlay(props: MapboxOverlayProps) {
-  const overlay = useControl<MapboxOverlay>(() => new MapboxOverlay(props));
-  overlay.setProps(props);
-  return null;
-}
-
-function SessionMapStage({
-  mapStyle,
-  points,
-}: {
-  mapStyle: StyleSpecification;
-  points: SessionLocationPoint[];
-}) {
-  const renderedPoints = useMemo<RenderedSessionLocationPoint[]>(
-    () =>
-      points.slice(0, SESSION_MAP_MAX_RENDERED_POINTS).map((point, index) => ({
-        ...point,
-        id: `${point.timestampMs}:${index}`,
-        radius: SESSION_MAP_POINT_BASE_RADIUS_PX,
-        fillColor: resolveSessionMapFillColor(0.56),
-      })),
-    [points],
-  );
-  const layers = useMemo(
-    () => [
-      new ScatterplotLayer<RenderedSessionLocationPoint>({
-        id: "session-location-point",
-        data: renderedPoints,
-        getFillColor: (point) => point.fillColor,
-        getPosition: getRenderedSessionPointPosition,
-        getRadius: (point) => point.radius,
-        radiusUnits: "pixels",
-        radiusMinPixels: 0,
-        radiusMaxPixels: SESSION_MAP_POINT_BASE_RADIUS_PX,
-        pickable: false,
-      }),
-    ],
-    [renderedPoints],
-  );
-
-  return (
-    <Map
-      initialViewState={SESSION_MAP_VIEW_STATE}
-      mapStyle={mapStyle}
-      attributionControl={false}
-      interactive={false}
-      reuseMaps
-    >
-      <DeckOverlay interleaved={false} layers={layers} />
-    </Map>
-  );
 }
 
 function copy(locale: Locale) {
@@ -970,6 +862,17 @@ function SessionGeoBreadcrumb({
   );
 }
 
+function DetailMapPlaceholder() {
+  return (
+    <div className="absolute inset-0 overflow-hidden bg-muted/40">
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,var(--muted)_1px,transparent_1px),linear-gradient(0deg,var(--muted)_1px,transparent_1px)] bg-[size:64px_64px] opacity-40" />
+      <div className="absolute inset-0 bg-gradient-to-b from-background/10 via-transparent to-background/80" />
+      <div className="absolute inset-x-0 top-1/2 h-px bg-border/40" />
+      <div className="absolute left-1/2 inset-y-0 w-px bg-border/30" />
+    </div>
+  );
+}
+
 function SessionMapHero({
   labels,
   session,
@@ -985,21 +888,22 @@ function SessionMapHero({
   visitorHref: string;
   onBack?: () => void;
 }) {
+  const modalReady = useDetailModalReady();
   const { resolvedTheme } = useTheme();
-  const effectiveTheme: EffectiveMapTheme =
+  const effectiveTheme: SessionDetailMapTheme =
     resolvedTheme === "dark" ? "dark" : "light";
-  const mapStyle = useMemo(
-    () => buildRasterStyle(effectiveTheme),
-    [effectiveTheme],
-  );
   const points = useMemo(
-    () => sessionLocationPoints(locationPoints, session),
-    [locationPoints, session],
+    () => (modalReady ? sessionLocationPoints(locationPoints, session) : []),
+    [locationPoints, modalReady, session],
   );
 
   return (
     <div className="relative h-[17rem] overflow-hidden sm:h-[19rem]">
-      <SessionMapStage mapStyle={mapStyle} points={points} />
+      {modalReady ? (
+        <SessionDetailMapStage theme={effectiveTheme} points={points} />
+      ) : (
+        <DetailMapPlaceholder />
+      )}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-background via-background/70 to-transparent" />
 
@@ -1680,15 +1584,24 @@ export function SessionDetailClientPage({
       return;
     }
     let active = true;
+    const controller = new AbortController();
     setLoading(true);
     setError(false);
-    fetchSessionDetail(siteId, sessionId, timeZone, window)
+    fetchSessionDetail(siteId, sessionId, timeZone, window, {
+      signal: controller.signal,
+    })
       .then((payload) => {
         if (!active) return;
         setDetail(payload.data);
       })
-      .catch(() => {
-        if (!active) return;
+      .catch((error: unknown) => {
+        if (
+          !active ||
+          controller.signal.aborted ||
+          (error instanceof Error && error.name === "AbortError")
+        ) {
+          return;
+        }
         setDetail(null);
         setError(true);
       })
@@ -1697,6 +1610,7 @@ export function SessionDetailClientPage({
       });
     return () => {
       active = false;
+      controller.abort();
     };
   }, [requestKey]);
 

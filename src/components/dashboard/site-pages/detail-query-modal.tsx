@@ -20,6 +20,7 @@ const CLOSE_SCROLL_TOP_THRESHOLD = 2;
 const CLOSE_SCROLL_MAX_WAIT_MS = 900;
 
 const DetailModalCloseContext = createContext<(() => void) | null>(null);
+const DetailModalReadyContext = createContext(true);
 
 interface DetailModalProps {
   ariaLabel: string;
@@ -37,6 +38,10 @@ export function useDetailModalClose() {
   return useContext(DetailModalCloseContext);
 }
 
+export function useDetailModalReady() {
+  return useContext(DetailModalReadyContext);
+}
+
 export function DetailModal({
   ariaLabel,
   modalKey,
@@ -45,6 +50,7 @@ export function DetailModal({
 }: DetailModalProps) {
   const [isClosing, setIsClosing] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [isReady, setIsReady] = useState(false);
   const [contentAreaBounds, setContentAreaBounds] =
     useState<ContentAreaBounds | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -208,6 +214,7 @@ export function DetailModal({
 
   useEffect(() => {
     setIsClosing(false);
+    setIsReady(false);
     isPreparingCloseRef.current = false;
     clearCloseScrollPending();
     clearCloseAnimationPending();
@@ -250,53 +257,60 @@ export function DetailModal({
 
   const modal = (
     <DetailModalCloseContext.Provider value={handleClose}>
-      <div className="fixed inset-0 z-[96]">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: isClosing ? 0 : 1 }}
-          transition={{ duration: 0.25 }}
-          className="fixed inset-0 z-0 bg-black/50 backdrop-blur-sm"
-          onClick={handleClose}
-        />
+      <DetailModalReadyContext.Provider value={isReady}>
+        <div className="fixed inset-0 z-[96]">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: isClosing ? 0 : 1 }}
+            transition={{ duration: 0.25 }}
+            className="fixed inset-0 z-0 bg-black/50 backdrop-blur-sm"
+            onClick={handleClose}
+          />
 
-        <div
-          ref={scrollContainerRef}
-          className="fixed inset-y-0 z-10 overflow-y-auto overscroll-contain"
-          style={contentAreaStyle}
-          onClick={handleClose}
-        >
-          <div className="pointer-events-none relative mx-auto flex max-w-[1400px] items-start gap-6 px-2 pb-[4em] pt-[8em] md:px-4">
-            <motion.div
-              initial={{
-                y: "112vh",
-                rotate: -0.8,
-              }}
-              animate={
-                isClosing
-                  ? { y: "112vh", rotate: 0.4 }
-                  : { y: "0vh", rotate: 0 }
-              }
-              transition={
-                isClosing
-                  ? { duration: 0.36, ease: [0.38, 0.05, 0.86, 0.28] }
-                  : {
-                      type: "spring",
-                      stiffness: 170,
-                      damping: 24,
-                      mass: 0.92,
-                    }
-              }
-              className="pointer-events-auto relative min-h-[132vh] min-w-0 flex-1 overflow-hidden rounded-sm border border-border/80 bg-background shadow-[0_-24px_70px_rgba(0,0,0,0.35)]"
-              onClick={(event) => event.stopPropagation()}
-              role="dialog"
-              aria-modal="true"
-              aria-label={ariaLabel}
-            >
-              <div className="relative h-full">{children}</div>
-            </motion.div>
+          <div
+            ref={scrollContainerRef}
+            className="fixed inset-y-0 z-10 overflow-y-auto overscroll-contain"
+            style={contentAreaStyle}
+            onClick={handleClose}
+          >
+            <div className="pointer-events-none relative mx-auto flex max-w-[1400px] items-start gap-6 px-2 pb-[4em] pt-[8em] md:px-4">
+              <motion.div
+                initial={{
+                  y: "112vh",
+                  rotate: -0.8,
+                }}
+                animate={
+                  isClosing
+                    ? { y: "112vh", rotate: 0.4 }
+                    : { y: "0vh", rotate: 0 }
+                }
+                transition={
+                  isClosing
+                    ? { duration: 0.36, ease: [0.38, 0.05, 0.86, 0.28] }
+                    : {
+                        type: "spring",
+                        stiffness: 170,
+                        damping: 24,
+                        mass: 0.92,
+                      }
+                }
+                className="pointer-events-auto relative min-h-[132vh] min-w-0 flex-1 overflow-hidden rounded-sm border border-border/80 bg-background shadow-[0_-24px_70px_rgba(0,0,0,0.35)]"
+                onAnimationComplete={() => {
+                  if (!isClosing) {
+                    setIsReady(true);
+                  }
+                }}
+                onClick={(event) => event.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-label={ariaLabel}
+              >
+                <div className="relative h-full">{children}</div>
+              </motion.div>
+            </div>
           </div>
         </div>
-      </div>
+      </DetailModalReadyContext.Provider>
     </DetailModalCloseContext.Provider>
   );
 

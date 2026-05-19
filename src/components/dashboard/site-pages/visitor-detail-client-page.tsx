@@ -8,11 +8,9 @@ import {
   useRef,
   useState,
 } from "react";
-import Map, { useControl } from "react-map-gl/maplibre";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { ScatterplotLayer } from "@deck.gl/layers";
-import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
 import {
   RiArrowLeftLine,
   RiCalendarEventLine,
@@ -23,7 +21,6 @@ import {
   RiPulseLine,
   RiTimeLine,
 } from "@remixicon/react";
-import type { StyleSpecification } from "maplibre-gl";
 
 import {
   AsyncDimensionBreakdownCard,
@@ -56,11 +53,18 @@ import {
   type SessionSortState,
   SessionsTableCard,
 } from "@/components/dashboard/sessions-table-card";
-import { useDetailModalClose } from "@/components/dashboard/site-pages/detail-query-modal";
+import {
+  useDetailModalClose,
+  useDetailModalReady,
+} from "@/components/dashboard/site-pages/detail-query-modal";
 import {
   OverviewPagesSection,
   type OverviewPagesSectionCardData,
 } from "@/components/dashboard/site-pages/overview-client-page";
+import type {
+  VisitorDetailMapTheme,
+  VisitorLocationPoint,
+} from "@/components/dashboard/site-pages/visitor-detail-map-stage";
 import {
   Card,
   CardContent,
@@ -108,22 +112,9 @@ interface VisitorDetailClientPageProps {
 type VisitorDetail = NonNullable<VisitorDetailData["data"]>;
 type VisitorRow = VisitorDetail["visitor"];
 type Labels = ReturnType<typeof copy>;
-type EffectiveMapTheme = "light" | "dark";
 type VisitorPerformancePanelKey = PerformanceMetricKey | "score";
 type VisitorPerformanceStatus = "great" | "needs-improvement" | "poor" | "none";
 
-const VISITOR_MAP_VIEW_STATE = {
-  longitude: 0,
-  latitude: 20,
-  zoom: 1.05,
-  minZoom: 0.3,
-  maxZoom: 6,
-  pitch: 0,
-  bearing: 0,
-} as const;
-const VISITOR_MAP_MAX_RENDERED_POINTS = 320;
-const VISITOR_MAP_POINT_RGB = [52, 211, 153] as const;
-const VISITOR_MAP_POINT_BASE_RADIUS_PX = 4.8;
 const VISITOR_DETAIL_OVERVIEW_FILTERS = {};
 const VISITOR_OVERVIEW_PAGE_CARD_TABS = ["path", "title"] as const;
 const VISITOR_ACTIVITY_DAYS = 365;
@@ -193,17 +184,16 @@ const EMPTY_VISIT_PERFORMANCE: JourneyEvent["performance"] = {
   inp: null,
 };
 
-interface VisitorLocationPoint {
-  latitude: number;
-  longitude: number;
-  timestampMs: number;
-}
-
-interface RenderedVisitorLocationPoint extends VisitorLocationPoint {
-  id: string;
-  radius: number;
-  fillColor: [number, number, number, number];
-}
+const VisitorDetailMapStage = dynamic(
+  () =>
+    import("@/components/dashboard/site-pages/visitor-detail-map-stage").then(
+      (module) => module.VisitorDetailMapStage,
+    ),
+  {
+    ssr: false,
+    loading: () => <DetailMapPlaceholder />,
+  },
+);
 
 interface VisitorActivityDayItem {
   date: Date;
@@ -224,34 +214,6 @@ interface VisitorActivityCalendarSection {
   cells: VisitorActivityCalendarCell[];
   monthLabels: string[];
   weekCount: number;
-}
-
-function buildRasterStyle(theme: EffectiveMapTheme): StyleSpecification {
-  const sourceId = `insightflare-visitor-map-source-${theme}`;
-  const layerId = `insightflare-visitor-map-layer-${theme}`;
-  const endpoint = `/api/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
-
-  return {
-    version: 8,
-    name: `insightflare-visitor-map-${theme}`,
-    sources: {
-      [sourceId]: {
-        type: "raster",
-        tiles: [endpoint],
-        tileSize: 256,
-        attribution: "OpenStreetMap contributors CARTO",
-      },
-    },
-    layers: [
-      {
-        id: layerId,
-        type: "raster",
-        source: sourceId,
-        minzoom: 0,
-        maxzoom: 22,
-      },
-    ],
-  };
 }
 
 function copy(locale: Locale) {
@@ -401,23 +363,6 @@ function hasValidCoordinate(
   );
 }
 
-function resolveVisitorMapFillColor(
-  opacity: number,
-): [number, number, number, number] {
-  return [
-    VISITOR_MAP_POINT_RGB[0],
-    VISITOR_MAP_POINT_RGB[1],
-    VISITOR_MAP_POINT_RGB[2],
-    Math.round(Math.max(0, Math.min(1, opacity)) * 255),
-  ];
-}
-
-function getRenderedVisitorPointPosition(
-  point: Pick<RenderedVisitorLocationPoint, "longitude" | "latitude">,
-): [number, number] {
-  return [point.longitude, point.latitude];
-}
-
 function visitorLocationPoints(
   sessions: JourneySession[],
 ): VisitorLocationPoint[] {
@@ -447,59 +392,6 @@ function visitorGeoLocationInputs(
     latitude: session.latitude,
     longitude: session.longitude,
   }));
-}
-
-function DeckOverlay(props: MapboxOverlayProps) {
-  const overlay = useControl<MapboxOverlay>(() => new MapboxOverlay(props));
-  overlay.setProps(props);
-  return null;
-}
-
-function VisitorMapStage({
-  mapStyle,
-  points,
-}: {
-  mapStyle: StyleSpecification;
-  points: VisitorLocationPoint[];
-}) {
-  const renderedPoints = useMemo<RenderedVisitorLocationPoint[]>(
-    () =>
-      points.slice(0, VISITOR_MAP_MAX_RENDERED_POINTS).map((point, index) => ({
-        ...point,
-        id: `${point.timestampMs}:${index}`,
-        radius: VISITOR_MAP_POINT_BASE_RADIUS_PX,
-        fillColor: resolveVisitorMapFillColor(0.56),
-      })),
-    [points],
-  );
-  const layers = useMemo(
-    () => [
-      new ScatterplotLayer<RenderedVisitorLocationPoint>({
-        id: "visitor-location-point",
-        data: renderedPoints,
-        getFillColor: (point) => point.fillColor,
-        getPosition: getRenderedVisitorPointPosition,
-        getRadius: (point) => point.radius,
-        radiusUnits: "pixels",
-        radiusMinPixels: 0,
-        radiusMaxPixels: VISITOR_MAP_POINT_BASE_RADIUS_PX,
-        pickable: false,
-      }),
-    ],
-    [renderedPoints],
-  );
-
-  return (
-    <Map
-      initialViewState={VISITOR_MAP_VIEW_STATE}
-      mapStyle={mapStyle}
-      attributionControl={false}
-      interactive={false}
-      reuseMaps
-    >
-      <DeckOverlay interleaved={false} layers={layers} />
-    </Map>
-  );
 }
 
 function formatDetailedDateTime(
@@ -1142,6 +1034,17 @@ function VisitorGeoBreadcrumb({
   );
 }
 
+function DetailMapPlaceholder() {
+  return (
+    <div className="absolute inset-0 overflow-hidden bg-muted/40">
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,var(--muted)_1px,transparent_1px),linear-gradient(0deg,var(--muted)_1px,transparent_1px)] bg-[size:64px_64px] opacity-40" />
+      <div className="absolute inset-0 bg-gradient-to-b from-background/10 via-transparent to-background/80" />
+      <div className="absolute inset-x-0 top-1/2 h-px bg-border/40" />
+      <div className="absolute left-1/2 inset-y-0 w-px bg-border/30" />
+    </div>
+  );
+}
+
 function VisitorMapHero({
   locale,
   labels,
@@ -1159,18 +1062,22 @@ function VisitorMapHero({
   backHref: string;
   onBack?: () => void;
 }) {
+  const modalReady = useDetailModalReady();
   const { resolvedTheme } = useTheme();
-  const effectiveTheme: EffectiveMapTheme =
+  const effectiveTheme: VisitorDetailMapTheme =
     resolvedTheme === "dark" ? "dark" : "light";
-  const mapStyle = useMemo(
-    () => buildRasterStyle(effectiveTheme),
-    [effectiveTheme],
+  const points = useMemo(
+    () => (modalReady ? visitorLocationPoints(sessions) : []),
+    [modalReady, sessions],
   );
-  const points = useMemo(() => visitorLocationPoints(sessions), [sessions]);
 
   return (
     <div className="relative h-[17rem] overflow-hidden sm:h-[19rem]">
-      <VisitorMapStage mapStyle={mapStyle} points={points} />
+      {modalReady ? (
+        <VisitorDetailMapStage theme={effectiveTheme} points={points} />
+      ) : (
+        <DetailMapPlaceholder />
+      )}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-background via-background/70 to-transparent" />
 
@@ -2278,15 +2185,24 @@ export function VisitorDetailClientPage({
       return;
     }
     let active = true;
+    const controller = new AbortController();
     setLoading(true);
     setError(false);
-    fetchVisitorDetail(siteId, visitorId, timeZone, window)
+    fetchVisitorDetail(siteId, visitorId, timeZone, window, {
+      signal: controller.signal,
+    })
       .then((payload) => {
         if (!active) return;
         setDetail(payload.data);
       })
-      .catch(() => {
-        if (!active) return;
+      .catch((error: unknown) => {
+        if (
+          !active ||
+          controller.signal.aborted ||
+          (error instanceof Error && error.name === "AbortError")
+        ) {
+          return;
+        }
         setDetail(null);
         setError(true);
       })
@@ -2295,6 +2211,7 @@ export function VisitorDetailClientPage({
       });
     return () => {
       active = false;
+      controller.abort();
     };
   }, [requestKey, siteId, visitorId]);
 
