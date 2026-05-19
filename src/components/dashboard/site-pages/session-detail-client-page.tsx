@@ -3,7 +3,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import Map, { useControl } from "react-map-gl/maplibre";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
@@ -45,7 +44,7 @@ import {
   type JourneyGeoLocationInput,
 } from "@/components/dashboard/journey-geo-location-card";
 import { LazyGeoCityBreadcrumbLabel } from "@/components/dashboard/lazy-geo-location-label";
-import { useInterceptedDetailModalClose } from "@/components/dashboard/site-pages/intercepted-detail-modal";
+import { useDetailModalClose } from "@/components/dashboard/site-pages/detail-query-modal";
 import {
   OverviewPagesSection,
   type OverviewPagesSectionCardData,
@@ -85,6 +84,7 @@ interface SessionDetailClientPageProps {
   messages: AppMessages;
   siteId: string;
   pathname: string;
+  sessionId: string;
 }
 
 type SessionDetail = NonNullable<SessionDetailData["data"]>;
@@ -1580,7 +1580,7 @@ function DetailContent({
   pathname: string;
   timeZone: string;
 }) {
-  const modalClose = useInterceptedDetailModalClose();
+  const modalClose = useDetailModalClose();
   const session = detail.session;
   const sessionsPath = pathname.replace(/\/detail$/, "");
   const siteBasePath = sessionsPath.replace(/\/sessions$/, "");
@@ -1589,7 +1589,7 @@ function DetailContent({
     [detail],
   );
   const pagesPath = `${siteBasePath}/pages`;
-  const visitorHref = `${siteBasePath}/visitors/detail?visitorId=${encodeURIComponent(
+  const visitorHref = `${siteBasePath}/visitors?detail=${encodeURIComponent(
     session.visitorId,
   )}`;
   const geoLocations = useMemo(
@@ -1661,11 +1661,10 @@ export function SessionDetailClientPage({
   messages,
   siteId,
   pathname,
+  sessionId,
 }: SessionDetailClientPageProps) {
   const labels = copy(locale);
   const { timeZone, window } = useDashboardQueryControls();
-  const searchParams = useSearchParams();
-  const sessionId = searchParams.get("sessionId")?.trim() || "";
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [loading, setLoading] = useState(Boolean(sessionId));
   const [error, setError] = useState(false);

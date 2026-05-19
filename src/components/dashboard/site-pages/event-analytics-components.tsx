@@ -943,10 +943,10 @@ export function EventRecordDetailDrawer({
   const router = useRouter();
   const basePath = pathname.replace(/\/events(?:\/detail)?$/, "");
   const visitorHref = detail?.context.visitorId
-    ? `${basePath}/visitors/detail?visitorId=${encodeURIComponent(detail.context.visitorId)}`
+    ? `${basePath}/visitors?detail=${encodeURIComponent(detail.context.visitorId)}`
     : "";
   const sessionHref = detail?.context.sessionId
-    ? `${basePath}/sessions/detail?sessionId=${encodeURIComponent(detail.context.sessionId)}`
+    ? `${basePath}/sessions?detail=${encodeURIComponent(detail.context.sessionId)}`
     : "";
 
   const openLink = (href: string) => {

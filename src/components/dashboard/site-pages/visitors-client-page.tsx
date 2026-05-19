@@ -1,12 +1,21 @@
 "use client";
 
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import dynamic from "next/dynamic";
 import {
   RiArrowDownSLine,
   RiArrowUpSLine,
   RiSearchLine,
 } from "@remixicon/react";
 
+import { ClickableTableCell } from "@/components/dashboard/clickable-table-cell";
 import {
   BrowserMeta,
   CountryRegionMeta,
@@ -16,8 +25,11 @@ import {
   ReferrerMeta,
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
-import { LinkedTableCell } from "@/components/dashboard/linked-table-cell";
 import { PageHeading } from "@/components/dashboard/page-heading";
+import {
+  DETAIL_QUERY_PARAM,
+  DetailModal,
+} from "@/components/dashboard/site-pages/detail-query-modal";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent } from "@/components/ui/card";
@@ -30,6 +42,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  pushUrlWithoutNavigation,
+  replaceUrlWithoutNavigation,
+  useLiveSearchParams,
+} from "@/lib/client-history";
 import { fetchVisitors } from "@/lib/dashboard/client-data";
 import { numberFormat } from "@/lib/dashboard/format";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
@@ -49,6 +66,19 @@ type VisitorRow = VisitorsData["data"][number];
 
 const VISITOR_PAGE_SIZE = 80;
 const VISITOR_SKELETON_ROWS = 8;
+
+const VisitorDetailClientPage = dynamic(
+  () =>
+    import("@/components/dashboard/site-pages/visitor-detail-client-page").then(
+      (module) => module.VisitorDetailClientPage,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="p-6 text-sm text-muted-foreground">Loading...</div>
+    ),
+  },
+);
 
 type SortDirection = "asc" | "desc";
 type VisitorSortKey = "firstSeenAt" | "lastSeenAt" | "sessions" | "views";
@@ -249,6 +279,19 @@ function SessionIdValue({ value }: { value?: string }) {
   return <span className="font-mono font-medium">{shortId(normalized)}</span>;
 }
 
+function detailQueryTarget(
+  pathname: string,
+  searchParams: URLSearchParams,
+  detailId: string,
+): string {
+  const params = new URLSearchParams(searchParams.toString());
+  params.set(DETAIL_QUERY_PARAM, detailId);
+  params.delete("visitorId");
+  params.delete("sessionId");
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
 export function VisitorsClientPage({
   locale,
   messages,
@@ -273,6 +316,9 @@ export function VisitorsClientPage({
   const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
     null,
   );
+  const searchParams = useLiveSearchParams();
+  const detailVisitorId = searchParams.get(DETAIL_QUERY_PARAM)?.trim() || "";
+  const openedDetailFromListRef = useRef(false);
   const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const requestKey = useMemo(
@@ -303,6 +349,12 @@ export function VisitorsClientPage({
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!detailVisitorId) {
+      openedDetailFromListRef.current = false;
+    }
+  }, [detailVisitorId]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -446,6 +498,32 @@ export function VisitorsClientPage({
         : { key, direction: "desc" },
     );
   };
+
+  const openVisitorDetail = useCallback(
+    (visitorId: string) => {
+      openedDetailFromListRef.current = true;
+      pushUrlWithoutNavigation(
+        detailQueryTarget(pathname, searchParams, visitorId),
+      );
+    },
+    [pathname, searchParams],
+  );
+
+  const closeVisitorDetail = useCallback(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has(DETAIL_QUERY_PARAM)) return;
+
+    if (openedDetailFromListRef.current) {
+      openedDetailFromListRef.current = false;
+      window.history.back();
+      return;
+    }
+
+    params.delete(DETAIL_QUERY_PARAM);
+    const query = params.toString();
+    replaceUrlWithoutNavigation(query ? `${pathname}?${query}` : pathname);
+  }, [pathname]);
+
   const bodyState = replacingRows
     ? "loading"
     : error
@@ -552,16 +630,16 @@ export function VisitorsClientPage({
               ) : (
                 <>
                   {rows.map((row) => {
-                    const href = `${pathname}/detail?visitorId=${encodeURIComponent(row.visitorId)}`;
+                    const openDetail = () => openVisitorDetail(row.visitorId);
                     return (
                       <TableRow
                         key={row.visitorId}
                         className="group cursor-pointer"
                       >
-                        <LinkedTableCell
-                          href={href}
+                        <ClickableTableCell
+                          onClick={openDetail}
                           className="w-32"
-                          linkClassName="pl-4"
+                          buttonClassName="pl-4"
                           focusable
                           ariaLabel={`${labels.visitor}: ${row.visitorId}`}
                         >
@@ -572,41 +650,50 @@ export function VisitorsClientPage({
                             />
                             <span className="truncate">{labels.anonymous}</span>
                           </div>
-                        </LinkedTableCell>
-                        <LinkedTableCell href={href}>
+                        </ClickableTableCell>
+                        <ClickableTableCell onClick={openDetail}>
                           <SessionIdValue value={row.sessionId} />
-                        </LinkedTableCell>
-                        <LinkedTableCell
-                          href={href}
+                        </ClickableTableCell>
+                        <ClickableTableCell
+                          onClick={openDetail}
                           className="font-mono text-muted-foreground"
                         >
                           {formatRelativeTime(locale, row.firstSeenAt, now)}
-                        </LinkedTableCell>
-                        <LinkedTableCell
-                          href={href}
+                        </ClickableTableCell>
+                        <ClickableTableCell
+                          onClick={openDetail}
                           className="font-mono text-muted-foreground"
                         >
                           {formatRelativeTime(locale, row.lastSeenAt, now)}
-                        </LinkedTableCell>
-                        <LinkedTableCell
-                          href={href}
+                        </ClickableTableCell>
+                        <ClickableTableCell
+                          onClick={openDetail}
                           className="text-right font-mono tabular-nums"
                         >
                           {numberFormat(locale, row.sessions)}
-                        </LinkedTableCell>
-                        <LinkedTableCell href={href} className="text-center">
+                        </ClickableTableCell>
+                        <ClickableTableCell
+                          onClick={openDetail}
+                          className="text-center"
+                        >
                           <span className="font-mono tabular-nums">
                             {numberFormat(locale, row.views)}
                           </span>
-                        </LinkedTableCell>
-                        <LinkedTableCell href={href} className="max-w-48">
+                        </ClickableTableCell>
+                        <ClickableTableCell
+                          onClick={openDetail}
+                          className="max-w-48"
+                        >
                           <ReferrerMeta
                             referrerHost={row.referrerHost || ""}
                             referrerUrl={row.referrerUrl}
                             directLabel={messages.overview.direct}
                           />
-                        </LinkedTableCell>
-                        <LinkedTableCell href={href} className="max-w-52">
+                        </ClickableTableCell>
+                        <ClickableTableCell
+                          onClick={openDetail}
+                          className="max-w-52"
+                        >
                           <CountryRegionMeta
                             locale={locale}
                             messages={messages}
@@ -614,32 +701,38 @@ export function VisitorsClientPage({
                             region={row.region}
                             regionCode={row.regionCode}
                           />
-                        </LinkedTableCell>
-                        <LinkedTableCell href={href} className="max-w-40">
+                        </ClickableTableCell>
+                        <ClickableTableCell
+                          onClick={openDetail}
+                          className="max-w-40"
+                        >
                           <OsMeta
                             os={row.os || ""}
                             version={row.osVersion}
                             unknownLabel={messages.common.unknown}
                           />
-                        </LinkedTableCell>
-                        <LinkedTableCell href={href} className="max-w-40">
+                        </ClickableTableCell>
+                        <ClickableTableCell
+                          onClick={openDetail}
+                          className="max-w-40"
+                        >
                           <BrowserMeta
                             browser={row.browser || ""}
                             version={row.browserVersion}
                             unknownLabel={messages.common.unknown}
                           />
-                        </LinkedTableCell>
-                        <LinkedTableCell
-                          href={href}
+                        </ClickableTableCell>
+                        <ClickableTableCell
+                          onClick={openDetail}
                           className="max-w-36"
-                          linkClassName="pr-4"
+                          buttonClassName="pr-4"
                         >
                           <DeviceMeta
                             deviceType={row.deviceType || ""}
                             locale={locale}
                             unknownLabel={messages.common.unknown}
                           />
-                        </LinkedTableCell>
+                        </ClickableTableCell>
                       </TableRow>
                     );
                   })}
@@ -672,6 +765,22 @@ export function VisitorsClientPage({
           </Table>
         </CardContent>
       </Card>
+
+      {detailVisitorId ? (
+        <DetailModal
+          ariaLabel={locale === "zh" ? "访客详情" : "Visitor detail"}
+          modalKey={`visitor:${detailVisitorId}`}
+          onClose={closeVisitorDetail}
+        >
+          <VisitorDetailClientPage
+            locale={locale}
+            messages={messages}
+            siteId={siteId}
+            pathname={pathname}
+            visitorId={detailVisitorId}
+          />
+        </DetailModal>
+      ) : null}
     </div>
   );
 }

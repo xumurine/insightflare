@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { RiArrowDownSLine, RiArrowUpSLine } from "@remixicon/react";
 
+import { ClickableTableCell } from "@/components/dashboard/clickable-table-cell";
 import {
   BrowserMeta,
   CountryRegionMeta,
@@ -14,7 +15,6 @@ import {
   ReferrerMeta,
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
-import { LinkedTableCell } from "@/components/dashboard/linked-table-cell";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -62,7 +62,7 @@ interface SessionsTableCardProps {
   messages: AppMessages;
   labels: SessionsTableLabels;
   rows: JourneySession[];
-  pathname: string;
+  onOpenSession: (sessionId: string) => void;
   sort: SessionSortState;
   onSort: (key: SessionSortKey) => void;
   loadingRows?: boolean;
@@ -233,7 +233,7 @@ export function SessionsTableCard({
   messages,
   labels,
   rows,
-  pathname,
+  onOpenSession,
   sort,
   onSort,
   loadingRows = false,
@@ -337,18 +337,18 @@ export function SessionsTableCard({
             ) : (
               <>
                 {rows.map((row) => {
-                  const href = `${pathname}/detail?sessionId=${encodeURIComponent(row.sessionId)}`;
                   const active = isSessionActive(row, now);
+                  const openSession = () => onOpenSession(row.sessionId);
                   return (
                     <TableRow
                       key={row.sessionId}
                       data-session-row=""
                       className="group cursor-pointer"
                     >
-                      <LinkedTableCell
-                        href={href}
+                      <ClickableTableCell
+                        onClick={openSession}
                         className="w-32"
-                        linkClassName="pl-4"
+                        buttonClassName="pl-4"
                         focusable
                         ariaLabel={`${labels.sessionId}: ${row.sessionId}`}
                       >
@@ -359,41 +359,50 @@ export function SessionsTableCard({
                           />
                           <span className="truncate">{labels.anonymous}</span>
                         </div>
-                      </LinkedTableCell>
-                      <LinkedTableCell href={href}>
+                      </ClickableTableCell>
+                      <ClickableTableCell onClick={openSession}>
                         <span className="font-mono font-medium">
                           {shortId(row.sessionId)}
                         </span>
-                      </LinkedTableCell>
-                      <LinkedTableCell
-                        href={href}
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openSession}
                         className={cn(
                           "font-mono",
                           active ? "text-foreground" : "text-muted-foreground",
                         )}
                       >
                         {formatRelativeTime(locale, row.startedAt, now)}
-                      </LinkedTableCell>
-                      <LinkedTableCell
-                        href={href}
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openSession}
                         className="text-right font-mono tabular-nums"
                       >
                         <SessionDurationValue
                           locale={locale}
                           durationMs={row.durationMs}
                         />
-                      </LinkedTableCell>
-                      <LinkedTableCell href={href} className="text-center">
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openSession}
+                        className="text-center"
+                      >
                         <PageViewsValue locale={locale} views={row.views} />
-                      </LinkedTableCell>
-                      <LinkedTableCell href={href} className="max-w-48">
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openSession}
+                        className="max-w-48"
+                      >
                         <ReferrerMeta
                           referrerHost={row.referrerHost}
                           referrerUrl={row.referrerUrl}
                           directLabel={messages.overview.direct}
                         />
-                      </LinkedTableCell>
-                      <LinkedTableCell href={href} className="max-w-52">
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openSession}
+                        className="max-w-52"
+                      >
                         <CountryRegionMeta
                           locale={locale}
                           messages={messages}
@@ -401,42 +410,51 @@ export function SessionsTableCard({
                           region={row.region}
                           regionCode={row.regionCode}
                         />
-                      </LinkedTableCell>
-                      <LinkedTableCell href={href} className="max-w-40">
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openSession}
+                        className="max-w-40"
+                      >
                         <OsMeta
                           os={row.os}
                           version={row.osVersion}
                           unknownLabel={messages.common.unknown}
                         />
-                      </LinkedTableCell>
-                      <LinkedTableCell href={href} className="max-w-40">
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openSession}
+                        className="max-w-40"
+                      >
                         <BrowserMeta
                           browser={row.browser}
                           version={row.browserVersion}
                           unknownLabel={messages.common.unknown}
                         />
-                      </LinkedTableCell>
-                      <LinkedTableCell href={href} className="max-w-36">
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openSession}
+                        className="max-w-36"
+                      >
                         <DeviceMeta
                           deviceType={row.deviceType}
                           locale={locale}
                           unknownLabel={messages.common.unknown}
                         />
-                      </LinkedTableCell>
-                      <LinkedTableCell
-                        href={href}
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openSession}
                         className="max-w-56 font-mono"
-                        linkClassName="truncate"
+                        buttonClassName="truncate"
                       >
                         {formatPath(row.entryPath)}
-                      </LinkedTableCell>
-                      <LinkedTableCell
-                        href={href}
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openSession}
                         className="max-w-56 font-mono"
-                        linkClassName="truncate pr-4"
+                        buttonClassName="truncate pr-4"
                       >
                         {formatPath(row.exitPath)}
-                      </LinkedTableCell>
+                      </ClickableTableCell>
                     </TableRow>
                   );
                 })}

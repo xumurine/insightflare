@@ -13,7 +13,6 @@ import { getMessages } from "@/lib/i18n/messages";
 
 interface TeamLayoutProps {
   children: ReactNode;
-  detail: ReactNode;
   params: Promise<{
     locale: string;
     teamSlug: string;
@@ -22,7 +21,6 @@ interface TeamLayoutProps {
 
 export default async function TeamLayout({
   children,
-  detail,
   params,
 }: TeamLayoutProps) {
   const { locale, teamSlug } = await params;
@@ -63,7 +61,6 @@ export default async function TeamLayout({
         ),
       )}
       managementSections={managementSections}
-      detail={detail}
     >
       {children}
     </DashboardShell>

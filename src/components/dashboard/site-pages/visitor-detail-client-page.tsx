@@ -10,7 +10,6 @@ import {
 } from "react";
 import Map, { useControl } from "react-map-gl/maplibre";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
@@ -57,7 +56,7 @@ import {
   type SessionSortState,
   SessionsTableCard,
 } from "@/components/dashboard/sessions-table-card";
-import { useInterceptedDetailModalClose } from "@/components/dashboard/site-pages/intercepted-detail-modal";
+import { useDetailModalClose } from "@/components/dashboard/site-pages/detail-query-modal";
 import {
   OverviewPagesSection,
   type OverviewPagesSectionCardData,
@@ -103,6 +102,7 @@ interface VisitorDetailClientPageProps {
   messages: AppMessages;
   siteId: string;
   pathname: string;
+  visitorId: string;
 }
 
 type VisitorDetail = NonNullable<VisitorDetailData["data"]>;
@@ -1692,7 +1692,7 @@ function VisitorEventCard({
   siteBasePath: string;
   timeZone: string;
 }) {
-  const sessionHref = `${siteBasePath}/sessions/detail?sessionId=${encodeURIComponent(
+  const sessionHref = `${siteBasePath}/sessions?detail=${encodeURIComponent(
     event.sessionId,
   )}`;
 
@@ -1864,6 +1864,11 @@ function ActivityAndSessionsSection({
           },
     );
   };
+  const openSessionDetail = (sessionId: string) => {
+    window.location.assign(
+      `${siteBasePath}/sessions?detail=${encodeURIComponent(sessionId)}`,
+    );
+  };
 
   return (
     <section className="space-y-6">
@@ -1905,7 +1910,7 @@ function ActivityAndSessionsSection({
             empty: labels.emptySessions,
           }}
           rows={sortedSessions}
-          pathname={`${siteBasePath}/sessions`}
+          onOpenSession={openSessionDetail}
           sort={sessionSort}
           onSort={toggleSessionSort}
           hasMore={false}
@@ -2169,7 +2174,7 @@ function DetailContent({
   pathname: string;
   timeZone: string;
 }) {
-  const modalClose = useInterceptedDetailModalClose();
+  const modalClose = useDetailModalClose();
   const visitorListPath = pathname.replace(/\/detail$/, "");
   const siteBasePath = visitorListPath.replace(/\/visitors$/, "");
   const visitorSiteDomain = useMemo(
@@ -2254,11 +2259,10 @@ export function VisitorDetailClientPage({
   messages,
   siteId,
   pathname,
+  visitorId,
 }: VisitorDetailClientPageProps) {
   const labels = copy(locale);
   const { timeZone, window } = useDashboardQueryControls();
-  const searchParams = useSearchParams();
-  const visitorId = searchParams.get("visitorId")?.trim() || "";
   const [detail, setDetail] = useState<VisitorDetail | null>(null);
   const [loading, setLoading] = useState(Boolean(visitorId));
   const [error, setError] = useState(false);

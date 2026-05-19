@@ -10,21 +10,21 @@ import {
   useRef,
   useState,
 } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 import { motion } from "motion/react";
 
+export const DETAIL_QUERY_PARAM = "detail";
+
 const EXIT_DURATION_MS = 360;
-const CLOSE_MAX_BACK_STEPS = 24;
-const CLOSE_BACK_GUARD_TIMEOUT_MS = 1600;
 const CLOSE_SCROLL_TOP_THRESHOLD = 2;
 const CLOSE_SCROLL_MAX_WAIT_MS = 900;
 
-const InterceptedDetailModalCloseContext = createContext<(() => void) | null>(
-  null,
-);
+const DetailModalCloseContext = createContext<(() => void) | null>(null);
 
-interface InterceptedDetailModalProps {
+interface DetailModalProps {
   ariaLabel: string;
+  modalKey: string;
+  onClose: () => void;
   children: ReactNode;
 }
 
@@ -33,17 +33,18 @@ interface ContentAreaBounds {
   width: number;
 }
 
-export function useInterceptedDetailModalClose() {
-  return useContext(InterceptedDetailModalCloseContext);
+export function useDetailModalClose() {
+  return useContext(DetailModalCloseContext);
 }
 
-export function InterceptedDetailModal({
+export function DetailModal({
   ariaLabel,
+  modalKey,
+  onClose,
   children,
-}: InterceptedDetailModalProps) {
-  const pathname = usePathname();
-  const router = useRouter();
+}: DetailModalProps) {
   const [isClosing, setIsClosing] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [contentAreaBounds, setContentAreaBounds] =
     useState<ContentAreaBounds | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -87,54 +88,6 @@ export function InterceptedDetailModal({
     });
   }, []);
 
-  const backUntilPathnameChanged = useCallback(() => {
-    if (typeof window === "undefined") {
-      router.back();
-      return;
-    }
-
-    const startPath = `${window.location.pathname}${window.location.search}`;
-    let backSteps = 0;
-    let guardTimer: number | null = null;
-
-    function cleanup() {
-      window.removeEventListener("popstate", handlePopState);
-      if (guardTimer !== null) {
-        window.clearTimeout(guardTimer);
-        guardTimer = null;
-      }
-    }
-
-    function stepBack() {
-      const currentPath = `${window.location.pathname}${window.location.search}`;
-
-      if (currentPath !== startPath) {
-        cleanup();
-        return;
-      }
-
-      if (backSteps >= CLOSE_MAX_BACK_STEPS) {
-        cleanup();
-        router.back();
-        return;
-      }
-
-      backSteps += 1;
-      window.history.back();
-    }
-
-    function handlePopState() {
-      stepBack();
-    }
-
-    window.addEventListener("popstate", handlePopState);
-    guardTimer = window.setTimeout(() => {
-      cleanup();
-      router.back();
-    }, CLOSE_BACK_GUARD_TIMEOUT_MS);
-    stepBack();
-  }, [router]);
-
   const handleClose = useCallback(() => {
     if (isClosing || isPreparingCloseRef.current) return;
     isPreparingCloseRef.current = true;
@@ -153,8 +106,7 @@ export function InterceptedDetailModal({
       triggerCloseAnimation();
     };
 
-    const currentTop = getScrollTop();
-    if (currentTop <= CLOSE_SCROLL_TOP_THRESHOLD) {
+    if (getScrollTop() <= CLOSE_SCROLL_TOP_THRESHOLD) {
       finish();
       return;
     }
@@ -179,6 +131,10 @@ export function InterceptedDetailModal({
       finish();
     }, CLOSE_SCROLL_MAX_WAIT_MS);
   }, [clearCloseScrollPending, isClosing, triggerCloseAnimation]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const target = document.querySelector<HTMLElement>(
@@ -255,13 +211,13 @@ export function InterceptedDetailModal({
     isPreparingCloseRef.current = false;
     clearCloseScrollPending();
     clearCloseAnimationPending();
-  }, [clearCloseAnimationPending, clearCloseScrollPending, pathname]);
+  }, [clearCloseAnimationPending, clearCloseScrollPending, modalKey]);
 
   useEffect(() => {
     if (!isClosing) return;
 
     closeTimerRef.current = window.setTimeout(() => {
-      backUntilPathnameChanged();
+      onClose();
     }, EXIT_DURATION_MS);
 
     return () => {
@@ -270,7 +226,7 @@ export function InterceptedDetailModal({
         closeTimerRef.current = null;
       }
     };
-  }, [backUntilPathnameChanged, isClosing]);
+  }, [isClosing, onClose]);
 
   useEffect(() => {
     return () => {
@@ -280,57 +236,70 @@ export function InterceptedDetailModal({
     };
   }, [clearCloseAnimationPending, clearCloseScrollPending]);
 
-  const contentAreaStyle = contentAreaBounds
-    ? ({
-        left: contentAreaBounds.left,
-        width: contentAreaBounds.width,
-      } as CSSProperties)
-    : undefined;
+  const contentAreaStyle = (
+    contentAreaBounds
+      ? {
+          left: contentAreaBounds.left,
+          width: contentAreaBounds.width,
+        }
+      : {
+          left: 0,
+          width: "100vw",
+        }
+  ) as CSSProperties;
 
-  return (
-    <InterceptedDetailModalCloseContext.Provider value={handleClose}>
-      <div
-        ref={scrollContainerRef}
-        className="fixed inset-y-0 left-0 z-[96] w-full overflow-y-auto overscroll-contain"
-        style={contentAreaStyle}
-      >
+  const modal = (
+    <DetailModalCloseContext.Provider value={handleClose}>
+      <div className="fixed inset-0 z-[96]">
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: isClosing ? 0 : 1 }}
           transition={{ duration: 0.25 }}
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-0 bg-black/50 backdrop-blur-sm"
           onClick={handleClose}
         />
 
-        <div className="pointer-events-none relative mx-auto flex max-w-[1400px] items-start gap-6 px-2 pb-[4em] pt-[8em] md:px-4">
-          <motion.div
-            initial={{
-              y: "112vh",
-              rotate: -0.8,
-            }}
-            animate={
-              isClosing ? { y: "112vh", rotate: 0.4 } : { y: "0vh", rotate: 0 }
-            }
-            transition={
-              isClosing
-                ? { duration: 0.36, ease: [0.38, 0.05, 0.86, 0.28] }
-                : {
-                    type: "spring",
-                    stiffness: 170,
-                    damping: 24,
-                    mass: 0.92,
-                  }
-            }
-            className="pointer-events-auto relative min-h-[132vh] min-w-0 flex-1 overflow-hidden rounded-sm border border-border/80 bg-background shadow-[0_-24px_70px_rgba(0,0,0,0.35)]"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label={ariaLabel}
-          >
-            <div className="relative h-full">{children}</div>
-          </motion.div>
+        <div
+          ref={scrollContainerRef}
+          className="fixed inset-y-0 z-10 overflow-y-auto overscroll-contain"
+          style={contentAreaStyle}
+          onClick={handleClose}
+        >
+          <div className="pointer-events-none relative mx-auto flex max-w-[1400px] items-start gap-6 px-2 pb-[4em] pt-[8em] md:px-4">
+            <motion.div
+              initial={{
+                y: "112vh",
+                rotate: -0.8,
+              }}
+              animate={
+                isClosing
+                  ? { y: "112vh", rotate: 0.4 }
+                  : { y: "0vh", rotate: 0 }
+              }
+              transition={
+                isClosing
+                  ? { duration: 0.36, ease: [0.38, 0.05, 0.86, 0.28] }
+                  : {
+                      type: "spring",
+                      stiffness: 170,
+                      damping: 24,
+                      mass: 0.92,
+                    }
+              }
+              className="pointer-events-auto relative min-h-[132vh] min-w-0 flex-1 overflow-hidden rounded-sm border border-border/80 bg-background shadow-[0_-24px_70px_rgba(0,0,0,0.35)]"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-label={ariaLabel}
+            >
+              <div className="relative h-full">{children}</div>
+            </motion.div>
+          </div>
         </div>
       </div>
-    </InterceptedDetailModalCloseContext.Provider>
+    </DetailModalCloseContext.Provider>
   );
+
+  // Keep fixed overlay viewport-bound instead of contained by page transitions.
+  return mounted ? createPortal(modal, document.body) : null;
 }

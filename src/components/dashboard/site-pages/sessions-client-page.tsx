@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import dynamic from "next/dynamic";
 import { RiSearchLine } from "@remixicon/react";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -9,8 +17,17 @@ import {
   type SessionSortState,
   SessionsTableCard,
 } from "@/components/dashboard/sessions-table-card";
+import {
+  DETAIL_QUERY_PARAM,
+  DetailModal,
+} from "@/components/dashboard/site-pages/detail-query-modal";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import { Input } from "@/components/ui/input";
+import {
+  pushUrlWithoutNavigation,
+  replaceUrlWithoutNavigation,
+  useLiveSearchParams,
+} from "@/lib/client-history";
 import { fetchSessions } from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type { JourneySession, SessionsMeta } from "@/lib/edge-client";
@@ -26,6 +43,19 @@ interface SessionsClientPageProps {
 
 const SESSION_PAGE_SIZE = 80;
 const SESSION_SKELETON_ROWS = 8;
+
+const SessionDetailClientPage = dynamic(
+  () =>
+    import("@/components/dashboard/site-pages/session-detail-client-page").then(
+      (module) => module.SessionDetailClientPage,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="p-6 text-sm text-muted-foreground">Loading...</div>
+    ),
+  },
+);
 
 const DEFAULT_SESSION_SORT: SessionSortState = {
   key: "startedAt",
@@ -96,6 +126,19 @@ function appendUniqueSessions(
   return nextRows.length > 0 ? [...current, ...nextRows] : current;
 }
 
+function detailQueryTarget(
+  pathname: string,
+  searchParams: URLSearchParams,
+  detailId: string,
+): string {
+  const params = new URLSearchParams(searchParams.toString());
+  params.set(DETAIL_QUERY_PARAM, detailId);
+  params.delete("visitorId");
+  params.delete("sessionId");
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
 export function SessionsClientPage({
   locale,
   messages,
@@ -119,6 +162,9 @@ export function SessionsClientPage({
   const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
     null,
   );
+  const searchParams = useLiveSearchParams();
+  const detailSessionId = searchParams.get(DETAIL_QUERY_PARAM)?.trim() || "";
+  const openedDetailFromListRef = useRef(false);
   const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const requestKey = useMemo(
@@ -151,6 +197,12 @@ export function SessionsClientPage({
     }, 300);
     return () => window.clearTimeout(timeoutId);
   }, [query]);
+
+  useEffect(() => {
+    if (!detailSessionId) {
+      openedDetailFromListRef.current = false;
+    }
+  }, [detailSessionId]);
 
   const loadPage = useEffectEvent(
     async (page: number, mode: "replace" | "append") => {
@@ -288,6 +340,31 @@ export function SessionsClientPage({
     );
   };
 
+  const openSessionDetail = useCallback(
+    (sessionId: string) => {
+      openedDetailFromListRef.current = true;
+      pushUrlWithoutNavigation(
+        detailQueryTarget(pathname, searchParams, sessionId),
+      );
+    },
+    [pathname, searchParams],
+  );
+
+  const closeSessionDetail = useCallback(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has(DETAIL_QUERY_PARAM)) return;
+
+    if (openedDetailFromListRef.current) {
+      openedDetailFromListRef.current = false;
+      window.history.back();
+      return;
+    }
+
+    params.delete(DETAIL_QUERY_PARAM);
+    const query = params.toString();
+    replaceUrlWithoutNavigation(query ? `${pathname}?${query}` : pathname);
+  }, [pathname]);
+
   return (
     <div className="space-y-6">
       <PageHeading
@@ -310,7 +387,7 @@ export function SessionsClientPage({
         messages={messages}
         labels={labels}
         rows={rows}
-        pathname={pathname}
+        onOpenSession={openSessionDetail}
         sort={sort}
         onSort={toggleSort}
         loadingRows={replacingRows}
@@ -321,6 +398,22 @@ export function SessionsClientPage({
         skeletonRows={SESSION_SKELETON_ROWS}
         sentinelRef={setSentinelNode}
       />
+
+      {detailSessionId ? (
+        <DetailModal
+          ariaLabel={locale === "zh" ? "会话详情" : "Session detail"}
+          modalKey={`session:${detailSessionId}`}
+          onClose={closeSessionDetail}
+        >
+          <SessionDetailClientPage
+            locale={locale}
+            messages={messages}
+            siteId={siteId}
+            pathname={pathname}
+            sessionId={detailSessionId}
+          />
+        </DetailModal>
+      ) : null}
     </div>
   );
 }

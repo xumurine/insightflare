@@ -280,7 +280,6 @@ interface DashboardShellProps {
   sites: SidebarSite[];
   teamSections?: TeamSectionNavItem[];
   managementSections?: TeamSectionNavItem[];
-  detail?: ReactNode;
   children: ReactNode;
 }
 
@@ -294,7 +293,6 @@ export function DashboardShell({
   sites,
   teamSections,
   managementSections,
-  detail,
   children,
 }: DashboardShellProps) {
   const livePathname = usePathname() || pathname;
@@ -635,7 +633,6 @@ export function DashboardShell({
             <PageTransition>{children}</PageTransition>
           </div>
         </SidebarInset>
-        {detail}
       </DashboardQueryProvider>
     </SidebarProvider>
   );
