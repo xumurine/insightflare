@@ -1,7 +1,9 @@
 # InsightFlare
 
 <!-- auto-readme-i18n-switcher start -->
+
 | English | [中文](/.github/readme/README.zh.md) |
+
 <!-- auto-readme-i18n-switcher end -->
 
 > A powerful, privacy-friendly open source web analytics tool that runs entirely on Cloudflare.
@@ -166,6 +168,76 @@ Keeping your deployment updated only takes two steps:
 2. When upstream updates are available, a PR will be submitted to your repository automatically. You only need to merge that request.
 
 _Want to make your own project easy to sync downstream? Implementation details: [RavelloH/upstream-sync-bot](https://github.com/RavelloH/upstream-sync-bot) (open source template) + [RavelloH/InsightFlare-Bot](https://github.com/RavelloH/InsightFlare-Bot) (this project's bot instance)._
+
+### Custom Event Reporting
+
+The InsightFlare frontend SDK supports reporting custom events either through manual calls or automatically through DOM attributes.
+
+#### Manual Calls
+
+```html
+<script defer src="/script.js?siteId=YOUR_SITE_ID"></script>
+<script>
+  window.addEventListener("DOMContentLoaded", () => {
+    window.insightflare.track("signup_click", {
+      plan: "pro",
+      source: "pricing",
+    });
+  });
+</script>
+```
+
+Available methods:
+
+- `track(eventName, eventData?)`: Report a custom event.
+- `trackOnce(eventName, eventData?)`: Report the same event name only once during the current page lifecycle.
+- `setGlobalProperties(props)`: Add shared properties to subsequent events.
+- `clearGlobalProperties()`: Clear shared properties.
+
+#### Automatic Reporting via DOM Attributes
+
+```html
+<!-- 1. Default click trigger -->
+<button data-insightflare-event="signup_click">Sign up now</button>
+<!-- This reports: { eventName: "signup_click" } -->
+
+<!-- 2. Click trigger with extra fields through data-insightflare-event-* -->
+<button
+  data-insightflare-event="signup_click"
+  data-insightflare-event-plan="pro"
+  data-insightflare-event-source="pricing"
+>
+  Sign up now
+</button>
+<!-- This reports: { eventName: "signup_click", eventData: { plan: "pro", source: "pricing" } } -->
+
+<!-- 3. Click trigger with JSON extra fields -->
+<button
+  data-insightflare-event="signup_click"
+  data-insightflare-event-data='{"plan":"pro","source":"pricing"}'
+>
+  Sign up now
+</button>
+<!-- This reports: { eventName: "signup_click", eventData: { plan: "pro", source: "pricing" } } -->
+
+<!-- 4. Form submit trigger -->
+<form
+  data-insightflare-event="contact_submit"
+  data-insightflare-event-trigger="submit"
+  data-insightflare-event-data='{"plan":"pro","source":"landing"}'
+>
+  ...
+</form>
+
+<!-- 5. Trigger once when an element enters the viewport -->
+<section
+  data-insightflare-event="pricing_viewed"
+  data-insightflare-event-trigger="enterviewport"
+  data-insightflare-event-plan="pro"
+>
+  ...
+</section>
+```
 
 ## Tech Stack
 
