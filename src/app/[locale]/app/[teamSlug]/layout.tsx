@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { APP_NAME } from "@/lib/constants";
 import { canManageTeam } from "@/lib/dashboard/permissions";
 import { getDashboardTeamContext } from "@/lib/dashboard/server";
 import {
@@ -17,6 +18,24 @@ interface TeamLayoutProps {
     locale: string;
     teamSlug: string;
   }>;
+}
+
+export async function generateMetadata({ params }: TeamLayoutProps) {
+  const { teamSlug } = await params;
+  const context = await getDashboardTeamContext(teamSlug);
+
+  if (!context) {
+    return {
+      title: APP_NAME,
+    };
+  }
+
+  return {
+    title: {
+      default: context.activeTeam.name,
+      template: `%s · ${context.activeTeam.name} - ${APP_NAME}`,
+    },
+  };
 }
 
 export default async function TeamLayout({

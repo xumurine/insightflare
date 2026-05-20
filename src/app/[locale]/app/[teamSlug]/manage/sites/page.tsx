@@ -13,6 +13,16 @@ interface ManageSitesPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: ManageSitesPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.adminSites.title,
+  };
+}
+
 export default async function ManageSitesPage({
   params,
 }: ManageSitesPageProps) {

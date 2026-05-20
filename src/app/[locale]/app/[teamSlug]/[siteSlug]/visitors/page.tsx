@@ -13,6 +13,16 @@ interface VisitorsPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: VisitorsPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.visitors.title,
+  };
+}
+
 export default async function VisitorsPage({ params }: VisitorsPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);

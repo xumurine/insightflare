@@ -13,6 +13,16 @@ interface EventsPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: EventsPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.events.title,
+  };
+}
+
 export default async function EventsPage({ params }: EventsPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);

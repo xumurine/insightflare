@@ -13,6 +13,16 @@ interface PagesPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: PagesPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.pages.title,
+  };
+}
+
 export default async function PagesPage({ params }: PagesPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);

@@ -13,6 +13,16 @@ interface RealtimePageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: RealtimePageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.realtime.title,
+  };
+}
+
 export default async function RealtimePage({ params }: RealtimePageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);

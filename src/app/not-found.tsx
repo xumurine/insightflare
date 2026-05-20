@@ -33,6 +33,17 @@ function firstIpFromForwarded(value: string | undefined): string | undefined {
   return first && first.length > 0 ? first : undefined;
 }
 
+export async function generateMetadata() {
+  const requestHeaders = await headers();
+  const pathname = requestHeaders.get("x-pathname");
+  const resolved = resolveLocale(localeFromPathname(pathname));
+  const t = getMessages(resolved);
+
+  return {
+    title: t.empty.siteNotFound,
+  };
+}
+
 export default async function SiteNotFound() {
   const requestHeaders = await headers();
   const pathname = requestHeaders.get("x-pathname");

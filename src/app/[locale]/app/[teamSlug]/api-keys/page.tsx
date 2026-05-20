@@ -15,6 +15,16 @@ interface TeamApiKeysPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: TeamApiKeysPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.teamManagement.apiKeys.title,
+  };
+}
+
 export default async function TeamApiKeysPage({
   params,
 }: TeamApiKeysPageProps) {

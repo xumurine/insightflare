@@ -11,6 +11,24 @@ interface EventTypeDetailPageProps {
     teamSlug: string;
     siteSlug: string;
   }>;
+  searchParams: Promise<{
+    eventName?: string;
+  }>;
+}
+
+export async function generateMetadata({
+  params,
+  searchParams,
+}: EventTypeDetailPageProps) {
+  const { locale } = await params;
+  const search = await searchParams;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+  const eventName = search.eventName?.trim();
+
+  return {
+    title: eventName || messages.events.detailTitle,
+  };
 }
 
 export default async function EventTypeDetailPage({

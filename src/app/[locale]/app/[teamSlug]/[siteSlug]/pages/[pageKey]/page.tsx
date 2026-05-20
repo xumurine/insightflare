@@ -20,6 +20,21 @@ interface PageDetailPageProps {
   }>;
 }
 
+export async function generateMetadata({
+  params,
+  searchParams,
+}: PageDetailPageProps) {
+  const { locale } = await params;
+  const search = await searchParams;
+  const pagePath = normalizePagePath(search[PAGE_DETAIL_QUERY_PARAM]);
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: pagePath || messages.pages.title,
+  };
+}
+
 export default async function PageDetailPage({
   params,
   searchParams,

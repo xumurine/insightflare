@@ -17,6 +17,16 @@ interface TeamWidgetsPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: TeamWidgetsPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.teamManagement.widgets.title,
+  };
+}
+
 export default async function TeamWidgetsPage({
   params,
 }: TeamWidgetsPageProps) {

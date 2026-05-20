@@ -15,6 +15,16 @@ interface TeamPublicLinksPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: TeamPublicLinksPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.teamManagement.publicLinks.title,
+  };
+}
+
 export default async function TeamPublicLinksPage({
   params,
 }: TeamPublicLinksPageProps) {

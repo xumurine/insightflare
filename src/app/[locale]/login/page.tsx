@@ -20,6 +20,16 @@ interface LoginPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: LoginPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const t = getMessages(resolvedLocale);
+
+  return {
+    title: t.login.title,
+  };
+}
+
 function safeNextPath(value: string | undefined, locale: string): string {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
     return `/${locale}/app`;

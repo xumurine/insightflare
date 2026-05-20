@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { buildSitePath, getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
+import { getMessages } from "@/lib/i18n/messages";
 
 interface VisitorDetailPageProps {
   params: Promise<{
@@ -12,6 +13,16 @@ interface VisitorDetailPageProps {
   searchParams: Promise<{
     visitorId?: string;
   }>;
+}
+
+export async function generateMetadata({ params }: VisitorDetailPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.visitors.title,
+  };
 }
 
 export default async function VisitorDetailPage({

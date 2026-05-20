@@ -13,6 +13,16 @@ interface DevicesPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: DevicesPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.devices.title,
+  };
+}
+
 export default async function DevicesPage({ params }: DevicesPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);

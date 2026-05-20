@@ -12,6 +12,16 @@ interface AccountSettingsPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: AccountSettingsPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.accountSettings.title,
+  };
+}
+
 export default async function AccountSettingsPage({
   params,
 }: AccountSettingsPageProps) {

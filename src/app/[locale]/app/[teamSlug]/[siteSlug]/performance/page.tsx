@@ -13,6 +13,16 @@ interface PerformancePageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: PerformancePageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.performance.title,
+  };
+}
+
 export default async function PerformancePage({
   params,
 }: PerformancePageProps) {

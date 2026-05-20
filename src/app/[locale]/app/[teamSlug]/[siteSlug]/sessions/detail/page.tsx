@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { buildSitePath, getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
+import { getMessages } from "@/lib/i18n/messages";
 
 interface SessionDetailPageProps {
   params: Promise<{
@@ -12,6 +13,16 @@ interface SessionDetailPageProps {
   searchParams: Promise<{
     sessionId?: string;
   }>;
+}
+
+export async function generateMetadata({ params }: SessionDetailPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.sessions.title,
+  };
 }
 
 export default async function SessionDetailPage({

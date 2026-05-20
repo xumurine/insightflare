@@ -12,6 +12,16 @@ interface ManageUsersPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: ManageUsersPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.adminUsers.title,
+  };
+}
+
 export default async function ManageUsersPage({
   params,
 }: ManageUsersPageProps) {
