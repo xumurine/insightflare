@@ -12,12 +12,26 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "motion/react";
+import type { PartialOptions } from "overlayscrollbars";
+import { OverlayScrollbars } from "overlayscrollbars";
 
 export const DETAIL_QUERY_PARAM = "detail";
 
 const EXIT_DURATION_MS = 360;
 const CLOSE_SCROLL_TOP_THRESHOLD = 2;
 const CLOSE_SCROLL_MAX_WAIT_MS = 900;
+
+const DETAIL_MODAL_SCROLLBAR_OPTIONS = {
+  overflow: {
+    x: "hidden",
+    y: "scroll",
+  },
+  scrollbars: {
+    theme: "os-theme-insightflare",
+    autoHide: "never",
+    autoHideSuspend: false,
+  },
+} satisfies PartialOptions;
 
 const DetailModalCloseContext = createContext<(() => void) | null>(null);
 const DetailModalReadyContext = createContext(true);
@@ -58,6 +72,9 @@ export function DetailModal({
   const closeAnimationFrameRef = useRef<number | null>(null);
   const closeScrollFrameRef = useRef<number | null>(null);
   const closeScrollTimeoutRef = useRef<number | null>(null);
+  const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
+    null,
+  );
   const isPreparingCloseRef = useRef(false);
 
   const clearCloseScrollPending = useCallback(() => {
@@ -82,6 +99,17 @@ export function DetailModal({
     }
   }, []);
 
+  const getScrollElement = useCallback(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return null;
+
+    return (
+      scrollbarRef.current?.elements().viewport ??
+      OverlayScrollbars(scrollContainer)?.elements().viewport ??
+      scrollContainer
+    );
+  }, []);
+
   const triggerCloseAnimation = useCallback(() => {
     if (closeAnimationFrameRef.current !== null) {
       window.cancelAnimationFrame(closeAnimationFrameRef.current);
@@ -97,10 +125,10 @@ export function DetailModal({
   const handleClose = useCallback(() => {
     if (isClosing || isPreparingCloseRef.current) return;
     isPreparingCloseRef.current = true;
-    const scrollContainer = scrollContainerRef.current;
+    const scrollElement = getScrollElement();
 
     const getScrollTop = () => {
-      if (scrollContainer) return scrollContainer.scrollTop;
+      if (scrollElement) return scrollElement.scrollTop;
       return window.scrollY || document.documentElement.scrollTop || 0;
     };
 
@@ -117,8 +145,8 @@ export function DetailModal({
       return;
     }
 
-    if (scrollContainer) {
-      scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+    if (scrollElement) {
+      scrollElement.scrollTo({ top: 0, behavior: "smooth" });
     } else {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -136,21 +164,38 @@ export function DetailModal({
     closeScrollTimeoutRef.current = window.setTimeout(() => {
       finish();
     }, CLOSE_SCROLL_MAX_WAIT_MS);
-  }, [clearCloseScrollPending, isClosing, triggerCloseAnimation]);
+  }, [
+    clearCloseScrollPending,
+    getScrollElement,
+    isClosing,
+    triggerCloseAnimation,
+  ]);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    const target = document.querySelector<HTMLElement>(
-      '[data-slot="sidebar-inset"]',
-    );
-    if (!target) return;
-
     let animationFrame: number | null = null;
+    let observer: ResizeObserver | null = null;
+    let observedTarget: HTMLElement | null = null;
 
     const updateBounds = () => {
+      const target = document.querySelector<HTMLElement>(
+        '[data-slot="sidebar-inset"]',
+      );
+      if (!target) {
+        scheduleUpdate();
+        return;
+      }
+
+      if (observedTarget !== target) {
+        observer?.disconnect();
+        observedTarget = target;
+        observer = new ResizeObserver(scheduleUpdate);
+        observer.observe(target);
+      }
+
       const rect = target.getBoundingClientRect();
       const left = Math.max(0, rect.left);
       const nextBounds = {
@@ -181,13 +226,11 @@ export function DetailModal({
       });
     };
 
-    const observer = new ResizeObserver(scheduleUpdate);
-    observer.observe(target);
     window.addEventListener("resize", scheduleUpdate);
     scheduleUpdate();
 
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
       window.removeEventListener("resize", scheduleUpdate);
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
@@ -211,6 +254,36 @@ export function DetailModal({
       document.removeEventListener("keydown", handleEscape);
     };
   }, [handleClose]);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    const host = scrollContainerRef.current;
+    if (!host) return;
+
+    const existing = OverlayScrollbars(host);
+    const instance =
+      existing ?? OverlayScrollbars(host, DETAIL_MODAL_SCROLLBAR_OPTIONS);
+
+    if (existing) {
+      existing.options(DETAIL_MODAL_SCROLLBAR_OPTIONS);
+    }
+    scrollbarRef.current = instance;
+
+    const frame = window.requestAnimationFrame(() => {
+      instance.update();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (!existing) {
+        instance.destroy();
+      }
+      if (scrollbarRef.current === instance) {
+        scrollbarRef.current = null;
+      }
+    };
+  }, [modalKey, mounted]);
 
   useEffect(() => {
     setIsClosing(false);
@@ -267,46 +340,48 @@ export function DetailModal({
             onClick={handleClose}
           />
 
-          <div
-            ref={scrollContainerRef}
-            className="fixed inset-y-0 z-10 overflow-y-auto overscroll-contain"
-            style={contentAreaStyle}
-            onClick={handleClose}
-          >
-            <div className="pointer-events-none relative mx-auto flex max-w-[1400px] items-start gap-6 px-2 pb-[4em] pt-[8em] md:px-4">
-              <motion.div
-                initial={{
-                  y: "112vh",
-                  rotate: -0.8,
-                }}
-                animate={
-                  isClosing
-                    ? { y: "112vh", rotate: 0.4 }
-                    : { y: "0vh", rotate: 0 }
-                }
-                transition={
-                  isClosing
-                    ? { duration: 0.36, ease: [0.38, 0.05, 0.86, 0.28] }
-                    : {
-                        type: "spring",
-                        stiffness: 170,
-                        damping: 24,
-                        mass: 0.92,
-                      }
-                }
-                className="pointer-events-auto relative min-h-[132vh] min-w-0 flex-1 overflow-hidden rounded-sm border border-border/80 bg-background shadow-[0_-24px_70px_rgba(0,0,0,0.35)]"
-                onAnimationComplete={() => {
-                  if (!isClosing) {
-                    setIsReady(true);
+          <div className="fixed inset-y-0 z-10" style={contentAreaStyle}>
+            <div
+              ref={scrollContainerRef}
+              data-overlayscrollbars-initialize
+              className="h-full min-h-0 overflow-y-auto overscroll-contain"
+              onClick={handleClose}
+            >
+              <div className="pointer-events-none relative mx-auto flex max-w-[1400px] items-start gap-6 px-2 pb-[4em] pt-[8em] md:px-4">
+                <motion.div
+                  initial={{
+                    y: "112vh",
+                    rotate: -0.8,
+                  }}
+                  animate={
+                    isClosing
+                      ? { y: "112vh", rotate: 0.4 }
+                      : { y: "0vh", rotate: 0 }
                   }
-                }}
-                onClick={(event) => event.stopPropagation()}
-                role="dialog"
-                aria-modal="true"
-                aria-label={ariaLabel}
-              >
-                <div className="relative h-full">{children}</div>
-              </motion.div>
+                  transition={
+                    isClosing
+                      ? { duration: 0.36, ease: [0.38, 0.05, 0.86, 0.28] }
+                      : {
+                          type: "spring",
+                          stiffness: 170,
+                          damping: 24,
+                          mass: 0.92,
+                        }
+                  }
+                  className="pointer-events-auto relative min-h-[132vh] min-w-0 flex-1 overflow-hidden rounded-sm border border-border/80 bg-background shadow-[0_-24px_70px_rgba(0,0,0,0.35)]"
+                  onAnimationComplete={() => {
+                    if (!isClosing) {
+                      setIsReady(true);
+                    }
+                  }}
+                  onClick={(event) => event.stopPropagation()}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={ariaLabel}
+                >
+                  <div className="relative h-full">{children}</div>
+                </motion.div>
+              </div>
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useSelectedLayoutSegments } from "next/navigation";
 import {
@@ -19,6 +19,8 @@ import {
   RiUser3Line,
   RiWindow2Line,
 } from "@remixicon/react";
+import type { PartialOptions } from "overlayscrollbars";
+import { OverlayScrollbars } from "overlayscrollbars";
 
 import { AnalyticsTabs } from "@/components/dashboard/analytics-tabs";
 import { DashboardHeaderControls } from "@/components/dashboard/dashboard-header-controls";
@@ -87,6 +89,19 @@ type AnalyticsNavKey =
   | "browsers"
   | "performance"
   | "settings";
+
+const DASHBOARD_SCROLLBAR_OPTIONS = {
+  overflow: {
+    x: "hidden",
+    y: "scroll",
+  },
+  scrollbars: {
+    theme: "os-theme-insightflare",
+    autoHide: "move",
+    autoHideDelay: 420,
+    autoHideSuspend: false,
+  },
+} satisfies PartialOptions;
 
 interface SidebarRouteState {
   mode: "team" | "site";
@@ -295,6 +310,10 @@ export function DashboardShell({
   managementSections,
   children,
 }: DashboardShellProps) {
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
+  const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
+    null,
+  );
   const livePathname = usePathname() || pathname;
   const mainLayoutSegments = visibleLayoutSegments(useSelectedLayoutSegments());
   const mainSiteSection = mainLayoutSegments[1] || "";
@@ -382,6 +401,34 @@ export function DashboardShell({
     name: team.name,
     href: `/${locale}/app/${team.slug}`,
   }));
+
+  useEffect(() => {
+    const host = scrollContainerRef.current;
+    if (!host) return;
+
+    const existing = OverlayScrollbars(host);
+    const instance =
+      existing ?? OverlayScrollbars(host, DASHBOARD_SCROLLBAR_OPTIONS);
+
+    if (existing) {
+      existing.options(DASHBOARD_SCROLLBAR_OPTIONS);
+    }
+    scrollbarRef.current = instance;
+
+    const frame = requestAnimationFrame(() => {
+      instance.update();
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (!existing) {
+        instance.destroy();
+      }
+      if (scrollbarRef.current === instance) {
+        scrollbarRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <SidebarProvider>
@@ -544,7 +591,9 @@ export function DashboardShell({
         </Sidebar>
 
         <SidebarInset
+          ref={scrollContainerRef}
           data-dashboard-scroll-container=""
+          data-overlayscrollbars-initialize
           className="h-svh min-h-0 overflow-y-auto overscroll-contain"
         >
           <div className="sticky top-0 z-20 border-b bg-background/90 backdrop-blur">
