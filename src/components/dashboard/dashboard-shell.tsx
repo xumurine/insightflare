@@ -397,10 +397,13 @@ export function DashboardShell({
     mainSiteSubSection === "detail",
   );
   const contentContainerClassName = isGeoRoute
-    ? "flex min-h-0 flex-1 min-w-0 w-full flex-col [&>[data-page-transition]]:h-full"
+    ? "flex min-h-0 flex-1 min-w-0 w-full flex-col overflow-hidden [&>[data-page-transition]]:flex [&>[data-page-transition]]:h-full [&>[data-page-transition]]:min-h-0 [&>[data-page-transition]]:flex-1 [&>[data-page-transition]]:flex-col"
     : isRealtimeRoute || isSessionDetailRoute || isVisitorDetailRoute
       ? "min-w-0 w-full"
       : "mx-auto min-w-0 w-full max-w-[1400px] p-4 md:p-6";
+  const sidebarInsetClassName = isGeoRoute
+    ? "h-svh min-h-0 overflow-y-auto overscroll-contain [&>[data-overlayscrollbars-viewport]]:flex [&>[data-overlayscrollbars-viewport]]:h-full [&>[data-overlayscrollbars-viewport]]:min-h-0 [&>[data-overlayscrollbars-viewport]]:flex-col"
+    : "h-svh min-h-0 overflow-y-auto overscroll-contain";
   const mobileCurrentLevelName = hasActiveSite
     ? activeSiteName
     : activeTeamName;
@@ -607,7 +610,7 @@ export function DashboardShell({
           ref={scrollContainerRef}
           data-dashboard-scroll-container=""
           data-overlayscrollbars-initialize
-          className="h-svh min-h-0 overflow-y-auto overscroll-contain"
+          className={sidebarInsetClassName}
         >
           <div className="sticky top-0 z-20 border-b bg-background/90 backdrop-blur">
             <div className="p-3">
