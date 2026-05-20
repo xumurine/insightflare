@@ -104,6 +104,13 @@ const DASHBOARD_SCROLLBAR_OPTIONS = {
   },
 } satisfies PartialOptions;
 
+const SIDEBAR_COLLAPSE_SECTION_CLASS =
+  "max-h-20 overflow-hidden transition-[max-height,opacity,transform,padding,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-data-[collapsible=icon]:pointer-events-none group-data-[collapsible=icon]:max-h-0 group-data-[collapsible=icon]:-translate-y-1 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:opacity-0";
+const SIDEBAR_COLLAPSE_SEPARATOR_CLASS =
+  "transition-[opacity,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-data-[collapsible=icon]:my-0 group-data-[collapsible=icon]:opacity-0";
+const SIDEBAR_COLLAPSE_MARGIN_CLASS =
+  "transition-[margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-data-[collapsible=icon]:mb-0";
+
 interface SidebarRouteState {
   mode: "team" | "site";
   activeTeamSectionKey?: string;
@@ -438,17 +445,15 @@ export function DashboardShell({
         initialTimeZonePreference={user.timeZone || ""}
       >
         <Sidebar variant="inset" collapsible="icon">
-          <SidebarHeader className="group-data-[collapsible=icon]:hidden">
+          <SidebarHeader className={SIDEBAR_COLLAPSE_SECTION_CLASS}>
             <Link
               href="https://github.com/RavelloH/InsightFlare"
               target="_black"
             >
               <div className="py-2">
                 <p className="text-xl text-primary flex gap-2 items-center justify-center md:justify-start">
-                  <span className="group-data-[collapsible=icon]:hidden">
-                    {messages.appName}
-                  </span>
-                  <span className="text-muted-foreground group-data-[collapsible=icon]:hidden">
+                  <span>{messages.appName}</span>
+                  <span className="text-muted-foreground">
                     {process.env.NEXT_PUBLIC_DEMO_MODE ? "Demo" : "v1"}
                   </span>
                 </p>
@@ -457,7 +462,7 @@ export function DashboardShell({
           </SidebarHeader>
 
           <SidebarContent>
-            <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+            <SidebarGroup className={SIDEBAR_COLLAPSE_SECTION_CLASS}>
               <SidebarGroupContent>
                 <TeamSelect
                   locale={locale}
@@ -498,7 +503,9 @@ export function DashboardShell({
 
                   {hasManagementSections ? (
                     <>
-                      <SidebarSeparator className="group-data-[collapsible=icon]:hidden" />
+                      <SidebarSeparator
+                        className={SIDEBAR_COLLAPSE_SEPARATOR_CLASS}
+                      />
                       <SidebarGroup>
                         <SidebarGroupLabel>
                           {messages.common.management}
@@ -536,7 +543,9 @@ export function DashboardShell({
                 <>
                   <SidebarGroup>
                     <SidebarGroupContent>
-                      <SidebarMenu className="mb-2 group-data-[collapsible=icon]:mb-0">
+                      <SidebarMenu
+                        className={`mb-2 ${SIDEBAR_COLLAPSE_MARGIN_CLASS}`}
+                      >
                         <SidebarMenuItem>
                           <SidebarMenuButton asChild>
                             <Link href={teamRootHref}>
@@ -549,7 +558,9 @@ export function DashboardShell({
                     </SidebarGroupContent>
                   </SidebarGroup>
 
-                  <SidebarSeparator className="group-data-[collapsible=icon]:hidden" />
+                  <SidebarSeparator
+                    className={SIDEBAR_COLLAPSE_SEPARATOR_CLASS}
+                  />
 
                   <SidebarGroup>
                     <SidebarGroupLabel>

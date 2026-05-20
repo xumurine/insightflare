@@ -78,6 +78,9 @@ interface SiteTrendPoint {
 }
 
 const SIDEBAR_EXPAND_CHART_DELAY_MS = 220;
+const SIDEBAR_COLLAPSE_CHART_DELAY_MS = 300;
+const SITE_ROW_DETAIL_CLASS =
+  "grid min-w-0 max-w-[20rem] flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 overflow-hidden transition-[max-width,opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-data-[collapsible=icon]:pointer-events-none group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:translate-x-1 group-data-[collapsible=icon]:opacity-0";
 
 function buildSitePath(
   locale: Locale,
@@ -221,8 +224,10 @@ export function SidebarSiteDetails({
     }
 
     if (sidebarState === "collapsed") {
-      setShouldRenderCharts(false);
-      return;
+      const timeout = setTimeout(() => {
+        setShouldRenderCharts(false);
+      }, SIDEBAR_COLLAPSE_CHART_DELAY_MS);
+      return () => clearTimeout(timeout);
     }
 
     const timeout = setTimeout(() => {
@@ -408,7 +413,7 @@ export function SidebarSiteDetails({
                   iconSrc={site.iconPath}
                   size="sm"
                 />
-                <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 group-data-[collapsible=icon]:hidden">
+                <div className={SITE_ROW_DETAIL_CLASS}>
                   <div className="min-w-0">
                     <span className="block truncate text-xs">{site.name}</span>
                   </div>
