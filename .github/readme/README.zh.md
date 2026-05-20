@@ -1,9 +1,7 @@
 # InsightFlare
 
 <!-- auto-readme-i18n-switcher start -->
-
 | [English](/.github/readme/README.en.md) | 中文 |
-
 <!-- auto-readme-i18n-switcher end -->
 
 > 功能强大、隐私友好的开源网站访问分析工具，完全运行于 Cloudflare 上。
