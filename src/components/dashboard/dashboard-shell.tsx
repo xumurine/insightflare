@@ -71,6 +71,7 @@ interface SidebarSite {
   slug: string;
   name: string;
   domain: string;
+  iconPath?: string;
 }
 
 type AnalyticsNavKey =
@@ -565,6 +566,7 @@ export function DashboardShell({
                           slug: site.slug,
                           name: site.name,
                           domain: site.domain,
+                          iconPath: site.iconPath,
                         }))}
                         labels={{
                           views: messages.common.views,

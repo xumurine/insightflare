@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { PageHeading } from "@/components/dashboard/page-heading";
+import { SiteBrandIcon } from "@/components/dashboard/site-brand-icon";
 import {
   SiteTrafficStackChart,
   TrafficPairBarChart,
@@ -223,81 +224,6 @@ function buildSitePath(
   siteSlug: string,
 ): string {
   return `/${locale}/app/${teamSlug}/${siteSlug}`;
-}
-
-function resolveFaviconUrl(domain: string): string | null {
-  const trimmed = domain.trim();
-  if (!trimmed) return null;
-  try {
-    const parsed = new URL(
-      trimmed.includes("://") ? trimmed : `https://${trimmed}`,
-    );
-    return `${parsed.origin}/favicon.ico`;
-  } catch {
-    return null;
-  }
-}
-
-function leadingLetter(name: string): string {
-  const normalized = name.trim();
-  if (!normalized) return "?";
-  return normalized.slice(0, 1).toUpperCase();
-}
-
-function SiteCardIcon({
-  siteName,
-  domain,
-}: {
-  siteName: string;
-  domain: string;
-}) {
-  const src = useMemo(() => resolveFaviconUrl(domain), [domain]);
-  const [iconLoaded, setIconLoaded] = useState(false);
-  const [iconFailed, setIconFailed] = useState(false);
-
-  useEffect(() => {
-    setIconLoaded(false);
-    setIconFailed(false);
-    if (!src) return;
-
-    let active = true;
-    const image = new Image();
-    image.onload = () => {
-      if (!active) return;
-      setIconLoaded(true);
-    };
-    image.onerror = () => {
-      if (!active) return;
-      setIconFailed(true);
-    };
-    image.src = src;
-
-    return () => {
-      active = false;
-    };
-  }, [src]);
-
-  const showFavicon = Boolean(src) && iconLoaded && !iconFailed;
-
-  return (
-    <AutoTransition
-      type="fade"
-      duration={0.18}
-      initial={false}
-      className="inline-flex size-5 shrink-0 items-center justify-center"
-    >
-      {showFavicon ? (
-        <img key="favicon" src={src!} alt="" className="size-5 shrink-0" />
-      ) : (
-        <span
-          key="fallback"
-          className="inline-flex size-5 shrink-0 items-center justify-center bg-muted text-[10px] font-medium text-muted-foreground"
-        >
-          {leadingLetter(siteName)}
-        </span>
-      )}
-    </AutoTransition>
-  );
 }
 
 function intervalStepMs(interval: TimeWindow["interval"]): number {
@@ -1511,9 +1437,12 @@ export function TeamManagementClient({
                               <div className="flex min-w-0 items-start gap-2.5">
                                 <div className="min-w-0 space-y-1">
                                   <CardTitle className="truncate text-base flex items-center gap-2">
-                                    <SiteCardIcon
+                                    <SiteBrandIcon
+                                      siteId={site.id}
                                       siteName={site.name}
                                       domain={site.domain}
+                                      iconSrc={site.iconPath}
+                                      size="md"
                                     />
                                     {site.name}
                                   </CardTitle>

@@ -1012,6 +1012,7 @@ export interface SiteData {
   teamId: string;
   name: string;
   domain: string;
+  iconPath?: string;
   publicEnabled: number | boolean;
   publicSlug: string | null;
   createdAt: number;
