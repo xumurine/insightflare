@@ -9,6 +9,7 @@ import type {
   DashboardFilterOption,
   DashboardFilterOptionsData,
   DimensionData,
+  EventBreakdownsData,
   EventRecordDetailData,
   EventsRecordsData,
   EventsSummaryData,
@@ -172,7 +173,6 @@ function emptySessionDetail(): SessionDetailData {
 }
 
 function emptyEventsSummary(): EventsSummaryData {
-  const emptyCards = emptyEventAnalyticsContextCards();
   return {
     ok: true,
     summary: {
@@ -182,19 +182,25 @@ function emptyEventsSummary(): EventsSummaryData {
       visitors: 0,
       avgEventsPerSession: 0,
     },
-    topEvents: [],
-    breakdowns: {
-      pages: [],
-      countries: [],
-      devices: [],
-      browsers: [],
-    },
     cards: {
       event: {
         name: [],
       },
-      ...emptyCards,
+      page: {
+        path: [],
+        title: [],
+        hostname: [],
+      },
     },
+  };
+}
+
+function emptyEventBreakdowns(): EventBreakdownsData {
+  return {
+    pages: [],
+    countries: [],
+    devices: [],
+    browsers: [],
   };
 }
 
@@ -237,7 +243,7 @@ function emptyEventTypeDetail(
       shareOfAllEvents: 0,
     },
     trend: emptyEventsTrend(interval),
-    breakdowns: emptyEventsSummary().breakdowns,
+    breakdowns: emptyEventBreakdowns(),
     cards: emptyEventAnalyticsContextCards(),
     fields: [],
   };

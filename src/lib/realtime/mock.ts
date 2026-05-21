@@ -1634,7 +1634,7 @@ function demoEventContextCards(
   };
 }
 
-function demoEventCards(
+function demoEventSummaryCards(
   dataset: DemoFactDataset,
   events: DemoCustomEventFact[],
   limit: number,
@@ -1648,7 +1648,26 @@ function demoEventCards(
         (event) => event.eventName,
       ),
     },
-    ...demoEventContextCards(dataset, events, limit),
+    page: {
+      path: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.pathname,
+      ),
+      title: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.title,
+      ),
+      hostname: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.hostname,
+      ),
+    },
   };
 }
 
@@ -1682,39 +1701,7 @@ function generateDemoEventsSummary(
       ),
       avgEventsPerSession: sessionCount > 0 ? events.length / sessionCount : 0,
     },
-    topEvents: demoEventDimensionRows(
-      dataset,
-      events,
-      8,
-      (event) => event.eventName,
-    ),
-    breakdowns: {
-      pages: demoEventDimensionRows(
-        dataset,
-        events,
-        8,
-        (event) => event.visit.pathname,
-      ),
-      countries: demoEventDimensionRows(
-        dataset,
-        events,
-        8,
-        (event) => event.visit.country,
-      ),
-      devices: demoEventDimensionRows(
-        dataset,
-        events,
-        8,
-        (event) => event.visit.deviceType,
-      ),
-      browsers: demoEventDimensionRows(
-        dataset,
-        events,
-        8,
-        (event) => event.visit.browser,
-      ),
-    },
-    cards: demoEventCards(dataset, events, 100),
+    cards: demoEventSummaryCards(dataset, events, 100),
   };
 }
 

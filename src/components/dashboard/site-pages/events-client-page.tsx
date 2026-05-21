@@ -35,7 +35,6 @@ interface EventsClientPageProps {
 }
 
 function emptySummary(): EventsSummaryData {
-  const emptyCards = emptyEventCards();
   return {
     ok: true,
     summary: {
@@ -45,27 +44,24 @@ function emptySummary(): EventsSummaryData {
       visitors: 0,
       avgEventsPerSession: 0,
     },
-    topEvents: [],
-    breakdowns: {
-      pages: [],
-      countries: [],
-      devices: [],
-      browsers: [],
+    cards: emptySummaryCards(),
+  };
+}
+
+function emptySummaryCards(): EventsSummaryData["cards"] {
+  return {
+    event: {
+      name: [],
     },
-    cards: {
-      event: {
-        name: [],
-      },
-      ...emptyCards,
+    page: {
+      path: [],
+      title: [],
+      hostname: [],
     },
   };
 }
 
-function emptyEventCards(): EventsSummaryData["cards"] extends infer T
-  ? T extends { event: unknown }
-    ? Omit<T, "event">
-    : never
-  : never {
+function emptyOverviewPageSectionCards(): OverviewPagesSectionCardData {
   return {
     page: {
       path: [],
@@ -93,6 +89,34 @@ function emptyEventCards(): EventsSummaryData["cards"] extends infer T
       continent: [],
       timezone: [],
       organization: [],
+    },
+  };
+}
+
+function buildEventCardDataOverride(
+  rows: EventsSummaryData["cards"]["event"]["name"],
+): OverviewPagesSectionCardData {
+  const emptyCards = emptyOverviewPageSectionCards();
+  return {
+    ...emptyCards,
+    page: {
+      ...emptyCards.page,
+      path: rows,
+    },
+  };
+}
+
+function buildContextCardDataOverride(
+  page: EventsSummaryData["cards"]["page"],
+): OverviewPagesSectionCardData {
+  const emptyCards = emptyOverviewPageSectionCards();
+  return {
+    ...emptyCards,
+    page: {
+      ...emptyCards.page,
+      path: page.path,
+      title: page.title,
+      hostname: page.hostname,
     },
   };
 }
@@ -183,37 +207,12 @@ export function EventsClientPage({
     [pathname],
   );
   const eventCardDataOverride = useMemo<OverviewPagesSectionCardData>(
-    () => ({
-      page: {
-        path: summary.cards.event.name,
-        query: [],
-        title: [],
-        hostname: [],
-        entry: [],
-        exit: [],
-      },
-      source: {
-        domain: [],
-        link: [],
-      },
-      client: summary.cards.client,
-      geo: summary.cards.geo,
-    }),
-    [summary.cards.client, summary.cards.event.name, summary.cards.geo],
+    () => buildEventCardDataOverride(summary.cards.event.name),
+    [summary.cards.event.name],
   );
   const contextCardDataOverride = useMemo<OverviewPagesSectionCardData>(
-    () => ({
-      page: summary.cards.page,
-      source: summary.cards.source,
-      client: summary.cards.client,
-      geo: summary.cards.geo,
-    }),
-    [
-      summary.cards.client,
-      summary.cards.geo,
-      summary.cards.page,
-      summary.cards.source,
-    ],
+    () => buildContextCardDataOverride(summary.cards.page),
+    [summary.cards.page],
   );
 
   return (
@@ -230,16 +229,17 @@ export function EventsClientPage({
         summary={summary.summary}
       />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(18rem,0.8fr)]">
-        <EventTrendStackedBarCard
-          locale={locale}
-          labels={labels}
-          trend={trend}
-          window={window}
-          title={labels.trendTitle}
-          loading={loading}
-          onSelectEvent={openEventType}
-        />
+      <EventTrendStackedBarCard
+        locale={locale}
+        labels={labels}
+        trend={trend}
+        window={window}
+        title={labels.trendTitle}
+        loading={loading}
+        onSelectEvent={openEventType}
+      />
+
+      <div className="grid gap-4 xl:grid-cols-2">
         <OverviewPagesSection
           locale={locale}
           messages={messages}
@@ -267,21 +267,23 @@ export function EventsClientPage({
           }}
           pageCardShowVisitors
           primaryMetricLabel={labels.totalEvents}
-          sectionClassName="block [&>div]:h-full"
+          sectionClassName="xl:grid-cols-1"
+        />
+
+        <OverviewPagesSection
+          locale={locale}
+          messages={messages}
+          siteId={siteId}
+          siteDomain={siteDomain}
+          pathname={siteBasePath}
+          filters={filters}
+          cardDataOverride={contextCardDataOverride}
+          visibleCards={["page"]}
+          pageCardTabs={["path", "title", "hostname"]}
+          primaryMetricLabel={labels.totalEvents}
+          sectionClassName="xl:grid-cols-1"
         />
       </div>
-
-      <OverviewPagesSection
-        locale={locale}
-        messages={messages}
-        siteId={siteId}
-        siteDomain={siteDomain}
-        pathname={siteBasePath}
-        filters={filters}
-        cardDataOverride={contextCardDataOverride}
-        primaryMetricLabel={labels.totalEvents}
-        geoPageBasePathname={siteBasePath}
-      />
 
       <EventRecordsSection
         locale={locale}
