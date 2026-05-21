@@ -99,6 +99,7 @@ import {
 } from "@/lib/i18n/code-labels";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { formatI18nTemplate } from "@/lib/i18n/template";
 import { cn } from "@/lib/utils";
 
 interface VisitorDetailClientPageProps {
@@ -111,7 +112,7 @@ interface VisitorDetailClientPageProps {
 
 type VisitorDetail = NonNullable<VisitorDetailData["data"]>;
 type VisitorRow = VisitorDetail["visitor"];
-type Labels = ReturnType<typeof copy>;
+type Labels = AppMessages["visitorDetail"];
 type VisitorPerformancePanelKey = PerformanceMetricKey | "score";
 type VisitorPerformanceStatus = "great" | "needs-improvement" | "poor" | "none";
 
@@ -216,136 +217,6 @@ interface VisitorActivityCalendarSection {
   weekCount: number;
 }
 
-function copy(locale: Locale) {
-  return locale === "zh"
-    ? {
-        anonymous: "匿名访客",
-        back: "返回访客",
-        missing: "缺少 visitorId。",
-        notFound: "没有找到这个访客。",
-        loadError: "无法加载访客详情。",
-        totalDuration: "总时长",
-        events: "事件",
-        sessions: "会话",
-        views: "页面浏览",
-        uniquePages: "唯一页面",
-        avgPagesPerSession: "平均页面/会话",
-        avgEventsPerSession: "平均事件/会话",
-        avgStay: "平均停留",
-        p90Duration: "P90 会话时长",
-        firstSeen: "首次出现",
-        lastSeen: "最近出现",
-        daysActive: "活跃天数",
-        conversionEvents: "转化事件",
-        avgTimeBetweenSessions: "平均会话间隔",
-        activity: "活跃记录",
-        sessionRecords: "会话记录",
-        started: "开始时间",
-        visitor: "访客",
-        duration: "时长",
-        referrer: "来源",
-        pageViews: "页面浏览",
-        visitDetailsTitle: "访问明细",
-        visitDetailsSubtitle:
-          "按发生顺序展示该访客的会话开始、页面访问、退出和自定义事件。",
-        path: "路径",
-        title: "标题",
-        customEvents: "自定义事件",
-        emptyEvents: "没有事件记录。",
-        emptyCustomEvents: "暂无自定义事件",
-        emptySessions: "没有会话记录。",
-        visitorId: "访客 ID",
-        sessionId: "会话 ID",
-        referrerName: "来源名称",
-        referrerUrl: "来源链接",
-        location: "位置",
-        browser: "浏览器",
-        os: "系统",
-        device: "设备",
-        screen: "屏幕",
-        entryPath: "入口路径",
-        exitPath: "退出路径",
-        bounce: "跳出",
-        status: "状态",
-        active: "进行中",
-        inactive: "已结束",
-        yes: "是",
-        no: "否",
-        sessionStarted: "会话开始",
-        pageview: "访问页面",
-        exitPage: "退出页面",
-        customEvent: "自定义事件",
-        eventTitleSeparator: "：",
-        sincePrevious: "距上个事件",
-        geoLocationTitle: "地理位置",
-        performanceTitle: "当前访客性能",
-        range: "范围",
-      }
-    : {
-        anonymous: "Anonymous",
-        back: "Back to visitors",
-        missing: "Missing visitorId.",
-        notFound: "Visitor not found.",
-        loadError: "Unable to load visitor detail.",
-        totalDuration: "Total Duration",
-        events: "Events",
-        sessions: "Sessions",
-        views: "Pageviews",
-        uniquePages: "Unique Pages",
-        avgPagesPerSession: "Avg Pages/Session",
-        avgEventsPerSession: "Avg Events/Session",
-        avgStay: "Avg Stay",
-        p90Duration: "Session Duration (P90)",
-        firstSeen: "First seen",
-        lastSeen: "Last seen",
-        daysActive: "Days Active",
-        conversionEvents: "Conversion Events",
-        avgTimeBetweenSessions: "Avg Time Between Sessions",
-        activity: "Activity",
-        sessionRecords: "Session records",
-        started: "Start Time",
-        visitor: "Visitor",
-        duration: "Duration",
-        referrer: "Referrer",
-        pageViews: "Page Views",
-        visitDetailsTitle: "Visit details",
-        visitDetailsSubtitle:
-          "Session starts, pageviews, exits, and custom events for this visitor in the order they happened.",
-        path: "Path",
-        title: "Title",
-        customEvents: "Custom events",
-        emptyEvents: "No events recorded.",
-        emptyCustomEvents: "No custom events.",
-        emptySessions: "No sessions recorded.",
-        visitorId: "Visitor ID",
-        sessionId: "Session ID",
-        referrerName: "Referrer Name",
-        referrerUrl: "Referrer URL",
-        location: "Location",
-        browser: "Browser",
-        os: "OS",
-        device: "Device",
-        screen: "Screen",
-        entryPath: "Entry Path",
-        exitPath: "Exit Path",
-        bounce: "Bounce",
-        status: "Status",
-        active: "Active",
-        inactive: "Ended",
-        yes: "Yes",
-        no: "No",
-        sessionStarted: "Session started",
-        pageview: "Pageview",
-        exitPage: "Exit page",
-        customEvent: "Custom event",
-        eventTitleSeparator: ": ",
-        sincePrevious: "Since previous",
-        geoLocationTitle: "Geo location",
-        performanceTitle: "Current visitor performance",
-        range: "Range",
-      };
-}
-
 function hasValidCoordinate(
   latitude: number | null | undefined,
   longitude: number | null | undefined,
@@ -413,6 +284,7 @@ function formatDetailedDateTime(
 
 function formatSeenDateTime(
   locale: Locale,
+  messages: AppMessages,
   timestampMs: number,
   timeZone: string,
   now = Date.now(),
@@ -426,9 +298,10 @@ function formatSeenDateTime(
     minute: "2-digit",
   }).format(new Date(timestampMs));
   const relative = formatRelativeTime(locale, timestampMs, now);
-  return locale === "zh"
-    ? `${absolute}（${relative}）`
-    : `${absolute} (${relative})`;
+  return formatI18nTemplate(messages.common.timeRelativePair, {
+    absolute,
+    relative,
+  });
 }
 
 function EmptyState({ children }: { children: ReactNode }) {
@@ -1250,7 +1123,7 @@ function VisitorMetaPanel({
             value={
               <DeviceMeta
                 deviceType={visitor.deviceType || ""}
-                locale={locale}
+                deviceLabels={messages.common.deviceLabels}
                 unknownLabel={messages.common.unknown}
               />
             }
@@ -1264,13 +1137,23 @@ function VisitorMetaPanel({
             label={labels.firstSeen}
             prominent
             mono
-            value={formatSeenDateTime(locale, metrics.firstSeenAt, timeZone)}
+            value={formatSeenDateTime(
+              locale,
+              messages,
+              metrics.firstSeenAt,
+              timeZone,
+            )}
           />
           <SummaryGridItem
             label={labels.lastSeen}
             prominent
             mono
-            value={formatSeenDateTime(locale, metrics.lastSeenAt, timeZone)}
+            value={formatSeenDateTime(
+              locale,
+              messages,
+              metrics.lastSeenAt,
+              timeZone,
+            )}
           />
           <SummaryGridItem
             label={labels.daysActive}
@@ -2168,7 +2051,7 @@ export function VisitorDetailClientPage({
   pathname,
   visitorId,
 }: VisitorDetailClientPageProps) {
-  const labels = copy(locale);
+  const labels = messages.visitorDetail;
   const { timeZone, window } = useDashboardQueryControls();
   const [detail, setDetail] = useState<VisitorDetail | null>(null);
   const [loading, setLoading] = useState(Boolean(visitorId));

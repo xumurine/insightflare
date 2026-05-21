@@ -437,7 +437,7 @@ export function SessionsTableCard({
                       >
                         <DeviceMeta
                           deviceType={row.deviceType}
-                          locale={locale}
+                          deviceLabels={messages.common.deviceLabels}
                           unknownLabel={messages.common.unknown}
                         />
                       </ClickableTableCell>

@@ -101,44 +101,6 @@ const INITIAL_VISITOR_META: VisitorsMeta = {
   nextPage: null,
 };
 
-function copy(locale: Locale) {
-  return locale === "zh"
-    ? {
-        search: "搜索访客...",
-        visitor: "访客",
-        sessionId: "会话 ID",
-        anonymous: "匿名访客",
-        referrer: "来源",
-        location: "地区",
-        os: "系统",
-        browser: "浏览器",
-        device: "设备",
-        firstSeen: "首次出现",
-        lastSeen: "上次出现",
-        pageViews: "页面浏览",
-        sessions: "会话数",
-        loadError: "无法加载访客数据。",
-        empty: "当前时间范围内没有访客。",
-      }
-    : {
-        search: "Search visitors...",
-        visitor: "Visitor",
-        sessionId: "Session ID",
-        anonymous: "Anonymous",
-        referrer: "Referrer",
-        location: "Location",
-        os: "OS",
-        browser: "Browser",
-        device: "Device",
-        firstSeen: "First Seen",
-        lastSeen: "Last Seen",
-        pageViews: "Page Views",
-        sessions: "Sessions",
-        loadError: "Unable to load visitors.",
-        empty: "No visitors in this time range.",
-      };
-}
-
 function shortId(value: string): string {
   if (value.length <= 12) return value;
   return `${value.slice(0, 9)}...`;
@@ -298,7 +260,7 @@ export function VisitorsClientPage({
   siteId,
   pathname,
 }: VisitorsClientPageProps) {
-  const labels = copy(locale);
+  const labels = messages.visitors;
   const { filters, window: timeWindow } = useDashboardQuery() as {
     filters: DashboardFilters;
     window: TimeWindow;
@@ -729,7 +691,7 @@ export function VisitorsClientPage({
                         >
                           <DeviceMeta
                             deviceType={row.deviceType || ""}
-                            locale={locale}
+                            deviceLabels={messages.common.deviceLabels}
                             unknownLabel={messages.common.unknown}
                           />
                         </ClickableTableCell>
@@ -768,7 +730,7 @@ export function VisitorsClientPage({
 
       {detailVisitorId ? (
         <DetailModal
-          ariaLabel={locale === "zh" ? "访客详情" : "Visitor detail"}
+          ariaLabel={messages.visitors.title}
           modalKey={`visitor:${detailVisitorId}`}
           onClose={closeVisitorDetail}
         >

@@ -2788,7 +2788,11 @@ export function OverviewPagesSection({
       }),
       deviceType: toRows(resolvedClientDimensionCardTabData.deviceType ?? [], {
         transformLabel: (value) =>
-          resolveDeviceTypeMeta(value, locale, messages.common.unknown).label,
+          resolveDeviceTypeMeta(
+            value,
+            messages.common.deviceLabels,
+            messages.common.unknown,
+          ).label,
       }),
       language: toRows(resolvedClientDimensionCardTabData.language ?? [], {
         transformLabel: (value) =>
@@ -3750,7 +3754,7 @@ export function OverviewPagesSection({
                 {clientDimensionCardTab === "deviceType" ? (
                   <DeviceMeta
                     deviceType={item.rawLabel ?? item.label}
-                    locale={locale}
+                    deviceLabels={messages.common.deviceLabels}
                     unknownLabel={messages.common.unknown}
                   />
                 ) : (

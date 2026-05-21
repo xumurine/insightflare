@@ -364,17 +364,25 @@ export function DeviceCrossBreakdownGrid({
     () =>
       buildDisplayDimension(browserData, messages, {
         formatRowLabel: (value) =>
-          resolveDeviceTypeMeta(value, locale, messages.common.unknown).label,
+          resolveDeviceTypeMeta(
+            value,
+            messages.common.deviceLabels,
+            messages.common.unknown,
+          ).label,
       }),
-    [browserData, locale, messages],
+    [browserData, messages],
   );
   const osDimension = useMemo(
     () =>
       buildDisplayDimension(osData, messages, {
         formatRowLabel: (value) =>
-          resolveDeviceTypeMeta(value, locale, messages.common.unknown).label,
+          resolveDeviceTypeMeta(
+            value,
+            messages.common.deviceLabels,
+            messages.common.unknown,
+          ).label,
       }),
-    [locale, messages, osData],
+    [messages, osData],
   );
 
   return (

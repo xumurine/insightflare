@@ -821,7 +821,7 @@ function EventRecordsTable({
                     <TableCell className="max-w-36">
                       <DeviceMeta
                         deviceType={row.deviceType || ""}
-                        locale={locale}
+                        deviceLabels={messages.common.deviceLabels}
                         unknownLabel={messages.common.unknown}
                       />
                     </TableCell>
@@ -1081,7 +1081,7 @@ export function EventRecordDetailDrawer({
                     value={
                       <DeviceMeta
                         deviceType={detail.context.deviceType || ""}
-                        locale={locale}
+                        deviceLabels={messages.common.deviceLabels}
                         unknownLabel={messages.common.unknown}
                       />
                     }

@@ -1132,7 +1132,7 @@ function RealtimeLogEventDetailsDialog({
   ).label;
   const deviceTypeMeta = resolveDeviceTypeMeta(
     event.deviceType,
-    locale,
+    messages.common.deviceLabels,
     messages.common.unknown,
   );
   const DeviceTypeIcon = deviceTypeMeta.Icon;

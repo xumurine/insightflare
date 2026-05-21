@@ -16,6 +16,11 @@ navigation:
   performance: Performance
   settings: Settings
 common:
+  deviceLabels:
+    desktop: Desktop
+    mobile: Mobile
+    tablet: Tablet
+  timeRelativePair: "{absolute} ({relative})"
   id: ID
   views: Views
   sessions: Sessions
@@ -248,6 +253,70 @@ campaigns:
 sessions:
   title: Sessions
   subtitle: Session-level detail for quality analysis.
+  search: Search sessions...
+  started: Start Time
+  sessionId: Session ID
+  visitor: Visitor
+  anonymous: Anonymous
+  entryPage: Entry Page
+  exitPage: Exit Page
+  duration: Duration
+  bounce: Bounce
+  referrer: Referrer
+  location: Location
+  os: OS
+  browser: Browser
+  device: Device
+  pageViews: Page Views
+  yes: Yes
+  no: No
+  loadError: Unable to load sessions.
+  empty: No sessions in this time range.
+sessionDetail:
+  titlePrefix: Session
+  anonymous: Anonymous
+  back: Back to sessions
+  missing: Missing sessionId.
+  notFound: Session not found.
+  loadError: Unable to load session detail.
+  active: Active
+  inactive: Ended
+  status: Status
+  duration: Duration
+  screenViews: Screen Views
+  events: Events
+  bounce: Bounce
+  entryPath: Entry Path
+  exitPath: Exit Path
+  referrerName: Referrer Name
+  os: OS
+  browser: Browser
+  device: Device
+  screen: Screen
+  yes: Yes
+  no: No
+  uniquePages: Unique Pages
+  firstEvent: First Event
+  lastEvent: Last Event
+  sessionStarted: Session started
+  pageview: Pageview
+  exitPage: Exit page
+  customEvent: Custom event
+  eventTitleSeparator: ": "
+  visitDetailsTitle: Visit details
+  visitDetailsSubtitle: Session start, pageviews, exits, and custom events in the order they happened.
+  path: Path
+  title: Title
+  location: Location
+  visitorId: Visitor ID
+  sessionId: Session ID
+  referrerUrl: Referrer URL
+  emptyEvents: No events recorded.
+  emptyCustomEvents: No custom events.
+  sincePrevious: Since previous
+  geoLocationTitle: Geo location
+  performanceTitle: Current session performance
+  range: Range
 events:
   title: Custom Events
   subtitle: Event volume, context, payload fields, and raw trigger records.
@@ -331,12 +400,110 @@ funnels:
 visitors:
   title: Visitors
   subtitle: Visitor-level breakdown and recency.
+  search: Search visitors...
+  visitor: Visitor
+  sessionId: Session ID
+  anonymous: Anonymous
+  referrer: Referrer
+  location: Location
+  os: OS
+  browser: Browser
+  device: Device
+  firstSeen: First Seen
+  lastSeen: Last Seen
+  pageViews: Page Views
+  sessions: Sessions
+  loadError: Unable to load visitors.
+  empty: No visitors in this time range.
+visitorDetail:
+  anonymous: Anonymous
+  back: Back to visitors
+  missing: Missing visitorId.
+  notFound: Visitor not found.
+  loadError: Unable to load visitor detail.
+  totalDuration: Total Duration
+  events: Events
+  sessions: Sessions
+  views: Pageviews
+  uniquePages: Unique Pages
+  avgPagesPerSession: Avg Pages/Session
+  avgEventsPerSession: Avg Events/Session
+  avgStay: Avg Stay
+  p90Duration: Session Duration (P90)
+  firstSeen: First seen
+  lastSeen: Last seen
+  daysActive: Days Active
+  conversionEvents: Conversion Events
+  avgTimeBetweenSessions: Avg Time Between Sessions
+  activity: Activity
+  sessionRecords: Session records
+  started: Start Time
+  visitor: Visitor
+  duration: Duration
+  referrer: Referrer
+  pageViews: Page Views
+  visitDetailsTitle: Visit details
+  visitDetailsSubtitle: Session starts, pageviews, exits, and custom events for this visitor in the order they happened.
+  path: Path
+  title: Title
+  customEvents: Custom events
+  emptyEvents: No events recorded.
+  emptyCustomEvents: No custom events.
+  emptySessions: No sessions recorded.
+  visitorId: Visitor ID
+  sessionId: Session ID
+  referrerName: Referrer Name
+  referrerUrl: Referrer URL
+  location: Location
+  browser: Browser
+  os: OS
+  device: Device
+  screen: Screen
+  entryPath: Entry Path
+  exitPath: Exit Path
+  bounce: Bounce
+  status: Status
+  active: Active
+  inactive: Ended
+  yes: Yes
+  no: No
+  sessionStarted: Session started
+  pageview: Pageview
+  exitPage: Exit page
+  customEvent: Custom event
+  eventTitleSeparator: ": "
+  sincePrevious: Since previous
+  geoLocationTitle: Geo location
+  performanceTitle: Current visitor performance
+  range: Range
 retention:
   title: Retention
   subtitle: Cohort-based visitor return analysis.
   cohortDate: Cohort
   cohortSize: Size
   periodLabel: "Period {n}"
+  matrixTitle: Retention Matrix
+  matrixSubtitle: "Each row is a first-seen cohort; each column shows the share that returned in a later period."
+  cohortsMetric: Cohorts
+  visitorsMetric: Cohort Visitors
+  periodOneMetric: First Return
+  averageReturnMetric: Average Return
+  strongestCohortMetric: Best Cohort
+  eligibleVisitors: eligible visitors
+  periodsAnalyzed: periods analyzed
+  noEligibleCohorts: Not enough history
+  weightedAverage: Weighted average
+  legendLow: Low
+  legendHigh: High
+  periodZero: Initial
+  empty: Not enough return data in this time range.
+  emptyHint: Use a wider range or choose a coarser interval from the top selector to reveal the retention shape sooner.
+  loadError: Unable to load retention data.
+  unavailableCell: This cohort has not reached this period yet.
+  visitorsDetail: Visitors
+  rateDetail: Retention
+  cohortDetail: Cohort
+  sizeDetail: Size
 geo:
   title: Location Analysis
   subtitle: Study traffic performance for any location.
@@ -348,7 +515,11 @@ geo:
   viewOnWikipedia: View on Wikipedia
   investigationNotice: This data comes from the web and may contain errors.
   timezoneDeltaVsLocal: "{delta} vs local"
+  visitorCoordinates: Visitor Coordinates
+  ipNotice: Estimated location via IP. Coordinates are approximate and do not pinpoint a precise address.
+  multipleNotice: Estimated locations via IP. Multi-session journeys may span multiple cities.
   investigation:
+    countryScopedLabel: "Country {label}"
     capital: Capital
     population: Population
     gdp: GDP

@@ -70,52 +70,6 @@ const INITIAL_SESSION_META: SessionsMeta = {
   nextPage: null,
 };
 
-function copy(locale: Locale) {
-  return locale === "zh"
-    ? {
-        search: "搜索会话...",
-        started: "开始时间",
-        sessionId: "会话 ID",
-        visitor: "访客",
-        anonymous: "匿名访客",
-        entryPage: "入口页面",
-        exitPage: "退出页面",
-        duration: "时长",
-        bounce: "跳出",
-        referrer: "来源",
-        location: "地区",
-        os: "系统",
-        browser: "浏览器",
-        device: "设备",
-        pageViews: "页面浏览",
-        yes: "是",
-        no: "否",
-        loadError: "无法加载会话数据。",
-        empty: "当前时间范围内没有会话。",
-      }
-    : {
-        search: "Search sessions...",
-        started: "Start Time",
-        sessionId: "Session ID",
-        visitor: "Visitor",
-        anonymous: "Anonymous",
-        entryPage: "Entry Page",
-        exitPage: "Exit Page",
-        duration: "Duration",
-        bounce: "Bounce",
-        referrer: "Referrer",
-        location: "Location",
-        os: "OS",
-        browser: "Browser",
-        device: "Device",
-        pageViews: "Page Views",
-        yes: "Yes",
-        no: "No",
-        loadError: "Unable to load sessions.",
-        empty: "No sessions in this time range.",
-      };
-}
-
 function appendUniqueSessions(
   current: JourneySession[],
   incoming: JourneySession[],
@@ -145,7 +99,7 @@ export function SessionsClientPage({
   siteId,
   pathname,
 }: SessionsClientPageProps) {
-  const labels = copy(locale);
+  const labels = messages.sessions;
   const { filters, window: timeWindow } = useDashboardQuery() as {
     filters: DashboardFilters;
     window: TimeWindow;
@@ -401,7 +355,7 @@ export function SessionsClientPage({
 
       {detailSessionId ? (
         <DetailModal
-          ariaLabel={locale === "zh" ? "会话详情" : "Session detail"}
+          ariaLabel={messages.sessionDetail.visitDetailsTitle}
           modalKey={`session:${detailSessionId}`}
           onClose={closeSessionDetail}
         >

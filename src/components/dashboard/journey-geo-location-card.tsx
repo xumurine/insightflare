@@ -291,24 +291,10 @@ function buildGeoInvestigationRow(
   return { label, value, fullWidth };
 }
 
-function journeyGeoCopy(locale: Locale) {
-  return locale === "zh"
-    ? {
-        visitorCoordinates: "访客坐标",
-        ipNotice: "此位置是基于访客的 IP 推断的，可能并不精确。",
-        multipleNotice: "检测到此用户在多个位置的访问记录。",
-      }
-    : {
-        visitorCoordinates: "Visitor coordinates",
-        ipNotice:
-          "This location is inferred from the visitor's IP address and may be imprecise.",
-        multipleNotice:
-          "Access records for this user were detected in multiple locations.",
-      };
-}
-
-function countryScopedGeoLabel(locale: Locale, label: string): string {
-  return locale === "zh" ? `国家${label}` : `Country ${label}`;
+function countryScopedGeoLabel(messages: AppMessages, label: string): string {
+  return formatI18nTemplate(messages.geo.investigation.countryScopedLabel, {
+    label,
+  });
 }
 
 function resolveCountryRecordLabel(
@@ -326,10 +312,11 @@ function resolveCountryRecordLabel(
 function buildCountryContextGeoRows(
   country: LocaleCountryRecord | null | undefined,
   locale: Locale,
-  geoMessages: GeoMessages,
+  messages: AppMessages,
 ): GeoInvestigationRow[] {
   if (!country) return [];
 
+  const geoMessages = messages.geo;
   const labels = geoMessages.investigation;
   const countryName = resolveCountryRecordLabel(
     country,
@@ -340,31 +327,31 @@ function buildCountryContextGeoRows(
   return [
     buildGeoInvestigationRow(geoMessages.countryLabel, countryName),
     buildGeoInvestigationRow(
-      countryScopedGeoLabel(locale, labels.capital),
+      countryScopedGeoLabel(messages, labels.capital),
       formatGeoDetailValue(country.capital, locale, labels),
     ),
     buildGeoInvestigationRow(
-      countryScopedGeoLabel(locale, labels.currency),
+      countryScopedGeoLabel(messages, labels.currency),
       formatGeoCurrency(country, labels),
     ),
     buildGeoInvestigationRow(
-      countryScopedGeoLabel(locale, labels.population),
+      countryScopedGeoLabel(messages, labels.population),
       formatGeoPopulation(locale, country.population, labels),
     ),
     buildGeoInvestigationRow(
-      countryScopedGeoLabel(locale, labels.gdp),
+      countryScopedGeoLabel(messages, labels.gdp),
       formatGeoGdp(locale, country.gdp, labels),
     ),
     buildGeoInvestigationRow(
-      countryScopedGeoLabel(locale, labels.gdpPerCapita),
+      countryScopedGeoLabel(messages, labels.gdpPerCapita),
       formatGeoGdpPerCapita(locale, country.gdp, country.population, labels),
     ),
     buildGeoInvestigationRow(
-      countryScopedGeoLabel(locale, labels.region),
+      countryScopedGeoLabel(messages, labels.region),
       formatGeoRegion(country, labels),
     ),
     buildGeoInvestigationRow(
-      countryScopedGeoLabel(locale, labels.phonecode),
+      countryScopedGeoLabel(messages, labels.phonecode),
       formatGeoPhoneCode(country, labels),
     ),
   ];
@@ -373,11 +360,11 @@ function buildCountryContextGeoRows(
 function buildCountryGeoInvestigation(
   payload: LocaleCountryPayload | null,
   locale: Locale,
-  geoMessages: GeoMessages,
+  messages: AppMessages,
 ): GeoInvestigationInfo | null {
   const country = payload?.country;
   if (!country) return null;
-  const labels = geoMessages.investigation;
+  const labels = messages.geo.investigation;
   const population = parseGeoMetricNumber(country.population);
   const headline = resolveCountryRecordLabel(
     country,
@@ -423,11 +410,11 @@ function buildCountryGeoInvestigation(
 function buildStateGeoInvestigation(
   payload: LocaleStatePayload | null,
   locale: Locale,
-  geoMessages: GeoMessages,
+  messages: AppMessages,
 ): GeoInvestigationInfo | null {
   const state = payload?.state;
   if (!state) return null;
-  const labels = geoMessages.investigation;
+  const labels = messages.geo.investigation;
   return {
     headline: pickLocaleGeoLabel(locale, state) || labels.unavailable,
     context: payload?.country
@@ -453,7 +440,7 @@ function buildStateGeoInvestigation(
         labels.coordinates,
         formatGeoCoordinates(state.latitude, state.longitude, labels),
       ),
-      ...buildCountryContextGeoRows(payload?.country, locale, geoMessages),
+      ...buildCountryContextGeoRows(payload?.country, locale, messages),
     ],
   };
 }
@@ -462,7 +449,7 @@ function buildLocalityGeoInvestigation(
   payload: LocaleStatePayload | null,
   location: ParsedGeoLocation,
   locale: Locale,
-  geoMessages: GeoMessages,
+  messages: AppMessages,
 ): GeoInvestigationInfo | null {
   if (location.level !== "locality" || !location.localityName) return null;
   const locality =
@@ -471,7 +458,7 @@ function buildLocalityGeoInvestigation(
     ) ?? null;
   if (!locality) return null;
 
-  const labels = geoMessages.investigation;
+  const labels = messages.geo.investigation;
   const contextParts = [
     payload?.country ? pickLocaleGeoLabel(locale, payload.country) : "",
     payload?.state ? pickLocaleGeoLabel(locale, payload.state) : "",
@@ -499,7 +486,7 @@ function buildLocalityGeoInvestigation(
         labels.coordinates,
         formatGeoCoordinates(locality.latitude, locality.longitude, labels),
       ),
-      ...buildCountryContextGeoRows(payload?.country, locale, geoMessages),
+      ...buildCountryContextGeoRows(payload?.country, locale, messages),
     ],
   };
 }
@@ -598,14 +585,13 @@ async function fetchJourneyGeoInvestigation(
   locale: Locale,
   messages: AppMessages,
 ): Promise<GeoInvestigationInfo | null> {
-  const geoMessages = messages.geo;
   const unknownLabel = messages.common.unknown;
 
   if (location.level === "country") {
     const countryPayload = await fetchLocaleCountryPayload(
       location.countryCode,
     );
-    return buildCountryGeoInvestigation(countryPayload, locale, geoMessages);
+    return buildCountryGeoInvestigation(countryPayload, locale, messages);
   }
 
   const stateResolution = await resolveGeoStateTranslation(
@@ -631,8 +617,8 @@ async function fetchJourneyGeoInvestigation(
   if (!statePayload) return null;
 
   return location.level === "locality"
-    ? buildLocalityGeoInvestigation(statePayload, location, locale, geoMessages)
-    : buildStateGeoInvestigation(statePayload, locale, geoMessages);
+    ? buildLocalityGeoInvestigation(statePayload, location, locale, messages)
+    : buildStateGeoInvestigation(statePayload, locale, messages);
 }
 
 function buildJourneyGeoLocationValue(
@@ -746,12 +732,12 @@ function normalizeJourneyGeoLocations(
 
 function buildVisitorCoordinateRow(
   location: NormalizedJourneyGeoLocation,
-  locale: Locale,
+  visitorCoordinatesLabel: string,
   labels: GeoInvestigationMessages,
 ): GeoInvestigationRow | null {
   if (location.latitude === null || location.longitude === null) return null;
   return buildGeoInvestigationRow(
-    journeyGeoCopy(locale).visitorCoordinates,
+    visitorCoordinatesLabel,
     formatGeoCoordinates(location.latitude, location.longitude, labels),
   );
 }
@@ -866,7 +852,6 @@ export function JourneyGeoLocationCard({
 
   if (!selectedEntry) return null;
 
-  const copy = journeyGeoCopy(locale);
   const headline = investigation?.headline || selectedEntry.label;
   const context = investigation?.context ?? selectedEntry.context;
   const baseRows =
@@ -875,7 +860,7 @@ export function JourneyGeoLocationCard({
       : [];
   const visitorCoordinateRow = buildVisitorCoordinateRow(
     selectedEntry,
-    locale,
+    messages.geo.visitorCoordinates,
     messages.geo.investigation,
   );
   const rows = visitorCoordinateRow
@@ -973,10 +958,10 @@ export function JourneyGeoLocationCard({
                       <span className="mr-1.5 inline-flex h-4 align-top items-center">
                         <RiInformationLine className="size-3.5" />
                       </span>
-                      {copy.ipNotice}
+                      {messages.geo.ipNotice}
                     </p>
                     {entries.length > 1 ? (
-                      <p className="pl-5">{copy.multipleNotice}</p>
+                      <p className="pl-5">{messages.geo.multipleNotice}</p>
                     ) : null}
                     <p className="pl-5">{messages.geo.investigationNotice}</p>
                   </div>

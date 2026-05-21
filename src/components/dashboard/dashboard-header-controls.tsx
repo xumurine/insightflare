@@ -539,7 +539,7 @@ function formatFilterOptionLabel(
   if (key === "device" || key === "clientDeviceType") {
     return resolveDeviceTypeMeta(
       value || label,
-      locale,
+      messages.common.deviceLabels,
       messages.common.unknown,
     ).label;
   }

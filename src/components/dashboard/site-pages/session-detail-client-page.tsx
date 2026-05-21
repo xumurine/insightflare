@@ -92,7 +92,7 @@ interface SessionDetailClientPageProps {
 }
 
 type SessionDetail = NonNullable<SessionDetailData["data"]>;
-type Labels = ReturnType<typeof copy>;
+type Labels = AppMessages["sessionDetail"];
 type SessionPerformancePanelKey = PerformanceMetricKey | "score";
 type SessionPerformanceStatus = "great" | "needs-improvement" | "poor" | "none";
 
@@ -229,104 +229,6 @@ function sessionGeoLocationInputs(
       longitude: point.longitude,
     })),
   ];
-}
-
-function copy(locale: Locale) {
-  return locale === "zh"
-    ? {
-        titlePrefix: "会话",
-        anonymous: "匿名访客",
-        back: "返回会话",
-        missing: "缺少 sessionId。",
-        notFound: "没有找到这个会话。",
-        loadError: "无法加载会话详情。",
-        active: "进行中",
-        inactive: "已结束",
-        status: "状态",
-        duration: "时长",
-        screenViews: "页面浏览",
-        events: "事件",
-        bounce: "跳出",
-        entryPath: "入口路径",
-        exitPath: "退出路径",
-        referrerName: "来源名称",
-        os: "系统",
-        browser: "浏览器",
-        device: "设备",
-        screen: "屏幕",
-        yes: "是",
-        no: "否",
-        uniquePages: "唯一页面",
-        firstEvent: "首个事件",
-        lastEvent: "最后事件",
-        sessionStarted: "会话开始",
-        pageview: "访问页面",
-        exitPage: "退出页面",
-        customEvent: "自定义事件",
-        eventTitleSeparator: "：",
-        visitDetailsTitle: "访问明细",
-        visitDetailsSubtitle:
-          "按发生顺序展示该会话内的开始、页面访问、退出和自定义事件。",
-        path: "路径",
-        title: "标题",
-        location: "位置",
-        visitorId: "访客 ID",
-        sessionId: "会话 ID",
-        referrerUrl: "来源链接",
-        emptyEvents: "没有事件记录。",
-        emptyCustomEvents: "暂无自定义事件",
-        sincePrevious: "距上个事件",
-        geoLocationTitle: "地理位置",
-        performanceTitle: "当前会话性能",
-        range: "范围",
-      }
-    : {
-        titlePrefix: "Session",
-        anonymous: "Anonymous",
-        back: "Back to sessions",
-        missing: "Missing sessionId.",
-        notFound: "Session not found.",
-        loadError: "Unable to load session detail.",
-        active: "Active",
-        inactive: "Ended",
-        status: "Status",
-        duration: "Duration",
-        screenViews: "Screen Views",
-        events: "Events",
-        bounce: "Bounce",
-        entryPath: "Entry Path",
-        exitPath: "Exit Path",
-        referrerName: "Referrer Name",
-        os: "OS",
-        browser: "Browser",
-        device: "Device",
-        screen: "Screen",
-        yes: "Yes",
-        no: "No",
-        uniquePages: "Unique Pages",
-        firstEvent: "First Event",
-        lastEvent: "Last Event",
-        sessionStarted: "Session started",
-        pageview: "Pageview",
-        exitPage: "Exit page",
-        customEvent: "Custom event",
-        eventTitleSeparator: ": ",
-        visitDetailsTitle: "Visit details",
-        visitDetailsSubtitle:
-          "Session start, pageviews, exits, and custom events in the order they happened.",
-        path: "Path",
-        title: "Title",
-        location: "Location",
-        visitorId: "Visitor ID",
-        sessionId: "Session ID",
-        referrerUrl: "Referrer URL",
-        emptyEvents: "No events recorded.",
-        emptyCustomEvents: "No custom events.",
-        sincePrevious: "Since previous",
-        geoLocationTitle: "Geo location",
-        performanceTitle: "Current session performance",
-        range: "Range",
-      };
 }
 
 function eventKindLabel(labels: Labels, event: JourneyEvent): string {
@@ -1095,7 +997,7 @@ function MetaPanel({
             value={
               <DeviceMeta
                 deviceType={session.deviceType}
-                locale={locale}
+                deviceLabels={messages.common.deviceLabels}
                 unknownLabel={messages.common.unknown}
               />
             }
@@ -1567,7 +1469,7 @@ export function SessionDetailClientPage({
   pathname,
   sessionId,
 }: SessionDetailClientPageProps) {
-  const labels = copy(locale);
+  const labels = messages.sessionDetail;
   const { timeZone, window } = useDashboardQueryControls();
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [loading, setLoading] = useState(Boolean(sessionId));
