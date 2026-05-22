@@ -488,6 +488,12 @@ interface EventTrendPointRow {
   events: number;
 }
 
+interface EventTypeTrendPointRow {
+  bucket: number;
+  events: number;
+  visitors: number;
+}
+
 interface EventFieldRow {
   path: string;
   valueType: number;
@@ -5048,6 +5054,66 @@ ${seriesNames.length > 0 ? `WHERE event_name NOT IN (${seriesNames.map(() => "?"
   return { series, data };
 }
 
+async function queryEventTypeTrendFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  interval: Interval,
+  filters: DashboardFilters,
+  eventName: string,
+) {
+  const filter = buildEventFilterSql(filters, "es", { eventName });
+  const sourceBindings = [
+    ...visitSourceBindings(siteId, window),
+    ...eventSourceBindings(siteId, window),
+  ];
+  const buckets = buildTimeBuckets(window, interval);
+  const bucket = timeBucketCase(buckets, "occurred_at");
+  const rows = await queryD1All<EventTypeTrendPointRow>(
+    env,
+    `
+WITH
+${buildVisitSourceCte()},
+${buildEventAnalyticsSourceCte()},
+filtered_events AS (
+  SELECT *
+  FROM event_source es
+  ${filter.clause}
+),
+bucketed AS (
+  SELECT
+    ${bucket.sql} AS bucket,
+    count(*) AS events,
+    count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors
+  FROM filtered_events
+  GROUP BY bucket
+)
+SELECT
+  bucket,
+  events,
+  visitors
+FROM bucketed
+WHERE bucket IS NOT NULL
+ORDER BY bucket ASC
+`,
+    [...sourceBindings, ...filter.bindings],
+  );
+  const data = buckets.map((item) => ({
+    bucket: item.index,
+    timestampMs: item.timestampMs,
+    events: 0,
+    visitors: 0,
+  }));
+  for (const row of rows) {
+    const bucketIndex = Number(row.bucket ?? -1);
+    const point = data[bucketIndex];
+    if (!point) continue;
+    point.events = Number(row.events ?? 0);
+    point.visitors = Number(row.visitors ?? 0);
+  }
+  return { data };
+}
+
 async function queryEventRecordsFromD1(
   env: Env,
   siteId: string,
@@ -6899,13 +6965,12 @@ async function handleEventTypeDetail(
   const interval = parseInterval(url);
   const [overview, trend, fields, cards] = await Promise.all([
     queryEventTypeOverviewFromD1(env, siteId, window, filters, eventName),
-    queryEventsTrendFromD1(
+    queryEventTypeTrendFromD1(
       env,
       siteId,
       window,
       interval,
       filters,
-      1,
       eventName,
     ),
     queryEventFieldsFromD1(env, siteId, window, filters, eventName, 100),

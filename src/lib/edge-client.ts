@@ -829,11 +829,20 @@ export interface EventField {
   exampleValue?: string | number | boolean | null;
 }
 
+export interface EventTypeTrendPoint {
+  bucket: number;
+  timestampMs: number;
+  events: number;
+  visitors: number;
+}
+
 export interface EventTypeDetailData {
   ok: boolean;
   eventName: string;
   summary: EventTypeSummaryMetrics;
-  trend: Omit<EventsTrendData, "ok" | "interval">;
+  trend: {
+    data: EventTypeTrendPoint[];
+  };
   breakdowns: EventBreakdownsData;
   cards: EventAnalyticsContextCardsData;
   fields: EventField[];

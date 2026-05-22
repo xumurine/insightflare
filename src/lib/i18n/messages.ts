@@ -336,6 +336,8 @@ export interface AppMessages {
     visitors: string;
     avgEventsPerSession: string;
     shareOfAllEvents: string;
+    triggerCount: string;
+    triggerVisitors: string;
     trendTitle: string;
     topEvents: string;
     topPages: string;

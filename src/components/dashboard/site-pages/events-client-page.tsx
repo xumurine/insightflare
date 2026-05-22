@@ -14,13 +14,13 @@ import {
   EventRecordsSection,
   EventTrendStackedBarCard,
 } from "@/components/dashboard/site-pages/event-analytics-components";
+import { EventTypeDetailLoadingState } from "@/components/dashboard/site-pages/event-type-detail-loading-state";
 import {
   OverviewPagesSection,
   type OverviewPagesSectionCardData,
   parseOverviewCardFilters,
 } from "@/components/dashboard/site-pages/overview-client-page";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   pushUrlWithoutNavigation,
   replaceUrlWithoutNavigation,
@@ -54,25 +54,14 @@ const EventTypeDetailClientPage = dynamic(
   },
 );
 
-function EventTypeDetailModalLoadingState() {
+function EventTypeDetailModalLoadingState({
+  loadingLabel,
+}: {
+  loadingLabel?: string;
+}) {
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-6 p-4 md:p-6">
-      <div className="space-y-4">
-        <Skeleton className="h-6 w-40" />
-        <Skeleton className="h-4 w-72" />
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        {Array.from({ length: 5 }, (_, index) => (
-          <Skeleton key={index} className="h-28 w-full" />
-        ))}
-      </div>
-      <Skeleton className="h-[420px] w-full" />
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }, (_, index) => (
-          <Skeleton key={index} className="h-64 w-full" />
-        ))}
-      </div>
-      <Skeleton className="h-80 w-full" />
+      <EventTypeDetailLoadingState loadingLabel={loadingLabel} />
     </div>
   );
 }
@@ -109,7 +98,11 @@ function EventTypeDetailModalContent(props: {
   }, [modalReady, props.eventName]);
 
   if (!modalReady || renderEventName !== props.eventName) {
-    return <EventTypeDetailModalLoadingState />;
+    return (
+      <EventTypeDetailModalLoadingState
+        loadingLabel={props.messages.common.loading}
+      />
+    );
   }
 
   return <EventTypeDetailClientPage key={props.eventName} {...props} />;

@@ -330,6 +330,8 @@ events:
   visitors: Visitors
   avgEventsPerSession: Avg Events / Session
   shareOfAllEvents: Share of All Events
+  triggerCount: Triggers
+  triggerVisitors: Triggered Visitors
   trendTitle: Event Trend
   topEvents: Top Events
   topPages: Top Pages

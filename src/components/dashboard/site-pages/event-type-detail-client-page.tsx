@@ -2,22 +2,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { JourneyDetailStateSwitch } from "@/components/dashboard/journey-detail-state";
 import { useDetailModalClose } from "@/components/dashboard/site-pages/detail-query-modal";
 import {
   EventFieldsCard,
   EventMetricGrid,
   EventPageHeader,
   EventRecordsSection,
-  EventTrendStackedBarCard,
 } from "@/components/dashboard/site-pages/event-analytics-components";
+import { EventTypeDetailLoadingState } from "@/components/dashboard/site-pages/event-type-detail-loading-state";
 import {
   OverviewPagesSection,
   type OverviewPagesSectionCardData,
   parseOverviewCardFilters,
 } from "@/components/dashboard/site-pages/overview-client-page";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TrafficPairBarChart } from "@/components/dashboard/site-traffic-charts";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLiveSearchParams } from "@/lib/client-history";
 import { fetchEventTypeDetail } from "@/lib/dashboard/client-data";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
@@ -34,10 +35,7 @@ interface EventTypeDetailClientPageProps {
   eventName: string;
 }
 
-function emptyEventTypeDetail(
-  eventName: string,
-  interval: TimeWindow["interval"],
-): EventTypeDetailData {
+function emptyEventTypeDetail(eventName: string): EventTypeDetailData {
   return {
     ok: true,
     eventName,
@@ -50,7 +48,6 @@ function emptyEventTypeDetail(
       shareOfAllEvents: 0,
     },
     trend: {
-      series: [],
       data: [],
     },
     breakdowns: {
@@ -96,25 +93,6 @@ function emptyDetailCards(): EventTypeDetailData["cards"] {
   };
 }
 
-function DetailLoadingState() {
-  return (
-    <div className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        {Array.from({ length: 5 }, (_, index) => (
-          <Skeleton key={index} className="h-28 w-full" />
-        ))}
-      </div>
-      <Skeleton className="h-[420px] w-full" />
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }, (_, index) => (
-          <Skeleton key={index} className="h-64 w-full" />
-        ))}
-      </div>
-      <Skeleton className="h-80 w-full" />
-    </div>
-  );
-}
-
 export function EventTypeDetailClientPage({
   locale,
   messages,
@@ -137,7 +115,7 @@ export function EventTypeDetailClientPage({
     [liveSearchParamsKey],
   );
   const [detail, setDetail] = useState<EventTypeDetailData>(() =>
-    emptyEventTypeDetail(eventName, window.interval),
+    emptyEventTypeDetail(eventName),
   );
   const [loading, setLoading] = useState(Boolean(eventName));
   const [error, setError] = useState(false);
@@ -189,10 +167,23 @@ export function EventTypeDetailClientPage({
       detail.cards.source,
     ],
   );
+  const initialLoading = loading && detail.summary.events === 0;
+  const detailStateKey = initialLoading
+    ? "event-type-loading"
+    : `event-type-content-${requestKey}-${error ? "error" : "ready"}`;
+  const trendData = useMemo(
+    () =>
+      detail.trend.data.map((point) => ({
+        timestampMs: point.timestampMs,
+        views: Math.max(0, Number(point.events ?? 0)),
+        visitors: Math.max(0, Number(point.visitors ?? 0)),
+      })),
+    [detail.trend.data],
+  );
 
   useEffect(() => {
     if (!eventName) {
-      setDetail(emptyEventTypeDetail("", requestWindow.interval));
+      setDetail(emptyEventTypeDetail(""));
       setLoading(false);
       setError(false);
       return;
@@ -208,7 +199,7 @@ export function EventTypeDetailClientPage({
       })
       .catch(() => {
         if (!active) return;
-        setDetail(emptyEventTypeDetail(eventName, requestWindow.interval));
+        setDetail(emptyEventTypeDetail(eventName));
         setError(true);
       })
       .finally(() => {
@@ -231,11 +222,13 @@ export function EventTypeDetailClientPage({
           backLabel={messages.events.backToEvents}
           onBack={modalClose ?? undefined}
         />
-        <Card>
-          <CardContent className="py-8 text-sm text-muted-foreground">
-            {messages.events.noEventName}
-          </CardContent>
-        </Card>
+        <JourneyDetailStateSwitch stateKey="event-type-missing">
+          <Card>
+            <CardContent className="py-8 text-sm text-muted-foreground">
+              {messages.events.noEventName}
+            </CardContent>
+          </Card>
+        </JourneyDetailStateSwitch>
       </div>
     );
   }
@@ -251,64 +244,78 @@ export function EventTypeDetailClientPage({
         onBack={modalClose ?? undefined}
       />
 
-      {loading && detail.summary.events === 0 ? (
-        <DetailLoadingState />
-      ) : (
-        <>
-          {error ? (
-            <Card>
-              <CardContent className="py-4 text-sm text-muted-foreground">
-                {messages.events.loadError}
+      <JourneyDetailStateSwitch stateKey={detailStateKey}>
+        {initialLoading ? (
+          <EventTypeDetailLoadingState loadingLabel={messages.common.loading} />
+        ) : (
+          <div className="space-y-6">
+            {error ? (
+              <Card>
+                <CardContent className="py-4 text-sm text-muted-foreground">
+                  {messages.events.loadError}
+                </CardContent>
+              </Card>
+            ) : null}
+
+            <EventMetricGrid
+              locale={locale}
+              labels={labels}
+              summary={detail.summary}
+              includeShare
+            />
+
+            <Card className="overflow-visible">
+              <CardHeader>
+                <CardTitle>{messages.events.trendTitle}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <TrafficPairBarChart
+                  data={trendData}
+                  locale={locale}
+                  timeZone={requestWindow.timeZone}
+                  interval={requestWindow.interval}
+                  range={{
+                    from: requestWindow.from,
+                    to: requestWindow.to,
+                  }}
+                  viewsLabel={labels.triggerCount}
+                  visitorsLabel={labels.triggerVisitors}
+                  className="h-[320px]"
+                />
               </CardContent>
             </Card>
-          ) : null}
 
-          <EventMetricGrid
-            locale={locale}
-            labels={labels}
-            summary={detail.summary}
-            includeShare
-          />
+            <OverviewPagesSection
+              locale={locale}
+              messages={messages}
+              siteId={siteId}
+              siteDomain={siteDomain}
+              pathname={siteBasePath}
+              filters={requestFilters}
+              cardDataOverride={contextCardDataOverride}
+              primaryMetricLabel={labels.totalEvents}
+              geoPageBasePathname={siteBasePath}
+            />
 
-          <EventTrendStackedBarCard
-            locale={locale}
-            labels={labels}
-            trend={detail.trend}
-            window={requestWindow}
-            title={messages.events.trendTitle}
-            loading={loading}
-          />
+            <EventFieldsCard
+              locale={locale}
+              labels={labels}
+              fields={detail.fields}
+            />
 
-          <OverviewPagesSection
-            locale={locale}
-            messages={messages}
-            siteId={siteId}
-            siteDomain={siteDomain}
-            pathname={siteBasePath}
-            filters={requestFilters}
-            cardDataOverride={contextCardDataOverride}
-            primaryMetricLabel={labels.totalEvents}
-            geoPageBasePathname={siteBasePath}
-          />
-
-          <EventFieldsCard
-            locale={locale}
-            labels={labels}
-            fields={detail.fields}
-          />
-
-          <EventRecordsSection
-            locale={locale}
-            messages={messages}
-            labels={labels}
-            siteId={siteId}
-            pathname={eventsPath}
-            window={requestWindow}
-            filters={requestFilters}
-            eventName={eventName}
-          />
-        </>
-      )}
+            <EventRecordsSection
+              locale={locale}
+              messages={messages}
+              labels={labels}
+              siteId={siteId}
+              pathname={eventsPath}
+              window={requestWindow}
+              filters={requestFilters}
+              eventName={eventName}
+            />
+          </div>
+        )}
+      </JourneyDetailStateSwitch>
     </div>
   );
 }

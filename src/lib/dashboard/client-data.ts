@@ -227,10 +227,7 @@ function emptyEventsRecords(pageSize = 0): EventsRecordsData {
   };
 }
 
-function emptyEventTypeDetail(
-  eventName = "",
-  interval: TimeWindow["interval"] = "day",
-): EventTypeDetailData {
+function emptyEventTypeDetail(eventName = ""): EventTypeDetailData {
   return {
     ok: true,
     eventName,
@@ -242,7 +239,9 @@ function emptyEventTypeDetail(
       avgEventsPerSession: 0,
       shareOfAllEvents: 0,
     },
-    trend: emptyEventsTrend(interval),
+    trend: {
+      data: [],
+    },
     breakdowns: emptyEventBreakdowns(),
     cards: emptyEventAnalyticsContextCards(),
     fields: [],
@@ -777,7 +776,7 @@ export async function fetchEventTypeDetail(
 ): Promise<EventTypeDetailData> {
   const normalizedEventName = eventName.trim();
   if (!normalizedEventName) {
-    return emptyEventTypeDetail("", window.interval);
+    return emptyEventTypeDetail("");
   }
   return fetchPrivateJson<EventTypeDetailData>(
     "/api/private/event-type-detail",
@@ -792,7 +791,7 @@ export async function fetchEventTypeDetail(
       },
       filters,
     ),
-  ).catch(() => emptyEventTypeDetail(normalizedEventName, window.interval));
+  ).catch(() => emptyEventTypeDetail(normalizedEventName));
 }
 
 export async function fetchEventRecordDetail(

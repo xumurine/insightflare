@@ -330,6 +330,8 @@ events:
   visitors: 触发访客
   avgEventsPerSession: 平均事件/会话
   shareOfAllEvents: 事件占比
+  triggerCount: 触发量
+  triggerVisitors: 触发人数
   trendTitle: 事件趋势
   topEvents: 事件排行
   topPages: 页面分布
