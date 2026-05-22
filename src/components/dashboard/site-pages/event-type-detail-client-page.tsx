@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 
+import { useDetailModalClose } from "@/components/dashboard/site-pages/detail-query-modal";
 import {
   EventFieldsCard,
   EventMetricGrid,
@@ -31,6 +31,7 @@ interface EventTypeDetailClientPageProps {
   siteId: string;
   siteDomain: string;
   pathname: string;
+  eventName: string;
 }
 
 function emptyEventTypeDetail(
@@ -120,10 +121,10 @@ export function EventTypeDetailClientPage({
   siteId,
   siteDomain,
   pathname,
+  eventName,
 }: EventTypeDetailClientPageProps) {
-  const searchParams = useSearchParams();
+  const modalClose = useDetailModalClose();
   const liveSearchParams = useLiveSearchParams();
-  const eventName = searchParams.get("eventName")?.trim() || "";
   const labels = messages.events;
   const { window } = useDashboardQuery() as {
     window: TimeWindow;
@@ -221,13 +222,14 @@ export function EventTypeDetailClientPage({
 
   if (!eventName) {
     return (
-      <div className="space-y-6">
+      <div className="mx-auto w-full max-w-[1400px] space-y-6 p-4 md:p-6">
         <EventPageHeader
           messages={messages}
           title={messages.events.detailTitle}
           subtitle={messages.events.typeDetailSubtitle}
           backHref={eventsPath}
           backLabel={messages.events.backToEvents}
+          onBack={modalClose ?? undefined}
         />
         <Card>
           <CardContent className="py-8 text-sm text-muted-foreground">
@@ -239,13 +241,14 @@ export function EventTypeDetailClientPage({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-[1400px] space-y-6 p-4 md:p-6">
       <EventPageHeader
         messages={messages}
         title={eventName}
         subtitle={messages.events.typeDetailSubtitle}
         backHref={eventsPath}
         backLabel={messages.events.backToEvents}
+        onBack={modalClose ?? undefined}
       />
 
       {loading && detail.summary.events === 0 ? (

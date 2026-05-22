@@ -1,8 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 
+import {
+  DETAIL_QUERY_PARAM,
+  DetailModal,
+  useDetailModalReady,
+} from "@/components/dashboard/site-pages/detail-query-modal";
 import {
   EventMetricGrid,
   EventPageHeader,
@@ -15,7 +20,12 @@ import {
   parseOverviewCardFilters,
 } from "@/components/dashboard/site-pages/overview-client-page";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
-import { useLiveSearchParams } from "@/lib/client-history";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  pushUrlWithoutNavigation,
+  replaceUrlWithoutNavigation,
+  useLiveSearchParams,
+} from "@/lib/client-history";
 import {
   fetchEventsSummary,
   fetchEventsTrend,
@@ -24,7 +34,6 @@ import type { TimeWindow } from "@/lib/dashboard/query-state";
 import type { EventsSummaryData, EventsTrendData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
-import { navigateWithTransition } from "@/lib/page-transition";
 
 interface EventsClientPageProps {
   locale: Locale;
@@ -32,6 +41,78 @@ interface EventsClientPageProps {
   siteId: string;
   siteDomain: string;
   pathname: string;
+}
+
+const EventTypeDetailClientPage = dynamic(
+  () =>
+    import("@/components/dashboard/site-pages/event-type-detail-client-page").then(
+      (module) => module.EventTypeDetailClientPage,
+    ),
+  {
+    ssr: false,
+    loading: () => <EventTypeDetailModalLoadingState />,
+  },
+);
+
+function EventTypeDetailModalLoadingState() {
+  return (
+    <div className="mx-auto w-full max-w-[1400px] space-y-6 p-4 md:p-6">
+      <div className="space-y-4">
+        <Skeleton className="h-6 w-40" />
+        <Skeleton className="h-4 w-72" />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {Array.from({ length: 5 }, (_, index) => (
+          <Skeleton key={index} className="h-28 w-full" />
+        ))}
+      </div>
+      <Skeleton className="h-[420px] w-full" />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <Skeleton key={index} className="h-64 w-full" />
+        ))}
+      </div>
+      <Skeleton className="h-80 w-full" />
+    </div>
+  );
+}
+
+function EventTypeDetailModalContent(props: {
+  locale: Locale;
+  messages: AppMessages;
+  siteId: string;
+  siteDomain: string;
+  pathname: string;
+  eventName: string;
+}) {
+  const modalReady = useDetailModalReady();
+  const [renderEventName, setRenderEventName] = useState("");
+
+  useEffect(() => {
+    if (!modalReady) {
+      setRenderEventName("");
+      return;
+    }
+
+    let firstFrame = 0;
+    let secondFrame = 0;
+    firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        setRenderEventName(props.eventName);
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
+  }, [modalReady, props.eventName]);
+
+  if (!modalReady || renderEventName !== props.eventName) {
+    return <EventTypeDetailModalLoadingState />;
+  }
+
+  return <EventTypeDetailClientPage key={props.eventName} {...props} />;
 }
 
 function emptySummary(): EventsSummaryData {
@@ -130,6 +211,21 @@ function emptyTrend(interval: TimeWindow["interval"]): EventsTrendData {
   };
 }
 
+function detailQueryTarget(
+  pathname: string,
+  searchParams: URLSearchParams,
+  detailId: string,
+): string | null {
+  const normalized = detailId.trim();
+  if (!normalized) return null;
+
+  const params = new URLSearchParams(searchParams.toString());
+  params.set(DETAIL_QUERY_PARAM, normalized);
+  params.delete("eventName");
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
 export function EventsClientPage({
   locale,
   messages,
@@ -138,9 +234,10 @@ export function EventsClientPage({
   pathname,
 }: EventsClientPageProps) {
   const labels = messages.events;
-  const router = useRouter();
   const searchParams = useLiveSearchParams();
-  const { window } = useDashboardQuery() as {
+  const detailEventName = searchParams.get(DETAIL_QUERY_PARAM)?.trim() || "";
+  const openedDetailFromListRef = useRef(false);
+  const { window: timeWindow } = useDashboardQuery() as {
     window: TimeWindow;
   };
   const searchParamsKey = searchParams.toString();
@@ -152,18 +249,24 @@ export function EventsClientPage({
     emptySummary(),
   );
   const [trend, setTrend] = useState<EventsTrendData>(() =>
-    emptyTrend(window.interval),
+    emptyTrend(timeWindow.interval),
   );
   const [loading, setLoading] = useState(true);
 
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
 
   useEffect(() => {
+    if (!detailEventName) {
+      openedDetailFromListRef.current = false;
+    }
+  }, [detailEventName]);
+
+  useEffect(() => {
     let active = true;
     setLoading(true);
     void Promise.all([
-      fetchEventsSummary(siteId, window, filters),
-      fetchEventsTrend(siteId, window, filters, { limit: 8 }),
+      fetchEventsSummary(siteId, timeWindow, filters),
+      fetchEventsTrend(siteId, timeWindow, filters, { limit: 8 }),
     ])
       .then(([nextSummary, nextTrend]) => {
         if (!active) return;
@@ -180,28 +283,37 @@ export function EventsClientPage({
     filters,
     filtersKey,
     siteId,
-    window.from,
-    window.interval,
-    window.timeZone,
-    window.to,
+    timeWindow.from,
+    timeWindow.interval,
+    timeWindow.timeZone,
+    timeWindow.to,
   ]);
 
-  const buildEventTypeHref = useCallback(
+  const openEventType = useCallback(
     (eventName: string) => {
-      const params = new URLSearchParams(searchParamsKey);
-      params.delete("eventName");
-      const normalized = eventName.trim();
-      if (!normalized) return null;
-      params.set("eventName", normalized);
-      return `${pathname}/detail?${params.toString()}`;
+      const target = detailQueryTarget(pathname, searchParams, eventName);
+      if (!target) return;
+      openedDetailFromListRef.current = true;
+      void import("@/components/dashboard/site-pages/event-type-detail-client-page");
+      pushUrlWithoutNavigation(target);
     },
-    [pathname, searchParamsKey],
+    [pathname, searchParams],
   );
-  const openEventType = (eventName: string) => {
-    const href = buildEventTypeHref(eventName);
-    if (!href) return;
-    navigateWithTransition(router, href);
-  };
+  const closeEventType = useCallback(() => {
+    const params = new URLSearchParams(globalThis.window.location.search);
+    if (!params.has(DETAIL_QUERY_PARAM)) return;
+
+    if (openedDetailFromListRef.current) {
+      openedDetailFromListRef.current = false;
+      globalThis.window.history.back();
+      return;
+    }
+
+    params.delete(DETAIL_QUERY_PARAM);
+    params.delete("eventName");
+    const query = params.toString();
+    replaceUrlWithoutNavigation(query ? `${pathname}?${query}` : pathname);
+  }, [pathname]);
   const siteBasePath = useMemo(
     () => pathname.replace(/\/events$/, ""),
     [pathname],
@@ -233,7 +345,7 @@ export function EventsClientPage({
         locale={locale}
         labels={labels}
         trend={trend}
-        window={window}
+        window={timeWindow}
         title={labels.trendTitle}
         loading={loading}
         onSelectEvent={openEventType}
@@ -262,8 +374,8 @@ export function EventsClientPage({
           pageCardQueryParamOverride={{ path: null }}
           pageCardNavigableTabs={[]}
           pageCardDetailTabs={["path"]}
-          pageCardDetailHrefResolvers={{
-            path: ({ value }) => buildEventTypeHref(value),
+          pageCardDetailClickResolvers={{
+            path: ({ value }) => openEventType(value),
           }}
           pageCardShowVisitors
           primaryMetricLabel={labels.totalEvents}
@@ -291,9 +403,26 @@ export function EventsClientPage({
         labels={labels}
         siteId={siteId}
         pathname={pathname}
-        window={window}
+        window={timeWindow}
         filters={filters}
       />
+
+      {detailEventName ? (
+        <DetailModal
+          ariaLabel={messages.events.detailTitle}
+          modalKey={`event:${detailEventName}`}
+          onClose={closeEventType}
+        >
+          <EventTypeDetailModalContent
+            locale={locale}
+            messages={messages}
+            siteId={siteId}
+            siteDomain={siteDomain}
+            pathname={pathname}
+            eventName={detailEventName}
+          />
+        </DetailModal>
+      ) : null}
     </div>
   );
 }

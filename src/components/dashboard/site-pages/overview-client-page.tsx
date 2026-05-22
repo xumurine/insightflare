@@ -409,6 +409,12 @@ type PageCardDetailHrefResolver = (params: {
   unknownLabel: string;
   basePath: string;
 }) => string | null;
+type PageCardDetailClickResolver = (params: {
+  tab: PageCardDetailTab;
+  value: string;
+  unknownLabel: string;
+  basePath: string;
+}) => void;
 
 interface PageCardRow {
   key: string;
@@ -1911,6 +1917,9 @@ interface OverviewPagesSectionProps extends OverviewClientPageProps {
   pageCardDetailHrefResolvers?: Partial<
     Record<PageCardDetailTab, PageCardDetailHrefResolver>
   >;
+  pageCardDetailClickResolvers?: Partial<
+    Record<PageCardDetailTab, PageCardDetailClickResolver>
+  >;
   pageCardShowVisitors?: boolean;
   primaryMetricLabel?: string;
   geoPageBasePathname?: string;
@@ -1934,6 +1943,7 @@ export function OverviewPagesSection({
   pageCardFetchers,
   pageCardTargetUrlResolvers,
   pageCardDetailHrefResolvers,
+  pageCardDetailClickResolvers,
   pageCardShowVisitors = true,
   primaryMetricLabel,
   geoPageBasePathname,
@@ -3229,6 +3239,14 @@ export function OverviewPagesSection({
     event.stopPropagation();
     router.push(detailHref);
   };
+  const openPageCardRowDetailAction = (
+    detailAction: PageCardDetailClickResolver,
+    detailParams: Parameters<PageCardDetailClickResolver>[0],
+    event: MouseEvent<HTMLElement>,
+  ) => {
+    event.stopPropagation();
+    detailAction(detailParams);
+  };
   const openGeoDimensionLocationTarget = (
     targetUrl: string,
     event: MouseEvent<HTMLElement>,
@@ -3395,7 +3413,13 @@ export function OverviewPagesSection({
               fallbackHostname: pageCardDefaultHostname,
             })
           : null;
+        const rowDetailAction =
+          isPageCardDetailTab(pageCardTab) &&
+          resolvedPageCardDetailTabs.has(pageCardTab)
+            ? (pageCardDetailClickResolvers?.[pageCardTab] ?? null)
+            : null;
         const rowDetailHref =
+          !rowDetailAction &&
           isPageCardDetailTab(pageCardTab) &&
           resolvedPageCardDetailTabs.has(pageCardTab)
             ? (
@@ -3408,9 +3432,21 @@ export function OverviewPagesSection({
                 unknownLabel: messages.common.unknown,
               })
             : null;
+        const rowDetailParams =
+          rowDetailAction && isPageCardDetailTab(pageCardTab)
+            ? {
+                tab: pageCardTab as PageCardDetailTab,
+                basePath: pageDetailBasePath,
+                value: item.label,
+                unknownLabel: messages.common.unknown,
+              }
+            : null;
         const rowFilterActive = activePageCardQueryValue === rowFilterValue;
         const rowInteractive =
-          rowFilterEnabled || Boolean(rowTargetUrl) || Boolean(rowDetailHref);
+          rowFilterEnabled ||
+          Boolean(rowTargetUrl) ||
+          Boolean(rowDetailHref) ||
+          Boolean(rowDetailAction);
 
         return (
           <AnimatedDataTableRow
@@ -3440,6 +3476,10 @@ export function OverviewPagesSection({
                   "_blank",
                   "noopener,noreferrer",
                 );
+                return;
+              }
+              if (rowDetailAction && rowDetailParams) {
+                rowDetailAction(rowDetailParams);
                 return;
               }
               if (rowDetailHref) {
@@ -3472,7 +3512,22 @@ export function OverviewPagesSection({
                       <RiArrowRightUpLine size="1.4em" />
                     </Clickable>
                   ) : null}
-                  {rowDetailHref ? (
+                  {rowDetailAction && rowDetailParams ? (
+                    <Clickable
+                      className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                      onClick={(event) =>
+                        openPageCardRowDetailAction(
+                          rowDetailAction,
+                          rowDetailParams,
+                          event,
+                        )
+                      }
+                      aria-label={messages.common.search}
+                      title={messages.common.search}
+                    >
+                      <RiSearchLine size="1.2em" />
+                    </Clickable>
+                  ) : rowDetailHref ? (
                     <Clickable
                       className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
                       onClick={(event) =>

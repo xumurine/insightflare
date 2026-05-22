@@ -347,17 +347,12 @@ export function DetailModal({
               className="h-full min-h-0 overflow-y-auto overscroll-contain"
               onClick={handleClose}
             >
-              <div className="pointer-events-none relative mx-auto flex max-w-[1400px] items-start gap-6 px-2 pb-[4em] pt-[8em] md:px-4">
+              <div className="pointer-events-none relative mx-auto flex max-w-[1400px] items-start gap-6 px-4 pb-[4em] pt-[8em] sm:px-5 md:px-6">
                 <motion.div
                   initial={{
                     y: "112vh",
-                    rotate: -0.8,
                   }}
-                  animate={
-                    isClosing
-                      ? { y: "112vh", rotate: 0.4 }
-                      : { y: "0vh", rotate: 0 }
-                  }
+                  animate={isClosing ? { y: "112vh" } : { y: "0vh" }}
                   transition={
                     isClosing
                       ? { duration: 0.36, ease: [0.38, 0.05, 0.86, 0.28] }
@@ -368,7 +363,10 @@ export function DetailModal({
                           mass: 0.92,
                         }
                   }
-                  className="pointer-events-auto relative min-h-[132vh] min-w-0 flex-1 overflow-hidden rounded-sm border border-border/80 bg-background shadow-[0_-24px_70px_rgba(0,0,0,0.35)]"
+                  className="pointer-events-auto relative min-h-[132vh] min-w-0 flex-1 transform-gpu overflow-hidden rounded-sm border border-border/80 bg-background shadow-[0_-24px_70px_rgba(0,0,0,0.35)]"
+                  style={{
+                    willChange: isClosing || !isReady ? "transform" : "auto",
+                  }}
                   onAnimationComplete={() => {
                     if (!isClosing) {
                       setIsReady(true);

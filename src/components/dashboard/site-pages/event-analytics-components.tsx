@@ -1503,25 +1503,33 @@ export function EventPageHeader({
   subtitle,
   backHref,
   backLabel,
+  onBack,
 }: {
   messages: AppMessages;
   title: string;
   subtitle: string;
   backHref?: string;
   backLabel?: string;
+  onBack?: () => void;
 }) {
   const router = useRouter();
+  const handleBack = onBack
+    ? onBack
+    : backHref
+      ? () => navigateWithTransition(router, backHref)
+      : null;
+
   return (
     <PageHeading
       title={title}
       subtitle={subtitle}
       actions={
-        backHref ? (
+        handleBack ? (
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => navigateWithTransition(router, backHref)}
+            onClick={handleBack}
           >
             <RiArrowLeftLine data-icon="inline-start" />
             {backLabel || messages.common.backToTeam}
