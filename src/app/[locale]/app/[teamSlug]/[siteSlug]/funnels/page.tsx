@@ -13,6 +13,16 @@ interface FunnelsPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: FunnelsPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.funnels.title,
+  };
+}
+
 export default async function FunnelsPage({ params }: FunnelsPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);

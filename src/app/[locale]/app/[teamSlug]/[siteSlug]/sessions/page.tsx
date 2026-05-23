@@ -13,6 +13,16 @@ interface SessionsPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: SessionsPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.sessions.title,
+  };
+}
+
 export default async function SessionsPage({ params }: SessionsPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);

@@ -13,6 +13,16 @@ interface RetentionPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: RetentionPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.retention.title,
+  };
+}
+
 export default async function RetentionPage({ params }: RetentionPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);

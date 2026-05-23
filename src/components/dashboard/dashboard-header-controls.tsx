@@ -238,7 +238,7 @@ function rangeLabel(messages: AppMessages, range: RangePreset): string {
   if (range === "12m") return messages.ranges.last12m;
   if (range === "all") return messages.ranges.allTime;
   if (range === "custom") return messages.ranges.custom;
-  return messages.ranges.last7d;
+  return messages.ranges.last30d;
 }
 
 function intervalLabel(
@@ -539,7 +539,7 @@ function formatFilterOptionLabel(
   if (key === "device" || key === "clientDeviceType") {
     return resolveDeviceTypeMeta(
       value || label,
-      locale,
+      messages.common.deviceLabels,
       messages.common.unknown,
     ).label;
   }
@@ -615,7 +615,7 @@ function PanelScrollbar({
       existing.options(PANEL_SCROLLBAR_OPTIONS);
     }
     scrollbarRef.current = instance;
-    instance.update(true);
+    instance.update();
 
     return () => {
       if (!existing) {
@@ -628,7 +628,7 @@ function PanelScrollbar({
   }, []);
 
   useEffect(() => {
-    scrollbarRef.current?.update(true);
+    scrollbarRef.current?.update();
   }, [syncKey]);
 
   return (

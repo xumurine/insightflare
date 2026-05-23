@@ -83,7 +83,7 @@ export function DeviceShareOverview({
           items={deviceTrend.series.map((item) => {
             const deviceMeta = resolveDeviceTypeMeta(
               item.label,
-              locale,
+              messages.common.deviceLabels,
               messages.common.unknown,
             );
             return {

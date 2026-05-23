@@ -5,6 +5,7 @@ import { GlobalScrollbars } from "@/components/global-scrollbars";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { APP_NAME } from "@/lib/constants";
 
 import "./globals.css";
 
@@ -17,8 +18,11 @@ const DEMO_ANALYTICS_SCRIPT_SRC =
   "https://insight.ravelloh.com/script.js?siteId=04de9d96-fcec-41b1-b259-56e0dbaa2c5e";
 
 export const metadata: Metadata = {
-  title: "InsightFlare",
-  description: "InsightFlare analytics dashboard",
+  title: {
+    default: APP_NAME,
+    template: `%s - ${APP_NAME}`,
+  },
+  description: `${APP_NAME} analytics dashboard`,
 };
 
 export default function RootLayout({

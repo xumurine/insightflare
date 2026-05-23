@@ -12,6 +12,16 @@ interface ManageTeamsPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: ManageTeamsPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.adminTeams.title,
+  };
+}
+
 export default async function ManageTeamsPage({
   params,
 }: ManageTeamsPageProps) {

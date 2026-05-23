@@ -409,6 +409,12 @@ type PageCardDetailHrefResolver = (params: {
   unknownLabel: string;
   basePath: string;
 }) => string | null;
+type PageCardDetailClickResolver = (params: {
+  tab: PageCardDetailTab;
+  value: string;
+  unknownLabel: string;
+  basePath: string;
+}) => void;
 
 interface PageCardRow {
   key: string;
@@ -1677,7 +1683,7 @@ function PanelScrollbar({
       existing.options(PANEL_SCROLLBAR_OPTIONS);
     }
     scrollbarRef.current = instance;
-    instance.update(true);
+    instance.update();
 
     return () => {
       if (!existing) {
@@ -1690,7 +1696,7 @@ function PanelScrollbar({
   }, []);
 
   useEffect(() => {
-    scrollbarRef.current?.update(true);
+    scrollbarRef.current?.update();
   }, [syncKey]);
 
   return (
@@ -1911,6 +1917,9 @@ interface OverviewPagesSectionProps extends OverviewClientPageProps {
   pageCardDetailHrefResolvers?: Partial<
     Record<PageCardDetailTab, PageCardDetailHrefResolver>
   >;
+  pageCardDetailClickResolvers?: Partial<
+    Record<PageCardDetailTab, PageCardDetailClickResolver>
+  >;
   pageCardShowVisitors?: boolean;
   primaryMetricLabel?: string;
   geoPageBasePathname?: string;
@@ -1934,6 +1943,7 @@ export function OverviewPagesSection({
   pageCardFetchers,
   pageCardTargetUrlResolvers,
   pageCardDetailHrefResolvers,
+  pageCardDetailClickResolvers,
   pageCardShowVisitors = true,
   primaryMetricLabel,
   geoPageBasePathname,
@@ -2788,7 +2798,11 @@ export function OverviewPagesSection({
       }),
       deviceType: toRows(resolvedClientDimensionCardTabData.deviceType ?? [], {
         transformLabel: (value) =>
-          resolveDeviceTypeMeta(value, locale, messages.common.unknown).label,
+          resolveDeviceTypeMeta(
+            value,
+            messages.common.deviceLabels,
+            messages.common.unknown,
+          ).label,
       }),
       language: toRows(resolvedClientDimensionCardTabData.language ?? [], {
         transformLabel: (value) =>
@@ -3225,6 +3239,14 @@ export function OverviewPagesSection({
     event.stopPropagation();
     router.push(detailHref);
   };
+  const openPageCardRowDetailAction = (
+    detailAction: PageCardDetailClickResolver,
+    detailParams: Parameters<PageCardDetailClickResolver>[0],
+    event: MouseEvent<HTMLElement>,
+  ) => {
+    event.stopPropagation();
+    detailAction(detailParams);
+  };
   const openGeoDimensionLocationTarget = (
     targetUrl: string,
     event: MouseEvent<HTMLElement>,
@@ -3391,7 +3413,13 @@ export function OverviewPagesSection({
               fallbackHostname: pageCardDefaultHostname,
             })
           : null;
+        const rowDetailAction =
+          isPageCardDetailTab(pageCardTab) &&
+          resolvedPageCardDetailTabs.has(pageCardTab)
+            ? (pageCardDetailClickResolvers?.[pageCardTab] ?? null)
+            : null;
         const rowDetailHref =
+          !rowDetailAction &&
           isPageCardDetailTab(pageCardTab) &&
           resolvedPageCardDetailTabs.has(pageCardTab)
             ? (
@@ -3404,9 +3432,21 @@ export function OverviewPagesSection({
                 unknownLabel: messages.common.unknown,
               })
             : null;
+        const rowDetailParams =
+          rowDetailAction && isPageCardDetailTab(pageCardTab)
+            ? {
+                tab: pageCardTab as PageCardDetailTab,
+                basePath: pageDetailBasePath,
+                value: item.label,
+                unknownLabel: messages.common.unknown,
+              }
+            : null;
         const rowFilterActive = activePageCardQueryValue === rowFilterValue;
         const rowInteractive =
-          rowFilterEnabled || Boolean(rowTargetUrl) || Boolean(rowDetailHref);
+          rowFilterEnabled ||
+          Boolean(rowTargetUrl) ||
+          Boolean(rowDetailHref) ||
+          Boolean(rowDetailAction);
 
         return (
           <AnimatedDataTableRow
@@ -3436,6 +3476,10 @@ export function OverviewPagesSection({
                   "_blank",
                   "noopener,noreferrer",
                 );
+                return;
+              }
+              if (rowDetailAction && rowDetailParams) {
+                rowDetailAction(rowDetailParams);
                 return;
               }
               if (rowDetailHref) {
@@ -3468,7 +3512,22 @@ export function OverviewPagesSection({
                       <RiArrowRightUpLine size="1.4em" />
                     </Clickable>
                   ) : null}
-                  {rowDetailHref ? (
+                  {rowDetailAction && rowDetailParams ? (
+                    <Clickable
+                      className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                      onClick={(event) =>
+                        openPageCardRowDetailAction(
+                          rowDetailAction,
+                          rowDetailParams,
+                          event,
+                        )
+                      }
+                      aria-label={messages.common.search}
+                      title={messages.common.search}
+                    >
+                      <RiSearchLine size="1.2em" />
+                    </Clickable>
+                  ) : rowDetailHref ? (
                     <Clickable
                       className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
                       onClick={(event) =>
@@ -3750,7 +3809,7 @@ export function OverviewPagesSection({
                 {clientDimensionCardTab === "deviceType" ? (
                   <DeviceMeta
                     deviceType={item.rawLabel ?? item.label}
-                    locale={locale}
+                    deviceLabels={messages.common.deviceLabels}
                     unknownLabel={messages.common.unknown}
                   />
                 ) : (

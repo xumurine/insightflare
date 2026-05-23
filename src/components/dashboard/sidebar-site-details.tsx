@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
+import { SiteBrandIcon } from "@/components/dashboard/site-brand-icon";
 import { TrafficPairBarChart } from "@/components/dashboard/site-traffic-charts";
-import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -56,6 +56,7 @@ interface SidebarSiteSummary {
   slug: string;
   name: string;
   domain: string;
+  iconPath?: string;
 }
 
 interface SidebarSiteDetailsProps {
@@ -76,12 +77,10 @@ interface SiteTrendPoint {
   visitors: number;
 }
 
-interface SiteIconProps {
-  siteName: string;
-  domain: string;
-}
-
 const SIDEBAR_EXPAND_CHART_DELAY_MS = 220;
+const SIDEBAR_COLLAPSE_CHART_DELAY_MS = 300;
+const SITE_ROW_DETAIL_CLASS =
+  "grid min-w-0 max-w-[20rem] flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 overflow-hidden transition-[max-width,opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-data-[collapsible=icon]:pointer-events-none group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:translate-x-1 group-data-[collapsible=icon]:opacity-0";
 
 function buildSitePath(
   locale: Locale,
@@ -89,76 +88,6 @@ function buildSitePath(
   siteSlug: string,
 ): string {
   return `/${locale}/app/${teamSlug}/${siteSlug}`;
-}
-
-function resolveFaviconUrl(domain: string): string | null {
-  const trimmed = domain.trim();
-  if (!trimmed) return null;
-  try {
-    const parsed = new URL(
-      trimmed.includes("://") ? trimmed : `https://${trimmed}`,
-    );
-    return `${parsed.origin}/favicon.ico`;
-  } catch {
-    return null;
-  }
-}
-
-function leadingLetter(name: string): string {
-  const normalized = name.trim();
-  if (!normalized) return "?";
-  return normalized.slice(0, 1).toUpperCase();
-}
-
-function SiteIcon({ siteName, domain }: SiteIconProps) {
-  const src = useMemo(() => resolveFaviconUrl(domain), [domain]);
-  const [iconLoaded, setIconLoaded] = useState(false);
-  const [iconFailed, setIconFailed] = useState(false);
-
-  useEffect(() => {
-    setIconLoaded(false);
-    setIconFailed(false);
-
-    if (!src) return;
-
-    let active = true;
-    const image = new Image();
-    image.onload = () => {
-      if (!active) return;
-      setIconLoaded(true);
-    };
-    image.onerror = () => {
-      if (!active) return;
-      setIconFailed(true);
-    };
-    image.src = src;
-
-    return () => {
-      active = false;
-    };
-  }, [src]);
-
-  const showFavicon = Boolean(src) && iconLoaded && !iconFailed;
-
-  return (
-    <AutoTransition
-      type="fade"
-      duration={0.18}
-      initial={false}
-      className="inline-flex size-4 shrink-0 items-center justify-center"
-    >
-      {showFavicon ? (
-        <img key="favicon" src={src!} alt="" className="size-4 shrink-0" />
-      ) : (
-        <span
-          key="fallback"
-          className="inline-flex size-4 shrink-0 items-center justify-center bg-muted text-[10px] font-medium text-muted-foreground"
-        >
-          {leadingLetter(siteName)}
-        </span>
-      )}
-    </AutoTransition>
-  );
 }
 
 function safeCount(value: number): number {
@@ -295,8 +224,10 @@ export function SidebarSiteDetails({
     }
 
     if (sidebarState === "collapsed") {
-      setShouldRenderCharts(false);
-      return;
+      const timeout = setTimeout(() => {
+        setShouldRenderCharts(false);
+      }, SIDEBAR_COLLAPSE_CHART_DELAY_MS);
+      return () => clearTimeout(timeout);
     }
 
     const timeout = setTimeout(() => {
@@ -475,8 +406,14 @@ export function SidebarSiteDetails({
               className="h-8 rounded-none"
             >
               <Link href={buildSitePath(locale, teamSlug, site.slug)}>
-                <SiteIcon siteName={site.name} domain={site.domain} />
-                <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 group-data-[collapsible=icon]:hidden">
+                <SiteBrandIcon
+                  siteId={site.id}
+                  siteName={site.name}
+                  domain={site.domain}
+                  iconSrc={site.iconPath}
+                  size="sm"
+                />
+                <div className={SITE_ROW_DETAIL_CLASS}>
                   <div className="min-w-0">
                     <span className="block truncate text-xs">{site.name}</span>
                   </div>

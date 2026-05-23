@@ -13,6 +13,16 @@ interface TeamSettingsPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: TeamSettingsPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.teamManagement.settings.title,
+  };
+}
+
 export default async function TeamSettingsPage({
   params,
 }: TeamSettingsPageProps) {

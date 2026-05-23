@@ -13,6 +13,16 @@ interface BrowsersPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: BrowsersPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.browsers.title,
+  };
+}
+
 export default async function BrowsersPage({ params }: BrowsersPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);

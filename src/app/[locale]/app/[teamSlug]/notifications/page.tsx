@@ -15,6 +15,16 @@ interface TeamNotificationsPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: TeamNotificationsPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.teamManagement.notifications.title,
+  };
+}
+
 export default async function TeamNotificationsPage({
   params,
 }: TeamNotificationsPageProps) {
