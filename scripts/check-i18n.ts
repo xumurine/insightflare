@@ -170,11 +170,16 @@ function getAppMessagesType(
 function resolveTypeNodePath(
   typeNode: ts.TypeNode | undefined,
   typePaths: TypePathMap,
+  filePath: string,
 ): string[] | null {
   if (!typeNode) return null;
 
   if (ts.isTypeReferenceNode(typeNode)) {
     const typeName = typeNode.typeName.getText();
+    const localKey = `${filePath}::${typeName}`;
+    if (typePaths.has(localKey)) {
+      return [...(typePaths.get(localKey) ?? [])];
+    }
     if (typePaths.has(typeName)) {
       return [...(typePaths.get(typeName) ?? [])];
     }
@@ -185,7 +190,11 @@ function resolveTypeNodePath(
   }
 
   if (ts.isIndexedAccessTypeNode(typeNode)) {
-    const objectPath = resolveTypeNodePath(typeNode.objectType, typePaths);
+    const objectPath = resolveTypeNodePath(
+      typeNode.objectType,
+      typePaths,
+      filePath,
+    );
     if (!objectPath) return null;
     if (!ts.isLiteralTypeNode(typeNode.indexType)) return null;
     if (!ts.isStringLiteral(typeNode.indexType.literal)) return null;
@@ -193,7 +202,7 @@ function resolveTypeNodePath(
   }
 
   if (ts.isParenthesizedTypeNode(typeNode)) {
-    return resolveTypeNodePath(typeNode.type, typePaths);
+    return resolveTypeNodePath(typeNode.type, typePaths, filePath);
   }
 
   return null;
@@ -203,7 +212,14 @@ function collectTypePaths(program: ts.Program): TypePathMap {
   const typePaths: TypePathMap = new Map([["AppMessages", []]]);
 
   let changed = true;
+  let iterations = 0;
   while (changed) {
+    if (iterations++ > 50) {
+      console.warn(
+        "Warning: Exceeded 50 iterations in collectTypePaths. Breaking to prevent infinite loop.",
+      );
+      break;
+    }
     changed = false;
 
     for (const sourceFile of program.getSourceFiles()) {
@@ -213,11 +229,16 @@ function collectTypePaths(program: ts.Program): TypePathMap {
 
       for (const statement of sourceFile.statements) {
         if (!ts.isTypeAliasDeclaration(statement)) continue;
-        const nextPath = resolveTypeNodePath(statement.type, typePaths);
+        const nextPath = resolveTypeNodePath(
+          statement.type,
+          typePaths,
+          filePath,
+        );
         if (!nextPath) continue;
-        const current = typePaths.get(statement.name.text);
+        const key = `${filePath}::${statement.name.text}`;
+        const current = typePaths.get(key);
         if (!current || joinPath(current) !== joinPath(nextPath)) {
-          typePaths.set(statement.name.text, nextPath);
+          typePaths.set(key, nextPath);
           changed = true;
         }
       }
@@ -425,7 +446,11 @@ function collectUsedKeys(
           bindings.push(new Map<string, string[]>());
           pushedScope = true;
           for (const parameter of node.parameters) {
-            const fromType = resolveTypeNodePath(parameter.type, typePaths);
+            const fromType = resolveTypeNodePath(
+              parameter.type,
+              typePaths,
+              filePath,
+            );
             if (fromType) {
               bindName(
                 parameter.name,
@@ -453,7 +478,7 @@ function collectUsedKeys(
       }
 
       if (ts.isVariableDeclaration(node) && node.initializer) {
-        const fromType = resolveTypeNodePath(node.type, typePaths);
+        const fromType = resolveTypeNodePath(node.type, typePaths, filePath);
         if (fromType) {
           bindName(node.name, fromType, bindings[bindings.length - 1]!);
         }
@@ -609,11 +634,13 @@ function formatUsageRefs(refs: UsageRef[] | undefined): string {
 }
 
 async function main(): Promise<void> {
+  console.log("Loading translation files (en.yaml, zh.yaml)...");
   const [enYaml, zhYaml] = await Promise.all([
     readYaml(EN_PATH),
     readYaml(ZH_PATH),
   ]);
 
+  console.log("Parsing translation keys and building tree maps...");
   const enNodes = new Map<string, NodeInfo>();
   const zhNodes = new Map<string, NodeInfo>();
   const enLeaves = new Map<string, string>();
@@ -621,15 +648,28 @@ async function main(): Promise<void> {
   collectNodes(enYaml, [], enNodes, enLeaves);
   collectNodes(zhYaml, [], zhNodes, zhLeaves);
 
+  console.log("Parsing tsconfig.json...");
   const config = parseTsConfig(TSCONFIG_PATH);
+
+  console.log(
+    `Creating TypeScript program for ${config.fileNames.length} files...`,
+  );
   const program = ts.createProgram({
     rootNames: config.fileNames,
     options: config.options,
   });
+
+  console.log("Acquiring TypeScript TypeChecker...");
   const checker = program.getTypeChecker();
+
+  console.log("Resolving referenced translation type paths...");
   const typePaths = collectTypePaths(program);
+
+  console.log("Analyzing AppMessages type properties...");
   const { type: appMessagesType, symbol: appMessagesSymbol } =
     getAppMessagesType(program, checker);
+
+  console.log("Scanning codebase to collect all referenced keys...");
   const usageMap = collectUsedKeys(
     program,
     checker,
@@ -639,6 +679,8 @@ async function main(): Promise<void> {
     typePaths,
   );
   const usedPaths = [...usageMap.keys()].sort();
+
+  console.log("Running diagnostics validation...");
 
   const shapeDiff = compareNodeShapes(enNodes, zhNodes);
   const placeholderMismatches = comparePlaceholders(enLeaves, zhLeaves);
