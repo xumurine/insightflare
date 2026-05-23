@@ -316,7 +316,7 @@ sessionDetail:
   sincePrevious: 距上个事件
   geoLocationTitle: 地理位置
   performanceTitle: 当前会话性能
-  range: Range
+  range: 范围
 events:
   title: 自定义事件
   subtitle: 查看事件规模、上下文、Payload 字段与原始触发记录。
@@ -340,7 +340,12 @@ events:
   topBrowsers: 浏览器分布
   recordsTitle: 事件记录
   fieldsTitle: Payload 字段
-  fieldsSubtitle: 按 JSON path 汇总出现频率、类型和样本值。
+  fieldsSubtitle: 选择字段后查看其值分布和元数据。
+  fieldValuesTitle: 字段值
+  fieldValuesSubtitle: 展示当前字段的记录及出现次数。
+  fieldValuesEmpty: 当前字段暂无记录。
+  expandField: 展开字段
+  collapseField: 收起字段
   breakdownTitle: 上下文分布
   search: 搜索事件名、ID、访客、会话、页面...
   eventName: 事件名
@@ -707,7 +712,7 @@ siteSettings:
   performanceGroupTitle: 性能追踪
   performanceGroupDescription: 通过一个采样率控制 Web 性能指标采集。
   performanceSampleRateLabel: 性能采样率（%）
-  performanceSampleRateHint: 被采样的访问会在 leave 时记录 TTFB、FCP、LCP、CLS 和 INP。填 0 表示不采样，100 表示全量采集。
+  performanceSampleRateHint: 被采样的访问会在离开页面时记录 TTFB、FCP、LCP、CLS 和 INP。填 0 表示不采样，100 表示全量采集。
   booleanOn: 开启
   booleanOff: 关闭
   loadingSettings: 正在加载脚本设置...
@@ -715,9 +720,9 @@ siteSettings:
   savingTracking: 保存追踪设置中...
   save: 保存修改
   saving: 保存中...
-  transferTitle: 转移到其他 Team
+  transferTitle: 转移到其他团队
   transferSubtitle: 将当前站点迁移到你可管理的其他团队。
-  transferTeamLabel: 目标 Team
+  transferTeamLabel: 目标团队
   transfer: 转移站点
   transferring: 转移中...
   scriptTitle: 安装统计脚本
@@ -1050,37 +1055,37 @@ systemPerformance:
   serverTime: 服务端写入时间
   estimatedDelay: 估算延迟
   doDiagnosticTitle: DO 内部缓冲诊断
-  doDiagnosticDescription: 直接询问每个站点的 Durable Object，统计 buffered_visits / buffered_custom_events 是否存在停滞、未来时间戳或永久 dirty 行。
+  doDiagnosticDescription: 直接询问每个站点的 Durable Object，统计 buffered_visits / buffered_custom_events 是否存在停滞、未来时间戳或永久未刷新（脏）行。
   doDiagnosticLoadFailed: 加载 DO 诊断数据失败。
   doDiagnosticLoading: 正在拉取每个 DO 的状态…
   doDiagnosticEmpty: 暂无站点 DO 状态。
   doDiagnosticUnreachable: 部分站点 DO 不可达
   doDiagnosticReachableSites: 可达 DO
   doDiagnosticTotalSites: 总站点
-  doDiagnosticActiveAlarms: 活跃 alarm
+  doDiagnosticActiveAlarms: 活跃 Alarm 定时器
   doDiagnosticBufferedVisits: 缓冲访问
-  doDiagnosticOpenVisits: 缓冲 open 行
-  doDiagnosticOpenStale: open >30 分钟无活动
-  doDiagnosticOpenTimedOut: open >12 小时无活动
+  doDiagnosticOpenVisits: 缓冲未关闭访问行
+  doDiagnosticOpenStale: 未关闭且停滞 >30 分钟
+  doDiagnosticOpenTimedOut: 未关闭且停滞 >12 小时
   doDiagnosticOpenHardAged: 起始 >36 小时
   doDiagnosticOpenFutureSkew: 未来时间戳
-  doDiagnosticDirtyVisits: dirty 访问
-  doDiagnosticStuckDirty: dirty 卡住
+  doDiagnosticDirtyVisits: 未刷新访问
+  doDiagnosticStuckDirty: 未刷新卡住
   doDiagnosticMaxFlushAttempts: 最大重试次数
   doDiagnosticBufferedCustomEvents: 缓冲自定义事件
-  doDiagnosticDirtyCustomEvents: dirty 自定义事件
-  doDiagnosticStuckDirtyCustomEvents: dirty 自定义事件卡住
-  doDiagnosticOldestOpen: 最早 open 起始
+  doDiagnosticDirtyCustomEvents: 未刷新自定义事件
+  doDiagnosticStuckDirtyCustomEvents: 未刷新自定义事件卡住
+  doDiagnosticOldestOpen: 最早未关闭起始
   doDiagnosticFutureMaxActivity: 最远未来 last_activity
   doDiagnosticSiteList: 风险靠前的站点
   doDiagnosticSiteListDescription: 按风险评分排序，前 20 个站点的 DO 内部缓冲快照。
   doDiagnosticSiteOk: 已响应
   doDiagnosticSiteFailed: 不可达
-  doDiagnosticSiteOpen: open
+  doDiagnosticSiteOpen: 未关闭
   doDiagnosticSiteStuck: 卡住
   doDiagnosticSiteFuture: 未来
   doDiagnosticSiteHardAged: 老旧
-  doDiagnosticSiteAlarm: alarm
+  doDiagnosticSiteAlarm: Alarm 状态
   doDiagnosticSiteAlarmNone: 无
   doDiagnosticSiteAlarmDue: 到期
   doDiagnosticSiteResponseMs: 响应耗时

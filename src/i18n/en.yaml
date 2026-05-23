@@ -340,7 +340,12 @@ events:
   topBrowsers: Browsers
   recordsTitle: Event Records
   fieldsTitle: Payload Fields
-  fieldsSubtitle: JSON paths by frequency, type, and sample value.
+  fieldsSubtitle: Select a field to inspect its values and metadata.
+  fieldValuesTitle: Field Values
+  fieldValuesSubtitle: Records and occurrence counts for the selected field.
+  fieldValuesEmpty: No values recorded for this field.
+  expandField: Expand field
+  collapseField: Collapse field
   breakdownTitle: Context Breakdown
   search: Search event name, IDs, visitor, session, page...
   eventName: Event Name
