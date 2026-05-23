@@ -232,6 +232,7 @@ function rangeLabel(messages: AppMessages, range: RangePreset): string {
   if (range === "thisMonth") return messages.ranges.thisMonth;
   if (range === "thisYear") return messages.ranges.thisYear;
   if (range === "24h") return messages.ranges.last24h;
+  if (range === "7d") return messages.ranges.last7d;
   if (range === "30d") return messages.ranges.last30d;
   if (range === "90d") return messages.ranges.last90d;
   if (range === "6m") return messages.ranges.last6m;
