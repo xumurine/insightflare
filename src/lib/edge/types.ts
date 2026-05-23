@@ -26,6 +26,12 @@ export interface SerializedRequestPayload {
   receivedAt: number;
 }
 
+export interface IngestTracePayload {
+  id: string;
+  source: string;
+  acceptedAt: number;
+}
+
 export type TrackerPayloadKind =
   | "pageview"
   | "leave"
@@ -94,14 +100,17 @@ export interface TrackerClientPayload {
 export interface IngestEnvelope {
   request: SerializedRequestPayload;
   client: TrackerClientPayload;
+  trace?: IngestTracePayload;
 }
 
 export interface IngestEnvelopePayload extends IngestEnvelope {
   request: SerializedRequestPayload;
   client: TrackerClientPayload;
+  trace?: IngestTracePayload;
 }
 
 export interface NormalizedVisitContext {
+  traceId?: string;
   siteId: string;
   visitId: string;
   visitorId: string;
@@ -151,6 +160,7 @@ export interface NormalizedPageview extends NormalizedVisitContext {
 
 export interface NormalizedLeave {
   kind: "leave";
+  traceId?: string;
   siteId: string;
   visitId: string;
   sessionId: string;
@@ -173,6 +183,7 @@ export interface NormalizedCustomEvent extends NormalizedVisitContext {
 
 export interface NormalizedIdentify {
   kind: "identify";
+  traceId?: string;
   siteId: string;
   visitId: string;
   sessionId: string;

@@ -1,7 +1,14 @@
 "use client";
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  type TooltipProps,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -68,6 +75,13 @@ interface SiteTrafficSeriesItem {
   viewsKey: string;
   visitorsColor: string;
   viewsColor: string;
+}
+
+interface TrafficPairChartPoint {
+  timestampMs: number;
+  views: number;
+  visitors: number;
+  nonVisitorViews: number;
 }
 
 interface RGB {
@@ -893,6 +907,61 @@ const TRAFFIC_PAIR_CHART_CONFIG = {
   },
 } satisfies ChartConfig;
 
+function TrafficPairTooltip({
+  active,
+  payload,
+  label,
+  viewsLabel,
+  visitorsLabel,
+  tooltipFormatter,
+  countFormatter,
+}: TooltipProps<number, string> & {
+  viewsLabel: string;
+  visitorsLabel: string;
+  tooltipFormatter: Intl.DateTimeFormat;
+  countFormatter: Intl.NumberFormat;
+}) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0]?.payload as Partial<TrafficPairChartPoint> | null;
+  const timestamp = Number(point?.timestampMs ?? label ?? 0);
+  const views = safeCount(Number(point?.views ?? 0));
+  const visitors = safeCount(Number(point?.visitors ?? 0));
+
+  return (
+    <div className="grid min-w-32 items-start gap-1.5 rounded-none border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
+      <div className="font-medium">
+        {tooltipFormatter.format(new Date(timestamp))}
+      </div>
+      <div className="grid gap-1.5">
+        <div className="flex w-full items-center gap-2">
+          <div
+            className="h-2.5 w-1 shrink-0 rounded-[2px]"
+            style={{ backgroundColor: "var(--color-nonVisitorViews)" }}
+          />
+          <div className="flex flex-1 items-center justify-between gap-3 leading-none">
+            <span className="text-muted-foreground">{viewsLabel}</span>
+            <span className="font-mono font-medium tabular-nums text-foreground">
+              {countFormatter.format(views)}
+            </span>
+          </div>
+        </div>
+        <div className="flex w-full items-center gap-2">
+          <div
+            className="h-2.5 w-1 shrink-0 rounded-[2px]"
+            style={{ backgroundColor: "var(--color-visitors)" }}
+          />
+          <div className="flex flex-1 items-center justify-between gap-3 leading-none">
+            <span className="text-muted-foreground">{visitorsLabel}</span>
+            <span className="font-mono font-medium tabular-nums text-foreground">
+              {countFormatter.format(visitors)}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export const TrafficPairBarChart = memo(function TrafficPairBarChart({
   data,
   locale,
@@ -919,6 +988,7 @@ export const TrafficPairBarChart = memo(function TrafficPairBarChart({
       const visitors = Math.min(safeCount(point.visitors), views);
       return {
         timestampMs: point.timestampMs,
+        views,
         visitors,
         nonVisitorViews: Math.max(0, views - visitors),
       };
@@ -944,6 +1014,10 @@ export const TrafficPairBarChart = memo(function TrafficPairBarChart({
   const tooltipFormatter = useMemo(
     () => tooltipDateFormat(locale, interval, timeZone),
     [locale, interval, timeZone],
+  );
+  const countFormatter = useMemo(
+    () => new Intl.NumberFormat(intlLocale(locale)),
+    [locale],
   );
   const pairChartDataKey = useMemo(() => {
     const firstTimestamp = chartData[0]?.timestampMs ?? 0;
@@ -1001,14 +1075,11 @@ export const TrafficPairBarChart = memo(function TrafficPairBarChart({
               allowEscapeViewBox={{ x: false, y: true }}
               wrapperStyle={{ zIndex: 20 }}
               content={
-                <ChartTooltipContent
-                  indicator="line"
-                  labelFormatter={(value, payload) => {
-                    const timestamp = Number(
-                      payload?.[0]?.payload?.timestampMs ?? value ?? 0,
-                    );
-                    return tooltipFormatter.format(new Date(timestamp));
-                  }}
+                <TrafficPairTooltip
+                  viewsLabel={viewsLabel}
+                  visitorsLabel={visitorsLabel}
+                  tooltipFormatter={tooltipFormatter}
+                  countFormatter={countFormatter}
                 />
               }
             />

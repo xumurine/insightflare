@@ -685,6 +685,13 @@ export interface EventGeoDimensionRow extends EventDimensionRow {
   value: string;
 }
 
+export interface EventBreakdownsData {
+  pages: EventDimensionRow[];
+  countries: EventDimensionRow[];
+  devices: EventDimensionRow[];
+  browsers: EventDimensionRow[];
+}
+
 export interface EventAnalyticsContextCardsData {
   page: {
     path: EventDimensionRow[];
@@ -721,6 +728,17 @@ export interface EventAnalyticsCardsData extends EventAnalyticsContextCardsData 
   };
 }
 
+export interface EventAnalyticsSummaryCardsData {
+  event: {
+    name: EventDimensionRow[];
+  };
+  page: {
+    path: EventDimensionRow[];
+    title: EventDimensionRow[];
+    hostname: EventDimensionRow[];
+  };
+}
+
 export interface EventSummaryMetrics {
   events: number;
   eventTypes: number;
@@ -732,14 +750,7 @@ export interface EventSummaryMetrics {
 export interface EventsSummaryData {
   ok: boolean;
   summary: EventSummaryMetrics;
-  topEvents: EventDimensionRow[];
-  breakdowns: {
-    pages: EventDimensionRow[];
-    countries: EventDimensionRow[];
-    devices: EventDimensionRow[];
-    browsers: EventDimensionRow[];
-  };
-  cards: EventAnalyticsCardsData;
+  cards: EventAnalyticsSummaryCardsData;
 }
 
 export interface EventTrendSeries {
@@ -818,12 +829,21 @@ export interface EventField {
   exampleValue?: string | number | boolean | null;
 }
 
+export interface EventTypeTrendPoint {
+  bucket: number;
+  timestampMs: number;
+  events: number;
+  visitors: number;
+}
+
 export interface EventTypeDetailData {
   ok: boolean;
   eventName: string;
   summary: EventTypeSummaryMetrics;
-  trend: Omit<EventsTrendData, "ok" | "interval">;
-  breakdowns: EventsSummaryData["breakdowns"];
+  trend: {
+    data: EventTypeTrendPoint[];
+  };
+  breakdowns: EventBreakdownsData;
   cards: EventAnalyticsContextCardsData;
   fields: EventField[];
 }
@@ -1012,6 +1032,7 @@ export interface SiteData {
   teamId: string;
   name: string;
   domain: string;
+  iconPath?: string;
   publicEnabled: number | boolean;
   publicSlug: string | null;
   createdAt: number;

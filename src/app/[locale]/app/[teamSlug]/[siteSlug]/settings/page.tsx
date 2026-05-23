@@ -13,6 +13,16 @@ interface SiteSettingsPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: SiteSettingsPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.siteSettings.title,
+  };
+}
+
 export default async function SiteSettingsPage({
   params,
 }: SiteSettingsPageProps) {

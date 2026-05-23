@@ -1,0 +1,135 @@
+"use client";
+
+import { useMemo } from "react";
+import Map, { useControl } from "react-map-gl/maplibre";
+import { ScatterplotLayer } from "@deck.gl/layers";
+import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
+import type { StyleSpecification } from "maplibre-gl";
+
+export type VisitorDetailMapTheme = "light" | "dark";
+
+export interface VisitorLocationPoint {
+  latitude: number;
+  longitude: number;
+  timestampMs: number;
+}
+
+interface RenderedVisitorLocationPoint extends VisitorLocationPoint {
+  id: string;
+  radius: number;
+  fillColor: [number, number, number, number];
+}
+
+const VISITOR_MAP_VIEW_STATE = {
+  longitude: 0,
+  latitude: 20,
+  zoom: 1.05,
+  minZoom: 0.3,
+  maxZoom: 6,
+  pitch: 0,
+  bearing: 0,
+} as const;
+const VISITOR_MAP_MAX_RENDERED_POINTS = 320;
+const VISITOR_MAP_POINT_RGB = [52, 211, 153] as const;
+const VISITOR_MAP_POINT_BASE_RADIUS_PX = 4.8;
+
+function buildRasterStyle(theme: VisitorDetailMapTheme): StyleSpecification {
+  const sourceId = `insightflare-visitor-map-source-${theme}`;
+  const layerId = `insightflare-visitor-map-layer-${theme}`;
+  const endpoint = `/api/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
+
+  return {
+    version: 8,
+    name: `insightflare-visitor-map-${theme}`,
+    sources: {
+      [sourceId]: {
+        type: "raster",
+        tiles: [endpoint],
+        tileSize: 256,
+        attribution: "OpenStreetMap contributors CARTO",
+      },
+    },
+    layers: [
+      {
+        id: layerId,
+        type: "raster",
+        source: sourceId,
+        minzoom: 0,
+        maxzoom: 22,
+      },
+    ],
+  };
+}
+
+function resolveVisitorMapFillColor(
+  opacity: number,
+): [number, number, number, number] {
+  return [
+    VISITOR_MAP_POINT_RGB[0],
+    VISITOR_MAP_POINT_RGB[1],
+    VISITOR_MAP_POINT_RGB[2],
+    Math.round(Math.max(0, Math.min(1, opacity)) * 255),
+  ];
+}
+
+function getRenderedVisitorPointPosition(
+  point: Pick<RenderedVisitorLocationPoint, "longitude" | "latitude">,
+): [number, number] {
+  return [point.longitude, point.latitude];
+}
+
+function DeckOverlay(props: MapboxOverlayProps) {
+  const overlay = useControl<MapboxOverlay>(() => new MapboxOverlay(props));
+  overlay.setProps(props);
+  return null;
+}
+
+export function VisitorDetailMapStage({
+  theme,
+  points,
+}: {
+  theme: VisitorDetailMapTheme;
+  points: VisitorLocationPoint[];
+}) {
+  const mapStyle = useMemo(() => buildRasterStyle(theme), [theme]);
+  const renderedPoints = useMemo<RenderedVisitorLocationPoint[]>(
+    () =>
+      points.slice(0, VISITOR_MAP_MAX_RENDERED_POINTS).map((point, index) => ({
+        ...point,
+        id: `${point.timestampMs}:${index}`,
+        radius: VISITOR_MAP_POINT_BASE_RADIUS_PX,
+        fillColor: resolveVisitorMapFillColor(0.56),
+      })),
+    [points],
+  );
+  const layers = useMemo(
+    () => [
+      new ScatterplotLayer<RenderedVisitorLocationPoint>({
+        id: "visitor-location-point",
+        data: renderedPoints,
+        getFillColor: (point) => point.fillColor,
+        getPosition: getRenderedVisitorPointPosition,
+        getRadius: (point) => point.radius,
+        radiusUnits: "pixels",
+        radiusMinPixels: 0,
+        radiusMaxPixels: VISITOR_MAP_POINT_BASE_RADIUS_PX,
+        pickable: false,
+      }),
+    ],
+    [renderedPoints],
+  );
+
+  return (
+    <div className="absolute inset-0">
+      <Map
+        initialViewState={VISITOR_MAP_VIEW_STATE}
+        mapStyle={mapStyle}
+        attributionControl={false}
+        interactive={false}
+        style={{ width: "100%", height: "100%" }}
+      >
+        <DeckOverlay interleaved={false} layers={layers} />
+      </Map>
+    </div>
+  );
+}

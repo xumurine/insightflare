@@ -60,7 +60,9 @@ function userInitial(name: string, username: string): string {
 }
 
 const triggerBaseClass =
-  "flex h-10 w-full items-center justify-center bg-transparent text-sidebar-foreground outline-hidden transition-colors hover:bg-sidebar-accent/60 focus-visible:ring-1 focus-visible:ring-sidebar-ring";
+  "flex h-10 w-full items-center justify-center bg-transparent text-sidebar-foreground outline-hidden transition-[background-color,color,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none hover:bg-sidebar-accent/60 focus-visible:ring-1 focus-visible:ring-sidebar-ring";
+const footerGridClass =
+  "m-0 grid w-full grid-cols-3 p-0 transition-[grid-template-columns] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-data-[collapsible=icon]:grid-cols-1";
 
 export function SidebarFooterMenus({
   locale,
@@ -121,7 +123,7 @@ export function SidebarFooterMenus({
   }
 
   return (
-    <div className="m-0 grid w-full grid-cols-3 p-0 group-data-[collapsible=icon]:grid-cols-1">
+    <div className={footerGridClass}>
       <DropdownMenu>
         <DropdownMenuTrigger
           className={cn(

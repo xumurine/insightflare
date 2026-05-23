@@ -52,7 +52,7 @@ export type DeviceTypeIcon = ComponentType<{ className?: string }>;
 
 export function resolveDeviceTypeMeta(
   deviceType: string,
-  locale: Locale | undefined,
+  deviceLabels: { desktop: string; mobile: string; tablet: string },
   unknownLabel: string,
 ): { label: string; Icon: DeviceTypeIcon } {
   const normalized = deviceType.trim();
@@ -81,17 +81,11 @@ export function resolveDeviceTypeMeta(
   const label = isUnknown
     ? unknownLabel
     : isTablet
-      ? locale === "zh"
-        ? "平板"
-        : "Tablet"
+      ? deviceLabels.tablet
       : isMobile
-        ? locale === "zh"
-          ? "手机"
-          : "Mobile"
+        ? deviceLabels.mobile
         : isDesktop
-          ? locale === "zh"
-            ? "桌面"
-            : "Desktop"
+          ? deviceLabels.desktop
           : normalized;
 
   return { label, Icon };
@@ -313,18 +307,18 @@ export function OsMeta({
 
 export function DeviceMeta({
   deviceType,
-  locale,
+  deviceLabels,
   unknownLabel,
   className,
 }: {
   deviceType: string;
-  locale?: Locale;
+  deviceLabels: { desktop: string; mobile: string; tablet: string };
   unknownLabel: string;
   className?: string;
 }) {
   const { Icon: DeviceIcon, label } = resolveDeviceTypeMeta(
     deviceType,
-    locale,
+    deviceLabels,
     unknownLabel,
   );
   return (

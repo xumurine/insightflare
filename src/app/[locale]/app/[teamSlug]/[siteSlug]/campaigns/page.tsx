@@ -13,6 +13,16 @@ interface CampaignsPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: CampaignsPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.campaigns.title,
+  };
+}
+
 export default async function CampaignsPage({ params }: CampaignsPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);

@@ -14,6 +14,16 @@ interface VersionUpdatesPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: VersionUpdatesPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.managementNav.versionUpdates,
+  };
+}
+
 export default async function VersionUpdatesPage({
   params,
 }: VersionUpdatesPageProps) {

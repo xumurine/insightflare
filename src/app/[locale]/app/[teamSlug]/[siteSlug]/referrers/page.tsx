@@ -13,6 +13,16 @@ interface ReferrersPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: ReferrersPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.referrers.title,
+  };
+}
+
 export default async function ReferrersPage({ params }: ReferrersPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);

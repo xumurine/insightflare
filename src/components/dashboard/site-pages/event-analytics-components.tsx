@@ -64,6 +64,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { buildComplementaryOklchPalette } from "@/lib/dashboard/chart-colors";
 import {
   fetchEventRecordDetail,
   fetchEventsRecords,
@@ -90,17 +91,6 @@ import { cn } from "@/lib/utils";
 const EVENT_PAGE_SIZE = 80;
 const EVENT_SKELETON_ROWS = 8;
 const OTHER_SERIES_KEY = "other";
-const CHART_COLORS = [
-  "var(--color-chart-1)",
-  "var(--color-chart-2)",
-  "var(--color-chart-3)",
-  "var(--color-chart-4)",
-  "var(--color-chart-5)",
-  "#0f766e",
-  "#b45309",
-  "#be123c",
-  "var(--muted-foreground)",
-] as const;
 
 type SortDirection = "asc" | "desc";
 export type EventRecordSortKey = "occurredAt" | "eventName" | "pathname";
@@ -314,17 +304,32 @@ export function EventTrendStackedBarCard({
       tooltipDateFormat(localeCode, timeWindow.interval, timeWindow.timeZone),
     [localeCode, timeWindow.interval, timeWindow.timeZone],
   );
-  const series = useMemo(
-    () =>
-      trend.series.map((item, index) => ({
+  const series = useMemo(() => {
+    const palette = buildComplementaryOklchPalette(
+      trend.series.filter((item) => !item.isOther).length,
+    );
+    let paletteIndex = 0;
+
+    return trend.series.map((item) => {
+      if (item.isOther) {
+        return {
+          ...item,
+          displayLabel: eventSeriesLabel(item, labels),
+          color: "var(--muted-foreground)",
+        };
+      }
+
+      const color =
+        palette[paletteIndex] ?? palette[palette.length - 1] ?? "#2dd4bf";
+      paletteIndex += 1;
+
+      return {
         ...item,
         displayLabel: eventSeriesLabel(item, labels),
-        color: item.isOther
-          ? "var(--muted-foreground)"
-          : CHART_COLORS[index % CHART_COLORS.length],
-      })),
-    [labels, trend.series],
-  );
+        color,
+      };
+    });
+  }, [labels, trend.series]);
   const chartConfig = useMemo(
     () =>
       series.reduce((config, item) => {
@@ -821,7 +826,7 @@ function EventRecordsTable({
                     <TableCell className="max-w-36">
                       <DeviceMeta
                         deviceType={row.deviceType || ""}
-                        locale={locale}
+                        deviceLabels={messages.common.deviceLabels}
                         unknownLabel={messages.common.unknown}
                       />
                     </TableCell>
@@ -943,10 +948,10 @@ export function EventRecordDetailDrawer({
   const router = useRouter();
   const basePath = pathname.replace(/\/events(?:\/detail)?$/, "");
   const visitorHref = detail?.context.visitorId
-    ? `${basePath}/visitors/detail?visitorId=${encodeURIComponent(detail.context.visitorId)}`
+    ? `${basePath}/visitors?detail=${encodeURIComponent(detail.context.visitorId)}`
     : "";
   const sessionHref = detail?.context.sessionId
-    ? `${basePath}/sessions/detail?sessionId=${encodeURIComponent(detail.context.sessionId)}`
+    ? `${basePath}/sessions?detail=${encodeURIComponent(detail.context.sessionId)}`
     : "";
 
   const openLink = (href: string) => {
@@ -1081,7 +1086,7 @@ export function EventRecordDetailDrawer({
                     value={
                       <DeviceMeta
                         deviceType={detail.context.deviceType || ""}
-                        locale={locale}
+                        deviceLabels={messages.common.deviceLabels}
                         unknownLabel={messages.common.unknown}
                       />
                     }
@@ -1498,25 +1503,33 @@ export function EventPageHeader({
   subtitle,
   backHref,
   backLabel,
+  onBack,
 }: {
   messages: AppMessages;
   title: string;
   subtitle: string;
   backHref?: string;
   backLabel?: string;
+  onBack?: () => void;
 }) {
   const router = useRouter();
+  const handleBack = onBack
+    ? onBack
+    : backHref
+      ? () => navigateWithTransition(router, backHref)
+      : null;
+
   return (
     <PageHeading
       title={title}
       subtitle={subtitle}
       actions={
-        backHref ? (
+        handleBack ? (
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => navigateWithTransition(router, backHref)}
+            onClick={handleBack}
           >
             <RiArrowLeftLine data-icon="inline-start" />
             {backLabel || messages.common.backToTeam}

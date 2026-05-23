@@ -451,7 +451,7 @@ function LogStreamScrollbar({
       existing.options(PANEL_SCROLLBAR_OPTIONS);
     }
     scrollbarRef.current = instance;
-    instance.update(true);
+    instance.update();
 
     const removeScrollListener = instance.on("scroll", () => {
       maybeReachScrollEnd(instance, onReachEndRef.current);
@@ -474,7 +474,7 @@ function LogStreamScrollbar({
   useEffect(() => {
     const instance = scrollbarRef.current;
     if (!instance) return;
-    instance.update(true);
+    instance.update();
     requestAnimationFrame(() => {
       maybeReachScrollEnd(instance, onReachEndRef.current);
     });
@@ -1132,7 +1132,7 @@ function RealtimeLogEventDetailsDialog({
   ).label;
   const deviceTypeMeta = resolveDeviceTypeMeta(
     event.deviceType,
-    locale,
+    messages.common.deviceLabels,
     messages.common.unknown,
   );
   const DeviceTypeIcon = deviceTypeMeta.Icon;

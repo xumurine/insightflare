@@ -410,9 +410,17 @@ export function BrowserCrossBreakdownGrid({
     () =>
       buildCrossDisplayDimension(breakdownData.deviceType, messages, {
         formatColumnLabel: (value) =>
-          resolveDeviceTypeMeta(value, locale, messages.common.unknown).label,
+          resolveDeviceTypeMeta(
+            value,
+            messages.common.deviceLabels,
+            messages.common.unknown,
+          ).label,
         resolveColumnIcon: (value) =>
-          resolveDeviceTypeMeta(value, locale, messages.common.unknown).Icon,
+          resolveDeviceTypeMeta(
+            value,
+            messages.common.deviceLabels,
+            messages.common.unknown,
+          ).Icon,
       }),
     [breakdownData.deviceType, locale, messages],
   );

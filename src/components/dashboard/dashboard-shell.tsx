@@ -1,8 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSelectedLayoutSegments } from "next/navigation";
 import {
   RiApps2Line,
   RiArrowLeftLine,
@@ -19,6 +19,8 @@ import {
   RiUser3Line,
   RiWindow2Line,
 } from "@remixicon/react";
+import type { PartialOptions } from "overlayscrollbars";
+import { OverlayScrollbars } from "overlayscrollbars";
 
 import { AnalyticsTabs } from "@/components/dashboard/analytics-tabs";
 import { DashboardHeaderControls } from "@/components/dashboard/dashboard-header-controls";
@@ -69,6 +71,7 @@ interface SidebarSite {
   slug: string;
   name: string;
   domain: string;
+  iconPath?: string;
 }
 
 type AnalyticsNavKey =
@@ -87,6 +90,26 @@ type AnalyticsNavKey =
   | "browsers"
   | "performance"
   | "settings";
+
+const DASHBOARD_SCROLLBAR_OPTIONS = {
+  overflow: {
+    x: "hidden",
+    y: "scroll",
+  },
+  scrollbars: {
+    theme: "os-theme-insightflare",
+    autoHide: "move",
+    autoHideDelay: 420,
+    autoHideSuspend: false,
+  },
+} satisfies PartialOptions;
+
+const SIDEBAR_COLLAPSE_SECTION_CLASS =
+  "max-h-20 overflow-hidden transition-[max-height,opacity,transform,padding,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-data-[collapsible=icon]:pointer-events-none group-data-[collapsible=icon]:max-h-0 group-data-[collapsible=icon]:-translate-y-1 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:opacity-0";
+const SIDEBAR_COLLAPSE_SEPARATOR_CLASS =
+  "transition-[opacity,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-data-[collapsible=icon]:my-0 group-data-[collapsible=icon]:opacity-0";
+const SIDEBAR_COLLAPSE_MARGIN_CLASS =
+  "transition-[margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-data-[collapsible=icon]:mb-0";
 
 interface SidebarRouteState {
   mode: "team" | "site";
@@ -260,6 +283,10 @@ function parseSidebarRouteState(
   };
 }
 
+function visibleLayoutSegments(segments: string[]): string[] {
+  return segments.filter((segment) => !segment.startsWith("("));
+}
+
 interface DashboardShellProps {
   locale: Locale;
   pathname: string;
@@ -291,7 +318,14 @@ export function DashboardShell({
   managementSections,
   children,
 }: DashboardShellProps) {
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
+  const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
+    null,
+  );
   const livePathname = usePathname() || pathname;
+  const mainLayoutSegments = visibleLayoutSegments(useSelectedLayoutSegments());
+  const mainSiteSection = mainLayoutSegments[1] || "";
+  const mainSiteSubSection = mainLayoutSegments[2] || "";
   const routeState = parseSidebarRouteState(livePathname, activeTeamSlug);
   const hasManagementSections = Boolean(
     managementSections && managementSections.length > 0,
@@ -315,11 +349,11 @@ export function DashboardShell({
           { key: "realtime", href: `${activeSiteBase}/realtime` },
           { key: "pages", href: `${activeSiteBase}/pages` },
           { key: "referrers", href: `${activeSiteBase}/referrers` },
-          { key: "sessions", href: `${activeSiteBase}/sessions` },
           { key: "campaigns", href: `${activeSiteBase}/campaigns` },
+          { key: "sessions", href: `${activeSiteBase}/sessions` },
+          { key: "visitors", href: `${activeSiteBase}/visitors` },
           { key: "events", href: `${activeSiteBase}/events` },
           { key: "funnels", href: `${activeSiteBase}/funnels` },
-          { key: "visitors", href: `${activeSiteBase}/visitors` },
           { key: "retention", href: `${activeSiteBase}/retention` },
           { key: "geo", href: `${activeSiteBase}/geo` },
           { key: "devices", href: `${activeSiteBase}/devices` },
@@ -345,34 +379,31 @@ export function DashboardShell({
     ? sites.find((site) => site.slug === resolvedActiveSiteSlug)?.id || ""
     : "";
   const isRealtimeRoute = Boolean(
-    hasActiveSite &&
-    activeSiteBase &&
-    (livePathname === `${activeSiteBase}/realtime` ||
-      livePathname.startsWith(`${activeSiteBase}/realtime/`)),
+    hasActiveSite && activeSiteBase && mainSiteSection === "realtime",
   );
   const isGeoRoute = Boolean(
-    hasActiveSite &&
-    activeSiteBase &&
-    (livePathname === `${activeSiteBase}/geo` ||
-      livePathname.startsWith(`${activeSiteBase}/geo/`)),
+    hasActiveSite && activeSiteBase && mainSiteSection === "geo",
   );
   const isSessionDetailRoute = Boolean(
     hasActiveSite &&
     activeSiteBase &&
-    (livePathname === `${activeSiteBase}/sessions/detail` ||
-      livePathname.startsWith(`${activeSiteBase}/sessions/detail/`)),
+    mainSiteSection === "sessions" &&
+    mainSiteSubSection === "detail",
   );
   const isVisitorDetailRoute = Boolean(
     hasActiveSite &&
     activeSiteBase &&
-    (livePathname === `${activeSiteBase}/visitors/detail` ||
-      livePathname.startsWith(`${activeSiteBase}/visitors/detail/`)),
+    mainSiteSection === "visitors" &&
+    mainSiteSubSection === "detail",
   );
   const contentContainerClassName = isGeoRoute
-    ? "flex min-h-0 flex-1 min-w-0 w-full flex-col [&>[data-page-transition]]:h-full"
+    ? "flex min-h-0 flex-1 min-w-0 w-full flex-col overflow-hidden [&>[data-page-transition]]:flex [&>[data-page-transition]]:h-full [&>[data-page-transition]]:min-h-0 [&>[data-page-transition]]:flex-1 [&>[data-page-transition]]:flex-col"
     : isRealtimeRoute || isSessionDetailRoute || isVisitorDetailRoute
       ? "min-w-0 w-full"
       : "mx-auto min-w-0 w-full max-w-[1400px] p-4 md:p-6";
+  const sidebarInsetClassName = isGeoRoute
+    ? "h-svh min-h-0 overflow-y-auto overscroll-contain [&>[data-overlayscrollbars-viewport]]:flex [&>[data-overlayscrollbars-viewport]]:h-full [&>[data-overlayscrollbars-viewport]]:min-h-0 [&>[data-overlayscrollbars-viewport]]:flex-col"
+    : "h-svh min-h-0 overflow-y-auto overscroll-contain";
   const mobileCurrentLevelName = hasActiveSite
     ? activeSiteName
     : activeTeamName;
@@ -382,6 +413,34 @@ export function DashboardShell({
     href: `/${locale}/app/${team.slug}`,
   }));
 
+  useEffect(() => {
+    const host = scrollContainerRef.current;
+    if (!host) return;
+
+    const existing = OverlayScrollbars(host);
+    const instance =
+      existing ?? OverlayScrollbars(host, DASHBOARD_SCROLLBAR_OPTIONS);
+
+    if (existing) {
+      existing.options(DASHBOARD_SCROLLBAR_OPTIONS);
+    }
+    scrollbarRef.current = instance;
+
+    const frame = requestAnimationFrame(() => {
+      instance.update();
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (!existing) {
+        instance.destroy();
+      }
+      if (scrollbarRef.current === instance) {
+        scrollbarRef.current = null;
+      }
+    };
+  }, []);
+
   return (
     <SidebarProvider>
       <DashboardQueryProvider
@@ -389,17 +448,15 @@ export function DashboardShell({
         initialTimeZonePreference={user.timeZone || ""}
       >
         <Sidebar variant="inset" collapsible="icon">
-          <SidebarHeader className="group-data-[collapsible=icon]:hidden">
+          <SidebarHeader className={SIDEBAR_COLLAPSE_SECTION_CLASS}>
             <Link
               href="https://github.com/RavelloH/InsightFlare"
               target="_black"
             >
               <div className="py-2">
                 <p className="text-xl text-primary flex gap-2 items-center justify-center md:justify-start">
-                  <span className="group-data-[collapsible=icon]:hidden">
-                    {messages.appName}
-                  </span>
-                  <span className="text-muted-foreground group-data-[collapsible=icon]:hidden">
+                  <span>{messages.appName}</span>
+                  <span className="text-muted-foreground">
                     {process.env.NEXT_PUBLIC_DEMO_MODE ? "Demo" : "v1"}
                   </span>
                 </p>
@@ -408,7 +465,7 @@ export function DashboardShell({
           </SidebarHeader>
 
           <SidebarContent>
-            <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+            <SidebarGroup className={SIDEBAR_COLLAPSE_SECTION_CLASS}>
               <SidebarGroupContent>
                 <TeamSelect
                   locale={locale}
@@ -449,7 +506,9 @@ export function DashboardShell({
 
                   {hasManagementSections ? (
                     <>
-                      <SidebarSeparator className="group-data-[collapsible=icon]:hidden" />
+                      <SidebarSeparator
+                        className={SIDEBAR_COLLAPSE_SEPARATOR_CLASS}
+                      />
                       <SidebarGroup>
                         <SidebarGroupLabel>
                           {messages.common.management}
@@ -487,7 +546,9 @@ export function DashboardShell({
                 <>
                   <SidebarGroup>
                     <SidebarGroupContent>
-                      <SidebarMenu className="mb-2 group-data-[collapsible=icon]:mb-0">
+                      <SidebarMenu
+                        className={`mb-2 ${SIDEBAR_COLLAPSE_MARGIN_CLASS}`}
+                      >
                         <SidebarMenuItem>
                           <SidebarMenuButton asChild>
                             <Link href={teamRootHref}>
@@ -500,7 +561,9 @@ export function DashboardShell({
                     </SidebarGroupContent>
                   </SidebarGroup>
 
-                  <SidebarSeparator className="group-data-[collapsible=icon]:hidden" />
+                  <SidebarSeparator
+                    className={SIDEBAR_COLLAPSE_SEPARATOR_CLASS}
+                  />
 
                   <SidebarGroup>
                     <SidebarGroupLabel>
@@ -517,6 +580,7 @@ export function DashboardShell({
                           slug: site.slug,
                           name: site.name,
                           domain: site.domain,
+                          iconPath: site.iconPath,
                         }))}
                         labels={{
                           views: messages.common.views,
@@ -542,7 +606,12 @@ export function DashboardShell({
           </SidebarFooter>
         </Sidebar>
 
-        <SidebarInset>
+        <SidebarInset
+          ref={scrollContainerRef}
+          data-dashboard-scroll-container=""
+          data-overlayscrollbars-initialize
+          className={sidebarInsetClassName}
+        >
           <div className="sticky top-0 z-20 border-b bg-background/90 backdrop-blur">
             <div className="p-3">
               <div className="flex min-w-0 items-center gap-2">
@@ -628,7 +697,7 @@ export function DashboardShell({
               </AutoTransition>
             </AutoResizer>
           </div>
-          <div className={contentContainerClassName}>
+          <div data-dashboard-content="" className={contentContainerClassName}>
             <PageTransition>{children}</PageTransition>
           </div>
         </SidebarInset>

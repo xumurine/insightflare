@@ -12,6 +12,16 @@ interface TeamRootPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: TeamRootPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.teamManagement.sites.title,
+  };
+}
+
 export default async function TeamRootPage({ params }: TeamRootPageProps) {
   const { locale, teamSlug } = await params;
   const resolvedLocale = resolveLocale(locale);

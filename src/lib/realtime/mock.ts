@@ -1634,7 +1634,7 @@ function demoEventContextCards(
   };
 }
 
-function demoEventCards(
+function demoEventSummaryCards(
   dataset: DemoFactDataset,
   events: DemoCustomEventFact[],
   limit: number,
@@ -1648,7 +1648,26 @@ function demoEventCards(
         (event) => event.eventName,
       ),
     },
-    ...demoEventContextCards(dataset, events, limit),
+    page: {
+      path: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.pathname,
+      ),
+      title: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.title,
+      ),
+      hostname: demoEventDimensionRows(
+        dataset,
+        events,
+        limit,
+        (event) => event.visit.hostname,
+      ),
+    },
   };
 }
 
@@ -1682,39 +1701,7 @@ function generateDemoEventsSummary(
       ),
       avgEventsPerSession: sessionCount > 0 ? events.length / sessionCount : 0,
     },
-    topEvents: demoEventDimensionRows(
-      dataset,
-      events,
-      8,
-      (event) => event.eventName,
-    ),
-    breakdowns: {
-      pages: demoEventDimensionRows(
-        dataset,
-        events,
-        8,
-        (event) => event.visit.pathname,
-      ),
-      countries: demoEventDimensionRows(
-        dataset,
-        events,
-        8,
-        (event) => event.visit.country,
-      ),
-      devices: demoEventDimensionRows(
-        dataset,
-        events,
-        8,
-        (event) => event.visit.deviceType,
-      ),
-      browsers: demoEventDimensionRows(
-        dataset,
-        events,
-        8,
-        (event) => event.visit.browser,
-      ),
-    },
-    cards: demoEventCards(dataset, events, 100),
+    cards: demoEventSummaryCards(dataset, events, 100),
   };
 }
 
@@ -1914,15 +1901,27 @@ function generateDemoEventTypeDetail(
   const events = allEvents.filter((event) => event.eventName === eventName);
   const sessions = new Set(events.map((event) => event.visit.sessionId));
   const visitors = new Set(events.map((event) => event.visit.visitorId));
+  const interval = parseDemoInterval(params.interval);
+  const timeZone = parseDemoTimeZone(params);
+  const buckets = buildDemoTimeBuckets(from, to, interval, timeZone);
+  const trendBuckets = buckets.map((bucket) => ({
+    bucket: bucket.index,
+    timestampMs: bucket.timestampMs,
+    events: 0,
+    visitors: new Set<string>(),
+  }));
+  for (const event of events) {
+    const bucketIndex = findDemoTimeBucketIndex(buckets, event.occurredAt);
+    if (bucketIndex === null) continue;
+    const bucket = trendBuckets[bucketIndex];
+    if (!bucket) continue;
+    bucket.events += dataset.viewWeight;
+    bucket.visitors.add(event.visit.visitorId);
+  }
   const sessionCount = Math.max(
     0,
     Math.round(weightedSessionCount(dataset, sessions)),
   );
-  const trend = generateDemoEventsTrend(siteId, {
-    ...params,
-    eventName,
-    limit: 1,
-  }) as { series?: unknown[]; data?: unknown[] };
 
   return {
     ok: true,
@@ -1940,8 +1939,15 @@ function generateDemoEventTypeDetail(
         allEvents.length > 0 ? events.length / allEvents.length : 0,
     },
     trend: {
-      series: trend.series ?? [],
-      data: trend.data ?? [],
+      data: trendBuckets.map((bucket) => ({
+        bucket: bucket.bucket,
+        timestampMs: bucket.timestampMs,
+        events: Math.max(0, Math.round(bucket.events)),
+        visitors: Math.max(
+          0,
+          Math.round(weightedVisitorCount(dataset, bucket.visitors)),
+        ),
+      })),
     },
     breakdowns: {
       pages: demoEventDimensionRows(
@@ -5451,6 +5457,7 @@ function generateDemoTeamDashboard(
       teamId: site.teamId,
       name: site.name,
       domain: site.domain,
+      iconPath: site.iconPath,
       publicEnabled: 0,
       publicSlug: null,
       createdAt: now - 180 * 24 * 3600 * 1000,
@@ -5545,6 +5552,7 @@ function getDemoSites(teamId: string) {
     teamId: s.teamId,
     name: s.name,
     domain: s.domain,
+    iconPath: s.iconPath,
     publicEnabled: 0,
     publicSlug: null,
     createdAt: now - 180 * 24 * 3600 * 1000,

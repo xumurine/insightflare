@@ -16,6 +16,7 @@ export interface DemoSiteProfile {
   teamId: string;
   name: string;
   domain: string;
+  iconPath: string;
   dailyPvRange: [number, number];
   bounceRateRange: [number, number];
   avgDurationMsRange: [number, number];
@@ -56,6 +57,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
     teamId: "demo-team-001",
     name: "Corporate Website",
     domain: "acme-corp.com",
+    iconPath: "/images/demo-sites/corporate.svg",
     dailyPvRange: [8200, 14500],
     bounceRateRange: [0.38, 0.52],
     avgDurationMsRange: [45000, 95000],
@@ -123,6 +125,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
     teamId: "demo-team-001",
     name: "E-Commerce Store",
     domain: "shopwave.store",
+    iconPath: "/images/demo-sites/commerce.svg",
     dailyPvRange: [12000, 22000],
     bounceRateRange: [0.28, 0.42],
     avgDurationMsRange: [120000, 240000],
@@ -198,6 +201,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
     teamId: "demo-team-001",
     name: "News Portal",
     domain: "dailypulse.news",
+    iconPath: "/images/demo-sites/news.svg",
     dailyPvRange: [18000, 35000],
     bounceRateRange: [0.55, 0.72],
     avgDurationMsRange: [30000, 70000],
@@ -267,6 +271,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
     teamId: "demo-team-001",
     name: "Marketing Landing",
     domain: "launch.brightpath.co",
+    iconPath: "/images/demo-sites/launch.svg",
     dailyPvRange: [3500, 7200],
     bounceRateRange: [0.62, 0.78],
     avgDurationMsRange: [15000, 40000],
@@ -326,6 +331,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
     teamId: "demo-team-001",
     name: "Developer Docs",
     domain: "docs.devstack.io",
+    iconPath: "/images/demo-sites/docs.svg",
     dailyPvRange: [6500, 12000],
     bounceRateRange: [0.22, 0.35],
     avgDurationMsRange: [180000, 420000],
@@ -401,6 +407,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
     teamId: "demo-team-001",
     name: "SaaS Dashboard",
     domain: "app.cloudmetrics.io",
+    iconPath: "/images/demo-sites/saas.svg",
     dailyPvRange: [4200, 8500],
     bounceRateRange: [0.12, 0.22],
     avgDurationMsRange: [240000, 600000],
@@ -469,6 +476,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
     teamId: "demo-team-001",
     name: "Open Source Project",
     domain: "oss-toolkit.dev",
+    iconPath: "/images/demo-sites/oss.svg",
     dailyPvRange: [2800, 5500],
     bounceRateRange: [0.32, 0.48],
     avgDurationMsRange: [90000, 200000],
@@ -540,6 +548,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
     teamId: "demo-team-001",
     name: "API Documentation",
     domain: "api.swiftlink.dev",
+    iconPath: "/images/demo-sites/api.svg",
     dailyPvRange: [2200, 4800],
     bounceRateRange: [0.18, 0.3],
     avgDurationMsRange: [200000, 480000],
@@ -612,6 +621,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
     teamId: "demo-team-001",
     name: "Personal Blog",
     domain: "thoughts.jchen.me",
+    iconPath: "/images/demo-sites/blog.svg",
     dailyPvRange: [800, 2200],
     bounceRateRange: [0.45, 0.62],
     avgDurationMsRange: [60000, 150000],
@@ -680,6 +690,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
     teamId: "demo-team-001",
     name: "Community Forum",
     domain: "community.pixelforge.io",
+    iconPath: "/images/demo-sites/community.svg",
     dailyPvRange: [5500, 10000],
     bounceRateRange: [0.18, 0.28],
     avgDurationMsRange: [300000, 720000],
@@ -751,6 +762,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
     teamId: "demo-team-001",
     name: "Portfolio Site",
     domain: "studio.mikalee.design",
+    iconPath: "/images/demo-sites/portfolio.svg",
     dailyPvRange: [600, 1800],
     bounceRateRange: [0.5, 0.68],
     avgDurationMsRange: [40000, 100000],
@@ -817,6 +829,7 @@ export const DEMO_SITE_PROFILES: DemoSiteProfile[] = [
     teamId: "demo-team-001",
     name: "Education Platform",
     domain: "learn.codeacademy.org",
+    iconPath: "/images/demo-sites/education.svg",
     dailyPvRange: [7000, 13000],
     bounceRateRange: [0.15, 0.25],
     avgDurationMsRange: [480000, 1200000],

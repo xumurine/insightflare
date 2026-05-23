@@ -14,6 +14,16 @@ interface ScheduledTasksPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: ScheduledTasksPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.managementNav.scheduledTasks,
+  };
+}
+
 export default async function ScheduledTasksPage({
   params,
 }: ScheduledTasksPageProps) {

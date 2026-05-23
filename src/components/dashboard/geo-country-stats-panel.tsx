@@ -195,7 +195,7 @@ export function GeoCountryStatsPanel({
 
   useEffect(() => {
     if (stacked) return;
-    scrollbarsRef.current?.update(true);
+    scrollbarsRef.current?.update();
   }, [
     hasTopSectionContent,
     investigationRows,

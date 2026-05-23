@@ -13,6 +13,16 @@ interface GeoPageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: GeoPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.geo.title,
+  };
+}
+
 export default async function GeoPage({ params }: GeoPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);

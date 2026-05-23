@@ -17,6 +17,7 @@ import {
   type CustomTimeRange,
   type DashboardFilters,
   type DashboardInterval,
+  DEFAULT_RANGE_PRESET,
   finestIntervalForRange,
   type RangePreset,
   resolveRangePreset,
@@ -61,7 +62,7 @@ interface DashboardQueryProviderProps {
 
 const STORAGE_KEY = "insightflare.dashboard.query.v2";
 const EMPTY_FILTERS: DashboardFilters = {};
-const DEFAULT_RANGE: RangePreset = "7d";
+const DEFAULT_RANGE: RangePreset = DEFAULT_RANGE_PRESET;
 
 const DashboardQueryContext = createContext<DashboardQueryContextValue | null>(
   null,

@@ -18,6 +18,16 @@ interface AppRootPageProps {
   params: Promise<{ locale: string }>;
 }
 
+export async function generateMetadata({ params }: AppRootPageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const t = getMessages(resolvedLocale);
+
+  return {
+    title: t.teamEntry.title,
+  };
+}
+
 export default async function AppRootPage({ params }: AppRootPageProps) {
   const { locale } = await params;
   const resolvedLocale = resolveLocale(locale);

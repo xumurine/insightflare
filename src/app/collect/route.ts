@@ -9,6 +9,7 @@ import {
 } from "@/lib/edge/site-settings-store";
 import type {
   IngestEnvelopePayload,
+  IngestTracePayload,
   SerializedRequestPayload,
   TrackerClientPayload,
 } from "@/lib/edge/types";
@@ -169,6 +170,8 @@ type CollectionDecision =
       allowOrigin: string | null;
       siteId: string;
       payload: null;
+      reason: string;
+      detail?: Record<string, unknown>;
     }
   | {
       shouldForward: true;
@@ -191,6 +194,7 @@ async function decideCollectionPolicy(
       allowOrigin: origin,
       siteId: "",
       payload: null,
+      reason: "missing_payload",
     };
   }
 
@@ -201,6 +205,8 @@ async function decideCollectionPolicy(
       allowOrigin: origin,
       siteId: "",
       payload: null,
+      reason: "unsupported_kind",
+      detail: { kind: String(kind || "") },
     };
   }
 
@@ -213,6 +219,7 @@ async function decideCollectionPolicy(
       allowOrigin: origin,
       siteId: "",
       payload: null,
+      reason: "missing_site_id",
     };
   }
 
@@ -220,7 +227,11 @@ async function decideCollectionPolicy(
   try {
     // `readSiteTrackingConfig` already caches KV results for 1 hour.
     settings = await readSiteTrackingConfig(env, siteId);
-  } catch {
+  } catch (error) {
+    logIngestTrace("collect_settings_read_failed", {
+      siteId,
+      error: errorToMessage(error),
+    });
     settings = null;
   }
 
@@ -230,6 +241,7 @@ async function decideCollectionPolicy(
       allowOrigin: origin,
       siteId,
       payload: null,
+      reason: "missing_site_settings",
     };
   }
 
@@ -247,21 +259,29 @@ async function decideCollectionPolicy(
       allowOrigin: origin,
       siteId,
       payload: null,
+      reason: "origin_not_allowed",
+      detail: {
+        origin,
+        originHostname,
+        allowedHostnames: settings.allowedHostnames,
+      },
     };
   }
 
-  const normalizedPayload = normalizeForwardPayload(
+  const normalizedPayloadResult = normalizeForwardPayload(
     payload,
     siteId,
     kind,
     settings,
   );
-  if (!normalizedPayload) {
+  if (!normalizedPayloadResult.payload) {
     return {
       shouldForward: false,
       allowOrigin: origin,
       siteId,
       payload: null,
+      reason: normalizedPayloadResult.reason,
+      detail: normalizedPayloadResult.detail,
     };
   }
 
@@ -269,7 +289,7 @@ async function decideCollectionPolicy(
     shouldForward: true,
     allowOrigin: origin,
     siteId,
-    payload: normalizedPayload,
+    payload: normalizedPayloadResult.payload,
   };
 }
 
@@ -278,9 +298,13 @@ function normalizeForwardPayload(
   siteId: string,
   kind: TrackerPayloadKind,
   settings: SiteTrackingConfig,
-): TrackerClientPayload | null {
+): {
+  payload: TrackerClientPayload | null;
+  reason: string;
+  detail?: Record<string, unknown>;
+} {
   const visitId = coerceTrimmedString(payload.visitId, 128);
-  if (!visitId) return null;
+  if (!visitId) return { payload: null, reason: "missing_visit_id" };
 
   const normalizedPayload: TrackerClientPayload = {
     ...payload,
@@ -303,25 +327,93 @@ function normalizeForwardPayload(
 
   if (canCheckPath) {
     const pathname = normalizePayloadPathname(payload.pathname);
-    if (!pathname || matchesBlockedPath(pathname, settings.pathBlacklist)) {
-      return null;
+    if (!pathname) {
+      return {
+        payload: null,
+        reason: "invalid_pathname",
+        detail: { pathname: String(payload.pathname || "") },
+      };
+    }
+    if (matchesBlockedPath(pathname, settings.pathBlacklist)) {
+      return {
+        payload: null,
+        reason: "blocked_pathname",
+        detail: { pathname },
+      };
     }
     normalizedPayload.pathname = pathname;
   }
 
   if (kind === "pageview") {
     const hostname = normalizeClientHostname(payload.hostname);
-    if (!hostname) return null;
+    if (!hostname) {
+      return {
+        payload: null,
+        reason: "missing_hostname",
+        detail: { hostname: String(payload.hostname || "") },
+      };
+    }
     normalizedPayload.hostname = hostname;
   }
 
   if (kind === "custom_event") {
     const eventName = coerceTrimmedString(payload.eventName, 120);
-    if (!eventName) return null;
+    if (!eventName) return { payload: null, reason: "missing_event_name" };
     normalizedPayload.eventName = eventName;
   }
 
-  return normalizedPayload;
+  return { payload: normalizedPayload, reason: "" };
+}
+
+function createTraceId(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+function errorToMessage(error: unknown): string {
+  return String(error instanceof Error ? error.message : error);
+}
+
+function logIngestTrace(
+  event: string,
+  fields: Record<string, unknown> = {},
+  level: "info" | "warn" | "error" = "info",
+): void {
+  const payload = {
+    event,
+    at: new Date().toISOString(),
+    ...fields,
+  };
+  const line = JSON.stringify(payload);
+  if (level === "error") {
+    console.error(line);
+    return;
+  }
+  if (level === "warn") {
+    console.warn(line);
+    return;
+  }
+  console.log(line);
+}
+
+function compactPayloadForLog(
+  payload: TrackerClientPayload | null,
+): Record<string, unknown> {
+  if (!payload) return {};
+  return {
+    kind: payload.kind || "",
+    siteId: payload.siteId || "",
+    visitId: payload.visitId || "",
+    sessionId: payload.sessionId || "",
+    eventId: payload.eventId || "",
+    eventName: payload.eventName || "",
+    pathname: payload.pathname || "",
+    hostname: payload.hostname || "",
+    timestamp: payload.timestamp ?? null,
+  };
 }
 
 function noContent(origin: string | null): Response {
@@ -354,8 +446,19 @@ export async function POST(request: Request): Promise<Response> {
     url,
   } = await resolveEdgeRuntime(request);
   const origin = parseOrigin(requestWithCf);
+  const trace: IngestTracePayload = {
+    id: createTraceId(),
+    source: "collect",
+    acceptedAt: Date.now(),
+  };
 
   if (isBotRequest(requestWithCf)) {
+    logIngestTrace("collect_rejected", {
+      traceId: trace.id,
+      reason: "bot",
+      origin,
+      userAgent: requestWithCf.headers.get("user-agent") || "",
+    });
     return noContent(origin);
   }
 
@@ -364,7 +467,18 @@ export async function POST(request: Request): Promise<Response> {
   if (body) {
     try {
       payload = sanitizeInputPayload(JSON.parse(body));
-    } catch {
+    } catch (error) {
+      logIngestTrace(
+        "collect_rejected",
+        {
+          traceId: trace.id,
+          reason: "invalid_json",
+          origin,
+          bodyBytes: body.length,
+          error: errorToMessage(error),
+        },
+        "warn",
+      );
       return jsonError(origin, "Invalid JSON payload", 400);
     }
   }
@@ -372,6 +486,16 @@ export async function POST(request: Request): Promise<Response> {
   if (payload?.kind === "custom_event") {
     const eventDataResult = expandCustomEventData(payload.eventData);
     if (!eventDataResult.ok) {
+      logIngestTrace(
+        "collect_rejected",
+        {
+          traceId: trace.id,
+          reason: "invalid_custom_event_data",
+          ...compactPayloadForLog(payload),
+          error: eventDataResult.error,
+        },
+        "warn",
+      );
       return jsonError(origin, eventDataResult.error, eventDataResult.status);
     }
   }
@@ -383,6 +507,14 @@ export async function POST(request: Request): Promise<Response> {
     url,
   );
   if (!decision.shouldForward) {
+    logIngestTrace("collect_rejected", {
+      traceId: trace.id,
+      reason: decision.reason,
+      origin,
+      siteId: decision.siteId,
+      ...compactPayloadForLog(payload),
+      ...(decision.detail || {}),
+    });
     return noContent(decision.allowOrigin);
   }
 
@@ -392,7 +524,14 @@ export async function POST(request: Request): Promise<Response> {
   const envelope: IngestEnvelopePayload = {
     request: serializeRequestPayload(requestWithCf, body),
     client: decision.payload,
+    trace,
   };
+
+  logIngestTrace("collect_forward_queued", {
+    traceId: trace.id,
+    origin,
+    ...compactPayloadForLog(decision.payload),
+  });
 
   ctx.waitUntil(
     stub
@@ -403,8 +542,33 @@ export async function POST(request: Request): Promise<Response> {
         },
         body: JSON.stringify(envelope),
       })
+      .then(async (response) => {
+        const bodyText = await response.text().catch(() => "");
+        logIngestTrace(
+          response.ok ? "collect_forward_result" : "collect_forward_failed",
+          {
+            traceId: trace.id,
+            siteId: decision.siteId,
+            kind: decision.payload.kind || "",
+            visitId: decision.payload.visitId || "",
+            status: response.status,
+            response: bodyText.slice(0, 200),
+          },
+          response.ok ? "info" : "error",
+        );
+      })
       .catch((error: unknown) => {
-        console.error("forward_to_do_failed", error);
+        logIngestTrace(
+          "collect_forward_failed",
+          {
+            traceId: trace.id,
+            siteId: decision.siteId,
+            kind: decision.payload.kind || "",
+            visitId: decision.payload.visitId || "",
+            error: errorToMessage(error),
+          },
+          "error",
+        );
       }),
   );
 

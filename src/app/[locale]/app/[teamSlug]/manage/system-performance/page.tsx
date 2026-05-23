@@ -12,6 +12,16 @@ interface SystemPerformancePageProps {
   }>;
 }
 
+export async function generateMetadata({ params }: SystemPerformancePageProps) {
+  const { locale } = await params;
+  const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
+
+  return {
+    title: messages.systemPerformance.title,
+  };
+}
+
 export default async function SystemPerformancePage({
   params,
 }: SystemPerformancePageProps) {

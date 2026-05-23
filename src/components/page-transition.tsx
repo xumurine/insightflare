@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { OverlayScrollbars } from "overlayscrollbars";
 
 import {
   type NavigateRequest,
@@ -10,6 +11,33 @@ import {
 
 interface PageTransitionProps {
   children: React.ReactNode;
+}
+
+function isDashboardDetailRoute(pathname: string): boolean {
+  return /\/(?:visitors|sessions)\/detail(?:\/|$)/.test(pathname);
+}
+
+function scrollPageToTop(behavior: ScrollBehavior) {
+  const dashboardScrollContainer = document.querySelector<HTMLElement>(
+    "[data-dashboard-scroll-container]",
+  );
+
+  if (dashboardScrollContainer) {
+    const scrollTarget =
+      OverlayScrollbars(dashboardScrollContainer)?.elements().viewport ??
+      dashboardScrollContainer;
+
+    scrollTarget.scrollTo({
+      top: 0,
+      behavior,
+    });
+    return;
+  }
+
+  window.scrollTo({
+    top: 0,
+    behavior,
+  });
 }
 
 export function PageTransition({ children }: PageTransitionProps) {
@@ -22,6 +50,7 @@ export function PageTransition({ children }: PageTransitionProps) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<NavigateRequest | null>(null);
+  const previousPathnameRef = useRef(pathname);
   const [transitionState, setTransitionState] = useState<
     "idle" | "enter" | "exit"
   >("idle");
@@ -108,6 +137,7 @@ export function PageTransition({ children }: PageTransitionProps) {
       const target = event.target as HTMLElement | null;
       const link = target?.closest("a[href]") as HTMLAnchorElement | null;
       if (!link) return;
+      if (link.closest("[data-skip-page-transition]")) return;
       if (link.target && link.target !== "_self") return;
       if (link.hasAttribute("download")) return;
 
@@ -180,10 +210,16 @@ export function PageTransition({ children }: PageTransitionProps) {
   }, []);
 
   useEffect(() => {
-    window.scrollTo({
-      top: 0,
-      behavior: reduceMotion.current ? "auto" : "smooth",
-    });
+    const previousPathname = previousPathnameRef.current;
+    previousPathnameRef.current = pathname;
+    if (
+      isDashboardDetailRoute(previousPathname) ||
+      isDashboardDetailRoute(pathname)
+    ) {
+      return;
+    }
+
+    scrollPageToTop(reduceMotion.current ? "auto" : "smooth");
   }, [pathname]);
 
   return (

@@ -52,30 +52,7 @@ interface RetentionClientPageProps {
   pathname: string;
 }
 
-interface RetentionCopy {
-  matrixTitle: string;
-  matrixSubtitle: string;
-  cohortsMetric: string;
-  visitorsMetric: string;
-  periodOneMetric: string;
-  averageReturnMetric: string;
-  strongestCohortMetric: string;
-  eligibleVisitors: string;
-  periodsAnalyzed: string;
-  noEligibleCohorts: string;
-  weightedAverage: string;
-  legendLow: string;
-  legendHigh: string;
-  periodZero: string;
-  empty: string;
-  emptyHint: string;
-  loadError: string;
-  unavailableCell: string;
-  visitorsDetail: string;
-  rateDetail: string;
-  cohortDetail: string;
-  sizeDetail: string;
-}
+type RetentionCopy = AppMessages["retention"];
 
 interface RetentionCellView {
   index: number;
@@ -127,62 +104,6 @@ const RETENTION_SIZE_COLUMN =
   "w-[var(--retention-size-width)] min-w-[var(--retention-size-width)] max-w-[var(--retention-size-width)]";
 const RETENTION_PERIOD_COLUMN =
   "w-[var(--retention-period-width)] min-w-[var(--retention-period-width)] max-w-[var(--retention-period-width)]";
-
-function copy(locale: Locale): RetentionCopy {
-  return locale === "zh"
-    ? {
-        matrixTitle: "留存矩阵",
-        matrixSubtitle:
-          "每一行是首次进入该周期的访客群组，每一列是后续周期的回访比例。",
-        cohortsMetric: "群组数",
-        visitorsMetric: "群组访客",
-        periodOneMetric: "首期回访",
-        averageReturnMetric: "平均回访",
-        strongestCohortMetric: "最佳群组",
-        eligibleVisitors: "符合统计的访客",
-        periodsAnalyzed: "已分析周期",
-        noEligibleCohorts: "暂无足够历史",
-        weightedAverage: "加权平均",
-        legendLow: "低",
-        legendHigh: "高",
-        periodZero: "初始",
-        empty: "当前时间范围内没有足够的回访数据。",
-        emptyHint:
-          "扩大时间范围，或在顶部选择更粗的时间间隔，可以更快看到留存形态。",
-        loadError: "无法加载留存数据。",
-        unavailableCell: "该群组还没有进入这个周期。",
-        visitorsDetail: "访客",
-        rateDetail: "留存率",
-        cohortDetail: "群组",
-        sizeDetail: "人数",
-      }
-    : {
-        matrixTitle: "Retention Matrix",
-        matrixSubtitle:
-          "Each row is a first-seen cohort; each column shows the share that returned in a later period.",
-        cohortsMetric: "Cohorts",
-        visitorsMetric: "Cohort Visitors",
-        periodOneMetric: "First Return",
-        averageReturnMetric: "Average Return",
-        strongestCohortMetric: "Best Cohort",
-        eligibleVisitors: "eligible visitors",
-        periodsAnalyzed: "periods analyzed",
-        noEligibleCohorts: "Not enough history",
-        weightedAverage: "Weighted average",
-        legendLow: "Low",
-        legendHigh: "High",
-        periodZero: "Initial",
-        empty: "Not enough return data in this time range.",
-        emptyHint:
-          "Use a wider range or choose a coarser interval from the top selector to reveal the retention shape sooner.",
-        loadError: "Unable to load retention data.",
-        unavailableCell: "This cohort has not reached this period yet.",
-        visitorsDetail: "Visitors",
-        rateDetail: "Retention",
-        cohortDetail: "Cohort",
-        sizeDetail: "Size",
-      };
-}
 
 function normalizeGranularity(value: string): RetentionGranularity {
   if (
@@ -843,7 +764,7 @@ export function RetentionClientPage({
   messages,
   siteId,
 }: RetentionClientPageProps) {
-  const labels = useMemo(() => copy(locale), [locale]);
+  const labels = messages.retention;
   const { filters, window: timeWindow } = useDashboardQuery() as {
     filters: DashboardFilters;
     window: TimeWindow;

@@ -78,7 +78,7 @@ export function DeviceDimensionTrendCard({
           ? (series) =>
               resolveDeviceTypeMeta(
                 series.label,
-                locale,
+                messages.common.deviceLabels,
                 messages.common.unknown,
               ).label
           : undefined
@@ -88,7 +88,7 @@ export function DeviceDimensionTrendCard({
           ? (series) =>
               resolveDeviceTypeMeta(
                 series.label,
-                locale,
+                messages.common.deviceLabels,
                 messages.common.unknown,
               ).Icon
           : undefined
