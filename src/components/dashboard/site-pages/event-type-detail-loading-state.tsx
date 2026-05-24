@@ -120,30 +120,84 @@ function EventDimensionCardSkeleton() {
 
 function EventFieldsCardSkeleton() {
   return (
-    <Card className="py-0">
-      <CardHeader>
-        <Skeleton className="h-5 w-24" />
-        <Skeleton className="h-4 w-[min(28rem,82%)]" />
-      </CardHeader>
-      <CardContent className="px-4 pb-4">
-        <div className="space-y-3">
-          {Array.from({ length: 6 }, (_, index) => (
-            <div
-              key={`event-field-row-skeleton-${index}`}
-              className="grid grid-cols-[minmax(0,1fr)_5rem_4rem] items-center gap-4 md:grid-cols-[minmax(0,1fr)_6rem_5rem_7rem]"
-            >
-              <div className="min-w-0 space-y-2">
-                <Skeleton className="h-4 w-[min(24rem,86%)]" />
-                <Skeleton className="h-3 w-[min(16rem,62%)]" />
-              </div>
-              <Skeleton className="h-5 w-16" />
-              <Skeleton className="ml-auto h-4 w-12" />
-              <Skeleton className="ml-auto hidden h-4 w-24 md:block" />
+    <section className="grid items-stretch gap-6 xl:grid-cols-2">
+      <Card className="h-full overflow-hidden py-0">
+        <CardHeader className="space-y-2">
+          <Skeleton className="h-5 w-24" />
+          <Skeleton className="h-4 w-[min(28rem,82%)]" />
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="max-h-[38rem] overflow-auto pr-1 font-mono text-[13px] leading-6">
+            <div className="min-w-max space-y-0.5">
+              {[
+                { indent: 0, width: "w-6" },
+                { indent: 1, width: "w-[min(16rem,72%)]" },
+                { indent: 2, width: "w-[min(18rem,74%)]" },
+                { indent: 2, width: "w-[min(14rem,66%)]" },
+                { indent: 1, width: "w-[min(15rem,70%)]" },
+                { indent: 1, width: "w-[min(17rem,74%)]" },
+                { indent: 2, width: "w-[min(12rem,60%)]" },
+                { indent: 0, width: "w-6" },
+              ].map((row, index) => (
+                <div
+                  key={`event-field-tree-skeleton-${index}`}
+                  className="flex items-start gap-2 px-1 py-0.5"
+                  style={{ paddingLeft: `${row.indent * 1.25}rem` }}
+                >
+                  <Skeleton className="size-5 shrink-0 rounded-full" />
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <Skeleton className={`h-4 ${row.width}`} />
+                    <Skeleton className="h-4 w-8" />
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="h-full overflow-hidden py-0">
+        <CardHeader className="space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="h-4 w-[min(24rem,76%)]" />
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Skeleton className="h-6 w-16" />
+              <Skeleton className="h-6 w-32" />
+            </div>
+          </div>
+          <dl className="grid gap-3 sm:grid-cols-2">
+            {Array.from({ length: 2 }, (_, index) => (
+              <div
+                key={`event-field-summary-skeleton-${index}`}
+                className="space-y-1"
+              >
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-5 w-16" />
+              </div>
+            ))}
+          </dl>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="space-y-2">
+            {Array.from({ length: 6 }, (_, index) => (
+              <div
+                key={`event-field-value-row-skeleton-${index}`}
+                className="border border-border/50 bg-card px-4 py-3"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <Skeleton className="h-4 w-[min(16rem,70%)]" />
+                  <Skeleton className="h-4 w-12" />
+                </div>
+                <Skeleton className="mt-2 h-2.5 w-full" />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </section>
   );
 }
 

@@ -1372,6 +1372,95 @@ function collectDemoEventFields(
     .slice(0, limit);
 }
 
+function collectDemoEventFieldValues(
+  eventFacts: DemoCustomEventFact[],
+  fieldPath: string,
+  fieldValueType: string,
+  limit: number,
+) {
+  const rows = new Map<
+    string,
+    {
+      value: string | number | boolean | null;
+      events: Set<string>;
+      occurrences: number;
+      firstSeenAt: number;
+      lastSeenAt: number;
+    }
+  >();
+
+  const addValue = (
+    event: DemoCustomEventFact,
+    value: string | number | boolean | null,
+  ) => {
+    const key = JSON.stringify(value);
+    const current = rows.get(key) ?? {
+      value,
+      events: new Set<string>(),
+      occurrences: 0,
+      firstSeenAt: event.occurredAt,
+      lastSeenAt: event.occurredAt,
+    };
+    current.events.add(event.eventId);
+    current.occurrences += 1;
+    current.firstSeenAt = Math.min(current.firstSeenAt, event.occurredAt);
+    current.lastSeenAt = Math.max(current.lastSeenAt, event.occurredAt);
+    rows.set(key, current);
+  };
+
+  const walk = (
+    event: DemoCustomEventFact,
+    value: unknown,
+    pathSegments: string[],
+  ) => {
+    const currentPath = `/${pathSegments.join("/")}`;
+    const normalizedPath = currentPath === "/" ? "" : currentPath;
+    if (normalizedPath === fieldPath) {
+      const valueType = demoJsonTypeLabel(value);
+      if (valueType === fieldValueType) {
+        if (
+          value === null ||
+          typeof value === "string" ||
+          typeof value === "number" ||
+          typeof value === "boolean"
+        ) {
+          addValue(event, value);
+        }
+      }
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach((item) => walk(event, item, [...pathSegments, "*"]));
+      return;
+    }
+    if (value && typeof value === "object") {
+      for (const [key, child] of Object.entries(value)) {
+        walk(event, child, [...pathSegments, key]);
+      }
+    }
+  };
+
+  for (const event of eventFacts) {
+    walk(event, demoEventRecordPayload(event), []);
+  }
+
+  return [...rows.values()]
+    .map((row) => ({
+      value: row.value,
+      events: row.events.size,
+      occurrences: row.occurrences,
+      firstSeenAt: row.firstSeenAt,
+      lastSeenAt: row.lastSeenAt,
+    }))
+    .sort(
+      (left, right) =>
+        right.occurrences - left.occurrences ||
+        right.events - left.events ||
+        String(left.value ?? "").localeCompare(String(right.value ?? "")),
+    )
+    .slice(0, limit);
+}
+
 function demoEventRecordFromFact(event: DemoCustomEventFact) {
   const visit = event.visit;
   return {
@@ -1977,6 +2066,39 @@ function generateDemoEventTypeDetail(
     },
     cards: demoEventContextCards(dataset, events, 100),
     fields: collectDemoEventFields(events, 100),
+  };
+}
+
+function generateDemoEventTypeFieldValues(
+  siteId: string,
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const eventName = normalizeDemoFilterValue(params.eventName) ?? "";
+  const fieldPath = String(params.fieldPath ?? "");
+  const fieldValueType = normalizeDemoFilterValue(params.fieldValueType) ?? "";
+  const from = parseDemoNumber(params.from, 0);
+  const to = parseDemoNumber(params.to, Date.now());
+  const filters = parseDemoFilters(params);
+  const limit = parseDemoLimit(params.limit, 25, 1, 100);
+  if (!eventName || !fieldPath || !fieldValueType) {
+    return {
+      ok: true,
+      fieldPath,
+      fieldValueType,
+      data: [],
+    };
+  }
+  const dataset = buildDemoFactDataset(siteId, from, to);
+  const filtered = applyDemoFilters(dataset, filters);
+  const events = createDemoCustomEventFacts(filtered.visits).filter(
+    (event) => event.eventName === eventName,
+  );
+
+  return {
+    ok: true,
+    fieldPath,
+    fieldValueType,
+    data: collectDemoEventFieldValues(events, fieldPath, fieldValueType, limit),
   };
 }
 
@@ -6253,6 +6375,9 @@ export function handleDemoRequest(options: {
   }
   if (path.includes("/event-record-detail")) {
     return generateDemoEventRecordDetail(siteId, params);
+  }
+  if (path.includes("/event-type-field-values")) {
+    return generateDemoEventTypeFieldValues(siteId, params);
   }
   if (path.includes("/event-type-detail")) {
     return generateDemoEventTypeDetail(siteId, params);

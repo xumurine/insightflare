@@ -506,6 +506,17 @@ interface EventFieldRow {
   booleanValue: number | null;
 }
 
+interface EventFieldValueRow {
+  valueType: number;
+  events: number;
+  occurrences: number;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  stringValue: string | null;
+  numberValue: number | null;
+  booleanValue: number | null;
+}
+
 interface VisitorActivityRow {
   date: string;
   count: number;
@@ -724,6 +735,30 @@ function parseEventName(url: URL): string | undefined {
   if (typeof raw !== "string") return undefined;
   const normalized = raw.trim().slice(0, 120);
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function parseEventFieldPath(url: URL): string | undefined {
+  const raw = url.searchParams.get("fieldPath");
+  if (typeof raw !== "string") return undefined;
+  const normalized = raw.slice(0, 240);
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function parseEventFieldValueType(url: URL): string | undefined {
+  const raw = url.searchParams.get("fieldValueType");
+  if (typeof raw !== "string") return undefined;
+  const normalized = raw.trim().toLowerCase();
+  if (
+    normalized === "string" ||
+    normalized === "number" ||
+    normalized === "boolean" ||
+    normalized === "null" ||
+    normalized === "object" ||
+    normalized === "array"
+  ) {
+    return normalized;
+  }
+  return undefined;
 }
 
 function parseEventId(url: URL): string | undefined {
@@ -1285,6 +1320,16 @@ function customEventJsonTypeLabel(valueType: number): string {
   return "null";
 }
 
+function customEventJsonTypeCode(valueType: string): number | null {
+  if (valueType === "null") return 0;
+  if (valueType === "string") return 1;
+  if (valueType === "number") return 2;
+  if (valueType === "boolean") return 3;
+  if (valueType === "object") return 4;
+  if (valueType === "array") return 5;
+  return null;
+}
+
 function mapEventField(row: EventFieldRow) {
   let exampleValue: string | number | boolean | null = null;
   if (row.valueType === 1 && row.stringValue !== null) {
@@ -1302,6 +1347,24 @@ function mapEventField(row: EventFieldRow) {
     firstSeenAt: row.firstSeenAt,
     lastSeenAt: row.lastSeenAt,
     exampleValue,
+  };
+}
+
+function mapEventFieldValue(row: EventFieldValueRow) {
+  let value: string | number | boolean | null = null;
+  if (row.valueType === 1) {
+    value = row.stringValue ?? "";
+  } else if (row.valueType === 2) {
+    value = Number(row.numberValue ?? 0);
+  } else if (row.valueType === 3) {
+    value = row.booleanValue === 1;
+  }
+  return {
+    value,
+    events: Number(row.events ?? 0),
+    occurrences: Number(row.occurrences ?? 0),
+    firstSeenAt: Number(row.firstSeenAt ?? 0),
+    lastSeenAt: Number(row.lastSeenAt ?? 0),
   };
 }
 
@@ -5322,6 +5385,67 @@ LIMIT ?
   ]);
 }
 
+async function queryEventFieldValuesFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+  eventName: string,
+  fieldPath: string,
+  fieldValueType: string,
+  limit: number,
+): Promise<EventFieldValueRow[]> {
+  const filter = buildEventFilterSql(filters, "es", { eventName });
+  const valueTypeCode = customEventJsonTypeCode(fieldValueType);
+  if (valueTypeCode === null) return [];
+  const sql = `
+WITH
+${buildVisitSourceCte()},
+${buildEventAnalyticsSourceCte()},
+filtered_events AS (
+  SELECT *
+  FROM event_source es
+  ${filter.clause}
+),
+field_rows AS (
+  SELECT
+    v.value_type AS valueType,
+    v.event_pk,
+    v.occurred_at,
+    v.string_value AS stringValue,
+    v.number_value AS numberValue,
+    v.boolean_value AS booleanValue
+  FROM custom_event_json_values v
+  INNER JOIN custom_event_json_paths p
+    ON p.id = v.path_id
+  INNER JOIN filtered_events fe
+    ON fe.event_pk = v.event_pk
+  WHERE p.path = ? AND v.value_type = ?
+)
+SELECT
+  valueType,
+  count(DISTINCT event_pk) AS events,
+  count(*) AS occurrences,
+  MIN(occurred_at) AS firstSeenAt,
+  MAX(occurred_at) AS lastSeenAt,
+  MIN(stringValue) AS stringValue,
+  MIN(numberValue) AS numberValue,
+  MIN(booleanValue) AS booleanValue
+FROM field_rows
+GROUP BY valueType, stringValue, numberValue, booleanValue
+ORDER BY occurrences DESC, events DESC, stringValue ASC, numberValue ASC, booleanValue ASC
+LIMIT ?
+`;
+  return queryD1All<EventFieldValueRow>(env, sql, [
+    ...visitSourceBindings(siteId, window),
+    ...eventSourceBindings(siteId, window),
+    ...filter.bindings,
+    fieldPath,
+    valueTypeCode,
+    limit,
+  ]);
+}
+
 async function queryEventRecordDetailFromD1(
   env: Env,
   siteId: string,
@@ -6999,6 +7123,39 @@ async function handleEventTypeDetail(
   });
 }
 
+async function handleEventTypeFieldValues(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const eventName = parseEventName(url);
+  const fieldPath = parseEventFieldPath(url);
+  const fieldValueType = parseEventFieldValueType(url);
+  if (!eventName) return badRequest("eventName is required");
+  if (!fieldPath) return badRequest("fieldPath is required");
+  if (!fieldValueType) return badRequest("fieldValueType is required");
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const limit = parseLimit(url, 25, 100);
+  const rows = await queryEventFieldValuesFromD1(
+    env,
+    siteId,
+    window,
+    filters,
+    eventName,
+    fieldPath,
+    fieldValueType,
+    limit,
+  );
+  return jsonResponse({
+    ok: true,
+    fieldPath,
+    fieldValueType,
+    data: rows.map(mapEventFieldValue),
+  });
+}
+
 async function handleEventRecordDetail(
   env: Env,
   siteId: string,
@@ -7483,6 +7640,9 @@ async function routeQuery(
   }
   if (pathname === "events-records") {
     return handleEventsRecords(env, siteId, url);
+  }
+  if (pathname === "event-type-field-values") {
+    return handleEventTypeFieldValues(env, siteId, url);
   }
   if (pathname === "event-type-detail") {
     return handleEventTypeDetail(env, siteId, url);

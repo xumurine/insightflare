@@ -829,6 +829,14 @@ export interface EventField {
   exampleValue?: string | number | boolean | null;
 }
 
+export interface EventFieldValueStat {
+  value: string | number | boolean | null;
+  events: number;
+  occurrences: number;
+  firstSeenAt: number;
+  lastSeenAt: number;
+}
+
 export interface EventTypeTrendPoint {
   bucket: number;
   timestampMs: number;
@@ -846,6 +854,13 @@ export interface EventTypeDetailData {
   breakdowns: EventBreakdownsData;
   cards: EventAnalyticsContextCardsData;
   fields: EventField[];
+}
+
+export interface EventFieldValuesData {
+  ok: boolean;
+  fieldPath: string;
+  fieldValueType: EventField["valueType"] | "";
+  data: EventFieldValueStat[];
 }
 
 export interface EventRecordDetailData {

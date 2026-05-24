@@ -347,6 +347,11 @@ export interface AppMessages {
     recordsTitle: string;
     fieldsTitle: string;
     fieldsSubtitle: string;
+    fieldValuesTitle: string;
+    fieldValuesSubtitle: string;
+    fieldValuesEmpty: string;
+    expandField: string;
+    collapseField: string;
     breakdownTitle: string;
     search: string;
     eventName: string;

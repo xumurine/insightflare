@@ -10,6 +10,8 @@ import type {
   DashboardFilterOptionsData,
   DimensionData,
   EventBreakdownsData,
+  EventField,
+  EventFieldValuesData,
   EventRecordDetailData,
   EventsRecordsData,
   EventsSummaryData,
@@ -245,6 +247,18 @@ function emptyEventTypeDetail(eventName = ""): EventTypeDetailData {
     breakdowns: emptyEventBreakdowns(),
     cards: emptyEventAnalyticsContextCards(),
     fields: [],
+  };
+}
+
+function emptyEventFieldValues(
+  fieldPath = "",
+  fieldValueType: EventField["valueType"] | "" = "",
+): EventFieldValuesData {
+  return {
+    ok: true,
+    fieldPath,
+    fieldValueType,
+    data: [],
   };
 }
 
@@ -792,6 +806,40 @@ export async function fetchEventTypeDetail(
       filters,
     ),
   ).catch(() => emptyEventTypeDetail(normalizedEventName));
+}
+
+export async function fetchEventTypeFieldValues(
+  siteId: string,
+  window: TimeWindow,
+  eventName: string,
+  fieldPath: string,
+  fieldValueType: EventField["valueType"],
+  filters?: DashboardFilters,
+  options?: {
+    limit?: number;
+  },
+): Promise<EventFieldValuesData> {
+  const normalizedEventName = eventName.trim();
+  const normalizedFieldPath = String(fieldPath ?? "");
+  if (!normalizedEventName || !normalizedFieldPath) {
+    return emptyEventFieldValues(normalizedFieldPath, fieldValueType);
+  }
+  return fetchPrivateJson<EventFieldValuesData>(
+    "/api/private/event-type-field-values",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        timeZone: window.timeZone,
+        eventName: normalizedEventName,
+        fieldPath: normalizedFieldPath,
+        fieldValueType,
+        limit: options?.limit ?? 25,
+      },
+      filters,
+    ),
+  ).catch(() => emptyEventFieldValues(normalizedFieldPath, fieldValueType));
 }
 
 export async function fetchEventRecordDetail(
