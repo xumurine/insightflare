@@ -18,6 +18,7 @@ import {
   RiDatabase2Line,
   RiExternalLinkLine,
   RiFileList3Line,
+  RiFilter3Line,
   RiPulseLine,
   RiSearchLine,
   RiStackLine,
@@ -51,6 +52,14 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Drawer,
   DrawerContent,
   DrawerDescription,
@@ -72,6 +81,7 @@ import { buildComplementaryOklchPalette } from "@/lib/dashboard/chart-colors";
 import {
   fetchEventRecordDetail,
   fetchEventsRecords,
+  fetchEventTypeDetail,
   fetchEventTypeFieldValues,
 } from "@/lib/dashboard/client-data";
 import {
@@ -79,7 +89,12 @@ import {
   numberFormat,
   percentFormat,
 } from "@/lib/dashboard/format";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type {
+  DashboardFilters,
+  EventPayloadFilterRule,
+  EventPayloadFilterValue,
+  TimeWindow,
+} from "@/lib/dashboard/query-state";
 import type {
   EventField,
   EventFieldValueStat,
@@ -151,6 +166,211 @@ function formatFieldValueLabel(value: EventFieldValueStat["value"]): string {
   if (value === null) return "null";
   if (typeof value === "string") return value.length > 0 ? value : '""';
   return String(value);
+}
+
+function payloadFilterValueType(
+  value: EventPayloadFilterValue,
+): "string" | "number" | "boolean" | "null" {
+  if (value === null) return "null";
+  if (typeof value === "number") return "number";
+  if (typeof value === "boolean") return "boolean";
+  return "string";
+}
+
+function payloadFilterValuesEqual(
+  left: EventPayloadFilterValue,
+  right: EventPayloadFilterValue,
+): boolean {
+  if (typeof left === "number" || typeof right === "number") {
+    return Number(left) === Number(right);
+  }
+  return left === right;
+}
+
+function normalizePayloadFilterInputPath(path: string): string {
+  const normalized = path.trim().slice(0, 240);
+  if (!normalized || normalized === "/") return "";
+  if (normalized.startsWith("/")) return normalizeEventFieldPath(normalized);
+  return normalizeEventFieldPath(
+    normalized
+      .replace(/^\$\.?/, "")
+      .replace(/\[(?:\d+|\*)\]/g, ".*")
+      .split(".")
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .join("/"),
+  );
+}
+
+function formatPayloadFilterPathForInput(path: string): string {
+  const normalized = normalizeEventFieldPath(path);
+  if (!normalized) return "";
+  return normalized.slice(1).split("/").filter(Boolean).join(".");
+}
+
+function formatPayloadFilterValueForInput(
+  value: EventPayloadFilterValue,
+): string {
+  if (typeof value === "string") return JSON.stringify(value);
+  if (value === null) return "null";
+  return String(value);
+}
+
+function formatPayloadFilterRules(rules: EventPayloadFilterRule[]): string {
+  return rules
+    .map(
+      (rule) =>
+        `${formatPayloadFilterPathForInput(rule.path)} ${
+          rule.operator === "ne" ? "!=" : "=="
+        } ${formatPayloadFilterValueForInput(rule.value)}`,
+    )
+    .join("\n");
+}
+
+function parsePayloadFilterValue(rawValue: string): EventPayloadFilterValue {
+  const value = rawValue.trim();
+  if (!value) throw new Error("Empty filter value");
+  if (value === "null") return null;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (/^-?(?:\d+|\d*\.\d+)$/.test(value)) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    if (value.startsWith('"')) {
+      const parsed = JSON.parse(value) as unknown;
+      if (typeof parsed !== "string") throw new Error("Invalid string value");
+      return parsed;
+    }
+    return value.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, "\\");
+  }
+  return value.slice(0, 240);
+}
+
+function parsePayloadFilterInput(
+  input: string,
+): { ok: true; rules: EventPayloadFilterRule[] } | { ok: false } {
+  const conditions = input
+    .split(/\n|&&/g)
+    .map((condition) => condition.trim())
+    .filter(Boolean);
+  const rules: EventPayloadFilterRule[] = [];
+
+  try {
+    for (const condition of conditions) {
+      const match = condition.match(/^(.+?)\s*(==|!=)\s*(.+)$/);
+      if (!match) return { ok: false };
+      const path = normalizePayloadFilterInputPath(match[1] ?? "");
+      if (!path) return { ok: false };
+      const value = parsePayloadFilterValue(match[3] ?? "");
+      rules.push({
+        path,
+        operator: match[2] === "!=" ? "ne" : "eq",
+        value,
+      });
+    }
+  } catch {
+    return { ok: false };
+  }
+
+  return { ok: true, rules };
+}
+
+function isPayloadFilterActive(
+  rules: EventPayloadFilterRule[],
+  path: string,
+  value: EventPayloadFilterValue,
+): boolean {
+  const normalizedPath = normalizeEventFieldPath(path);
+  return rules.some(
+    (rule) =>
+      rule.operator === "eq" &&
+      normalizeEventFieldPath(rule.path) === normalizedPath &&
+      payloadFilterValueType(rule.value) === payloadFilterValueType(value) &&
+      payloadFilterValuesEqual(rule.value, value),
+  );
+}
+
+function PayloadFilterActiveCountBadge({ count }: { count: number }) {
+  const hasCount = count > 0;
+  return (
+    <AutoResizer
+      initial
+      animateWidth
+      animateHeight={false}
+      className="inline-flex shrink-0 items-center"
+    >
+      <AutoTransition
+        className="inline-block"
+        duration={0.2}
+        type="fade"
+        initial={false}
+        presenceMode="wait"
+        customVariants={{
+          initial: { opacity: 0 },
+          animate: { opacity: 1 },
+          exit: { opacity: 0 },
+        }}
+      >
+        {hasCount ? (
+          <span
+            key={`payload-filter-count-${count}`}
+            className="inline-flex min-w-5 items-center justify-center rounded-full border border-primary/40 bg-primary/15 px-1.5 text-[11px] leading-4 font-semibold text-primary"
+          >
+            {count}
+          </span>
+        ) : (
+          <span
+            key="payload-filter-count-empty"
+            className="inline-flex w-0 overflow-hidden"
+            aria-hidden
+          />
+        )}
+      </AutoTransition>
+    </AutoResizer>
+  );
+}
+
+function PayloadFilterButton({
+  labels,
+  count,
+  onClick,
+}: {
+  labels: EventPageCopy;
+  count: number;
+  onClick: () => void;
+}) {
+  const hasActiveFilters = count > 0;
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className={cn(
+        "gap-2 transition-colors",
+        hasActiveFilters &&
+          "!border-primary/60 !bg-primary/10 !text-primary hover:!bg-primary/15 hover:!text-primary aria-expanded:!bg-primary/15 dark:!border-primary/60 dark:!bg-primary/20 dark:hover:!bg-primary/25",
+      )}
+      style={
+        hasActiveFilters
+          ? {
+              borderColor: "hsl(var(--primary) / 0.6)",
+              backgroundColor: "hsl(var(--primary) / 0.12)",
+              color: "hsl(var(--primary))",
+            }
+          : undefined
+      }
+      onClick={onClick}
+    >
+      <RiFilter3Line className="size-4" />
+      {labels.payloadFilter}
+      <PayloadFilterActiveCountBadge count={count} />
+    </Button>
+  );
 }
 
 interface EventFieldTreeNode {
@@ -1549,26 +1769,64 @@ export function EventFieldsCard({
   fields: EventField[];
 }) {
   const reduceDataRowMotion = useReducedMotion() ?? false;
-  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
-  const fieldTree = useMemo(() => buildEventFieldTree(fields), [fields]);
+  const [payloadFilters, setPayloadFilters] = useState<
+    EventPayloadFilterRule[]
+  >([]);
+  const [payloadFilterDialogOpen, setPayloadFilterDialogOpen] = useState(false);
+  const [payloadFilterDraft, setPayloadFilterDraft] = useState("");
+  const [payloadFilterError, setPayloadFilterError] = useState("");
+  const payloadFiltersKey = useMemo(
+    () => JSON.stringify(payloadFilters),
+    [payloadFilters],
+  );
+  const activePayloadFilterCount = payloadFilters.length;
+  const effectiveFilters = useMemo<DashboardFilters>(() => {
+    if (payloadFilters.length === 0) return filters;
+    return {
+      ...filters,
+      eventPayloadFilters: payloadFilters,
+    };
+  }, [filters, payloadFilters, payloadFiltersKey]);
+  const effectiveFiltersKey = useMemo(
+    () => JSON.stringify(effectiveFilters ?? {}),
+    [effectiveFilters],
+  );
+  const [filteredFields, setFilteredFields] = useState<EventField[]>([]);
+  const [filteredFieldsLoading, setFilteredFieldsLoading] = useState(false);
+  const [filteredFieldsError, setFilteredFieldsError] = useState(false);
+  const activeFields =
+    activePayloadFilterCount > 0
+      ? filteredFieldsLoading && filteredFields.length === 0
+        ? fields
+        : filteredFields
+      : fields;
+  const fieldListLoading =
+    loading || (activePayloadFilterCount > 0 && filteredFieldsLoading);
+  const fieldListError = activePayloadFilterCount > 0 && filteredFieldsError;
+  const fieldTree = useMemo(
+    () => buildEventFieldTree(activeFields),
+    [activeFields],
+  );
   const defaultExpandedFieldKeys = useMemo(
     () => collectEventFieldTreeExpansionKeys(fieldTree),
     [fieldTree],
   );
   const preferredSelectedField = useMemo(() => {
-    if (fields.length === 0) return null;
+    if (activeFields.length === 0) return null;
     return (
-      fields.find(
+      activeFields.find(
         (field) =>
           field.valueType !== "object" &&
           field.valueType !== "array" &&
           normalizeEventFieldPath(field.path) !== "",
       ) ??
-      fields.find((field) => normalizeEventFieldPath(field.path) !== "") ??
-      fields[0] ??
+      activeFields.find(
+        (field) => normalizeEventFieldPath(field.path) !== "",
+      ) ??
+      activeFields[0] ??
       null
     );
-  }, [fields]);
+  }, [activeFields]);
   const fieldRequestKey = useMemo(
     () =>
       [
@@ -1578,11 +1836,11 @@ export function EventFieldsCard({
         timeWindow.to,
         timeWindow.interval,
         timeWindow.timeZone,
-        filtersKey,
+        effectiveFiltersKey,
       ].join(":"),
     [
       eventName,
-      filtersKey,
+      effectiveFiltersKey,
       siteId,
       timeWindow.from,
       timeWindow.interval,
@@ -1599,27 +1857,66 @@ export function EventFieldsCard({
   const [fieldValuesError, setFieldValuesError] = useState(false);
 
   const selectedField = useMemo(() => {
-    if (fields.length === 0) return null;
+    if (activeFields.length === 0) return null;
     if (selectedFieldKey) {
-      const match = fields.find(
+      const match = activeFields.find(
         (field) => eventFieldKey(field) === selectedFieldKey,
       );
       if (match) return match;
     }
     return preferredSelectedField;
-  }, [fields, preferredSelectedField, selectedFieldKey]);
+  }, [activeFields, preferredSelectedField, selectedFieldKey]);
 
   const selectedFieldResolvedKey = selectedField
     ? eventFieldKey(selectedField)
     : "";
 
   useEffect(() => {
-    setSelectedFieldKey("");
     setExpandedFieldKeys(new Set(defaultExpandedFieldKeys));
   }, [defaultExpandedFieldKeys, fieldRequestKey]);
 
   useEffect(() => {
+    if (activePayloadFilterCount === 0) {
+      setFilteredFields([]);
+      setFilteredFieldsLoading(false);
+      setFilteredFieldsError(false);
+      return;
+    }
     if (loading) return;
+
+    let active = true;
+    setFilteredFieldsLoading(true);
+    setFilteredFieldsError(false);
+
+    fetchEventTypeDetail(siteId, timeWindow, eventName, effectiveFilters)
+      .then((payload) => {
+        if (!active) return;
+        setFilteredFields(payload.fields);
+      })
+      .catch(() => {
+        if (!active) return;
+        setFilteredFields([]);
+        setFilteredFieldsError(true);
+      })
+      .finally(() => {
+        if (active) setFilteredFieldsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    activePayloadFilterCount,
+    effectiveFilters,
+    effectiveFiltersKey,
+    eventName,
+    loading,
+    siteId,
+    timeWindow,
+  ]);
+
+  useEffect(() => {
+    if (fieldListLoading) return;
     if (!selectedField) {
       setFieldValues([]);
       setFieldValuesLoading(false);
@@ -1637,7 +1934,7 @@ export function EventFieldsCard({
       eventName,
       selectedField.path,
       selectedField.valueType,
-      filters,
+      effectiveFilters,
       {
         limit: 25,
       },
@@ -1659,12 +1956,13 @@ export function EventFieldsCard({
       active = false;
     };
   }, [
+    effectiveFilters,
+    effectiveFiltersKey,
     eventName,
-    filtersKey,
+    fieldListLoading,
     selectedField?.path,
     selectedField?.valueType,
     siteId,
-    loading,
     timeWindow.from,
     timeWindow.interval,
     timeWindow.timeZone,
@@ -1679,6 +1977,59 @@ export function EventFieldsCard({
       ),
     [fieldValues],
   );
+
+  const openPayloadFilterDialog = () => {
+    setPayloadFilterDraft(formatPayloadFilterRules(payloadFilters));
+    setPayloadFilterError("");
+    setPayloadFilterDialogOpen(true);
+  };
+
+  const applyPayloadFilterDraft = () => {
+    const parsed = parsePayloadFilterInput(payloadFilterDraft);
+    if (!parsed.ok) {
+      setPayloadFilterError(labels.payloadFilterInvalid);
+      return;
+    }
+    setPayloadFilters(parsed.rules);
+    setPayloadFilterError("");
+    setPayloadFilterDialogOpen(false);
+  };
+
+  const clearPayloadFilters = () => {
+    setPayloadFilterDraft("");
+    setPayloadFilters([]);
+    setPayloadFilterError("");
+  };
+
+  const applyFieldValueFilter = (
+    field: EventField,
+    value: EventPayloadFilterValue,
+  ) => {
+    const path = normalizeEventFieldPath(field.path);
+    if (!path) return;
+    setPayloadFilters((current) => {
+      const hasSameValueFilter = current.some(
+        (rule) =>
+          rule.operator === "eq" &&
+          normalizeEventFieldPath(rule.path) === path &&
+          payloadFilterValueType(rule.value) ===
+            payloadFilterValueType(value) &&
+          payloadFilterValuesEqual(rule.value, value),
+      );
+      const withoutCurrentPath = current.filter(
+        (rule) => normalizeEventFieldPath(rule.path) !== path,
+      );
+      if (hasSameValueFilter) return withoutCurrentPath;
+      return [
+        ...withoutCurrentPath,
+        {
+          path,
+          operator: "eq",
+          value,
+        },
+      ];
+    });
+  };
 
   const toggleFieldExpansion = (fieldKey: string) => {
     setExpandedFieldKeys((current) => {
@@ -1728,11 +2079,11 @@ export function EventFieldsCard({
       ? node.children.map((child) => renderFieldTreeNode(child, depth + 1))
       : null;
     const selectField = () => {
-      if (!selectableField || loading) return;
+      if (!selectableField || fieldListLoading) return;
       setSelectedFieldKey(selectableFieldKey);
     };
     const handleRowKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-      if (!selectableField || loading) return;
+      if (!selectableField || fieldListLoading) return;
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
       selectField();
@@ -1742,7 +2093,7 @@ export function EventFieldsCard({
       <div
         key={`${nodeKey}:open`}
         role={selectableField ? "button" : undefined}
-        tabIndex={selectableField && !loading ? 0 : undefined}
+        tabIndex={selectableField && !fieldListLoading ? 0 : undefined}
         onClick={selectableField ? selectField : undefined}
         onKeyDown={selectableField ? handleRowKeyDown : undefined}
         className={cn(
@@ -1750,7 +2101,7 @@ export function EventFieldsCard({
           selectableField &&
             "cursor-pointer hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50",
           isSelected && "bg-accent/25 ring-1 ring-border/70",
-          loading && "opacity-80",
+          fieldListLoading && "opacity-80",
         )}
         style={indentStyle}
       >
@@ -1764,7 +2115,7 @@ export function EventFieldsCard({
               event.stopPropagation();
               toggleFieldExpansion(nodeKey);
             }}
-            disabled={loading}
+            disabled={fieldListLoading}
             aria-label={isExpanded ? labels.collapseField : labels.expandField}
             title={isExpanded ? labels.collapseField : labels.expandField}
           >
@@ -1795,13 +2146,12 @@ export function EventFieldsCard({
             type="button"
             className={cn(
               "inline-flex size-6 shrink-0 items-center justify-center rounded-none text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
-              isSelected && "bg-muted text-foreground",
             )}
             onClick={(event) => {
               event.stopPropagation();
               selectField();
             }}
-            disabled={loading}
+            disabled={fieldListLoading}
             aria-label={`${labels.fieldValuesTitle}: ${fieldLabel}`}
             title={labels.fieldValuesTitle}
           >
@@ -1851,12 +2201,35 @@ export function EventFieldsCard({
         const progressPercent =
           fieldValueTotal > 0 ? (count / fieldValueTotal) * 100 : 0;
         const valueLabel = formatFieldValueLabel(item.value);
+        const activeValueFilter =
+          selectedField !== null &&
+          isPayloadFilterActive(payloadFilters, selectedField.path, item.value);
+        const selectValueFilter = () => {
+          if (!selectedField || fieldListLoading) return;
+          applyFieldValueFilter(selectedField, item.value);
+        };
+        const handleValueRowKeyDown = (
+          event: KeyboardEvent<HTMLTableRowElement>,
+        ) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          selectValueFilter();
+        };
 
         return (
           <AnimatedDataTableRow
             key={eventFieldValueKey(item.value)}
             reduceMotion={reduceDataRowMotion}
-            className="bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:bg-transparent hover:brightness-95"
+            role="button"
+            tabIndex={fieldListLoading ? undefined : 0}
+            data-state={activeValueFilter ? "selected" : undefined}
+            onClick={selectValueFilter}
+            onKeyDown={handleValueRowKeyDown}
+            className={cn(
+              "cursor-pointer bg-no-repeat transition-[background-size,background-color,filter] duration-300 ease-out hover:bg-muted/30 hover:brightness-[0.98] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50",
+              activeValueFilter &&
+                "bg-primary/10 hover:bg-primary/15 data-[state=selected]:bg-primary/10",
+            )}
             style={{
               backgroundImage:
                 "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
@@ -1884,85 +2257,154 @@ export function EventFieldsCard({
   );
 
   return (
-    <section className="grid items-stretch gap-6 xl:grid-cols-2">
-      <Card className="h-full overflow-hidden py-0">
-        <CardHeader className="space-y-1.5 pt-4">
-          <CardTitle>{labels.fieldsTitle}</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            {labels.fieldsSubtitle}
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-2 pb-4">
-          <div className="max-h-[38rem] overflow-auto pr-1 font-mono text-[13px] leading-6">
-            {fields.length === 0 ? (
-              <div className="rounded-none border border-border/50 bg-muted/20 px-4 py-6 font-sans text-sm text-muted-foreground">
-                {labels.emptyFields}
+    <>
+      <section className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-medium">{labels.fieldsTitle}</h2>
+          </div>
+          <PayloadFilterButton
+            labels={labels}
+            count={activePayloadFilterCount}
+            onClick={openPayloadFilterDialog}
+          />
+        </div>
+
+        <div className="grid items-stretch gap-6 xl:grid-cols-2">
+          <Card className="h-full overflow-hidden py-0">
+            <CardHeader className="space-y-2 pt-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <CardTitle>{labels.payloadFields}</CardTitle>
+                  {fieldListLoading ? <Spinner className="size-3.5" /> : null}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {labels.fieldsSubtitle}
+                </p>
               </div>
-            ) : fieldTree.children.length > 0 ? (
-              <div className="min-w-max">
-                {fieldTree.children.map((child) =>
-                  renderFieldTreeNode(child, 0),
+            </CardHeader>
+            <CardContent className="space-y-2 pb-5">
+              <div className="max-h-[38rem] overflow-auto pr-1 font-mono text-[13px] leading-6">
+                {fieldListError ? (
+                  <div className="rounded-none border border-border/50 bg-muted/20 px-4 py-6 font-sans text-sm text-muted-foreground">
+                    {labels.loadError}
+                  </div>
+                ) : activeFields.length === 0 ? (
+                  <div className="rounded-none border border-border/50 bg-muted/20 px-4 py-6 font-sans text-sm text-muted-foreground">
+                    {labels.emptyFields}
+                  </div>
+                ) : fieldTree.children.length > 0 ? (
+                  <div className="min-w-max">
+                    {fieldTree.children.map((child) =>
+                      renderFieldTreeNode(child, 0),
+                    )}
+                  </div>
+                ) : (
+                  <div className="min-w-max">
+                    {renderFieldTreeNode(fieldTree, 0)}
+                  </div>
                 )}
               </div>
-            ) : (
-              <div className="min-w-max">
-                {renderFieldTreeNode(fieldTree, 0)}
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
 
-      <Card className="h-full overflow-hidden py-0">
-        <CardHeader className="space-y-2 pt-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <CardTitle>{labels.fieldValuesTitle}</CardTitle>
-                {loading ? <Spinner className="size-3.5" /> : null}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {labels.fieldValuesSubtitle}
-              </p>
-            </div>
-            {selectedField ? (
-              <AutoTransition
-                initial={false}
-                transitionKey={selectedFieldResolvedKey}
-                className="min-w-0 shrink-0"
-              >
-                <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-                  <Badge variant="default" className="shrink-0">
-                    {selectedField.valueType}
-                  </Badge>
-                  <span className="max-w-[18rem] truncate font-mono text-xs text-muted-foreground">
-                    {selectedField.path || "/"}
-                  </span>
+          <Card className="h-full overflow-hidden py-0">
+            <CardHeader className="space-y-2 pt-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <CardTitle>{labels.fieldValuesTitle}</CardTitle>
+                    {fieldValuesLoading ? (
+                      <Spinner className="size-3.5" />
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {labels.fieldValuesSubtitle}
+                  </p>
                 </div>
-              </AutoTransition>
+                {selectedField ? (
+                  <AutoTransition
+                    initial={false}
+                    transitionKey={selectedFieldResolvedKey}
+                    className="min-w-0 shrink-0"
+                  >
+                    <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 pt-1">
+                      <Badge variant="ghost" className="shrink-0">
+                        {selectedField.valueType}
+                      </Badge>
+                      <span className="max-w-[18rem] truncate font-mono text-xs text-muted-foreground">
+                        {selectedField.path || "/"}
+                      </span>
+                    </div>
+                  </AutoTransition>
+                ) : null}
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <DataTableSwitch
+                loading={
+                  Boolean(selectedField) &&
+                  (fieldListLoading || fieldValuesLoading)
+                }
+                hasContent={
+                  Boolean(selectedField) &&
+                  !fieldValuesError &&
+                  fieldValues.length > 0
+                }
+                loadingLabel={labels.loading}
+                emptyLabel={
+                  fieldValuesError ? labels.loadError : labels.fieldValuesEmpty
+                }
+                colSpan={2}
+                header={fieldValueTableHeader}
+                rows={fieldValueRows}
+                contentKey={`${selectedFieldResolvedKey}-${fieldValues.length}-${fieldValueTotal}`}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      <Dialog
+        open={payloadFilterDialogOpen}
+        onOpenChange={setPayloadFilterDialogOpen}
+      >
+        <DialogContent className="z-[1000] max-w-xl" overlayClassName="z-[999]">
+          <DialogHeader>
+            <DialogTitle>{labels.payloadFilterTitle}</DialogTitle>
+            <DialogDescription>
+              {labels.payloadFilterSubtitle}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <textarea
+              value={payloadFilterDraft}
+              onChange={(event) => {
+                setPayloadFilterDraft(event.target.value);
+                if (payloadFilterError) setPayloadFilterError("");
+              }}
+              placeholder={labels.payloadFilterPlaceholder}
+              className="min-h-32 w-full resize-y rounded-none border bg-background px-3 py-2 font-mono text-xs leading-5 outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
+            />
+            {payloadFilterError ? (
+              <p className="text-xs text-destructive">{payloadFilterError}</p>
             ) : null}
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <DataTableSwitch
-            loading={Boolean(selectedField) && (loading || fieldValuesLoading)}
-            hasContent={
-              Boolean(selectedField) &&
-              !fieldValuesError &&
-              fieldValues.length > 0
-            }
-            loadingLabel={labels.loading}
-            emptyLabel={
-              fieldValuesError ? labels.loadError : labels.fieldValuesEmpty
-            }
-            colSpan={2}
-            header={fieldValueTableHeader}
-            rows={fieldValueRows}
-            contentKey={`${selectedFieldResolvedKey}-${fieldValues.length}-${fieldValueTotal}`}
-          />
-        </CardContent>
-      </Card>
-    </section>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={clearPayloadFilters}
+            >
+              {labels.payloadFilterClear}
+            </Button>
+            <Button type="button" onClick={applyPayloadFilterDraft}>
+              {labels.payloadFilterApply}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

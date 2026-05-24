@@ -413,6 +413,9 @@ function withFilters(
   if (filters.geoContinent) next.geoContinent = filters.geoContinent;
   if (filters.geoTimezone) next.geoTimezone = filters.geoTimezone;
   if (filters.geoOrganization) next.geoOrganization = filters.geoOrganization;
+  if (filters.eventPayloadFilters?.length) {
+    next.eventPayloadFilters = JSON.stringify(filters.eventPayloadFilters);
+  }
   return next;
 }
 

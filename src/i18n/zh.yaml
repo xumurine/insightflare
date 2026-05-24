@@ -342,8 +342,15 @@ events:
   fieldsTitle: Payload 字段
   fieldsSubtitle: 选择字段后查看其值分布和元数据。
   fieldValuesTitle: 字段值
-  fieldValuesSubtitle: 展示当前字段的记录及出现次数。
+  fieldValuesSubtitle: 展示当前字段的记录及出现次数，点击以进行筛选。
   fieldValuesEmpty: 当前字段暂无记录。
+  payloadFilter: 筛选
+  payloadFilterTitle: Payload 筛选
+  payloadFilterSubtitle: 每行一个条件，可使用 == 或 != 组合筛选。
+  payloadFilterPlaceholder: "path.value == \"a\"\nlevel != 0"
+  payloadFilterApply: 应用筛选
+  payloadFilterClear: 清空筛选
+  payloadFilterInvalid: 无法解析筛选条件，请检查字段路径、操作符和值。
   expandField: 展开字段
   collapseField: 收起字段
   breakdownTitle: 上下文分布

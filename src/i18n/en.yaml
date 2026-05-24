@@ -342,8 +342,15 @@ events:
   fieldsTitle: Payload Fields
   fieldsSubtitle: Select a field to inspect its values and metadata.
   fieldValuesTitle: Field Values
-  fieldValuesSubtitle: Records and occurrence counts for the selected field.
+  fieldValuesSubtitle: Records and occurrence counts for the selected field. Click a row to filter.
   fieldValuesEmpty: No values recorded for this field.
+  payloadFilter: Filter
+  payloadFilterTitle: Payload Filters
+  payloadFilterSubtitle: Add one condition per line. Combine filters with == or !=.
+  payloadFilterPlaceholder: "path.value == \"a\"\nlevel != 0"
+  payloadFilterApply: Apply Filters
+  payloadFilterClear: Clear Filters
+  payloadFilterInvalid: Unable to parse the filter conditions. Check the field path, operator, and value.
   expandField: Expand field
   collapseField: Collapse field
   breakdownTitle: Context Breakdown

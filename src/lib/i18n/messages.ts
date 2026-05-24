@@ -350,6 +350,13 @@ export interface AppMessages {
     fieldValuesTitle: string;
     fieldValuesSubtitle: string;
     fieldValuesEmpty: string;
+    payloadFilter: string;
+    payloadFilterTitle: string;
+    payloadFilterSubtitle: string;
+    payloadFilterPlaceholder: string;
+    payloadFilterApply: string;
+    payloadFilterClear: string;
+    payloadFilterInvalid: string;
     expandField: string;
     collapseField: string;
     breakdownTitle: string;

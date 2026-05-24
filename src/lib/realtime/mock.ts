@@ -133,6 +133,7 @@ import {
 } from "@/lib/realtime/mock/site-curves";
 import type {
   DemoDimensionRow,
+  DemoEventPayloadFilterRule,
   DemoFactDataset,
   DemoFilteredFacts,
   DemoQueryFilters,
@@ -1461,6 +1462,96 @@ function collectDemoEventFieldValues(
     .slice(0, limit);
 }
 
+function demoPayloadValue(
+  value: unknown,
+): DemoEventPayloadFilterRule["value"] | undefined {
+  if (value === null) return null;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") return value;
+  return undefined;
+}
+
+function demoPayloadFilterValueType(
+  value: DemoEventPayloadFilterRule["value"],
+): "string" | "number" | "boolean" | "null" {
+  if (value === null) return "null";
+  if (typeof value === "number") return "number";
+  if (typeof value === "boolean") return "boolean";
+  return "string";
+}
+
+function collectDemoPayloadValuesAtPath(
+  value: unknown,
+  targetPath: string,
+): DemoEventPayloadFilterRule["value"][] {
+  const values: DemoEventPayloadFilterRule["value"][] = [];
+  const walk = (current: unknown, pathSegments: string[]) => {
+    const path = `/${pathSegments.join("/")}`;
+    const normalizedPath = path === "/" ? "" : path;
+    if (normalizedPath === targetPath) {
+      const payloadValue = demoPayloadValue(current);
+      if (
+        payloadValue === null ||
+        typeof payloadValue === "string" ||
+        typeof payloadValue === "number" ||
+        typeof payloadValue === "boolean"
+      ) {
+        values.push(payloadValue);
+      }
+    }
+
+    if (Array.isArray(current)) {
+      current.forEach((item) => walk(item, [...pathSegments, "*"]));
+      return;
+    }
+    if (current && typeof current === "object") {
+      for (const [key, child] of Object.entries(current)) {
+        walk(child, [...pathSegments, key]);
+      }
+    }
+  };
+
+  walk(value, []);
+  return values;
+}
+
+function demoPayloadValuesEqual(
+  left: DemoEventPayloadFilterRule["value"],
+  right: DemoEventPayloadFilterRule["value"],
+): boolean {
+  if (typeof left === "number" || typeof right === "number") {
+    return Number(left) === Number(right);
+  }
+  return left === right;
+}
+
+function matchesDemoPayloadFilter(
+  event: DemoCustomEventFact,
+  rule: DemoEventPayloadFilterRule,
+): boolean {
+  const expectedType = demoPayloadFilterValueType(rule.value);
+  return collectDemoPayloadValuesAtPath(
+    demoEventRecordPayload(event),
+    rule.path,
+  ).some((value) => {
+    if (demoPayloadFilterValueType(value) !== expectedType) return false;
+    const matches = demoPayloadValuesEqual(value, rule.value);
+    return rule.operator === "ne" ? !matches : matches;
+  });
+}
+
+function filterDemoCustomEventsByPayload(
+  events: DemoCustomEventFact[],
+  filters: DemoQueryFilters,
+): DemoCustomEventFact[] {
+  const rules = filters.eventPayloadFilters ?? [];
+  if (rules.length === 0) return events;
+  return events.filter((event) =>
+    rules.every((rule) => matchesDemoPayloadFilter(event, rule)),
+  );
+}
+
 function demoEventRecordFromFact(event: DemoCustomEventFact) {
   const visit = event.visit;
   return {
@@ -1769,7 +1860,10 @@ function generateDemoEventsSummary(
   const filters = parseDemoFilters(params);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
-  const events = createDemoCustomEventFacts(filtered.visits);
+  const events = filterDemoCustomEventsByPayload(
+    createDemoCustomEventFacts(filtered.visits),
+    filters,
+  );
   const sessions = new Set(events.map((event) => event.visit.sessionId));
   const visitors = new Set(events.map((event) => event.visit.visitorId));
   const eventNames = new Set(events.map((event) => event.eventName));
@@ -1807,9 +1901,10 @@ function generateDemoEventsTrend(
   const timeZone = parseDemoTimeZone(params);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
-  const allEvents = createDemoCustomEventFacts(filtered.visits).filter(
-    (event) => !eventName || event.eventName === eventName,
-  );
+  const allEvents = filterDemoCustomEventsByPayload(
+    createDemoCustomEventFacts(filtered.visits),
+    filters,
+  ).filter((event) => !eventName || event.eventName === eventName);
   const buckets = buildDemoTimeBuckets(from, to, interval, timeZone);
   const seriesRows = demoEventDimensionRows(
     dataset,
@@ -1944,7 +2039,10 @@ function generateDemoEventsRecords(
   const search = normalizeDemoSearch(params);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
-  const events = createDemoCustomEventFacts(filtered.visits).filter((event) => {
+  const events = filterDemoCustomEventsByPayload(
+    createDemoCustomEventFacts(filtered.visits),
+    filters,
+  ).filter((event) => {
     if (eventName && event.eventName !== eventName) return false;
     return demoValuesIncludeSearch(search, [
       event.eventName,
@@ -1986,7 +2084,10 @@ function generateDemoEventTypeDetail(
   const filters = parseDemoFilters(params);
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
-  const allEvents = createDemoCustomEventFacts(filtered.visits);
+  const allEvents = filterDemoCustomEventsByPayload(
+    createDemoCustomEventFacts(filtered.visits),
+    filters,
+  );
   const events = allEvents.filter((event) => event.eventName === eventName);
   const sessions = new Set(events.map((event) => event.visit.sessionId));
   const visitors = new Set(events.map((event) => event.visit.visitorId));
@@ -2090,9 +2191,10 @@ function generateDemoEventTypeFieldValues(
   }
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
-  const events = createDemoCustomEventFacts(filtered.visits).filter(
-    (event) => event.eventName === eventName,
-  );
+  const events = filterDemoCustomEventsByPayload(
+    createDemoCustomEventFacts(filtered.visits),
+    filters,
+  ).filter((event) => event.eventName === eventName);
 
   return {
     ok: true,

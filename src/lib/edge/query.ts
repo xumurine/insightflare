@@ -79,6 +79,15 @@ interface DashboardFilters {
   geoContinent?: string;
   geoTimezone?: string;
   geoOrganization?: string;
+  eventPayloadFilters?: EventPayloadFilterRule[];
+}
+
+type EventPayloadFilterValue = string | number | boolean | null;
+
+interface EventPayloadFilterRule {
+  path: string;
+  operator: "eq" | "ne";
+  value: EventPayloadFilterValue;
 }
 
 type SortDirection = "asc" | "desc";
@@ -597,7 +606,7 @@ interface SiteQueryResponseOptions {
   publicSite?: PublicSiteEnvelope;
 }
 
-type FilterOptionKey = keyof DashboardFilters;
+type FilterOptionKey = Exclude<keyof DashboardFilters, "eventPayloadFilters">;
 
 interface DashboardFilterOption {
   value: string;
@@ -774,6 +783,68 @@ function normalizeFilterValue(value: string | null): string | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function normalizeEventPayloadFilterPath(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().slice(0, 240);
+  if (!normalized || normalized === "/") return null;
+  if (normalized.startsWith("/")) {
+    const segments = normalized
+      .split("/")
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    return segments.length > 0 ? `/${segments.join("/")}` : null;
+  }
+
+  const dotPath = normalized
+    .replace(/^\$\.?/, "")
+    .replace(/\[(?:\d+|\*)\]/g, ".*")
+    .split(".")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  return dotPath.length > 0 ? `/${dotPath.join("/")}` : null;
+}
+
+function normalizeEventPayloadFilterValue(
+  value: unknown,
+): EventPayloadFilterValue | undefined {
+  if (value === null) return null;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.slice(0, 240);
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return undefined;
+}
+
+function parseEventPayloadFilters(
+  value: string | null,
+): EventPayloadFilterRule[] | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed)) return undefined;
+
+  const rules: EventPayloadFilterRule[] = [];
+  for (const item of parsed.slice(0, 12)) {
+    if (!item || typeof item !== "object") continue;
+    const candidate = item as {
+      path?: unknown;
+      operator?: unknown;
+      value?: unknown;
+    };
+    const path = normalizeEventPayloadFilterPath(candidate.path);
+    const operator =
+      candidate.operator === "ne" || candidate.operator === "!=" ? "ne" : "eq";
+    const filterValue = normalizeEventPayloadFilterValue(candidate.value);
+    if (!path || filterValue === undefined) continue;
+    rules.push({ path, operator, value: filterValue });
+  }
+
+  return rules.length > 0 ? rules : undefined;
+}
+
 function parseFilters(url: URL): DashboardFilters {
   const geo =
     normalizeFilterValue(url.searchParams.get("geo")) ||
@@ -810,6 +881,9 @@ function parseFilters(url: URL): DashboardFilters {
     geoTimezone: normalizeFilterValue(url.searchParams.get("geoTimezone")),
     geoOrganization: normalizeFilterValue(
       url.searchParams.get("geoOrganization"),
+    ),
+    eventPayloadFilters: parseEventPayloadFilters(
+      url.searchParams.get("eventPayloadFilters"),
     ),
   };
 }
@@ -2099,17 +2173,97 @@ function buildVisitFilterSql(
     : { clause: "", bindings: [] };
 }
 
+function eventPayloadFilterValueType(
+  value: EventPayloadFilterValue,
+): "string" | "number" | "boolean" | "null" {
+  if (value === null) return "null";
+  if (typeof value === "number") return "number";
+  if (typeof value === "boolean") return "boolean";
+  return "string";
+}
+
+function buildEventPayloadFilterSql(
+  filters: DashboardFilters,
+  alias = "es",
+): { clauses: string[]; bindings: Array<string | number> } {
+  const rules = filters.eventPayloadFilters ?? [];
+  if (rules.length === 0) return { clauses: [], bindings: [] };
+
+  const prefix = alias ? `${alias}.` : "";
+  const clauses: string[] = [];
+  const bindings: Array<string | number> = [];
+
+  rules.forEach((rule, index) => {
+    const path = normalizeEventPayloadFilterPath(rule.path);
+    const value = normalizeEventPayloadFilterValue(rule.value);
+    if (!path || value === undefined) return;
+
+    const valueType = eventPayloadFilterValueType(value);
+    const valueTypeCode = customEventJsonTypeCode(valueType);
+    if (valueTypeCode === null) return;
+
+    const valueAlias = `epv${index}`;
+    const pathAlias = `epp${index}`;
+    const operator = rule.operator === "ne" ? "!=" : "=";
+    const baseCondition = `
+      ${valueAlias}.event_pk = ${prefix}event_pk
+      AND ${valueAlias}.site_id = ${prefix}site_id
+      AND ${pathAlias}.path = ?`;
+
+    if (valueType === "null") {
+      clauses.push(`EXISTS (
+        SELECT 1
+        FROM custom_event_json_values ${valueAlias}
+        INNER JOIN custom_event_json_paths ${pathAlias}
+          ON ${pathAlias}.id = ${valueAlias}.path_id
+        WHERE ${baseCondition}
+          AND ${valueAlias}.value_type ${operator} ?
+      )`);
+      bindings.push(path, valueTypeCode);
+      return;
+    }
+
+    let valueCondition = "";
+    if (valueType === "string") {
+      valueCondition = `COALESCE(${valueAlias}.string_value, '') ${operator} ?`;
+      bindings.push(path, valueTypeCode, String(value));
+    } else if (valueType === "number") {
+      valueCondition = `${valueAlias}.number_value ${operator} ?`;
+      bindings.push(path, valueTypeCode, Number(value));
+    } else {
+      valueCondition = `${valueAlias}.boolean_value ${operator} ?`;
+      bindings.push(path, valueTypeCode, value ? 1 : 0);
+    }
+
+    clauses.push(`EXISTS (
+      SELECT 1
+      FROM custom_event_json_values ${valueAlias}
+      INNER JOIN custom_event_json_paths ${pathAlias}
+        ON ${pathAlias}.id = ${valueAlias}.path_id
+      WHERE ${baseCondition}
+        AND ${valueAlias}.value_type = ?
+        AND ${valueCondition}
+    )`);
+  });
+
+  return { clauses, bindings };
+}
+
 function buildEventFilterSql(
   filters: DashboardFilters,
   alias = "es",
   options?: { eventName?: string; search?: string },
-): { clause: string; bindings: string[] } {
+): { clause: string; bindings: Array<string | number> } {
   const visitFilter = buildVisitFilterSql(filters, alias);
   const clauses: string[] = visitFilter.clause
     ? [visitFilter.clause.replace(/^WHERE\s+/i, "")]
     : [];
-  const bindings: string[] = [...visitFilter.bindings];
+  const bindings: Array<string | number> = [...visitFilter.bindings];
   const prefix = alias ? `${alias}.` : "";
+  const payloadFilter = buildEventPayloadFilterSql(filters, alias);
+
+  clauses.push(...payloadFilter.clauses);
+  bindings.push(...payloadFilter.bindings);
 
   if (options?.eventName) {
     clauses.push(`TRIM(COALESCE(${prefix}event_name, '')) = ?`);
