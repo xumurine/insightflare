@@ -2,6 +2,14 @@
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 interface EventTypeDetailLoadingStateProps {
@@ -122,32 +130,87 @@ function EventFieldsCardSkeleton() {
   return (
     <section className="grid items-stretch gap-6 xl:grid-cols-2">
       <Card className="h-full overflow-hidden py-0">
-        <CardHeader className="space-y-2">
+        <CardHeader className="space-y-2 pt-4">
           <Skeleton className="h-5 w-24" />
           <Skeleton className="h-4 w-[min(28rem,82%)]" />
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-2 pb-4">
           <div className="max-h-[38rem] overflow-auto pr-1 font-mono text-[13px] leading-6">
             <div className="min-w-max space-y-0.5">
               {[
-                { indent: 0, width: "w-6" },
-                { indent: 1, width: "w-[min(16rem,72%)]" },
-                { indent: 2, width: "w-[min(18rem,74%)]" },
-                { indent: 2, width: "w-[min(14rem,66%)]" },
-                { indent: 1, width: "w-[min(15rem,70%)]" },
-                { indent: 1, width: "w-[min(17rem,74%)]" },
-                { indent: 2, width: "w-[min(12rem,60%)]" },
-                { indent: 0, width: "w-6" },
+                {
+                  indent: 0,
+                  width: "w-24",
+                  expandable: true,
+                  searchable: false,
+                },
+                {
+                  indent: 1,
+                  width: "w-20",
+                  expandable: true,
+                  searchable: false,
+                },
+                {
+                  indent: 2,
+                  width: "w-16",
+                  expandable: false,
+                  searchable: true,
+                },
+                {
+                  indent: 2,
+                  width: "w-16",
+                  expandable: false,
+                  searchable: true,
+                },
+                {
+                  indent: 0,
+                  width: "w-20",
+                  expandable: true,
+                  searchable: false,
+                },
+                {
+                  indent: 1,
+                  width: "w-28",
+                  expandable: false,
+                  searchable: true,
+                },
+                {
+                  indent: 1,
+                  width: "w-24",
+                  expandable: false,
+                  searchable: true,
+                  selected: true,
+                },
+                {
+                  indent: 0,
+                  width: "w-20",
+                  expandable: false,
+                  searchable: true,
+                },
               ].map((row, index) => (
                 <div
                   key={`event-field-tree-skeleton-${index}`}
-                  className="flex items-start gap-2 px-1 py-0.5"
+                  className={cn(
+                    "flex items-center gap-2 rounded px-1 py-1",
+                    row.searchable && "bg-muted/15",
+                    row.selected && "bg-muted/35 ring-1 ring-border/60",
+                  )}
                   style={{ paddingLeft: `${row.indent * 1.25}rem` }}
                 >
-                  <Skeleton className="size-5 shrink-0 rounded-full" />
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                  {row.expandable ? (
+                    <div className="flex size-6 shrink-0 items-center justify-center rounded-none bg-primary/10">
+                      <Skeleton className="size-3.5 bg-primary/30" />
+                    </div>
+                  ) : (
+                    <span className="size-6 shrink-0" />
+                  )}
+                  <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
                     <Skeleton className={`h-4 ${row.width}`} />
-                    <Skeleton className="h-4 w-8" />
+                    {row.searchable ? (
+                      <Skeleton className="size-6 shrink-0 rounded-none" />
+                    ) : (
+                      <span className="size-6 shrink-0" />
+                    )}
                   </div>
                 </div>
               ))}
@@ -157,7 +220,7 @@ function EventFieldsCardSkeleton() {
       </Card>
 
       <Card className="h-full overflow-hidden py-0">
-        <CardHeader className="space-y-3">
+        <CardHeader className="space-y-2 pt-4">
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-2">
               <Skeleton className="h-5 w-28" />
@@ -168,33 +231,40 @@ function EventFieldsCardSkeleton() {
               <Skeleton className="h-6 w-32" />
             </div>
           </div>
-          <dl className="grid gap-3 sm:grid-cols-2">
-            {Array.from({ length: 2 }, (_, index) => (
-              <div
-                key={`event-field-summary-skeleton-${index}`}
-                className="space-y-1"
-              >
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-5 w-16" />
-              </div>
-            ))}
-          </dl>
         </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="space-y-2">
-            {Array.from({ length: 6 }, (_, index) => (
-              <div
-                key={`event-field-value-row-skeleton-${index}`}
-                className="border border-border/50 bg-card px-4 py-3"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <Skeleton className="h-4 w-[min(16rem,70%)]" />
-                  <Skeleton className="h-4 w-12" />
-                </div>
-                <Skeleton className="mt-2 h-2.5 w-full" />
-              </div>
-            ))}
-          </div>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="h-8 p-0">
+                  <div className="px-4">
+                    <Skeleton className="h-3 w-16" />
+                  </div>
+                </TableHead>
+                <TableHead className="h-8 w-24 p-0">
+                  <div className="flex justify-end px-4">
+                    <Skeleton className="h-3 w-12" />
+                  </div>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: 6 }, (_, index) => (
+                <TableRow key={`event-field-value-row-skeleton-${index}`}>
+                  <TableCell className="whitespace-normal p-0 align-top">
+                    <div className="px-4 py-2">
+                      <Skeleton className="h-4 w-[min(16rem,70%)]" />
+                    </div>
+                  </TableCell>
+                  <TableCell className="p-0">
+                    <div className="flex justify-end px-4 py-2">
+                      <Skeleton className="h-4 w-12" />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </section>

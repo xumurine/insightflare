@@ -12,7 +12,6 @@ import {
 import { useRouter } from "next/navigation";
 import type { RemixiconComponentType } from "@remixicon/react";
 import {
-  RiAddLine,
   RiArrowDownSLine,
   RiArrowLeftLine,
   RiArrowUpSLine,
@@ -22,10 +21,12 @@ import {
   RiPulseLine,
   RiSearchLine,
   RiStackLine,
-  RiSubtractLine,
 } from "@remixicon/react";
+import { AnimatePresence, useReducedMotion } from "motion/react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
+import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
+import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import {
   BrowserMeta,
   CountryRegionMeta,
@@ -38,6 +39,7 @@ import {
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
 import { PageHeading } from "@/components/dashboard/page-heading";
+import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,6 +97,11 @@ import { cn } from "@/lib/utils";
 const EVENT_PAGE_SIZE = 80;
 const EVENT_SKELETON_ROWS = 8;
 const OTHER_SERIES_KEY = "other";
+const FIELD_TREE_CHILD_TRANSITION = {
+  initial: { opacity: 0, y: -6 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -6 },
+};
 
 type SortDirection = "asc" | "desc";
 export type EventRecordSortKey = "occurredAt" | "eventName" | "pathname";
@@ -225,38 +232,6 @@ function collectEventFieldTreeExpansionKeys(
 
 function formatEventFieldKeySegment(segment: string): string {
   return segment.replace(/~1/g, "/").replace(/~0/g, "~");
-}
-
-function truncateInlineValue(value: string, maxLength = 44): string {
-  if (value.length <= maxLength) return value;
-  return `${value.slice(0, Math.max(0, maxLength - 1))}…`;
-}
-
-function formatEventFieldSampleValue(field: EventField): string {
-  if (field.valueType === "string") {
-    return JSON.stringify(
-      truncateInlineValue(String(field.exampleValue ?? ""), 40),
-    );
-  }
-  if (field.valueType === "number") {
-    return String(
-      typeof field.exampleValue === "number" ? field.exampleValue : 0,
-    );
-  }
-  if (field.valueType === "boolean") {
-    return String(Boolean(field.exampleValue));
-  }
-  if (field.valueType === "null") {
-    return "null";
-  }
-  return field.valueType === "array" ? "[ ]" : "{ }";
-}
-
-function formatEventFieldValueTone(valueType: EventField["valueType"]): string {
-  if (valueType === "string") return "text-emerald-500 dark:text-emerald-300";
-  if (valueType === "number") return "text-sky-500 dark:text-sky-300";
-  if (valueType === "boolean") return "text-rose-500 dark:text-rose-300";
-  return "text-muted-foreground";
 }
 
 function tickDateFormat(
@@ -1573,6 +1548,7 @@ export function EventFieldsCard({
   loading: boolean;
   fields: EventField[];
 }) {
+  const reduceDataRowMotion = useReducedMotion() ?? false;
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const fieldTree = useMemo(() => buildEventFieldTree(fields), [fields]);
   const defaultExpandedFieldKeys = useMemo(
@@ -1725,33 +1701,54 @@ export function EventFieldsCard({
     const isExpanded = expandedFieldKeys.has(nodeKey);
     const isRoot = node.path === "";
     const isArrayItem = node.segment === "*";
-    const displayField =
+    const selectableField =
       node.fields.find(
-        (field) => eventFieldKey(field) === selectedFieldResolvedKey,
-      ) ??
-      node.fields.find(
-        (field) => field.valueType === "object" || field.valueType === "array",
+        (field) =>
+          eventFieldKey(field) === selectedFieldResolvedKey &&
+          field.valueType !== "object" &&
+          field.valueType !== "array",
       ) ??
       node.fields.find(
         (field) => field.valueType !== "object" && field.valueType !== "array",
       ) ??
-      node.fields[0] ??
       null;
-    const sampleField = displayField ?? node.fields[0] ?? null;
-    const displayFieldKey = displayField ? eventFieldKey(displayField) : "";
+    const selectableFieldKey = selectableField
+      ? eventFieldKey(selectableField)
+      : "";
     const isSelected =
-      Boolean(displayFieldKey) && displayFieldKey === selectedFieldResolvedKey;
-    const lineValueType =
-      sampleField?.valueType ?? (hasChildren ? "object" : "null");
-    const openToken = lineValueType === "array" ? "[" : "{";
-    const closeToken = lineValueType === "array" ? "]" : "}";
+      Boolean(selectableFieldKey) &&
+      selectableFieldKey === selectedFieldResolvedKey;
     const indentStyle = { paddingLeft: `${depth * 1.25}rem` };
+    const fieldLabel = isRoot
+      ? labels.payload
+      : isArrayItem
+        ? "*"
+        : formatEventFieldKeySegment(node.segment);
+    const childRows = isExpanded
+      ? node.children.map((child) => renderFieldTreeNode(child, depth + 1))
+      : null;
+    const selectField = () => {
+      if (!selectableField || loading) return;
+      setSelectedFieldKey(selectableFieldKey);
+    };
+    const handleRowKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+      if (!selectableField || loading) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      selectField();
+    };
 
     const openLine = (
       <div
         key={`${nodeKey}:open`}
+        role={selectableField ? "button" : undefined}
+        tabIndex={selectableField && !loading ? 0 : undefined}
+        onClick={selectableField ? selectField : undefined}
+        onKeyDown={selectableField ? handleRowKeyDown : undefined}
         className={cn(
-          "flex items-start gap-2 rounded px-1 py-0.5 transition-colors",
+          "group flex items-center gap-2 rounded px-1 py-1 transition-[background-color,box-shadow,filter] duration-200",
+          selectableField &&
+            "cursor-pointer hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50",
           isSelected && "bg-accent/25 ring-1 ring-border/70",
           loading && "opacity-80",
         )}
@@ -1762,82 +1759,54 @@ export function EventFieldsCard({
             type="button"
             variant="ghost"
             size="icon"
-            className="size-5 shrink-0 rounded-full border border-red-500/70 bg-background/85 text-red-500 shadow-none hover:bg-red-500/10 hover:text-red-500"
-            onClick={() => toggleFieldExpansion(nodeKey)}
+            className="size-6 shrink-0 rounded-none text-primary shadow-none transition-colors hover:bg-primary/10 hover:text-primary"
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleFieldExpansion(nodeKey);
+            }}
             disabled={loading}
             aria-label={isExpanded ? labels.collapseField : labels.expandField}
             title={isExpanded ? labels.collapseField : labels.expandField}
           >
-            {isExpanded ? (
-              <RiSubtractLine className="size-3.5" />
-            ) : (
-              <RiAddLine className="size-3.5" />
-            )}
+            <RiArrowDownSLine
+              className={cn(
+                "size-3.5 transition-transform duration-200 ease-out",
+                isExpanded ? "rotate-0" : "-rotate-90",
+              )}
+            />
           </Button>
         ) : (
-          <span className="size-5 shrink-0" />
+          <span className="size-6 shrink-0" />
         )}
 
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-baseline gap-1 text-left disabled:cursor-not-allowed"
-          onClick={() => {
-            if (displayField) setSelectedFieldKey(displayFieldKey);
-          }}
-          disabled={!displayField || loading}
-        >
-          {isRoot ? null : isArrayItem ? null : (
-            <>
-              <span className="shrink-0 text-fuchsia-600 dark:text-fuchsia-300">
-                {JSON.stringify(formatEventFieldKeySegment(node.segment))}
-              </span>
-              <span className="shrink-0 text-muted-foreground">:</span>
-            </>
-          )}
-          {isRoot ? (
-            <span className="shrink-0 text-muted-foreground">{openToken}</span>
-          ) : lineValueType === "string" ||
-            lineValueType === "number" ||
-            lineValueType === "boolean" ||
-            lineValueType === "null" ? (
-            <span className={formatEventFieldValueTone(lineValueType)}>
-              {sampleField ? formatEventFieldSampleValue(sampleField) : "null"}
-            </span>
-          ) : (
-            <span className="shrink-0 text-muted-foreground">
-              {openToken}
-              {hasChildren && !isExpanded ? "…" : ""}
-            </span>
-          )}
-          {!isRoot ? (
-            <span className="shrink-0 text-muted-foreground">,</span>
-          ) : null}
-        </button>
+        <div className="min-w-0 flex-1 truncate">
+          <span
+            className={cn(
+              "text-foreground",
+              isArrayItem && "text-muted-foreground",
+            )}
+          >
+            {fieldLabel}
+          </span>
+        </div>
 
-        {node.fields.length > 1 ? (
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
-            {node.fields.map((field) => {
-              const fieldKey = eventFieldKey(field);
-              const active = fieldKey === selectedFieldResolvedKey;
-              return (
-                <button
-                  key={fieldKey}
-                  type="button"
-                  className={cn(
-                    "rounded-none border px-1.5 py-0.5 text-[10px] uppercase tracking-wide transition-colors",
-                    active
-                      ? "border-foreground/30 bg-foreground/5 text-foreground"
-                      : "border-border/40 bg-transparent text-muted-foreground hover:border-border/70 hover:text-foreground",
-                  )}
-                  onClick={() => setSelectedFieldKey(fieldKey)}
-                  disabled={loading}
-                  title={field.valueType}
-                >
-                  {field.valueType}
-                </button>
-              );
-            })}
-          </div>
+        {selectableField ? (
+          <button
+            type="button"
+            className={cn(
+              "inline-flex size-6 shrink-0 items-center justify-center rounded-none text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
+              isSelected && "bg-muted text-foreground",
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              selectField();
+            }}
+            disabled={loading}
+            aria-label={`${labels.fieldValuesTitle}: ${fieldLabel}`}
+            title={labels.fieldValuesTitle}
+          >
+            <RiSearchLine className="size-3.5" />
+          </button>
         ) : null}
       </div>
     );
@@ -1847,119 +1816,93 @@ export function EventFieldsCard({
     return (
       <div key={nodeKey} className="space-y-0.5">
         {openLine}
-        {isExpanded
-          ? node.children.map((child) => renderFieldTreeNode(child, depth + 1))
-          : null}
-        {isExpanded ? (
-          <div
-            className="flex items-start gap-2 px-1 py-0.5"
-            style={indentStyle}
+        <AutoResizer duration={0.22} ease={[0.22, 1, 0.36, 1]}>
+          <AutoTransition
+            initial={false}
+            duration={0.18}
+            customVariants={FIELD_TREE_CHILD_TRANSITION}
+            presenceMode="sync"
+            transitionKey={
+              isExpanded ? `${nodeKey}:expanded` : `${nodeKey}:collapsed`
+            }
           >
-            <span className="size-5 shrink-0" />
-            <span className="text-muted-foreground">
-              {closeToken}
-              {isRoot ? "" : ","}
-            </span>
-          </div>
-        ) : null}
+            {childRows ? <div className="space-y-0.5">{childRows}</div> : null}
+          </AutoTransition>
+        </AutoResizer>
       </div>
     );
   };
 
-  const renderFieldValueRows = () => {
-    if (!selectedField) {
-      return (
-        <div className="rounded-none border border-border/50 bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
-          {labels.fieldValuesEmpty}
-        </div>
-      );
-    }
-    if (fieldValuesError) {
-      return (
-        <div className="rounded-none border border-border/50 bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
-          {labels.loadError}
-        </div>
-      );
-    }
-    if (fieldValuesLoading) {
-      return (
-        <div className="space-y-2">
-          {Array.from({ length: 6 }, (_, index) => (
-            <div
-              key={`field-value-skeleton-${index}`}
-              className="rounded-none border border-border/50 bg-muted/15 px-4 py-3"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <Skeleton className="h-4 w-[min(16rem,70%)]" />
-                <Skeleton className="h-4 w-12" />
-              </div>
-              <Skeleton className="mt-2 h-2.5 w-full" />
-            </div>
-          ))}
-        </div>
-      );
-    }
-    if (fieldValues.length === 0) {
-      return (
-        <div className="rounded-none border border-border/50 bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
-          {labels.fieldValuesEmpty}
-        </div>
-      );
-    }
+  const fieldValueTableHeader = (
+    <TableRow className="hover:bg-transparent">
+      <TableHead className="h-8 p-0">
+        <div className="px-4">{labels.values}</div>
+      </TableHead>
+      <TableHead className="h-8 w-24 p-0">
+        <div className="px-4 text-right">{labels.occurrences}</div>
+      </TableHead>
+    </TableRow>
+  );
 
-    return (
-      <div className="space-y-2">
-        {fieldValues.map((item) => {
-          const count = Math.max(0, Number(item.occurrences ?? 0));
-          const progressPercent =
-            fieldValueTotal > 0 ? (count / fieldValueTotal) * 100 : 0;
-          const valueLabel = formatFieldValueLabel(item.value);
+  const fieldValueRows = (
+    <AnimatePresence initial={false} mode="popLayout">
+      {fieldValues.map((item) => {
+        const count = Math.max(0, Number(item.occurrences ?? 0));
+        const progressPercent =
+          fieldValueTotal > 0 ? (count / fieldValueTotal) * 100 : 0;
+        const valueLabel = formatFieldValueLabel(item.value);
 
-          return (
-            <div
-              key={eventFieldValueKey(item.value)}
-              className="overflow-hidden border border-border/50 bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:bg-accent/20"
-              style={{
-                backgroundImage:
-                  "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
-                backgroundSize: `${progressPercent.toFixed(2)}% 100%`,
-                backgroundPosition: "left top",
-              }}
-            >
-              <div className="flex items-center gap-3 px-4 py-3">
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div
-                    className="truncate font-mono text-sm"
-                    title={valueLabel}
-                  >
-                    {valueLabel}
-                  </div>
-                </div>
-                <div className="shrink-0 text-right font-mono text-sm tabular-nums">
-                  {numberFormat(locale, count)}
-                </div>
+        return (
+          <AnimatedDataTableRow
+            key={eventFieldValueKey(item.value)}
+            reduceMotion={reduceDataRowMotion}
+            className="bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:bg-transparent hover:brightness-95"
+            style={{
+              backgroundImage:
+                "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
+              backgroundSize: `${progressPercent.toFixed(2)}% 100%`,
+              backgroundPosition: "left top",
+            }}
+          >
+            <TableCell className="whitespace-normal p-0 align-top">
+              <div
+                className="px-4 py-2 font-mono leading-5 break-words whitespace-normal"
+                title={valueLabel}
+              >
+                {valueLabel}
               </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
+            </TableCell>
+            <TableCell className="p-0">
+              <div className="px-4 py-2 text-right font-mono tabular-nums">
+                {numberFormat(locale, count)}
+              </div>
+            </TableCell>
+          </AnimatedDataTableRow>
+        );
+      })}
+    </AnimatePresence>
+  );
 
   return (
     <section className="grid items-stretch gap-6 xl:grid-cols-2">
       <Card className="h-full overflow-hidden py-0">
-        <CardHeader className="space-y-1.5">
+        <CardHeader className="space-y-1.5 pt-4">
           <CardTitle>{labels.fieldsTitle}</CardTitle>
           <p className="text-xs text-muted-foreground">
             {labels.fieldsSubtitle}
           </p>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-2 pb-4">
           <div className="max-h-[38rem] overflow-auto pr-1 font-mono text-[13px] leading-6">
             {fields.length === 0 ? (
               <div className="rounded-none border border-border/50 bg-muted/20 px-4 py-6 font-sans text-sm text-muted-foreground">
                 {labels.emptyFields}
+              </div>
+            ) : fieldTree.children.length > 0 ? (
+              <div className="min-w-max">
+                {fieldTree.children.map((child) =>
+                  renderFieldTreeNode(child, 0),
+                )}
               </div>
             ) : (
               <div className="min-w-max">
@@ -1971,7 +1914,7 @@ export function EventFieldsCard({
       </Card>
 
       <Card className="h-full overflow-hidden py-0">
-        <CardHeader className="space-y-2">
+        <CardHeader className="space-y-2 pt-4">
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
@@ -1983,39 +1926,40 @@ export function EventFieldsCard({
               </p>
             </div>
             {selectedField ? (
-              <div className="flex flex-wrap justify-end gap-2">
-                <Badge variant="outline">{selectedField.valueType}</Badge>
-                <span className="max-w-[18rem] truncate font-mono text-xs text-muted-foreground">
-                  {selectedField.path || "/"}
-                </span>
-              </div>
+              <AutoTransition
+                initial={false}
+                transitionKey={selectedFieldResolvedKey}
+                className="min-w-0 shrink-0"
+              >
+                <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                  <Badge variant="default" className="shrink-0">
+                    {selectedField.valueType}
+                  </Badge>
+                  <span className="max-w-[18rem] truncate font-mono text-xs text-muted-foreground">
+                    {selectedField.path || "/"}
+                  </span>
+                </div>
+              </AutoTransition>
             ) : null}
           </div>
-          {selectedField ? (
-            <dl className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <dt className="text-xs text-muted-foreground">
-                  {labels.totalEvents}
-                </dt>
-                <dd className="font-mono text-sm tabular-nums">
-                  {numberFormat(locale, selectedField.events)}
-                </dd>
-              </div>
-              <div className="space-y-1">
-                <dt className="text-xs text-muted-foreground">
-                  {labels.occurrences}
-                </dt>
-                <dd className="font-mono text-sm tabular-nums">
-                  {numberFormat(locale, selectedField.occurrences)}
-                </dd>
-              </div>
-            </dl>
-          ) : null}
         </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="max-h-[38rem] overflow-y-auto pr-1">
-            {renderFieldValueRows()}
-          </div>
+        <CardContent className="p-0">
+          <DataTableSwitch
+            loading={Boolean(selectedField) && (loading || fieldValuesLoading)}
+            hasContent={
+              Boolean(selectedField) &&
+              !fieldValuesError &&
+              fieldValues.length > 0
+            }
+            loadingLabel={labels.loading}
+            emptyLabel={
+              fieldValuesError ? labels.loadError : labels.fieldValuesEmpty
+            }
+            colSpan={2}
+            header={fieldValueTableHeader}
+            rows={fieldValueRows}
+            contentKey={`${selectedFieldResolvedKey}-${fieldValues.length}-${fieldValueTotal}`}
+          />
         </CardContent>
       </Card>
     </section>
