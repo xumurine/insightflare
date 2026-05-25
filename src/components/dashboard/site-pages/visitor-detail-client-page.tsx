@@ -1707,6 +1707,9 @@ function ActivityAndSessionsSection({
           locale={locale}
           messages={messages}
           labels={{
+            title: "",
+            subtitle: "",
+            search: "",
             started: labels.started,
             sessionId: labels.sessionId,
             visitor: labels.visitor,

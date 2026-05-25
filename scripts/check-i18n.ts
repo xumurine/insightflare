@@ -183,11 +183,33 @@ function resolveTypeNodePath(
   typeNode: ts.TypeNode | undefined,
   typePaths: TypePathMap,
   filePath: string,
+  checker: ts.TypeChecker,
 ): string[] | null {
   if (!typeNode) return null;
 
   if (ts.isTypeReferenceNode(typeNode)) {
     const typeName = typeNode.typeName.getText();
+    const symbol = checker.getSymbolAtLocation(typeNode.typeName);
+    if (symbol) {
+      let resolvedSymbol = symbol;
+      if ((symbol.flags & ts.SymbolFlags.Alias) !== 0) {
+        try {
+          resolvedSymbol = checker.getAliasedSymbol(symbol);
+        } catch {
+          // ignore
+        }
+      }
+      const decl = resolvedSymbol.declarations?.[0];
+      if (decl) {
+        const declFilePath = path.resolve(decl.getSourceFile().fileName);
+        const declName = resolvedSymbol.name;
+        const declKey = `${declFilePath}::${declName}`;
+        if (typePaths.has(declKey)) {
+          return [...(typePaths.get(declKey) ?? [])];
+        }
+      }
+    }
+
     const localKey = `${filePath}::${typeName}`;
     if (typePaths.has(localKey)) {
       return [...(typePaths.get(localKey) ?? [])];
@@ -206,6 +228,7 @@ function resolveTypeNodePath(
       typeNode.objectType,
       typePaths,
       filePath,
+      checker,
     );
     if (!objectPath) return null;
     if (!ts.isLiteralTypeNode(typeNode.indexType)) return null;
@@ -214,13 +237,16 @@ function resolveTypeNodePath(
   }
 
   if (ts.isParenthesizedTypeNode(typeNode)) {
-    return resolveTypeNodePath(typeNode.type, typePaths, filePath);
+    return resolveTypeNodePath(typeNode.type, typePaths, filePath, checker);
   }
 
   return null;
 }
 
-function collectTypePaths(program: ts.Program): TypePathMap {
+function collectTypePaths(
+  program: ts.Program,
+  checker: ts.TypeChecker,
+): TypePathMap {
   const typePaths: TypePathMap = new Map([["AppMessages", []]]);
 
   let changed = true;
@@ -245,6 +271,7 @@ function collectTypePaths(program: ts.Program): TypePathMap {
           statement.type,
           typePaths,
           filePath,
+          checker,
         );
         if (!nextPath) continue;
         const key = `${filePath}::${statement.name.text}`;
@@ -471,6 +498,7 @@ function collectUsedKeys(
               parameter.type,
               typePaths,
               filePath,
+              checker,
             );
             if (fromType) {
               bindName(
@@ -478,6 +506,73 @@ function collectUsedKeys(
                 fromType,
                 bindings[bindings.length - 1]!,
               );
+            } else if (
+              ts.isObjectBindingPattern(parameter.name) &&
+              parameter.type
+            ) {
+              const paramType = checker.getTypeAtLocation(parameter.type);
+              for (const element of parameter.name.elements) {
+                if (ts.isIdentifier(element.name)) {
+                  let elementTypeNode: ts.TypeNode | undefined = undefined;
+                  const propSymbol = paramType.getProperty(element.name.text);
+                  if (
+                    propSymbol &&
+                    propSymbol.declarations &&
+                    propSymbol.declarations.length > 0
+                  ) {
+                    const decl = propSymbol.declarations[0];
+                    if (ts.isPropertySignature(decl)) {
+                      elementTypeNode = decl.type;
+                    } else if (ts.isPropertyDeclaration(decl)) {
+                      elementTypeNode = decl.type;
+                    }
+                  }
+
+                  let path: string[] | null = null;
+                  if (elementTypeNode) {
+                    path = resolveTypeNodePath(
+                      elementTypeNode,
+                      typePaths,
+                      filePath,
+                      checker,
+                    );
+                  }
+
+                  if (!path) {
+                    const type = checker.getTypeAtLocation(element.name);
+                    let typeName: string | null = null;
+                    if (type.aliasSymbol) {
+                      typeName = type.aliasSymbol.name;
+                    } else {
+                      const symbol = type.getSymbol();
+                      if (symbol) {
+                        typeName = symbol.name;
+                      } else {
+                        typeName = checker.typeToString(type);
+                      }
+                    }
+
+                    if (typeName) {
+                      const localKey = `${filePath}::${typeName}`;
+                      if (typePaths.has(localKey)) {
+                        path = typePaths.get(localKey) ?? null;
+                      } else if (typePaths.has(typeName)) {
+                        path = typePaths.get(typeName) ?? null;
+                      } else if (typeName === "AppMessages") {
+                        path = [];
+                      }
+                    }
+                  }
+
+                  if (path) {
+                    bindName(
+                      element.name,
+                      path,
+                      bindings[bindings.length - 1]!,
+                    );
+                  }
+                }
+              }
             }
             if (!parameter.initializer) continue;
             const resolved = resolvePathFromExpression(
@@ -499,7 +594,12 @@ function collectUsedKeys(
       }
 
       if (ts.isVariableDeclaration(node) && node.initializer) {
-        const fromType = resolveTypeNodePath(node.type, typePaths, filePath);
+        const fromType = resolveTypeNodePath(
+          node.type,
+          typePaths,
+          filePath,
+          checker,
+        );
         if (fromType) {
           bindName(node.name, fromType, bindings[bindings.length - 1]!);
         }
@@ -684,7 +784,7 @@ async function main(): Promise<void> {
   const checker = program.getTypeChecker();
 
   rlog.info("Resolving referenced translation type paths...");
-  const typePaths = collectTypePaths(program);
+  const typePaths = collectTypePaths(program, checker);
 
   rlog.info("Analyzing AppMessages type properties...");
   const { type: appMessagesType, symbol: appMessagesSymbol } =
@@ -809,6 +909,106 @@ async function main(): Promise<void> {
       i += 1;
       rlog.progress(i, unusedZhKeys.length);
     }
+  }
+
+  const args = process.argv.slice(2);
+  const isPruneMode = args.includes("--prune");
+
+  if (isPruneMode && (unusedEnKeys.length > 0 || unusedZhKeys.length > 0)) {
+    rlog.info("\nPruning unused keys from translation files...");
+
+    const enText = await fs.readFile(EN_PATH, "utf8");
+    const zhText = await fs.readFile(ZH_PATH, "utf8");
+
+    const enDoc = YAML.parseDocument(enText);
+    const zhDoc = YAML.parseDocument(zhText);
+
+    let enPruned = 0;
+    for (const key of unusedEnKeys) {
+      enDoc.deleteIn(key.split("."));
+      enPruned += 1;
+    }
+
+    let zhPruned = 0;
+    for (const key of unusedZhKeys) {
+      zhDoc.deleteIn(key.split("."));
+      zhPruned += 1;
+    }
+
+    const prunedEnText = enDoc.toString();
+    const prunedZhText = zhDoc.toString();
+
+    await Promise.all([
+      fs.writeFile(EN_PATH, prunedEnText, "utf8"),
+      fs.writeFile(ZH_PATH, prunedZhText, "utf8"),
+    ]);
+
+    rlog.success(
+      `Successfully pruned ${enPruned} keys from en.yaml and ${zhPruned} keys from zh.yaml!`,
+    );
+
+    rlog.info(
+      "Regenerating messages.ts schema to match pruned translations...",
+    );
+    const parsedEnYaml = YAML.parse(prunedEnText);
+
+    const toTsInterface = (
+      obj: JsonLike,
+      indent: number = 2,
+      path: string[] = [],
+    ): string => {
+      const currentPath = path.join(".");
+      if (
+        currentPath === "common.continentLabels" ||
+        currentPath === "geo.investigation.typeLabels"
+      ) {
+        return "Record<string, string>";
+      }
+
+      if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+        const spaces = " ".repeat(indent);
+        const childSpaces = " ".repeat(indent + 2);
+        const lines = ["{"];
+        for (const [key, value] of Object.entries(obj)) {
+          const propType = toTsInterface(value, indent + 2, [...path, key]);
+          lines.push(`${childSpaces}${key}: ${propType};`);
+        }
+        lines.push(`${spaces}}`);
+        return lines.join("\n");
+      }
+
+      return "string";
+    };
+
+    const interfaceBody = [];
+    for (const [key, value] of Object.entries(
+      parsedEnYaml as Record<string, unknown>,
+    )) {
+      const propType = toTsInterface(value as JsonLike, 2, [key]);
+      interfaceBody.push(`  ${key}: ${propType};`);
+    }
+
+    const messagesOutput = `import en from "@/i18n/en.yaml";
+import zh from "@/i18n/zh.yaml";
+
+import type { Locale } from "./config";
+
+export interface AppMessages {
+${interfaceBody.join("\n")}
+}
+
+const DICTIONARIES: Record<Locale, AppMessages> = {
+  en: en as AppMessages,
+  zh: zh as AppMessages,
+};
+
+export function getMessages(locale: Locale): AppMessages {
+  return DICTIONARIES[locale];
+}
+`;
+
+    await fs.writeFile(APP_MESSAGES_PATH, messagesOutput, "utf8");
+    rlog.success("Successfully regenerated messages.ts schema!");
   }
 
   if (errors > 0) {
