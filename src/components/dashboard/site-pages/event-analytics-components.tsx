@@ -17,6 +17,7 @@ import {
   RiArrowUpSLine,
   RiDatabase2Line,
   RiExternalLinkLine,
+  RiFileCopyLine,
   RiFileList3Line,
   RiFilter3Line,
   RiPulseLine,
@@ -25,6 +26,7 @@ import {
 } from "@remixicon/react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { toast } from "sonner";
 
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
@@ -117,6 +119,10 @@ const FIELD_TREE_CHILD_TRANSITION = {
   animate: { opacity: 1, y: 0 },
   exit: { opacity: 0, y: -6 },
 };
+const JSON_TREE_INDENT_REM = 1.25;
+const JSON_TREE_GUIDE_OFFSET_REM = 0.58;
+const JSON_TREE_ROW_CLASS =
+  "flex min-w-max items-center gap-1.5 py-0.5 whitespace-nowrap";
 
 type SortDirection = "asc" | "desc";
 export type EventRecordSortKey = "occurredAt" | "eventName" | "pathname";
@@ -1201,52 +1207,128 @@ function ScalarValue({ value }: { value: unknown }) {
     return <span className="text-muted-foreground">null</span>;
   }
   if (typeof value === "string") {
-    return <span className="text-foreground">{JSON.stringify(value)}</span>;
+    return (
+      <span className="font-medium text-primary">{JSON.stringify(value)}</span>
+    );
   }
   if (typeof value === "number" || typeof value === "boolean") {
-    return <span className="text-foreground">{String(value)}</span>;
+    return <span className="font-medium text-primary">{String(value)}</span>;
   }
   return null;
 }
 
-function JsonTree({ value, depth = 0 }: { value: unknown; depth?: number }) {
-  if (value === null || typeof value !== "object") {
-    return <ScalarValue value={value} />;
-  }
+function jsonTreeIndentStyle(depth: number) {
+  return { paddingLeft: `${depth * JSON_TREE_INDENT_REM}rem` };
+}
 
-  if (Array.isArray(value)) {
-    if (value.length === 0) return <span>[]</span>;
+function jsonTreeGuideStyle(depth: number) {
+  return {
+    left: `${depth * JSON_TREE_INDENT_REM - JSON_TREE_GUIDE_OFFSET_REM}rem`,
+  };
+}
+
+function JsonTree({
+  value,
+  depth = 0,
+  labels,
+  label,
+}: {
+  value: unknown;
+  depth?: number;
+  labels: EventPageCopy;
+  label?: ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(true);
+
+  if (value === null || typeof value !== "object") {
     return (
-      <div className="space-y-1">
-        {value.map((item, index) => (
-          <div
-            key={index}
-            className="grid grid-cols-[2rem_minmax(0,1fr)] gap-2"
-          >
-            <span className="text-right text-muted-foreground">[{index}]</span>
-            <div className={cn(depth > 0 && "border-l pl-3")}>
-              <JsonTree value={item} depth={depth + 1} />
-            </div>
-          </div>
-        ))}
+      <div className={JSON_TREE_ROW_CLASS} style={jsonTreeIndentStyle(depth)}>
+        {label ? (
+          <span className="shrink-0 text-muted-foreground">{label}</span>
+        ) : null}
+        <ScalarValue value={value} />
       </div>
     );
   }
 
-  const entries = Object.entries(value as Record<string, unknown>);
-  if (entries.length === 0) return <span>{"{}"}</span>;
+  const isArray = Array.isArray(value);
+  const entries = isArray
+    ? value.map((item, index) => [String(index), item] as const)
+    : Object.entries(value as Record<string, unknown>);
+  const itemCount = entries.length;
+  const openToken = isArray ? "[" : "{";
+  const closeToken = isArray ? "]" : "}";
+
+  if (itemCount === 0) {
+    return (
+      <div className={JSON_TREE_ROW_CLASS} style={jsonTreeIndentStyle(depth)}>
+        {label ? (
+          <span className="shrink-0 text-muted-foreground">{label}</span>
+        ) : null}
+        <span className="text-muted-foreground">{`${openToken}${closeToken}`}</span>
+      </div>
+    );
+  }
+
+  const toggle = () => setExpanded((current) => !current);
+
   return (
-    <div className="space-y-1">
-      {entries.map(([key, child]) => (
-        <div key={key} className="grid grid-cols-[8rem_minmax(0,1fr)] gap-2">
-          <span className="truncate text-muted-foreground" title={key}>
-            {key}
-          </span>
-          <div className={cn(depth > 0 && "border-l pl-3")}>
-            <JsonTree value={child} depth={depth + 1} />
-          </div>
-        </div>
-      ))}
+    <div className="min-w-max space-y-1">
+      <div className={JSON_TREE_ROW_CLASS} style={jsonTreeIndentStyle(depth)}>
+        {label ? (
+          <span className="shrink-0 text-muted-foreground">{label}</span>
+        ) : null}
+        <span className="text-muted-foreground">{openToken}</span>
+        <span className="font-medium text-primary">{itemCount}</span>
+        <span className="text-muted-foreground">{closeToken}</span>
+        <button
+          type="button"
+          className="group inline-flex size-4 shrink-0 items-center justify-center rounded-none text-left transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
+          onClick={toggle}
+          aria-label={expanded ? labels.collapseField : labels.expandField}
+          title={expanded ? labels.collapseField : labels.expandField}
+        >
+          <RiArrowDownSLine
+            className={cn(
+              "size-3.5 text-primary transition-transform duration-200 ease-out",
+              expanded ? "rotate-0" : "-rotate-90",
+            )}
+          />
+        </button>
+      </div>
+      <AutoResizer duration={0.2} ease={[0.22, 1, 0.36, 1]}>
+        <AutoTransition
+          initial={false}
+          transitionKey={expanded ? "expanded" : "collapsed"}
+          customVariants={FIELD_TREE_CHILD_TRANSITION}
+          presenceMode="sync"
+        >
+          {expanded ? (
+            <div className="relative space-y-1">
+              <span
+                className="absolute top-0 bottom-0 border-l border-border/70"
+                style={jsonTreeGuideStyle(depth + 1)}
+                aria-hidden
+              />
+              {entries.map(([key, child]) => (
+                <JsonTree
+                  key={key}
+                  value={child}
+                  depth={depth + 1}
+                  labels={labels}
+                  label={
+                    isArray ? (
+                      <span>[{key}]</span>
+                    ) : (
+                      <span>{JSON.stringify(key)}:</span>
+                    )
+                  }
+                />
+              ))}
+            </div>
+          ) : null}
+        </AutoTransition>
+      </AutoResizer>
     </div>
   );
 }
@@ -1294,9 +1376,24 @@ export function EventRecordDetailDrawer({
     navigateWithTransition(router, href);
   };
 
+  const copyPayloadJson = async () => {
+    if (!detail) return;
+    try {
+      await navigator.clipboard.writeText(
+        JSON.stringify(detail.eventData, null, 2),
+      );
+      toast.success(labels.copiedJson);
+    } catch {
+      toast.error(labels.copyJsonFailed);
+    }
+  };
+
   return (
     <Drawer open={open} onOpenChange={onOpenChange} direction="right">
-      <DrawerContent className="w-full sm:max-w-2xl">
+      <DrawerContent
+        className="z-[1100] !w-full !max-w-none sm:!w-[min(58vw,34rem)]"
+        overlayClassName="z-[1099]"
+      >
         <DrawerHeader className="border-b">
           <DrawerTitle>{labels.detailTitle}</DrawerTitle>
           <DrawerDescription>
@@ -1455,7 +1552,20 @@ export function EventRecordDetailDrawer({
               <section className="space-y-3">
                 <h3 className="text-sm font-medium">{labels.payload}</h3>
                 <div className="overflow-x-auto border bg-muted/20 p-3 font-mono text-xs leading-relaxed">
-                  <JsonTree value={detail.eventData} />
+                  <JsonTree value={detail.eventData} labels={labels} />
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      void copyPayloadJson();
+                    }}
+                  >
+                    <RiFileCopyLine data-icon="inline-start" />
+                    {labels.copyJson}
+                  </Button>
                 </div>
               </section>
             </div>

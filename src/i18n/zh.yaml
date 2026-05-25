@@ -381,6 +381,9 @@ events:
   sample: 样本值
   openVisitor: 打开访客
   openSession: 打开会话
+  copyJson: 复制 JSON
+  copiedJson: JSON 已复制。
+  copyJsonFailed: 无法复制 JSON。
   loadError: 无法加载事件数据。
   empty: 当前筛选范围内没有自定义事件。
   emptyFields: 当前事件暂无 payload 字段。

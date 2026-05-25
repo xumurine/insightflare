@@ -381,6 +381,9 @@ events:
   sample: Sample
   openVisitor: Open Visitor
   openSession: Open Session
+  copyJson: Copy JSON
+  copiedJson: JSON copied.
+  copyJsonFailed: Unable to copy JSON.
   loadError: Unable to load event data.
   empty: No custom events in this range.
   emptyFields: No payload fields for this event.

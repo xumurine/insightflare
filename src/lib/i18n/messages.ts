@@ -387,6 +387,9 @@ export interface AppMessages {
     sample: string;
     openVisitor: string;
     openSession: string;
+    copyJson: string;
+    copiedJson: string;
+    copyJsonFailed: string;
     loadError: string;
     empty: string;
     emptyFields: string;
