@@ -139,4 +139,51 @@ describe("Regional Code and Language Translation Resolvers", () => {
       expect(resolveCountryFlagCode(undefined as any, "zh")).toBeNull();
     });
   });
+
+  describe("Caching and Exception Fallbacks (Intl DisplayNames)", () => {
+    it("should successfully trigger cached formatter branches (Line 88, 100)", () => {
+      // First call configures the formatter in the cache
+      resolveCountryLabel("FR", "en", "Unknown");
+      resolveLanguageLabel("fr", "en", "Unknown");
+
+      // Second call hits the cache
+      const cachedCountry = resolveCountryLabel("DE", "en", "Unknown");
+      const cachedLang = resolveLanguageLabel("de", "en", "Unknown");
+
+      expect(cachedCountry.label).toBe("Germany");
+      expect(cachedLang.label).toBe("German");
+    });
+
+    it("should fall back to raw code if Intl does not recognize the language (Line 179)", () => {
+      // "xyz" has no translation in static table or Intl
+      const result = resolveLanguageLabel("xyz", "en", "Unknown");
+      expect(result.code).toBe("xyz");
+      expect(result.label).toBe("xyz");
+    });
+
+    it("should gracefully handle Intl constructor errors and return null formatter for both country and language resolvers (Line 94, 105)", () => {
+      const originalDisplayNames = globalThis.Intl.DisplayNames;
+      try {
+        globalThis.Intl.DisplayNames = vi.fn(function () {
+          throw new Error("DisplayNames mock error");
+        }) as any;
+
+        // 1. Test language formatter exception fallback
+        // "sv" is not in LANGUAGE_LABELS['zh'] table, it goes to getLanguageFormatter, throws, and falls back to raw code
+        const langResult = resolveLanguageLabel("sv", "zh", "Fallback");
+        expect(langResult.label).toBe("sv");
+
+        // 2. Test country formatter exception fallback
+        // Use a new locale "de" to bypass cached "en"/"zh" country formatters, triggering creation, throwing, and falling back to raw code
+        const countryResult = resolveCountryLabel(
+          "FR",
+          "de" as any,
+          "Fallback",
+        );
+        expect(countryResult.label).toBe("FR");
+      } finally {
+        globalThis.Intl.DisplayNames = originalDisplayNames;
+      }
+    });
+  });
 });

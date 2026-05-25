@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   addCalendarDays,
@@ -14,6 +14,11 @@ import {
   timeZoneOffsetMinutes,
   zonedParts,
   zonedTimeToUtcMs,
+  browserTimeZone,
+  supportedTimeZones,
+  endOfZonedDay,
+  startOfZonedYear,
+  startOfZonedInterval,
 } from "@/lib/dashboard/time-zone";
 
 describe("Timezone & Calendar Calculation Utilities", () => {
@@ -257,6 +262,94 @@ describe("Timezone & Calendar Calculation Utilities", () => {
       expect(parts.minute).toBe(14);
       expect(parts.second).toBe(0);
       expect(parts.millisecond).toBe(0);
+    });
+
+    it("endOfZonedDay should resolve to the very last millisecond of the day", () => {
+      const endMs = endOfZonedDay(testTimestamp, "Asia/Shanghai");
+      const nextDayStart = startOfZonedDay(
+        testTimestamp + 24 * 60 * 60 * 1000,
+        "Asia/Shanghai",
+      );
+      expect(endMs).toBe(nextDayStart - 1);
+    });
+  });
+
+  describe("startOfZonedInterval with Month Interval (Line 305)", () => {
+    it("should return start of zoned month when interval is 'month'", () => {
+      const testTimestamp = 1779808496789; // 2026-05-26 23:14:56.789 Asia/Shanghai
+      const startMs = startOfZonedInterval(
+        testTimestamp,
+        "month",
+        "Asia/Shanghai",
+      );
+      const parts = zonedParts(startMs, "Asia/Shanghai");
+      expect(parts.year).toBe(2026);
+      expect(parts.month).toBe(5);
+      expect(parts.day).toBe(1);
+      expect(parts.hour).toBe(0);
+    });
+  });
+
+  describe("addZonedInterval with Micro-scale Intervals (Line 316, 322)", () => {
+    const testTimestamp = 1779808496789; // 2026-05-26 23:14:56.789 Asia/Shanghai
+
+    it("should accurately add/subtract minute intervals", () => {
+      const result = addZonedInterval(
+        testTimestamp,
+        "minute",
+        "Asia/Shanghai",
+        10,
+      );
+      const parts = zonedParts(result, "Asia/Shanghai");
+      expect(parts.minute).toBe(24);
+    });
+
+    it("should accurately add/subtract hour intervals", () => {
+      const result = addZonedInterval(
+        testTimestamp,
+        "hour",
+        "Asia/Shanghai",
+        -3,
+      );
+      const parts = zonedParts(result, "Asia/Shanghai");
+      expect(parts.hour).toBe(20);
+    });
+  });
+
+  describe("startOfZonedYear (Line 358-359)", () => {
+    it("should accurately find the start of the zoned year", () => {
+      const testTimestamp = 1779808496789; // 2026-05-26 23:14:56.789 Asia/Shanghai
+      const yearStartMs = startOfZonedYear(testTimestamp, "Asia/Shanghai");
+      const parts = zonedParts(yearStartMs, "Asia/Shanghai");
+      expect(parts.year).toBe(2026);
+      expect(parts.month).toBe(1);
+      expect(parts.day).toBe(1);
+      expect(parts.hour).toBe(0);
+      expect(parts.minute).toBe(0);
+    });
+  });
+
+  describe("browserTimeZone & supportedTimeZones errors (Line 87)", () => {
+    it("should gracefully handle browserTimeZone retrieval error", () => {
+      const originalDateTimeFormat = globalThis.Intl.DateTimeFormat;
+      try {
+        globalThis.Intl.DateTimeFormat = vi.fn(function () {
+          throw new Error("DateTimeFormat mock error");
+        }) as any;
+        // In order to let it bypass native caching check inside browserTimeZone if any,
+        // we call it.
+        const zone = browserTimeZone();
+        expect(zone).toBe("");
+      } finally {
+        globalThis.Intl.DateTimeFormat = originalDateTimeFormat;
+      }
+    });
+
+    it("should return a list of sorted unique supported timezones", () => {
+      const zones = supportedTimeZones();
+      expect(zones).toBeInstanceOf(Array);
+      expect(zones.length).toBeGreaterThan(0);
+      expect(zones).toContain("Asia/Shanghai");
     });
   });
 });

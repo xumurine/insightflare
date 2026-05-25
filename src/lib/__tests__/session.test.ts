@@ -2,6 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createSessionToken, verifySessionToken } from "@/lib/session";
 
+function bytes(input: string): Uint8Array {
+  return new TextEncoder().encode(input);
+}
+
+function base64UrlEncode(input: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < input.length; i += 1) {
+    binary += String.fromCharCode(input[i]);
+  }
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
 describe("Session Authentication (Web Crypto HMAC)", () => {
   const mockClaims = {
     userId: "user_99182",
@@ -137,6 +152,67 @@ describe("Session Authentication (Web Crypto HMAC)", () => {
 
     // The token successfully bypasses signature equality checks, but will fail during TextDecoder and JSON parsing.
     // Assert it gracefully handles this without crashing and returns null.
+    const verified = await verifySessionToken(token);
+    expect(verified).toBeNull();
+  });
+
+  it("should cover missing environment variable fallback (Line 16, 25)", async () => {
+    // Delete session secret environment variables
+    delete process.env.SESSION_SECRET;
+    delete process.env.DASHBOARD_SESSION_SECRET;
+
+    // Secret should fallback to "insightflare-session-secret-change-me"
+    const userClaims = { ...mockClaims, systemRole: "user" as const };
+    const token = await createSessionToken(userClaims, 3600);
+    expect(token).toBeDefined();
+
+    const verified = await verifySessionToken(token);
+    expect(verified).not.toBeNull();
+    expect(verified!.userId).toBe(mockClaims.userId);
+    expect(verified!.systemRole).toBe("user");
+  });
+
+  it("should fail validation if base64 signature is highly malformed (Line 122)", async () => {
+    process.env.SESSION_SECRET =
+      "a-very-long-test-session-secret-longer-than-32-bytes";
+    const payload = base64UrlEncode(bytes(JSON.stringify(mockClaims)));
+    // Highly malformed base64 containing illegal atob characters like non-ascii characters or illegal spacing
+    const malformedToken = `${payload}.$$$!!!%%%`;
+    const verified = await verifySessionToken(malformedToken);
+    expect(verified).toBeNull();
+  });
+
+  it("should return null if token parsed JSON is not an object (Line 136)", async () => {
+    // Stringified "123" is a valid JSON but not an object
+    const payloadPart = base64UrlEncode(bytes(JSON.stringify(123)));
+
+    // Manually calculate signature
+    const crypto = await import("crypto");
+    const secret = process.env.SESSION_SECRET || "";
+    const hmac = crypto.createHmac("sha256", secret);
+    hmac.update(payloadPart);
+    const signature = hmac.digest();
+    const signaturePart = base64UrlEncode(new Uint8Array(signature));
+
+    const token = `${payloadPart}.${signaturePart}`;
+    const verified = await verifySessionToken(token);
+    expect(verified).toBeNull();
+  });
+
+  it("should return null if mandatory fields are missing from payload (Line 146)", async () => {
+    // Missing userId and username
+    const invalidClaims = { displayName: "No User" };
+    const payloadPart = base64UrlEncode(bytes(JSON.stringify(invalidClaims)));
+
+    // Manually calculate signature
+    const crypto = await import("crypto");
+    const secret = process.env.SESSION_SECRET || "";
+    const hmac = crypto.createHmac("sha256", secret);
+    hmac.update(payloadPart);
+    const signature = hmac.digest();
+    const signaturePart = base64UrlEncode(new Uint8Array(signature));
+
+    const token = `${payloadPart}.${signaturePart}`;
     const verified = await verifySessionToken(token);
     expect(verified).toBeNull();
   });
