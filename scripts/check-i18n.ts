@@ -1,7 +1,9 @@
+import standardFs from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
+import Rlog from "rlog-js";
 import ts from "typescript";
 import YAML from "yaml";
 
@@ -34,6 +36,16 @@ const EN_PATH = path.join(SRC_DIR, "i18n", "en.yaml");
 const ZH_PATH = path.join(SRC_DIR, "i18n", "zh.yaml");
 const TSCONFIG_PATH = path.join(ROOT_DIR, "tsconfig.json");
 const APP_MESSAGES_PATH = path.join(SRC_DIR, "lib", "i18n", "messages.ts");
+
+const logsDir = path.join(ROOT_DIR, "logs");
+if (!standardFs.existsSync(logsDir)) {
+  standardFs.mkdirSync(logsDir, { recursive: true });
+}
+
+const rlog = new Rlog({
+  logFilePath: path.join(logsDir, "i18n.log"),
+  enableColorfulOutput: true,
+});
 
 function asPosix(input: string): string {
   return input.replace(/\\/g, "/");
@@ -215,7 +227,7 @@ function collectTypePaths(program: ts.Program): TypePathMap {
   let iterations = 0;
   while (changed) {
     if (iterations++ > 50) {
-      console.warn(
+      rlog.warn(
         "Warning: Exceeded 50 iterations in collectTypePaths. Breaking to prevent infinite loop.",
       );
       break;
@@ -435,9 +447,16 @@ function collectUsedKeys(
 ): Map<string, UsageRef[]> {
   const used = new Map<string, UsageRef[]>();
 
-  for (const sourceFile of program.getSourceFiles()) {
+  const relevantFiles = program
+    .getSourceFiles()
+    .filter((file) => isRelevantSourceFile(path.resolve(file.fileName)));
+  const total = relevantFiles.length;
+  let count = 0;
+
+  for (const sourceFile of relevantFiles) {
     const filePath = path.resolve(sourceFile.fileName);
-    if (!isRelevantSourceFile(filePath)) continue;
+    count += 1;
+    rlog.progress(count, total);
 
     const bindings: BindingMap[] = [new Map<string, string[]>()];
 
@@ -636,13 +655,13 @@ function formatUsageRefs(refs: UsageRef[] | undefined): string {
 }
 
 async function main(): Promise<void> {
-  console.log("Loading translation files (en.yaml, zh.yaml)...");
+  rlog.info("Loading translation files (en.yaml, zh.yaml)...");
   const [enYaml, zhYaml] = await Promise.all([
     readYaml(EN_PATH),
     readYaml(ZH_PATH),
   ]);
 
-  console.log("Parsing translation keys and building tree maps...");
+  rlog.info("Parsing translation keys and building tree maps...");
   const enNodes = new Map<string, NodeInfo>();
   const zhNodes = new Map<string, NodeInfo>();
   const enLeaves = new Map<string, string>();
@@ -650,10 +669,10 @@ async function main(): Promise<void> {
   collectNodes(enYaml, [], enNodes, enLeaves);
   collectNodes(zhYaml, [], zhNodes, zhLeaves);
 
-  console.log("Parsing tsconfig.json...");
+  rlog.info("Parsing tsconfig.json...");
   const config = parseTsConfig(TSCONFIG_PATH);
 
-  console.log(
+  rlog.info(
     `Creating TypeScript program for ${config.fileNames.length} files...`,
   );
   const program = ts.createProgram({
@@ -661,17 +680,17 @@ async function main(): Promise<void> {
     options: config.options,
   });
 
-  console.log("Acquiring TypeScript TypeChecker...");
+  rlog.info("Acquiring TypeScript TypeChecker...");
   const checker = program.getTypeChecker();
 
-  console.log("Resolving referenced translation type paths...");
+  rlog.info("Resolving referenced translation type paths...");
   const typePaths = collectTypePaths(program);
 
-  console.log("Analyzing AppMessages type properties...");
+  rlog.info("Analyzing AppMessages type properties...");
   const { type: appMessagesType, symbol: appMessagesSymbol } =
     getAppMessagesType(program, checker);
 
-  console.log("Scanning codebase to collect all referenced keys...");
+  rlog.info("Scanning codebase to collect all referenced keys...");
   const usageMap = collectUsedKeys(
     program,
     checker,
@@ -682,7 +701,7 @@ async function main(): Promise<void> {
   );
   const usedPaths = [...usageMap.keys()].sort();
 
-  console.log("Running diagnostics validation...");
+  rlog.info("Running diagnostics validation...");
 
   const shapeDiff = compareNodeShapes(enNodes, zhNodes);
   const placeholderMismatches = comparePlaceholders(enLeaves, zhLeaves);
@@ -699,69 +718,96 @@ async function main(): Promise<void> {
     usedButMissingInEn.length +
     usedButMissingInZh.length;
 
-  console.log("I18n Check");
-  console.log(`- en leaf keys: ${enLeaves.size}`);
-  console.log(`- zh leaf keys: ${zhLeaves.size}`);
-  console.log(`- referenced key paths: ${usedPaths.length}`);
-  console.log(`- structural errors: ${errors}`);
-  console.log(`- unused en leaf keys: ${unusedEnKeys.length}`);
-  console.log(`- unused zh leaf keys: ${unusedZhKeys.length}`);
+  if (errors > 0) {
+    rlog.error("I18n Check Failed!");
+  } else {
+    rlog.success("I18n Check Passed Successfully!");
+  }
+
+  rlog.log(`- en leaf keys: ${enLeaves.size}`);
+  rlog.log(`- zh leaf keys: ${zhLeaves.size}`);
+  rlog.log(`- referenced key paths: ${usedPaths.length}`);
+  if (errors > 0) {
+    rlog.error(`- structural errors: ${errors}`);
+  } else {
+    rlog.success(`- structural errors: ${errors}`);
+  }
+
+  if (unusedEnKeys.length > 0) {
+    rlog.warn(`- unused en leaf keys: ${unusedEnKeys.length}`);
+  } else {
+    rlog.log(`- unused en leaf keys: ${unusedEnKeys.length}`);
+  }
+
+  if (unusedZhKeys.length > 0) {
+    rlog.warn(`- unused zh leaf keys: ${unusedZhKeys.length}`);
+  } else {
+    rlog.log(`- unused zh leaf keys: ${unusedZhKeys.length}`);
+  }
 
   if (shapeDiff.missingOnRight.length > 0) {
-    console.log("\nMissing In zh.yaml");
+    rlog.error("\nMissing In zh.yaml");
     for (const key of shapeDiff.missingOnRight) {
-      console.log(`- ${key}`);
+      rlog.warn(`- ${key}`);
     }
   }
 
   if (shapeDiff.missingOnLeft.length > 0) {
-    console.log("\nMissing In en.yaml");
+    rlog.error("\nMissing In en.yaml");
     for (const key of shapeDiff.missingOnLeft) {
-      console.log(`- ${key}`);
+      rlog.warn(`- ${key}`);
     }
   }
 
   if (shapeDiff.kindMismatch.length > 0) {
-    console.log("\nType Mismatches");
+    rlog.error("\nType Mismatches");
     for (const key of shapeDiff.kindMismatch) {
-      console.log(`- ${key}`);
+      rlog.warn(`- ${key}`);
     }
   }
 
   if (placeholderMismatches.length > 0) {
-    console.log("\nPlaceholder Mismatches");
+    rlog.error("\nPlaceholder Mismatches");
     for (const mismatch of placeholderMismatches) {
-      console.log(`- ${mismatch.key}`);
-      console.log(`  en: ${mismatch.en.join(", ") || "(none)"}`);
-      console.log(`  zh: ${mismatch.zh.join(", ") || "(none)"}`);
+      rlog.warn(`- ${mismatch.key}`);
+      rlog.log(`  en: ${mismatch.en.join(", ") || "(none)"}`);
+      rlog.log(`  zh: ${mismatch.zh.join(", ") || "(none)"}`);
     }
   }
 
   if (usedButMissingInEn.length > 0) {
-    console.log("\nUsed But Missing In en.yaml");
+    rlog.error("\nUsed But Missing In en.yaml");
     for (const key of usedButMissingInEn) {
-      console.log(`- ${key} (${formatUsageRefs(usageMap.get(key))})`);
+      rlog.warn(`- ${key} (${formatUsageRefs(usageMap.get(key))})`);
     }
   }
 
   if (usedButMissingInZh.length > 0) {
-    console.log("\nUsed But Missing In zh.yaml");
+    rlog.error("\nUsed But Missing In zh.yaml");
     for (const key of usedButMissingInZh) {
-      console.log(`- ${key} (${formatUsageRefs(usageMap.get(key))})`);
+      rlog.warn(`- ${key} (${formatUsageRefs(usageMap.get(key))})`);
     }
   }
 
   if (unusedEnKeys.length > 0) {
-    console.log("\nUnused en.yaml Keys");
+    rlog.file.info("\nUnused en.yaml Keys");
+    rlog.screen.info("Writing unused en.yaml keys to local log file...");
+    let i = 0;
     for (const key of unusedEnKeys) {
-      console.log(`- ${key}`);
+      rlog.file.info(`- ${key}`);
+      i += 1;
+      rlog.progress(i, unusedEnKeys.length);
     }
   }
 
   if (unusedZhKeys.length > 0) {
-    console.log("\nUnused zh.yaml Keys");
+    rlog.file.info("\nUnused zh.yaml Keys");
+    rlog.screen.info("Writing unused zh.yaml keys to local log file...");
+    let i = 0;
     for (const key of unusedZhKeys) {
-      console.log(`- ${key}`);
+      rlog.file.info(`- ${key}`);
+      i += 1;
+      rlog.progress(i, unusedZhKeys.length);
     }
   }
 
@@ -773,6 +819,6 @@ async function main(): Promise<void> {
 main().catch((error: unknown) => {
   const message =
     error instanceof Error ? error.stack || error.message : String(error);
-  console.error(message);
+  rlog.error(message);
   process.exitCode = 1;
 });

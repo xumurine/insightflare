@@ -2,10 +2,33 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+import Rlog from "rlog-js";
+
 const startedAt = Date.now();
 
-function log(msg: string): void {
-  console.log(`[prebuild] ${msg}`);
+const logsDir = path.join(process.cwd(), "logs");
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
+
+const rlog = new Rlog({
+  logFilePath: path.join(logsDir, "prebuild.log"),
+  enableColorfulOutput: true,
+});
+
+function log(
+  msg: string,
+  type: "info" | "success" | "error" | "warn" = "info",
+): void {
+  if (type === "success") {
+    rlog.success(`[prebuild] ${msg}`);
+  } else if (type === "error") {
+    rlog.error(`[prebuild] ${msg}`);
+  } else if (type === "warn") {
+    rlog.warn(`[prebuild] ${msg}`);
+  } else {
+    rlog.info(`[prebuild] ${msg}`);
+  }
 }
 
 function pickArg(name: string): string | undefined {
@@ -103,9 +126,9 @@ async function main(): Promise<void> {
     }
 
     run(process.execPath, args, wranglerDir);
-    log(`D1 migrations applied (${migrationTarget})`);
+    log(`D1 migrations applied (${migrationTarget})`, "success");
   } else {
-    log("INSIGHTFLARE_AUTO_MIGRATE=0, skip D1 migrations");
+    log("INSIGHTFLARE_AUTO_MIGRATE=0, skip D1 migrations", "warn");
   }
 
   const cacheDir = path.join(process.cwd(), ".cache");
@@ -130,11 +153,12 @@ async function main(): Promise<void> {
 
   log(
     `InsightFlare prebuild done in ${((finishedAt - startedAt) / 1000).toFixed(2)}s`,
+    "success",
   );
 }
 
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
-  log(`failed: ${message}`);
+  log(`failed: ${message}`, "error");
   process.exit(1);
 });

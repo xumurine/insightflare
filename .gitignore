@@ -13,3 +13,5 @@ next-env.d.ts
 src/tracker/sdk.min.ts
 src/tracker/sdk.no-perf.min.ts
 coverage
+logs/
+
