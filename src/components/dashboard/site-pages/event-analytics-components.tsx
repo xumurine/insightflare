@@ -45,6 +45,13 @@ import {
 } from "@/components/dashboard/journey-display";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { DetailDrawer } from "@/components/dashboard/site-pages/detail-drawer";
+import {
+  EVENT_FILTER_DIALOG_Z_INDEX,
+  EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
+  EVENT_RECORD_DRAWER_Z_INDEX,
+  FLOATING_LAYER_Z_ATTR,
+  NESTED_DETAIL_DRAWER_Z_INDEX,
+} from "@/components/dashboard/site-pages/floating-layer";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
@@ -1442,8 +1449,13 @@ export function EventRecordDetailDrawer({
       ? createPortal(
           <div
             aria-hidden="true"
+            data-dashboard-floating-layer="event-record-drawer-overlay"
             data-event-record-drawer-overlay=""
-            className="pointer-events-auto fixed inset-0 z-[1099] bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
+            className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
+            style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
+            {...{
+              [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
+            }}
             onPointerDown={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -1464,8 +1476,13 @@ export function EventRecordDetailDrawer({
         modal={false}
       >
         <DrawerContent
-          className="z-[1100] !w-full !max-w-none sm:!w-[min(58vw,34rem)]"
+          data-dashboard-floating-layer="event-record-drawer"
+          className="!w-full !max-w-none sm:!w-[min(58vw,34rem)]"
           overlayClassName="hidden"
+          style={{ zIndex: EVENT_RECORD_DRAWER_Z_INDEX }}
+          {...{
+            [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_Z_INDEX,
+          }}
           onEscapeKeyDown={(event) => {
             if (nestedDetailOpen) event.preventDefault();
           }}
@@ -1673,7 +1690,7 @@ export function EventRecordDetailDrawer({
           onOpenChange={(nextOpen) => {
             if (!nextOpen) setNestedDetail(null);
           }}
-          zIndex={1200}
+          zIndex={NESTED_DETAIL_DRAWER_Z_INDEX}
         >
           <VisitorDetailClientPage
             locale={locale}
@@ -1694,7 +1711,7 @@ export function EventRecordDetailDrawer({
           onOpenChange={(nextOpen) => {
             if (!nextOpen) setNestedDetail(null);
           }}
-          zIndex={1200}
+          zIndex={NESTED_DETAIL_DRAWER_Z_INDEX}
         >
           <SessionDetailClientPage
             locale={locale}
@@ -2614,7 +2631,15 @@ export function EventFieldsCard({
         open={payloadFilterDialogOpen}
         onOpenChange={setPayloadFilterDialogOpen}
       >
-        <DialogContent className="z-[1000] max-w-xl" overlayClassName="z-[999]">
+        <DialogContent
+          data-dashboard-floating-layer="event-filter-dialog"
+          className="max-w-xl"
+          overlayClassName="z-[999]"
+          style={{ zIndex: EVENT_FILTER_DIALOG_Z_INDEX }}
+          {...{
+            [FLOATING_LAYER_Z_ATTR]: EVENT_FILTER_DIALOG_Z_INDEX,
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{labels.payloadFilterTitle}</DialogTitle>
             <DialogDescription>

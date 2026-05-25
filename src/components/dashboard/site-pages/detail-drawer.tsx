@@ -15,6 +15,10 @@ import { motion } from "motion/react";
 import type { PartialOptions } from "overlayscrollbars";
 import { OverlayScrollbars } from "overlayscrollbars";
 
+import {
+  DETAIL_DRAWER_Z_INDEX,
+  hasHigherFloatingLayer,
+} from "@/components/dashboard/site-pages/floating-layer";
 import { cn } from "@/lib/utils";
 
 export const DETAIL_QUERY_PARAM = "detail";
@@ -101,6 +105,7 @@ export function DetailDrawer({
     null,
   );
   const isPreparingCloseRef = useRef(false);
+  const layerZIndex = zIndex ?? DETAIL_DRAWER_Z_INDEX;
 
   const clearCloseScrollPending = useCallback(() => {
     if (closeScrollFrameRef.current !== null) {
@@ -291,6 +296,7 @@ export function DetailDrawer({
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (hasHigherFloatingLayer(layerZIndex)) return;
         handleClose();
       }
     };
@@ -303,7 +309,7 @@ export function DetailDrawer({
       document.body.style.overflow = previousBodyOverflow;
       document.removeEventListener("keydown", handleEscape);
     };
-  }, [handleClose, rendered]);
+  }, [handleClose, layerZIndex, rendered]);
 
   useEffect(() => {
     if (!rendered) return;
@@ -334,6 +340,7 @@ export function DetailDrawer({
 
     const handleOutsidePointerDown = (event: PointerEvent) => {
       if (isInsideContent(event.target)) return;
+      if (hasHigherFloatingLayer(layerZIndex)) return;
       shouldSuppressClick = true;
       clearClickSuppression();
       stopOutsideEvent(event);
@@ -342,6 +349,7 @@ export function DetailDrawer({
 
     const handleOutsideClick = (event: MouseEvent) => {
       if (isInsideContent(event.target)) return;
+      if (hasHigherFloatingLayer(layerZIndex)) return;
       if (shouldSuppressClick) {
         stopOutsideEvent(event);
         return;
@@ -360,7 +368,7 @@ export function DetailDrawer({
         window.clearTimeout(clickSuppressTimer);
       }
     };
-  }, [handleClose, rendered]);
+  }, [handleClose, layerZIndex, rendered]);
 
   useEffect(() => {
     if (!mounted || !rendered) return;
@@ -432,12 +440,14 @@ export function DetailDrawer({
           width: "100vw",
         }
   ) as CSSProperties;
-  const rootStyle = zIndex === undefined ? undefined : ({ zIndex } as const);
+  const rootStyle = { zIndex: layerZIndex } as const;
 
   const drawer = (
     <DetailDrawerCloseContext.Provider value={handleClose}>
       <DetailDrawerReadyContext.Provider value={isReady}>
         <div
+          data-dashboard-floating-layer="detail-drawer"
+          data-dashboard-floating-layer-z={layerZIndex}
           data-detail-drawer-root=""
           className={cn("fixed inset-0 z-[96]", rootClassName)}
           style={rootStyle}
