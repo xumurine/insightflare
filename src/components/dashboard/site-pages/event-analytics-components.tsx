@@ -1238,17 +1238,75 @@ function EventRecordsTable({
   );
 }
 
-function ScalarValue({ value }: { value: unknown }) {
-  if (value === null) {
-    return <span className="text-muted-foreground">null</span>;
+function formatScalarValueForDisplay(value: unknown) {
+  if (value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
   }
-  if (typeof value === "string") {
+  return "";
+}
+
+function formatScalarValueForClipboard(value: unknown) {
+  if (value === null) return "null";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
+}
+
+function ScalarValue({
+  value,
+  labels,
+}: {
+  value: unknown;
+  labels: EventPageCopy;
+}) {
+  const displayValue = formatScalarValueForDisplay(value);
+  const clipboardValue = formatScalarValueForClipboard(value);
+  const copyValue = async () => {
+    try {
+      await navigator.clipboard.writeText(clipboardValue);
+      toast.success(labels.copiedValue);
+    } catch {
+      toast.error(labels.copyValueFailed);
+    }
+  };
+
+  if (value === null) {
     return (
-      <span className="font-medium text-primary">{JSON.stringify(value)}</span>
+      <button
+        type="button"
+        className="inline-flex cursor-copy rounded-none px-0.5 text-muted-foreground transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
+        onClick={() => {
+          void copyValue();
+        }}
+        title={labels.copyValue}
+        aria-label={labels.copyValue}
+      >
+        {displayValue}
+      </button>
     );
   }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return <span className="font-medium text-primary">{String(value)}</span>;
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return (
+      <button
+        type="button"
+        className="inline-flex cursor-copy rounded-none px-0.5 font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
+        onClick={() => {
+          void copyValue();
+        }}
+        title={labels.copyValue}
+        aria-label={labels.copyValue}
+      >
+        {displayValue}
+      </button>
+    );
   }
   return null;
 }
@@ -1282,7 +1340,7 @@ function JsonTree({
         {label ? (
           <span className="shrink-0 text-muted-foreground">{label}</span>
         ) : null}
-        <ScalarValue value={value} />
+        <ScalarValue value={value} labels={labels} />
       </div>
     );
   }
