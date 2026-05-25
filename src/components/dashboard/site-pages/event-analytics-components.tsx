@@ -1385,6 +1385,12 @@ function isInsideDetailDrawer(target: EventTarget | null) {
   );
 }
 
+type EventRecordNestedDetail = {
+  kind: "visitor" | "session";
+  id: string;
+  stackKey: string;
+};
+
 export function EventRecordDetailDrawer({
   locale,
   messages,
@@ -1406,31 +1412,57 @@ export function EventRecordDetailDrawer({
   detail: EventRecordDetailData["data"] | null;
   loading: boolean;
 }) {
-  const [nestedDetail, setNestedDetail] = useState<{
-    kind: "visitor" | "session";
-    id: string;
-  } | null>(null);
+  const [nestedDetails, setNestedDetails] = useState<EventRecordNestedDetail[]>(
+    [],
+  );
+  const nestedDetailKeyRef = useRef(0);
   const basePath = pathname.replace(/\/events(?:\/detail)?$/, "");
   const visitorId = detail?.context.visitorId?.trim() || "";
   const sessionId = detail?.context.sessionId?.trim() || "";
   const visitorPathname = `${basePath}/visitors`;
   const sessionPathname = `${basePath}/sessions`;
-  const nestedDetailOpen = nestedDetail !== null;
+  const nestedDetailOpen = nestedDetails.length > 0;
 
   useEffect(() => {
-    if (!open) setNestedDetail(null);
+    if (!open) setNestedDetails([]);
   }, [open]);
 
+  const openNestedDetail = (kind: "visitor" | "session", id: string) => {
+    const normalizedId = id.trim();
+    if (!normalizedId) return;
+
+    setNestedDetails((current) => {
+      const topDetail = current.at(-1);
+      if (topDetail?.kind === kind && topDetail.id === normalizedId) {
+        return current;
+      }
+
+      nestedDetailKeyRef.current += 1;
+      return [
+        ...current,
+        {
+          kind,
+          id: normalizedId,
+          stackKey: `${kind}:${normalizedId}:${nestedDetailKeyRef.current}`,
+        },
+      ];
+    });
+  };
+
+  const closeNestedDetail = (stackKey: string) => {
+    setNestedDetails((current) => {
+      const index = current.findIndex((item) => item.stackKey === stackKey);
+      if (index < 0) return current;
+      return current.slice(0, index);
+    });
+  };
+
   const openVisitorDetail = (nextVisitorId: string) => {
-    const normalizedVisitorId = nextVisitorId.trim();
-    if (!normalizedVisitorId) return;
-    setNestedDetail({ kind: "visitor", id: normalizedVisitorId });
+    openNestedDetail("visitor", nextVisitorId);
   };
 
   const openSessionDetail = (nextSessionId: string) => {
-    const normalizedSessionId = nextSessionId.trim();
-    if (!normalizedSessionId) return;
-    setNestedDetail({ kind: "session", id: normalizedSessionId });
+    openNestedDetail("session", nextSessionId);
   };
 
   const copyPayloadJson = async () => {
@@ -1682,47 +1714,42 @@ export function EventRecordDetailDrawer({
         </DrawerContent>
       </Drawer>
 
-      {nestedDetail?.kind === "visitor" ? (
+      {nestedDetails.map((nestedDetail) => (
         <DetailDrawer
-          ariaLabel={messages.visitors.title}
-          drawerKey={`event-visitor:${nestedDetail.id}`}
+          key={nestedDetail.stackKey}
+          ariaLabel={
+            nestedDetail.kind === "visitor"
+              ? messages.visitors.title
+              : messages.sessionDetail.visitDetailsTitle
+          }
+          drawerKey={nestedDetail.stackKey}
           open
           onOpenChange={(nextOpen) => {
-            if (!nextOpen) setNestedDetail(null);
+            if (!nextOpen) closeNestedDetail(nestedDetail.stackKey);
           }}
           zIndex={NESTED_DETAIL_DRAWER_Z_INDEX}
         >
-          <VisitorDetailClientPage
-            locale={locale}
-            messages={messages}
-            siteId={siteId}
-            pathname={visitorPathname}
-            visitorId={nestedDetail.id}
-            onOpenSession={openSessionDetail}
-          />
+          {nestedDetail.kind === "visitor" ? (
+            <VisitorDetailClientPage
+              locale={locale}
+              messages={messages}
+              siteId={siteId}
+              pathname={visitorPathname}
+              visitorId={nestedDetail.id}
+              onOpenSession={openSessionDetail}
+            />
+          ) : (
+            <SessionDetailClientPage
+              locale={locale}
+              messages={messages}
+              siteId={siteId}
+              pathname={sessionPathname}
+              sessionId={nestedDetail.id}
+              onOpenVisitor={openVisitorDetail}
+            />
+          )}
         </DetailDrawer>
-      ) : null}
-
-      {nestedDetail?.kind === "session" ? (
-        <DetailDrawer
-          ariaLabel={messages.sessionDetail.visitDetailsTitle}
-          drawerKey={`event-session:${nestedDetail.id}`}
-          open
-          onOpenChange={(nextOpen) => {
-            if (!nextOpen) setNestedDetail(null);
-          }}
-          zIndex={NESTED_DETAIL_DRAWER_Z_INDEX}
-        >
-          <SessionDetailClientPage
-            locale={locale}
-            messages={messages}
-            siteId={siteId}
-            pathname={sessionPathname}
-            sessionId={nestedDetail.id}
-            onOpenVisitor={openVisitorDetail}
-          />
-        </DetailDrawer>
-      ) : null}
+      ))}
     </>
   );
 }

@@ -9,6 +9,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "motion/react";
@@ -17,7 +18,11 @@ import { OverlayScrollbars } from "overlayscrollbars";
 
 import {
   DETAIL_DRAWER_Z_INDEX,
+  getDetailDrawerLayerSnapshot,
   hasHigherFloatingLayer,
+  removeDetailDrawerLayer,
+  setDetailDrawerLayer,
+  subscribeDetailDrawerLayers,
 } from "@/components/dashboard/site-pages/floating-layer";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +31,10 @@ export const DETAIL_QUERY_PARAM = "detail";
 const EXIT_DURATION_MS = 360;
 const CLOSE_SCROLL_TOP_THRESHOLD = 2;
 const CLOSE_SCROLL_MAX_WAIT_MS = 900;
+const STACK_LIFT_PX = 28;
+const MAX_STACK_LIFT_DEPTH = 3;
+
+let nextDetailDrawerInstanceId = 0;
 
 const DETAIL_DRAWER_SCROLLBAR_OPTIONS = {
   overflow: {
@@ -105,7 +114,30 @@ export function DetailDrawer({
     null,
   );
   const isPreparingCloseRef = useRef(false);
-  const layerZIndex = zIndex ?? DETAIL_DRAWER_Z_INDEX;
+  const layerIdRef = useRef<string | null>(null);
+  if (layerIdRef.current === null) {
+    nextDetailDrawerInstanceId += 1;
+    layerIdRef.current = `detail-drawer-${nextDetailDrawerInstanceId}`;
+  }
+  const layerId = layerIdRef.current;
+  const baseLayerZIndex = zIndex ?? DETAIL_DRAWER_Z_INDEX;
+  const detailDrawerLayers = useSyncExternalStore(
+    subscribeDetailDrawerLayers,
+    getDetailDrawerLayerSnapshot,
+    getDetailDrawerLayerSnapshot,
+  );
+  const currentLayer = detailDrawerLayers.find((layer) => layer.id === layerId);
+  const layerZIndex = currentLayer?.effectiveZIndex ?? baseLayerZIndex;
+  const stackDepth = currentLayer
+    ? detailDrawerLayers.filter(
+        (layer) =>
+          layer.id !== layerId &&
+          (layer.effectiveZIndex > currentLayer.effectiveZIndex ||
+            (layer.effectiveZIndex === currentLayer.effectiveZIndex &&
+              layer.order > currentLayer.order)),
+      ).length
+    : 0;
+  const stackLift = -Math.min(stackDepth, MAX_STACK_LIFT_DEPTH) * STACK_LIFT_PX;
 
   const clearCloseScrollPending = useCallback(() => {
     if (closeScrollFrameRef.current !== null) {
@@ -216,6 +248,14 @@ export function DetailDrawer({
       triggerCloseAnimation();
     }
   }, [isClosing, open, rendered, triggerCloseAnimation]);
+
+  useEffect(() => {
+    if (!rendered) return;
+    setDetailDrawerLayer(layerId, baseLayerZIndex);
+    return () => {
+      removeDetailDrawerLayer(layerId);
+    };
+  }, [baseLayerZIndex, layerId, rendered]);
 
   useEffect(() => {
     if (!open) return;
@@ -471,9 +511,14 @@ export function DetailDrawer({
                 <motion.div
                   ref={contentRef}
                   initial={{
+                    top: 0,
                     y: "112vh",
                   }}
-                  animate={isClosing ? { y: "112vh" } : { y: "0vh" }}
+                  animate={
+                    isClosing
+                      ? { top: 0, y: "112vh" }
+                      : { top: stackLift, y: "0vh" }
+                  }
                   transition={
                     isClosing
                       ? { duration: 0.36, ease: [0.38, 0.05, 0.86, 0.28] }
@@ -484,6 +529,7 @@ export function DetailDrawer({
                           mass: 0.92,
                         }
                   }
+                  data-detail-drawer-stack-depth={stackDepth}
                   className="pointer-events-auto relative min-h-[132vh] min-w-0 flex-1 transform-gpu overflow-hidden rounded-sm border border-border/80 bg-background shadow-[0_-24px_70px_rgba(0,0,0,0.35)]"
                   style={{
                     willChange: isClosing || !isReady ? "transform" : "auto",
