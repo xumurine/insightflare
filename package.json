@@ -14,9 +14,10 @@
     "build:next": "cross-env NEXT_IGNORE_INCORRECT_LOCKFILE=1 next build --webpack",
     "lint": "eslint --max-warnings 0 .",
     "lint:fix": "eslint --max-warnings 0 . --fix",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,css,md}\" --log-level warn",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,css,md}\" --log-level warn",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run check:i18n",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,css}\" --log-level warn",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,css}\" --log-level warn",
+    "check": "concurrently --kill-others-on-fail --prefix \"[{name}]\" --names \"Type,Fix,i18n,Test\" --prefix-colors \"blue,cyan,yellow,magenta\" \"npm run typecheck\" \"npm run lint:fix && npm run format\" \"npm run check:i18n\" \"npm run test\"",
+    "check:dry": "concurrently --kill-others-on-fail --prefix \"[{name}]\" --names \"Type,Lint,Format,i18n,Test\" --prefix-colors \"blue,cyan,green,yellow,magenta\" \"npm run typecheck\" \"npm run lint\" \"npm run format:check\" \"npm run check:i18n\" \"npm run test\"",
     "prepare": "npm run build:sdk && husky",
     "ensure:ast-grep": "node scripts/ensure-ast-grep-binding.mjs",
     "cf:build:raw": "npm run ensure:ast-grep && opennextjs-cloudflare build",
@@ -38,6 +39,8 @@
     "cf:tail": "wrangler tail --config wrangler.toml",
     "typecheck": "next typegen && tsc --noEmit -p tsconfig.json",
     "check:i18n": "tsx scripts/check-i18n.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "d1:migrate:local": "wrangler d1 migrations apply insightflare --config wrangler.toml --local",
     "d1:migrate:remote": "wrangler d1 migrations apply insightflare --config wrangler.toml --remote",
     "d1:migration:create": "wrangler d1 migrations create insightflare --config wrangler.toml"
@@ -86,6 +89,7 @@
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
+    "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",
@@ -95,6 +99,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "globals": "^16.5.0",
+    "happy-dom": "^20.9.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "postcss": "^8.5.15",
@@ -103,6 +108,7 @@
     "tsx": "^4.22.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.59.4",
+    "vitest": "^4.1.7",
     "wrangler": "^4.94.0",
     "yaml-loader": "^0.9.0"
   },
@@ -135,6 +141,6 @@
     }
   },
   "lint-staged": {
-    "*.{js,jsx,ts,tsx,json,css,md}": "prettier --write"
+    "*.{js,jsx,ts,tsx,json,css}": "prettier --write"
   }
 }
