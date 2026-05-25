@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { POST } from "@/app/api/admin/site-config/route";
 import { upsertAdminSiteConfig } from "@/lib/edge-client";
-
-import { POST } from "../site-config/route";
 
 vi.mock("@/lib/edge-client", () => ({
   upsertAdminSiteConfig: vi.fn(),
@@ -35,7 +34,7 @@ describe("admin site config route", () => {
   });
 
   it("persists explicit config objects", async () => {
-    upsertAdminSiteConfigMock.mockResolvedValue({ saved: true });
+    upsertAdminSiteConfigMock.mockResolvedValue({ saved: true } as any);
 
     const response = await POST(
       jsonRequest({
@@ -60,7 +59,7 @@ describe("admin site config route", () => {
   });
 
   it("builds legacy privacy config from form booleans", async () => {
-    upsertAdminSiteConfigMock.mockResolvedValue({ saved: true });
+    upsertAdminSiteConfigMock.mockResolvedValue({ saved: true } as any);
 
     await POST(
       jsonRequest({
@@ -83,6 +82,23 @@ describe("admin site config route", () => {
     });
   });
 
+  it("uses default legacy privacy settings when form booleans are absent", async () => {
+    upsertAdminSiteConfigMock.mockResolvedValue({ saved: true } as any);
+
+    await POST(jsonRequest({ siteId: "site-1" }));
+
+    expect(upsertAdminSiteConfigMock).toHaveBeenCalledWith({
+      siteId: "site-1",
+      config: {
+        privacy: {
+          maskQueryHashDetails: true,
+          maskVisitorTrajectory: true,
+          maskDetailedReferrerUrl: true,
+        },
+      },
+    });
+  });
+
   it("extracts upstream error details", async () => {
     upsertAdminSiteConfigMock.mockRejectedValue(
       new Error('Edge API failed (400): {"error":"Invalid config"}'),
@@ -95,6 +111,51 @@ describe("admin site config route", () => {
       ok: false,
       error: "save_site_config_failed",
       message: "Invalid config",
+    });
+  });
+
+  it("prefers upstream message fields and falls back to raw errors", async () => {
+    upsertAdminSiteConfigMock.mockRejectedValueOnce(
+      new Error('Edge API failed (400): {"message":"Config is too large"}'),
+    );
+
+    const messageField = await POST(
+      jsonRequest({ siteId: "site-1", config: {} }),
+    );
+
+    expect(messageField.status).toBe(500);
+    expect(await messageField.json()).toEqual({
+      ok: false,
+      error: "save_site_config_failed",
+      message: "Config is too large",
+    });
+
+    upsertAdminSiteConfigMock.mockRejectedValueOnce(new Error("network down"));
+
+    const rawFallback = await POST(
+      jsonRequest({ siteId: "site-1", config: {} }),
+    );
+
+    expect(rawFallback.status).toBe(500);
+    expect(await rawFallback.json()).toEqual({
+      ok: false,
+      error: "save_site_config_failed",
+      message: "network down",
+    });
+  });
+
+  it("falls back when config errors have no useful JSON details", async () => {
+    upsertAdminSiteConfigMock.mockRejectedValueOnce(
+      'Edge API failed (500): {"message":"","error":""}',
+    );
+
+    const response = await POST(jsonRequest({ siteId: "site-1", config: {} }));
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: "save_site_config_failed",
+      message: 'Edge API failed (500): {"message":"","error":""}',
     });
   });
 });

@@ -1,0 +1,187 @@
+import type * as ReactModule from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { fetchAdminMe, fetchAdminSites } from "@/lib/edge-client";
+
+vi.mock("@/lib/edge-client", () => ({
+  fetchAdminMe: vi.fn(),
+  fetchAdminSites: vi.fn(),
+}));
+
+vi.mock("react", async (importOriginal) => {
+  const actual = await importOriginal<typeof ReactModule>();
+  return {
+    ...actual,
+    cache: <T extends (...args: never[]) => unknown>(fn: T) => fn,
+  };
+});
+
+const fetchAdminMeMock = vi.mocked(fetchAdminMe);
+const fetchAdminSitesMock = vi.mocked(fetchAdminSites);
+
+async function loadServerModule() {
+  vi.resetModules();
+  return import("@/lib/dashboard/server");
+}
+
+function team(id: string, slug: string) {
+  return {
+    id,
+    name: slug,
+    slug,
+    ownerUserId: "user-1",
+    createdAt: 1,
+    siteCount: 1,
+    memberCount: 1,
+  };
+}
+
+function site(
+  input: Partial<Awaited<ReturnType<typeof fetchAdminSites>>[number]>,
+) {
+  return {
+    id: "site-1234567890",
+    teamId: "team-1",
+    name: "Docs Site",
+    domain: "docs.example.test",
+    publicEnabled: true,
+    publicSlug: null,
+    createdAt: 1,
+    updatedAt: 2,
+    ...input,
+  };
+}
+
+describe("dashboard server helpers", () => {
+  beforeEach(() => {
+    fetchAdminMeMock.mockReset();
+    fetchAdminSitesMock.mockReset();
+  });
+
+  it("builds stable site slugs from public slug, domain, name, or id", async () => {
+    const { getSiteSlug, buildSitePath } = await loadServerModule();
+
+    expect(getSiteSlug(site({ publicSlug: " Public Slug! " }))).toBe(
+      "public-slug",
+    );
+    expect(
+      getSiteSlug(site({ publicSlug: "", domain: "Docs.EXAMPLE.test" })),
+    ).toBe("docs-example-test");
+    expect(
+      getSiteSlug(site({ publicSlug: "", domain: "", name: "My Site" })),
+    ).toBe("my-site");
+    expect(
+      getSiteSlug(
+        site({
+          id: "abcdef123456",
+          publicSlug: "",
+          domain: "",
+          name: "!!!",
+        }),
+      ),
+    ).toBe("abcdef12");
+    expect(buildSitePath("zh", "team-a", "site-a")).toBe(
+      "/zh/app/team-a/site-a",
+    );
+    expect(buildSitePath("en", "team-a", "site-a", "events")).toBe(
+      "/en/app/team-a/site-a/events",
+    );
+  });
+
+  it("returns dashboard team and site contexts when data matches slugs", async () => {
+    fetchAdminMeMock.mockResolvedValue({
+      user: {
+        id: "user-1",
+        username: "admin",
+        email: "admin@example.test",
+        name: "Admin User",
+        systemRole: "admin",
+      },
+      teams: [team("team-1", "team-a"), team("team-2", "team-b")],
+    } as any);
+    fetchAdminSitesMock.mockResolvedValue([
+      site({ id: "site-1", publicSlug: "Docs" }),
+      site({ id: "site-2", publicSlug: "", domain: "blog.example.test" }),
+    ]);
+    const { getDashboardProfile, getDashboardTeamContext, getTeamSiteContext } =
+      await loadServerModule();
+
+    await expect(getDashboardProfile()).resolves.toMatchObject({
+      user: { id: "user-1" },
+    });
+
+    await expect(getDashboardTeamContext("team-a")).resolves.toMatchObject({
+      activeTeam: { id: "team-1" },
+      sites: [
+        expect.objectContaining({ id: "site-1", slug: "docs" }),
+        expect.objectContaining({ id: "site-2", slug: "blog-example-test" }),
+      ],
+    });
+    await expect(getTeamSiteContext("team-a", "docs")).resolves.toMatchObject({
+      activeSite: { id: "site-1", slug: "docs" },
+    });
+    await expect(getTeamSiteContext("team-a", "site-2")).resolves.toMatchObject(
+      {
+        activeSite: { id: "site-2", slug: "blog-example-test" },
+      },
+    );
+    expect(fetchAdminSitesMock).toHaveBeenCalledWith("team-1");
+  });
+
+  it("returns null or empty defaults when profile, team, or sites are missing", async () => {
+    fetchAdminMeMock.mockResolvedValueOnce(null as any);
+    const { getDashboardTeamContext } = await loadServerModule();
+    await expect(getDashboardTeamContext("team-a")).resolves.toBeNull();
+
+    fetchAdminMeMock.mockResolvedValue({
+      user: {
+        id: "user-1",
+        username: "admin",
+        email: "admin@example.test",
+        name: "Admin User",
+        systemRole: "admin",
+      },
+      teams: [team("team-1", "team-a")],
+    } as any);
+    fetchAdminSitesMock.mockResolvedValue([]);
+    const { getDefaultTeamSite, getTeamDefaultSite, getTeamSiteContext } =
+      await loadServerModule();
+
+    await expect(getDashboardTeamContext("missing")).resolves.toBeNull();
+    await expect(getTeamSiteContext("team-a", "missing")).resolves.toBeNull();
+    await expect(getDefaultTeamSite()).resolves.toBeNull();
+    await expect(getTeamDefaultSite("missing")).resolves.toBeNull();
+  });
+
+  it("returns default team/site targets and tolerates fetch failures", async () => {
+    fetchAdminMeMock.mockResolvedValue({
+      user: {
+        id: "user-1",
+        username: "admin",
+        email: "admin@example.test",
+        name: "Admin User",
+        systemRole: "user",
+      },
+      teams: [team("team-1", "team-a")],
+    } as any);
+    fetchAdminSitesMock.mockResolvedValue([site({ publicSlug: "Docs" })]);
+    const { getDefaultTeamSite, getTeamDefaultSite } = await loadServerModule();
+
+    await expect(getDefaultTeamSite()).resolves.toEqual({
+      teamSlug: "team-a",
+      siteSlug: "docs",
+    });
+    await expect(getTeamDefaultSite("team-a")).resolves.toEqual({
+      teamSlug: "team-a",
+      siteSlug: "docs",
+    });
+
+    fetchAdminMeMock.mockRejectedValue(new Error("not signed in"));
+    fetchAdminSitesMock.mockRejectedValue(new Error("edge unavailable"));
+    const { getDashboardProfile, getDashboardTeamContext } =
+      await loadServerModule();
+
+    await expect(getDashboardProfile()).resolves.toBeNull();
+    await expect(getDashboardTeamContext("team-a")).resolves.toBeNull();
+  });
+});

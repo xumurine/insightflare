@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { POST } from "@/app/api/auth/login/route";
 import { loginAdminAccount } from "@/lib/edge-client";
 import { createSessionToken } from "@/lib/session";
-
-import { POST } from "../login/route";
 
 vi.mock("@/lib/edge-client", () => ({
   loginAdminAccount: vi.fn(),

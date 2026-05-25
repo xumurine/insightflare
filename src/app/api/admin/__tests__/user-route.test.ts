@@ -1,12 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { POST } from "@/app/api/admin/user/route";
 import {
   createAdminUser,
   removeAdminUser,
   updateAdminUser,
 } from "@/lib/edge-client";
-
-import { POST } from "../user/route";
 
 vi.mock("@/lib/edge-client", () => ({
   createAdminUser: vi.fn(),
@@ -34,7 +33,7 @@ describe("admin user route", () => {
   });
 
   it("creates users with trimmed fields and normalized roles", async () => {
-    createAdminUserMock.mockResolvedValue({ id: "user-1" });
+    createAdminUserMock.mockResolvedValue({ id: "user-1" } as any);
 
     const response = await POST(
       jsonRequest({
@@ -74,6 +73,18 @@ describe("admin user route", () => {
       error: "invalid_user_input",
     });
 
+    const missingPassword = await POST(
+      jsonRequest({
+        username: "admin",
+        email: "admin@example.test",
+      }),
+    );
+    expect(missingPassword.status).toBe(400);
+    expect(await missingPassword.json()).toEqual({
+      ok: false,
+      error: "invalid_user_input",
+    });
+
     const missingUpdateId = await POST(jsonRequest({ intent: "update" }));
     expect(missingUpdateId.status).toBe(400);
     expect(await missingUpdateId.json()).toEqual({
@@ -90,7 +101,10 @@ describe("admin user route", () => {
   });
 
   it("updates users and omits empty optional fields", async () => {
-    updateAdminUserMock.mockResolvedValue({ id: "user-1", updated: true });
+    updateAdminUserMock.mockResolvedValue({
+      id: "user-1",
+      updated: true,
+    } as any);
 
     const response = await POST(
       jsonRequest({
@@ -119,7 +133,10 @@ describe("admin user route", () => {
   });
 
   it("removes users by remove or delete intent", async () => {
-    removeAdminUserMock.mockResolvedValue({ userId: "user-1", removed: true });
+    removeAdminUserMock.mockResolvedValue({
+      userId: "user-1",
+      removed: true,
+    } as any);
 
     const response = await POST(
       jsonRequest({ intent: "delete", userId: "user-1" }),
@@ -150,6 +167,69 @@ describe("admin user route", () => {
       ok: false,
       error: "user_mutation_failed",
       message: "Username exists",
+    });
+  });
+
+  it("prefers upstream message fields and falls back to raw user errors", async () => {
+    updateAdminUserMock.mockRejectedValueOnce(
+      new Error('Edge API failed (409): {"message":"Email exists"}'),
+    );
+
+    const messageField = await POST(
+      jsonRequest({
+        intent: "update",
+        userId: "user-1",
+        systemRole: "admin",
+      }),
+    );
+
+    expect(updateAdminUserMock).toHaveBeenCalledWith({
+      userId: "user-1",
+      username: undefined,
+      email: undefined,
+      name: undefined,
+      password: undefined,
+      systemRole: "admin",
+    });
+    expect(messageField.status).toBe(500);
+    expect(await messageField.json()).toEqual({
+      ok: false,
+      error: "user_mutation_failed",
+      message: "Email exists",
+    });
+
+    removeAdminUserMock.mockRejectedValueOnce(new Error("remove failed"));
+
+    const rawFallback = await POST(
+      jsonRequest({ intent: "remove", userId: "user-1" }),
+    );
+
+    expect(rawFallback.status).toBe(500);
+    expect(await rawFallback.json()).toEqual({
+      ok: false,
+      error: "user_mutation_failed",
+      message: "remove failed",
+    });
+  });
+
+  it("falls back when user errors have no useful JSON details", async () => {
+    createAdminUserMock.mockRejectedValueOnce(
+      'Edge API failed (500): {"message":"","error":""}',
+    );
+
+    const response = await POST(
+      jsonRequest({
+        username: "admin",
+        email: "admin@example.test",
+        password: "supersecret",
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: "user_mutation_failed",
+      message: 'Edge API failed (500): {"message":"","error":""}',
     });
   });
 });

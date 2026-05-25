@@ -1,12 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { POST } from "@/app/api/admin/site/route";
 import {
   createAdminSite,
   removeAdminSite,
   updateAdminSite,
 } from "@/lib/edge-client";
-
-import { POST } from "../site/route";
 
 vi.mock("@/lib/edge-client", () => ({
   createAdminSite: vi.fn(),
@@ -34,7 +33,7 @@ describe("admin site route", () => {
   });
 
   it("creates sites with normalized fields", async () => {
-    createAdminSiteMock.mockResolvedValue({ id: "site-1" });
+    createAdminSiteMock.mockResolvedValue({ id: "site-1" } as any);
 
     const response = await POST(
       jsonRequest({
@@ -78,9 +77,22 @@ describe("admin site route", () => {
     });
   });
 
+  it("rejects update requests without a site id", async () => {
+    const response = await POST(
+      jsonRequest({ intent: "update", name: "Docs" }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: "missing_site_id",
+    });
+    expect(updateAdminSiteMock).not.toHaveBeenCalled();
+  });
+
   it("updates and removes sites by intent", async () => {
-    updateAdminSiteMock.mockResolvedValue({ updated: true });
-    removeAdminSiteMock.mockResolvedValue({ removed: true });
+    updateAdminSiteMock.mockResolvedValue({ updated: true } as any);
+    removeAdminSiteMock.mockResolvedValue({ removed: true } as any);
 
     const updated = await POST(
       jsonRequest({
@@ -136,6 +148,57 @@ describe("admin site route", () => {
       ok: false,
       error: "site_mutation_failed",
       message: "Domain already exists",
+    });
+  });
+
+  it("prefers upstream message fields and falls back to raw site errors", async () => {
+    updateAdminSiteMock.mockRejectedValueOnce(
+      new Error('Edge API failed (409): {"message":"Slug already exists"}'),
+    );
+
+    const messageField = await POST(
+      jsonRequest({ intent: "update", siteId: "site-1" }),
+    );
+
+    expect(messageField.status).toBe(500);
+    expect(await messageField.json()).toEqual({
+      ok: false,
+      error: "site_mutation_failed",
+      message: "Slug already exists",
+    });
+
+    removeAdminSiteMock.mockRejectedValueOnce(new Error("delete failed"));
+
+    const rawFallback = await POST(
+      jsonRequest({ intent: "remove", siteId: "site-1" }),
+    );
+
+    expect(rawFallback.status).toBe(500);
+    expect(await rawFallback.json()).toEqual({
+      ok: false,
+      error: "site_mutation_failed",
+      message: "delete failed",
+    });
+  });
+
+  it("falls back when site errors have no useful JSON details", async () => {
+    createAdminSiteMock.mockRejectedValueOnce(
+      'Edge API failed (500): {"message":"","error":""}',
+    );
+
+    const response = await POST(
+      jsonRequest({
+        teamId: "team-1",
+        name: "Docs",
+        domain: "docs.example.test",
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: "site_mutation_failed",
+      message: 'Edge API failed (500): {"message":"","error":""}',
     });
   });
 });

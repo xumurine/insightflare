@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type CountryFeature,
   countryFillOpacity,
   geometryToPath,
   normalizeCountryCode,
@@ -8,7 +9,6 @@ import {
   resolveCountryLabelFromFeature,
   WORLD_MAP_HEIGHT,
   WORLD_MAP_WIDTH,
-  type CountryFeature,
 } from "@/components/dashboard/site-pages/performance-map-utils";
 
 function feature(
@@ -19,7 +19,7 @@ function feature(
     type: "Feature",
     id,
     properties,
-    geometry: null,
+    geometry: null as any,
   };
 }
 

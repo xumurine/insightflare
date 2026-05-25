@@ -3,12 +3,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
+import { broadcastRealtimeMessage } from "@/lib/realtime/broadcast-store";
 import {
   acquireRealtimeChannel,
   createIdleRealtimeChannelState,
   getRealtimeChannelState,
 } from "@/lib/realtime/client";
-import { broadcastRealtimeMessage } from "@/lib/realtime/broadcast-store";
 import type { RealtimeChannelState } from "@/lib/realtime/types";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -62,7 +62,7 @@ describe("useRealtimeChannel", () => {
 
   beforeEach(() => {
     container = document.createElement("div");
-    document.body.append(container);
+    (document.body as any).append(container);
     root = createRoot(container);
     createIdleRealtimeChannelStateMock.mockImplementation(() =>
       channelState("disconnected"),

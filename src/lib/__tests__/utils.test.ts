@@ -4,7 +4,9 @@ import { cn } from "@/lib/utils";
 
 describe("cn", () => {
   it("combines conditional classes and resolves Tailwind conflicts", () => {
-    expect(cn("px-2", false && "hidden", ["text-sm", "px-4"])).toBe(
+    const hidden = false;
+
+    expect(cn("px-2", hidden ? "hidden" : false, ["text-sm", "px-4"])).toBe(
       "text-sm px-4",
     );
   });

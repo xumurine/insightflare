@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { POST } from "@/app/api/admin/profile/route";
 import { updateMyProfile } from "@/lib/edge-client";
-
-import { POST } from "../profile/route";
 
 vi.mock("@/lib/edge-client", () => ({
   updateMyProfile: vi.fn(),
@@ -71,7 +70,7 @@ describe("admin profile route", () => {
   });
 
   it("omits absent optional fields and preserves explicitly empty name", async () => {
-    updateMyProfileMock.mockResolvedValue({ updated: true });
+    updateMyProfileMock.mockResolvedValue({ updated: true } as any);
 
     await POST(
       jsonRequest({
@@ -101,6 +100,60 @@ describe("admin profile route", () => {
       ok: false,
       error: "profile_update_failed",
       message: "Name is required",
+    });
+  });
+
+  it("falls back to upstream error fields and raw messages", async () => {
+    updateMyProfileMock.mockRejectedValueOnce(
+      new Error('Edge API failed (400): {"error":"Email is invalid"}'),
+    );
+
+    const errorField = await POST(jsonRequest({ email: "bad" }));
+
+    expect(errorField.status).toBe(500);
+    expect(await errorField.json()).toEqual({
+      ok: false,
+      error: "profile_update_failed",
+      message: "Email is invalid",
+    });
+
+    updateMyProfileMock.mockRejectedValueOnce(
+      new Error('Edge API failed (500): {"message":'),
+    );
+
+    const rawFallback = await POST(jsonRequest({ username: "admin" }));
+
+    expect(rawFallback.status).toBe(500);
+    expect(await rawFallback.json()).toEqual({
+      ok: false,
+      error: "profile_update_failed",
+      message: 'Edge API failed (500): {"message":',
+    });
+  });
+
+  it("falls back when upstream errors have no useful JSON details", async () => {
+    updateMyProfileMock.mockRejectedValueOnce(
+      'Edge API failed (500): {"message":"","error":""}',
+    );
+
+    const emptyDetails = await POST(jsonRequest({ username: "admin" }));
+
+    expect(emptyDetails.status).toBe(500);
+    expect(await emptyDetails.json()).toEqual({
+      ok: false,
+      error: "profile_update_failed",
+      message: 'Edge API failed (500): {"message":"","error":""}',
+    });
+
+    updateMyProfileMock.mockRejectedValueOnce("plain profile failure");
+
+    const plainFailure = await POST(jsonRequest({ username: "admin" }));
+
+    expect(plainFailure.status).toBe(500);
+    expect(await plainFailure.json()).toEqual({
+      ok: false,
+      error: "profile_update_failed",
+      message: "plain profile failure",
     });
   });
 });

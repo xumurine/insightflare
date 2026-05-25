@@ -1,4 +1,112 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
+import * as ts from "typescript";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const installKey = "__insightflare_tracker_v6__";
+const sdkSourcePath = path.resolve(process.cwd(), "src/tracker/sdk.ts");
+let configuredSdkImportCounter = 0;
+
+interface ConfiguredSdkOptions {
+  siteId?: string;
+  isEuMode?: boolean;
+  trackQueryParams?: boolean;
+  trackHash?: boolean;
+  ignoreDoNotTrack?: boolean;
+  autoTrackOutboundLinks?: boolean;
+  performanceSampleRate?: number;
+  sessionWindowMs?: number;
+  buildPerformance?: boolean;
+}
+
+async function importConfiguredSdk(options: ConfiguredSdkOptions = {}) {
+  const source = await readFile(sdkSourcePath, "utf8");
+  const rewritten = source
+    .replace(
+      'const SITE_ID = "__IF_SITE_ID__";',
+      `const SITE_ID = ${JSON.stringify(options.siteId ?? "configured-site")};`,
+    )
+    .replace(
+      'const IS_EU_MODE = "__IF_IS_EU_MODE__";',
+      `const IS_EU_MODE = ${options.isEuMode === true ? "true" : "false"};`,
+    )
+    .replace(
+      'const TRACK_QUERY_PARAMS = "__IF_TRACK_QUERY_PARAMS__";',
+      `const TRACK_QUERY_PARAMS = ${
+        options.trackQueryParams === false ? "false" : "true"
+      };`,
+    )
+    .replace(
+      'const TRACK_HASH = "__IF_TRACK_HASH__";',
+      `const TRACK_HASH = ${options.trackHash === false ? "false" : "true"};`,
+    )
+    .replace(
+      'const IGNORE_DO_NOT_TRACK = "__IF_IGNORE_DO_NOT_TRACK__";',
+      `const IGNORE_DO_NOT_TRACK = ${
+        options.ignoreDoNotTrack === false ? "false" : "true"
+      };`,
+    )
+    .replace(
+      'const AUTO_TRACK_OUTBOUND_LINKS = "__IF_AUTO_TRACK_OUTBOUND_LINKS__";',
+      `const AUTO_TRACK_OUTBOUND_LINKS = ${
+        options.autoTrackOutboundLinks === false ? "false" : "true"
+      };`,
+    )
+    .replace(
+      'const PERFORMANCE_SAMPLE_RATE = "__IF_PERFORMANCE_SAMPLE_RATE__";',
+      `const PERFORMANCE_SAMPLE_RATE = ${options.performanceSampleRate ?? 0};`,
+    )
+    .replace(
+      'const SESSION_WINDOW_MS = "__IF_SESSION_WINDOW_MS__";',
+      `const SESSION_WINDOW_MS = ${options.sessionWindowMs ?? 30 * 60 * 1000};`,
+    )
+    .replace(
+      "declare var BUILD_PERFORMANCE: boolean;",
+      `const BUILD_PERFORMANCE = ${
+        options.buildPerformance === false ? "false" : "true"
+      };`,
+    );
+
+  const output = ts.transpileModule(rewritten, {
+    fileName: sdkSourcePath,
+    compilerOptions: {
+      inlineSources: true,
+      module: ts.ModuleKind.ESNext,
+      sourceMap: true,
+      target: ts.ScriptTarget.ES2022,
+    },
+  });
+  const sourceMap = JSON.parse(output.sourceMapText || "{}");
+  sourceMap.sources = [sdkSourcePath.replace(/\\/g, "/")];
+  sourceMap.sourcesContent = [source];
+
+  configuredSdkImportCounter += 1;
+  const sourceMapData = Buffer.from(JSON.stringify(sourceMap)).toString(
+    "base64",
+  );
+  const outputText = output.outputText.replace(
+    /\n\/\/# sourceMappingURL=.*(?:\r?\n)?$/,
+    "\n",
+  );
+  const moduleText = [
+    outputText,
+    `// configured-sdk-import-${configuredSdkImportCounter}`,
+    `//# sourceMappingURL=data:application/json;base64,${sourceMapData}`,
+  ].join("\n");
+  return import(
+    `data:text/javascript;base64,${Buffer.from(moduleText).toString("base64")}`
+  );
+}
+
+function decodeFetchBody(fetchSpy: ReturnType<typeof vi.fn>, index = 0) {
+  const [, options] = fetchSpy.mock.calls[index] as [string, RequestInit];
+  return JSON.parse(options.body as string);
+}
+
+async function decodeBeaconBody(blob: Blob) {
+  return JSON.parse(await blob.text());
+}
 
 describe("Tracker Browser SDK Integration Suite", () => {
   let mockScriptEl: HTMLScriptElement;
@@ -7,6 +115,9 @@ describe("Tracker Browser SDK Integration Suite", () => {
   let originalReplaceState: any;
   let originalDocAddEventListener: any;
   let originalWinAddEventListener: any;
+  let originalIntersectionObserver: any;
+  let originalMutationObserver: any;
+  let originalPerformanceObserver: any;
   let registeredDocListeners: Array<
     [string, EventListenerOrEventListenerObject, any]
   > = [];
@@ -17,6 +128,20 @@ describe("Tracker Browser SDK Integration Suite", () => {
   beforeEach(() => {
     // Reset browser storage and global states to isolate installations
     delete (window as any).__insightflare_tracker_v6__;
+    delete (window as any).insightflare;
+    delete (navigator as any).userAgentData;
+    (navigator as any).sendBeacon = undefined;
+    Object.defineProperty(navigator, "doNotTrack", {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      writable: true,
+      configurable: true,
+    });
+    history.replaceState({}, "", "/");
     window.localStorage.clear();
     window.sessionStorage.clear();
     document.body.innerHTML = "";
@@ -25,6 +150,9 @@ describe("Tracker Browser SDK Integration Suite", () => {
     // would otherwise leak across tests and cause stale closures to fire on later cases.
     originalDocAddEventListener = document.addEventListener;
     originalWinAddEventListener = window.addEventListener;
+    originalIntersectionObserver = (globalThis as any).IntersectionObserver;
+    originalMutationObserver = (globalThis as any).MutationObserver;
+    originalPerformanceObserver = (globalThis as any).PerformanceObserver;
     registeredDocListeners = [];
     registeredWinListeners = [];
     (document as any).addEventListener = function (
@@ -108,10 +236,14 @@ describe("Tracker Browser SDK Integration Suite", () => {
     // Restore history methods (SDK reassigns push/replaceState)
     history.pushState = originalPushState;
     history.replaceState = originalReplaceState;
+    (globalThis as any).IntersectionObserver = originalIntersectionObserver;
+    (globalThis as any).MutationObserver = originalMutationObserver;
+    (globalThis as any).PerformanceObserver = originalPerformanceObserver;
 
     document.body.innerHTML = "";
 
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it("should successfully boot the SDK and mount the installation flag when loaded properly", async () => {
@@ -1052,5 +1184,924 @@ describe("Tracker Browser SDK Integration Suite", () => {
     api.track("no_ua_data");
     const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
     expect(body.uaClientHints).toBeUndefined();
+  });
+
+  it("should expose the API on window.insightflare as well as the install key", async () => {
+    await import("../sdk.ts");
+    expect((window as any).insightflare).toBe((window as any)[installKey]);
+    expect((window as any).insightflare.siteId).toBe("__IF_SITE_ID__");
+  });
+
+  it("should reuse existing visitor and session ids when configured session window allows it", async () => {
+    const randomUuidSpy = vi
+      .spyOn(globalThis.crypto, "randomUUID")
+      .mockReturnValue("unused-new-id");
+    window.localStorage.setItem(
+      "__insightflare_visitor_configured-site__",
+      "existing-visitor",
+    );
+    window.sessionStorage.setItem(
+      "__insightflare_session_configured-site__",
+      "existing-session",
+    );
+    window.sessionStorage.setItem(
+      "__insightflare_session_activity_configured-site__",
+      String(Date.now() - 1_000),
+    );
+
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await importConfiguredSdk({ sessionWindowMs: 30 * 60 * 1000 });
+
+    const body = decodeFetchBody(fetchSpy);
+    expect(body.visitorId).toBe("existing-visitor");
+    expect(body.sessionId).toBe("existing-session");
+    expect(body.visitId).toBe("unused-new-id");
+    expect(randomUuidSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("should create a new session id when stored activity is expired", async () => {
+    const randomUuidSpy = vi
+      .spyOn(globalThis.crypto, "randomUUID")
+      .mockReturnValueOnce("new-session")
+      .mockReturnValueOnce("new-visit");
+    window.localStorage.setItem(
+      "__insightflare_visitor_configured-site__",
+      "existing-visitor",
+    );
+    window.sessionStorage.setItem(
+      "__insightflare_session_configured-site__",
+      "expired-session",
+    );
+    window.sessionStorage.setItem(
+      "__insightflare_session_activity_configured-site__",
+      String(Date.now() - 60_000),
+    );
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await importConfiguredSdk({ sessionWindowMs: 1 });
+
+    const body = decodeFetchBody(fetchSpy);
+    expect(body.visitorId).toBe("existing-visitor");
+    expect(body.sessionId).toBe("new-session");
+    expect(body.visitId).toBe("new-visit");
+    expect(
+      window.sessionStorage.getItem("__insightflare_session_configured-site__"),
+    ).toBe("new-session");
+    expect(randomUuidSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("should suppress visitor ids when configured for EU mode", async () => {
+    const randomUuidSpy = vi
+      .spyOn(globalThis.crypto, "randomUUID")
+      .mockReturnValueOnce("session-only");
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await importConfiguredSdk({ isEuMode: true });
+
+    const body = decodeFetchBody(fetchSpy);
+    expect(body.visitorId).toBe("");
+    expect(randomUuidSpy).toHaveBeenCalledTimes(2);
+    expect(window.localStorage.length).toBe(0);
+  });
+
+  it("should omit query and hash when configured flags are disabled", async () => {
+    history.replaceState({}, "", "/docs?utm=campaign#intro");
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await importConfiguredSdk({ trackHash: false, trackQueryParams: false });
+
+    const body = decodeFetchBody(fetchSpy);
+    expect(body.pathname).toBe("/docs");
+    expect(body.query).toBe("");
+    expect(body.hash).toBe("");
+  });
+
+  it("should block installation when configured to honor Do Not Track", async () => {
+    Object.defineProperty(navigator, "doNotTrack", {
+      value: "yes",
+      writable: true,
+      configurable: true,
+    });
+
+    await expect(
+      importConfiguredSdk({ ignoreDoNotTrack: false }),
+    ).rejects.toThrow("InsightFlare: Do Not Track enabled");
+  });
+
+  it("should not register outbound link listener when outbound auto-track is disabled", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await importConfiguredSdk({ autoTrackOutboundLinks: false });
+    fetchSpy.mockClear();
+
+    const a = document.createElement("a");
+    a.href = "https://external.example/path";
+    document.body.appendChild(a);
+    a.click();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("should fall back to fetch keepalive for leave events when sendBeacon is unavailable", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    fetchSpy.mockClear();
+    window.dispatchEvent(new Event("pagehide"));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [, options] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(options.body as string);
+    expect(body.kind).toBe("leave");
+    expect(options.keepalive).toBe(true);
+  });
+
+  it("should ignore unserializable custom event payloads", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    fetchSpy.mockClear();
+    const api = (window as any).__insightflare_tracker_v6__;
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+
+    expect(() => api.track("circular", circular)).not.toThrow();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("should trim event names and increment sequence across custom events", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    fetchSpy.mockClear();
+    const api = (window as any).__insightflare_tracker_v6__;
+    api.track("  spaced_event  ");
+    api.track("next_event");
+
+    const firstBody = decodeFetchBody(fetchSpy, 0);
+    const secondBody = decodeFetchBody(fetchSpy, 1);
+    expect(firstBody.eventName).toBe("spaced_event");
+    expect(firstBody.sequence).toBe(1);
+    expect(secondBody.sequence).toBe(2);
+  });
+
+  it("should ignore inherited global property keys", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    fetchSpy.mockClear();
+    const api = (window as any).__insightflare_tracker_v6__;
+    const props = Object.create({ inherited: "ignored" });
+    props.owned = "kept";
+    api.setGlobalProperties(props);
+    api.track("global_props");
+
+    const body = decodeFetchBody(fetchSpy);
+    expect(body.eventData).toEqual({ owned: "kept" });
+  });
+
+  it("should not send submit auto-track events for forms without an event name", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    fetchSpy.mockClear();
+
+    const form = document.createElement("form");
+    form.setAttribute("data-insightflare-event-trigger", "submit");
+    document.body.appendChild(form);
+    form.dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("should not send click auto-track events for elements without an event name", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    fetchSpy.mockClear();
+
+    const button = document.createElement("button");
+    button.setAttribute("data-insightflare-event-trigger", "click");
+    document.body.appendChild(button);
+    button.click();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("should ignore visibility-trigger entries without an event name", async () => {
+    const observerCallbacks: Array<(entries: any[]) => void> = [];
+    const unobserved: Element[] = [];
+
+    (globalThis as any).IntersectionObserver = class {
+      constructor(cb: (entries: any[]) => void) {
+        observerCallbacks.push(cb);
+      }
+      observe() {}
+      unobserve(el: Element) {
+        unobserved.push(el);
+      }
+      disconnect() {}
+    };
+
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    const el = document.createElement("div");
+    el.setAttribute("data-insightflare-event-trigger", "enterviewport");
+    document.body.appendChild(el);
+
+    await import("../sdk.ts");
+    fetchSpy.mockClear();
+
+    observerCallbacks[0]([{ target: el, isIntersecting: true }]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(unobserved).toContain(el);
+  });
+
+  it("should swallow rejected fetch promises without breaking installation", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("network down"));
+
+    await expect(import("../sdk.ts")).resolves.toBeDefined();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fetchSpy).toHaveBeenCalled();
+    expect((window as any).__insightflare_tracker_v6__).toBeDefined();
+  });
+
+  it("should flush pending route changes before manual tracking and log pageviews in debug mode", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    const api = (window as any).__insightflare_tracker_v6__;
+    api.debug();
+    fetchSpy.mockClear();
+
+    history.pushState({}, "", "/flushed-route?from=test");
+    await new Promise((r) => queueMicrotask(r));
+    api.track("after_route_flush");
+
+    const bodies = fetchSpy.mock.calls.map(([, options]) =>
+      JSON.parse((options as RequestInit).body as string),
+    );
+    expect(bodies.map((body) => body.kind)).toEqual([
+      "pageview",
+      "custom_event",
+    ]);
+    expect(bodies[0].pathname).toBe("/flushed-route");
+    expect(bodies[1].pathname).toBe("/flushed-route");
+    expect(logSpy).toHaveBeenCalledWith(
+      "[InsightFlare]",
+      "pageview:",
+      "/flushed-route",
+    );
+  });
+
+  it("should ignore stale route timer callbacks after a manual flush", async () => {
+    const routeCallbacks: Array<() => void> = [];
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    fetchSpy.mockClear();
+    vi.spyOn(window, "setTimeout").mockImplementation(((callback) => {
+      routeCallbacks.push(callback as () => void);
+      return routeCallbacks.length as unknown as number;
+    }) as typeof window.setTimeout);
+    vi.spyOn(window, "clearTimeout").mockImplementation(() => undefined);
+
+    history.pushState({}, "", "/stale-route");
+    await new Promise((r) => queueMicrotask(r));
+    expect(routeCallbacks).toHaveLength(1);
+
+    const api = (window as any).__insightflare_tracker_v6__;
+    api.track("flush_stale_route");
+    fetchSpy.mockClear();
+
+    routeCallbacks[0]();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("should flush pending route changes when the scheduled timer id is zero", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    fetchSpy.mockClear();
+    vi.spyOn(window, "setTimeout").mockImplementation(
+      (() => 0) as typeof window.setTimeout,
+    );
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+
+    history.pushState({}, "", "/zero-timer-route");
+    await new Promise((r) => queueMicrotask(r));
+
+    const api = (window as any).__insightflare_tracker_v6__;
+    api.track("zero_timer_flush");
+
+    expect(clearTimeoutSpy).not.toHaveBeenCalled();
+    const bodies = fetchSpy.mock.calls.map(([, options]) =>
+      JSON.parse((options as RequestInit).body as string),
+    );
+    expect(bodies.map((body) => body.kind)).toEqual([
+      "pageview",
+      "custom_event",
+    ]);
+    expect(bodies[0].pathname).toBe("/zero-timer-route");
+    expect(bodies[1].pathname).toBe("/zero-timer-route");
+  });
+
+  it("should ignore invalid outbound href values", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    fetchSpy.mockClear();
+
+    const a = document.createElement("a");
+    a.setAttribute("href", "http://[");
+    document.body.appendChild(a);
+    a.click();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("should ignore outbound anchors with blank href values", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    fetchSpy.mockClear();
+
+    const a = document.createElement("a");
+    a.setAttribute("href", "");
+    document.body.appendChild(a);
+    a.click();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("should ignore empty auto-track click and submit event names", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    fetchSpy.mockClear();
+
+    const button = document.createElement("button");
+    button.setAttribute("data-insightflare-event", "");
+    document.body.appendChild(button);
+    button.click();
+
+    const form = document.createElement("form");
+    form.setAttribute("data-insightflare-event", "");
+    form.setAttribute("data-insightflare-event-trigger", "submit");
+    document.body.appendChild(form);
+    form.dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("should ignore inherited and unrelated dataset keys during auto-track extraction", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    fetchSpy.mockClear();
+
+    const button = document.createElement("button");
+    button.setAttribute("data-insightflare-event", "dataset_edge");
+    Object.defineProperty(button, "dataset", {
+      configurable: true,
+      value: Object.assign(
+        Object.create({ insightflareEventInherited: "ignored" }),
+        {
+          otherKey: "ignored",
+          insightflareEventLabel: "kept",
+        },
+      ),
+    });
+    document.body.appendChild(button);
+    button.click();
+
+    const body = decodeFetchBody(fetchSpy);
+    expect(body.eventData).toEqual({ label: "kept" });
+  });
+
+  it("should normalize malformed UA client hints without preserving invalid values", async () => {
+    (navigator as any).userAgentData = {
+      brands: [
+        null,
+        [],
+        { brand: "", version: "1" },
+        { brand: "MissingVersion", version: "" },
+      ],
+      mobile: "false",
+      platform: "   ",
+      getHighEntropyValues: vi.fn().mockResolvedValue({
+        fullVersionList: [
+          { brand: "Chromium", version: "130.0.6723.92" },
+          { brand: "", version: "bad" },
+        ],
+        formFactors: [" Desktop ", "", "Foldable"],
+        model: " Surface Pro ",
+        platformVersion: " 15.0.0 ",
+      }),
+    };
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    await new Promise((r) => setTimeout(r, 0));
+
+    fetchSpy.mockClear();
+    const api = (window as any).__insightflare_tracker_v6__;
+    api.track("malformed_ua");
+
+    const body = decodeFetchBody(fetchSpy);
+    expect(body.uaClientHints).toEqual({
+      fullVersionList: [{ brand: "Chromium", version: "130.0.6723.92" }],
+      formFactors: ["Desktop", "Foldable"],
+      model: "Surface Pro",
+      platformVersion: "15.0.0",
+    });
+  });
+
+  it("should omit UA client hints when userAgentData has no usable fields", async () => {
+    (navigator as any).userAgentData = {};
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    await new Promise((r) => setTimeout(r, 0));
+
+    fetchSpy.mockClear();
+    const api = (window as any).__insightflare_tracker_v6__;
+    api.track("empty_ua");
+
+    const body = decodeFetchBody(fetchSpy);
+    expect(body.uaClientHints).toBeUndefined();
+  });
+
+  it("should apply page payload fallbacks for empty browser metadata", async () => {
+    const originalLanguage = navigator.language;
+    const originalScreen = window.screen;
+    document.title = "";
+    Object.defineProperty(navigator, "language", {
+      value: "",
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(window, "screen", {
+      value: {},
+      writable: true,
+      configurable: true,
+    });
+    vi.spyOn(Intl, "DateTimeFormat").mockImplementation(
+      () =>
+        ({
+          resolvedOptions: () => ({ timeZone: "" }),
+        }) as Intl.DateTimeFormat,
+    );
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    try {
+      await import("../sdk.ts");
+
+      const body = decodeFetchBody(fetchSpy);
+      expect(body.title).toBe("");
+      expect(body.language).toBe("");
+      expect(body.timezone).toBe("");
+      expect(body.screenWidth).toBeNull();
+      expect(body.screenHeight).toBeNull();
+    } finally {
+      Object.defineProperty(navigator, "language", {
+        value: originalLanguage,
+        writable: true,
+        configurable: true,
+      });
+      Object.defineProperty(window, "screen", {
+        value: originalScreen,
+        writable: true,
+        configurable: true,
+      });
+    }
+  });
+
+  it("should surface debug logs for identify without a name and track without event data", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+    );
+
+    await import("../sdk.ts");
+    const api = (window as any).__insightflare_tracker_v6__;
+    api.debug();
+    api.identify("debug-no-name");
+    api.track("debug-no-data");
+
+    expect(logSpy).toHaveBeenCalledWith(
+      "[InsightFlare]",
+      "identify:",
+      JSON.stringify("debug-no-name"),
+      "",
+    );
+    expect(logSpy).toHaveBeenCalledWith(
+      "[InsightFlare]",
+      "track:",
+      JSON.stringify("debug-no-data"),
+      JSON.stringify({}),
+    );
+  });
+
+  it("should tolerate missing history methods during installation", async () => {
+    Object.defineProperty(history, "pushState", {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
+
+    await import("../sdk.ts");
+
+    expect((window as any).__insightflare_tracker_v6__).toBeDefined();
+    expect(history.pushState).toBeUndefined();
+  });
+
+  it("should skip MutationObserver setup when the API is unavailable", async () => {
+    const originalMutationObserver = globalThis.MutationObserver;
+    (globalThis as any).MutationObserver = undefined;
+
+    try {
+      await import("../sdk.ts");
+      expect((window as any).__insightflare_tracker_v6__).toBeDefined();
+    } finally {
+      (globalThis as any).MutationObserver = originalMutationObserver;
+    }
+  });
+
+  it("should ignore non-element nodes added through MutationObserver", async () => {
+    const observed: Element[] = [];
+    (globalThis as any).IntersectionObserver = class {
+      constructor() {}
+      observe(el: Element) {
+        observed.push(el);
+      }
+      unobserve() {}
+      disconnect() {}
+    };
+
+    await import("../sdk.ts");
+
+    document.body.appendChild(document.createTextNode("not an element"));
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(observed).toEqual([]);
+    delete (globalThis as any).IntersectionObserver;
+  });
+
+  it("should skip viewport visibility setup when IntersectionObserver is unavailable", async () => {
+    (globalThis as any).IntersectionObserver = undefined;
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    const el = document.createElement("div");
+    el.setAttribute("data-insightflare-event", "not_observed");
+    el.setAttribute("data-insightflare-event-trigger", "enterviewport");
+    document.body.appendChild(el);
+
+    await import("../sdk.ts");
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect((window as any).__insightflare_tracker_v6__).toBeDefined();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("should extract auto-track JSON data when dataset is unavailable", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    fetchSpy.mockClear();
+
+    const button = document.createElement("button");
+    button.setAttribute("data-insightflare-event", "dataset_missing");
+    button.setAttribute(
+      "data-insightflare-event-data",
+      JSON.stringify({ source: "json-only" }),
+    );
+    Object.defineProperty(button, "dataset", {
+      configurable: true,
+      value: undefined,
+    });
+    document.body.appendChild(button);
+    button.click();
+
+    const body = decodeFetchBody(fetchSpy);
+    expect(body.eventName).toBe("dataset_missing");
+    expect(body.eventData).toEqual({ source: "json-only" });
+  });
+
+  it("should ignore visibilitychange events while the document is visible", async () => {
+    const sendBeaconSpy = vi.fn().mockReturnValue(true);
+    (navigator as any).sendBeacon = sendBeaconSpy;
+
+    await import("../sdk.ts");
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(sendBeaconSpy).not.toHaveBeenCalled();
+  });
+
+  it("should wait for UA client hints before the first pageview and only flush once", async () => {
+    vi.useFakeTimers();
+    let resolveHighEntropy: (value: unknown) => void = () => {};
+    const uaData = {
+      brands: [
+        { brand: "", version: "missing-brand" },
+        { brand: "Chromium", version: "130" },
+      ],
+      mobile: false,
+      platform: "Windows",
+      getHighEntropyValues: vi.fn(
+        () =>
+          new Promise((resolve) => {
+            resolveHighEntropy = resolve;
+          }),
+      ),
+    };
+    (navigator as any).userAgentData = uaData;
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    const importPromise = importConfiguredSdk();
+    await vi.advanceTimersByTimeAsync(50);
+    await importPromise;
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    resolveHighEntropy({
+      fullVersionList: [
+        { brand: "Chromium", version: "130.0.6723.92" },
+        { brand: "TooLong", version: "1" },
+      ],
+      formFactors: ["Desktop", "", "Tablet"],
+      model: "Surface",
+      platformVersion: "15.0.0",
+    });
+    await vi.runAllTimersAsync();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const body = decodeFetchBody(fetchSpy);
+    expect(body.kind).toBe("pageview");
+    expect(body.uaClientHints.brands).toEqual([
+      { brand: "Chromium", version: "130" },
+    ]);
+    expect(body.uaClientHints.formFactors).toEqual(["Desktop", "Tablet"]);
+    expect(body.uaClientHints.model).toBe("Surface");
+  });
+
+  it("should flush the first pageview after UA client hints timeout", async () => {
+    vi.useFakeTimers();
+    (navigator as any).userAgentData = {
+      brands: [{ brand: "Slow", version: "1" }],
+      mobile: false,
+      platform: "Windows",
+      getHighEntropyValues: vi.fn(() => new Promise(() => {})),
+    };
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await importConfiguredSdk();
+    await vi.advanceTimersByTimeAsync(199);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const body = decodeFetchBody(fetchSpy);
+    expect(body.kind).toBe("pageview");
+    expect(body.uaClientHints).toBeUndefined();
+  });
+
+  it("should include sampled performance metrics on leave events", async () => {
+    const callbacks = new Map<string, (entries: any[]) => void>();
+    const disconnectSpies: Array<ReturnType<typeof vi.fn>> = [];
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    vi.spyOn(performance, "getEntriesByType").mockImplementation((type) =>
+      type === "navigation"
+        ? ([{ responseStart: 123.4567 }] as PerformanceEntryList)
+        : ([] as unknown as PerformanceEntryList),
+    );
+    (globalThis as any).PerformanceObserver = class {
+      static supportedEntryTypes = [
+        "paint",
+        "largest-contentful-paint",
+        "layout-shift",
+        "event",
+      ];
+      private readonly typeDisconnect = vi.fn();
+      constructor(private readonly cb: (list: any) => void) {
+        disconnectSpies.push(this.typeDisconnect);
+      }
+      observe(options: PerformanceObserverInit) {
+        callbacks.set(String(options.type), (entries: any[]) =>
+          this.cb({ getEntries: () => entries }),
+        );
+      }
+      disconnect() {
+        this.typeDisconnect();
+      }
+    };
+    const sendBeaconSpy = vi.fn().mockReturnValue(true);
+    (navigator as any).sendBeacon = sendBeaconSpy;
+
+    await importConfiguredSdk({ performanceSampleRate: 100 });
+    callbacks.get("paint")?.([
+      { name: "first-paint", startTime: 10 },
+      { name: "first-contentful-paint", startTime: 45.6789 },
+    ]);
+    callbacks.get("largest-contentful-paint")?.([
+      { startTime: 80 },
+      { startTime: 90.1234 },
+    ]);
+    callbacks.get("layout-shift")?.([
+      { hadRecentInput: true, value: 1 },
+      { hadRecentInput: false, value: 0.1234 },
+      { hadRecentInput: false, value: 0.1111 },
+    ]);
+    callbacks.get("event")?.([
+      { duration: -1 },
+      { duration: 70 },
+      { interactionId: 42, duration: 40 },
+      { interactionId: 42, duration: 95.4321 },
+    ]);
+
+    window.dispatchEvent(new Event("pagehide"));
+
+    expect(sendBeaconSpy).toHaveBeenCalledTimes(1);
+    const [, blob] = sendBeaconSpy.mock.calls[0] as [string, Blob];
+    const body = await decodeBeaconBody(blob);
+    expect(body.kind).toBe("leave");
+    expect(body.performanceVisitId).toBe(body.visitId);
+    expect(body.performance).toEqual({
+      ttfb: 123.457,
+      fcp: 45.679,
+      lcp: 90.123,
+      cls: 0.234,
+      inp: 95.432,
+    });
+    expect(disconnectSpies).toHaveLength(4);
+    for (const disconnectSpy of disconnectSpies) {
+      expect(disconnectSpy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("should skip unsupported performance entry observers and omit performance when unsampled", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(1);
+    (globalThis as any).PerformanceObserver = class {
+      static supportedEntryTypes = ["paint"];
+      constructor() {
+        throw new Error("unsupported");
+      }
+      observe() {}
+      disconnect() {}
+    };
+    const sendBeaconSpy = vi.fn().mockReturnValue(true);
+    (navigator as any).sendBeacon = sendBeaconSpy;
+
+    await importConfiguredSdk({ performanceSampleRate: 50 });
+    window.dispatchEvent(new Event("pagehide"));
+
+    const [, blob] = sendBeaconSpy.mock.calls[0] as [string, Blob];
+    const body = await decodeBeaconBody(blob);
+    expect(body.performance).toBeUndefined();
+    expect(body.performanceVisitId).toBeUndefined();
+  });
+
+  it("should not collect or attach performance data when built without performance support", async () => {
+    const observerConstructorSpy = vi.fn();
+    (globalThis as any).PerformanceObserver = class {
+      static supportedEntryTypes = [
+        "paint",
+        "largest-contentful-paint",
+        "layout-shift",
+        "event",
+      ];
+      constructor() {
+        observerConstructorSpy();
+      }
+      observe() {}
+      disconnect() {}
+    };
+    const sendBeaconSpy = vi.fn().mockReturnValue(true);
+    (navigator as any).sendBeacon = sendBeaconSpy;
+
+    await importConfiguredSdk({
+      buildPerformance: false,
+      performanceSampleRate: 100,
+    });
+    window.dispatchEvent(new Event("pagehide"));
+
+    expect(observerConstructorSpy).not.toHaveBeenCalled();
+    const [, blob] = sendBeaconSpy.mock.calls[0] as [string, Blob];
+    const body = await decodeBeaconBody(blob);
+    expect(body.kind).toBe("leave");
+    expect(body.performance).toBeUndefined();
+    expect(body.performanceVisitId).toBeUndefined();
   });
 });

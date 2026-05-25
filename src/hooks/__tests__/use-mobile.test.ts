@@ -42,7 +42,7 @@ describe("useIsMobile", () => {
 
   beforeEach(() => {
     container = document.createElement("div");
-    document.body.append(container);
+    (document.body as any).append(container);
     root = createRoot(container);
   });
 

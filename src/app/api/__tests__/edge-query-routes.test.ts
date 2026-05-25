@@ -1,16 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handlePrivateAdmin } from "@/lib/edge/admin";
-import { handlePrivateArchive } from "@/lib/edge/archive-query";
-import { handlePrivateQuery, handlePublicQuery } from "@/lib/edge/query";
-import { resolveEdgeRuntime } from "@/lib/edge/runtime";
-
 import {
   GET as privateGET,
   PATCH as privatePATCH,
   POST as privatePOST,
-} from "../private/[...segments]/route";
-import { GET as publicGET } from "../public/[...segments]/route";
+} from "@/app/api/private/[...segments]/route";
+import { GET as publicGET } from "@/app/api/public/[...segments]/route";
+import { handlePrivateAdmin } from "@/lib/edge/admin";
+import { handlePrivateArchive } from "@/lib/edge/archive-query";
+import { handlePrivateQuery, handlePublicQuery } from "@/lib/edge/query";
+import { resolveEdgeRuntime } from "@/lib/edge/runtime";
 
 vi.mock("@/lib/edge/admin", () => ({
   handlePrivateAdmin: vi.fn(),
@@ -49,7 +48,7 @@ function mockRuntime(pathname: string, method = "GET") {
     env,
     ctx,
     url,
-  });
+  } as any);
   return request;
 }
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GET } from "../route";
+import { GET } from "@/app/api/wiki-summary/route";
 
 describe("wiki summary route", () => {
   beforeEach(() => {

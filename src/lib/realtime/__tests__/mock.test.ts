@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createMockRealtimeSocket,
@@ -7,10 +7,34 @@ import {
 } from "@/lib/realtime/mock";
 
 const SITE_ID = "demo-site-001";
+const DAY_MS = 24 * 60 * 60 * 1000;
+const FIXED_FROM = Date.UTC(2026, 0, 5);
+const FIXED_TO = FIXED_FROM + 2 * DAY_MS;
+const ANALYTICS_PARAMS = {
+  siteId: SITE_ID,
+  from: FIXED_FROM,
+  to: FIXED_TO,
+  timeZone: "UTC",
+};
 
 function ok(result: unknown): { ok: boolean; data: unknown } {
   return result as { ok: boolean; data: unknown };
 }
+
+function asRecord(result: unknown): Record<string, unknown> {
+  return result as Record<string, unknown>;
+}
+
+function dataRows(result: unknown): Array<Record<string, unknown>> {
+  const data = asRecord(result).data;
+  expect(Array.isArray(data)).toBe(true);
+  return data as Array<Record<string, unknown>>;
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("mock — handleDemoRequest", () => {
   describe("write operations", () => {
@@ -165,6 +189,33 @@ describe("mock — handleDemoRequest", () => {
         expect(res).toBeDefined();
       }
     });
+
+    it("honors supported system-performance minutes and falls back otherwise", () => {
+      for (const [minutes, bucketSizeMs] of [
+        [15, 60_000],
+        [60, 5 * 60_000],
+        [360, 30 * 60_000],
+        [1440, 60 * 60_000],
+      ] as const) {
+        const res = asRecord(
+          handleDemoRequest({
+            path: "/api/admin/admin/system-performance",
+            params: { minutes },
+          }),
+        );
+        const window = res.window as Record<string, unknown>;
+        expect(window.minutes).toBe(minutes);
+        expect(window.bucketSizeMs).toBe(bucketSizeMs);
+      }
+
+      const fallback = asRecord(
+        handleDemoRequest({
+          path: "/api/admin/admin/system-performance",
+          params: { minutes: 999 },
+        }),
+      );
+      expect((fallback.window as Record<string, unknown>).minutes).toBe(60);
+    });
   });
 
   describe("analytics queries", () => {
@@ -280,6 +331,660 @@ describe("mock — handleDemoRequest", () => {
       });
       expect(res).toBeDefined();
     });
+
+    it("returns overview change rates and detail trend when requested", () => {
+      const res = asRecord(
+        handleDemoRequest({
+          path: "/api/private/overview",
+          params: {
+            ...ANALYTICS_PARAMS,
+            includeChange: "true",
+            includeDetail: "1",
+            interval: "hour",
+            tz: "Asia/Shanghai",
+          },
+        }),
+      );
+
+      expect(res.ok).toBe(true);
+      expect(res.previousData).toBeTruthy();
+      expect(res.changeRates).toEqual(
+        expect.objectContaining({
+          views: expect.any(Number),
+          sessions: expect.any(Number),
+        }),
+      );
+      expect(res.detail).toEqual(
+        expect.objectContaining({
+          interval: "hour",
+          data: expect.any(Array),
+        }),
+      );
+    });
+
+    it("falls back to a single trend bucket for an inverted time window", () => {
+      const res = asRecord(
+        handleDemoRequest({
+          path: "/api/private/trend",
+          params: {
+            siteId: SITE_ID,
+            from: FIXED_TO,
+            to: FIXED_FROM,
+            interval: "hour",
+          },
+        }),
+      );
+
+      expect(res.ok).toBe(true);
+      expect(res.interval).toBe("hour");
+      expect(res.data).toEqual([
+        expect.objectContaining({
+          bucket: 0,
+          views: 0,
+          visitors: 0,
+          sessions: 0,
+        }),
+      ]);
+    });
+
+    it("returns event detail, context cards, and payload field values", () => {
+      const eventRows = dataRows(
+        handleDemoRequest({
+          path: "/api/private/events-records",
+          params: { ...ANALYTICS_PARAMS, pageSize: 10 },
+        }),
+      );
+      expect(eventRows.length).toBeGreaterThan(0);
+      const event = eventRows[0];
+      const eventId = String(event.eventId);
+      const eventName = String(event.eventName);
+
+      const detail = ok(
+        handleDemoRequest({
+          path: "/api/private/event-record-detail",
+          params: { ...ANALYTICS_PARAMS, eventId },
+        }),
+      ).data as Record<string, unknown>;
+      expect(detail.event).toEqual(expect.objectContaining({ eventId }));
+      expect(detail.eventData).toEqual(
+        expect.objectContaining({
+          plan: expect.any(String),
+          page: expect.any(Object),
+          flags: expect.any(Object),
+          items: expect.any(Array),
+        }),
+      );
+
+      const typeDetail = asRecord(
+        handleDemoRequest({
+          path: "/api/private/event-type-detail",
+          params: { ...ANALYTICS_PARAMS, eventName, interval: "hour" },
+        }),
+      );
+      expect(typeDetail.eventName).toBe(eventName);
+      expect(typeDetail.summary).toEqual(
+        expect.objectContaining({ eventTypes: 1 }),
+      );
+      expect(typeDetail.breakdowns).toEqual(
+        expect.objectContaining({
+          pages: expect.any(Array),
+          countries: expect.any(Array),
+          devices: expect.any(Array),
+          browsers: expect.any(Array),
+        }),
+      );
+      expect(typeDetail.cards).toEqual(
+        expect.objectContaining({
+          page: expect.any(Object),
+          source: expect.any(Object),
+          client: expect.any(Object),
+          geo: expect.any(Object),
+        }),
+      );
+      expect(typeDetail.fields).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ path: "/plan", valueType: "string" }),
+          expect.objectContaining({ path: "/value", valueType: "number" }),
+          expect.objectContaining({
+            path: "/flags/signedIn",
+            valueType: "boolean",
+          }),
+          expect.objectContaining({ path: "/items/*", valueType: "null" }),
+        ]),
+      );
+
+      const fieldValues = dataRows(
+        handleDemoRequest({
+          path: "/api/private/event-type-field-values",
+          params: {
+            ...ANALYTICS_PARAMS,
+            eventName,
+            fieldPath: "/plan",
+            fieldValueType: "string",
+            limit: 5,
+          },
+        }),
+      );
+      expect(fieldValues.length).toBeGreaterThan(0);
+      expect(fieldValues[0]).toEqual(
+        expect.objectContaining({
+          value: expect.any(String),
+          occurrences: expect.any(Number),
+        }),
+      );
+    });
+
+    it("supports event payload filters for scalar and array values", () => {
+      const planMiss = dataRows(
+        handleDemoRequest({
+          path: "/api/private/events-records",
+          params: {
+            ...ANALYTICS_PARAMS,
+            eventPayloadFilters: JSON.stringify([
+              { path: "/plan", operator: "eq", value: "not-a-demo-plan" },
+            ]),
+          },
+        }),
+      );
+      expect(planMiss).toHaveLength(0);
+
+      const planNeRows = dataRows(
+        handleDemoRequest({
+          path: "/api/private/events-records",
+          params: {
+            ...ANALYTICS_PARAMS,
+            pageSize: 3,
+            eventPayloadFilters: JSON.stringify([
+              { path: "/plan", operator: "ne", value: "not-a-demo-plan" },
+            ]),
+          },
+        }),
+      );
+      expect(planNeRows.length).toBeGreaterThan(0);
+
+      const nullArrayRows = dataRows(
+        handleDemoRequest({
+          path: "/api/private/events-records",
+          params: {
+            ...ANALYTICS_PARAMS,
+            pageSize: 3,
+            eventPayloadFilters: JSON.stringify([
+              { path: "/items/*", operator: "eq", value: null },
+            ]),
+          },
+        }),
+      );
+      expect(nullArrayRows.length).toBeGreaterThan(0);
+
+      const numberMiss = dataRows(
+        handleDemoRequest({
+          path: "/api/private/events-records",
+          params: {
+            ...ANALYTICS_PARAMS,
+            eventPayloadFilters: JSON.stringify([
+              { path: "/value", operator: "eq", value: 999_999 },
+            ]),
+          },
+        }),
+      );
+      expect(numberMiss).toHaveLength(0);
+    });
+
+    it("groups less common event names into an Other trend series", () => {
+      const res = asRecord(
+        handleDemoRequest({
+          path: "/api/private/events-trend",
+          params: {
+            ...ANALYTICS_PARAMS,
+            interval: "hour",
+            limit: 1,
+          },
+        }),
+      );
+
+      expect(res.ok).toBe(true);
+      expect(res.series).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ key: "other", isOther: true }),
+        ]),
+      );
+      expect(res.data).toEqual(expect.any(Array));
+    });
+
+    it("returns empty event field values when required params are absent", () => {
+      const res = asRecord(
+        handleDemoRequest({
+          path: "/api/private/event-type-field-values",
+          params: ANALYTICS_PARAMS,
+        }),
+      );
+
+      expect(res.ok).toBe(true);
+      expect(res.data).toEqual([]);
+    });
+
+    it.each([
+      "country",
+      "device",
+      "browser",
+      "path",
+      "sourceDomain",
+      "sourceLink",
+      "clientBrowser",
+      "clientOsVersion",
+      "clientDeviceType",
+      "clientLanguage",
+      "clientScreenSize",
+      "geo",
+      "geoContinent",
+      "geoTimezone",
+      "geoOrganization",
+    ])("returns deduped filter options for %s", (filterKey) => {
+      const res = ok(
+        handleDemoRequest({
+          path: "/api/private/filter-options",
+          params: { ...ANALYTICS_PARAMS, filterKey, limit: 8 },
+        }),
+      );
+
+      expect(res.ok).toBe(true);
+      expect(Array.isArray(res.data)).toBe(true);
+      const values = (res.data as Array<{ value: string }>).map(
+        (item) => item.value,
+      );
+      expect(new Set(values).size).toBe(values.length);
+    });
+
+    it("returns hierarchical geo point counts with and without region filters", () => {
+      const countryRes = asRecord(
+        handleDemoRequest({
+          path: "/api/private/overview-geo-points",
+          params: {
+            ...ANALYTICS_PARAMS,
+            geo: "US",
+            applyGeoFilter: "true",
+            limit: 50,
+          },
+        }),
+      );
+      expect(countryRes.ok).toBe(true);
+      expect(countryRes.data).toEqual(expect.any(Array));
+      expect(countryRes.countryCounts).toEqual(expect.any(Array));
+      expect(countryRes.regionCounts).toEqual(expect.any(Array));
+
+      const region = (countryRes.regionCounts as Array<{ value: string }>)[0];
+      if (region) {
+        const regionRes = asRecord(
+          handleDemoRequest({
+            path: "/api/private/overview-geo-points",
+            params: {
+              ...ANALYTICS_PARAMS,
+              geo: region.value,
+              applyGeoFilter: 1,
+              limit: 50,
+            },
+          }),
+        );
+        expect(regionRes.cityCounts).toEqual(expect.any(Array));
+      }
+    });
+
+    it.each([
+      "browser",
+      "operatingSystem",
+      "osVersion",
+      "deviceType",
+      "language",
+      "screenSize",
+    ])("routes client dimension trend for %s", (dimension) => {
+      const res = asRecord(
+        handleDemoRequest({
+          path: "/api/private/client-dimension-trend",
+          params: {
+            ...ANALYTICS_PARAMS,
+            dimension,
+            interval: "hour",
+            limit: 2,
+          },
+        }),
+      );
+
+      expect(res.ok).toBe(true);
+      expect(res.series).toEqual(expect.any(Array));
+      expect(res.data).toEqual(expect.any(Array));
+    });
+
+    it.each(["source", "medium", "campaign", "term", "content"])(
+      "routes UTM trend for %s",
+      (dimension) => {
+        const res = asRecord(
+          handleDemoRequest({
+            path: "/api/private/utm-dimension-trend",
+            params: {
+              ...ANALYTICS_PARAMS,
+              dimension,
+              interval: "hour",
+              limit: 2,
+            },
+          }),
+        );
+
+        expect(res.ok).toBe(true);
+        expect(res.series).toEqual(expect.any(Array));
+        expect(res.data).toEqual(expect.any(Array));
+      },
+    );
+
+    it("returns browser and client cross breakdowns with other buckets", () => {
+      const browserCross = asRecord(
+        handleDemoRequest({
+          path: "/api/private/browser-cross-breakdown",
+          params: {
+            ...ANALYTICS_PARAMS,
+            browserLimit: 1,
+            osLimit: 1,
+            deviceTypeLimit: 1,
+          },
+        }),
+      );
+      expect(browserCross.ok).toBe(true);
+      expect(browserCross.operatingSystem).toEqual(
+        expect.objectContaining({
+          columns: expect.any(Array),
+          rows: expect.any(Array),
+        }),
+      );
+
+      const sameDimension = asRecord(
+        handleDemoRequest({
+          path: "/api/private/client-cross-breakdown",
+          params: {
+            ...ANALYTICS_PARAMS,
+            primaryDimension: "browser",
+            secondaryDimension: "browser",
+          },
+        }),
+      );
+      expect(sameDimension).toEqual({
+        columns: [],
+        rows: [],
+        totalVisitors: 0,
+      });
+
+      const clientCross = asRecord(
+        handleDemoRequest({
+          path: "/api/private/client-cross-breakdown",
+          params: {
+            ...ANALYTICS_PARAMS,
+            primaryDimension: "browser",
+            secondaryDimension: "language",
+            primaryLimit: 1,
+            secondaryLimit: 1,
+          },
+        }),
+      );
+      expect(clientCross.columns).toEqual(expect.any(Array));
+      expect(clientCross.rows).toEqual(expect.any(Array));
+    });
+
+    it("returns empty shaped data for inverted-window trend and radar routes", () => {
+      const invertedParams = {
+        siteId: SITE_ID,
+        from: FIXED_TO,
+        to: FIXED_FROM,
+        interval: "hour",
+      };
+
+      const clientTrend = asRecord(
+        handleDemoRequest({
+          path: "/api/private/client-dimension-trend",
+          params: { ...invertedParams, dimension: "browser" },
+        }),
+      );
+      expect(clientTrend).toEqual({
+        ok: true,
+        interval: "hour",
+        series: [],
+        data: [],
+      });
+
+      const utmTrend = asRecord(
+        handleDemoRequest({
+          path: "/api/private/utm-dimension-trend",
+          params: { ...invertedParams, dimension: "source" },
+        }),
+      );
+      expect(utmTrend).toEqual({
+        ok: true,
+        interval: "hour",
+        series: [],
+        data: [],
+      });
+
+      const browserRadar = asRecord(
+        handleDemoRequest({
+          path: "/api/private/browser-radar",
+          params: invertedParams,
+        }),
+      );
+      expect(browserRadar).toEqual({ ok: true, data: [] });
+
+      const referrerRadar = asRecord(
+        handleDemoRequest({
+          path: "/api/private/referrer-radar",
+          params: invertedParams,
+        }),
+      );
+      expect(referrerRadar).toEqual({ ok: true, data: [] });
+
+      const browserCross = asRecord(
+        handleDemoRequest({
+          path: "/api/private/browser-cross-breakdown",
+          params: invertedParams,
+        }),
+      );
+      expect(browserCross.operatingSystem).toEqual({
+        columns: [],
+        rows: [],
+        totalVisitors: 0,
+      });
+
+      const clientCross = asRecord(
+        handleDemoRequest({
+          path: "/api/private/client-cross-breakdown",
+          params: {
+            ...invertedParams,
+            primaryDimension: "browser",
+            secondaryDimension: "language",
+          },
+        }),
+      );
+      expect(clientCross).toEqual({
+        columns: [],
+        rows: [],
+        totalVisitors: 0,
+      });
+    });
+
+    it("limits browser versions and includes nested version rows", () => {
+      const rows = dataRows(
+        handleDemoRequest({
+          path: "/api/private/browser-version-breakdown",
+          params: {
+            ...ANALYTICS_PARAMS,
+            browserLimit: 1,
+            versionLimit: 1,
+          },
+        }),
+      );
+
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows[0].versions).toEqual(expect.any(Array));
+    });
+
+    it("paginates pages, sessions, visitors, and event records", () => {
+      const pages = asRecord(
+        handleDemoRequest({
+          path: "/api/private/pages-dashboard",
+          params: { ...ANALYTICS_PARAMS, page: 1, pageSize: 2 },
+        }),
+      );
+      expect(pages.meta).toEqual(
+        expect.objectContaining({ page: 1, pageSize: 2, returned: 2 }),
+      );
+
+      const visitors = asRecord(
+        handleDemoRequest({
+          path: "/api/private/visitors",
+          params: {
+            ...ANALYTICS_PARAMS,
+            page: 1,
+            pageSize: 2,
+            sortBy: "views",
+            sortDir: "asc",
+            search: "/",
+          },
+        }),
+      );
+      expect(visitors.meta).toEqual(
+        expect.objectContaining({ page: 1, pageSize: 2 }),
+      );
+      expect(visitors.data).toEqual(expect.any(Array));
+
+      const sessions = asRecord(
+        handleDemoRequest({
+          path: "/api/private/sessions",
+          params: {
+            ...ANALYTICS_PARAMS,
+            page: 1,
+            pageSize: 2,
+            sortBy: "durationMs",
+            sortDir: "asc",
+            q: "/",
+          },
+        }),
+      );
+      expect(sessions.meta).toEqual(
+        expect.objectContaining({ page: 1, pageSize: 2 }),
+      );
+
+      const events = asRecord(
+        handleDemoRequest({
+          path: "/api/private/events-records",
+          params: {
+            ...ANALYTICS_PARAMS,
+            page: 1,
+            pageSize: 2,
+            sortBy: "eventName",
+            sortDir: "asc",
+            search: "/",
+          },
+        }),
+      );
+      expect(events.meta).toEqual(
+        expect.objectContaining({ page: 1, pageSize: 2 }),
+      );
+    });
+
+    it("builds visitor and session details from IDs returned by list routes", () => {
+      const visitor = dataRows(
+        handleDemoRequest({
+          path: "/api/private/visitors",
+          params: { ...ANALYTICS_PARAMS, page: 1, pageSize: 1 },
+        }),
+      )[0];
+      expect(visitor).toBeTruthy();
+
+      const visitorDetail = ok(
+        handleDemoRequest({
+          path: "/api/private/visitor-detail",
+          params: {
+            ...ANALYTICS_PARAMS,
+            visitorId: String(visitor.visitorId),
+          },
+        }),
+      ).data as Record<string, unknown>;
+      expect(visitorDetail).toEqual(
+        expect.objectContaining({
+          visitor: expect.objectContaining({
+            visitorId: String(visitor.visitorId),
+          }),
+          metrics: expect.any(Object),
+          sessions: expect.any(Array),
+          events: expect.any(Array),
+          activity: expect.any(Array),
+          performance: expect.any(Object),
+        }),
+      );
+
+      const session = dataRows(
+        handleDemoRequest({
+          path: "/api/private/sessions",
+          params: { ...ANALYTICS_PARAMS, page: 1, pageSize: 1 },
+        }),
+      )[0];
+      expect(session).toBeTruthy();
+
+      const sessionDetail = ok(
+        handleDemoRequest({
+          path: "/api/private/session-detail",
+          params: {
+            ...ANALYTICS_PARAMS,
+            sessionId: String(session.sessionId),
+          },
+        }),
+      ).data as Record<string, unknown>;
+      expect(sessionDetail).toEqual(
+        expect.objectContaining({
+          session: expect.objectContaining({
+            sessionId: String(session.sessionId),
+          }),
+          locationPoints: expect.any(Array),
+          events: expect.any(Array),
+          visitedPages: expect.any(Array),
+          eventDistribution: expect.any(Array),
+          performance: expect.any(Object),
+        }),
+      );
+    });
+
+    it("returns null details when journey IDs are missing", () => {
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/visitor-detail",
+            params: ANALYTICS_PARAMS,
+          }),
+        ).data,
+      ).toBeNull();
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/session-detail",
+            params: ANALYTICS_PARAMS,
+          }),
+        ).data,
+      ).toBeNull();
+    });
+
+    it("normalizes retention granularity and returns monthly cohorts", () => {
+      const invalid = asRecord(
+        handleDemoRequest({
+          path: "/api/private/retention",
+          params: { ...ANALYTICS_PARAMS, granularity: "quarter" },
+        }),
+      );
+      expect(invalid.granularity).toBe("week");
+
+      const monthly = asRecord(
+        handleDemoRequest({
+          path: "/api/private/retention",
+          params: { ...ANALYTICS_PARAMS, granularity: "month" },
+        }),
+      );
+      expect(monthly.granularity).toBe("month");
+      expect(monthly.cohorts).toEqual(expect.any(Array));
+    });
   });
 
   describe("public routes", () => {
@@ -372,6 +1077,65 @@ describe("mock — createMockRealtimeSocket", () => {
       activeWindowMs: 60_000,
     });
     expect(socket).toBeDefined();
+    closeSocket(socket);
+  });
+
+  it("opens, emits a snapshot, and closes cleanly on the timer path", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FIXED_TO);
+    const randomSpy = vi
+      .spyOn(Math, "random")
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0.5)
+      .mockReturnValue(0.5);
+    const socket = createMockRealtimeSocket({ siteId: SITE_ID });
+    const onopen = vi.fn();
+    const onmessage = vi.fn();
+    const onclose = vi.fn();
+    socket.onopen = onopen;
+    socket.onmessage = onmessage;
+    socket.onclose = onclose;
+
+    await vi.advanceTimersByTimeAsync(120);
+
+    expect(randomSpy).toHaveBeenCalled();
+    expect(socket.readyState).toBe(1);
+    expect(onopen).toHaveBeenCalledTimes(1);
+    expect(onmessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.stringContaining('"type":"snapshot"'),
+      }),
+    );
+
+    socket.close(4001, "done");
+    expect(socket.readyState).toBe(3);
+    expect(onclose).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 4001,
+        reason: "done",
+        wasClean: false,
+      }),
+    );
+  });
+
+  it("emits an error when the mock handshake fails", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FIXED_TO);
+    vi.spyOn(Math, "random")
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0.1)
+      .mockReturnValue(0.5);
+    const socket = createMockRealtimeSocket({ siteId: SITE_ID });
+    const onerror = vi.fn();
+    const onopen = vi.fn();
+    socket.onerror = onerror;
+    socket.onopen = onopen;
+
+    await vi.advanceTimersByTimeAsync(120);
+
+    expect(onerror).toHaveBeenCalledTimes(1);
+    expect(onopen).not.toHaveBeenCalled();
+    expect(socket.readyState).toBe(0);
     closeSocket(socket);
   });
 });

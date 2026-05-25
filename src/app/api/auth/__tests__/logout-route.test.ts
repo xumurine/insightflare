@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { POST } from "../logout/route";
+import { POST } from "@/app/api/auth/logout/route";
 
 describe("auth logout route", () => {
   it("clears the session cookie and returns the login destination", async () => {

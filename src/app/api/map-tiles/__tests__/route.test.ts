@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GET } from "../[z]/[x]/[y]/route";
+import { GET } from "@/app/api/map-tiles/[z]/[x]/[y]/route";
 
 function params(z: string, x: string, y: string) {
   return {

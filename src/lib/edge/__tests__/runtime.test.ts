@@ -18,7 +18,7 @@ describe("edge runtime resolver", () => {
     const env = { DB: {} };
     const ctx = { waitUntil: vi.fn() };
     const cf = { country: "US", isEUCountry: false };
-    getCloudflareContextMock.mockResolvedValue({ env, ctx, cf });
+    getCloudflareContextMock.mockResolvedValue({ env, ctx, cf } as any);
 
     const request = new Request("https://edge.test/api/private?siteId=site-1", {
       method: "POST",
@@ -45,7 +45,7 @@ describe("edge runtime resolver", () => {
       env: {},
       ctx: {},
       cf: undefined,
-    });
+    } as any);
 
     const runtime = await resolveEdgeRuntime(new Request("https://edge.test/"));
 

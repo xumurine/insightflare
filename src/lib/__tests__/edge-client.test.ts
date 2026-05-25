@@ -86,6 +86,7 @@ describe("edge client request wrappers", () => {
   });
 
   afterEach(() => {
+    vi.doUnmock("next/headers");
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -109,8 +110,9 @@ describe("edge client request wrappers", () => {
   it("adds session authorization for private GET requests and serializes filters", async () => {
     await fetchAdminTeams("user-1");
 
-    let [url, init] = lastFetchCall();
-    let headers = init.headers as Headers;
+    const [firstUrl, init] = lastFetchCall();
+    let url = firstUrl;
+    const headers = init.headers as Headers;
     expect(url).toBe(
       "https://edge.example.test/api/private/admin/teams?userId=user-1",
     );
@@ -139,7 +141,7 @@ describe("edge client request wrappers", () => {
     await createAdminTeam({ name: "Team", slug: "team" });
 
     let [url, init] = lastFetchCall();
-    let headers = init.headers as Headers;
+    const headers = init.headers as Headers;
     expect(url).toBe("https://edge.example.test/api/private/admin/teams");
     expect(init.method).toBe("POST");
     expect(headers.get("content-type")).toBe("application/json");
@@ -245,6 +247,43 @@ describe("edge client request wrappers", () => {
     const [, init] = lastFetchCall();
     const headers = init.headers as Headers;
     expect(headers.has("authorization")).toBe(false);
+  });
+
+  it("derives the edge base URL from forwarded server headers", async () => {
+    vi.stubEnv("INSIGHTFLARE_EDGE_URL", " ");
+    vi.doMock("next/headers", () => ({
+      headers: vi.fn().mockResolvedValue(
+        new Headers({
+          "x-forwarded-host": "dashboard.example.test",
+          "x-forwarded-proto": "https",
+        }),
+      ),
+    }));
+
+    await fetchAdminUsers();
+
+    const [url] = lastFetchCall();
+    expect(url).toBe("https://dashboard.example.test/api/private/admin/users");
+  });
+
+  it("uses http for localhost server headers and falls back when headers fail", async () => {
+    vi.stubEnv("INSIGHTFLARE_EDGE_URL", "");
+    vi.doMock("next/headers", () => ({
+      headers: vi
+        .fn()
+        .mockResolvedValueOnce(new Headers({ host: "localhost:3000" }))
+        .mockRejectedValueOnce(new Error("outside request")),
+    }));
+
+    await fetchAdminUsers();
+    expect(lastFetchCall()[0]).toBe(
+      "http://localhost:3000/api/private/admin/users",
+    );
+
+    await fetchAdminUsers();
+    expect(lastFetchCall()[0]).toBe(
+      "http://127.0.0.1:8787/api/private/admin/users",
+    );
   });
 
   it("delegates to the realtime demo handler in demo mode", async () => {

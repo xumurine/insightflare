@@ -1,12 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { POST } from "@/app/api/admin/member/route";
 import {
   addAdminMember,
   removeAdminMember,
   updateAdminMemberRole,
 } from "@/lib/edge-client";
-
-import { POST } from "../member/route";
 
 vi.mock("@/lib/edge-client", () => ({
   addAdminMember: vi.fn(),
@@ -34,7 +33,7 @@ describe("admin member route", () => {
   });
 
   it("adds members with normalized optional roles", async () => {
-    addAdminMemberMock.mockResolvedValue({ id: "membership-1" });
+    addAdminMemberMock.mockResolvedValue({ id: "membership-1" } as any);
 
     const response = await POST(
       jsonRequest({
@@ -78,7 +77,7 @@ describe("admin member route", () => {
   });
 
   it("removes members when intent is remove", async () => {
-    removeAdminMemberMock.mockResolvedValue({ removed: true });
+    removeAdminMemberMock.mockResolvedValue({ removed: true } as any);
 
     const response = await POST(
       jsonRequest({
@@ -98,8 +97,24 @@ describe("admin member route", () => {
     });
   });
 
+  it("rejects invalid member removals before mutation calls", async () => {
+    const missingTeamId = await POST(
+      jsonRequest({
+        intent: "remove",
+        userId: "user-1",
+      }),
+    );
+
+    expect(missingTeamId.status).toBe(400);
+    expect(await missingTeamId.json()).toEqual({
+      ok: false,
+      error: "invalid_member_remove_input",
+    });
+    expect(removeAdminMemberMock).not.toHaveBeenCalled();
+  });
+
   it("updates non-owner member roles", async () => {
-    updateAdminMemberRoleMock.mockResolvedValue({ role: "member" });
+    updateAdminMemberRoleMock.mockResolvedValue({ role: "member" } as any);
 
     const response = await POST(
       jsonRequest({
@@ -121,6 +136,58 @@ describe("admin member route", () => {
     });
   });
 
+  it("rejects invalid member role updates before mutation calls", async () => {
+    const missingUserId = await POST(
+      jsonRequest({
+        intent: "update_role",
+        teamId: "team-1",
+        role: "member",
+      }),
+    );
+
+    expect(missingUserId.status).toBe(400);
+    expect(await missingUserId.json()).toEqual({
+      ok: false,
+      error: "invalid_member_role_input",
+    });
+
+    const ownerRole = await POST(
+      jsonRequest({
+        intent: "update_role",
+        teamId: "team-1",
+        userId: "user-1",
+        role: "owner",
+      }),
+    );
+
+    expect(ownerRole.status).toBe(400);
+    expect(await ownerRole.json()).toEqual({
+      ok: false,
+      error: "invalid_member_role_input",
+    });
+    expect(updateAdminMemberRoleMock).not.toHaveBeenCalled();
+  });
+
+  it("adds members without optional roles", async () => {
+    addAdminMemberMock.mockResolvedValue({ id: "membership-2" } as any);
+
+    const response = await POST(
+      jsonRequest({
+        teamId: "team-1",
+        identifier: "user@example.test",
+      }),
+    );
+
+    expect(addAdminMemberMock).toHaveBeenCalledWith({
+      teamId: "team-1",
+      identifier: "user@example.test",
+    });
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { id: "membership-2" },
+    });
+  });
+
   it("normalizes upstream error messages for member mutations", async () => {
     removeAdminMemberMock.mockRejectedValue(
       new Error('Edge API failed (500): {"message":"Cannot remove owner"}'),
@@ -139,6 +206,64 @@ describe("admin member route", () => {
       ok: false,
       error: "remove_member_failed",
       message: "Cannot remove owner",
+    });
+  });
+
+  it("normalizes update role and add member mutation failures", async () => {
+    updateAdminMemberRoleMock.mockRejectedValueOnce(
+      new Error('Edge API failed (409): {"error":"Role change denied"}'),
+    );
+
+    const roleResponse = await POST(
+      jsonRequest({
+        intent: "update_role",
+        teamId: "team-1",
+        userId: "user-1",
+        role: "admin",
+      }),
+    );
+
+    expect(roleResponse.status).toBe(500);
+    expect(await roleResponse.json()).toEqual({
+      ok: false,
+      error: "update_member_role_failed",
+      message: "Role change denied",
+    });
+
+    addAdminMemberMock.mockRejectedValueOnce(new Error("lookup failed"));
+
+    const addResponse = await POST(
+      jsonRequest({
+        teamId: "team-1",
+        identifier: "user@example.test",
+      }),
+    );
+
+    expect(addResponse.status).toBe(500);
+    expect(await addResponse.json()).toEqual({
+      ok: false,
+      error: "add_member_failed",
+      message: "lookup failed",
+    });
+  });
+
+  it("falls back when member mutation errors have no useful JSON details", async () => {
+    addAdminMemberMock.mockRejectedValueOnce(
+      'Edge API failed (500): {"message":"","error":""}',
+    );
+
+    const response = await POST(
+      jsonRequest({
+        teamId: "team-1",
+        identifier: "user@example.test",
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: "add_member_failed",
+      message: 'Edge API failed (500): {"message":"","error":""}',
     });
   });
 });

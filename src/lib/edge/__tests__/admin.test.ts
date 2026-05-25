@@ -1,0 +1,2415 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { handlePrivateAdmin } from "@/lib/edge/admin";
+import {
+  type EdgeSessionClaims,
+  requireSession,
+} from "@/lib/edge/session-auth";
+import {
+  deleteSiteScriptSettings,
+  readSiteScriptSettings,
+  upsertSiteScriptSettings,
+} from "@/lib/edge/site-settings-store";
+import type { Env } from "@/lib/edge/types";
+import { DEFAULT_SITE_SCRIPT_SETTINGS } from "@/lib/site-settings";
+import type { DoDiagnosticPayload } from "@/lib/system-performance";
+
+const deriveMockBytes = vi.hoisted(
+  () =>
+    (password: Uint8Array, nonce: Uint8Array, length: number): Uint8Array => {
+      const out = new Uint8Array(length);
+      for (let i = 0; i < out.length; i += 1) {
+        const passwordByte =
+          password.length > 0 ? password[i % password.length] : 0;
+        const nonceByte = nonce.length > 0 ? nonce[i % nonce.length] : 0;
+        out[i] = (passwordByte + nonceByte + i * 17) & 255;
+      }
+      return out;
+    },
+);
+
+vi.mock("@noble/hashes/argon2.js", () => ({
+  argon2id: vi.fn(
+    (
+      password: Uint8Array,
+      nonce: Uint8Array,
+      options: { dkLen?: number } = {},
+    ) => deriveMockBytes(password, nonce, options.dkLen ?? 32),
+  ),
+}));
+
+vi.mock("@/lib/edge/session-auth", () => ({
+  requireSession: vi.fn(),
+}));
+
+vi.mock("@/lib/edge/site-settings-store", () => ({
+  deleteSiteScriptSettings: vi.fn(),
+  readSiteScriptSettings: vi.fn(),
+  upsertSiteScriptSettings: vi.fn(),
+}));
+
+type UserRow = {
+  id: string;
+  username: string;
+  email: string;
+  name: string | null;
+  password_hash: string | null;
+  system_role: string;
+  timezone: string;
+  created_at: number;
+  updated_at: number;
+};
+
+interface MockStatement {
+  sql?: string;
+  bind: ReturnType<typeof vi.fn>;
+  first: ReturnType<typeof vi.fn>;
+  all: ReturnType<typeof vi.fn>;
+  run: ReturnType<typeof vi.fn>;
+}
+
+interface MockDurableObjectNamespace {
+  idFromName: ReturnType<typeof vi.fn>;
+  get: ReturnType<typeof vi.fn>;
+}
+
+const requireSessionMock = vi.mocked(requireSession);
+const readSiteScriptSettingsMock = vi.mocked(readSiteScriptSettings);
+const upsertSiteScriptSettingsMock = vi.mocked(upsertSiteScriptSettings);
+const deleteSiteScriptSettingsMock = vi.mocked(deleteSiteScriptSettings);
+
+const adminSession: EdgeSessionClaims = {
+  userId: "admin-1",
+  username: "admin",
+  displayName: "Admin",
+  systemRole: "admin",
+  exp: 9_999_999_999,
+};
+
+const userSession: EdgeSessionClaims = {
+  userId: "user-1",
+  username: "user",
+  displayName: "User",
+  systemRole: "user",
+  exp: 9_999_999_999,
+};
+
+const uuid = (value: string) =>
+  value as `${string}-${string}-${string}-${string}-${string}`;
+
+function b64u(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function argonHash(
+  password: string,
+  nonce = new Uint8Array([
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+  ]),
+): string {
+  const passwordBytes = new TextEncoder().encode(password);
+  const expected = deriveMockBytes(passwordBytes, nonce, 32);
+  return `argon2id$v=19$m=4096,t=1,p=1$${b64u(nonce)}$${b64u(expected)}`;
+}
+
+function userRow(overrides: Partial<UserRow> = {}): UserRow {
+  return {
+    id: "admin-1",
+    username: "admin",
+    email: "admin@example.test",
+    name: "Admin User",
+    password_hash: argonHash("secret-password"),
+    system_role: "admin",
+    timezone: "UTC",
+    created_at: 100,
+    updated_at: 200,
+    ...overrides,
+  };
+}
+
+function publicUser(row: UserRow) {
+  return {
+    id: row.id,
+    username: row.username,
+    email: row.email,
+    name: row.name || "",
+    systemRole: row.system_role === "admin" ? "admin" : "user",
+    timeZone: row.timezone || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function statement(
+  input: {
+    first?: unknown;
+    all?: Record<string, unknown>[];
+    run?: unknown;
+    firstReject?: unknown;
+    allReject?: unknown;
+    runReject?: unknown;
+  } = {},
+): MockStatement {
+  const stmt = {
+    bind: vi.fn(function (this: MockStatement) {
+      return this;
+    }),
+    first: vi.fn(),
+    all: vi.fn(),
+    run: vi.fn(),
+  } satisfies MockStatement;
+
+  if ("firstReject" in input) {
+    stmt.first.mockRejectedValue(input.firstReject);
+  } else {
+    stmt.first.mockResolvedValue("first" in input ? input.first : null);
+  }
+
+  if ("allReject" in input) {
+    stmt.all.mockRejectedValue(input.allReject);
+  } else {
+    stmt.all.mockResolvedValue({ results: input.all ?? [] });
+  }
+
+  if ("runReject" in input) {
+    stmt.run.mockRejectedValue(input.runReject);
+  } else {
+    stmt.run.mockResolvedValue(input.run ?? { success: true });
+  }
+
+  return stmt;
+}
+
+function createIngestDo(
+  handlers: Record<
+    string,
+    | { fetch: ReturnType<typeof vi.fn> }
+    | (() => { fetch: ReturnType<typeof vi.fn> })
+  > = {},
+): MockDurableObjectNamespace {
+  const idFromName = vi.fn((name: string) => `stub:${name}`);
+  const get = vi.fn((id: string) => {
+    const siteId = id.replace(/^stub:/, "");
+    const handler = handlers[siteId];
+    if (!handler) {
+      return {
+        fetch: vi
+          .fn()
+          .mockResolvedValue(
+            new Response(JSON.stringify({ ok: false }), { status: 500 }),
+          ),
+      };
+    }
+    return typeof handler === "function" ? handler() : handler;
+  });
+  return { idFromName, get };
+}
+
+function createEnv(
+  statements: MockStatement[] = [],
+  input: {
+    env?: Partial<Env>;
+    ingestDo?: MockDurableObjectNamespace;
+  } = {},
+): {
+  env: Env;
+  prepare: ReturnType<typeof vi.fn>;
+  batch: ReturnType<typeof vi.fn>;
+  ingestDo: MockDurableObjectNamespace;
+} {
+  let index = 0;
+  const prepare = vi.fn((sql: string) => {
+    const stmt = statements[index];
+    index += 1;
+    if (!stmt) {
+      throw new Error(`Unexpected SQL #${index}: ${sql}`);
+    }
+    stmt.sql = sql;
+    return stmt;
+  });
+  const batch = vi.fn().mockResolvedValue([]);
+  const ingestDo = input.ingestDo ?? createIngestDo();
+  return {
+    env: {
+      DB: { prepare, batch } as unknown as D1Database,
+      INGEST_DO: ingestDo as unknown as DurableObjectNamespace,
+      DAILY_SALT_SECRET: "daily-salt",
+      ...input.env,
+    } as Env,
+    prepare,
+    batch,
+    ingestDo,
+  };
+}
+
+function setSession(
+  session: EdgeSessionClaims | null = adminSession,
+): ReturnType<typeof vi.fn> {
+  return requireSessionMock.mockResolvedValue(session);
+}
+
+function jsonInit(
+  body: Record<string, unknown>,
+  method: "POST" | "PATCH" = "POST",
+): RequestInit {
+  return {
+    method,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  };
+}
+
+function edgeRequest(path: string, init?: RequestInit): Request {
+  return new Request(`https://edge.test${path}`, init);
+}
+
+async function dispatch(path: string, env: Env, init?: RequestInit) {
+  const request = edgeRequest(path, init);
+  return handlePrivateAdmin(request, env, new URL(request.url));
+}
+
+function mockUuid(...ids: string[]) {
+  const spy = vi.spyOn(crypto, "randomUUID");
+  for (const id of ids) spy.mockReturnValueOnce(uuid(id));
+  if (ids.length > 0) spy.mockReturnValue(uuid(ids[ids.length - 1]));
+  return spy;
+}
+
+function diagnosticPayload(
+  overrides: Partial<DoDiagnosticPayload> = {},
+): DoDiagnosticPayload {
+  return {
+    ok: true,
+    snapshotAt: 1_000,
+    thresholds: {
+      staleMs: 1,
+      timeoutMs: 2,
+      hardAgedMs: 3,
+      stuckFlushAttempts: 4,
+    },
+    visits: {
+      total: 12,
+      byStatus: { open: 4, closed: 8 },
+      open: {
+        total: 4,
+        stale: 1,
+        timedOut: 2,
+        hardAged: 3,
+        futureSkewed: 1,
+        oldestStartedAt: 900,
+        newestActivityAt: 990,
+        futureMaxActivityAt: 1_100,
+      },
+      dirty: {
+        total: 3,
+        stuck: 2,
+        maxFlushAttempts: 7,
+      },
+    },
+    customEvents: {
+      total: 5,
+      dirty: 2,
+      stuck: 1,
+      maxFlushAttempts: 6,
+      oldestOccurredAt: 800,
+    },
+    alarm: {
+      scheduledAt: 1_200,
+    },
+    ...overrides,
+  };
+}
+
+describe("private admin edge handler", () => {
+  beforeEach(() => {
+    requireSessionMock.mockReset();
+    readSiteScriptSettingsMock.mockReset();
+    upsertSiteScriptSettingsMock.mockReset();
+    deleteSiteScriptSettingsMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns not found for unknown admin routes without authenticating", async () => {
+    const { env, prepare } = createEnv();
+
+    const response = await dispatch("/api/private/admin/unknown", env);
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ ok: false, error: "Not Found" });
+    expect(requireSessionMock).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  describe("auth routes", () => {
+    it("rejects unsupported login and auth/me methods before database access", async () => {
+      const { env, prepare } = createEnv();
+
+      const login = await dispatch("/api/private/admin/auth/login", env, {
+        method: "GET",
+      });
+      const me = await dispatch("/api/private/admin/auth/me", env, {
+        method: "POST",
+      });
+
+      expect(login.status).toBe(405);
+      expect(me.status).toBe(405);
+      expect(await login.json()).toEqual({
+        ok: false,
+        error: "Method Not Allowed",
+      });
+      expect(await me.json()).toEqual({
+        ok: false,
+        error: "Method Not Allowed",
+      });
+      expect(requireSessionMock).not.toHaveBeenCalled();
+      expect(prepare).not.toHaveBeenCalled();
+    });
+
+    it("reports bootstrap failures during login", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const { env } = createEnv([
+        statement({ firstReject: new Error("boom") }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/auth/login",
+        env,
+        jsonInit({ username: "admin", password: "secret-password" }),
+      );
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "bootstrap_admin_failed",
+      });
+      expect(errorSpy).toHaveBeenCalledWith("bootstrap_admin_failed", {
+        message: "boom",
+      });
+    });
+
+    it("promotes an existing bootstrap user before validating login input", async () => {
+      const existing = userRow({
+        id: "user-1",
+        username: "bootstrap",
+        email: "bootstrap@example.test",
+        system_role: "user",
+      });
+      const promoted = userRow({
+        ...existing,
+        system_role: "admin",
+        password_hash: argonHash("bootstrap-secret"),
+      });
+      const update = statement();
+      const ownerUpsert = statement();
+      const { env } = createEnv(
+        [
+          statement({ first: null }),
+          statement({ first: existing }),
+          update,
+          statement({ first: promoted }),
+          statement({ first: { id: "team-1" } }),
+          ownerUpsert,
+        ],
+        {
+          env: {
+            BOOTSTRAP_ADMIN_USERNAME: "Bootstrap",
+            BOOTSTRAP_ADMIN_EMAIL: "bootstrap@example.test",
+            BOOTSTRAP_ADMIN_PASSWORD: "bootstrap-secret",
+          },
+        },
+      );
+
+      const response = await dispatch(
+        "/api/private/admin/auth/login",
+        env,
+        jsonInit({ username: "bo" }),
+      );
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "username/email and password are required",
+      });
+      expect(update.bind).toHaveBeenCalledWith(
+        "bootstrap",
+        "bootstrap@example.test",
+        "Administrator",
+        expect.stringMatching(/^argon2id\$/),
+        "user-1",
+      );
+      expect(ownerUpsert.bind).toHaveBeenCalledWith("team-1", "user-1");
+    });
+
+    it("creates the bootstrap admin, verifies credentials, and returns profile teams", async () => {
+      const createdAdmin = userRow({
+        id: "admin-created",
+        username: "admin",
+        email: "admin@example.test",
+        password_hash: argonHash("secret-password"),
+      });
+      const teamRows = [
+        {
+          id: "team-1",
+          name: "Admin Team",
+          slug: "admin-team",
+          ownerUserId: "admin-created",
+          createdAt: 10,
+          updatedAt: 20,
+          membershipRole: "admin",
+          siteCount: 2,
+          memberCount: 3,
+        },
+      ];
+      const { env } = createEnv(
+        [
+          statement({ first: null }),
+          statement({ first: null }),
+          statement(),
+          statement({ first: createdAdmin }),
+          statement({ first: null }),
+          statement({ first: null }),
+          statement(),
+          statement(),
+          statement({ first: createdAdmin }),
+          statement({ first: { id: "team-1" } }),
+          statement(),
+          statement({ all: teamRows }),
+        ],
+        {
+          env: {
+            BOOTSTRAP_ADMIN_PASSWORD: "secret-password",
+          },
+        },
+      );
+
+      const response = await dispatch(
+        "/api/private/admin/auth/login",
+        env,
+        jsonInit({ username: "Admin", password: "secret-password" }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: {
+          user: publicUser(createdAdmin),
+          teams: [{ ...teamRows[0], membershipRole: "admin" }],
+        },
+      });
+    });
+
+    it("denies login when stored password hashes are malformed or credentials mismatch", async () => {
+      const badHashUser = userRow({
+        password_hash:
+          "argon2id$v=20$m=4096,t=1,p=1$AQIDBAUGBwg$AQIDBAUGBwgBAgMEBQYHCA",
+      });
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: { id: "team-1" } }),
+        statement(),
+        statement({ first: badHashUser }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/auth/login",
+        env,
+        jsonInit({ email: "admin@example.test", password: "secret-password" }),
+      );
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Invalid credentials",
+      });
+    });
+
+    it("returns current user and teams for authenticated auth/me requests", async () => {
+      setSession(adminSession);
+      const actor = userRow();
+      const teams = [
+        {
+          id: "team-1",
+          name: "Team",
+          membershipRole: "owner",
+          siteCount: 1,
+          memberCount: 1,
+        },
+        {
+          id: "team-2",
+          name: "Other",
+          membershipRole: "bogus",
+          siteCount: 0,
+          memberCount: 2,
+        },
+      ];
+      const { env } = createEnv([
+        statement({ first: actor }),
+        statement({ all: teams }),
+      ]);
+
+      const response = await dispatch("/api/private/admin/auth/me", env);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: {
+          user: publicUser(actor),
+          teams: [
+            { ...teams[0], membershipRole: "owner" },
+            { ...teams[1], membershipRole: "member" },
+          ],
+        },
+      });
+      expect(requireSessionMock).toHaveBeenCalledOnce();
+    });
+
+    it("rejects absent sessions and stale session user ids", async () => {
+      setSession(null);
+      const { env: absentEnv } = createEnv();
+
+      const absent = await dispatch("/api/private/admin/auth/me", absentEnv);
+
+      setSession(adminSession);
+      const { env: staleEnv } = createEnv([statement({ first: null })]);
+      const stale = await dispatch("/api/private/admin/auth/me", staleEnv);
+
+      expect(absent.status).toBe(401);
+      expect(await absent.json()).toEqual({
+        ok: false,
+        error: "Unauthorized",
+      });
+      expect(stale.status).toBe(401);
+      expect(await stale.json()).toEqual({
+        ok: false,
+        error: "User not found",
+      });
+    });
+  });
+
+  describe("users route", () => {
+    it("denies account management to non-system admins", async () => {
+      setSession(userSession);
+      const { env, prepare } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+      ]);
+
+      const response = await dispatch("/api/private/admin/users", env);
+
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Only system admin can manage accounts",
+      });
+      expect(prepare).toHaveBeenCalledTimes(1);
+    });
+
+    it("lists all users for system admins", async () => {
+      setSession(adminSession);
+      const rows = [
+        {
+          id: "admin-1",
+          username: "admin",
+          systemRole: "admin",
+          teamCount: 1,
+          ownedTeamCount: 1,
+        },
+      ];
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        statement({ all: rows }),
+      ]);
+
+      const response = await dispatch("/api/private/admin/users", env);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, data: rows });
+    });
+
+    it("validates user creation payloads before uniqueness checks", async () => {
+      setSession(adminSession);
+      const { env, prepare } = createEnv([statement({ first: userRow() })]);
+
+      const response = await dispatch(
+        "/api/private/admin/users",
+        env,
+        jsonInit({ username: "a!", email: "bad", password: "short" }),
+      );
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Invalid username",
+      });
+      expect(prepare).toHaveBeenCalledTimes(1);
+    });
+
+    it("creates users with normalized role and a default owner team", async () => {
+      setSession(adminSession);
+      mockUuid(
+        "00000000-0000-4000-8000-000000000101",
+        "00000000-0000-4000-8000-000000000102",
+      );
+      const created = userRow({
+        id: "00000000-0000-4000-8000-000000000101",
+        username: "new.user",
+        email: "new@example.test",
+        name: "New User",
+        system_role: "user",
+      });
+      const insertUser = statement();
+      const insertTeam = statement();
+      const insertMember = statement();
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: null }),
+        statement({ first: null }),
+        insertUser,
+        statement({ first: created }),
+        statement({ first: null }),
+        statement({ first: { ok: 1 } }),
+        statement({ first: null }),
+        insertTeam,
+        insertMember,
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/users",
+        env,
+        jsonInit({
+          username: " New.User ",
+          email: " NEW@example.test ",
+          name: "New User",
+          password: "long-enough",
+          systemRole: "manager",
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: publicUser(created),
+      });
+      expect(insertUser.bind).toHaveBeenCalledWith(
+        "00000000-0000-4000-8000-000000000101",
+        "new.user",
+        "new@example.test",
+        "New User",
+        expect.stringMatching(/^argon2id\$/),
+        "user",
+      );
+      expect(insertTeam.bind).toHaveBeenCalledWith(
+        "00000000-0000-4000-8000-000000000102",
+        "New User's team",
+        "new-user-team-2",
+        "00000000-0000-4000-8000-000000000101",
+      );
+      expect(insertMember.bind).toHaveBeenCalledWith(
+        "00000000-0000-4000-8000-000000000102",
+        "00000000-0000-4000-8000-000000000101",
+      );
+    });
+
+    it("rejects duplicate usernames and duplicate emails during user creation", async () => {
+      setSession(adminSession);
+      const { env: usernameEnv } = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: { ok: 1 } }),
+      ]);
+      const duplicateUsername = await dispatch(
+        "/api/private/admin/users",
+        usernameEnv,
+        jsonInit({
+          username: "admin",
+          email: "new@example.test",
+          password: "long-enough",
+        }),
+      );
+
+      const { env: emailEnv } = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: null }),
+        statement({ first: { ok: 1 } }),
+      ]);
+      const duplicateEmail = await dispatch(
+        "/api/private/admin/users",
+        emailEnv,
+        jsonInit({
+          username: "new-user",
+          email: "admin@example.test",
+          password: "long-enough",
+        }),
+      );
+
+      expect(duplicateUsername.status).toBe(400);
+      expect(await duplicateUsername.json()).toEqual({
+        ok: false,
+        error: "Username already exists",
+      });
+      expect(duplicateEmail.status).toBe(400);
+      expect(await duplicateEmail.json()).toEqual({
+        ok: false,
+        error: "Email already exists",
+      });
+    });
+
+    it("updates users and hashes replacement passwords", async () => {
+      setSession(adminSession);
+      const existing = userRow({
+        id: "target-1",
+        username: "old",
+        email: "old@example.test",
+        name: null,
+        system_role: "user",
+      });
+      const updated = userRow({
+        ...existing,
+        username: "new",
+        email: "new@example.test",
+        name: "New Name",
+        system_role: "admin",
+        updated_at: 300,
+      });
+      const update = statement();
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: existing }),
+        statement({ first: null }),
+        statement({ first: null }),
+        update,
+        statement({ first: updated }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/users",
+        env,
+        jsonInit(
+          {
+            userId: "target-1",
+            username: "New",
+            email: "New@Example.Test",
+            name: "New Name",
+            password: "new-password",
+            systemRole: "ADMIN",
+          },
+          "PATCH",
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: publicUser(updated),
+      });
+      expect(update.bind).toHaveBeenCalledWith(
+        "new",
+        "new@example.test",
+        "New Name",
+        expect.stringMatching(/^argon2id\$/),
+        "admin",
+        "target-1",
+      );
+    });
+
+    it("handles user removal guard rails and successful deletion", async () => {
+      setSession(adminSession);
+      const selfEnv = createEnv([statement({ first: userRow() })]).env;
+      const self = await dispatch(
+        "/api/private/admin/users",
+        selfEnv,
+        jsonInit({ intent: "delete", userId: "admin-1" }, "PATCH"),
+      );
+
+      const ownerEnv = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: userRow({ id: "target-1" }) }),
+        statement({ first: { count: 2 } }),
+      ]).env;
+      const ownsTeams = await dispatch(
+        "/api/private/admin/users",
+        ownerEnv,
+        jsonInit({ intent: "remove", userId: "target-1" }, "PATCH"),
+      );
+
+      const deleteStmt = statement();
+      const successEnv = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: userRow({ id: "target-1" }) }),
+        statement({ first: { count: 0 } }),
+        deleteStmt,
+      ]).env;
+      const success = await dispatch(
+        "/api/private/admin/users",
+        successEnv,
+        jsonInit({ intent: "remove", userId: "target-1" }, "PATCH"),
+      );
+
+      expect(self.status).toBe(400);
+      expect(await self.json()).toEqual({
+        ok: false,
+        error: "Cannot delete current user",
+      });
+      expect(ownsTeams.status).toBe(400);
+      expect(await ownsTeams.json()).toEqual({
+        ok: false,
+        error: "Cannot delete user that owns teams",
+      });
+      expect(success.status).toBe(200);
+      expect(await success.json()).toEqual({
+        ok: true,
+        data: { userId: "target-1", removed: true },
+      });
+      expect(deleteStmt.bind).toHaveBeenCalledWith("target-1");
+    });
+  });
+
+  describe("profile route", () => {
+    it("returns the authenticated profile and teams", async () => {
+      setSession(userSession);
+      const actor = userRow({ id: "user-1", system_role: "user" });
+      const teams = [{ id: "team-1", membershipRole: "admin" }];
+      const { env } = createEnv([
+        statement({ first: actor }),
+        statement({ all: teams }),
+      ]);
+
+      const response = await dispatch("/api/private/admin/profile", env);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: {
+          user: publicUser(actor),
+          teams: [{ ...teams[0], membershipRole: "admin" }],
+        },
+      });
+    });
+
+    it("validates profile time zones and current passwords", async () => {
+      setSession(userSession);
+      const actor = userRow({
+        id: "user-1",
+        system_role: "user",
+        password_hash: argonHash("old-password"),
+      });
+      const invalidTimeZoneEnv = createEnv([statement({ first: actor })]).env;
+      const invalidTimeZone = await dispatch(
+        "/api/private/admin/profile",
+        invalidTimeZoneEnv,
+        jsonInit({ timeZone: "Mars/Base" }),
+      );
+
+      const badPasswordEnv = createEnv([statement({ first: actor })]).env;
+      const badPassword = await dispatch(
+        "/api/private/admin/profile",
+        badPasswordEnv,
+        jsonInit({
+          currentPassword: "wrong-password",
+          password: "new-password",
+        }),
+      );
+
+      expect(invalidTimeZone.status).toBe(400);
+      expect(await invalidTimeZone.json()).toEqual({
+        ok: false,
+        error: "Invalid timezone",
+      });
+      expect(badPassword.status).toBe(400);
+      expect(await badPassword.json()).toEqual({
+        ok: false,
+        error: "Current password is incorrect",
+      });
+    });
+
+    it("updates the profile with normalized identity fields and timezone", async () => {
+      setSession(userSession);
+      const actor = userRow({
+        id: "user-1",
+        username: "old",
+        email: "old@example.test",
+        system_role: "user",
+        password_hash: argonHash("old-password"),
+      });
+      const updated = userRow({
+        ...actor,
+        username: "new",
+        email: "new@example.test",
+        name: "New Name",
+        timezone: "Asia/Shanghai",
+        updated_at: 301,
+      });
+      const update = statement();
+      const { env } = createEnv([
+        statement({ first: actor }),
+        statement({ first: null }),
+        statement({ first: null }),
+        update,
+        statement({ first: updated }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/profile",
+        env,
+        jsonInit({
+          username: " New ",
+          email: " New@Example.Test ",
+          name: "New Name",
+          timeZone: "Asia/Shanghai",
+          currentPassword: "old-password",
+          password: "new-password",
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: publicUser(updated),
+      });
+      expect(update.bind).toHaveBeenCalledWith(
+        "new",
+        "new@example.test",
+        "New Name",
+        expect.stringMatching(/^argon2id\$/),
+        "Asia/Shanghai",
+        "user-1",
+      );
+    });
+  });
+
+  describe("teams route", () => {
+    it("lists every team for system admins and memberships for normal users", async () => {
+      setSession(adminSession);
+      const adminRows = [
+        { id: "team-1", name: "Team", membershipRole: "owner" },
+        { id: "team-2", name: "Team 2", membershipRole: "ignored" },
+      ];
+      const adminEnv = createEnv([
+        statement({ first: userRow() }),
+        statement({ all: adminRows }),
+      ]).env;
+      const adminResponse = await dispatch(
+        "/api/private/admin/teams",
+        adminEnv,
+      );
+
+      setSession(userSession);
+      const userRows = [
+        { id: "team-3", name: "Member Team", membershipRole: "admin" },
+      ];
+      const userEnv = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ all: userRows }),
+      ]).env;
+      const userResponse = await dispatch("/api/private/admin/teams", userEnv);
+
+      expect(await adminResponse.json()).toEqual({
+        ok: true,
+        data: [
+          { ...adminRows[0], membershipRole: "owner" },
+          { ...adminRows[1], membershipRole: "member" },
+        ],
+      });
+      expect(await userResponse.json()).toEqual({
+        ok: true,
+        data: [{ ...userRows[0], membershipRole: "admin" }],
+      });
+    });
+
+    it("creates teams with unique slugs", async () => {
+      setSession(userSession);
+      mockUuid("00000000-0000-4000-8000-000000000201");
+      const insertTeam = statement();
+      const insertMember = statement();
+      const { env } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { ok: 1 } }),
+        statement({ first: null }),
+        insertTeam,
+        insertMember,
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/teams",
+        env,
+        jsonInit({ name: "Product Analytics", slug: "Product Analytics" }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: {
+          id: "00000000-0000-4000-8000-000000000201",
+          name: "Product Analytics",
+          slug: "product-analytics-2",
+          ownerUserId: "user-1",
+          membershipRole: "owner",
+        },
+      });
+      expect(insertTeam.bind).toHaveBeenCalledWith(
+        "00000000-0000-4000-8000-000000000201",
+        "Product Analytics",
+        "product-analytics-2",
+        "user-1",
+      );
+      expect(insertMember.bind).toHaveBeenCalledWith(
+        "00000000-0000-4000-8000-000000000201",
+        "user-1",
+      );
+    });
+
+    it("denies team updates when the actor cannot manage the team", async () => {
+      setSession(userSession);
+      const { env } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: null }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/teams",
+        env,
+        jsonInit({ teamId: "team-1", name: "Renamed" }, "PATCH"),
+      );
+
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Only team owner can update team",
+      });
+    });
+
+    it("updates team names and regenerates unique slugs", async () => {
+      setSession(userSession);
+      vi.spyOn(Date, "now").mockReturnValue(1_779_708_000_000);
+      const update = statement();
+      const { env } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({
+          first: {
+            id: "team-1",
+            name: "Old",
+            slug: "old",
+            ownerUserId: "user-1",
+            createdAt: 10,
+            updatedAt: 20,
+          },
+        }),
+        statement({ first: null }),
+        update,
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/teams",
+        env,
+        jsonInit(
+          { teamId: "team-1", name: "Renamed Team", slug: "Renamed Team" },
+          "PATCH",
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: {
+          id: "team-1",
+          name: "Renamed Team",
+          slug: "renamed-team",
+          ownerUserId: "user-1",
+          createdAt: 10,
+          updatedAt: 1_779_708_000,
+        },
+      });
+      expect(update.bind).toHaveBeenCalledWith(
+        "Renamed Team",
+        "renamed-team",
+        "team-1",
+      );
+    });
+
+    it("transfers team ownership with a D1 batch", async () => {
+      setSession(userSession);
+      vi.spyOn(Date, "now").mockReturnValue(1_779_708_000_000);
+      const ownerUpdate = statement();
+      const newOwnerMembership = statement();
+      const oldOwnerMembership = statement();
+      const { env, batch } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({
+          first: {
+            id: "team-1",
+            name: "Team",
+            slug: "team",
+            ownerUserId: "user-1",
+            createdAt: 10,
+            updatedAt: 20,
+          },
+        }),
+        statement({ first: { role: "member" } }),
+        ownerUpdate,
+        newOwnerMembership,
+        oldOwnerMembership,
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/teams",
+        env,
+        jsonInit(
+          {
+            intent: "transfer_owner",
+            teamId: "team-1",
+            newOwnerUserId: "user-2",
+          },
+          "PATCH",
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: {
+          id: "team-1",
+          name: "Team",
+          slug: "team",
+          ownerUserId: "user-2",
+          createdAt: 10,
+          updatedAt: 1_779_708_000,
+          transferred: true,
+        },
+      });
+      expect(ownerUpdate.bind).toHaveBeenCalledWith("user-2", "team-1");
+      expect(newOwnerMembership.bind).toHaveBeenCalledWith("team-1", "user-2");
+      expect(oldOwnerMembership.bind).toHaveBeenCalledWith("team-1", "user-1");
+      expect(batch).toHaveBeenCalledWith([
+        ownerUpdate,
+        newOwnerMembership,
+        oldOwnerMembership,
+      ]);
+    });
+
+    it("deletes teams and cascades site data cleanup", async () => {
+      setSession(adminSession);
+      deleteSiteScriptSettingsMock.mockResolvedValue(undefined);
+      const deleteStatements = Array.from({ length: 10 }, () => statement());
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        statement({
+          first: {
+            id: "team-1",
+            name: "Team",
+            slug: "team",
+            ownerUserId: "user-1",
+            createdAt: 10,
+            updatedAt: 20,
+          },
+        }),
+        statement({ all: [{ id: "site-1" }, { id: "site-2" }] }),
+        ...deleteStatements,
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/teams",
+        env,
+        jsonInit({ intent: "delete", teamId: "team-1" }, "PATCH"),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: { teamId: "team-1", removed: true },
+      });
+      expect(deleteStatements[0].bind).toHaveBeenCalledWith("site-1", "site-2");
+      expect(deleteStatements[8].bind).toHaveBeenCalledWith(
+        "site:site-1",
+        "site:site-2",
+      );
+      expect(deleteStatements[9].bind).toHaveBeenCalledWith("team-1");
+      expect(deleteSiteScriptSettingsMock).toHaveBeenCalledWith(env, "site-1");
+      expect(deleteSiteScriptSettingsMock).toHaveBeenCalledWith(env, "site-2");
+    });
+  });
+
+  describe("sites route", () => {
+    it("requires team ids when listing sites", async () => {
+      setSession(adminSession);
+      const { env, prepare } = createEnv([statement({ first: userRow() })]);
+
+      const response = await dispatch("/api/private/admin/sites", env);
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Missing teamId",
+      });
+      expect(prepare).toHaveBeenCalledTimes(1);
+    });
+
+    it("lists sites for readable teams", async () => {
+      setSession(userSession);
+      const rows = [
+        {
+          id: "site-1",
+          teamId: "team-1",
+          name: "Docs",
+          domain: "docs.example.test",
+        },
+      ];
+      const { env } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: { role: "member" } }),
+        statement({ all: rows }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/sites?teamId=team-1",
+        env,
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, data: rows });
+    });
+
+    it("creates sites and initializes script settings", async () => {
+      setSession(userSession);
+      mockUuid("00000000-0000-4000-8000-000000000301");
+      upsertSiteScriptSettingsMock.mockResolvedValue(
+        DEFAULT_SITE_SCRIPT_SETTINGS,
+      );
+      const insertSite = statement();
+      const { env } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        insertSite,
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/sites",
+        env,
+        jsonInit({
+          teamId: "team-1",
+          name: "Docs Site",
+          domain: "docs.example.test",
+          publicEnabled: "yes",
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: {
+          id: "00000000-0000-4000-8000-000000000301",
+          teamId: "team-1",
+          name: "Docs Site",
+          domain: "docs.example.test",
+          publicEnabled: true,
+          publicSlug: "docs-site",
+        },
+      });
+      expect(insertSite.bind).toHaveBeenCalledWith(
+        "00000000-0000-4000-8000-000000000301",
+        "team-1",
+        "Docs Site",
+        "docs.example.test",
+        1,
+        "docs-site",
+      );
+      expect(upsertSiteScriptSettingsMock).toHaveBeenCalledWith(
+        env,
+        "00000000-0000-4000-8000-000000000301",
+        {
+          siteDomain: "docs.example.test",
+          settings: DEFAULT_SITE_SCRIPT_SETTINGS,
+        },
+      );
+    });
+
+    it("rolls back newly inserted sites when settings initialization fails", async () => {
+      setSession(adminSession);
+      mockUuid("00000000-0000-4000-8000-000000000302");
+      upsertSiteScriptSettingsMock.mockRejectedValue(new Error("kv down"));
+      const insertSite = statement();
+      const deleteSite = statement();
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        insertSite,
+        deleteSite,
+      ]);
+
+      await expect(
+        dispatch(
+          "/api/private/admin/sites",
+          env,
+          jsonInit({
+            teamId: "team-1",
+            name: "Docs",
+            domain: "docs.example.test",
+          }),
+        ),
+      ).rejects.toThrow("kv down");
+
+      expect(insertSite.bind).toHaveBeenCalled();
+      expect(deleteSite.bind).toHaveBeenCalledWith(
+        "00000000-0000-4000-8000-000000000302",
+      );
+    });
+
+    it("updates sites across teams and syncs script settings domain", async () => {
+      setSession(userSession);
+      upsertSiteScriptSettingsMock.mockResolvedValue(
+        DEFAULT_SITE_SCRIPT_SETTINGS,
+      );
+      const update = statement();
+      const { env } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({
+          first: {
+            id: "site-1",
+            teamId: "team-1",
+            name: "Old",
+            domain: "old.example.test",
+            publicEnabled: 0,
+            publicSlug: null,
+          },
+        }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({ first: { id: "team-2", ownerUserId: "user-1" } }),
+        update,
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/sites",
+        env,
+        jsonInit(
+          {
+            siteId: "site-1",
+            teamId: "team-2",
+            name: "New Site",
+            domain: "new.example.test",
+            publicEnabled: false,
+            publicSlug: "public-new",
+          },
+          "PATCH",
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: {
+          id: "site-1",
+          teamId: "team-2",
+          name: "New Site",
+          domain: "new.example.test",
+          publicEnabled: false,
+          publicSlug: "",
+        },
+      });
+      expect(update.bind).toHaveBeenCalledWith(
+        "team-2",
+        "New Site",
+        "new.example.test",
+        0,
+        null,
+        "site-1",
+      );
+      expect(upsertSiteScriptSettingsMock).toHaveBeenCalledWith(env, "site-1", {
+        siteDomain: "new.example.test",
+      });
+    });
+
+    it("removes sites and ignores best-effort settings cleanup failures", async () => {
+      setSession(adminSession);
+      deleteSiteScriptSettingsMock.mockRejectedValue(new Error("kv down"));
+      const deleteStatements = Array.from({ length: 10 }, () => statement());
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        statement({
+          first: {
+            id: "site-1",
+            teamId: "team-1",
+            name: "Site",
+            domain: "site.example.test",
+            publicEnabled: 0,
+            publicSlug: null,
+          },
+        }),
+        ...deleteStatements,
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/sites",
+        env,
+        jsonInit({ intent: "remove", siteId: "site-1" }, "PATCH"),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: { siteId: "site-1", teamId: "team-1", removed: true },
+      });
+      expect(deleteStatements.at(-1)?.bind).toHaveBeenCalledWith("site-1");
+      expect(deleteSiteScriptSettingsMock).toHaveBeenCalledWith(env, "site-1");
+    });
+  });
+
+  describe("members route", () => {
+    it("lists members for readable teams", async () => {
+      setSession(userSession);
+      const rows = [
+        {
+          teamId: "team-1",
+          userId: "user-2",
+          role: "member",
+          username: "member",
+        },
+      ];
+      const { env } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: { role: "admin" } }),
+        statement({ all: rows }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/members?teamId=team-1",
+        env,
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, data: rows });
+    });
+
+    it("adds members by identifier with requested non-owner roles", async () => {
+      setSession(userSession);
+      const member = userRow({
+        id: "member-1",
+        username: "member",
+        email: "member@example.test",
+        name: null,
+        system_role: "user",
+      });
+      const upsertMember = statement();
+      const { env } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({ first: member }),
+        statement({ first: null }),
+        upsertMember,
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/members",
+        env,
+        jsonInit({
+          teamId: "team-1",
+          identifier: "Member@Example.Test",
+          role: "ADMIN",
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: {
+          teamId: "team-1",
+          userId: "member-1",
+          role: "admin",
+          username: "member",
+          email: "member@example.test",
+          name: "",
+        },
+      });
+      expect(upsertMember.bind).toHaveBeenCalledWith(
+        "team-1",
+        "member-1",
+        "admin",
+      );
+    });
+
+    it("upserts owner membership when adding the team owner", async () => {
+      setSession(adminSession);
+      const owner = userRow({
+        id: "owner-1",
+        username: "owner",
+        email: "owner@example.test",
+      });
+      const upsertOwner = statement();
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: owner }),
+        upsertOwner,
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/members",
+        env,
+        jsonInit({ teamId: "team-1", userId: "owner-1" }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: {
+          teamId: "team-1",
+          userId: "owner-1",
+          role: "owner",
+          username: "owner",
+          email: "owner@example.test",
+          name: "Admin User",
+        },
+      });
+      expect(upsertOwner.bind).toHaveBeenCalledWith("team-1", "owner-1");
+    });
+
+    it("rejects direct owner assignment and owner membership rewrites", async () => {
+      setSession(adminSession);
+      const ownerRoleEnv = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: userRow({ id: "member-1" }) }),
+      ]).env;
+      const ownerRole = await dispatch(
+        "/api/private/admin/members",
+        ownerRoleEnv,
+        jsonInit({ teamId: "team-1", userId: "member-1", role: "owner" }),
+      );
+
+      const existingOwnerEnv = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: userRow({ id: "member-1" }) }),
+        statement({ first: { role: "owner" } }),
+      ]).env;
+      const existingOwner = await dispatch(
+        "/api/private/admin/members",
+        existingOwnerEnv,
+        jsonInit({ teamId: "team-1", userId: "member-1", role: "admin" }),
+      );
+
+      expect(ownerRole.status).toBe(400);
+      expect(await ownerRole.json()).toEqual({
+        ok: false,
+        error: "Cannot assign owner via member add; use ownership transfer",
+      });
+      expect(existingOwner.status).toBe(403);
+      expect(await existingOwner.json()).toEqual({
+        ok: false,
+        error: "Cannot change team owner membership",
+      });
+    });
+
+    it("updates member roles and returns unchanged results without writes", async () => {
+      setSession(userSession);
+      const update = statement();
+      const updateEnv = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({ first: { role: "member" } }),
+        update,
+      ]).env;
+      const updated = await dispatch(
+        "/api/private/admin/members",
+        updateEnv,
+        jsonInit(
+          {
+            intent: "update_role",
+            teamId: "team-1",
+            userId: "member-1",
+            role: "admin",
+          },
+          "PATCH",
+        ),
+      );
+
+      const unchangedEnv = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({ first: { role: "admin" } }),
+      ]).env;
+      const unchanged = await dispatch(
+        "/api/private/admin/members",
+        unchangedEnv,
+        jsonInit(
+          {
+            intent: "update_role",
+            teamId: "team-1",
+            userId: "member-1",
+            role: "admin",
+          },
+          "PATCH",
+        ),
+      );
+
+      expect(updated.status).toBe(200);
+      expect(await updated.json()).toEqual({
+        ok: true,
+        data: {
+          teamId: "team-1",
+          userId: "member-1",
+          role: "admin",
+          updated: true,
+        },
+      });
+      expect(update.bind).toHaveBeenCalledWith("admin", "team-1", "member-1");
+      expect(await unchanged.json()).toEqual({
+        ok: true,
+        data: {
+          teamId: "team-1",
+          userId: "member-1",
+          role: "admin",
+          unchanged: true,
+        },
+      });
+    });
+
+    it("prevents self-demotion by team admins and removes ordinary members", async () => {
+      setSession(userSession);
+      const selfDemotionEnv = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: { role: "admin" } }),
+        statement({ first: { role: "admin" } }),
+      ]).env;
+      const selfDemotion = await dispatch(
+        "/api/private/admin/members",
+        selfDemotionEnv,
+        jsonInit(
+          {
+            intent: "update_role",
+            teamId: "team-1",
+            userId: "user-1",
+            role: "member",
+          },
+          "PATCH",
+        ),
+      );
+
+      const remove = statement();
+      const removeEnv = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({ first: { role: "member" } }),
+        remove,
+      ]).env;
+      const removed = await dispatch(
+        "/api/private/admin/members",
+        removeEnv,
+        jsonInit({ teamId: "team-1", userId: "member-1" }, "PATCH"),
+      );
+
+      expect(selfDemotion.status).toBe(400);
+      expect(await selfDemotion.json()).toEqual({
+        ok: false,
+        error: "Cannot demote yourself; ask another admin or the owner",
+      });
+      expect(removed.status).toBe(200);
+      expect(await removed.json()).toEqual({
+        ok: true,
+        data: { teamId: "team-1", userId: "member-1", removed: true },
+      });
+      expect(remove.bind).toHaveBeenCalledWith("team-1", "member-1");
+    });
+  });
+
+  describe("site config and script snippet routes", () => {
+    it("loads default script settings for readable sites", async () => {
+      setSession(userSession);
+      readSiteScriptSettingsMock.mockResolvedValue(null);
+      const { env } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { team_id: "team-1" } }),
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: { role: "member" } }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/site-config?siteId=site-1",
+        env,
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: DEFAULT_SITE_SCRIPT_SETTINGS,
+      });
+      expect(readSiteScriptSettingsMock).toHaveBeenCalledWith(env, "site-1");
+    });
+
+    it("returns read and write site config storage errors as 500 responses", async () => {
+      setSession(adminSession);
+      readSiteScriptSettingsMock.mockRejectedValue(new Error("read failed"));
+      const readEnv = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: { team_id: "team-1" } }),
+      ]).env;
+      const readResponse = await dispatch(
+        "/api/private/admin/site-config?siteId=site-1",
+        readEnv,
+      );
+
+      upsertSiteScriptSettingsMock.mockRejectedValue(new Error("write failed"));
+      const writeEnv = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: { team_id: "team-1" } }),
+        statement({ first: { domain: "site.example.test" } }),
+      ]).env;
+      const writeResponse = await dispatch(
+        "/api/private/admin/site-config",
+        writeEnv,
+        jsonInit({ siteId: "site-1", config: { trackHash: false } }),
+      );
+
+      expect(readResponse.status).toBe(500);
+      expect(await readResponse.json()).toEqual({
+        ok: false,
+        error: "read failed",
+      });
+      expect(writeResponse.status).toBe(500);
+      expect(await writeResponse.json()).toEqual({
+        ok: false,
+        error: "write failed",
+      });
+    });
+
+    it("saves site config after confirming site ownership and domain", async () => {
+      setSession(userSession);
+      const saved = { ...DEFAULT_SITE_SCRIPT_SETTINGS, trackHash: false };
+      upsertSiteScriptSettingsMock.mockResolvedValue(saved);
+      const { env } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { team_id: "team-1" } }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({ first: { domain: "site.example.test" } }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/site-config",
+        env,
+        jsonInit({ siteId: "site-1", config: { trackHash: false } }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, data: saved });
+      expect(upsertSiteScriptSettingsMock).toHaveBeenCalledWith(env, "site-1", {
+        siteDomain: "site.example.test",
+        settings: { trackHash: false },
+      });
+    });
+
+    it("denies site config writes when the actor cannot manage the site team", async () => {
+      setSession(userSession);
+      const { env } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { team_id: "team-1" } }),
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: null }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/site-config",
+        env,
+        jsonInit({ siteId: "site-1", config: { trackHash: false } }),
+      );
+
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Only team owner can update site config",
+      });
+      expect(upsertSiteScriptSettingsMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects unsupported site config methods after authentication", async () => {
+      setSession(adminSession);
+      const { env } = createEnv([statement({ first: userRow() })]);
+
+      const response = await dispatch(
+        "/api/private/admin/site-config?siteId=site-1",
+        env,
+        { method: "PATCH" },
+      );
+
+      expect(response.status).toBe(405);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Method Not Allowed",
+      });
+    });
+
+    it("builds script snippets from the configured edge base URL", async () => {
+      setSession(adminSession);
+      const { env } = createEnv(
+        [
+          statement({ first: userRow() }),
+          statement({ first: { team_id: "team-1" } }),
+        ],
+        {
+          env: { EDGE_PUBLIC_BASE_URL: "https://cdn.example.test/" },
+        },
+      );
+
+      const response = await dispatch(
+        "/api/private/admin/script-snippet?siteId=site 1",
+        env,
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: {
+          siteId: "site 1",
+          src: "https://cdn.example.test/script.js?siteId=site%201",
+          snippet:
+            '<script defer src="https://cdn.example.test/script.js?siteId=site%201"></script>',
+        },
+      });
+    });
+
+    it("rejects unsupported script snippet methods before authentication", async () => {
+      const { env, prepare } = createEnv();
+
+      const response = await dispatch(
+        "/api/private/admin/script-snippet?siteId=site-1",
+        env,
+        { method: "POST" },
+      );
+
+      expect(response.status).toBe(405);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Method Not Allowed",
+      });
+      expect(requireSessionMock).not.toHaveBeenCalled();
+      expect(prepare).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("system performance route", () => {
+    it("requires system admin access", async () => {
+      setSession(userSession);
+      const { env } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/system-performance",
+        env,
+      );
+
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Only system admin can view system performance",
+      });
+    });
+
+    it("rejects unsupported methods after admin authorization", async () => {
+      setSession(adminSession);
+      const { env, prepare } = createEnv([statement({ first: userRow() })]);
+
+      const response = await dispatch(
+        "/api/private/admin/system-performance",
+        env,
+        { method: "POST" },
+      );
+
+      expect(response.status).toBe(405);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Method Not Allowed",
+      });
+      expect(prepare).toHaveBeenCalledTimes(1);
+    });
+
+    it("aggregates system performance rows into API response data", async () => {
+      setSession(adminSession);
+      vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+      const trendRows = [
+        {
+          bucketSec: 1_799_998_200,
+          visits: "2",
+          customEvents: 3,
+          totalEvents: 5,
+          avgLatencyMs: 100.5,
+          p50LatencyMs: 80,
+          p75LatencyMs: 110,
+          p95LatencyMs: 150,
+          delayedEvents: 1,
+          futureSkewedEvents: 0,
+        },
+      ];
+      const topSiteRows = [
+        {
+          siteId: "site-1",
+          siteName: "Site",
+          siteDomain: "site.example.test",
+          totalEvents: 10,
+          visits: 6,
+          customEvents: 4,
+          avgLatencyMs: "50",
+          delayedEvents: 1,
+          futureSkewedEvents: 2,
+        },
+      ];
+      const slowRows = [
+        {
+          kind: "custom_event",
+          siteId: "site-1",
+          siteName: "Site",
+          siteDomain: "site.example.test",
+          eventAtMs: 100,
+          serverAtMs: 800,
+          latencyMs: 700,
+        },
+        {
+          kind: "other",
+          siteId: "site-2",
+          siteName: "Site 2",
+          siteDomain: "",
+          eventAtMs: 200,
+          serverAtMs: 300,
+          latencyMs: 100,
+        },
+      ];
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        statement({
+          first: {
+            totalEvents: 20,
+            visits: 12,
+            customEvents: 8,
+            activeSites: 3,
+            avgLatencyMs: 75,
+            trustedLatencySamples: 19,
+            delayedEvents: 2,
+            futureSkewedEvents: 1,
+            latestCreatedAtSec: 1_799_999_990,
+          },
+        }),
+        statement({
+          first: {
+            p50LatencyMs: 50,
+            p75LatencyMs: 90,
+            p95LatencyMs: 200,
+          },
+        }),
+        statement({ all: trendRows }),
+        statement({ all: topSiteRows }),
+        statement({ all: slowRows }),
+        statement({
+          first: {
+            total: 4,
+            stale: 1,
+            timedOut: 2,
+            oldestStartedAt: 1_799_900_000_000,
+            newestActivityAt: 1_799_999_000_000,
+          },
+        }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/system-performance?minutes=360",
+        env,
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        ok: true,
+        generatedAt: 1_800_000_000_000,
+        window: {
+          from: 1_799_978_400_000,
+          to: 1_800_000_000_000,
+          minutes: 360,
+          bucketSizeMs: 1_800_000,
+        },
+        summary: {
+          totalEvents: 20,
+          visits: 12,
+          customEvents: 8,
+          activeSites: 3,
+          eventsPerMinute: 20 / 360,
+          latestCreatedAt: 1_799_999_990_000,
+          dataFreshnessMs: 10_000,
+          avgLatencyMs: 75,
+          p50LatencyMs: 50,
+          p75LatencyMs: 90,
+          p95LatencyMs: 200,
+          trustedLatencySamples: 19,
+          delayedEvents: 2,
+          futureSkewedEvents: 1,
+          anomalyRate: 3 / 20,
+        },
+        openVisits: {
+          total: 4,
+          stale: 1,
+          timedOut: 2,
+          oldestStartedAt: 1_799_900_000_000,
+          newestActivityAt: 1_799_999_000_000,
+        },
+        trend: [
+          {
+            bucket: 1_799_998_200,
+            timestampMs: 1_799_998_200_000,
+            visits: 2,
+            customEvents: 3,
+            totalEvents: 5,
+            avgLatencyMs: 100.5,
+            delayedEvents: 1,
+            futureSkewedEvents: 0,
+          },
+        ],
+        topSites: [
+          {
+            ...topSiteRows[0],
+            avgLatencyMs: 50,
+          },
+        ],
+        slowEvents: [
+          {
+            kind: "custom_event",
+            siteId: "site-1",
+            latencyMs: 700,
+          },
+          {
+            kind: "visit",
+            siteId: "site-2",
+            latencyMs: 100,
+          },
+        ],
+      });
+    });
+
+    it("defaults invalid windows and normalizes empty system performance rows", async () => {
+      setSession(adminSession);
+      vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        statement({
+          first: {
+            totalEvents: "not-a-number",
+            visits: null,
+            customEvents: undefined,
+            activeSites: Number.POSITIVE_INFINITY,
+            avgLatencyMs: "bad",
+            trustedLatencySamples: "0",
+            delayedEvents: 0,
+            futureSkewedEvents: 0,
+            latestCreatedAtSec: "bad",
+          },
+        }),
+        statement({ first: {} }),
+        statement({ all: [] }),
+        statement({ all: [] }),
+        statement({ all: [] }),
+        statement({ first: {} }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/system-performance?minutes=999",
+        env,
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        ok: true,
+        window: {
+          from: 1_799_996_400_000,
+          to: 1_800_000_000_000,
+          minutes: 60,
+          bucketSizeMs: 300_000,
+        },
+        summary: {
+          totalEvents: 0,
+          visits: 0,
+          customEvents: 0,
+          activeSites: 0,
+          eventsPerMinute: 0,
+          latestCreatedAt: null,
+          dataFreshnessMs: null,
+          avgLatencyMs: null,
+          p50LatencyMs: null,
+          p75LatencyMs: null,
+          p95LatencyMs: null,
+          trustedLatencySamples: 0,
+          delayedEvents: 0,
+          futureSkewedEvents: 0,
+          anomalyRate: 0,
+        },
+        openVisits: {
+          total: 0,
+          stale: 0,
+          timedOut: 0,
+          oldestStartedAt: null,
+          newestActivityAt: null,
+        },
+        trend: [],
+        topSites: [],
+        slowEvents: [],
+      });
+    });
+
+    it("uses hourly buckets for the 1440 minute system performance window", async () => {
+      setSession(adminSession);
+      vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: { totalEvents: 0 } }),
+        statement({ first: {} }),
+        statement({ all: [] }),
+        statement({ all: [] }),
+        statement({ all: [] }),
+        statement({ first: {} }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/system-performance?minutes=1440",
+        env,
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        ok: true,
+        window: {
+          from: 1_799_913_600_000,
+          to: 1_800_000_000_000,
+          minutes: 1440,
+          bucketSizeMs: 3_600_000,
+        },
+      });
+    });
+  });
+
+  describe("DO diagnostics route", () => {
+    it("requires system admin access for DO diagnostics", async () => {
+      setSession(userSession);
+      const { env } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+      ]);
+
+      const response = await dispatch("/api/private/admin/do-diagnostic", env);
+
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Only system admin can view DO diagnostics",
+      });
+    });
+
+    it("rejects unsupported DO diagnostic methods after admin authorization", async () => {
+      setSession(adminSession);
+      const { env } = createEnv([statement({ first: userRow() })]);
+
+      const response = await dispatch("/api/private/admin/do-diagnostic", env, {
+        method: "POST",
+      });
+
+      expect(response.status).toBe(405);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Method Not Allowed",
+      });
+    });
+
+    it("aggregates reachable and unreachable durable object diagnostics", async () => {
+      setSession(adminSession);
+      vi.spyOn(Date, "now")
+        .mockReturnValueOnce(5_000)
+        .mockReturnValueOnce(5_010)
+        .mockReturnValueOnce(5_020)
+        .mockReturnValueOnce(5_030)
+        .mockReturnValueOnce(5_040)
+        .mockReturnValue(5_050);
+      const goodDiagnostic = diagnosticPayload();
+      const secondDiagnostic = diagnosticPayload({
+        visits: {
+          total: 6,
+          byStatus: { open: 1 },
+          open: {
+            total: 1,
+            stale: 0,
+            timedOut: 0,
+            hardAged: 0,
+            futureSkewed: 2,
+            oldestStartedAt: 700,
+            newestActivityAt: 800,
+            futureMaxActivityAt: 1_500,
+          },
+          dirty: {
+            total: 4,
+            stuck: 1,
+            maxFlushAttempts: 9,
+          },
+        },
+        customEvents: {
+          total: 3,
+          dirty: 1,
+          stuck: 4,
+          maxFlushAttempts: 8,
+          oldestOccurredAt: null,
+        },
+        alarm: { scheduledAt: null },
+      });
+      const ingestDo = createIngestDo({
+        "site-1": {
+          fetch: vi.fn().mockResolvedValue(Response.json(goodDiagnostic)),
+        },
+        "site-2": {
+          fetch: vi
+            .fn()
+            .mockResolvedValue(new Response("bad", { status: 503 })),
+        },
+        "site-3": {
+          fetch: vi
+            .fn()
+            .mockResolvedValue(
+              Response.json({ ok: false, error: "not_ready" }),
+            ),
+        },
+        "site-4": {
+          fetch: vi.fn().mockRejectedValue(new Error("network down")),
+        },
+        "site-5": {
+          fetch: vi.fn().mockResolvedValue(Response.json(secondDiagnostic)),
+        },
+      });
+      const { env } = createEnv(
+        [
+          statement({ first: userRow() }),
+          statement({
+            all: [
+              { id: "site-1", name: "Site 1", domain: "one.example.test" },
+              { id: "site-2", name: "Site 2", domain: "two.example.test" },
+              { id: "site-3", name: "Site 3", domain: "three.example.test" },
+              { id: "site-4", name: "", domain: "" },
+              { id: "site-5", name: "Site 5", domain: "five.example.test" },
+            ],
+          }),
+        ],
+        {
+          ingestDo,
+        },
+      );
+
+      const response = await dispatch("/api/private/admin/do-diagnostic", env);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        ok: true,
+        generatedAt: 5_000,
+        totalSites: 5,
+        reachableSites: 2,
+        unreachableSites: 3,
+        thresholds: goodDiagnostic.thresholds,
+        totals: {
+          bufferedVisits: 18,
+          openVisits: 5,
+          openStale: 1,
+          openTimedOut: 2,
+          openHardAged: 3,
+          openFutureSkewed: 3,
+          dirtyVisits: 7,
+          stuckDirtyVisits: 3,
+          bufferedCustomEvents: 8,
+          dirtyCustomEvents: 3,
+          stuckDirtyCustomEvents: 5,
+          activeAlarms: 1,
+          maxVisitFlushAttempts: 9,
+          maxCustomEventFlushAttempts: 8,
+        },
+        oldestOpenStartedAt: 700,
+        futureMaxActivityAt: 1_500,
+        sites: [
+          {
+            siteId: "site-5",
+            ok: true,
+            diagnostic: secondDiagnostic,
+          },
+          {
+            siteId: "site-1",
+            ok: true,
+            diagnostic: goodDiagnostic,
+          },
+          {
+            siteId: "site-2",
+            ok: false,
+            error: "do_status_503",
+          },
+          {
+            siteId: "site-3",
+            ok: false,
+            error: "not_ready",
+          },
+          {
+            siteId: "site-4",
+            siteName: "site-4",
+            siteDomain: "",
+            ok: false,
+            error: "network down",
+          },
+        ],
+      });
+      expect(ingestDo.idFromName).toHaveBeenCalledWith("site-1");
+      expect(ingestDo.get).toHaveBeenCalledWith("stub:site-1");
+    });
+
+    it("uses default diagnostic thresholds when no sites are reachable", async () => {
+      setSession(adminSession);
+      vi.spyOn(Date, "now").mockReturnValue(10_000);
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        statement({ all: [] }),
+      ]);
+
+      const response = await dispatch("/api/private/admin/do-diagnostic", env);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        ok: true,
+        generatedAt: 10_000,
+        totalSites: 0,
+        reachableSites: 0,
+        unreachableSites: 0,
+        thresholds: {
+          staleMs: 30 * 60 * 1000,
+          timeoutMs: 12 * 60 * 60 * 1000,
+          hardAgedMs: 36 * 60 * 60 * 1000,
+          stuckFlushAttempts: 5,
+        },
+        totals: {
+          bufferedVisits: 0,
+          openVisits: 0,
+          openStale: 0,
+          openTimedOut: 0,
+          openHardAged: 0,
+          openFutureSkewed: 0,
+          dirtyVisits: 0,
+          stuckDirtyVisits: 0,
+          bufferedCustomEvents: 0,
+          dirtyCustomEvents: 0,
+          stuckDirtyCustomEvents: 0,
+          activeAlarms: 0,
+          maxVisitFlushAttempts: 0,
+          maxCustomEventFlushAttempts: 0,
+        },
+        oldestOpenStartedAt: null,
+        futureMaxActivityAt: null,
+        sites: [],
+      });
+    });
+  });
+});

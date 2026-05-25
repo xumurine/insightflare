@@ -179,6 +179,19 @@ describe("demo-utils", () => {
         ),
       ).toBe("y");
     });
+
+    it("falls back to the final normalized entry if rng overshoots", () => {
+      expect(
+        weightedPickLabel(
+          () => 2,
+          [
+            { label: "first", weight: 1 },
+            { label: "last", weight: 1 },
+          ],
+          "fallback",
+        ),
+      ).toBe("last");
+    });
   });
 
   describe("weightedDistributionFromWeights", () => {
@@ -286,6 +299,25 @@ describe("demo-utils", () => {
       const rng = seededRng(14);
       const result = expandPathLabels(rng, ["/foo//bar/"], 5);
       expect(result).toContain("/foo/bar");
+    });
+
+    it("generates dynamic variants when the curated pools are not enough", () => {
+      const rng = seededRng(15);
+      const result = expandPathLabels(
+        rng,
+        ["/products/widget", "/courses/analytics"],
+        80,
+      );
+
+      expect(result).toHaveLength(80);
+      expect(new Set(result).size).toBe(result.length);
+      expect(result).toEqual(
+        expect.arrayContaining([
+          "/products/widget/reviews",
+          "/products/widget/specs",
+          "/products/widget/compatibility",
+        ]),
+      );
     });
   });
 });

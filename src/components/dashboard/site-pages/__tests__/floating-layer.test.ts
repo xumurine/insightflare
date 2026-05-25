@@ -73,7 +73,9 @@ describe("floating layer helpers", () => {
     invalid.setAttribute(FLOATING_LAYER_Z_ATTR, "top");
     const high = document.createElement("div");
     high.setAttribute(FLOATING_LAYER_Z_ATTR, "48");
-    document.body.append(low, invalid, high);
+    (document.body as any).append(low);
+    (document.body as any).append(invalid);
+    (document.body as any).append(high);
 
     expect(getTopFloatingLayerZIndex()).toBe(48);
     expect(hasHigherFloatingLayer(47)).toBe(true);

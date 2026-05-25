@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { GET } from "@/app/api/archive/manifest/route";
 import { fetchEdgeForServer } from "@/lib/edge-proxy";
-
-import { GET } from "../manifest/route";
 
 vi.mock("@/lib/edge-proxy", () => ({
   fetchEdgeForServer: vi.fn(),

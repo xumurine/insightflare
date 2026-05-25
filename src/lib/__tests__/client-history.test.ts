@@ -16,13 +16,14 @@ describe("client history URL helpers", () => {
 
   beforeEach(() => {
     container = document.createElement("div");
-    document.body.append(container);
+    (document.body as any).append(container);
     root = createRoot(container);
     window.history.replaceState(null, "", "/start?tab=one#top");
     vi.restoreAllMocks();
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     act(() => {
       root.unmount();
     });
@@ -66,6 +67,13 @@ describe("client history URL helpers", () => {
     expect(listener).not.toHaveBeenCalled();
 
     window.removeEventListener("insightflare:url-state-change", listener);
+  });
+
+  it("no-ops URL helpers when window is unavailable", () => {
+    vi.stubGlobal("window", undefined);
+
+    expect(() => replaceUrlWithoutNavigation("/server")).not.toThrow();
+    expect(() => pushUrlWithoutNavigation("/server")).not.toThrow();
   });
 
   it("keeps useLiveSearchParams synced with history helper changes and popstate", () => {

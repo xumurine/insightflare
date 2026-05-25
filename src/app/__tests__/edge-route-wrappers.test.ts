@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handleTrackerScriptRequest } from "@/lib/edge/script-endpoint";
+import { GET as healthzGET } from "@/app/healthz/route";
+import { GET as scriptGET } from "@/app/script.js/route";
 import { resolveEdgeRuntime } from "@/lib/edge/runtime";
-
-import { GET as healthzGET } from "../healthz/route";
-import { GET as scriptGET } from "../script.js/route";
+import { handleTrackerScriptRequest } from "@/lib/edge/script-endpoint";
 
 vi.mock("@/lib/edge/runtime", () => ({
   resolveEdgeRuntime: vi.fn(),
@@ -32,10 +31,10 @@ describe("edge route wrappers", () => {
       ctx: {},
       request: new Request("https://app.test/healthz"),
       url: new URL("https://app.test/healthz"),
-    });
+    } as any);
 
     const response = await healthzGET(new Request("https://app.test/healthz"));
-    const payload = await response.json();
+    const payload: any = await response.json();
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/json");
@@ -59,7 +58,7 @@ describe("edge route wrappers", () => {
       ctx: {},
       request: requestWithCf,
       url: new URL("https://app.test/script.js"),
-    });
+    } as any);
     handleTrackerScriptRequestMock.mockResolvedValue(
       new Response("console.log('tracker');", {
         headers: { "content-type": "application/javascript" },

@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getSession, getSessionToken, isAuthenticated } from "@/lib/auth";
+import type * as SessionModule from "@/lib/session";
 import { verifySessionToken } from "@/lib/session";
 
 vi.mock("@/lib/session", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/session")>();
+  const actual = await importOriginal<typeof SessionModule>();
   return {
     ...actual,
     verifySessionToken: vi.fn(),
@@ -21,6 +22,8 @@ describe("auth helpers", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.doUnmock("next/headers");
     document.cookie = "if_session=; Max-Age=0; path=/";
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
@@ -36,6 +39,34 @@ describe("auth helpers", () => {
     document.cookie = "if_session=%E0%A4%A; path=/";
 
     await expect(getSessionToken()).resolves.toBe("%E0%A4%A");
+  });
+
+  it("returns an empty token when cookies omit the session key", async () => {
+    document.cookie = "theme=dark; path=/";
+
+    await expect(getSessionToken()).resolves.toBe("");
+  });
+
+  it("reads server cookie headers when document is unavailable", async () => {
+    vi.stubGlobal("document", undefined);
+    vi.doMock("next/headers", () => ({
+      headers: vi.fn().mockResolvedValue(
+        new Headers({
+          cookie: "theme=dark; if_session=server%3Dtoken; other=value",
+        }),
+      ),
+    }));
+
+    await expect(getSessionToken()).resolves.toBe("server=token");
+  });
+
+  it("returns an empty token when server headers cannot be read", async () => {
+    vi.stubGlobal("document", undefined);
+    vi.doMock("next/headers", () => ({
+      headers: vi.fn().mockRejectedValue(new Error("outside request")),
+    }));
+
+    await expect(getSessionToken()).resolves.toBe("");
   });
 
   it("verifies non-demo sessions and reports authentication state", async () => {
