@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   resolveContinentLabel,
@@ -164,9 +164,13 @@ describe("Regional Code and Language Translation Resolvers", () => {
     it("should gracefully handle Intl constructor errors and return null formatter for both country and language resolvers (Line 94, 105)", () => {
       const originalDisplayNames = globalThis.Intl.DisplayNames;
       try {
-        globalThis.Intl.DisplayNames = vi.fn(function () {
-          throw new Error("DisplayNames mock error");
-        }) as any;
+        Object.defineProperty(globalThis.Intl, "DisplayNames", {
+          value: vi.fn(function () {
+            throw new Error("DisplayNames mock error");
+          }),
+          writable: true,
+          configurable: true,
+        });
 
         // 1. Test language formatter exception fallback
         // "sv" is not in LANGUAGE_LABELS['zh'] table, it goes to getLanguageFormatter, throws, and falls back to raw code
@@ -182,7 +186,11 @@ describe("Regional Code and Language Translation Resolvers", () => {
         );
         expect(countryResult.label).toBe("FR");
       } finally {
-        globalThis.Intl.DisplayNames = originalDisplayNames;
+        Object.defineProperty(globalThis.Intl, "DisplayNames", {
+          value: originalDisplayNames,
+          writable: true,
+          configurable: true,
+        });
       }
     });
   });

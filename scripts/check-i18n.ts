@@ -254,6 +254,8 @@ function isRootAppMessagesType(
   appMessagesType: ts.Type,
   appMessagesSymbol: ts.Symbol,
 ): boolean {
+  if ((type.flags & ts.TypeFlags.Any) !== 0) return false;
+
   if (
     type.aliasSymbol &&
     (type.aliasSymbol.flags & ts.SymbolFlags.Alias) !== 0

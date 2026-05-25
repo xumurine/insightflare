@@ -4,21 +4,21 @@ import {
   addCalendarDays,
   addCalendarMonths,
   addZonedInterval,
+  browserTimeZone,
+  endOfZonedDay,
   isValidTimeZone,
   resolveReportingTimeZone,
   startOfZonedDay,
   startOfZonedHour,
+  startOfZonedInterval,
   startOfZonedMinute,
   startOfZonedMonth,
   startOfZonedWeek,
+  startOfZonedYear,
+  supportedTimeZones,
   timeZoneOffsetMinutes,
   zonedParts,
   zonedTimeToUtcMs,
-  browserTimeZone,
-  supportedTimeZones,
-  endOfZonedDay,
-  startOfZonedYear,
-  startOfZonedInterval,
 } from "@/lib/dashboard/time-zone";
 
 describe("Timezone & Calendar Calculation Utilities", () => {
@@ -333,15 +333,23 @@ describe("Timezone & Calendar Calculation Utilities", () => {
     it("should gracefully handle browserTimeZone retrieval error", () => {
       const originalDateTimeFormat = globalThis.Intl.DateTimeFormat;
       try {
-        globalThis.Intl.DateTimeFormat = vi.fn(function () {
-          throw new Error("DateTimeFormat mock error");
-        }) as any;
+        Object.defineProperty(globalThis.Intl, "DateTimeFormat", {
+          value: vi.fn(function () {
+            throw new Error("DateTimeFormat mock error");
+          }),
+          writable: true,
+          configurable: true,
+        });
         // In order to let it bypass native caching check inside browserTimeZone if any,
         // we call it.
         const zone = browserTimeZone();
         expect(zone).toBe("");
       } finally {
-        globalThis.Intl.DateTimeFormat = originalDateTimeFormat;
+        Object.defineProperty(globalThis.Intl, "DateTimeFormat", {
+          value: originalDateTimeFormat,
+          writable: true,
+          configurable: true,
+        });
       }
     });
 
