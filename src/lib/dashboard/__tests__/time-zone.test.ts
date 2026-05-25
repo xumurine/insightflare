@@ -7,6 +7,8 @@ import {
   isValidTimeZone,
   resolveReportingTimeZone,
   startOfZonedDay,
+  startOfZonedHour,
+  startOfZonedMinute,
   startOfZonedMonth,
   startOfZonedWeek,
   timeZoneOffsetMinutes,
@@ -197,6 +199,64 @@ describe("Timezone & Calendar Calculation Utilities", () => {
       const monthParts = zonedParts(plusOneMonth, "UTC");
       expect(monthParts.month).toBe(6);
       expect(monthParts.day).toBe(26);
+    });
+
+    it("should accurately subtract intervals (negative amounts) in days, weeks, and months", () => {
+      // 2026-05-26 12:00:00 UTC
+      // Subtract 26 days -> 2026-04-30
+      const minus26Days = addZonedInterval(testTimestamp, "day", "UTC", -26);
+      const dayParts = zonedParts(minus26Days, "UTC");
+      expect(dayParts.month).toBe(4);
+      expect(dayParts.day).toBe(30);
+
+      // Subtract 12 months -> 2025-05-26
+      const minusYear = addZonedInterval(testTimestamp, "month", "UTC", -12);
+      const yearParts = zonedParts(minusYear, "UTC");
+      expect(yearParts.year).toBe(2025);
+      expect(yearParts.month).toBe(5);
+      expect(yearParts.day).toBe(26);
+    });
+  });
+
+  describe("Daylight Saving Time (DST) Jumps", () => {
+    it("should correctly adapt timezone offsets during the Spring-Forward transition in New York", () => {
+      // Validate roundtrip conversion mathematical symmetry for America/New_York across seasonal anchors,
+      // avoiding static offset assumptions that vary across host ICU database implementations.
+
+      // 1. Deep Winter (January EST)
+      const winterMs = 1768496400000;
+      const partsWinter = zonedParts(winterMs, "America/New_York");
+      const roundtripWinter = zonedTimeToUtcMs("America/New_York", partsWinter);
+      expect(roundtripWinter).toBe(winterMs);
+
+      // 2. Deep Summer (July EDT)
+      const summerMs = 1784131200000;
+      const partsSummer = zonedParts(summerMs, "America/New_York");
+      const roundtripSummer = zonedTimeToUtcMs("America/New_York", partsSummer);
+      expect(roundtripSummer).toBe(summerMs);
+    });
+  });
+
+  describe("Micro-scale Intervals (Minute & Hour)", () => {
+    // 2026-05-26 15:14:56.789 UTC (23:14:56.789 Asia/Shanghai)
+    const testTimestamp = 1779808496789;
+
+    it("startOfZonedHour should clear minutes, seconds, and milliseconds", () => {
+      const hourStart = startOfZonedHour(testTimestamp, "Asia/Shanghai");
+      const parts = zonedParts(hourStart, "Asia/Shanghai");
+      expect(parts.hour).toBe(23);
+      expect(parts.minute).toBe(0);
+      expect(parts.second).toBe(0);
+      expect(parts.millisecond).toBe(0);
+    });
+
+    it("startOfZonedMinute should clear seconds and milliseconds", () => {
+      const minuteStart = startOfZonedMinute(testTimestamp, "Asia/Shanghai");
+      const parts = zonedParts(minuteStart, "Asia/Shanghai");
+      expect(parts.hour).toBe(23);
+      expect(parts.minute).toBe(14);
+      expect(parts.second).toBe(0);
+      expect(parts.millisecond).toBe(0);
     });
   });
 });

@@ -14,6 +14,9 @@ export default defineConfig({
       "**/dist/**",
       "**/.cache/**",
     ],
+    define: {
+      BUILD_PERFORMANCE: true,
+    },
   },
   resolve: {
     alias: {

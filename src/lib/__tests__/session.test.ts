@@ -98,4 +98,46 @@ describe("Session Authentication (Web Crypto HMAC)", () => {
     const verifiedWrongSecret = await verifySessionToken(token, customSecret);
     expect(verifiedWrongSecret).toBeNull();
   });
+
+  it("should handle empty or wrong secret keys gracefully conforming to fallback behaviors", async () => {
+    const token = await createSessionToken(mockClaims, 1800);
+
+    // 1. If empty string is supplied, verifySessionToken falls back to the default process.env.SESSION_SECRET.
+    // Assert it successfully verifies instead of returning null or crashing.
+    const verifiedEmpty = await verifySessionToken(token, "");
+    expect(verifiedEmpty).not.toBeNull();
+    expect(verifiedEmpty!.userId).toBe(mockClaims.userId);
+
+    // 2. If a wrong non-empty key is supplied, fallback does not happen. Assert it securely fails and returns null.
+    const verifiedWrong = await verifySessionToken(
+      token,
+      "invalid-secret-key-override",
+    );
+    expect(verifiedWrong).toBeNull();
+  });
+
+  it("should return null when token payload is valid Base64 but fails JSON parsing", async () => {
+    // Construct a payload containing valid Base64 but is just raw text "invalid-json" rather than stringified JSON object
+    const payloadPart = "aW52YWxpZC1qc29u"; // Base64 for "invalid-json"
+
+    // Manually calculate signature using Node's crypto to pass the signature integrity check
+    const crypto = await import("crypto");
+    const secret = process.env.SESSION_SECRET || "";
+    const hmac = crypto.createHmac("sha256", secret);
+    hmac.update(payloadPart);
+    const signature = hmac.digest();
+
+    const signaturePart = signature
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+
+    const token = `${payloadPart}.${signaturePart}`;
+
+    // The token successfully bypasses signature equality checks, but will fail during TextDecoder and JSON parsing.
+    // Assert it gracefully handles this without crashing and returns null.
+    const verified = await verifySessionToken(token);
+    expect(verified).toBeNull();
+  });
 });
