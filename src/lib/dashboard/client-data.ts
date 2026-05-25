@@ -333,7 +333,7 @@ function emptyOverviewTab(): OverviewTabData {
   return { ok: true, data: [] };
 }
 
-function normalizeOverviewRows(
+export function normalizeOverviewRows(
   rows: OverviewTabData["data"] | Array<Record<string, unknown>> | undefined,
 ): OverviewTabRows {
   if (!Array.isArray(rows)) return [];
@@ -347,7 +347,7 @@ function normalizeOverviewRows(
   }));
 }
 
-function decodeHashLabel(value: string): string {
+export function decodeHashLabel(value: string): string {
   const normalized = String(value || "").trim();
   if (!normalized) return "";
 
@@ -362,7 +362,7 @@ function decodeHashLabel(value: string): string {
   }
 }
 
-function decodeQueryLabel(value: string): string {
+export function decodeQueryLabel(value: string): string {
   const normalized = String(value || "").trim();
   if (!normalized) return "";
 
@@ -385,7 +385,7 @@ function emptyDashboardFilterOptions(): DashboardFilterOptionsData {
   return { ok: true, data: [] };
 }
 
-function withFilters(
+export function withFilters(
   params: Record<string, string | number>,
   filters?: DashboardFilters,
 ): Record<string, string | number> {
@@ -419,7 +419,9 @@ function withFilters(
   return next;
 }
 
-function toQueryString(params?: Record<string, string | number>): string {
+export function toQueryString(
+  params?: Record<string, string | number>,
+): string {
   if (!params) return "";
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {

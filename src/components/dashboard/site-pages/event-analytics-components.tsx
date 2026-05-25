@@ -9,6 +9,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { RemixiconComponentType } from "@remixicon/react";
 import {
@@ -42,6 +44,7 @@ import {
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
 import { PageHeading } from "@/components/dashboard/page-heading";
+import { DetailDrawer } from "@/components/dashboard/site-pages/detail-drawer";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
@@ -123,6 +126,32 @@ const JSON_TREE_INDENT_REM = 1.25;
 const JSON_TREE_GUIDE_OFFSET_REM = 0.58;
 const JSON_TREE_ROW_CLASS =
   "flex min-w-max items-center gap-1.5 py-0.5 whitespace-nowrap";
+
+const VisitorDetailClientPage = dynamic(
+  () =>
+    import("@/components/dashboard/site-pages/visitor-detail-client-page").then(
+      (module) => module.VisitorDetailClientPage,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="p-6 text-sm text-muted-foreground">Loading...</div>
+    ),
+  },
+);
+
+const SessionDetailClientPage = dynamic(
+  () =>
+    import("@/components/dashboard/site-pages/session-detail-client-page").then(
+      (module) => module.SessionDetailClientPage,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="p-6 text-sm text-muted-foreground">Loading...</div>
+    ),
+  },
+);
 
 type SortDirection = "asc" | "desc";
 export type EventRecordSortKey = "occurredAt" | "eventName" | "pathname";
@@ -1342,10 +1371,18 @@ function DetailItem({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+function isInsideDetailDrawer(target: EventTarget | null) {
+  return (
+    target instanceof Element &&
+    target.closest("[data-detail-drawer-root]") !== null
+  );
+}
+
 export function EventRecordDetailDrawer({
   locale,
   messages,
   labels,
+  siteId,
   pathname,
   open,
   onOpenChange,
@@ -1355,25 +1392,38 @@ export function EventRecordDetailDrawer({
   locale: Locale;
   messages: AppMessages;
   labels: EventPageCopy;
+  siteId: string;
   pathname: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   detail: EventRecordDetailData["data"] | null;
   loading: boolean;
 }) {
-  const router = useRouter();
+  const [nestedDetail, setNestedDetail] = useState<{
+    kind: "visitor" | "session";
+    id: string;
+  } | null>(null);
   const basePath = pathname.replace(/\/events(?:\/detail)?$/, "");
-  const visitorHref = detail?.context.visitorId
-    ? `${basePath}/visitors?detail=${encodeURIComponent(detail.context.visitorId)}`
-    : "";
-  const sessionHref = detail?.context.sessionId
-    ? `${basePath}/sessions?detail=${encodeURIComponent(detail.context.sessionId)}`
-    : "";
+  const visitorId = detail?.context.visitorId?.trim() || "";
+  const sessionId = detail?.context.sessionId?.trim() || "";
+  const visitorPathname = `${basePath}/visitors`;
+  const sessionPathname = `${basePath}/sessions`;
+  const nestedDetailOpen = nestedDetail !== null;
 
-  const openLink = (href: string) => {
-    if (!href) return;
-    onOpenChange(false);
-    navigateWithTransition(router, href);
+  useEffect(() => {
+    if (!open) setNestedDetail(null);
+  }, [open]);
+
+  const openVisitorDetail = (nextVisitorId: string) => {
+    const normalizedVisitorId = nextVisitorId.trim();
+    if (!normalizedVisitorId) return;
+    setNestedDetail({ kind: "visitor", id: normalizedVisitorId });
+  };
+
+  const openSessionDetail = (nextSessionId: string) => {
+    const normalizedSessionId = nextSessionId.trim();
+    if (!normalizedSessionId) return;
+    setNestedDetail({ kind: "session", id: normalizedSessionId });
   };
 
   const copyPayloadJson = async () => {
@@ -1387,192 +1437,276 @@ export function EventRecordDetailDrawer({
       toast.error(labels.copyJsonFailed);
     }
   };
+  const sideDrawerOverlay =
+    open && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            aria-hidden="true"
+            data-event-record-drawer-overlay=""
+            className="pointer-events-auto fixed inset-0 z-[1099] bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (!nestedDetailOpen) onOpenChange(false);
+            }}
+          />,
+          document.body,
+        )
+      : null;
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} direction="right">
-      <DrawerContent
-        className="z-[1100] !w-full !max-w-none sm:!w-[min(58vw,34rem)]"
-        overlayClassName="z-[1099]"
+    <>
+      {sideDrawerOverlay}
+      <Drawer
+        open={open}
+        onOpenChange={onOpenChange}
+        direction="right"
+        modal={false}
       >
-        <DrawerHeader className="border-b">
-          <DrawerTitle>{labels.detailTitle}</DrawerTitle>
-          <DrawerDescription>
-            {detail?.event.eventName || labels.detailSubtitle}
-          </DrawerDescription>
-        </DrawerHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {loading ? (
-            <div className="space-y-4">
-              <Skeleton className="h-5 w-48" />
-              <Skeleton className="h-28 w-full" />
-              <Skeleton className="h-64 w-full" />
-            </div>
-          ) : !detail ? (
-            <div className="flex h-64 items-center justify-center text-muted-foreground">
-              {labels.empty}
-            </div>
-          ) : (
-            <div className="space-y-5">
-              <section className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">{detail.event.eventName}</Badge>
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {detail.event.eventId}
-                  </span>
-                </div>
-                <dl className="grid gap-3 sm:grid-cols-2">
-                  <DetailItem
-                    label={labels.occurredAt}
-                    value={formatShortDateTime(
-                      locale,
-                      detail.event.occurredAt,
-                      undefined,
-                    )}
-                  />
-                  <DetailItem
-                    label={labels.receivedAt}
-                    value={formatShortDateTime(
-                      locale,
-                      detail.event.receivedAt,
-                      undefined,
-                    )}
-                  />
-                  <DetailItem
-                    label={labels.visit}
-                    value={
-                      <span className="font-mono">
-                        {shortId(detail.context.visitId)}
-                      </span>
-                    }
-                  />
-                  <DetailItem
-                    label={labels.payloadFields}
-                    value={`${numberFormat(locale, detail.event.nodeCount)} ${labels.nodes} / ${numberFormat(locale, detail.event.valueCount)} ${labels.values}`}
-                  />
-                </dl>
-              </section>
+        <DrawerContent
+          className="z-[1100] !w-full !max-w-none sm:!w-[min(58vw,34rem)]"
+          overlayClassName="hidden"
+          onEscapeKeyDown={(event) => {
+            if (nestedDetailOpen) event.preventDefault();
+          }}
+          onFocusOutside={(event) => {
+            if (isInsideDetailDrawer(event.detail.originalEvent.target)) {
+              event.preventDefault();
+            }
+          }}
+          onInteractOutside={(event) => {
+            if (isInsideDetailDrawer(event.detail.originalEvent.target)) {
+              event.preventDefault();
+            }
+          }}
+          onPointerDownOutside={(event) => {
+            if (isInsideDetailDrawer(event.detail.originalEvent.target)) {
+              event.preventDefault();
+            }
+          }}
+        >
+          <DrawerHeader className="border-b">
+            <DrawerTitle>{labels.detailTitle}</DrawerTitle>
+            <DrawerDescription>
+              {detail?.event.eventName || labels.detailSubtitle}
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            {loading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-5 w-48" />
+                <Skeleton className="h-28 w-full" />
+                <Skeleton className="h-64 w-full" />
+              </div>
+            ) : !detail ? (
+              <div className="flex h-64 items-center justify-center text-muted-foreground">
+                {labels.empty}
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <section className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">{detail.event.eventName}</Badge>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {detail.event.eventId}
+                    </span>
+                  </div>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <DetailItem
+                      label={labels.occurredAt}
+                      value={formatShortDateTime(
+                        locale,
+                        detail.event.occurredAt,
+                        undefined,
+                      )}
+                    />
+                    <DetailItem
+                      label={labels.receivedAt}
+                      value={formatShortDateTime(
+                        locale,
+                        detail.event.receivedAt,
+                        undefined,
+                      )}
+                    />
+                    <DetailItem
+                      label={labels.visit}
+                      value={
+                        <span className="font-mono">
+                          {shortId(detail.context.visitId)}
+                        </span>
+                      }
+                    />
+                    <DetailItem
+                      label={labels.payloadFields}
+                      value={`${numberFormat(locale, detail.event.nodeCount)} ${labels.nodes} / ${numberFormat(locale, detail.event.valueCount)} ${labels.values}`}
+                    />
+                  </dl>
+                </section>
 
-              <Separator />
+                <Separator />
 
-              <section className="space-y-3">
-                <h3 className="text-sm font-medium">{labels.context}</h3>
-                <dl className="grid gap-3 sm:grid-cols-2">
-                  <DetailItem
-                    label={labels.page}
-                    value={
-                      <div className="min-w-0">
-                        <div className="truncate font-mono">
-                          {formatPath(detail.context.pathname)}
-                        </div>
-                        {detail.context.title ? (
-                          <div className="truncate text-muted-foreground">
-                            {detail.context.title}
+                <section className="space-y-3">
+                  <h3 className="text-sm font-medium">{labels.context}</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <DetailItem
+                      label={labels.page}
+                      value={
+                        <div className="min-w-0">
+                          <div className="truncate font-mono">
+                            {formatPath(detail.context.pathname)}
                           </div>
-                        ) : null}
-                      </div>
-                    }
-                  />
-                  <DetailItem
-                    label={labels.referrer}
-                    value={
-                      <ReferrerMeta
-                        referrerHost={detail.context.referrerHost || ""}
-                        directLabel={messages.overview.direct}
-                      />
-                    }
-                  />
-                  <DetailItem
-                    label={labels.location}
-                    value={
-                      <CountryRegionMeta
-                        locale={locale}
-                        messages={messages}
-                        country={detail.context.country || ""}
-                        region={detail.context.region}
-                      />
-                    }
-                  />
-                  <DetailItem
-                    label={labels.browser}
-                    value={
-                      <BrowserMeta
-                        browser={detail.context.browser || ""}
-                        version={detail.context.browserVersion}
-                        unknownLabel={messages.common.unknown}
-                      />
-                    }
-                  />
-                  <DetailItem
-                    label={labels.os}
-                    value={
-                      <OsMeta
-                        os={detail.context.os || ""}
-                        version={detail.context.osVersion}
-                        unknownLabel={messages.common.unknown}
-                      />
-                    }
-                  />
-                  <DetailItem
-                    label={labels.device}
-                    value={
-                      <DeviceMeta
-                        deviceType={detail.context.deviceType || ""}
-                        deviceLabels={messages.common.deviceLabels}
-                        unknownLabel={messages.common.unknown}
-                      />
-                    }
-                  />
-                </dl>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={!visitorHref}
-                    onClick={() => openLink(visitorHref)}
-                  >
-                    <RiExternalLinkLine data-icon="inline-start" />
-                    {labels.openVisitor}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={!sessionHref}
-                    onClick={() => openLink(sessionHref)}
-                  >
-                    <RiExternalLinkLine data-icon="inline-start" />
-                    {labels.openSession}
-                  </Button>
-                </div>
-              </section>
+                          {detail.context.title ? (
+                            <div className="truncate text-muted-foreground">
+                              {detail.context.title}
+                            </div>
+                          ) : null}
+                        </div>
+                      }
+                    />
+                    <DetailItem
+                      label={labels.referrer}
+                      value={
+                        <ReferrerMeta
+                          referrerHost={detail.context.referrerHost || ""}
+                          directLabel={messages.overview.direct}
+                        />
+                      }
+                    />
+                    <DetailItem
+                      label={labels.location}
+                      value={
+                        <CountryRegionMeta
+                          locale={locale}
+                          messages={messages}
+                          country={detail.context.country || ""}
+                          region={detail.context.region}
+                        />
+                      }
+                    />
+                    <DetailItem
+                      label={labels.browser}
+                      value={
+                        <BrowserMeta
+                          browser={detail.context.browser || ""}
+                          version={detail.context.browserVersion}
+                          unknownLabel={messages.common.unknown}
+                        />
+                      }
+                    />
+                    <DetailItem
+                      label={labels.os}
+                      value={
+                        <OsMeta
+                          os={detail.context.os || ""}
+                          version={detail.context.osVersion}
+                          unknownLabel={messages.common.unknown}
+                        />
+                      }
+                    />
+                    <DetailItem
+                      label={labels.device}
+                      value={
+                        <DeviceMeta
+                          deviceType={detail.context.deviceType || ""}
+                          deviceLabels={messages.common.deviceLabels}
+                          unknownLabel={messages.common.unknown}
+                        />
+                      }
+                    />
+                  </dl>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!visitorId}
+                      onClick={() => openVisitorDetail(visitorId)}
+                    >
+                      <RiExternalLinkLine data-icon="inline-start" />
+                      {labels.openVisitor}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!sessionId}
+                      onClick={() => openSessionDetail(sessionId)}
+                    >
+                      <RiExternalLinkLine data-icon="inline-start" />
+                      {labels.openSession}
+                    </Button>
+                  </div>
+                </section>
 
-              <Separator />
+                <Separator />
 
-              <section className="space-y-3">
-                <h3 className="text-sm font-medium">{labels.payload}</h3>
-                <div className="overflow-x-auto border bg-muted/20 p-3 font-mono text-xs leading-relaxed">
-                  <JsonTree value={detail.eventData} labels={labels} />
-                </div>
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      void copyPayloadJson();
-                    }}
-                  >
-                    <RiFileCopyLine data-icon="inline-start" />
-                    {labels.copyJson}
-                  </Button>
-                </div>
-              </section>
-            </div>
-          )}
-        </div>
-      </DrawerContent>
-    </Drawer>
+                <section className="space-y-3">
+                  <h3 className="text-sm font-medium">{labels.payload}</h3>
+                  <div className="overflow-x-auto border bg-muted/20 p-3 font-mono text-xs leading-relaxed">
+                    <JsonTree value={detail.eventData} labels={labels} />
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        void copyPayloadJson();
+                      }}
+                    >
+                      <RiFileCopyLine data-icon="inline-start" />
+                      {labels.copyJson}
+                    </Button>
+                  </div>
+                </section>
+              </div>
+            )}
+          </div>
+        </DrawerContent>
+      </Drawer>
+
+      {nestedDetail?.kind === "visitor" ? (
+        <DetailDrawer
+          ariaLabel={messages.visitors.title}
+          drawerKey={`event-visitor:${nestedDetail.id}`}
+          open
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setNestedDetail(null);
+          }}
+          zIndex={1200}
+        >
+          <VisitorDetailClientPage
+            locale={locale}
+            messages={messages}
+            siteId={siteId}
+            pathname={visitorPathname}
+            visitorId={nestedDetail.id}
+            onOpenSession={openSessionDetail}
+          />
+        </DetailDrawer>
+      ) : null}
+
+      {nestedDetail?.kind === "session" ? (
+        <DetailDrawer
+          ariaLabel={messages.sessionDetail.visitDetailsTitle}
+          drawerKey={`event-session:${nestedDetail.id}`}
+          open
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setNestedDetail(null);
+          }}
+          zIndex={1200}
+        >
+          <SessionDetailClientPage
+            locale={locale}
+            messages={messages}
+            siteId={siteId}
+            pathname={sessionPathname}
+            sessionId={nestedDetail.id}
+            onOpenVisitor={openVisitorDetail}
+          />
+        </DetailDrawer>
+      ) : null}
+    </>
   );
 }
 
@@ -1849,6 +1983,7 @@ export function EventRecordsSection({
         locale={locale}
         messages={messages}
         labels={labels}
+        siteId={siteId}
         pathname={pathname}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}

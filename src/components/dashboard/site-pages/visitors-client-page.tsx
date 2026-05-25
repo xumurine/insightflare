@@ -28,7 +28,7 @@ import {
 import { PageHeading } from "@/components/dashboard/page-heading";
 import {
   DETAIL_QUERY_PARAM,
-  DetailModal,
+  DetailDrawer,
 } from "@/components/dashboard/site-pages/detail-query-modal";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -729,10 +729,13 @@ export function VisitorsClientPage({
       </Card>
 
       {detailVisitorId ? (
-        <DetailModal
+        <DetailDrawer
           ariaLabel={messages.visitors.title}
-          modalKey={`visitor:${detailVisitorId}`}
-          onClose={closeVisitorDetail}
+          drawerKey={`visitor:${detailVisitorId}`}
+          open={Boolean(detailVisitorId)}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) closeVisitorDetail();
+          }}
         >
           <VisitorDetailClientPage
             locale={locale}
@@ -741,7 +744,7 @@ export function VisitorsClientPage({
             pathname={pathname}
             visitorId={detailVisitorId}
           />
-        </DetailModal>
+        </DetailDrawer>
       ) : null}
     </div>
   );
