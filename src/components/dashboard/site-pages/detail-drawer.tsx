@@ -102,6 +102,8 @@ export function DetailDrawer({
   const [mounted, setMounted] = useState(false);
   const [rendered, setRendered] = useState(open);
   const [isReady, setIsReady] = useState(false);
+  const [isCloseInteractionDisabled, setIsCloseInteractionDisabled] =
+    useState(false);
   const [contentAreaBounds, setContentAreaBounds] =
     useState<ContentAreaBounds | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -173,6 +175,8 @@ export function DetailDrawer({
   }, []);
 
   const triggerCloseAnimation = useCallback(() => {
+    setIsCloseInteractionDisabled(true);
+
     if (closeAnimationFrameRef.current !== null) {
       window.cancelAnimationFrame(closeAnimationFrameRef.current);
       closeAnimationFrameRef.current = null;
@@ -187,6 +191,7 @@ export function DetailDrawer({
   const handleClose = useCallback(() => {
     if (!rendered || isClosing || isPreparingCloseRef.current) return;
     isPreparingCloseRef.current = true;
+    setIsCloseInteractionDisabled(true);
     const scrollElement = getScrollElement();
 
     const getScrollTop = () => {
@@ -261,6 +266,7 @@ export function DetailDrawer({
     if (!open) return;
     setIsClosing(false);
     setIsReady(false);
+    setIsCloseInteractionDisabled(false);
     isPreparingCloseRef.current = false;
     clearCloseScrollPending();
     clearCloseAnimationPending();
@@ -332,7 +338,7 @@ export function DetailDrawer({
   }, [mounted, rendered]);
 
   useEffect(() => {
-    if (!rendered) return;
+    if (!rendered || isCloseInteractionDisabled) return;
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -349,10 +355,10 @@ export function DetailDrawer({
       document.body.style.overflow = previousBodyOverflow;
       document.removeEventListener("keydown", handleEscape);
     };
-  }, [handleClose, layerZIndex, rendered]);
+  }, [handleClose, isCloseInteractionDisabled, layerZIndex, rendered]);
 
   useEffect(() => {
-    if (!rendered) return;
+    if (!rendered || isCloseInteractionDisabled) return;
 
     let shouldSuppressClick = false;
     let clickSuppressTimer: number | null = null;
@@ -408,7 +414,7 @@ export function DetailDrawer({
         window.clearTimeout(clickSuppressTimer);
       }
     };
-  }, [handleClose, layerZIndex, rendered]);
+  }, [handleClose, isCloseInteractionDisabled, layerZIndex, rendered]);
 
   useEffect(() => {
     if (!mounted || !rendered) return;
@@ -447,6 +453,7 @@ export function DetailDrawer({
       setRendered(false);
       setIsClosing(false);
       setIsReady(false);
+      setIsCloseInteractionDisabled(false);
       isPreparingCloseRef.current = false;
       onOpenChange(false);
     }, EXIT_DURATION_MS);
@@ -489,7 +496,11 @@ export function DetailDrawer({
           data-dashboard-floating-layer="detail-drawer"
           data-dashboard-floating-layer-z={layerZIndex}
           data-detail-drawer-root=""
-          className={cn("fixed inset-0 z-[96]", rootClassName)}
+          className={cn(
+            "fixed inset-0 z-[96]",
+            isCloseInteractionDisabled && "pointer-events-none",
+            rootClassName,
+          )}
           style={rootStyle}
         >
           <motion.div
@@ -530,7 +541,12 @@ export function DetailDrawer({
                         }
                   }
                   data-detail-drawer-stack-depth={stackDepth}
-                  className="pointer-events-auto relative min-h-[132vh] min-w-0 flex-1 transform-gpu overflow-hidden rounded-sm border border-border/80 bg-background shadow-[0_-24px_70px_rgba(0,0,0,0.35)]"
+                  className={cn(
+                    isCloseInteractionDisabled
+                      ? "pointer-events-none"
+                      : "pointer-events-auto",
+                    "relative min-h-[132vh] min-w-0 flex-1 transform-gpu overflow-hidden rounded-sm border border-border/80 bg-background shadow-[0_-24px_70px_rgba(0,0,0,0.35)]",
+                  )}
                   style={{
                     willChange: isClosing || !isReady ? "transform" : "auto",
                   }}
