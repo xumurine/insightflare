@@ -483,11 +483,13 @@ async function fetchPrivateJson<T>(
   })();
   if (shouldDedupe) {
     inflightPrivateRequests.set(url, promise);
-    void promise.finally(() => {
-      if (inflightPrivateRequests.get(url) === promise) {
-        inflightPrivateRequests.delete(url);
-      }
-    });
+    void promise
+      .finally(() => {
+        if (inflightPrivateRequests.get(url) === promise) {
+          inflightPrivateRequests.delete(url);
+        }
+      })
+      .catch(() => {});
   }
   return promise;
 }

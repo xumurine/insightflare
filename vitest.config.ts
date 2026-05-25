@@ -7,6 +7,11 @@ export default defineConfig({
     globals: true,
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "cloudflare:workers": path.resolve(
+        __dirname,
+        "./src/test/shims/cloudflare-workers.ts",
+      ),
+      "server-only": path.resolve(__dirname, "./src/test/shims/server-only.ts"),
     },
     exclude: [
       "**/node_modules/**",
@@ -17,10 +22,35 @@ export default defineConfig({
     define: {
       BUILD_PERFORMANCE: true,
     },
+    coverage: {
+      include: [
+        "src/app/**/route.ts",
+        "src/components/dashboard/**/*.ts",
+        "src/hooks/**/*.ts",
+        "src/lib/**/*.ts",
+        "src/middleware.ts",
+        "src/tracker/sdk.ts",
+      ],
+      exclude: [
+        "src/**/*.d.ts",
+        "src/**/*.test.{ts,tsx}",
+        "src/**/*.spec.{ts,tsx}",
+        "src/**/__tests__/**",
+        "src/**/types.ts",
+        "src/lib/i18n/messages.ts",
+        "src/tracker/*.min.ts",
+        "src/tracker/sdk.no-perf.min.ts",
+      ],
+    },
   },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "cloudflare:workers": path.resolve(
+        __dirname,
+        "./src/test/shims/cloudflare-workers.ts",
+      ),
+      "server-only": path.resolve(__dirname, "./src/test/shims/server-only.ts"),
     },
   },
 });
