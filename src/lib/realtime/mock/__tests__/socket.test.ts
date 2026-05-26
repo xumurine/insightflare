@@ -329,6 +329,34 @@ describe("mock/socket", () => {
 
     socket.close();
   });
+
+  it("reschedules safely when the emit loop finds an empty future queue", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIME);
+    vi.spyOn(Math, "random")
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0.5)
+      .mockReturnValue(1);
+    buildDemoFactDatasetMock.mockReturnValue(makeDataset([]));
+
+    const socket = createMockRealtimeSocket({ siteId: SITE_ID });
+    const onmessage = vi.fn();
+    socket.onmessage = onmessage;
+
+    await vi.advanceTimersByTimeAsync(120);
+
+    const internals = socket as unknown as {
+      emitNextVisit: () => void;
+      futureVisits: DemoVisitFact[];
+    };
+    internals.futureVisits = [];
+    expect(() => internals.emitNextVisit()).not.toThrow();
+    expect(messagesFrom(onmessage)).toEqual([
+      expect.objectContaining({ type: "snapshot" }),
+    ]);
+
+    socket.close();
+  });
 });
 
 function messagesFrom(onmessage: ReturnType<typeof vi.fn>): SocketMessage[] {

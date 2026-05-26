@@ -153,6 +153,184 @@ describe("dashboard client page data helpers", () => {
     ]);
   });
 
+  it("builds page share trend without Other when top page totals cover the trend", async () => {
+    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes("/api/private/pages-dashboard")) {
+        return Promise.resolve(
+          jsonResponse({
+            ok: true,
+            interval: "day",
+            data: [
+              {
+                pathname: "/docs",
+                metrics: { views: 7, sessions: 3 },
+                trend: [{ timestampMs: 3000, views: 7 }],
+              },
+              {
+                pathname: "/pricing",
+                metrics: { views: 2, sessions: 1 },
+                trend: [],
+              },
+            ],
+            meta: {
+              page: 1,
+              pageSize: 5,
+              returned: 2,
+              hasMore: false,
+              nextPage: null,
+            },
+          }),
+        );
+      }
+      return Promise.resolve(
+        jsonResponse({
+          ok: true,
+          interval: "day",
+          data: [{ timestampMs: 3000, views: 5 }],
+        }),
+      );
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const trend = await fetchPagesShareTrend("share-covered", window);
+
+    expect(paramsFromCall(fetchMock, 0).get("pageSize")).toBe("5");
+    expect(trend.series).toEqual([
+      {
+        key: "page_0",
+        label: "/docs",
+        views: 7,
+        visitors: 7,
+        sessions: 3,
+      },
+      {
+        key: "page_1",
+        label: "/pricing",
+        views: 2,
+        visitors: 2,
+        sessions: 1,
+      },
+    ]);
+    expect(trend.data).toEqual([
+      {
+        bucket: 0,
+        timestampMs: 3000,
+        totalVisitors: 7,
+        visitorsBySeries: { page_0: 7 },
+      },
+    ]);
+  });
+
+  it("uses total trend data when the page dashboard request falls back", async () => {
+    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes("/api/private/pages-dashboard")) {
+        return Promise.reject(new Error("pages unavailable"));
+      }
+      return Promise.resolve(
+        jsonResponse({
+          ok: true,
+          interval: "day",
+          data: [
+            { timestampMs: 1000, views: 4 },
+            { timestampMs: 2000, views: -1 },
+          ],
+        }),
+      );
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const trend = await fetchPagesShareTrend("share-total-only", window, {
+      path: "/docs",
+    });
+
+    expect(paramsFromCall(fetchMock, 0).get("pageSize")).toBe("5");
+    expect(paramsFromCall(fetchMock, 1).get("path")).toBe("/docs");
+    expect(trend.series).toEqual([
+      {
+        key: "other",
+        label: "Other",
+        views: 4,
+        visitors: 4,
+        sessions: 4,
+        isOther: true,
+      },
+    ]);
+    expect(trend.data).toEqual([
+      {
+        bucket: 0,
+        timestampMs: 1000,
+        totalVisitors: 4,
+        visitorsBySeries: { other: 4 },
+      },
+      {
+        bucket: 1,
+        timestampMs: 2000,
+        totalVisitors: 0,
+        visitorsBySeries: {},
+      },
+    ]);
+  });
+
+  it("keeps page trend data when the total trend request falls back", async () => {
+    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes("/api/private/pages-dashboard")) {
+        return Promise.resolve(
+          jsonResponse({
+            ok: true,
+            interval: "day",
+            data: [
+              {
+                pathname: "/docs",
+                metrics: { views: 3, sessions: 1 },
+                trend: [{ timestampMs: 1000, views: 3 }],
+              },
+            ],
+            meta: {
+              page: 1,
+              pageSize: 12,
+              returned: 1,
+              hasMore: false,
+              nextPage: null,
+            },
+          }),
+        );
+      }
+      return Promise.reject(new Error("trend unavailable"));
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const trend = await fetchPagesShareTrend(
+      "share-page-only",
+      window,
+      undefined,
+      {
+        limit: 50,
+      },
+    );
+
+    expect(paramsFromCall(fetchMock, 0).get("pageSize")).toBe("12");
+    expect(trend.series).toEqual([
+      {
+        key: "page_0",
+        label: "/docs",
+        views: 3,
+        visitors: 3,
+        sessions: 1,
+      },
+    ]);
+    expect(trend.data).toEqual([
+      {
+        bucket: 0,
+        timestampMs: 1000,
+        totalVisitors: 3,
+        visitorsBySeries: { page_0: 3 },
+      },
+    ]);
+  });
+
   it("falls back to empty page share trend data when both source requests fail", async () => {
     delete process.env.NEXT_PUBLIC_DEMO_MODE;
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("offline"));

@@ -23,6 +23,22 @@ function jsonRequest(body: Record<string, unknown>): Request {
   });
 }
 
+function mockSuccessfulLogin(overrides: Record<string, unknown> = {}) {
+  loginAdminAccountMock.mockResolvedValue({
+    user: {
+      id: "user-1",
+      username: "admin",
+      email: "admin@example.test",
+      name: "Admin User",
+      systemRole: "admin",
+      createdAt: 1,
+      updatedAt: 2,
+      ...overrides,
+    },
+    teams: [],
+  });
+}
+
 describe("auth login route", () => {
   beforeEach(() => {
     loginAdminAccountMock.mockReset();
@@ -32,6 +48,7 @@ describe("auth login route", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("rejects malformed credentials before calling the edge API", async () => {
@@ -45,19 +62,19 @@ describe("auth login route", () => {
     expect(loginAdminAccountMock).not.toHaveBeenCalled();
   });
 
-  it("logs in, creates a session token, and sets the session cookie", async () => {
-    loginAdminAccountMock.mockResolvedValue({
-      user: {
-        id: "user-1",
-        username: "admin",
-        email: "admin@example.test",
-        name: "Admin User",
-        systemRole: "admin",
-        createdAt: 1,
-        updatedAt: 2,
-      },
-      teams: [],
+  it("treats a missing password as malformed credentials", async () => {
+    const response = await POST(jsonRequest({ username: "admin" }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: "invalid_credentials",
     });
+    expect(loginAdminAccountMock).not.toHaveBeenCalled();
+  });
+
+  it("logs in, creates a session token, and sets the session cookie", async () => {
+    mockSuccessfulLogin();
 
     const response = await POST(
       jsonRequest({
@@ -88,6 +105,17 @@ describe("auth login route", () => {
     expect(response.headers.get("set-cookie")).toContain(
       "if_session=signed-session-token",
     );
+  });
+
+  it("marks the session cookie secure in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    mockSuccessfulLogin();
+
+    const response = await POST(
+      jsonRequest({ username: "admin", password: "secret" }),
+    );
+
+    expect(response.headers.get("set-cookie")).toContain("Secure");
   });
 
   it("falls back to /app for unsafe next paths", async () => {
@@ -122,6 +150,28 @@ describe("auth login route", () => {
     );
   });
 
+  it.each([
+    ["external URL", "https://evil.example/app"],
+    ["login page", "/login"],
+    ["localized login page", "/en/login?from=%2Fapp"],
+    ["blank value", ""],
+  ])("normalizes unsafe next paths for %s", async (_label, next) => {
+    mockSuccessfulLogin();
+
+    const response = await POST(
+      jsonRequest({
+        username: "admin",
+        password: "secret",
+        next,
+      }),
+    );
+
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: { next: "/app" },
+    });
+  });
+
   it("maps upstream credential failures and other errors", async () => {
     loginAdminAccountMock.mockRejectedValueOnce(
       new Error("Edge API failed (401 POST /login): denied"),
@@ -154,6 +204,42 @@ describe("auth login route", () => {
     });
     expect(consoleError).toHaveBeenCalledWith("login_upstream_failed", {
       message: "network down",
+    });
+  });
+
+  it("preserves non-credential upstream status codes and string errors", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    loginAdminAccountMock.mockRejectedValueOnce(
+      new Error("Edge API failed (503 POST /login): unavailable"),
+    );
+
+    const upstreamFailed = await POST(
+      jsonRequest({ username: "admin", password: "secret" }),
+    );
+
+    expect(upstreamFailed.status).toBe(503);
+    expect(await upstreamFailed.json()).toEqual({
+      ok: false,
+      error: "login_upstream_failed",
+      message: "Edge API failed (503 POST /login): unavailable",
+    });
+
+    loginAdminAccountMock.mockRejectedValueOnce("plain failure");
+
+    const stringFailed = await POST(
+      jsonRequest({ username: "admin", password: "secret" }),
+    );
+
+    expect(stringFailed.status).toBe(502);
+    expect(await stringFailed.json()).toEqual({
+      ok: false,
+      error: "login_upstream_failed",
+      message: "plain failure",
+    });
+    expect(consoleError).toHaveBeenCalledWith("login_upstream_failed", {
+      message: "plain failure",
     });
   });
 });

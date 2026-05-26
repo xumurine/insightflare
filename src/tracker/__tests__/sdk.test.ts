@@ -265,6 +265,18 @@ describe("Tracker Browser SDK Integration Suite", () => {
     );
   });
 
+  it("should throw an entry error when currentScript is not the tracker script element", async () => {
+    Object.defineProperty(document, "currentScript", {
+      value: document.createElement("div"),
+      writable: true,
+      configurable: true,
+    });
+
+    await expect(import("../sdk.ts")).rejects.toThrow(
+      "InsightFlare: script element not found",
+    );
+  });
+
   it("should gracefully proceed without error under default unreplaced DNT placeholder when DNT is active", async () => {
     // Enable navigator DNT flag
     Object.defineProperty(navigator, "doNotTrack", {
@@ -298,6 +310,19 @@ describe("Tracker Browser SDK Integration Suite", () => {
       importConfiguredSdk({ ignoreDoNotTrack: false }),
     ).rejects.toThrow("InsightFlare: Do Not Track enabled");
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("should install when configured to honor Do Not Track and the browser has not opted out", async () => {
+    Object.defineProperty(navigator, "doNotTrack", {
+      value: "0",
+      writable: true,
+      configurable: true,
+    });
+
+    await expect(
+      importConfiguredSdk({ ignoreDoNotTrack: false }),
+    ).resolves.toBeDefined();
+    expect((window as any).__insightflare_tracker_v6__).toBeDefined();
   });
 
   it("should fall back to standard POST fetch when sendBeacon is unsupported", async () => {

@@ -42,17 +42,17 @@ function channelState(
   };
 }
 
+function Probe(props: { siteId?: string; enabled?: boolean }) {
+  const state = useRealtimeChannel(props.siteId, { enabled: props.enabled });
+  return createElement("span", null, `${state.status}:${state.activeNow}`);
+}
+
 function renderProbe(
   root: Root,
   props: { siteId?: string; enabled?: boolean } = {},
 ) {
-  function Probe() {
-    const state = useRealtimeChannel(props.siteId, { enabled: props.enabled });
-    return createElement("span", null, `${state.status}:${state.activeNow}`);
-  }
-
   act(() => {
-    root.render(createElement(Probe));
+    root.render(createElement(Probe, props));
   });
 }
 
@@ -101,7 +101,7 @@ describe("useRealtimeChannel", () => {
     const release = vi.fn();
     acquireRealtimeChannelMock.mockReturnValue(release);
 
-    renderProbe(root, { siteId: "site-a", enabled: true });
+    renderProbe(root, { siteId: "site-a" });
 
     expect(container.textContent).toBe("connected:3");
     expect(getRealtimeChannelStateMock).toHaveBeenCalledWith("site-a");
@@ -112,6 +112,33 @@ describe("useRealtimeChannel", () => {
     });
 
     expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the previous channel and acquires the next site when site id changes", () => {
+    const releasesBySite = new Map<string, ReturnType<typeof vi.fn>[]>();
+    acquireRealtimeChannelMock.mockImplementation((siteId: string) => {
+      const release = vi.fn();
+      releasesBySite.set(siteId, [
+        ...(releasesBySite.get(siteId) || []),
+        release,
+      ]);
+      return release;
+    });
+
+    renderProbe(root, { siteId: "site-a" });
+    const activeSiteARelease = releasesBySite.get("site-a")?.at(-1);
+    renderProbe(root, { siteId: "site-b" });
+
+    expect(activeSiteARelease).toHaveBeenCalledTimes(1);
+    expect(acquireRealtimeChannelMock).toHaveBeenCalledWith("site-b");
+    expect(container.textContent).toBe("connected:7");
+
+    const activeSiteBRelease = releasesBySite.get("site-b")?.at(-1);
+    act(() => {
+      root.unmount();
+    });
+
+    expect(activeSiteBRelease).toHaveBeenCalledTimes(1);
   });
 
   it("updates from broadcasts for the active site only", async () => {

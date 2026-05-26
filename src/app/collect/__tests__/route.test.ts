@@ -384,6 +384,24 @@ describe("collect route", () => {
     expect(ctx.waitUntil).not.toHaveBeenCalled();
   });
 
+  it("rejects opaque file origins when a hostname whitelist is configured", async () => {
+    readSiteTrackingConfigMock.mockResolvedValue({
+      ...baseSettings,
+      domainWhitelist: ["allowed.example"],
+      allowedHostnames: ["allowed.example"],
+    });
+    makeRuntimeRequest({
+      origin: "file:///Users/example/page.html",
+      body: makePayload(),
+    });
+
+    const response = await POST(new Request("https://collector.test/collect"));
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe("null");
+    expect(ctx.waitUntil).not.toHaveBeenCalled();
+  });
+
   it("forwards when a whitelisted origin hostname matches case-insensitively", async () => {
     readSiteTrackingConfigMock.mockResolvedValue({
       ...baseSettings,

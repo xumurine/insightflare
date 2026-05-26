@@ -7,7 +7,9 @@ import {
 } from "@/lib/realtime/mock/events";
 import type * as FactBuilder from "@/lib/realtime/mock/fact-builder";
 import {
+  generateDemoSessionDetail,
   generateDemoSessions,
+  generateDemoVisitorDetail,
   generateDemoVisitors,
 } from "@/lib/realtime/mock/journeys";
 import type {
@@ -147,6 +149,79 @@ describe("mock events and journeys branch coverage", () => {
         nextPage: null,
       },
     });
+  });
+
+  it("orders tied visitor rows by visitor id after metric, timestamp, and view ties", () => {
+    setFacts([
+      makeVisit({
+        visitId: "visitor-b",
+        visitorId: "visitor-b",
+        sessionId: "session-b",
+        startedAt: 10_000,
+      }),
+      makeVisit({
+        visitId: "visitor-a",
+        visitorId: "visitor-a",
+        sessionId: "session-a",
+        startedAt: 10_000,
+      }),
+    ]);
+
+    const result = generateDemoVisitors("site", {
+      limit: 10,
+      sortBy: "views",
+      sortDir: "desc",
+    });
+    const data = result.data as Array<Record<string, unknown>>;
+
+    expect(data.map((row) => row.visitorId)).toEqual([
+      "visitor-a",
+      "visitor-b",
+    ]);
+  });
+
+  it("sorts visitor detail sessions newest first and returns null for blank IDs", () => {
+    setFacts([
+      makeVisit({
+        visitId: "older",
+        visitorId: "visitor-1",
+        sessionId: "older-session",
+        startedAt: 1_000,
+      }),
+      makeVisit({
+        visitId: "newer",
+        visitorId: "visitor-1",
+        sessionId: "newer-session",
+        startedAt: 5_000,
+      }),
+    ]);
+
+    expect(generateDemoVisitorDetail("site", { visitorId: "" })).toEqual({
+      ok: true,
+      data: null,
+    });
+
+    const result = generateDemoVisitorDetail("site", {
+      visitorId: "visitor-1",
+      timeZone: "UTC",
+    }) as { data: { sessions: Array<Record<string, unknown>> } };
+
+    expect(result.data.sessions.map((row) => row.sessionId)).toEqual([
+      "newer-session",
+      "older-session",
+    ]);
+  });
+
+  it("returns null session details for blank and missing session IDs", () => {
+    setFacts([makeVisit({ sessionId: "known-session" })]);
+
+    expect(generateDemoSessionDetail("site", { sessionId: "" })).toEqual({
+      ok: true,
+      data: null,
+    });
+    expect(
+      generateDemoSessionDetail("site", { sessionId: "missing-session" }),
+    ).toEqual({ ok: true, data: null });
   });
 
   it("orders tied session rows by session id after numeric and timestamp ties", () => {

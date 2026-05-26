@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEMO_SITE_PROFILES,
+  type DemoSiteProfile,
+} from "@/lib/realtime/demo-site-profiles";
+import {
   getVisitorFingerprint,
   getVisitorReturnRate,
   getVisitorUniverseSize,
@@ -27,6 +31,21 @@ describe("mock/visitor-pool", () => {
       const rate = getVisitorReturnRate(SITE_ID);
       expect(rate).toBeGreaterThanOrEqual(0.02);
       expect(rate).toBeLessThanOrEqual(0.85);
+    });
+
+    it("falls back to the default return rate for missing profile values", () => {
+      const profile: DemoSiteProfile = {
+        ...DEMO_SITE_PROFILES[0],
+        id: "missing-return-rate-site",
+        visitorReturnRate: undefined,
+      };
+      DEMO_SITE_PROFILES.push(profile);
+
+      try {
+        expect(getVisitorReturnRate(profile.id)).toBe(0.25);
+      } finally {
+        DEMO_SITE_PROFILES.pop();
+      }
     });
   });
 

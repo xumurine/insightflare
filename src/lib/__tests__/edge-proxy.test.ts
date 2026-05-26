@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getSessionToken } from "@/lib/auth";
 import {
   buildEdgeUrl,
   buildEdgeUrlWithBase,
@@ -11,10 +12,14 @@ vi.mock("@/lib/auth", () => ({
   getSessionToken: vi.fn().mockResolvedValue("session-token"),
 }));
 
+const getSessionTokenMock = vi.mocked(getSessionToken);
+
 describe("edge proxy helpers", () => {
   beforeEach(() => {
     vi.stubEnv("INSIGHTFLARE_EDGE_URL", "");
     vi.restoreAllMocks();
+    getSessionTokenMock.mockReset();
+    getSessionTokenMock.mockResolvedValue("session-token");
   });
 
   it("resolves the edge base URL from env, request URL, or default fallback", () => {
@@ -28,6 +33,7 @@ describe("edge proxy helpers", () => {
       "https://app.example.test",
     );
     expect(resolveEdgeBaseUrl("not a url")).toBe("http://127.0.0.1:8787");
+    expect(resolveEdgeBaseUrl()).toBe("http://127.0.0.1:8787");
   });
 
   it("builds edge URLs with base, path, and query params", () => {
@@ -89,5 +95,46 @@ describe("edge proxy helpers", () => {
     expect(init.method).toBe("GET");
     expect(init.body).toBeUndefined();
     expect(headers.get("content-type")).toBeNull();
+  });
+
+  it("handles unavailable sessions and HEAD requests without auth or body", async () => {
+    getSessionTokenMock.mockRejectedValue(new Error("outside request scope"));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubEnv("INSIGHTFLARE_EDGE_URL", "https://edge.example.test");
+
+    await fetchEdgeForServer({
+      pathname: "/api/ping",
+      method: "HEAD",
+      headers: {
+        "x-empty": undefined,
+      },
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Headers;
+    expect(url).toBe("https://edge.example.test/api/ping");
+    expect(init.method).toBe("HEAD");
+    expect(init.body).toBeUndefined();
+    expect(headers.has("authorization")).toBe(false);
+    expect(headers.has("x-empty")).toBe(false);
+  });
+
+  it("sends empty JSON objects for POST requests without an explicit body", async () => {
+    getSessionTokenMock.mockResolvedValue("");
+    const fetchMock = vi.fn().mockResolvedValue(new Response("ok"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchEdgeForServer({
+      baseUrl: "https://edge.example.test",
+      pathname: "/api/write",
+      method: "POST",
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Headers;
+    expect(init.body).toBe("{}");
+    expect(headers.get("content-type")).toBe("application/json");
+    expect(headers.has("authorization")).toBe(false);
   });
 });
