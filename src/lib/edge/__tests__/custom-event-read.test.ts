@@ -79,6 +79,22 @@ describe("custom event read helpers", () => {
     expect(listStatement.bind).toHaveBeenCalledWith("site-1", "visit-1", 500);
   });
 
+  it("clamps fractional and non-positive list limits to one", async () => {
+    const fractionalStatement = statement({ all: [] });
+    const zeroStatement = statement({ all: [] });
+    const { env } = envWithStatements([fractionalStatement, zeroStatement]);
+
+    await readCustomEventsForVisit(env, "site-1", "visit-1", 1.9);
+    await readCustomEventsForVisit(env, "site-1", "visit-1", 0);
+
+    expect(fractionalStatement.bind).toHaveBeenCalledWith(
+      "site-1",
+      "visit-1",
+      1,
+    );
+    expect(zeroStatement.bind).toHaveBeenCalledWith("site-1", "visit-1", 1);
+  });
+
   it("reads the visit id for a custom event", async () => {
     const hit = statement({ first: { visitId: "visit-1" } });
     const miss = statement({ first: null });
@@ -259,5 +275,86 @@ describe("custom event read helpers", () => {
     ).resolves.toMatchObject({
       eventData: {},
     });
+  });
+
+  it("materializes primitive root values with null storage fallbacks", async () => {
+    const baseEvent = {
+      eventPk: 42,
+      eventId: "event-1",
+      siteId: "site-1",
+      visitId: "visit-1",
+      eventName: "checkout",
+      occurredAt: 100,
+      receivedAt: 120,
+      sequence: 3,
+      nodeCount: 1,
+      valueCount: 1,
+    };
+    const stringEvent = statement({ first: baseEvent });
+    const stringNodes = statement({
+      all: [
+        {
+          nodeId: 1,
+          parentNodeId: null,
+          key: null,
+          valueType: CUSTOM_EVENT_JSON_TYPE.string,
+          memberOrder: null,
+          arrayIndex: null,
+          stringValue: null,
+          numberValue: null,
+          booleanValue: null,
+        },
+      ],
+    });
+    const numberEvent = statement({ first: baseEvent });
+    const numberNodes = statement({
+      all: [
+        {
+          nodeId: 1,
+          parentNodeId: null,
+          key: null,
+          valueType: CUSTOM_EVENT_JSON_TYPE.number,
+          memberOrder: null,
+          arrayIndex: null,
+          stringValue: null,
+          numberValue: null,
+          booleanValue: null,
+        },
+      ],
+    });
+    const booleanEvent = statement({ first: baseEvent });
+    const booleanNodes = statement({
+      all: [
+        {
+          nodeId: 1,
+          parentNodeId: null,
+          key: null,
+          valueType: CUSTOM_EVENT_JSON_TYPE.boolean,
+          memberOrder: null,
+          arrayIndex: null,
+          stringValue: null,
+          numberValue: null,
+          booleanValue: 0,
+        },
+      ],
+    });
+    const { env } = envWithStatements([
+      stringEvent,
+      stringNodes,
+      numberEvent,
+      numberNodes,
+      booleanEvent,
+      booleanNodes,
+    ]);
+
+    await expect(
+      readCustomEventDetail(env, "site-1", "event-1"),
+    ).resolves.toMatchObject({ eventData: "" });
+    await expect(
+      readCustomEventDetail(env, "site-1", "event-1"),
+    ).resolves.toMatchObject({ eventData: 0 });
+    await expect(
+      readCustomEventDetail(env, "site-1", "event-1"),
+    ).resolves.toMatchObject({ eventData: false });
   });
 });

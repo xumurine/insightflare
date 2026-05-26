@@ -41,6 +41,61 @@ describe("tracker UA client hints normalization", () => {
     expect(normalized?.formFactors).toEqual(["Desktop", "XR"]);
   });
 
+  it("applies item caps before filtering invalid list entries", () => {
+    const normalized = normalizeTrackerUaClientHints({
+      brands: [
+        null,
+        { brand: "", version: "1" },
+        { brand: "A", version: "1" },
+        { brand: "B", version: "2" },
+        { brand: "C", version: "3" },
+        { brand: "D", version: "4" },
+        { brand: "E", version: "5" },
+        { brand: "F", version: "6" },
+        { brand: "G", version: "7" },
+      ],
+      formFactors: [
+        "",
+        " Phone ",
+        " Tablet ",
+        " XR ",
+        " TV ",
+        " Auto ",
+        " PC ",
+        " Watch ",
+        " Late ",
+      ],
+    });
+
+    expect(normalized?.brands).toEqual([
+      { brand: "A", version: "1" },
+      { brand: "B", version: "2" },
+      { brand: "C", version: "3" },
+      { brand: "D", version: "4" },
+      { brand: "E", version: "5" },
+      { brand: "F", version: "6" },
+    ]);
+    expect(normalized?.formFactors).toEqual([
+      "Phone",
+      "Tablet",
+      "XR",
+      "TV",
+      "Auto",
+      "PC",
+      "Watch",
+    ]);
+  });
+
+  it("ignores arrays, scalar brand fields, and non-boolean mobile flags", () => {
+    expect(
+      normalizeTrackerUaClientHints({
+        brands: [{ brand: ["Chrome"], version: "124" }],
+        fullVersionList: [{ brand: "Chrome", version: 124 }],
+        mobile: "true",
+      }),
+    ).toBeUndefined();
+  });
+
   it("serializes normalized hints into structured headers without mutating the input headers", () => {
     const headers = { "content-type": "application/json" };
     const merged = mergeUaClientHintsIntoHeaders(headers, {

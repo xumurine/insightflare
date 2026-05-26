@@ -311,6 +311,62 @@ describe("mock remaining generator coverage", () => {
     );
   });
 
+  it("builds remaining client filter option dimensions", () => {
+    setFacts([
+      makeVisit({
+        visitId: "desktop",
+        osVersion: "Windows 11",
+        deviceType: "Desktop",
+        language: "en-US",
+        screenSize: "1920x1080",
+      }),
+      makeVisit({
+        visitId: "mobile",
+        sessionId: "s2",
+        visitorId: "u2",
+        osVersion: "iOS 18",
+        deviceType: "Mobile",
+        language: "de-DE",
+        screenSize: "390x844",
+      }),
+    ]);
+
+    expect(
+      generateDemoFilterOptions(SITE_ID, { filterKey: "clientOsVersion" }).data,
+    ).toEqual(
+      expect.arrayContaining([
+        { value: "Windows 11", label: "Windows 11" },
+        { value: "iOS 18", label: "iOS 18" },
+      ]),
+    );
+    expect(
+      generateDemoFilterOptions(SITE_ID, { filterKey: "clientDeviceType" })
+        .data,
+    ).toEqual(
+      expect.arrayContaining([
+        { value: "Desktop", label: "Desktop" },
+        { value: "Mobile", label: "Mobile" },
+      ]),
+    );
+    expect(
+      generateDemoFilterOptions(SITE_ID, { filterKey: "clientLanguage" }).data,
+    ).toEqual(
+      expect.arrayContaining([
+        { value: "en-US", label: "en-US" },
+        { value: "de-DE", label: "de-DE" },
+      ]),
+    );
+    expect(
+      generateDemoFilterOptions(SITE_ID, { filterKey: "clientScreenSize" })
+        .data,
+    ).toEqual(
+      expect.arrayContaining([
+        { value: "1920x1080", label: "1920x1080" },
+        { value: "390x844", label: "390x844" },
+      ]),
+    );
+  });
+
   it("exposes direct referrers as user-facing filter options with the direct sentinel", () => {
     setFacts([
       makeVisit({
@@ -500,6 +556,50 @@ describe("mock remaining generator coverage", () => {
     });
   });
 
+  it("falls back to default radar frequency when filtered visitors are unavailable", () => {
+    const visits = [
+      makeVisit({
+        visitId: "chrome",
+        sessionId: "s1",
+        visitorId: "u1",
+        browser: "Chrome",
+        referrerHost: "search.example",
+      }),
+    ];
+    setFacts(visits);
+    mockApplyDemoFilters.mockReturnValue({
+      visits,
+      sessions: new Set(["s1"]),
+      visitors: new Set(),
+      visitsBySession: new Map([["s1", 1]]),
+    });
+
+    expect(generateDemoBrowserRadar(SITE_ID, {})).toMatchObject({
+      ok: true,
+      data: [
+        expect.objectContaining({
+          browser: "Chrome",
+          metrics: expect.objectContaining({
+            frequency: expect.any(Number),
+            traffic: 1,
+          }),
+        }),
+      ],
+    });
+    expect(generateDemoReferrerRadar(SITE_ID, {})).toMatchObject({
+      ok: true,
+      data: [
+        expect.objectContaining({
+          referrer: "search.example",
+          metrics: expect.objectContaining({
+            frequency: expect.any(Number),
+            traffic: 1,
+          }),
+        }),
+      ],
+    });
+  });
+
   it("builds UTM dimension rows, invalid trend fallbacks, and Other trend series", () => {
     setFacts([
       makeVisit({ visitId: "a", sessionId: "s1", visitorId: "u1" }),
@@ -601,6 +701,32 @@ describe("mock remaining generator coverage", () => {
         ]),
       });
     }
+  });
+
+  it("builds campaign UTM dimension rows from site-specific labels", () => {
+    setFacts([
+      makeVisit({ visitId: "a", sessionId: "s1", visitorId: "u1" }),
+      makeVisit({ visitId: "b", sessionId: "s2", visitorId: "u2" }),
+      makeVisit({ visitId: "c", sessionId: "s3", visitorId: "u3" }),
+      makeVisit({ visitId: "d", sessionId: "s4", visitorId: "u4" }),
+    ]);
+
+    expect(
+      generateDemoUtmDimension(SITE_ID, "campaign", {
+        from: BASE_TIME,
+        to: BASE_TIME + 3_600_000,
+        limit: 5,
+      }),
+    ).toMatchObject({
+      ok: true,
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          value: expect.any(String),
+          views: expect.any(Number),
+          sessions: expect.any(Number),
+        }),
+      ]),
+    });
   });
 
   it("returns overview tab wrappers for page, source, client, geo, and map points", () => {
@@ -799,6 +925,31 @@ describe("mock remaining generator coverage", () => {
       data: {
         sites: [],
         trend: expect.arrayContaining([expect.objectContaining({ sites: [] })]),
+      },
+    });
+  });
+
+  it("builds team dashboard with default params and null previous-window changes", () => {
+    const dashboard = generateDemoTeamDashboard("demo-team-001", {}) as any;
+
+    expect(dashboard).toMatchObject({
+      ok: true,
+      data: {
+        sites: expect.arrayContaining([
+          expect.objectContaining({
+            changeRates: expect.objectContaining({
+              views: null,
+              sessions: null,
+              visitors: null,
+            }),
+          }),
+        ]),
+        trend: expect.arrayContaining([
+          expect.objectContaining({
+            timestampMs: expect.any(Number),
+            sites: expect.any(Array),
+          }),
+        ]),
       },
     });
   });

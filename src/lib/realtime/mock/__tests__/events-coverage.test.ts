@@ -138,6 +138,50 @@ describe("mock/events coverage", () => {
     expect(result.data[1].eventsBySeries).toMatchObject({ alpha: 1, other: 1 });
   });
 
+  it("returns empty trend series and zeroed buckets when no events match", () => {
+    const visits = [
+      makeVisit({
+        visitId: "page",
+        eventType: "pageview",
+        startedAt: 1_000,
+      }),
+      makeVisit({
+        visitId: "signup",
+        eventType: "signup",
+        startedAt: 2_000,
+      }),
+    ];
+    const dataset = makeDataset(visits);
+    mockBuildDemoFactDataset.mockReturnValue(dataset);
+    mockApplyDemoFilters.mockReturnValue(makeFiltered(visits));
+
+    const result = generateDemoEventsTrend("site", {
+      from: 0,
+      to: 2 * 3_600_000,
+      interval: "hour",
+      eventName: "purchase",
+      timeZone: "UTC",
+    }) as any;
+
+    expect(result.ok).toBe(true);
+    expect(result.series).toEqual([]);
+    expect(result.data).toEqual([
+      { bucket: 0, timestampMs: 0, totalEvents: 0, eventsBySeries: {} },
+      {
+        bucket: 1,
+        timestampMs: 3_600_000,
+        totalEvents: 0,
+        eventsBySeries: {},
+      },
+      {
+        bucket: 2,
+        timestampMs: 2 * 3_600_000,
+        totalEvents: 0,
+        eventsBySeries: {},
+      },
+    ]);
+  });
+
   it("filters, searches, sorts, and paginates event records", () => {
     const visits = [
       makeVisit({
@@ -190,6 +234,89 @@ describe("mock/events coverage", () => {
         pathname: "/pricing",
       }),
     ]);
+  });
+
+  it("reports hasMore and nextPage when event records have another page", () => {
+    const visits = [
+      makeVisit({ visitId: "first", eventType: "signup", startedAt: 1_000 }),
+      makeVisit({
+        visitId: "second",
+        eventType: "signup",
+        startedAt: 2_000,
+        sessionId: "s2",
+      }),
+      makeVisit({
+        visitId: "third",
+        eventType: "signup",
+        startedAt: 3_000,
+        sessionId: "s3",
+        visitorId: "u3",
+      }),
+    ];
+    const dataset = makeDataset(visits);
+    mockBuildDemoFactDataset.mockReturnValue(dataset);
+    mockApplyDemoFilters.mockReturnValue(makeFiltered(visits));
+
+    const result = generateDemoEventsRecords("site", {
+      from: 0,
+      to: 10_000,
+      page: 1,
+      pageSize: 2,
+      sortBy: "occurredAt",
+      sortDir: "desc",
+    }) as any;
+
+    expect(result.meta).toEqual({
+      page: 1,
+      pageSize: 2,
+      returned: 2,
+      hasMore: true,
+      nextPage: 2,
+    });
+    expect(result.data.map((row: any) => row.eventId)).toEqual([
+      "third:signup",
+      "second:signup",
+    ]);
+  });
+
+  it("returns no event records when event name and search filters reject matches", () => {
+    const visits = [
+      makeVisit({
+        visitId: "signup",
+        eventType: "signup",
+        pathname: "/signup",
+      }),
+      makeVisit({
+        visitId: "purchase",
+        eventType: "purchase",
+        pathname: "/checkout",
+        sessionId: "s2",
+      }),
+    ];
+    const dataset = makeDataset(visits);
+    mockBuildDemoFactDataset.mockReturnValue(dataset);
+    mockApplyDemoFilters.mockReturnValue(makeFiltered(visits));
+
+    expect(
+      generateDemoEventsRecords("site", {
+        from: 0,
+        to: 10_000,
+        eventName: "signup",
+        search: "checkout",
+        page: 2,
+        pageSize: 20,
+      }),
+    ).toEqual({
+      ok: true,
+      data: [],
+      meta: {
+        page: 2,
+        pageSize: 20,
+        returned: 0,
+        hasMore: false,
+        nextPage: null,
+      },
+    });
   });
 
   it("returns event type detail with trend, breakdowns, cards, and fields", () => {
@@ -259,6 +386,51 @@ describe("mock/events coverage", () => {
     );
   });
 
+  it("returns empty event type detail fallbacks for a missing event name", () => {
+    const visits = [
+      makeVisit({
+        visitId: "signup",
+        eventType: "signup",
+        startedAt: 1_000,
+      }),
+    ];
+    const dataset = makeDataset(visits);
+    mockBuildDemoFactDataset.mockReturnValue(dataset);
+    mockApplyDemoFilters.mockReturnValue(makeFiltered(visits));
+
+    const result = generateDemoEventTypeDetail("site", {
+      from: 0,
+      to: 3_600_000,
+      interval: "hour",
+      timeZone: "UTC",
+    }) as any;
+
+    expect(result.eventName).toBe("");
+    expect(result.summary).toMatchObject({
+      events: 0,
+      eventTypes: 0,
+      sessions: 0,
+      visitors: 0,
+      avgEventsPerSession: 0,
+      shareOfAllEvents: 0,
+    });
+    expect(result.trend.data).toEqual([
+      { bucket: 0, timestampMs: 0, events: 0, visitors: 0 },
+      { bucket: 1, timestampMs: 3_600_000, events: 0, visitors: 0 },
+    ]);
+    expect(result.breakdowns).toEqual({
+      pages: [],
+      countries: [],
+      devices: [],
+      browsers: [],
+    });
+    expect(result.cards.page.path).toEqual([]);
+    expect(result.cards.source.domain).toEqual([]);
+    expect(result.cards.client.browser).toEqual([]);
+    expect(result.cards.geo.country).toEqual([]);
+    expect(result.fields).toEqual([]);
+  });
+
   it("returns field values only when required field params are present", () => {
     const visits = [
       makeVisit({ visitId: "one", eventType: "signup" }),
@@ -295,6 +467,61 @@ describe("mock/events coverage", () => {
         events: expect.any(Number),
       }),
     );
+  });
+
+  it("short-circuits field values for each missing required field param", () => {
+    mockBuildDemoFactDataset.mockReturnValue(
+      makeDataset([makeVisit({ visitId: "one", eventType: "signup" })]),
+    );
+
+    expect(
+      generateDemoEventTypeFieldValues("site", {
+        eventName: "signup",
+        fieldPath: "",
+        fieldValueType: "string",
+      }),
+    ).toEqual({
+      ok: true,
+      fieldPath: "",
+      fieldValueType: "string",
+      data: [],
+    });
+    expect(
+      generateDemoEventTypeFieldValues("site", {
+        eventName: "signup",
+        fieldPath: "/plan",
+        fieldValueType: "",
+      }),
+    ).toEqual({
+      ok: true,
+      fieldPath: "/plan",
+      fieldValueType: "",
+      data: [],
+    });
+    expect(mockApplyDemoFilters).not.toHaveBeenCalled();
+  });
+
+  it("returns empty field values when the requested type has no scalar matches", () => {
+    const visits = [
+      makeVisit({ visitId: "one", eventType: "signup" }),
+      makeVisit({ visitId: "two", eventType: "signup", sessionId: "s2" }),
+    ];
+    const dataset = makeDataset(visits);
+    mockBuildDemoFactDataset.mockReturnValue(dataset);
+    mockApplyDemoFilters.mockReturnValue(makeFiltered(visits));
+
+    expect(
+      generateDemoEventTypeFieldValues("site", {
+        eventName: "signup",
+        fieldPath: "/plan",
+        fieldValueType: "number",
+      }),
+    ).toEqual({
+      ok: true,
+      fieldPath: "/plan",
+      fieldValueType: "number",
+      data: [],
+    });
   });
 
   it("returns a requested record detail and falls back to the first event", () => {

@@ -77,6 +77,73 @@ describe("mock/path-markov", () => {
       const edges = graph.nodes.get("/a") ?? [];
       expect(edges.length).toBeGreaterThan(0);
     });
+
+    it("normalizes sparse paths, extra paths, and pathFlow fallbacks", () => {
+      const profile = {
+        ...findSiteProfile("demo-site-001"),
+        id: "test-pathflow-normalization",
+        paths: ["", " / ", "/a//b/", "/a/b"],
+        pathFlow: {
+          invalid: [
+            { to: "also-invalid", weight: "2" },
+            { to: "/kept//target/", weight: "3.5" },
+            { to: "/ignored", weight: Number.NaN },
+          ],
+        },
+      } as unknown as Parameters<typeof buildPathTransitionGraph>[0];
+
+      const graph = buildPathTransitionGraph(profile, [
+        "/a/b",
+        "missing-leading-slash",
+        "/extra//path/",
+        "",
+      ]);
+
+      expect(graph.entry).toBe("/");
+      expect(graph.paths).toEqual(["/", "/a/b", "/extra/path"]);
+      expect(graph.nodes.get("/")).toEqual([
+        { to: "/", weight: 2 },
+        { to: "/kept/target", weight: 3.5 },
+      ]);
+      expect(graph.nodes.get("/a/b")).toEqual(
+        expect.arrayContaining([{ to: "/", weight: expect.any(Number) }]),
+      );
+    });
+
+    it("falls back to the root entry when a profile has no paths", () => {
+      const profile = {
+        ...findSiteProfile("demo-site-001"),
+        id: "test-empty-paths",
+        paths: [],
+      };
+
+      const graph = buildPathTransitionGraph(profile);
+
+      expect(graph.entry).toBe("/");
+      expect(graph.paths).toEqual([]);
+      expect(graph.nodes.size).toBe(0);
+    });
+
+    it("clears the graph cache after it grows past the cap", () => {
+      const profile = findSiteProfile("demo-site-001");
+      const first = buildPathTransitionGraph({
+        ...profile,
+        id: "test-cache-first",
+      });
+
+      for (let index = 0; index < 62; index += 1) {
+        buildPathTransitionGraph({
+          ...profile,
+          id: `test-cache-fill-${index}`,
+        });
+      }
+
+      const rebuilt = buildPathTransitionGraph({
+        ...profile,
+        id: "test-cache-first",
+      });
+      expect(rebuilt).not.toBe(first);
+    });
   });
 
   describe("nextPath", () => {
@@ -84,6 +151,14 @@ describe("mock/path-markov", () => {
       const profile = findSiteProfile("demo-site-001");
       const graph = buildPathTransitionGraph(profile);
       expect(nextPath(graph, "", rng(1))).toBe(graph.entry);
+    });
+
+    it("returns the current path for stay picks and entry for home picks", () => {
+      const profile = findSiteProfile("demo-site-001");
+      const graph = buildPathTransitionGraph(profile);
+
+      expect(nextPath(graph, "/about", () => 0.01)).toBe("/about");
+      expect(nextPath(graph, "/about", () => 0.08)).toBe(graph.entry);
     });
 
     it("returns the entry node when current path has no edges", () => {
@@ -117,6 +192,27 @@ describe("mock/path-markov", () => {
         const next = nextPath(graph, "/", r);
         expect(universe.has(next)).toBe(true);
       }
+    });
+
+    it("falls back to the entry when an explicit graph has no reachable edges", () => {
+      expect(
+        nextPath(
+          { entry: "/", nodes: new Map(), paths: [] },
+          "/missing",
+          () => 0.5,
+        ),
+      ).toBe("/");
+      expect(
+        nextPath(
+          {
+            entry: "/",
+            nodes: new Map([["/", [{ to: "/target", weight: 0 }]]]),
+            paths: ["/", "/target"],
+          },
+          "/missing",
+          () => 0.5,
+        ),
+      ).toBe("/target");
     });
   });
 });

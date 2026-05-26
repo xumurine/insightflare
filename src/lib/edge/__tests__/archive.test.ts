@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runHourlyArchive } from "@/lib/edge/archive";
 import type { Env } from "@/lib/edge/types";
@@ -9,9 +9,13 @@ interface PreparedStatement {
   run?: ReturnType<typeof vi.fn>;
 }
 
+interface PreparedStatementWithAll extends PreparedStatement {
+  all: ReturnType<typeof vi.fn>;
+}
+
 function statementWithAll(
   results: Record<string, unknown>[],
-): PreparedStatement {
+): PreparedStatementWithAll {
   return {
     bind: vi.fn(function (this: PreparedStatement) {
       return this;
@@ -63,7 +67,22 @@ function createArchiveEnv(results: Record<string, unknown>[]) {
   };
 }
 
+function createArchiveEnvWithBatches(
+  batches: Record<string, unknown>[][],
+): ReturnType<typeof createArchiveEnv> {
+  const env = createArchiveEnv([]);
+  let selectCalls = 0;
+  env.select.all.mockImplementation(() => ({
+    results: batches[selectCalls++] ?? [],
+  }));
+  return env;
+}
+
 describe("edge archive task", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("returns without deleting or batching when there are no eligible visits", async () => {
     const { env, select, prepare, batch } = createArchiveEnv([]);
     const scheduledTime = Date.UTC(2026, 4, 26);
@@ -126,5 +145,51 @@ describe("edge archive task", () => {
     expect(deleteVisit.bind).toHaveBeenCalledWith("visit-1");
     expect(batch).toHaveBeenCalledWith([insertArchive, deleteVisit]);
     expect(select.all).toHaveBeenCalledTimes(1);
+  });
+
+  it("continues archiving until a partial batch is moved", async () => {
+    const fullBatch = Array.from({ length: 5_000 }, (_, index) => ({
+      visit_id: `visit-${index}`,
+      site_id: "site-1",
+      visitor_id: `visitor-${index}`,
+      session_id: `session-${index}`,
+      status: "closed",
+      started_at: index,
+      last_activity_at: index,
+    }));
+    const partialBatch = [
+      {
+        visit_id: "visit-final",
+        site_id: "site-1",
+        visitor_id: "visitor-final",
+        session_id: "session-final",
+        status: "closed",
+        started_at: 10_000,
+        last_activity_at: 10_000,
+      },
+    ];
+    const { env, select, batch } = createArchiveEnvWithBatches([
+      fullBatch,
+      partialBatch,
+    ]);
+
+    await runHourlyArchive(env, Date.UTC(2026, 4, 26));
+
+    expect(select.all).toHaveBeenCalledTimes(2);
+    expect(batch).toHaveBeenCalledTimes(2);
+    expect(batch.mock.calls[0]?.[0]).toHaveLength(10_000);
+    expect(batch.mock.calls[1]?.[0]).toHaveLength(2);
+  });
+
+  it("falls back to Date.now when the scheduled time is invalid", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 4, 26));
+    const { env, select } = createArchiveEnv([]);
+
+    await runHourlyArchive(env, Number.NaN);
+
+    expect(select.bind).toHaveBeenCalledWith(
+      Date.UTC(2026, 4, 26) - 365 * 24 * 60 * 60 * 1000,
+      5_000,
+    );
   });
 });
