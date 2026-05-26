@@ -186,26 +186,32 @@ describe("mock/share-trends branch coverage", () => {
       }),
     ]);
 
-    expect(generateDemoReferrerTrend(SITE_ID, { limit: 5 })).toMatchObject({
+    const trendWindow = {
+      from: BASE_TIME,
+      to: BASE_TIME + 3_600_000,
+      interval: "hour",
+      timeZone: "UTC",
+      limit: 5,
+    };
+
+    expect(generateDemoReferrerTrend(SITE_ID, trendWindow)).toMatchObject({
       ok: true,
       series: expect.arrayContaining([
         expect.objectContaining({ label: "__direct__" }),
         expect.objectContaining({ label: "search.example" }),
       ]),
     });
-    expect(generateDemoBrowserEngineTrend(SITE_ID, { limit: 5 })).toMatchObject(
-      {
-        ok: true,
-        series: expect.arrayContaining([
-          expect.objectContaining({ label: "WebKit" }),
-          expect.objectContaining({ label: "Blink" }),
-        ]),
-      },
-    );
+    expect(generateDemoBrowserEngineTrend(SITE_ID, trendWindow)).toMatchObject({
+      ok: true,
+      series: expect.arrayContaining([
+        expect.objectContaining({ label: "WebKit" }),
+        expect.objectContaining({ label: "Blink" }),
+      ]),
+    });
     expect(
       generateDemoClientDimensionTrend(SITE_ID, {
+        ...trendWindow,
         dimension: "screenSize",
-        limit: 5,
       }),
     ).toMatchObject({
       ok: true,

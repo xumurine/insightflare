@@ -1,3 +1,4 @@
+import type * as ReactModule from "react";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
@@ -90,6 +91,45 @@ describe("client history URL helpers", () => {
     }
 
     expect(renderToString(createElement(Probe))).toBe("<span>:</span>");
+  });
+
+  it("uses empty client snapshots and no-op subscriptions without window", async () => {
+    vi.resetModules();
+    vi.stubGlobal("window", undefined);
+
+    const unsubscribe = vi.fn();
+    const useSyncExternalStore = vi.fn(
+      (
+        subscribe: (onStoreChange: () => void) => () => void,
+        getSnapshot: () => string,
+      ) => {
+        unsubscribe.mockImplementation(subscribe(vi.fn()));
+        return getSnapshot();
+      },
+    );
+
+    vi.doMock("react", async () => {
+      const actual = await vi.importActual<typeof ReactModule>("react");
+      return {
+        ...actual,
+        useSyncExternalStore,
+      };
+    });
+
+    const { useLiveSearchParams: useWindowlessLiveSearchParams } =
+      await import("@/lib/client-history");
+
+    function Probe() {
+      const params = useWindowlessLiveSearchParams();
+      return createElement("span", null, params.toString());
+    }
+
+    expect(renderToString(createElement(Probe))).toBe("<span></span>");
+    expect(useSyncExternalStore).toHaveBeenCalledOnce();
+    expect(unsubscribe).not.toThrow();
+
+    vi.doUnmock("react");
+    vi.resetModules();
   });
 
   it("keeps useLiveSearchParams synced with history helper changes and popstate", () => {
