@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import * as ts from "typescript";
+import * as esbuild from "esbuild";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const installKey = "__insightflare_tracker_v6__";
@@ -68,31 +68,24 @@ async function importConfiguredSdk(options: ConfiguredSdkOptions = {}) {
       };`,
     );
 
-  const output = ts.transpileModule(rewritten, {
-    fileName: sdkSourcePath,
-    compilerOptions: {
-      inlineSources: true,
-      module: ts.ModuleKind.ESNext,
-      sourceMap: true,
-      target: ts.ScriptTarget.ES2022,
+  const output = await esbuild.build({
+    bundle: true,
+    format: "esm",
+    stdin: {
+      contents: rewritten,
+      loader: "ts",
+      resolveDir: path.dirname(sdkSourcePath),
+      sourcefile: sdkSourcePath,
     },
+    target: "es2022",
+    write: false,
   });
-  const sourceMap = JSON.parse(output.sourceMapText || "{}");
-  sourceMap.sources = [sdkSourcePath.replace(/\\/g, "/")];
-  sourceMap.sourcesContent = [source];
 
   configuredSdkImportCounter += 1;
-  const sourceMapData = Buffer.from(JSON.stringify(sourceMap)).toString(
-    "base64",
-  );
-  const outputText = output.outputText.replace(
-    /\n\/\/# sourceMappingURL=.*(?:\r?\n)?$/,
-    "\n",
-  );
+  const outputText = output.outputFiles[0].text;
   const moduleText = [
     outputText,
     `// configured-sdk-import-${configuredSdkImportCounter}`,
-    `//# sourceMappingURL=data:application/json;base64,${sourceMapData}`,
   ].join("\n");
   return import(
     `data:text/javascript;base64,${Buffer.from(moduleText).toString("base64")}`

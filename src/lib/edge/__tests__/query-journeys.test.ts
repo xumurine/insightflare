@@ -3,17 +3,27 @@ import { describe, expect, it } from "vitest";
 import type { JourneyEventRow, SessionRow } from "@/lib/edge/query/core";
 import {
   averageGapMs,
+  buildJourneySearchSql,
+  detailTargetColumn,
   emptyJourneyPerformanceSummary,
+  mapGeoPointRow,
   mapJourneyEventRow,
   mapSessionRow,
+  mapVisitorRow,
+  nullableCoordinate,
+  nullableNumber,
   percentile,
   reportingDateKey,
+  sessionDurationMs,
   sessionLeaveEvent,
+  sessionListOrderBy,
   sessionStartEvent,
   summarizeActivity,
   summarizeEventDistribution,
   summarizeJourneyPerformance,
   summarizeVisitedPages,
+  visitorListOrderBy,
+  whereClauseWithTarget,
 } from "@/lib/edge/query/journeys";
 
 function performance(
@@ -94,6 +104,53 @@ function event(overrides: Partial<JourneyEventRow> = {}): JourneyEventRow {
 }
 
 describe("journey helper mappers", () => {
+  it("maps visitor and geo rows with sanitized nullable values", () => {
+    expect(
+      mapVisitorRow({
+        visitorId: 42,
+        sessionId: "session-9",
+        firstSeenAt: "100",
+        lastSeenAt: "250",
+        views: "3",
+        sessions: "2",
+        events: "5",
+        country: "US",
+        regionCode: "CA",
+        screenWidth: "0",
+        screenHeight: "720",
+      }),
+    ).toMatchObject({
+      visitorId: "42",
+      sessionId: "session-9",
+      firstSeenAt: 100,
+      lastSeenAt: 250,
+      views: 3,
+      sessions: 2,
+      events: 5,
+      country: "US",
+      regionCode: "CA",
+      screenWidth: null,
+      screenHeight: 720,
+    });
+
+    expect(
+      mapGeoPointRow({
+        latitude: "37.7",
+        longitude: "-122.4",
+        timestampMs: "12345",
+        country: "US",
+      }),
+    ).toEqual({
+      latitude: 37.7,
+      longitude: -122.4,
+      timestampMs: 12345,
+      country: "US",
+      region: "",
+      regionCode: "",
+      city: "",
+    });
+  });
+
   it("maps session rows with duration, booleans, nullable dimensions, and performance", () => {
     expect(
       mapSessionRow({
@@ -172,6 +229,58 @@ describe("journey helper mappers", () => {
         cls: 0.123,
       },
     });
+  });
+});
+
+describe("journey SQL helpers", () => {
+  it("escapes list searches across all searchable columns", () => {
+    const search = buildJourneySearchSql("  Ref%_\\Term  ", "fv");
+
+    expect(search).not.toBeNull();
+    expect(search?.condition).toContain("fv.visitor_id");
+    expect(search?.condition).toContain("ESCAPE '\\'");
+    expect(search?.condition).toContain(
+      "CASE WHEN TRIM(COALESCE(fv.referrer_host, '')) = ''",
+    );
+    expect(search?.bindings).toHaveLength(21);
+    expect(new Set(search?.bindings)).toEqual(new Set(["%ref\\%\\_\\\\term%"]));
+    expect(buildJourneySearchSql("   ")).toBeNull();
+  });
+
+  it("builds target where clauses without losing existing filters", () => {
+    expect(
+      whereClauseWithTarget("WHERE country = ?", {
+        column: "visitor_id",
+        value: "v1",
+      }),
+    ).toBe("WHERE visitor_id = ? AND country = ?");
+    expect(
+      whereClauseWithTarget("", { column: "session_id", value: "s1" }),
+    ).toBe("WHERE session_id = ? ");
+    expect(whereClauseWithTarget("WHERE country = ?")).toBe(
+      "WHERE country = ?",
+    );
+  });
+
+  it("maps sort descriptors and detail targets to SQL fragments", () => {
+    expect(visitorListOrderBy({ key: "firstSeenAt", direction: "asc" })).toBe(
+      "firstSeenAt ASC, lastSeenAt DESC, visitorId ASC",
+    );
+    expect(visitorListOrderBy({ key: "sessions", direction: "desc" })).toBe(
+      "sessions DESC, lastSeenAt DESC, visitorId ASC",
+    );
+    expect(sessionListOrderBy({ key: "durationMs", direction: "asc" })).toBe(
+      "totalDurationMs ASC, startedAt DESC, sessionId ASC",
+    );
+    expect(sessionListOrderBy({ key: "views", direction: "desc" })).toBe(
+      "views DESC, startedAt DESC, sessionId ASC",
+    );
+    expect(detailTargetColumn({ type: "visitor", value: "v1" })).toBe(
+      "visitor_id",
+    );
+    expect(detailTargetColumn({ type: "session", value: "s1" })).toBe(
+      "session_id",
+    );
   });
 });
 
@@ -349,6 +458,20 @@ describe("journey summaries", () => {
 });
 
 describe("journey numeric helpers", () => {
+  it("normalizes nullable numbers, coordinates, and session durations", () => {
+    expect(nullableNumber("120")).toBe(120);
+    expect(nullableNumber("0")).toBeNull();
+    expect(nullableNumber("-1")).toBeNull();
+    expect(nullableNumber(Number.NaN)).toBeNull();
+    expect(nullableCoordinate("0")).toBe(0);
+    expect(nullableCoordinate("")).toBeNull();
+    expect(nullableCoordinate(Number.POSITIVE_INFINITY)).toBeNull();
+
+    expect(sessionDurationMs(100, 250, 10, false)).toBe(150);
+    expect(sessionDurationMs(100, 250, 99.6, true)).toBe(100);
+    expect(sessionDurationMs(250, 100, -10, false)).toBe(0);
+  });
+
   it("computes nearest-rank percentiles over finite non-negative values", () => {
     expect(percentile([10, 30, 20, -1, Number.NaN], 75)).toBe(30);
     expect(percentile([10, 30, 20], 50)).toBe(20);

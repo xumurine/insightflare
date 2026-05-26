@@ -1138,4 +1138,75 @@ describe("mock — createMockRealtimeSocket", () => {
     expect(socket.readyState).toBe(0);
     closeSocket(socket);
   });
+
+  it("does not open when closed before the handshake timer completes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FIXED_TO);
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const socket = createMockRealtimeSocket({ siteId: SITE_ID });
+    const onopen = vi.fn();
+    const onclose = vi.fn();
+    socket.onopen = onopen;
+    socket.onclose = onclose;
+
+    socket.close();
+    await vi.advanceTimersByTimeAsync(780);
+
+    expect(socket.readyState).toBe(3);
+    expect(onopen).not.toHaveBeenCalled();
+    expect(onclose).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 1000,
+        reason: "mock closed",
+        wasClean: true,
+      }),
+    );
+  });
+
+  it("emits realtime events after the initial snapshot", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FIXED_TO);
+    vi.spyOn(Math, "random")
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0.5)
+      .mockReturnValue(1);
+    const socket = createMockRealtimeSocket({ siteId: SITE_ID });
+    const onmessage = vi.fn();
+    socket.onmessage = onmessage;
+
+    await vi.advanceTimersByTimeAsync(120);
+    await vi.advanceTimersByTimeAsync(41_000);
+
+    const messages = onmessage.mock.calls.map(([event]) =>
+      JSON.parse((event as MessageEvent).data as string),
+    ) as Array<{ type: string; data: Record<string, unknown> }>;
+    const eventMessage = messages.find((message) => message.type === "event");
+    expect(eventMessage?.data).toMatchObject({
+      eventType: expect.any(String),
+      visitorId: expect.any(String),
+      sessionId: expect.any(String),
+      pathname: expect.any(String),
+      hash: "",
+    });
+    closeSocket(socket);
+  });
+
+  it("emits an error on the scheduled disconnect path", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FIXED_TO);
+    vi.spyOn(Math, "random")
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0.5)
+      .mockReturnValue(0);
+    const socket = createMockRealtimeSocket({ siteId: SITE_ID });
+    const onerror = vi.fn();
+    socket.onerror = onerror;
+
+    await vi.advanceTimersByTimeAsync(120);
+    await vi.advanceTimersByTimeAsync(18_000);
+
+    expect(onerror).toHaveBeenCalledTimes(1);
+    expect(socket.readyState).toBe(1);
+    closeSocket(socket);
+  });
 });

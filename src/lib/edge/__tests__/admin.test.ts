@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handlePrivateAdmin } from "@/lib/edge/admin";
+import { canAdministerTeam, canManageSite } from "@/lib/edge/admin-access";
+import { requireActor, verifyPassword } from "@/lib/edge/admin-auth";
 import {
   type EdgeSessionClaims,
   requireSession,
@@ -335,6 +337,71 @@ describe("private admin edge handler", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  describe("extracted auth/access helpers", () => {
+    it("resolves actors from sessions and rejects missing sessions", async () => {
+      setSession(adminSession);
+      const actorRow = userRow();
+      const { env } = createEnv([statement({ first: actorRow })]);
+
+      const actor = await requireActor(env, edgeRequest("/admin"));
+
+      expect(actor).not.toBeInstanceOf(Response);
+      expect(actor).toEqual({ user: actorRow, isAdmin: true });
+
+      setSession(null);
+      const rejected = await requireActor(
+        createEnv().env,
+        edgeRequest("/admin"),
+      );
+
+      expect(rejected).toBeInstanceOf(Response);
+      expect((rejected as Response).status).toBe(401);
+      expect(await (rejected as Response).json()).toEqual({
+        ok: false,
+        error: "Unauthorized",
+      });
+    });
+
+    it("verifies extracted argon2 password hashes and rejects mismatches", async () => {
+      const stored = argonHash("secret-password");
+
+      await expect(verifyPassword("secret-password", stored)).resolves.toBe(
+        true,
+      );
+      await expect(verifyPassword("wrong-password", stored)).resolves.toBe(
+        false,
+      );
+    });
+
+    it("checks team and site access through extracted helpers", async () => {
+      const actor = {
+        user: userRow({ id: "user-1", system_role: "user" }),
+        isAdmin: false,
+      };
+      const admin = { user: userRow(), isAdmin: true };
+      const manageSiteEnv = createEnv([
+        statement({ first: { team_id: "team-1" } }),
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: { role: "admin" } }),
+      ]).env;
+      const administerTeamEnv = createEnv([
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: { role: "admin" } }),
+      ]).env;
+      const adminEnv = createEnv([statement({ first: null })]).env;
+
+      await expect(canManageSite(manageSiteEnv, actor, "site-1")).resolves.toBe(
+        true,
+      );
+      await expect(
+        canAdministerTeam(administerTeamEnv, actor, "team-1"),
+      ).resolves.toBe(false);
+      await expect(canManageSite(adminEnv, admin, "site-1")).resolves.toBe(
+        false,
+      );
+    });
   });
 
   it("returns not found for unknown admin routes without authenticating", async () => {

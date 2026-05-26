@@ -750,6 +750,112 @@ describe("Dashboard Client Data Processing Utilities", () => {
       expect(params.get("to")).toBe(String(mockWindow.to));
     });
 
+    it("should apply list and event defaults while omitting blank optional params", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockImplementation(() =>
+          Promise.resolve(freshJsonResponse({ ok: true, data: [] })),
+        );
+      globalThis.fetch = fetchMock as any;
+
+      await fetchVisitors("default-visitors", mockWindow);
+      let params = paramsFromCall(fetchMock, 0);
+      expect(params.get("limit")).toBe("100");
+      expect(params.has("page")).toBe(false);
+      expect(params.has("pageSize")).toBe(false);
+
+      await fetchSessions("default-sessions", mockWindow);
+      params = paramsFromCall(fetchMock, 1);
+      expect(params.get("limit")).toBe("100");
+      expect(params.has("page")).toBe(false);
+      expect(params.has("pageSize")).toBe(false);
+
+      await fetchEventsTrend("default-events-trend", mockWindow, undefined, {
+        eventName: "   ",
+      });
+      params = paramsFromCall(fetchMock, 2);
+      expect(params.get("limit")).toBe("8");
+      expect(params.has("eventName")).toBe(false);
+
+      await fetchEventsRecords(
+        "default-events-records",
+        mockWindow,
+        undefined,
+        {
+          search: "   ",
+          eventName: "   ",
+        },
+      );
+      params = paramsFromCall(fetchMock, 3);
+      expect(params.get("page")).toBe("1");
+      expect(params.get("pageSize")).toBe("80");
+      expect(params.has("search")).toBe(false);
+      expect(params.has("eventName")).toBe(false);
+    });
+
+    it("should omit optional detail params when not provided", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockImplementation(() =>
+          Promise.resolve(freshJsonResponse({ ok: true, data: null })),
+        );
+      globalThis.fetch = fetchMock as any;
+
+      await fetchVisitorDetail("detail-minimal", "visitor-a");
+      let params = paramsFromCall(fetchMock, 0);
+      expect(params.get("visitorId")).toBe("visitor-a");
+      expect(params.has("from")).toBe(false);
+      expect(params.has("to")).toBe(false);
+      expect(params.has("timeZone")).toBe(false);
+
+      await fetchSessionDetail("detail-minimal", "session-a");
+      params = paramsFromCall(fetchMock, 1);
+      expect(params.get("sessionId")).toBe("session-a");
+      expect(params.has("from")).toBe(false);
+      expect(params.has("to")).toBe(false);
+      expect(params.has("timeZone")).toBe(false);
+
+      await fetchEventRecordDetail("detail-minimal", "event-a");
+      params = paramsFromCall(fetchMock, 2);
+      expect(params.get("eventId")).toBe("event-a");
+      expect(params.has("from")).toBe(false);
+      expect(params.has("to")).toBe(false);
+    });
+
+    it("should not dedupe detail requests that carry abort signals", async () => {
+      const resolveResponses: Array<(response: Response) => void> = [];
+      const fetchMock = vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveResponses.push(resolve);
+          }),
+      );
+      globalThis.fetch = fetchMock as any;
+      const signal = new AbortController().signal;
+
+      const first = fetchVisitorDetail(
+        "signal-detail",
+        "visitor-a",
+        "UTC",
+        mockWindow,
+        { signal },
+      );
+      const second = fetchVisitorDetail(
+        "signal-detail",
+        "visitor-a",
+        "UTC",
+        mockWindow,
+        { signal },
+      );
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      resolveResponses.forEach((resolve) =>
+        resolve(freshJsonResponse({ ok: true, data: null })),
+      );
+      await expect(first).resolves.toEqual({ ok: true, data: null });
+      await expect(second).resolves.toEqual({ ok: true, data: null });
+    });
+
     it("should serialize option limits for referrer and dimension endpoints", async () => {
       const fetchMock = vi
         .fn()

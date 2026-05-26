@@ -107,6 +107,16 @@ describe("edge client request wrappers", () => {
     expect(getSessionTokenMock).not.toHaveBeenCalled();
   });
 
+  it("encodes public slugs and query params", async () => {
+    await fetchPublicOverview("public/site?draft=true", { from: 0, to: 1 });
+
+    const [url] = lastFetchCall();
+
+    expect(url).toBe(
+      "https://edge.example.test/api/public/public%2Fsite%3Fdraft%3Dtrue/overview?from=0&to=1",
+    );
+  });
+
   it("adds session authorization for private GET requests and serializes filters", async () => {
     await fetchAdminTeams("user-1");
 
@@ -135,6 +145,14 @@ describe("edge client request wrappers", () => {
     expect(url).toBe(
       "https://edge.example.test/api/public/slug/referrers?from=1&to=2&limit=8",
     );
+  });
+
+  it("omits optional query params when they are not provided", async () => {
+    await fetchAdminTeams();
+
+    const [url] = lastFetchCall();
+
+    expect(url).toBe("https://edge.example.test/api/private/admin/teams");
   });
 
   it("serializes POST and PATCH request bodies for admin wrappers", async () => {
@@ -239,8 +257,34 @@ describe("edge client request wrappers", () => {
     );
   });
 
+  it("includes JSON API error bodies in non-OK edge response errors", async () => {
+    fetchMock().mockResolvedValueOnce(
+      jsonResponse({ error: "invalid_request", reason: "Missing team" }, 400),
+    );
+
+    await expect(fetchAdminSites("team-1")).rejects.toThrow(
+      'Edge API failed (400 GET /api/private/admin/sites): {"error":"invalid_request","reason":"Missing team"}',
+    );
+  });
+
+  it("propagates network failures from fetch", async () => {
+    fetchMock().mockRejectedValueOnce(new TypeError("fetch failed"));
+
+    await expect(fetchAdminUsers()).rejects.toThrow("fetch failed");
+  });
+
   it("continues without authorization when the session token is unavailable", async () => {
     getSessionTokenMock.mockRejectedValueOnce(new Error("outside request"));
+
+    await fetchAdminMe();
+
+    const [, init] = lastFetchCall();
+    const headers = init.headers as Headers;
+    expect(headers.has("authorization")).toBe(false);
+  });
+
+  it("continues without authorization when no session token is returned", async () => {
+    getSessionTokenMock.mockResolvedValueOnce("");
 
     await fetchAdminMe();
 
@@ -264,6 +308,30 @@ describe("edge client request wrappers", () => {
 
     const [url] = lastFetchCall();
     expect(url).toBe("https://dashboard.example.test/api/private/admin/users");
+  });
+
+  it("uses https for non-local server hosts when forwarded proto is absent", async () => {
+    vi.stubEnv("INSIGHTFLARE_EDGE_URL", "");
+    vi.doMock("next/headers", () => ({
+      headers: vi.fn().mockResolvedValue(new Headers({ host: "app.test" })),
+    }));
+
+    await fetchAdminUsers();
+
+    const [url] = lastFetchCall();
+    expect(url).toBe("https://app.test/api/private/admin/users");
+  });
+
+  it("falls back when server headers do not include a host", async () => {
+    vi.stubEnv("INSIGHTFLARE_EDGE_URL", "");
+    vi.doMock("next/headers", () => ({
+      headers: vi.fn().mockResolvedValue(new Headers()),
+    }));
+
+    await fetchAdminUsers();
+
+    const [url] = lastFetchCall();
+    expect(url).toBe("http://127.0.0.1:8787/api/private/admin/users");
   });
 
   it("uses http for localhost server headers and falls back when headers fail", async () => {

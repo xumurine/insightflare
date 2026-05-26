@@ -691,6 +691,48 @@ describe("IngestDurableObject", () => {
     expect(badWsToken.status).toBe(401);
   });
 
+  it("uses snapshot defaults and accepts authenticated websocket upgrades", async () => {
+    const ctx = createTestDo({ ADMIN_WS_TOKEN: "secret-token" });
+
+    const snapshot = await ctx.object.fetch(
+      new Request("https://ingest.internal/snapshot"),
+    );
+    expect(snapshot.status).toBe(200);
+    await expect(snapshot.json()).resolves.toMatchObject({
+      ok: true,
+      buffered: 0,
+      data: [],
+    });
+
+    const client = new FakeWebSocket();
+    const server = new FakeWebSocket();
+    class AuthenticatedWebSocketPair {
+      constructor() {
+        return [client, server];
+      }
+    }
+    const RealResponse = globalThis.Response;
+    vi.stubGlobal("WebSocketPair", AuthenticatedWebSocketPair);
+    vi.stubGlobal("Response", FakeUpgradeResponse);
+
+    try {
+      const upgrade = await ctx.object.fetch({
+        url: "https://ingest.internal/ws?token=secret-token",
+        method: "GET",
+        headers: {
+          get: (name: string) =>
+            name.toLowerCase() === "upgrade" ? "websocket" : null,
+        },
+      } as unknown as Request);
+
+      expect(upgrade.status).toBe(101);
+      expect(server.accepted).toBe(true);
+      expect(upgrade.webSocket).toBe(client);
+    } finally {
+      vi.stubGlobal("Response", RealResponse);
+    }
+  });
+
   it("returns bad request for malformed JSON and ignores invalid normalized payloads", async () => {
     const ctx = createTestDo();
 
@@ -1758,6 +1800,108 @@ describe("IngestDurableObject", () => {
     expect(diagnostic.status).toBe(200);
     await expect(diagnostic.json()).resolves.toMatchObject({
       ok: true,
+      alarm: {
+        scheduledAt: null,
+      },
+    });
+  });
+
+  it("normalizes diagnostics when storage aggregates are missing or nonnumeric", async () => {
+    const ctx = createTestDo();
+    const originalExec = ctx.sql.exec.bind(ctx.sql);
+    vi.spyOn(ctx.sql, "exec").mockImplementation(
+      (query: string, ...bindings: SqlBinding[]) => {
+        const normalized = query.replace(/\s+/g, " ");
+        if (normalized.includes("SELECT COUNT(*) AS c FROM buffered_visits")) {
+          return new SqlResult([], 0);
+        }
+        if (
+          normalized.includes(
+            "SELECT status, COUNT(*) AS c FROM buffered_visits GROUP BY status",
+          )
+        ) {
+          return new SqlResult([{ status: "open", c: null }], 0);
+        }
+        if (normalized.includes("oldestStartedAt")) {
+          return new SqlResult(
+            [
+              {
+                total: "NaN",
+                stale: "Infinity",
+                timedOut: "nope",
+                hardAged: null,
+                futureSkewed: "1",
+                oldestStartedAt: "not-a-timestamp",
+                newestActivityAt: "123",
+                futureMaxActivityAt: undefined,
+              } as SqlRow,
+            ],
+            0,
+          );
+        }
+        if (
+          normalized.includes("FROM buffered_visits") &&
+          normalized.includes("MAX(flush_attempts) AS maxAttempts")
+        ) {
+          return new SqlResult(
+            [{ total: "NaN", stuck: "Infinity", maxAttempts: "5" }],
+            0,
+          );
+        }
+        if (normalized.includes("FROM buffered_custom_events")) {
+          return new SqlResult(
+            [
+              {
+                total: "NaN",
+                dirty: "bad",
+                stuck: "Infinity",
+                maxAttempts: "nope",
+                oldestOccurredAt: "bad",
+              },
+            ],
+            0,
+          );
+        }
+        return originalExec(query, ...bindings);
+      },
+    );
+    vi.mocked(ctx.state.storage.getAlarm).mockResolvedValueOnce(
+      "not-a-number" as never,
+    );
+
+    const diagnostic = await ctx.object.fetch(
+      new Request("https://ingest.internal/diagnostic"),
+    );
+
+    expect(diagnostic.status).toBe(200);
+    await expect(diagnostic.json()).resolves.toMatchObject({
+      ok: true,
+      visits: {
+        total: 0,
+        byStatus: { open: 0 },
+        open: {
+          total: 0,
+          stale: 0,
+          timedOut: 0,
+          hardAged: 0,
+          futureSkewed: 1,
+          oldestStartedAt: null,
+          newestActivityAt: 123,
+          futureMaxActivityAt: null,
+        },
+        dirty: {
+          total: 0,
+          stuck: 0,
+          maxFlushAttempts: 5,
+        },
+      },
+      customEvents: {
+        total: 0,
+        dirty: 0,
+        stuck: 0,
+        maxFlushAttempts: 0,
+        oldestOccurredAt: null,
+      },
       alarm: {
         scheduledAt: null,
       },

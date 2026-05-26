@@ -1,0 +1,357 @@
+import { UAParser } from "ua-parser-js";
+
+import { mergeUaClientHintsIntoHeaders } from "./client-hints";
+import { expandCustomEventData } from "./custom-event-json";
+import { logDoTrace } from "./ingest-log";
+import {
+  clampTimestamp,
+  normalizePerformancePayload,
+  resolveTrustedClientTimestamp,
+} from "./ingest-normalize";
+import type {
+  BufferedCustomEventInput,
+  NormalizeResult,
+  StoredOpenVisit,
+} from "./ingest-types";
+import type {
+  Env,
+  IngestEnvelopePayload,
+  NormalizedCustomEvent,
+  NormalizedIdentify,
+  NormalizedLeave,
+  NormalizedPageview,
+  TrackerClientPayload,
+  TrackerPayloadKind,
+} from "./types";
+import {
+  clampString,
+  coerceNumber,
+  coerceString,
+  deriveEuVisitorId,
+  isSameHostname,
+  safeHostname,
+} from "./utils";
+
+interface NormalizeRecordContext {
+  env: Pick<Env, "DAILY_SALT_SECRET">;
+  getVisitContext(
+    siteId: string,
+    visitId: string,
+  ): Promise<StoredOpenVisit | null>;
+  insertBufferedCustomEvent(record: BufferedCustomEventInput): boolean;
+  ensureAlarm(): Promise<void>;
+}
+
+function parseUtmFromQuery(queryString: string): {
+  utmSource: string;
+  utmMedium: string;
+  utmCampaign: string;
+  utmTerm: string;
+  utmContent: string;
+} {
+  if (!queryString) {
+    return {
+      utmSource: "",
+      utmMedium: "",
+      utmCampaign: "",
+      utmTerm: "",
+      utmContent: "",
+    };
+  }
+  const params = new URLSearchParams(queryString);
+  return {
+    utmSource: clampString(params.get("utm_source") || "", 255),
+    utmMedium: clampString(params.get("utm_medium") || "", 255),
+    utmCampaign: clampString(params.get("utm_campaign") || "", 255),
+    utmTerm: clampString(params.get("utm_term") || "", 255),
+    utmContent: clampString(params.get("utm_content") || "", 255),
+  };
+}
+
+export async function normalizeIngestRecord(
+  envelope: IngestEnvelopePayload,
+  context: NormalizeRecordContext,
+): Promise<NormalizeResult> {
+  const client = envelope.client ?? ({} as TrackerClientPayload);
+  const traceId = envelope.trace?.id || "";
+  const siteId = clampString(coerceString(client.siteId), 120);
+  if (!siteId) return { record: null, reason: "missing_site_id" };
+
+  const requestHeaders = envelope.request.headers ?? {};
+  const nowMs = Date.now();
+  const receivedAt = clampTimestamp(envelope.request.receivedAt, nowMs);
+  const eventAt = resolveTrustedClientTimestamp(client.timestamp, receivedAt);
+  const startedAt = Math.min(
+    resolveTrustedClientTimestamp(client.startedAt, receivedAt, eventAt),
+    eventAt,
+  );
+  const kind = clampString(coerceString(client.kind), 40) as TrackerPayloadKind;
+  const visitId = clampString(coerceString(client.visitId), 128);
+
+  const cf = envelope.request.cf ?? {};
+  const uaRaw = clampString(
+    coerceString(requestHeaders["user-agent"] ?? ""),
+    1024,
+  );
+  const uaHeaders = mergeUaClientHintsIntoHeaders(
+    requestHeaders,
+    client.uaClientHints,
+  );
+  const ua = await new UAParser(uaHeaders).getResult().withClientHints();
+  const isEU = Boolean(cf.isEUCountry);
+
+  let visitorId = clampString(coerceString(client.visitorId), 128);
+  if (isEU || !visitorId) {
+    const ip = clampString(
+      coerceString(
+        requestHeaders["cf-connection-ip"] ??
+          requestHeaders["x-forwarded-for"] ??
+          "",
+      ),
+      80,
+    );
+    visitorId = await deriveEuVisitorId({
+      ip,
+      ua: uaRaw,
+      eventAtMs: eventAt,
+      secret: context.env.DAILY_SALT_SECRET,
+    });
+  }
+
+  const contextGeoBase = {
+    isEU,
+    country: clampString(coerceString(cf.country ?? ""), 10),
+    region: clampString(coerceString(cf.region ?? ""), 128),
+    regionCode: clampString(coerceString(cf.regionCode ?? ""), 32),
+    city: clampString(coerceString(cf.city ?? ""), 128),
+    continent: clampString(coerceString(cf.continent ?? ""), 32),
+    latitude: coerceNumber(cf.latitude, null),
+    longitude: coerceNumber(cf.longitude, null),
+    postalCode: clampString(coerceString(cf.postalCode ?? ""), 32),
+    metroCode: clampString(coerceString(cf.metroCode ?? ""), 32),
+    timezone: clampString(
+      coerceString(client.timezone || cf.timezone || ""),
+      120,
+    ),
+    asOrganization: clampString(coerceString(cf.asOrganization ?? ""), 255),
+    uaRaw,
+    browser: clampString(coerceString(ua.browser.name ?? ""), 80),
+    browserVersion: clampString(coerceString(ua.browser.version ?? ""), 80),
+    os: clampString(coerceString(ua.os.name ?? ""), 80),
+    osVersion: clampString(coerceString(ua.os.version ?? ""), 80),
+    deviceType: clampString(coerceString(ua.device.type ?? "desktop"), 40),
+  };
+
+  if (kind === "pageview") {
+    if (!visitId) return { record: null, reason: "missing_visit_id" };
+    const pathname = clampString(coerceString(client.pathname || "/"), 2048);
+    const hostname = clampString(
+      coerceString(client.hostname || ""),
+      255,
+    ).toLowerCase();
+    if (!hostname) {
+      return { record: null, reason: "missing_hostname" };
+    }
+    const rawReferrerUrl = clampString(coerceString(client.referrerUrl), 2000);
+    const rawReferrerHost = clampString(
+      safeHostname(rawReferrerUrl),
+      255,
+    ).toLowerCase();
+    const referrerIsSameHostname = isSameHostname(rawReferrerHost, hostname);
+    const referrerUrl = referrerIsSameHostname ? "" : rawReferrerUrl;
+    const referrerHost = referrerIsSameHostname ? "" : rawReferrerHost;
+    const sessionId =
+      clampString(coerceString(client.sessionId), 128) || crypto.randomUUID();
+    const queryString = clampString(coerceString(client.query || ""), 2048);
+    return {
+      record: {
+        kind: "pageview",
+        traceId,
+        receivedAt,
+        siteId,
+        visitId,
+        visitorId,
+        sessionId,
+        startedAt,
+        pathname,
+        queryString,
+        hashFragment: clampString(coerceString(client.hash || ""), 1024),
+        hostname,
+        title: clampString(coerceString(client.title || ""), 1024),
+        referrerUrl,
+        referrerHost,
+        ...parseUtmFromQuery(queryString),
+        userId:
+          clampString(coerceString(client.userId || ""), 255) || undefined,
+        userName:
+          clampString(coerceString(client.userName || ""), 255) || undefined,
+        screenWidth: coerceNumber(client.screenWidth, null),
+        screenHeight: coerceNumber(client.screenHeight, null),
+        language: clampString(coerceString(client.language || ""), 120),
+        ...contextGeoBase,
+      } satisfies NormalizedPageview,
+    };
+  }
+
+  if (kind === "leave") {
+    if (!visitId) return { record: null, reason: "missing_visit_id" };
+    const sessionId = clampString(coerceString(client.sessionId), 128);
+    const performanceVisitId =
+      clampString(coerceString(client.performanceVisitId), 128) || visitId;
+    return {
+      record: {
+        kind: "leave",
+        traceId,
+        siteId,
+        visitId,
+        sessionId,
+        performanceVisitId,
+        receivedAt,
+        leaveAt: eventAt,
+        durationMs: coerceNumber(client.durationMs, null),
+        performance: normalizePerformancePayload(client.performance),
+      } satisfies NormalizedLeave,
+    };
+  }
+
+  if (kind === "identify") {
+    if (!visitId) return { record: null, reason: "missing_visit_id" };
+    const identifyUserId = clampString(coerceString(client.userId || ""), 255);
+    if (!identifyUserId) return { record: null, reason: "missing_user_id" };
+    const identifyUserName = clampString(
+      coerceString(client.userName || ""),
+      255,
+    );
+    const identifySessionId = clampString(coerceString(client.sessionId), 128);
+    return {
+      record: {
+        kind: "identify",
+        traceId,
+        siteId,
+        visitId,
+        sessionId: identifySessionId,
+        userId: identifyUserId,
+        userName: identifyUserName,
+        receivedAt,
+      } satisfies NormalizedIdentify,
+    };
+  }
+
+  if (kind === "custom_event") {
+    if (!visitId) return { record: null, reason: "missing_visit_id" };
+    const eventName = clampString(coerceString(client.eventName), 120);
+    if (!eventName) return { record: null, reason: "missing_event_name" };
+    const eventDataResult = expandCustomEventData(client.eventData);
+    if (!eventDataResult.ok) {
+      return {
+        record: null,
+        reason: "invalid_custom_event_data",
+        detail: { error: eventDataResult.error },
+      };
+    }
+    const visit = await context.getVisitContext(siteId, visitId);
+    const sequence = Math.max(
+      0,
+      Math.floor(coerceNumber(client.sequence, 0) ?? 0),
+    );
+    const eventId = clampString(
+      coerceString(client.eventId || crypto.randomUUID()),
+      128,
+    );
+    if (!visit) {
+      const inserted = context.insertBufferedCustomEvent({
+        eventId,
+        siteId,
+        visitId,
+        occurredAt: eventAt,
+        receivedAt,
+        sequence,
+        eventName,
+        eventDataJson: eventDataResult.data.json,
+        userId: clampString(coerceString(client.userId || ""), 255),
+      });
+      if (inserted) {
+        await context.ensureAlarm();
+      }
+      logDoTrace(
+        inserted
+          ? "do_custom_event_buffered_waiting_for_visit"
+          : "do_custom_event_duplicate_waiting_for_visit",
+        {
+          traceId,
+          eventId,
+          siteId,
+          visitId,
+          eventName,
+          occurredAt: eventAt,
+          buffered: inserted,
+        },
+      );
+      return {
+        record: null,
+        reason: "waiting_for_visit",
+        detail: { eventId, eventName, buffered: inserted },
+      };
+    }
+    return {
+      record: {
+        kind: "custom_event",
+        traceId,
+        eventId,
+        sequence,
+        receivedAt,
+        eventAt,
+        eventName,
+        eventDataJson: eventDataResult.data.json,
+        siteId: visit.siteId,
+        visitId: visit.visitId,
+        visitorId: visit.visitorId,
+        sessionId: visit.sessionId,
+        startedAt: visit.startedAt,
+        pathname: visit.pathname,
+        queryString: visit.queryString,
+        hashFragment: visit.hashFragment,
+        hostname: visit.hostname,
+        title: visit.title,
+        referrerUrl: visit.referrerUrl,
+        referrerHost: visit.referrerHost,
+        utmSource: visit.utmSource,
+        utmMedium: visit.utmMedium,
+        utmCampaign: visit.utmCampaign,
+        utmTerm: visit.utmTerm,
+        utmContent: visit.utmContent,
+        isEU: visit.isEU,
+        country: visit.country,
+        region: visit.region,
+        regionCode: visit.regionCode,
+        city: visit.city,
+        continent: visit.continent,
+        latitude: visit.latitude,
+        longitude: visit.longitude,
+        postalCode: visit.postalCode,
+        metroCode: visit.metroCode,
+        timezone: visit.timezone,
+        asOrganization: visit.asOrganization,
+        uaRaw: visit.uaRaw,
+        browser: visit.browser,
+        browserVersion: visit.browserVersion,
+        os: visit.os,
+        osVersion: visit.osVersion,
+        deviceType: visit.deviceType,
+        screenWidth: visit.screenWidth,
+        screenHeight: visit.screenHeight,
+        language: visit.language,
+        userId:
+          clampString(coerceString(client.userId || ""), 255) ||
+          visit.userId ||
+          undefined,
+        userName:
+          clampString(coerceString(client.userName || ""), 255) ||
+          visit.userName ||
+          undefined,
+      } satisfies NormalizedCustomEvent,
+    };
+  }
+
+  return { record: null, reason: "unsupported_kind", detail: { kind } };
+}
