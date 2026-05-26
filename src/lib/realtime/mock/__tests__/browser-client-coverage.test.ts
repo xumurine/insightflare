@@ -14,19 +14,32 @@ import type {
   DemoVisitFact,
 } from "@/lib/realtime/mock/types";
 
-const { mockApplyDemoFilters, mockBuildDemoFactDataset } = vi.hoisted(() => ({
+const {
+  mockAggregateDimensionRowsFromVisits,
+  mockApplyDemoFilters,
+  mockBuildDemoFactDataset,
+  mockCollectReferrerRows,
+} = vi.hoisted(() => ({
+  mockAggregateDimensionRowsFromVisits: vi.fn(),
   mockApplyDemoFilters: vi.fn(),
   mockBuildDemoFactDataset: vi.fn(),
+  mockCollectReferrerRows: vi.fn(),
 }));
 
 vi.mock("@/lib/realtime/mock/fact-builder", async () => {
   const actual = await vi.importActual<typeof FactBuilder>(
     "@/lib/realtime/mock/fact-builder",
   );
+  mockAggregateDimensionRowsFromVisits.mockImplementation(
+    actual.aggregateDimensionRowsFromVisits,
+  );
+  mockCollectReferrerRows.mockImplementation(actual.collectReferrerRows);
   return {
     ...actual,
+    aggregateDimensionRowsFromVisits: mockAggregateDimensionRowsFromVisits,
     applyDemoFilters: mockApplyDemoFilters,
     buildDemoFactDataset: mockBuildDemoFactDataset,
+    collectReferrerRows: mockCollectReferrerRows,
   };
 });
 
@@ -37,8 +50,10 @@ describe("browser-client mock coverage", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(BASE_TIME);
+    mockAggregateDimensionRowsFromVisits.mockClear();
     mockApplyDemoFilters.mockReset();
     mockBuildDemoFactDataset.mockReset();
+    mockCollectReferrerRows.mockClear();
   });
 
   afterEach(() => {
@@ -380,6 +395,159 @@ describe("browser-client mock coverage", () => {
       data: [],
     });
   });
+
+  it("covers browser radar zero-aggregation metrics, global frequency fallback, and blank labels", () => {
+    const paddedBrowserVisit = makeVisit({
+      visitId: "padded-browser",
+      sessionId: "s1",
+      visitorId: "u1",
+      browser: " Chrome ",
+      durationMs: 5000,
+    });
+    setFacts([paddedBrowserVisit]);
+    mockApplyDemoFilters.mockReturnValue({
+      visits: [paddedBrowserVisit],
+      sessions: new Set(["s1", "s2"]),
+      visitors: new Set(),
+      visitsBySession: new Map([["s1", 1]]),
+    });
+
+    expect(generateDemoBrowserRadar(SITE_ID, {})).toMatchObject({
+      ok: true,
+      data: [
+        expect.objectContaining({
+          browser: "Chrome",
+          metrics: expect.objectContaining({
+            duration: 0,
+            engagement: 0,
+            depth: 0,
+            loyalty: 0,
+            frequency: demoRadarFrequency("Chrome"),
+            traffic: 1,
+          }),
+        }),
+      ],
+    });
+
+    setFacts([
+      makeVisit({ visitId: "empty-browser", browser: "" }),
+      makeVisit({
+        visitId: "blank-browser",
+        sessionId: "s2",
+        visitorId: "u2",
+        browser: "   ",
+      }),
+    ]);
+
+    expect(generateDemoBrowserRadar(SITE_ID, {})).toEqual({
+      ok: true,
+      data: [],
+    });
+  });
+
+  it("covers referrer radar zero-aggregation metrics, global frequency fallback, and blank labels", () => {
+    const unmatchedVisit = makeVisit({
+      visitId: "unmatched-referrer",
+      sessionId: "s1",
+      visitorId: "u1",
+      referrerHost: "other.example",
+      durationMs: 5000,
+    });
+    setFacts([unmatchedVisit]);
+    mockApplyDemoFilters.mockReturnValue({
+      visits: [unmatchedVisit],
+      sessions: new Set(["s1", "s2"]),
+      visitors: new Set(),
+      visitsBySession: new Map([["s1", 1]]),
+    });
+    mockCollectReferrerRows.mockImplementationOnce(() => [
+      {
+        referrer: "search.example",
+        views: 1,
+        sessions: 1,
+        visitors: 1,
+      },
+    ]);
+
+    expect(generateDemoReferrerRadar(SITE_ID, {})).toMatchObject({
+      ok: true,
+      data: [
+        expect.objectContaining({
+          referrer: "search.example",
+          metrics: expect.objectContaining({
+            duration: 0,
+            engagement: 0,
+            depth: 0,
+            loyalty: 0,
+            frequency: demoRadarFrequency("search.example"),
+            traffic: 1,
+          }),
+        }),
+      ],
+    });
+
+    setFacts([
+      makeVisit({ visitId: "empty-referrer", referrerHost: "" }),
+      makeVisit({
+        visitId: "blank-referrer",
+        sessionId: "s2",
+        visitorId: "u2",
+        referrerHost: "   ",
+      }),
+    ]);
+
+    expect(generateDemoReferrerRadar(SITE_ID, {})).toEqual({
+      ok: true,
+      data: [],
+    });
+  });
+
+  it("keeps radar traffic at zero when mocked dimension totals collapse to zero", () => {
+    setFacts([
+      makeVisit({
+        visitId: "traffic-browser",
+        browser: "Chrome",
+        referrerHost: "search.example",
+      }),
+    ]);
+    mockAggregateDimensionRowsFromVisits.mockImplementationOnce(() => [
+      {
+        label: "Chrome",
+        views: 1,
+        sessions: 1,
+        visitors: positiveForFilterThenZero(),
+      },
+    ]);
+
+    expect(generateDemoBrowserRadar(SITE_ID, {})).toMatchObject({
+      ok: true,
+      data: [
+        expect.objectContaining({
+          browser: "Chrome",
+          metrics: expect.objectContaining({ traffic: 0 }),
+        }),
+      ],
+    });
+
+    mockCollectReferrerRows.mockImplementationOnce(() => [
+      {
+        referrer: "search.example",
+        views: 1,
+        sessions: 1,
+        visitors: positiveForFilterThenZero(),
+      },
+    ]);
+
+    expect(generateDemoReferrerRadar(SITE_ID, {})).toMatchObject({
+      ok: true,
+      data: [
+        expect.objectContaining({
+          referrer: "search.example",
+          metrics: expect.objectContaining({ traffic: 0 }),
+        }),
+      ],
+    });
+  });
 });
 
 function setFacts(visits: DemoVisitFact[]): DemoFactDataset {
@@ -436,6 +604,24 @@ function makeFiltered(visits: DemoVisitFact[]): DemoFilteredFacts {
   }
 
   return { visits, sessions, visitors, visitsBySession };
+}
+
+function demoRadarFrequency(label: string): number {
+  let nameHash = 0;
+  for (let index = 0; index < label.length; index += 1) {
+    nameHash = ((nameHash << 5) - nameHash + label.charCodeAt(index)) | 0;
+  }
+  return 0.75 + (Math.abs(nameHash) % 100) / 200;
+}
+
+function positiveForFilterThenZero(): number {
+  let calls = 0;
+  return {
+    valueOf: () => {
+      calls += 1;
+      return calls === 1 ? 1 : 0;
+    },
+  } as unknown as number;
 }
 
 function makeVisit(overrides: Partial<DemoVisitFact> = {}): DemoVisitFact {

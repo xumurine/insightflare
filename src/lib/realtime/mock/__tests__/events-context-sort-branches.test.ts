@@ -162,6 +162,95 @@ describe("mock/events-context branch behavior", () => {
     ]);
   });
 
+  it("skips null labels and sparse geo values while falling back to generated geo labels", () => {
+    const dataset = makeDataset();
+    expect(
+      demoEventDimensionRows(
+        dataset,
+        [makeEvent("null-label", "click", 100)],
+        10,
+        () => null as never,
+      ),
+    ).toEqual([]);
+
+    const cards = demoEventContextCards(
+      dataset,
+      [
+        makeEvent(
+          "empty-geo",
+          "signup",
+          100,
+          makeVisit({
+            country: null as never,
+            regionCode: "",
+            regionName: "",
+            region: "",
+            cityName: "",
+            city: "Austin",
+          }),
+        ),
+        makeEvent(
+          "blank-region-label",
+          "signup",
+          200,
+          makeVisit({
+            country: "US",
+            regionCode: "CA",
+            regionName: "",
+            region: "   ",
+            cityName: "",
+            city: "   ",
+          }),
+        ),
+        makeEvent(
+          "city-name-only",
+          "signup",
+          300,
+          makeVisit({
+            country: "",
+            regionCode: "",
+            regionName: "",
+            region: "",
+            cityName: "Austin",
+            city: "",
+          }),
+        ),
+      ],
+      10,
+    );
+
+    expect(cards.geo.country).toEqual([
+      { value: "US", label: "US", views: 1, sessions: 1, visitors: 1 },
+    ]);
+    expect(cards.geo.region).toEqual([
+      {
+        value: "US::CA::CA",
+        label: "US::CA::CA",
+        views: 1,
+        sessions: 1,
+        visitors: 1,
+      },
+    ]);
+    expect(cards.geo.city).toEqual(
+      expect.arrayContaining([
+        {
+          value: "::::::Austin",
+          label: "Austin",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
+        },
+        {
+          value: "US::CA::CA::",
+          label: "US::CA::CA::",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
+        },
+      ]),
+    );
+  });
+
   it("builds context cards with page/session fallbacks and geo value fallbacks", () => {
     const dataset = makeDataset({
       sessions: [["known-session", 1]],
