@@ -386,6 +386,30 @@ describe("admin handler low branches", () => {
     });
   });
 
+  it("rejects short replacement passwords when admins update users", async () => {
+    byIdMock.mockResolvedValueOnce(actor.user);
+    const usernameConflict = statement({ first: null });
+    const emailConflict = statement({ first: null });
+    const updateUser = statement();
+    const env = createEnv([usernameConflict, emailConflict, updateUser]);
+
+    const response = await handleUsersAdmin(
+      request(
+        "/admin/users",
+        jsonInit({ userId: "target-1", password: "short" }, "PATCH"),
+      ),
+      env.env,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(jsonOf(response)).resolves.toEqual({
+      ok: false,
+      error: "Password must be at least 8 characters",
+    });
+    expect(env.prepare).not.toHaveBeenCalled();
+    expect(hashPasswordMock).not.toHaveBeenCalled();
+  });
+
   it("handles team create slugs, transfer ownership authorization, and no-op delete cleanup", async () => {
     const uuidSpy = vi
       .spyOn(crypto, "randomUUID")

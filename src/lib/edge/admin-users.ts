@@ -150,6 +150,8 @@ export async function handleUsersAdmin(
       return bad("Invalid username");
     if (email.length < 3 || !email.includes("@"))
       return bad("A valid email is required");
+    if (password.length > 0 && password.length < 8)
+      return bad("Password must be at least 8 characters");
     if (
       await env.DB.prepare(
         "SELECT 1 AS ok FROM users WHERE lower(username)=? AND id<>? LIMIT 1",
