@@ -10,7 +10,10 @@ import {
   getDemoTeams,
   getDemoUser,
 } from "@/lib/realtime/mock/admin";
-import { generateDemoPerformance } from "@/lib/realtime/mock/analytics-performance";
+import {
+  generateDemoPerformance,
+  summarizeDemoJourneyPerformance,
+} from "@/lib/realtime/mock/analytics-performance";
 import {
   generateDemoBrowserRadar,
   generateDemoReferrerRadar,
@@ -136,6 +139,27 @@ describe("mock remaining generator coverage", () => {
         0,
       ),
     );
+  });
+
+  it("builds script snippets from an explicit edge URL without a trailing slash", () => {
+    const previousEdgeUrl = process.env.NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL;
+    process.env.NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL =
+      "https://edge.example.test/";
+
+    try {
+      expect(getDemoScriptSnippet("site/with space")).toEqual({
+        siteId: "site/with space",
+        src: "https://edge.example.test/script.js?siteId=site%2Fwith%20space",
+        snippet:
+          '<script defer src="https://edge.example.test/script.js?siteId=site%2Fwith%20space"></script>',
+      });
+    } finally {
+      if (previousEdgeUrl === undefined) {
+        delete process.env.NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL;
+      } else {
+        process.env.NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL = previousEdgeUrl;
+      }
+    }
   });
 
   it("builds filter option branches from page, referrer, client, and geo tabs", () => {
@@ -353,6 +377,25 @@ describe("mock remaining generator coverage", () => {
     );
   });
 
+  it("labels sparse geo filter options with segment fallbacks", () => {
+    setFacts([
+      makeVisit({
+        visitId: "sparse-geo",
+        region: "US::CA",
+        city: "US",
+      }),
+    ]);
+
+    expect(
+      generateDemoFilterOptions(SITE_ID, { filterKey: "geo" }).data,
+    ).toEqual(
+      expect.arrayContaining([
+        { value: "US", label: "US", group: "country" },
+        { value: "US::CA", label: "CA", group: "region" },
+      ]),
+    );
+  });
+
   it("computes browser and referrer radar metrics and empty branches", () => {
     setFacts([]);
     expect(generateDemoBrowserRadar(SITE_ID, {})).toEqual({
@@ -415,6 +458,45 @@ describe("mock remaining generator coverage", () => {
           }),
         }),
       ],
+    });
+  });
+
+  it("computes radar loyalty and direct-referrer rows", () => {
+    setFacts([
+      makeVisit({
+        visitId: "returning-1",
+        sessionId: "s1",
+        visitorId: "u1",
+        browser: "Chrome",
+        referrerHost: "",
+        durationMs: -500,
+      }),
+      makeVisit({
+        visitId: "returning-2",
+        sessionId: "s2",
+        visitorId: "u1",
+        startedAt: BASE_TIME + 1_000,
+        browser: "Chrome",
+        referrerHost: "",
+      }),
+    ]);
+
+    expect(generateDemoBrowserRadar(SITE_ID, {})).toMatchObject({
+      ok: true,
+      data: [
+        expect.objectContaining({
+          browser: "Chrome",
+          metrics: expect.objectContaining({
+            duration: 500,
+            engagement: 0,
+            loyalty: 1,
+          }),
+        }),
+      ],
+    });
+    expect(generateDemoReferrerRadar(SITE_ID, {})).toEqual({
+      ok: true,
+      data: [],
     });
   });
 
@@ -492,6 +574,33 @@ describe("mock remaining generator coverage", () => {
         to: BASE_TIME + 1,
       }),
     ).toEqual({ ok: true, interval: "day", series: [], data: [] });
+  });
+
+  it("builds non-source UTM dimensions from medium, term, and content pools", () => {
+    setFacts([
+      makeVisit({ visitId: "a", sessionId: "s1", visitorId: "u1" }),
+      makeVisit({ visitId: "b", sessionId: "s2", visitorId: "u2" }),
+      makeVisit({ visitId: "c", sessionId: "s3", visitorId: "u3" }),
+    ]);
+
+    for (const tab of ["medium", "term", "content"] as const) {
+      const result = generateDemoUtmDimension(SITE_ID, tab, {
+        from: BASE_TIME,
+        to: BASE_TIME + 3_600_000,
+        limit: 3,
+      });
+
+      expect(result).toMatchObject({
+        ok: true,
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            value: expect.any(String),
+            views: expect.any(Number),
+            sessions: expect.any(Number),
+          }),
+        ]),
+      });
+    }
   });
 
   it("returns overview tab wrappers for page, source, client, geo, and map points", () => {
@@ -585,6 +694,64 @@ describe("mock remaining generator coverage", () => {
         expect.objectContaining({ label: "San Francisco" }),
         expect.objectContaining({ label: "Berlin" }),
       ]),
+    });
+  });
+
+  it("returns geo point region drilldowns and ignores geo filters by default", () => {
+    setFacts([
+      makeVisit({
+        visitId: "sf",
+        sessionId: "s1",
+        visitorId: "u1",
+        country: "US",
+        region: "US::CA::California",
+        city: "US::CA::California::San Francisco",
+      }),
+      makeVisit({
+        visitId: "ny",
+        sessionId: "s2",
+        visitorId: "u2",
+        startedAt: BASE_TIME + 1_000,
+        country: "US",
+        region: "US::NY::New York",
+        city: "US::NY::New York::New York",
+      }),
+    ]);
+
+    const unfilteredResult = generateDemoGeoPoints(SITE_ID, {
+      limit: 50,
+      applyGeoFilter: "false",
+      geo: "US",
+    });
+    expect(mockApplyDemoFilters).toHaveBeenLastCalledWith(
+      expect.any(Object),
+      expect.not.objectContaining({ geo: expect.any(String) }),
+    );
+    expect(unfilteredResult).toMatchObject({
+      ok: true,
+      regionCounts: [],
+      cityCounts: [],
+    });
+
+    const result = generateDemoGeoPoints(SITE_ID, {
+      limit: 50,
+      applyGeoFilter: "true",
+      geo: "US",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      regionCounts: expect.arrayContaining([
+        expect.objectContaining({
+          value: "US::CA::California",
+          label: "California",
+        }),
+        expect.objectContaining({
+          value: "US::NY::New York",
+          label: "New York",
+        }),
+      ]),
+      cityCounts: [],
     });
   });
 
@@ -690,6 +857,32 @@ describe("mock remaining generator coverage", () => {
         expect.objectContaining({ samples: 2 }),
         expect.objectContaining({ samples: 0 }),
       ],
+    });
+  });
+
+  it("returns null performance aggregates when no samples are available", () => {
+    setFacts([]);
+
+    expect(summarizeDemoJourneyPerformance(SITE_ID, [])).toMatchObject({
+      ttfb: { avg: null, p75: null, min: null, max: null, samples: 0 },
+      cls: { avg: null, p75: null, min: null, max: null, samples: 0 },
+    });
+
+    const result = generateDemoPerformance(SITE_ID, {
+      from: BASE_TIME,
+      to: BASE_TIME + 3_600_000,
+      interval: "hour",
+      timeZone: "UTC",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      summaries: {
+        ttfb: { avg: null, p50: null, p75: null, p95: null, samples: 0 },
+        cls: { avg: null, p50: null, p75: null, p95: null, samples: 0 },
+      },
+      routes: [],
+      countries: [],
     });
   });
 

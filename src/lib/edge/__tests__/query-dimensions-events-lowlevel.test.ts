@@ -10,12 +10,17 @@ import {
   queryOverviewClientDimensionsFromD1,
   queryOverviewGeoDimensionsFromD1,
   queryPageTabsFromD1,
+  queryReferrersFromD1,
   querySessionBoundaryDimensionFromD1,
   querySessionPathDimensionFromD1,
+  queryVisitDimensionFromD1,
 } from "@/lib/edge/query/dimensions";
 import {
   handleEventRecordDetail,
   handleEventsRecords,
+  handleEventsSummary,
+  handleEventsTrend,
+  handleEventTypeDetail,
   handleEventTypeFieldValues,
   handleEventTypes,
 } from "@/lib/edge/query/events";
@@ -131,6 +136,31 @@ function eventRecord(overrides: Partial<EventRecordRow> = {}): EventRecordRow {
 }
 
 describe("edge query dimensions low-level coverage", () => {
+  it("normalizes sparse visit dimension and referrer aggregate rows", async () => {
+    const { env, calls } = createD1Env([
+      [{ value: null, views: undefined, sessions: null, visitors: undefined }],
+      [
+        {
+          referrer: null,
+          views: undefined,
+          sessions: null,
+          visitors: undefined,
+        },
+      ],
+    ]);
+
+    await expect(
+      queryVisitDimensionFromD1(env, siteId, window, {}, 2, "country"),
+    ).resolves.toEqual([{ value: "", views: 0, sessions: 0, visitors: 0 }]);
+    await expect(
+      queryReferrersFromD1(env, siteId, window, {}, 3, false),
+    ).resolves.toEqual([{ referrer: "", views: 0, sessions: 0, visitors: 0 }]);
+
+    expect(calls[0].bindings).toEqual([...visitBindings(), 2]);
+    expect(calls[1].sql).toContain("COALESCE(referrer_host, '') AS referrer");
+    expect(calls[1].bindings).toEqual([...visitBindings(), 3]);
+  });
+
   it("queries session path dimensions in both sort directions and maps fallback row values", async () => {
     const filters: DashboardFilters = { browser: "Chrome" };
     const { env, calls } = createD1Env([
@@ -217,6 +247,7 @@ describe("edge query dimensions low-level coverage", () => {
   it("normalizes client and geo dimensions with missing row values", async () => {
     const { env, calls } = createD1Env([
       [
+        {},
         {
           sessionId: "session-1",
           browser: null,
@@ -239,6 +270,7 @@ describe("edge query dimensions low-level coverage", () => {
         },
       ],
       [
+        {},
         {
           sessionId: "session-1",
           visitorId: "visitor-1",
@@ -412,6 +444,112 @@ describe("edge query event fields and records low-level coverage", () => {
 });
 
 describe("edge query event handlers low-level coverage", () => {
+  it("rejects event handler requests with missing identifiers or invalid windows", async () => {
+    const { env, prepare } = createD1Env([]);
+
+    const invalidTypes = await handleEventTypes(
+      env,
+      siteId,
+      new URL("https://edge.test/event-types?from=20&to=10"),
+    );
+    const invalidSummary = await handleEventsSummary(
+      env,
+      siteId,
+      new URL("https://edge.test/events-summary?from=20&to=10"),
+    );
+    const invalidTrend = await handleEventsTrend(
+      env,
+      siteId,
+      new URL("https://edge.test/events-trend?from=20&to=10"),
+    );
+    const missingDetailName = await handleEventTypeDetail(
+      env,
+      siteId,
+      url("/event-type-detail", {
+        from: window.fromMs,
+        to: window.toMs,
+      }),
+    );
+    const invalidDetailWindow = await handleEventTypeDetail(
+      env,
+      siteId,
+      url("/event-type-detail", { eventName: "Signup", from: 20, to: 10 }),
+    );
+    const missingFieldName = await handleEventTypeFieldValues(
+      env,
+      siteId,
+      url("/event-field-values", {
+        fieldPath: "/paid",
+        fieldValueType: "boolean",
+        from: window.fromMs,
+        to: window.toMs,
+      }),
+    );
+    const missingFieldPath = await handleEventTypeFieldValues(
+      env,
+      siteId,
+      url("/event-field-values", {
+        eventName: "Signup",
+        fieldValueType: "boolean",
+        from: window.fromMs,
+        to: window.toMs,
+      }),
+    );
+    const missingFieldType = await handleEventTypeFieldValues(
+      env,
+      siteId,
+      url("/event-field-values", {
+        eventName: "Signup",
+        fieldPath: "/paid",
+        from: window.fromMs,
+        to: window.toMs,
+      }),
+    );
+    const missingEventId = await handleEventRecordDetail(
+      env,
+      siteId,
+      new URL("https://edge.test/event-detail"),
+    );
+
+    await expect(invalidTypes.json()).resolves.toEqual({
+      ok: false,
+      error: "Invalid time window",
+    });
+    await expect(invalidSummary.json()).resolves.toEqual({
+      ok: false,
+      error: "Invalid time window",
+    });
+    await expect(invalidTrend.json()).resolves.toEqual({
+      ok: false,
+      error: "Invalid time window",
+    });
+    await expect(missingDetailName.json()).resolves.toEqual({
+      ok: false,
+      error: "eventName is required",
+    });
+    await expect(invalidDetailWindow.json()).resolves.toEqual({
+      ok: false,
+      error: "Invalid time window",
+    });
+    await expect(missingFieldName.json()).resolves.toEqual({
+      ok: false,
+      error: "eventName is required",
+    });
+    await expect(missingFieldPath.json()).resolves.toEqual({
+      ok: false,
+      error: "fieldPath is required",
+    });
+    await expect(missingFieldType.json()).resolves.toEqual({
+      ok: false,
+      error: "fieldValueType is required",
+    });
+    await expect(missingEventId.json()).resolves.toEqual({
+      ok: false,
+      error: "eventId is required",
+    });
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
   it("maps event types from D1 rows", async () => {
     const { env, calls } = createD1Env([
       [{ value: "Signup", views: "6", sessions: "3", visitors: "2" }],
@@ -478,6 +616,69 @@ describe("edge query event handlers low-level coverage", () => {
       2,
       1,
     ]);
+  });
+
+  it("maps event summaries and final event record pages without more rows", async () => {
+    const { env } = createD1Env([
+      [
+        {
+          events: null,
+          eventTypes: undefined,
+          sessions: 4,
+          visitors: null,
+        },
+      ],
+      [],
+      [],
+      [],
+      [],
+      [eventRecord({ eventId: "evt-final" })],
+    ]);
+
+    const summary = await handleEventsSummary(
+      env,
+      siteId,
+      url("/events-summary", {
+        from: window.fromMs,
+        to: window.toMs,
+      }),
+    );
+    const records = await handleEventsRecords(
+      env,
+      siteId,
+      url("/events-records", {
+        from: window.fromMs,
+        to: window.toMs,
+        page: 1,
+        pageSize: 2,
+      }),
+    );
+
+    await expect(summary.json()).resolves.toMatchObject({
+      ok: true,
+      summary: {
+        events: 0,
+        eventTypes: 0,
+        sessions: 4,
+        visitors: 0,
+        avgEventsPerSession: 0,
+      },
+      cards: {
+        event: { name: [] },
+        page: { path: [], title: [], hostname: [] },
+      },
+    });
+    await expect(records.json()).resolves.toMatchObject({
+      ok: true,
+      data: [{ eventId: "evt-final", eventName: "Signup" }],
+      meta: {
+        page: 1,
+        pageSize: 2,
+        returned: 1,
+        hasMore: false,
+        nextPage: null,
+      },
+    });
   });
 
   it("returns event field values and event detail handler payloads", async () => {

@@ -5,6 +5,7 @@ import {
   averageGapMs,
   buildJourneySearchSql,
   detailTargetColumn,
+  directionSql,
   emptyJourneyPerformanceSummary,
   mapGeoPointRow,
   mapJourneyEventRow,
@@ -247,6 +248,18 @@ describe("journey SQL helpers", () => {
     expect(buildJourneySearchSql("   ")).toBeNull();
   });
 
+  it("builds unaliased search SQL and escapes direct traffic search terms", () => {
+    const search = buildJourneySearchSql(" Direct_100% ");
+
+    expect(search?.condition).toContain("visitor_id");
+    expect(search?.condition).not.toContain("fv.visitor_id");
+    expect(search?.condition).toContain(
+      "CASE WHEN TRIM(COALESCE(referrer_host, '')) = ''",
+    );
+    expect(search?.bindings).toHaveLength(21);
+    expect(new Set(search?.bindings)).toEqual(new Set(["%direct\\_100\\%%"]));
+  });
+
   it("builds target where clauses without losing existing filters", () => {
     expect(
       whereClauseWithTarget("WHERE country = ?", {
@@ -275,6 +288,8 @@ describe("journey SQL helpers", () => {
     expect(sessionListOrderBy({ key: "views", direction: "desc" })).toBe(
       "views DESC, startedAt DESC, sessionId ASC",
     );
+    expect(directionSql("asc")).toBe("ASC");
+    expect(directionSql("desc")).toBe("DESC");
     expect(detailTargetColumn({ type: "visitor", value: "v1" })).toBe(
       "visitor_id",
     );
@@ -352,6 +367,26 @@ describe("session timeline helper events", () => {
     });
   });
 
+  it("creates session leave events from session metadata when no page events exist", () => {
+    expect(
+      sessionLeaveEvent(
+        session({
+          exitPath: " ",
+          entryPath: "/entry-fallback",
+          endedAt: 1_700_000_030_000,
+        }),
+        [event({ kind: "custom", eventType: "signup", pathname: "/signup" })],
+      ),
+    ).toMatchObject({
+      id: "session-leave:session-1",
+      kind: "leave",
+      occurredAt: 1_700_000_030_000,
+      visitId: "",
+      pathname: "/entry-fallback",
+      referrerHost: "ref.example",
+    });
+  });
+
   it("omits leave events for active sessions, invalid end times, and empty paths", () => {
     expect(sessionLeaveEvent(session({ active: true }), [])).toBeNull();
     expect(sessionLeaveEvent(session({ endedAt: 0 }), [])).toBeNull();
@@ -379,6 +414,27 @@ describe("journey summaries", () => {
       { pathname: "/", views: 1 },
       { pathname: "/alpha", views: 1 },
     ]);
+  });
+
+  it("limits visited page and event distribution summaries to top fifty rows", () => {
+    const events = Array.from({ length: 55 }, (_, index) =>
+      event({
+        id: `event-${index}`,
+        eventType: `event-${String(index).padStart(2, "0")}`,
+        pathname: `/page-${String(index).padStart(2, "0")}`,
+      }),
+    );
+
+    expect(summarizeVisitedPages(events)).toHaveLength(50);
+    expect(summarizeVisitedPages(events).at(0)).toEqual({
+      pathname: "/page-00",
+      views: 1,
+    });
+    expect(summarizeEventDistribution(events)).toHaveLength(50);
+    expect(summarizeEventDistribution(events).at(-1)).toEqual({
+      eventType: "event-49",
+      count: 1,
+    });
   });
 
   it("summarizes event distribution with fallback labels and stable sorting", () => {
@@ -460,6 +516,7 @@ describe("journey summaries", () => {
 describe("journey numeric helpers", () => {
   it("normalizes nullable numbers, coordinates, and session durations", () => {
     expect(nullableNumber("120")).toBe(120);
+    expect(nullableNumber(undefined)).toBeNull();
     expect(nullableNumber("0")).toBeNull();
     expect(nullableNumber("-1")).toBeNull();
     expect(nullableNumber(Number.NaN)).toBeNull();
@@ -469,6 +526,9 @@ describe("journey numeric helpers", () => {
 
     expect(sessionDurationMs(100, 250, 10, false)).toBe(150);
     expect(sessionDurationMs(100, 250, 99.6, true)).toBe(100);
+    expect(sessionDurationMs(100, 250, Number.POSITIVE_INFINITY, true)).toBe(
+      150,
+    );
     expect(sessionDurationMs(250, 100, -10, false)).toBe(0);
   });
 

@@ -145,6 +145,26 @@ describe("edge pages D1 queries", () => {
     expect(calls[0].bindings).toEqual([...visitBindings(), 5]);
   });
 
+  it("normalizes sparse top page rows", async () => {
+    const { env } = createD1Env([
+      [
+        {
+          pathname: null,
+          queryValue: undefined,
+          hashValue: null,
+          views: undefined,
+          sessions: null,
+        },
+      ],
+    ]);
+
+    await expect(
+      queryTopPagesFromD1(env, siteId, window, 1, true, {}),
+    ).resolves.toEqual([
+      { pathname: "", query: "", hash: "", views: 0, sessions: 0 },
+    ]);
+  });
+
   it("dedupes page card path filters, applies pagination, and maps aggregate rows", async () => {
     const { env, calls } = createD1Env([
       [
@@ -194,6 +214,38 @@ describe("edge pages D1 queries", () => {
       10,
       0,
     ]);
+  });
+
+  it("maps sparse page card rows without pagination options", async () => {
+    const { env, calls } = createD1Env([
+      [
+        {
+          pathname: null,
+          views: undefined,
+          sessions: null,
+          visitors: undefined,
+          bounces: null,
+          totalDuration: undefined,
+          durationViews: null,
+        },
+      ],
+    ]);
+
+    await expect(
+      queryPageCardMetricsFromD1(env, siteId, window, {}, undefined),
+    ).resolves.toEqual([
+      {
+        pathname: "",
+        views: 0,
+        sessions: 0,
+        visitors: 0,
+        bounces: 0,
+        totalDuration: 0,
+        durationViews: 0,
+      },
+    ]);
+    expect(calls[0].sql).not.toContain("LIMIT ? OFFSET ?");
+    expect(calls[0].bindings).toEqual(visitBindings());
   });
 
   it("returns empty title and trend queries without touching D1 when pathnames are empty", async () => {
@@ -271,6 +323,41 @@ describe("edge pages D1 queries", () => {
       ...visitBindings(),
       "desktop",
       "/pricing",
+    ]);
+  });
+
+  it("normalizes sparse page card title and trend rows", async () => {
+    const { env } = createD1Env([
+      [
+        {
+          pathname: null,
+          title: undefined,
+          views: null,
+        },
+      ],
+      [
+        {
+          pathname: null,
+          bucket: null,
+          views: undefined,
+          visitors: null,
+        },
+      ],
+    ]);
+
+    await expect(
+      queryPageCardTitlesFromD1(env, siteId, window, {}, ["/pricing"], 3),
+    ).resolves.toEqual([{ pathname: "", title: "", views: 0 }]);
+    await expect(
+      queryPageCardTrendFromD1(env, siteId, window, "hour", {}, ["/pricing"]),
+    ).resolves.toEqual([
+      {
+        pathname: "",
+        bucket: 0,
+        timestampMs: Date.UTC(2026, 0, 2, 1),
+        views: 0,
+        visitors: 0,
+      },
     ]);
   });
 });

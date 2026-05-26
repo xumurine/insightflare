@@ -276,6 +276,23 @@ describe("edge journey detail D1 queries", () => {
     ]);
   });
 
+  it("returns null visitor detail without consuming session or event rows", async () => {
+    const { env, calls } = createD1Env([
+      [],
+      [sessionRow()],
+      [journeyEventRow()],
+    ]);
+
+    await expect(
+      queryVisitorDetailFromD1(env, siteId, "visitor-missing", "UTC"),
+    ).resolves.toBeNull();
+
+    expect(calls).toHaveLength(3);
+    expect(calls.every((call) => call.bindings[1] === "visitor-missing")).toBe(
+      true,
+    );
+  });
+
   it("returns session detail with synthetic start and leave events", async () => {
     const { env } = createD1Env([
       [sessionRow()],
@@ -335,6 +352,31 @@ describe("edge journey detail D1 queries", () => {
     await expect(
       querySessionDetailFromD1(env, siteId, "session-missing"),
     ).resolves.toBeNull();
+  });
+
+  it("omits leave events for active session detail rows", async () => {
+    const { env } = createD1Env([
+      [
+        sessionRow({
+          active: 1,
+          endedAt: baseMs + 60_000,
+          exitPath: "/still-open",
+        }),
+      ],
+      [journeyEventRow()],
+      [],
+    ]);
+
+    const detail = await querySessionDetailFromD1(env, siteId, "session-1");
+
+    expect(detail?.events.map((event) => event.kind)).toEqual([
+      "pageview",
+      "session_start",
+    ]);
+    expect(detail?.eventDistribution).toEqual([
+      { eventType: "pageview", count: 1 },
+      { eventType: "session start", count: 1 },
+    ]);
   });
 
   it("maps direct detail query rows for sessions, events, and location points", async () => {
@@ -627,6 +669,74 @@ describe("edge journey geo D1 queries", () => {
       "GROUP BY country, regionCode, region, city",
     );
   });
+
+  it("falls back to region names when building geo aggregate values", async () => {
+    const window = queryWindow();
+    const regionEnv = createD1Env([
+      [],
+      [
+        {
+          country: "ca",
+          regionCode: "",
+          region: "Ontario",
+          views: "4",
+          sessions: "2",
+          visitors: "1",
+        },
+      ],
+    ]);
+
+    await expect(
+      queryGeoPointsFromD1(regionEnv.env, siteId, window, { geo: "CA" }, 10),
+    ).resolves.toMatchObject({
+      regionCounts: [
+        {
+          value: "CA::ONTARIO::Ontario",
+          label: "Ontario",
+          views: 4,
+          sessions: 2,
+          visitors: 1,
+        },
+      ],
+      cityCounts: [],
+    });
+
+    const cityEnv = createD1Env([
+      [],
+      [
+        {
+          country: "ca",
+          regionCode: "",
+          region: "",
+          city: "Toronto",
+          views: "7",
+          sessions: "3",
+          visitors: "2",
+        },
+      ],
+    ]);
+
+    await expect(
+      queryGeoPointsFromD1(
+        cityEnv.env,
+        siteId,
+        window,
+        { geo: "CA::ON::Ontario" },
+        10,
+      ),
+    ).resolves.toMatchObject({
+      regionCounts: [],
+      cityCounts: [
+        {
+          value: "CA::Toronto",
+          label: "Toronto",
+          views: 7,
+          sessions: 3,
+          visitors: 2,
+        },
+      ],
+    });
+  });
 });
 
 describe("edge journey handlers", () => {
@@ -697,6 +807,71 @@ describe("edge journey handlers", () => {
     });
     expect(calls[0].bindings.at(-2)).toBe(3);
     expect(calls[0].bindings.at(-1)).toBe(0);
+  });
+
+  it("paginates sessions and trims the extra hasMore row", async () => {
+    const window = queryWindow();
+    const { env, calls } = createD1Env([
+      [
+        sessionRow({ sessionId: "session-1" }),
+        sessionRow({ sessionId: "session-2" }),
+      ],
+    ]);
+
+    const response = await handleSessions(
+      env,
+      siteId,
+      url("/sessions", {
+        from: window.fromMs,
+        to: window.toMs,
+        page: 1,
+        pageSize: 1,
+        sortBy: "views",
+        sortDir: "asc",
+      }),
+    );
+
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      data: [{ sessionId: "session-1" }],
+      meta: {
+        page: 1,
+        pageSize: 1,
+        returned: 1,
+        hasMore: true,
+        nextPage: 2,
+      },
+    });
+    expect(calls[0].sql).toContain("ORDER BY views ASC");
+    expect(calls[0].bindings.at(-2)).toBe(2);
+    expect(calls[0].bindings.at(-1)).toBe(0);
+  });
+
+  it("rejects invalid list windows before querying D1", async () => {
+    const { env, calls } = createD1Env([]);
+
+    const visitors = await handleVisitors(
+      env,
+      siteId,
+      new URL("https://edge.test/visitors?from=20&to=10"),
+    );
+    const sessions = await handleSessions(
+      env,
+      siteId,
+      new URL("https://edge.test/sessions?from=20&to=10"),
+    );
+
+    expect(visitors.status).toBe(400);
+    expect(sessions.status).toBe(400);
+    await expect(visitors.json()).resolves.toEqual({
+      ok: false,
+      error: "Invalid time window",
+    });
+    await expect(sessions.json()).resolves.toEqual({
+      ok: false,
+      error: "Invalid time window",
+    });
+    expect(calls).toEqual([]);
   });
 
   it("validates missing detail ids before querying D1", async () => {
