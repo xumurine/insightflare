@@ -63,4 +63,42 @@ describe("edge query event type overview branch coverage", () => {
       },
     });
   });
+
+  it("normalizes nullable event overview metrics to zero", async () => {
+    queryD1AllMock
+      .mockResolvedValueOnce([
+        { events: null, eventTypes: 2, sessions: 1, visitors: 1 },
+      ])
+      .mockResolvedValueOnce([
+        {
+          events: null,
+          eventTypes: null,
+          sessions: null,
+          visitors: null,
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await expect(
+      queryEventTypeOverviewFromD1(env, siteId, window, {}, "signup"),
+    ).resolves.toEqual({
+      summary: {
+        events: 0,
+        eventTypes: 0,
+        sessions: 0,
+        visitors: 0,
+        avgEventsPerSession: 0,
+        shareOfAllEvents: 0,
+      },
+      breakdowns: {
+        pages: [],
+        countries: [],
+        devices: [],
+        browsers: [],
+      },
+    });
+  });
 });

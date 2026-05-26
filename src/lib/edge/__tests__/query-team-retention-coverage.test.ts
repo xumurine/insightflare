@@ -462,4 +462,59 @@ describe("edge journey retention coverage", () => {
     expect(calls[0].sql).toContain("MIN(bucket) AS cohort_bucket");
     expect(calls[0].bindings).toEqual([...visitBindings(), "us"]);
   });
+
+  it("accepts interval as granularity and normalizes sparse cohort rows", async () => {
+    const { env } = createD1Env([
+      [
+        { cohortBucket: null, visitBucket: undefined, visitors: null },
+        { cohortBucket: 3, visitBucket: 1, visitors: 2 },
+      ],
+    ]);
+
+    const response = await handleRetention(
+      env,
+      siteId,
+      url("/retention", {
+        from: window.fromMs,
+        to: window.toMs,
+        interval: "day",
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      granularity: "day",
+      cohorts: [
+        {
+          bucket: window.fromMs,
+          size: 0,
+          periods: [{ index: 0, visitors: 0, rate: 0 }],
+        },
+        {
+          bucket: 0,
+          size: 0,
+          periods: [{ index: 0, visitors: 2, rate: 0 }],
+        },
+      ],
+    });
+  });
+
+  it("defaults retention granularity to week when no interval is provided", async () => {
+    const { env } = createD1Env([[]]);
+
+    const response = await handleRetention(
+      env,
+      siteId,
+      url("/retention", {
+        from: window.fromMs,
+        to: window.toMs,
+      }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      granularity: "week",
+      cohorts: [],
+    });
+  });
 });

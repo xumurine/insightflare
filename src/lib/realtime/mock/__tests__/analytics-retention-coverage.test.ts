@@ -81,6 +81,78 @@ describe("mock/analytics-retention coverage", () => {
     });
   });
 
+  it("uses the earliest bucket when filtered visits are not chronological", () => {
+    const visits = [
+      makeVisit({
+        visitId: "u1-later",
+        visitorId: "u1",
+        startedAt: 60_000 + 1_000,
+      }),
+      makeVisit({
+        visitId: "u1-earlier",
+        visitorId: "u1",
+        sessionId: "s2",
+        startedAt: 1_000,
+      }),
+    ];
+    const dataset = makeDataset(visits);
+    mockBuildDemoFactDataset.mockReturnValue(dataset);
+    mockApplyDemoFilters.mockReturnValue(makeFiltered(visits));
+
+    expect(
+      generateDemoRetention("site", {
+        from: 0,
+        to: 2 * 60_000,
+        granularity: "minute",
+        timeZone: "UTC",
+      }),
+    ).toEqual({
+      ok: true,
+      granularity: "minute",
+      cohorts: [
+        {
+          bucket: 0,
+          size: 1,
+          periods: [
+            { index: 0, visitors: 1, rate: 1 },
+            { index: 1, visitors: 1, rate: 1 },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("accepts every explicit granularity and filters zero-weight cohorts", () => {
+    const visits = [
+      makeVisit({ visitId: "inside", visitorId: "u1", startedAt: 1_000 }),
+      makeVisit({
+        visitId: "outside-minute-window",
+        visitorId: "u2",
+        sessionId: "s2",
+        startedAt: 2 * 60_000,
+      }),
+    ];
+    const dataset = makeDataset(visits);
+    dataset.visitors.clear();
+    mockBuildDemoFactDataset.mockReturnValue(dataset);
+    mockApplyDemoFilters.mockReturnValue(makeFiltered(visits));
+
+    for (const granularity of ["minute", "day", "week", "month"] as const) {
+      expect(
+        generateDemoRetention("site", {
+          from: 0,
+          to: 60_000,
+          granularity,
+          timeZone: "UTC",
+        }),
+      ).toEqual({
+        ok: true,
+        granularity,
+        cohorts: [],
+      });
+    }
+  });
+
   it("falls back to week granularity and omits empty cohorts", () => {
     mockBuildDemoFactDataset.mockReturnValue(makeDataset([]));
     mockApplyDemoFilters.mockReturnValue(makeFiltered([]));

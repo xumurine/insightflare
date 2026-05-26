@@ -870,6 +870,56 @@ describe("mock remaining generator coverage", () => {
     });
   });
 
+  it("builds source UTM trends without an Other bucket when rows fit the limit", () => {
+    const profile: DemoSiteProfile = {
+      ...DEMO_SITE_PROFILES[0],
+      id: "utm-source-no-other-site",
+      name: "UTM Source No Other",
+      domain: "utm-source-no-other.test",
+      topReferrers: [],
+    };
+    DEMO_SITE_PROFILES.push(profile);
+
+    try {
+      const dataset = setFacts([
+        makeVisit({ visitId: "a", sessionId: "s1", visitorId: "u1" }),
+        makeVisit({ visitId: "b", sessionId: "s2", visitorId: "u2" }),
+        makeVisit({ visitId: "c", sessionId: "s3", visitorId: "u3" }),
+        makeVisit({ visitId: "d", sessionId: "s4", visitorId: "u4" }),
+      ]);
+      dataset.viewWeight = 2;
+
+      const result = generateDemoUtmTrend(profile.id, {
+        dimension: "source",
+        from: BASE_TIME,
+        to: BASE_TIME + 3_600_000,
+        interval: "hour",
+        limit: 8,
+        timeZone: "UTC",
+      }) as {
+        series: Array<{ key: string; isOther?: boolean }>;
+        data: Array<{
+          totalVisitors: number;
+          visitorsBySeries: Record<string, number>;
+        }>;
+      };
+
+      expect(result.series.length).toBeGreaterThan(0);
+      expect(result.series.some((item) => item.isOther)).toBe(false);
+      expect(result.series.map((item) => item.key)).not.toContain("other");
+      expect(result.data).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            totalVisitors: expect.any(Number),
+            visitorsBySeries: expect.any(Object),
+          }),
+        ]),
+      );
+    } finally {
+      DEMO_SITE_PROFILES.pop();
+    }
+  });
+
   it("returns empty data for unknown overview wrapper tabs", () => {
     setFacts([makeVisit({ visitId: "known-tab" })]);
 
@@ -881,6 +931,31 @@ describe("mock remaining generator coverage", () => {
     ).toEqual({ ok: true, data: [] });
     expect(generateDemoOverviewGeoTab(SITE_ID, {}, "missing" as never)).toEqual(
       { ok: true, data: [] },
+    );
+  });
+
+  it("strips geo filters only for overview country tabs", () => {
+    setFacts([
+      makeVisit({ visitId: "us", country: "US" }),
+      makeVisit({
+        visitId: "de",
+        sessionId: "s2",
+        visitorId: "u2",
+        country: "DE",
+        region: "DE::BE::Berlin",
+      }),
+    ]);
+
+    generateDemoOverviewGeoTab(SITE_ID, { limit: 5, geo: "DE" }, "country");
+    expect(mockApplyDemoFilters).toHaveBeenLastCalledWith(
+      expect.any(Object),
+      expect.not.objectContaining({ geo: expect.any(String) }),
+    );
+
+    generateDemoOverviewGeoTab(SITE_ID, { limit: 5, geo: "DE" }, "region");
+    expect(mockApplyDemoFilters).toHaveBeenLastCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ geo: "DE" }),
     );
   });
 
