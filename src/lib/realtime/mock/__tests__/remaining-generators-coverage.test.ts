@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  DEMO_SITE_PROFILES,
+  type DemoSiteProfile,
+} from "@/lib/realtime/demo-site-profiles";
+import {
   generateDemoDoDiagnostic,
   generateDemoSystemPerformance,
   getDemoMembers,
@@ -749,6 +753,52 @@ describe("mock remaining generator coverage", () => {
     ).toBe(false);
   });
 
+  it("filters direct and empty UTM source labels and falls back for odd source hosts", () => {
+    const profile: DemoSiteProfile = {
+      ...DEMO_SITE_PROFILES[0],
+      id: "utm-source-edge-site",
+      name: "UTM Source Edge",
+      domain: "utm-source-edge.test",
+      topReferrers: [
+        { name: "(direct)", weight: 50 },
+        { name: "", weight: 40 },
+        { name: ".", weight: 30 },
+        { name: "solo", weight: 20 },
+        { name: "https://www.News.Example/path?q=1", weight: 10 },
+        { name: "ignored.example", weight: 0 },
+      ],
+    };
+    DEMO_SITE_PROFILES.push(profile);
+
+    try {
+      setFacts(
+        Array.from({ length: 30 }, (_, index) =>
+          makeVisit({
+            visitId: `utm-source-${index}`,
+            sessionId: `s${index}`,
+            visitorId: `u${index}`,
+          }),
+        ),
+      );
+
+      const result = generateDemoUtmDimension(profile.id, "source", {
+        from: BASE_TIME,
+        to: BASE_TIME + 3_600_000,
+        limit: 6,
+      });
+      const values = (result.data as Array<{ value: string }>).map(
+        (row) => row.value,
+      );
+
+      expect(values).toEqual(expect.arrayContaining([".", "solo", "news"]));
+      expect(values).not.toEqual(
+        expect.arrayContaining(["", "(direct)", "ignored"]),
+      );
+    } finally {
+      DEMO_SITE_PROFILES.pop();
+    }
+  });
+
   it("returns empty UTM rows when rounded tagged views are zero", () => {
     setFacts([makeVisit({ visitId: "single" })]);
 
@@ -818,6 +868,20 @@ describe("mock remaining generator coverage", () => {
         }),
       ]),
     });
+  });
+
+  it("returns empty data for unknown overview wrapper tabs", () => {
+    setFacts([makeVisit({ visitId: "known-tab" })]);
+
+    expect(
+      generateDemoOverviewPageTab(SITE_ID, {}, "missing" as never),
+    ).toEqual({ ok: true, data: [] });
+    expect(
+      generateDemoOverviewClientTab(SITE_ID, {}, "missing" as never),
+    ).toEqual({ ok: true, data: [] });
+    expect(generateDemoOverviewGeoTab(SITE_ID, {}, "missing" as never)).toEqual(
+      { ok: true, data: [] },
+    );
   });
 
   it("returns overview tab wrappers for page, source, client, geo, and map points", () => {
@@ -1081,8 +1145,10 @@ describe("mock remaining generator coverage", () => {
     });
   });
 
-  it("builds team dashboard with default params and null previous-window changes", () => {
-    const dashboard = generateDemoTeamDashboard("demo-team-001", {}) as any;
+  it("builds team dashboard with default window start and null previous-window changes", () => {
+    const dashboard = generateDemoTeamDashboard("demo-team-001", {
+      to: 24 * 60 * 60 * 1000,
+    }) as any;
 
     expect(dashboard).toMatchObject({
       ok: true,

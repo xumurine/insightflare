@@ -255,6 +255,24 @@ describe("realtime client", () => {
     );
   });
 
+  it("surfaces real websocket constructor failures when websocket is unavailable", async () => {
+    const client = await importClientWithEnv({
+      NEXT_PUBLIC_REALTIME_MOCK: "0",
+    });
+    const WebSocketMock = vi.fn(() => {
+      throw new Error("WebSocket unsupported");
+    });
+    vi.stubGlobal("WebSocket", WebSocketMock);
+
+    expect(() => client.acquireRealtimeChannel("site-no-websocket")).toThrow(
+      "WebSocket unsupported",
+    );
+    expect(WebSocketMock).toHaveBeenCalledTimes(1);
+    expect(client.getRealtimeChannelState("site-no-websocket").status).toBe(
+      "connecting",
+    );
+  });
+
   it("opens one socket for multiple acquires and removes the channel only after the final release", async () => {
     const client = await importClientWithEnv({
       NEXT_PUBLIC_REALTIME_MOCK: "0",
@@ -286,6 +304,25 @@ describe("realtime client", () => {
     );
     expect(() => releaseA()).not.toThrow();
     expect(socket.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("cleans up released channels without closing sockets that are already closing", async () => {
+    const client = await importClientWithEnv({
+      NEXT_PUBLIC_REALTIME_MOCK: "0",
+    });
+    vi.stubGlobal("WebSocket", FakeSocket);
+    const release = client.acquireRealtimeChannel("site-closing-release");
+    releases.push(release);
+    const socket = sockets[0]!;
+
+    socket.readyState = FakeSocket.CLOSING;
+    release();
+    releases.pop();
+
+    expect(socket.close).not.toHaveBeenCalled();
+    expect(client.getRealtimeChannelState("site-closing-release").status).toBe(
+      "disconnected",
+    );
   });
 
   it("keeps returned states and broadcasts cloned from internal state", async () => {
@@ -707,6 +744,91 @@ describe("realtime client", () => {
         country: "CA",
       },
     ]);
+  });
+
+  it("falls back for invalid snapshot point and visit timestamps and default visit fields", async () => {
+    const client = await importClientWithEnv({
+      NEXT_PUBLIC_REALTIME_MOCK: "0",
+    });
+    vi.stubGlobal("WebSocket", FakeSocket);
+    releases.push(client.acquireRealtimeChannel("site-snapshot-fallbacks"));
+    const socket = sockets[0]!;
+    socket.open();
+
+    socket.message(
+      realtimeMessage("snapshot", {
+        points: [
+          {
+            visitorId: "point-invalid-time",
+            eventAt: "not-a-number",
+            latitude: 12,
+            longitude: 34,
+            country: "NL",
+          },
+        ],
+      }),
+    );
+
+    expect(client.getRealtimeChannelState("site-snapshot-fallbacks")).toEqual(
+      expect.objectContaining({
+        events: [
+          expect.objectContaining({
+            id: `snapshot-point:point-invalid-time:${Date.now()}`,
+            eventAt: Date.now(),
+            visitorId: "point-invalid-time",
+          }),
+        ],
+        points: [
+          {
+            visitorId: "point-invalid-time",
+            eventAt: Date.now(),
+            latitude: 12,
+            longitude: 34,
+            country: "NL",
+          },
+        ],
+      }),
+    );
+
+    socket.message(
+      realtimeMessage("snapshot", {
+        visits: [
+          {
+            visitId: "visit-fallback",
+            visitorId: "visitor-fallback",
+            startedAt: "bad-start",
+            lastActivityAt: "bad-last",
+            hash: "#from-hash",
+            asOrganization: "Fallback ISP",
+          },
+        ],
+      }),
+    );
+
+    const state = client.getRealtimeChannelState("site-snapshot-fallbacks");
+    expect(state.events).toHaveLength(1);
+    expect(state.events[0]).toMatchObject({
+      id: `snapshot:visit-fallback:${Date.now()}`,
+      eventAt: Date.now(),
+      visitId: "visit-fallback",
+      visitorId: "visitor-fallback",
+      pathname: "/",
+      hash: "#from-hash",
+      organization: "Fallback ISP",
+      latitude: null,
+      longitude: null,
+    });
+    expect(state.visits).toMatchObject([
+      {
+        visitId: "visit-fallback",
+        startedAt: Date.now(),
+        lastActivityAt: Date.now(),
+        pathname: "/",
+        hash: "#from-hash",
+        organization: "Fallback ISP",
+      },
+    ]);
+    expect(state.points).toEqual([]);
   });
 
   it("derives events from snapshot points and rejects invalid point coordinates", async () => {

@@ -1256,6 +1256,67 @@ describe("edge overview D1 queries and handlers", () => {
     ]);
   });
 
+  it("maps device and browser filter option scalar branches", async () => {
+    const { env, calls } = createD1Env([
+      [
+        {
+          value: "desktop",
+          views: "6",
+          sessions: "4",
+          visitors: "3",
+        },
+      ],
+      [
+        {
+          value: "Chrome",
+          views: "5",
+          sessions: "3",
+          visitors: "2",
+        },
+      ],
+    ]);
+
+    const device = await handleFilterOptions(
+      env,
+      siteId,
+      url("/filter-options", {
+        filterKey: "device",
+        device: "desktop",
+        browser: "Chrome",
+        from: window.fromMs,
+        to: window.toMs,
+        limit: 4,
+      }),
+    );
+    const browser = await handleFilterOptions(
+      env,
+      siteId,
+      url("/filter-options", {
+        filterKey: "browser",
+        browser: "Chrome",
+        country: "US",
+        from: window.fromMs,
+        to: window.toMs,
+        limit: 4,
+      }),
+    );
+
+    await expect(device.json()).resolves.toEqual({
+      ok: true,
+      data: [{ value: "desktop", label: "desktop" }],
+    });
+    await expect(browser.json()).resolves.toEqual({
+      ok: true,
+      data: [{ value: "Chrome", label: "Chrome" }],
+    });
+    expect(calls[0].sql).toContain("COALESCE(device_type, '') AS value");
+    expect(calls[1].sql).toContain("COALESCE(browser, '') AS value");
+    expect(calls.map((call) => call.bindings)).toEqual([
+      [...visitBindings(), "Chrome", 4],
+      [...visitBindings(), "us", 4],
+    ]);
+  });
+
   it("maps overview geo points with and without applying geo filters", async () => {
     const { env, calls } = createD1Env([
       [

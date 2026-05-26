@@ -53,6 +53,9 @@ describe("dashboard query-state helpers", () => {
       expect(finestIntervalForRange(0, 30 * DAY_MS)).toBe("day");
       expect(finestIntervalForRange(0, 91 * DAY_MS)).toBe("month");
 
+      expect(clampIntervalForRange(undefined, 0, 45 * MINUTE_MS)).toBe(
+        "minute",
+      );
       expect(clampIntervalForRange(null, 0, 45 * MINUTE_MS)).toBe("minute");
       expect(clampIntervalForRange("minute", 0, 8 * DAY_MS)).toBe("day");
       expect(clampIntervalForRange("week", 0, 8 * DAY_MS)).toBe("week");
@@ -172,6 +175,28 @@ describe("dashboard query-state helpers", () => {
       expect(fallback.to).toBe(now);
     });
 
+    it.each([
+      [undefined],
+      [null],
+      [{ from: Number.NaN, to: 2000 }],
+      [{ from: 1000, to: Number.POSITIVE_INFINITY }],
+      [{ from: -1, to: 2000 }],
+      [{ from: 1000, to: -1 }],
+      [{ from: 1000, to: 1000 }],
+    ])("falls back for invalid custom range %#", (customRange) => {
+      expect(
+        resolveTimeWindow("custom", now, {
+          customRange: customRange as never,
+          timeZone: "UTC",
+        }),
+      ).toMatchObject({
+        preset: "custom",
+        from: Date.UTC(2026, 4, 26) - 30 * DAY_MS,
+        to: now,
+        interval: "day",
+      });
+    });
+
     it("preserves allowed requested intervals", () => {
       const window = resolveTimeWindow("24h", now, {
         interval: "day",
@@ -256,6 +281,31 @@ describe("dashboard query-state helpers", () => {
         ).eventPayloadFilters,
       ).toBeUndefined();
     });
+
+    it("limits event payload filter parsing to the first twelve rules", () => {
+      const params = new URLSearchParams({
+        eventPayloadFilters: JSON.stringify(
+          Array.from({ length: 14 }, (_, index) => ({
+            path: `item.${index}`,
+            operator: index % 2 === 0 ? "eq" : "ne",
+            value: index,
+          })),
+        ),
+      });
+
+      const filters = parseDashboardFiltersFromSearchParams(params);
+      expect(filters.eventPayloadFilters).toHaveLength(12);
+      expect(filters.eventPayloadFilters?.at(0)).toEqual({
+        path: "/item/0",
+        operator: "eq",
+        value: 0,
+      });
+      expect(filters.eventPayloadFilters?.at(11)).toEqual({
+        path: "/item/11",
+        operator: "ne",
+        value: 11,
+      });
+    });
   });
 
   describe("withRangeAndFilters", () => {
@@ -305,6 +355,20 @@ describe("dashboard query-state helpers", () => {
       expect(withRangeAndFilters("/dashboard", "today", {})).toBe(
         "/dashboard?range=today",
       );
+    });
+
+    it("omits empty scalar and event payload filters from the URL", () => {
+      const href = withRangeAndFilters("/dashboard", "30d", {
+        country: "",
+        browser: "Chrome",
+        eventPayloadFilters: [],
+      });
+      const url = new URL(href, "https://example.test");
+
+      expect(url.searchParams.get("range")).toBe("30d");
+      expect(url.searchParams.get("country")).toBeNull();
+      expect(url.searchParams.get("browser")).toBe("Chrome");
+      expect(url.searchParams.get("eventPayloadFilters")).toBeNull();
     });
   });
 
