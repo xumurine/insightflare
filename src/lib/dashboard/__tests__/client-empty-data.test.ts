@@ -1,14 +1,30 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  emptyDashboardFilterOptions,
+  emptyDimension,
+  emptyEventAnalyticsContextCards,
+  emptyEventBreakdowns,
   emptyEventFieldValues,
+  emptyEventRecordDetail,
   emptyEventsRecords,
+  emptyEventsSummary,
+  emptyEventsTrend,
   emptyEventTypeDetail,
+  emptyOverview,
   emptyOverviewClientDimensionTabs,
   emptyOverviewGeoDimensionTabs,
   emptyOverviewGeoPoints,
+  emptyOverviewGeoTab,
+  emptyOverviewTab,
+  emptyPageCardTabs,
+  emptyPages,
   emptyPerformance,
+  emptyReferrers,
+  emptySessionDetail,
+  emptySessions,
   emptyTrend,
+  emptyVisitorDetail,
   emptyVisitors,
 } from "@/lib/dashboard/client-empty-data";
 
@@ -64,6 +80,13 @@ describe("dashboard client empty data builders", () => {
 
   it("builds empty dashboard dimension containers", () => {
     expect(emptyVisitors().meta.pageSize).toBe(0);
+    expect(emptySessions().meta).toEqual({
+      page: 1,
+      pageSize: 0,
+      returned: 0,
+      hasMore: false,
+      nextPage: null,
+    });
     expect(emptyOverviewGeoPoints()).toEqual({
       ok: true,
       data: [],
@@ -86,5 +109,56 @@ describe("dashboard client empty data builders", () => {
       timezone: [],
       organization: [],
     });
+  });
+
+  it("builds empty top-level dashboard payloads", () => {
+    expect(emptyOverview().data).toMatchObject({
+      views: 0,
+      sessions: 0,
+      visitors: 0,
+      approximateVisitors: false,
+    });
+    expect(emptyPages()).toEqual({ ok: true, data: [] });
+    expect(emptyReferrers()).toEqual({ ok: true, data: [] });
+    expect(emptyDimension()).toEqual({ ok: true, data: [] });
+    expect(emptyOverviewTab()).toEqual({ ok: true, data: [] });
+    expect(emptyOverviewGeoTab()).toEqual({ ok: true, data: [] });
+    expect(emptyDashboardFilterOptions()).toEqual({ ok: true, data: [] });
+    expect(emptyPageCardTabs()).toEqual({
+      path: [],
+      title: [],
+      hostname: [],
+      entry: [],
+      exit: [],
+    });
+  });
+
+  it("builds empty detail and event analytics payloads", () => {
+    expect(emptyVisitorDetail()).toEqual({ ok: true, data: null });
+    expect(emptySessionDetail()).toEqual({ ok: true, data: null });
+    expect(emptyEventRecordDetail()).toEqual({ ok: true, data: null });
+    expect(emptyEventsSummary()).toMatchObject({
+      ok: true,
+      summary: {
+        events: 0,
+        eventTypes: 0,
+        sessions: 0,
+        visitors: 0,
+        avgEventsPerSession: 0,
+      },
+    });
+    expect(emptyEventBreakdowns()).toEqual({
+      pages: [],
+      countries: [],
+      devices: [],
+      browsers: [],
+    });
+    expect(emptyEventsTrend("day")).toEqual({
+      ok: true,
+      interval: "day",
+      series: [],
+      data: [],
+    });
+    expect(emptyEventAnalyticsContextCards().geo.country).toEqual([]);
   });
 });

@@ -1,5 +1,6 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -74,6 +75,21 @@ describe("client history URL helpers", () => {
 
     expect(() => replaceUrlWithoutNavigation("/server")).not.toThrow();
     expect(() => pushUrlWithoutNavigation("/server")).not.toThrow();
+  });
+
+  it("returns empty search params during server rendering", () => {
+    vi.stubGlobal("window", undefined);
+
+    function Probe() {
+      const params = useLiveSearchParams();
+      return createElement(
+        "span",
+        null,
+        `${params.get("tab") || ""}:${params.get("page") || ""}`,
+      );
+    }
+
+    expect(renderToString(createElement(Probe))).toBe("<span>:</span>");
   });
 
   it("keeps useLiveSearchParams synced with history helper changes and popstate", () => {

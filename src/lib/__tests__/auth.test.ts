@@ -47,6 +47,18 @@ describe("auth helpers", () => {
     await expect(getSessionToken()).resolves.toBe("");
   });
 
+  it("returns an empty token when browser and server cookie headers are empty", async () => {
+    document.cookie = "if_session=; Max-Age=0; path=/";
+    await expect(getSessionToken()).resolves.toBe("");
+
+    vi.stubGlobal("document", undefined);
+    vi.doMock("next/headers", () => ({
+      headers: vi.fn().mockResolvedValue(new Headers()),
+    }));
+
+    await expect(getSessionToken()).resolves.toBe("");
+  });
+
   it("reads server cookie headers when document is unavailable", async () => {
     vi.stubGlobal("document", undefined);
     vi.doMock("next/headers", () => ({
@@ -58,6 +70,19 @@ describe("auth helpers", () => {
     }));
 
     await expect(getSessionToken()).resolves.toBe("server=token");
+  });
+
+  it("returns an empty token when server cookies omit the session key", async () => {
+    vi.stubGlobal("document", undefined);
+    vi.doMock("next/headers", () => ({
+      headers: vi.fn().mockResolvedValue(
+        new Headers({
+          cookie: "theme=dark; locale=en",
+        }),
+      ),
+    }));
+
+    await expect(getSessionToken()).resolves.toBe("");
   });
 
   it("returns an empty token when server headers cannot be read", async () => {
@@ -88,6 +113,14 @@ describe("auth helpers", () => {
     });
     expect(verifySessionTokenMock).toHaveBeenCalledWith("signed-token");
     await expect(isAuthenticated()).resolves.toBe(true);
+  });
+
+  it("reports unauthenticated when token verification returns null", async () => {
+    document.cookie = "if_session=expired-token; path=/";
+    verifySessionTokenMock.mockResolvedValue(null);
+
+    await expect(getSession()).resolves.toBeNull();
+    await expect(isAuthenticated()).resolves.toBe(false);
   });
 
   it("returns demo session data without verifying tokens in demo mode", async () => {

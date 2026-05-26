@@ -200,11 +200,14 @@ describe("dashboard query-state helpers", () => {
     });
 
     it("parses, normalizes, truncates, and filters event payload rules", () => {
+      const longString = "x".repeat(260);
       const rules = [
         { path: " $.user.role ", operator: "!=", value: "admin" },
         { path: "/items/0/name", operator: "eq", value: "x" },
+        { path: "$.cart.items[0].sku", operator: "eq", value: longString },
         { path: "metrics.count", operator: "eq", value: 3 },
         { path: "flags.active", operator: "ne", value: true },
+        { path: "optional.value", operator: "weird", value: null },
         { path: "empty.value", operator: "eq" },
         { path: "/", operator: "eq", value: "ignored" },
         { path: "bad.symbol", operator: "eq", value: Symbol("x") },
@@ -218,8 +221,10 @@ describe("dashboard query-state helpers", () => {
       ).toEqual([
         { path: "/user/role", operator: "ne", value: "admin" },
         { path: "/items/0/name", operator: "eq", value: "x" },
+        { path: "/cart/items/*/sku", operator: "eq", value: "x".repeat(240) },
         { path: "/metrics/count", operator: "eq", value: 3 },
         { path: "/flags/active", operator: "ne", value: true },
+        { path: "/optional/value", operator: "eq", value: null },
       ]);
     });
 
@@ -232,6 +237,22 @@ describe("dashboard query-state helpers", () => {
       expect(
         parseDashboardFiltersFromSearchParams(
           new URLSearchParams({ eventPayloadFilters: "{}" }),
+        ).eventPayloadFilters,
+      ).toBeUndefined();
+      expect(
+        parseDashboardFiltersFromSearchParams(
+          new URLSearchParams({ eventPayloadFilters: "  " }),
+        ).eventPayloadFilters,
+      ).toBeUndefined();
+      expect(
+        parseDashboardFiltersFromSearchParams(
+          new URLSearchParams({
+            eventPayloadFilters: JSON.stringify([
+              null,
+              "bad",
+              { path: "value", operator: "eq", value: { nested: true } },
+            ]),
+          }),
         ).eventPayloadFilters,
       ).toBeUndefined();
     });
@@ -279,6 +300,9 @@ describe("dashboard query-state helpers", () => {
 
     it("omits absent filters and still sets the range", () => {
       expect(withRangeAndFilters("/dashboard", "today")).toBe(
+        "/dashboard?range=today",
+      );
+      expect(withRangeAndFilters("/dashboard", "today", {})).toBe(
         "/dashboard?range=today",
       );
     });

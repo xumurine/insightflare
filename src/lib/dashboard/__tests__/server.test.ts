@@ -184,4 +184,27 @@ describe("dashboard server helpers", () => {
     await expect(getDashboardProfile()).resolves.toBeNull();
     await expect(getDashboardTeamContext("team-a")).resolves.toBeNull();
   });
+
+  it("uses empty site lists when a matching team's sites cannot be loaded", async () => {
+    fetchAdminMeMock.mockResolvedValue({
+      user: {
+        id: "user-1",
+        username: "admin",
+        email: "admin@example.test",
+        name: "Admin User",
+        systemRole: "user",
+      },
+      teams: [team("team-1", "team-a")],
+    } as any);
+    fetchAdminSitesMock.mockRejectedValue(new Error("edge unavailable"));
+    const { getDashboardTeamContext, getDefaultTeamSite, getTeamDefaultSite } =
+      await loadServerModule();
+
+    await expect(getDashboardTeamContext("team-a")).resolves.toMatchObject({
+      activeTeam: { id: "team-1" },
+      sites: [],
+    });
+    await expect(getDefaultTeamSite()).resolves.toBeNull();
+    await expect(getTeamDefaultSite("team-a")).resolves.toBeNull();
+  });
 });

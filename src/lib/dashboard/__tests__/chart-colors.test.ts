@@ -26,6 +26,21 @@ describe("dashboard chart color palette", () => {
     ).toHaveLength(3);
   });
 
+  it("handles near-black and wide-hue OKLCh colors", () => {
+    const blackPalette = buildComplementaryOklchPalette(2, "#000000");
+    const hueWrappedPalette = buildComplementaryOklchPalette(
+      4,
+      "oklch(0.55 0.12 350)",
+    );
+
+    expect(blackPalette).toHaveLength(2);
+    expect(blackPalette.every((color) => /^#[0-9a-f]{6}$/i.test(color))).toBe(
+      true,
+    );
+    expect(hueWrappedPalette).toHaveLength(4);
+    expect(new Set(hueWrappedPalette).size).toBeGreaterThan(1);
+  });
+
   it("throws for unsupported color formats", () => {
     expect(() => buildComplementaryOklchPalette(2, "rgb(1, 2, 3)")).toThrow(
       /Unsupported color format/,

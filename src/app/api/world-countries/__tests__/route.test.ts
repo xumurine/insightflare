@@ -44,4 +44,18 @@ describe("world countries route", () => {
       "Countries GeoJSON upstream unavailable",
     );
   });
+
+  it("falls through null payloads and fetch failures", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response("null"))
+      .mockRejectedValueOnce(new Error("network unavailable"));
+
+    const response = await GET();
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(502);
+    expect(await response.text()).toBe(
+      "Countries GeoJSON upstream unavailable",
+    );
+  });
 });

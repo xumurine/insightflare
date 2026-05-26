@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handlePrivateAdmin } from "@/lib/edge/admin";
-import { canAdministerTeam, canManageSite } from "@/lib/edge/admin-access";
+import {
+  canAdministerTeam,
+  canManageSite,
+  canManageTeam,
+  canReadSite,
+  canReadTeam,
+  uniqueTeamSlug,
+} from "@/lib/edge/admin-access";
 import { requireActor, verifyPassword } from "@/lib/edge/admin-auth";
 import {
   type EdgeSessionClaims,
@@ -75,6 +82,18 @@ interface MockDurableObjectNamespace {
   get: ReturnType<typeof vi.fn>;
 }
 
+type ActualSessionAuth = {
+  extractSessionToken: (request: Request) => string;
+  requireSession: (
+    request: Request,
+    env: Env,
+  ) => Promise<EdgeSessionClaims | null>;
+  verifySessionToken: (
+    token: string,
+    env: Env,
+  ) => Promise<EdgeSessionClaims | null>;
+};
+
 const requireSessionMock = vi.mocked(requireSession);
 const readSiteScriptSettingsMock = vi.mocked(readSiteScriptSettings);
 const upsertSiteScriptSettingsMock = vi.mocked(upsertSiteScriptSettings);
@@ -106,6 +125,44 @@ function b64u(bytes: Uint8Array): string {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
+}
+
+function bytesFromString(input: string): Uint8Array {
+  return new TextEncoder().encode(input);
+}
+
+function toArrayBuffer(input: Uint8Array): ArrayBuffer {
+  const out = new Uint8Array(input.length);
+  out.set(input);
+  return out.buffer;
+}
+
+async function hmacToken(
+  payloadPart: string,
+  secret = "session-secret",
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    toArrayBuffer(bytesFromString(secret)),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = new Uint8Array(
+    await crypto.subtle.sign(
+      "HMAC",
+      key,
+      toArrayBuffer(bytesFromString(payloadPart)),
+    ),
+  );
+  return `${payloadPart}.${b64u(signature)}`;
+}
+
+async function sessionToken(
+  payload: Record<string, unknown>,
+  secret = "session-secret",
+): Promise<string> {
+  return hmacToken(b64u(bytesFromString(JSON.stringify(payload))), secret);
 }
 
 function argonHash(
@@ -373,6 +430,44 @@ describe("private admin edge handler", () => {
       await expect(verifyPassword("wrong-password", stored)).resolves.toBe(
         false,
       );
+      await expect(verifyPassword("secret-password", null)).resolves.toBe(
+        false,
+      );
+      await expect(
+        verifyPassword("secret-password", "legacy$hash"),
+      ).resolves.toBe(false);
+      await expect(
+        verifyPassword(
+          "secret-password",
+          "argon2id$v=19$m=4096,t=1,p=9$AQIDBAUGBwg$AQIDBAUGBwgBAgMEBQYHCA",
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        verifyPassword(
+          "secret-password",
+          "argon2id$v=19$m=1,t=1,p=1$AQIDBAUGBwg$AQIDBAUGBwgBAgMEBQYHCA",
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        verifyPassword(
+          "secret-password",
+          "argon2id$v=19$m=4096,t=0,p=1$AQIDBAUGBwg$AQIDBAUGBwgBAgMEBQYHCA",
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        verifyPassword(
+          "secret-password",
+          "argon2id$v=19$m=4096,t=1,p=1$!$AQIDBAUGBwgBAgMEBQYHCA",
+        ),
+      ).resolves.toBe(false);
+
+      const { argon2id } = await import("@noble/hashes/argon2.js");
+      vi.mocked(argon2id).mockImplementationOnce(() => {
+        throw new Error("derive failed");
+      });
+      await expect(
+        verifyPassword("secret-password", argonHash("secret-password")),
+      ).resolves.toBe(false);
     });
 
     it("checks team and site access through extracted helpers", async () => {
@@ -401,6 +496,168 @@ describe("private admin edge handler", () => {
       await expect(canManageSite(adminEnv, admin, "site-1")).resolves.toBe(
         false,
       );
+    });
+
+    it("covers access helper ownership, missing site, and slug fallbacks", async () => {
+      vi.spyOn(Date, "now").mockReturnValue(1_779_708_000_000);
+      const actor = {
+        user: userRow({ id: "user-1", system_role: "user" }),
+        isAdmin: false,
+      };
+      const ownerTeam = { id: "team-1", ownerUserId: "user-1" };
+
+      await expect(
+        canReadTeam(
+          createEnv([statement({ first: ownerTeam })]).env,
+          actor,
+          "team-1",
+        ),
+      ).resolves.toBe(true);
+      await expect(
+        canReadTeam(
+          createEnv([statement({ first: null }), statement({ first: null })])
+            .env,
+          actor,
+          "team-1",
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        canManageTeam(
+          createEnv([statement({ first: ownerTeam })]).env,
+          actor,
+          "team-1",
+        ),
+      ).resolves.toBe(true);
+      await expect(
+        canAdministerTeam(
+          createEnv([statement({ first: ownerTeam })]).env,
+          actor,
+          "team-1",
+        ),
+      ).resolves.toBe(true);
+      await expect(
+        canReadSite(
+          createEnv([statement({ first: null })]).env,
+          actor,
+          "missing-site",
+        ),
+      ).resolves.toBe(false);
+
+      const slugEnv = createEnv([
+        statement({ first: null }),
+        statement({ first: { ok: 1 } }),
+        statement({ first: null }),
+      ]).env;
+
+      await expect(uniqueTeamSlug(slugEnv, "")).resolves.toBe(
+        "team-1779708000000",
+      );
+      await expect(uniqueTeamSlug(slugEnv, "Team!", "team-1")).resolves.toBe(
+        "team-2",
+      );
+      await expect(
+        uniqueTeamSlug(
+          createEnv([statement({ first: { ok: 0 } })]).env,
+          "Open Team",
+        ),
+      ).resolves.toBe("open-team");
+    });
+
+    it("verifies real session tokens from bearer and cookie credentials", async () => {
+      const {
+        extractSessionToken,
+        requireSession: requireActualSession,
+        verifySessionToken,
+      } = await vi.importActual<ActualSessionAuth>("@/lib/edge/session-auth");
+      vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+      const env = createEnv([], {
+        env: { DASHBOARD_SESSION_SECRET: "session-secret" },
+      }).env;
+      const claims = {
+        userId: "user-1",
+        username: "User",
+        displayName: "User One",
+        systemRole: "admin",
+        exp: 1_800_000_100,
+      };
+      const token = await sessionToken(claims);
+      const bearerRequest = edgeRequest("/admin", {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const cookieRequest = {
+        headers: {
+          get: (name: string) =>
+            name.toLowerCase() === "cookie"
+              ? `other=1; if_session=${encodeURIComponent(token)}`
+              : "",
+        },
+      } as Request;
+      const unrelatedCookieRequest = {
+        headers: {
+          get: (name: string) =>
+            name.toLowerCase() === "cookie" ? "other=1" : "",
+        },
+      } as Request;
+
+      expect(extractSessionToken(bearerRequest)).toBe(token);
+      expect(extractSessionToken(cookieRequest)).toBe(token);
+      expect(extractSessionToken(unrelatedCookieRequest)).toBe("");
+      await expect(verifySessionToken(token, env)).resolves.toEqual(claims);
+      await expect(requireActualSession(cookieRequest, env)).resolves.toEqual(
+        claims,
+      );
+    });
+
+    it("rejects invalid real session tokens", async () => {
+      const { requireSession: requireActualSession, verifySessionToken } =
+        await vi.importActual<ActualSessionAuth>("@/lib/edge/session-auth");
+      vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+      const env = createEnv([], {
+        env: { SESSION_SECRET: "session-secret" },
+      }).env;
+      const validPayload = {
+        userId: "user-1",
+        username: "User",
+        displayName: "User One",
+        systemRole: "admin",
+        exp: 1_800_000_100,
+      };
+      const validToken = await sessionToken(validPayload);
+      const invalidJsonPayload = b64u(bytesFromString("not-json"));
+      const missingFieldsPayload = b64u(bytesFromString("{}"));
+      const expiredToken = await sessionToken({
+        ...validPayload,
+        exp: 1_799_999_999,
+      });
+      const badRoleToken = await sessionToken({
+        ...validPayload,
+        systemRole: "superadmin",
+      });
+
+      await expect(verifySessionToken("", env)).resolves.toBeNull();
+      await expect(verifySessionToken("short", env)).resolves.toBeNull();
+      await expect(verifySessionToken("x".repeat(25), env)).resolves.toBeNull();
+      await expect(
+        verifySessionToken(`${validToken.slice(0, -2)}xx`, env),
+      ).resolves.toBeNull();
+      await expect(
+        verifySessionToken(`${"x".repeat(25)}.!`, env),
+      ).resolves.toBeNull();
+      await expect(
+        verifySessionToken(await hmacToken(invalidJsonPayload), env),
+      ).resolves.toBeNull();
+      await expect(
+        verifySessionToken(await hmacToken(missingFieldsPayload), env),
+      ).resolves.toBeNull();
+      await expect(verifySessionToken(expiredToken, env)).resolves.toBeNull();
+      await expect(
+        verifySessionToken(badRoleToken, env),
+      ).resolves.toMatchObject({
+        systemRole: "user",
+      });
+      await expect(
+        requireActualSession(edgeRequest("/admin"), env),
+      ).resolves.toBeNull();
     });
   });
 
@@ -459,6 +716,55 @@ describe("private admin edge handler", () => {
       });
       expect(errorSpy).toHaveBeenCalledWith("bootstrap_admin_failed", {
         message: "boom",
+      });
+    });
+
+    it("reports bootstrap reload failures while promoting or creating admins", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const existing = userRow({
+        id: "user-1",
+        username: "bootstrap",
+        email: "bootstrap@example.test",
+        system_role: "user",
+      });
+
+      const promoteFailure = await dispatch(
+        "/api/private/admin/auth/login",
+        createEnv([
+          statement({ first: null }),
+          statement({ first: existing }),
+          statement(),
+          statement({ first: null }),
+        ]).env,
+        jsonInit({ username: "admin", password: "secret-password" }),
+      );
+
+      const createFailure = await dispatch(
+        "/api/private/admin/auth/login",
+        createEnv([
+          statement({ first: null }),
+          statement({ first: null }),
+          statement(),
+          statement({ first: null }),
+        ]).env,
+        jsonInit({ username: "admin", password: "secret-password" }),
+      );
+
+      expect(promoteFailure.status).toBe(500);
+      expect(await promoteFailure.json()).toEqual({
+        ok: false,
+        error: "bootstrap_admin_failed",
+      });
+      expect(createFailure.status).toBe(500);
+      expect(await createFailure.json()).toEqual({
+        ok: false,
+        error: "bootstrap_admin_failed",
+      });
+      expect(errorSpy).toHaveBeenCalledWith("bootstrap_admin_failed", {
+        message: "bootstrap admin promote failed",
+      });
+      expect(errorSpy).toHaveBeenCalledWith("bootstrap_admin_failed", {
+        message: "bootstrap admin create failed",
       });
     });
 
@@ -648,6 +954,12 @@ describe("private admin edge handler", () => {
       const { env: staleEnv } = createEnv([statement({ first: null })]);
       const stale = await dispatch("/api/private/admin/auth/me", staleEnv);
 
+      setSession({ ...adminSession, userId: "" });
+      const emptyUserId = await dispatch(
+        "/api/private/admin/auth/me",
+        createEnv().env,
+      );
+
       expect(absent.status).toBe(401);
       expect(await absent.json()).toEqual({
         ok: false,
@@ -657,6 +969,11 @@ describe("private admin edge handler", () => {
       expect(await stale.json()).toEqual({
         ok: false,
         error: "User not found",
+      });
+      expect(emptyUserId.status).toBe(401);
+      expect(await emptyUserId.json()).toEqual({
+        ok: false,
+        error: "Unauthorized",
       });
     });
   });
@@ -716,6 +1033,42 @@ describe("private admin edge handler", () => {
         error: "Invalid username",
       });
       expect(prepare).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects invalid user creation email and password payloads", async () => {
+      setSession(adminSession);
+      const emailEnv = createEnv([statement({ first: userRow() })]).env;
+      const invalidEmail = await dispatch(
+        "/api/private/admin/users",
+        emailEnv,
+        jsonInit({
+          username: "new-user",
+          email: "bad",
+          password: "long-enough",
+        }),
+      );
+
+      const passwordEnv = createEnv([statement({ first: userRow() })]).env;
+      const shortPassword = await dispatch(
+        "/api/private/admin/users",
+        passwordEnv,
+        jsonInit({
+          username: "new-user",
+          email: "new@example.test",
+          password: "short",
+        }),
+      );
+
+      expect(invalidEmail.status).toBe(400);
+      expect(await invalidEmail.json()).toEqual({
+        ok: false,
+        error: "A valid email is required",
+      });
+      expect(shortPassword.status).toBe(400);
+      expect(await shortPassword.json()).toEqual({
+        ok: false,
+        error: "Password must be at least 8 characters",
+      });
     });
 
     it("creates users with normalized role and a default owner team", async () => {
@@ -885,6 +1238,110 @@ describe("private admin edge handler", () => {
       );
     });
 
+    it("validates user update conflicts, failed reloads, and unsupported methods", async () => {
+      setSession(adminSession);
+      const existing = userRow({
+        id: "target-1",
+        username: "old",
+        email: "old@example.test",
+        system_role: "user",
+      });
+
+      const invalidUsernameEnv = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: existing }),
+      ]).env;
+      const invalidUsername = await dispatch(
+        "/api/private/admin/users",
+        invalidUsernameEnv,
+        jsonInit({ userId: "target-1", username: "x!" }, "PATCH"),
+      );
+
+      const invalidEmailEnv = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: existing }),
+      ]).env;
+      const invalidEmail = await dispatch(
+        "/api/private/admin/users",
+        invalidEmailEnv,
+        jsonInit({ userId: "target-1", email: "bad" }, "PATCH"),
+      );
+
+      const duplicateUsernameEnv = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: existing }),
+        statement({ first: { ok: 1 } }),
+      ]).env;
+      const duplicateUsername = await dispatch(
+        "/api/private/admin/users",
+        duplicateUsernameEnv,
+        jsonInit({ userId: "target-1", username: "taken" }, "PATCH"),
+      );
+
+      const duplicateEmailEnv = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: existing }),
+        statement({ first: null }),
+        statement({ first: { ok: 1 } }),
+      ]).env;
+      const duplicateEmail = await dispatch(
+        "/api/private/admin/users",
+        duplicateEmailEnv,
+        jsonInit({ userId: "target-1", email: "taken@example.test" }, "PATCH"),
+      );
+
+      const failedReloadEnv = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: existing }),
+        statement({ first: null }),
+        statement({ first: null }),
+        statement(),
+        statement({ first: null }),
+      ]).env;
+      const failedReload = await dispatch(
+        "/api/private/admin/users",
+        failedReloadEnv,
+        jsonInit({ userId: "target-1" }, "PATCH"),
+      );
+
+      const unsupported = await dispatch(
+        "/api/private/admin/users",
+        createEnv([statement({ first: userRow() })]).env,
+        { method: "DELETE" },
+      );
+
+      expect(invalidUsername.status).toBe(400);
+      expect(await invalidUsername.json()).toEqual({
+        ok: false,
+        error: "Invalid username",
+      });
+      expect(invalidEmail.status).toBe(400);
+      expect(await invalidEmail.json()).toEqual({
+        ok: false,
+        error: "A valid email is required",
+      });
+      expect(duplicateUsername.status).toBe(400);
+      expect(await duplicateUsername.json()).toEqual({
+        ok: false,
+        error: "Username already exists",
+      });
+      expect(duplicateEmail.status).toBe(400);
+      expect(await duplicateEmail.json()).toEqual({
+        ok: false,
+        error: "Email already exists",
+      });
+      expect(failedReload.status).toBe(400);
+      expect(await failedReload.json()).toEqual({
+        ok: false,
+        error: "Failed to update account",
+      });
+      expect(unsupported.status).toBe(405);
+      expect(await unsupported.json()).toEqual({
+        ok: false,
+        error: "Method Not Allowed",
+      });
+    });
+
     it("handles user removal guard rails and successful deletion", async () => {
       setSession(adminSession);
       const selfEnv = createEnv([statement({ first: userRow() })]).env;
@@ -934,6 +1391,59 @@ describe("private admin edge handler", () => {
         data: { userId: "target-1", removed: true },
       });
       expect(deleteStmt.bind).toHaveBeenCalledWith("target-1");
+    });
+
+    it("returns user patch validation and missing target errors", async () => {
+      setSession(adminSession);
+      const missingIdEnv = createEnv([statement({ first: userRow() })]).env;
+      const missingId = await dispatch(
+        "/api/private/admin/users",
+        missingIdEnv,
+        jsonInit({ username: "new" }, "PATCH"),
+      );
+
+      const missingTargetEnv = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: null }),
+      ]).env;
+      const missingTarget = await dispatch(
+        "/api/private/admin/users",
+        missingTargetEnv,
+        jsonInit({ userId: "missing-1" }, "PATCH"),
+      );
+
+      const failedCreateEnv = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: null }),
+        statement({ first: null }),
+        statement(),
+        statement({ first: null }),
+      ]).env;
+      const failedCreate = await dispatch(
+        "/api/private/admin/users",
+        failedCreateEnv,
+        jsonInit({
+          username: "new-user",
+          email: "new@example.test",
+          password: "long-enough",
+        }),
+      );
+
+      expect(missingId.status).toBe(400);
+      expect(await missingId.json()).toEqual({
+        ok: false,
+        error: "userId is required",
+      });
+      expect(missingTarget.status).toBe(404);
+      expect(await missingTarget.json()).toEqual({
+        ok: false,
+        error: "User not found",
+      });
+      expect(failedCreate.status).toBe(400);
+      expect(await failedCreate.json()).toEqual({
+        ok: false,
+        error: "Failed to create account",
+      });
     });
   });
 
@@ -992,6 +1502,107 @@ describe("private admin edge handler", () => {
       expect(await badPassword.json()).toEqual({
         ok: false,
         error: "Current password is incorrect",
+      });
+    });
+
+    it("validates profile identity conflicts, failed reloads, and unsupported methods", async () => {
+      setSession(userSession);
+      const actor = userRow({
+        id: "user-1",
+        username: "old",
+        email: "old@example.test",
+        system_role: "user",
+      });
+
+      const invalidUsername = await dispatch(
+        "/api/private/admin/profile",
+        createEnv([statement({ first: actor })]).env,
+        jsonInit({ username: "x!" }),
+      );
+
+      const invalidEmail = await dispatch(
+        "/api/private/admin/profile",
+        createEnv([statement({ first: actor })]).env,
+        jsonInit({ email: "bad" }),
+      );
+
+      const shortPassword = await dispatch(
+        "/api/private/admin/profile",
+        createEnv([statement({ first: actor })]).env,
+        jsonInit({ password: "short" }),
+      );
+
+      const duplicateUsername = await dispatch(
+        "/api/private/admin/profile",
+        createEnv([
+          statement({ first: actor }),
+          statement({ first: { ok: 1 } }),
+        ]).env,
+        jsonInit({ username: "taken" }),
+      );
+
+      const duplicateEmail = await dispatch(
+        "/api/private/admin/profile",
+        createEnv([
+          statement({ first: actor }),
+          statement({ first: null }),
+          statement({ first: { ok: 1 } }),
+        ]).env,
+        jsonInit({ email: "taken@example.test" }),
+      );
+
+      const failedReload = await dispatch(
+        "/api/private/admin/profile",
+        createEnv([
+          statement({ first: actor }),
+          statement({ first: null }),
+          statement({ first: null }),
+          statement(),
+          statement({ first: null }),
+        ]).env,
+        jsonInit({ name: "New Name" }),
+      );
+
+      const unsupported = await dispatch(
+        "/api/private/admin/profile",
+        createEnv([statement({ first: actor })]).env,
+        { method: "DELETE" },
+      );
+
+      expect(invalidUsername.status).toBe(400);
+      expect(await invalidUsername.json()).toEqual({
+        ok: false,
+        error: "Invalid username",
+      });
+      expect(invalidEmail.status).toBe(400);
+      expect(await invalidEmail.json()).toEqual({
+        ok: false,
+        error: "A valid email is required",
+      });
+      expect(shortPassword.status).toBe(400);
+      expect(await shortPassword.json()).toEqual({
+        ok: false,
+        error: "Password must be at least 8 characters",
+      });
+      expect(duplicateUsername.status).toBe(400);
+      expect(await duplicateUsername.json()).toEqual({
+        ok: false,
+        error: "Username already exists",
+      });
+      expect(duplicateEmail.status).toBe(400);
+      expect(await duplicateEmail.json()).toEqual({
+        ok: false,
+        error: "Email already exists",
+      });
+      expect(failedReload.status).toBe(400);
+      expect(await failedReload.json()).toEqual({
+        ok: false,
+        error: "Failed to update profile",
+      });
+      expect(unsupported.status).toBe(405);
+      expect(await unsupported.json()).toEqual({
+        ok: false,
+        error: "Method Not Allowed",
       });
     });
 
@@ -1131,6 +1742,38 @@ describe("private admin edge handler", () => {
       );
     });
 
+    it("validates team create and patch identifiers before writes", async () => {
+      setSession(userSession);
+      const createEnvWithoutName = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+      ]).env;
+      const missingName = await dispatch(
+        "/api/private/admin/teams",
+        createEnvWithoutName,
+        jsonInit({ name: "x" }),
+      );
+
+      const patchEnvWithoutTeamId = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+      ]).env;
+      const missingTeamId = await dispatch(
+        "/api/private/admin/teams",
+        patchEnvWithoutTeamId,
+        jsonInit({ name: "Renamed" }, "PATCH"),
+      );
+
+      expect(missingName.status).toBe(400);
+      expect(await missingName.json()).toEqual({
+        ok: false,
+        error: "Team name is required",
+      });
+      expect(missingTeamId.status).toBe(400);
+      expect(await missingTeamId.json()).toEqual({
+        ok: false,
+        error: "teamId is required",
+      });
+    });
+
     it("denies team updates when the actor cannot manage the team", async () => {
       setSession(userSession);
       const { env } = createEnv([
@@ -1149,6 +1792,26 @@ describe("private admin edge handler", () => {
       expect(await response.json()).toEqual({
         ok: false,
         error: "Only team owner can update team",
+      });
+    });
+
+    it("returns not found when an updatable team no longer exists", async () => {
+      setSession(adminSession);
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: null }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/teams",
+        env,
+        jsonInit({ teamId: "missing-1", name: "Renamed" }, "PATCH"),
+      );
+
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Team not found",
       });
     });
 
@@ -1262,6 +1925,112 @@ describe("private admin edge handler", () => {
       ]);
     });
 
+    it("validates team ownership transfer guard rails", async () => {
+      setSession(userSession);
+      const existing = {
+        id: "team-1",
+        name: "Team",
+        slug: "team",
+        ownerUserId: "user-1",
+        createdAt: 10,
+        updatedAt: 20,
+      };
+
+      const sameOwnerEnv = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({ first: existing }),
+      ]).env;
+      const sameOwner = await dispatch(
+        "/api/private/admin/teams",
+        sameOwnerEnv,
+        jsonInit(
+          {
+            intent: "transfer_owner",
+            teamId: "team-1",
+            newOwnerUserId: "user-1",
+          },
+          "PATCH",
+        ),
+      );
+
+      const missingTargetEnv = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({ first: existing }),
+      ]).env;
+      const missingTarget = await dispatch(
+        "/api/private/admin/teams",
+        missingTargetEnv,
+        jsonInit(
+          {
+            intent: "transfer_owner",
+            teamId: "team-1",
+          },
+          "PATCH",
+        ),
+      );
+
+      const missingMemberEnv = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({ first: existing }),
+        statement({ first: null }),
+      ]).env;
+      const missingMember = await dispatch(
+        "/api/private/admin/teams",
+        missingMemberEnv,
+        jsonInit(
+          {
+            intent: "transfer_owner",
+            teamId: "team-1",
+            newOwnerUserId: "user-2",
+          },
+          "PATCH",
+        ),
+      );
+
+      const notOwnerEnv = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: { role: "admin" } }),
+        statement({ first: { ...existing, ownerUserId: "owner-1" } }),
+      ]).env;
+      const notOwner = await dispatch(
+        "/api/private/admin/teams",
+        notOwnerEnv,
+        jsonInit(
+          {
+            intent: "transfer_owner",
+            teamId: "team-1",
+            newOwnerUserId: "user-2",
+          },
+          "PATCH",
+        ),
+      );
+
+      expect(sameOwner.status).toBe(400);
+      expect(await sameOwner.json()).toEqual({
+        ok: false,
+        error: "Already the team owner",
+      });
+      expect(missingTarget.status).toBe(400);
+      expect(await missingTarget.json()).toEqual({
+        ok: false,
+        error: "newOwnerUserId is required",
+      });
+      expect(missingMember.status).toBe(400);
+      expect(await missingMember.json()).toEqual({
+        ok: false,
+        error: "Target user is not a team member",
+      });
+      expect(notOwner.status).toBe(403);
+      expect(await notOwner.json()).toEqual({
+        ok: false,
+        error: "Only the team owner can transfer ownership",
+      });
+    });
+
     it("deletes teams and cascades site data cleanup", async () => {
       setSession(adminSession);
       deleteSiteScriptSettingsMock.mockResolvedValue(undefined);
@@ -1301,6 +2070,40 @@ describe("private admin edge handler", () => {
       expect(deleteStatements[9].bind).toHaveBeenCalledWith("team-1");
       expect(deleteSiteScriptSettingsMock).toHaveBeenCalledWith(env, "site-1");
       expect(deleteSiteScriptSettingsMock).toHaveBeenCalledWith(env, "site-2");
+    });
+
+    it("deletes teams without site cleanup when no sites exist", async () => {
+      setSession(adminSession);
+      const deleteTeam = statement();
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        statement({
+          first: {
+            id: "team-1",
+            name: "Team",
+            slug: "team",
+            ownerUserId: "user-1",
+            createdAt: 10,
+            updatedAt: 20,
+          },
+        }),
+        statement({ all: [] }),
+        deleteTeam,
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/teams",
+        env,
+        jsonInit({ intent: "remove", teamId: "team-1" }, "PATCH"),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: { teamId: "team-1", removed: true },
+      });
+      expect(deleteTeam.bind).toHaveBeenCalledWith("team-1");
+      expect(deleteSiteScriptSettingsMock).not.toHaveBeenCalled();
     });
   });
 
@@ -1343,6 +2146,26 @@ describe("private admin edge handler", () => {
 
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ ok: true, data: rows });
+    });
+
+    it("denies site listing when the team is not readable", async () => {
+      setSession(userSession);
+      const { env } = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: null }),
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/sites?teamId=team-1",
+        env,
+      );
+
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Team access denied",
+      });
     });
 
     it("creates sites and initializes script settings", async () => {
@@ -1397,6 +2220,44 @@ describe("private admin edge handler", () => {
           settings: DEFAULT_SITE_SCRIPT_SETTINGS,
         },
       );
+    });
+
+    it("validates site creation payloads and team permissions", async () => {
+      setSession(userSession);
+      const missingFieldsEnv = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+      ]).env;
+      const missingFields = await dispatch(
+        "/api/private/admin/sites",
+        missingFieldsEnv,
+        jsonInit({ teamId: "team-1", name: "Docs" }),
+      );
+
+      const forbiddenEnv = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: null }),
+      ]).env;
+      const forbidden = await dispatch(
+        "/api/private/admin/sites",
+        forbiddenEnv,
+        jsonInit({
+          teamId: "team-1",
+          name: "Docs",
+          domain: "docs.example.test",
+        }),
+      );
+
+      expect(missingFields.status).toBe(400);
+      expect(await missingFields.json()).toEqual({
+        ok: false,
+        error: "teamId, name and domain are required",
+      });
+      expect(forbidden.status).toBe(403);
+      expect(await forbidden.json()).toEqual({
+        ok: false,
+        error: "Only team owner can create sites",
+      });
     });
 
     it("rolls back newly inserted sites when settings initialization fails", async () => {
@@ -1493,6 +2354,129 @@ describe("private admin edge handler", () => {
       });
     });
 
+    it("updates sites with public slugs when publishing", async () => {
+      setSession(adminSession);
+      upsertSiteScriptSettingsMock.mockResolvedValue(
+        DEFAULT_SITE_SCRIPT_SETTINGS,
+      );
+      const update = statement();
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        statement({
+          first: {
+            id: "site-1",
+            teamId: "team-1",
+            name: "Docs",
+            domain: "docs.example.test",
+            publicEnabled: 0,
+            publicSlug: null,
+          },
+        }),
+        update,
+      ]);
+
+      const response = await dispatch(
+        "/api/private/admin/sites",
+        env,
+        jsonInit({ siteId: "site-1", publicEnabled: true }, "PATCH"),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: {
+          id: "site-1",
+          teamId: "team-1",
+          name: "Docs",
+          domain: "docs.example.test",
+          publicEnabled: true,
+          publicSlug: "docs",
+        },
+      });
+      expect(update.bind).toHaveBeenCalledWith(
+        "team-1",
+        "Docs",
+        "docs.example.test",
+        1,
+        "docs",
+        "site-1",
+      );
+    });
+
+    it("returns site patch validation and not found errors", async () => {
+      setSession(adminSession);
+      const missingIdEnv = createEnv([statement({ first: userRow() })]).env;
+      const missingId = await dispatch(
+        "/api/private/admin/sites",
+        missingIdEnv,
+        jsonInit({ name: "Docs" }, "PATCH"),
+      );
+
+      const missingSiteEnv = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: null }),
+      ]).env;
+      const missingSite = await dispatch(
+        "/api/private/admin/sites",
+        missingSiteEnv,
+        jsonInit({ siteId: "missing-1" }, "PATCH"),
+      );
+
+      expect(missingId.status).toBe(400);
+      expect(await missingId.json()).toEqual({
+        ok: false,
+        error: "siteId is required",
+      });
+      expect(missingSite.status).toBe(404);
+      expect(await missingSite.json()).toEqual({
+        ok: false,
+        error: "Site not found",
+      });
+    });
+
+    it("denies site transfers without target team ownership and rejects unsupported methods", async () => {
+      setSession(userSession);
+      const transferEnv = createEnv([
+        statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        statement({
+          first: {
+            id: "site-1",
+            teamId: "team-1",
+            name: "Docs",
+            domain: "docs.example.test",
+            publicEnabled: 0,
+            publicSlug: null,
+          },
+        }),
+        statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        statement({ first: { id: "team-2", ownerUserId: "owner-2" } }),
+        statement({ first: null }),
+      ]).env;
+      const forbiddenTransfer = await dispatch(
+        "/api/private/admin/sites",
+        transferEnv,
+        jsonInit({ siteId: "site-1", teamId: "team-2" }, "PATCH"),
+      );
+
+      setSession(adminSession);
+      const unsupported = await dispatch(
+        "/api/private/admin/sites",
+        createEnv([statement({ first: userRow() })]).env,
+        { method: "DELETE" },
+      );
+
+      expect(forbiddenTransfer.status).toBe(403);
+      expect(await forbiddenTransfer.json()).toEqual({
+        ok: false,
+        error: "Only team owner can transfer sites",
+      });
+      expect(unsupported.status).toBe(405);
+      expect(await unsupported.json()).toEqual({
+        ok: false,
+        error: "Method Not Allowed",
+      });
+    });
+
     it("removes sites and ignores best-effort settings cleanup failures", async () => {
       setSession(adminSession);
       deleteSiteScriptSettingsMock.mockRejectedValue(new Error("kv down"));
@@ -1553,6 +2537,91 @@ describe("private admin edge handler", () => {
 
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ ok: true, data: rows });
+    });
+
+    it("validates member listing and add guard rails", async () => {
+      setSession(userSession);
+      const actor = userRow({ id: "user-1", system_role: "user" });
+
+      const missingTeamId = await dispatch(
+        "/api/private/admin/members",
+        createEnv([statement({ first: actor })]).env,
+      );
+
+      const deniedList = await dispatch(
+        "/api/private/admin/members?teamId=team-1",
+        createEnv([
+          statement({ first: actor }),
+          statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+          statement({ first: null }),
+        ]).env,
+      );
+
+      const missingIdentifier = await dispatch(
+        "/api/private/admin/members",
+        createEnv([statement({ first: actor })]).env,
+        jsonInit({ teamId: "team-1" }),
+      );
+
+      const missingTeam = await dispatch(
+        "/api/private/admin/members",
+        createEnv([statement({ first: actor }), statement({ first: null })])
+          .env,
+        jsonInit({ teamId: "missing-1", userId: "member-1" }),
+      );
+
+      const forbidden = await dispatch(
+        "/api/private/admin/members",
+        createEnv([
+          statement({ first: actor }),
+          statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+          statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+          statement({ first: null }),
+        ]).env,
+        jsonInit({ teamId: "team-1", userId: "member-1" }),
+      );
+
+      const missingUser = await dispatch(
+        "/api/private/admin/members",
+        createEnv([
+          statement({ first: actor }),
+          statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+          statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+          statement({ first: null }),
+        ]).env,
+        jsonInit({ teamId: "team-1", userId: "missing-1" }),
+      );
+
+      expect(missingTeamId.status).toBe(400);
+      expect(await missingTeamId.json()).toEqual({
+        ok: false,
+        error: "Missing teamId",
+      });
+      expect(deniedList.status).toBe(403);
+      expect(await deniedList.json()).toEqual({
+        ok: false,
+        error: "Team access denied",
+      });
+      expect(missingIdentifier.status).toBe(400);
+      expect(await missingIdentifier.json()).toEqual({
+        ok: false,
+        error: "teamId and user identifier are required",
+      });
+      expect(missingTeam.status).toBe(404);
+      expect(await missingTeam.json()).toEqual({
+        ok: false,
+        error: "Team not found",
+      });
+      expect(forbidden.status).toBe(403);
+      expect(await forbidden.json()).toEqual({
+        ok: false,
+        error: "Only team owner can manage members",
+      });
+      expect(missingUser.status).toBe(404);
+      expect(await missingUser.json()).toEqual({
+        ok: false,
+        error: "User not found",
+      });
     });
 
     it("adds members by identifier with requested non-owner roles", async () => {
@@ -1673,6 +2742,139 @@ describe("private admin edge handler", () => {
       expect(await existingOwner.json()).toEqual({
         ok: false,
         error: "Cannot change team owner membership",
+      });
+    });
+
+    it("protects member role updates and removals with validation guard rails", async () => {
+      setSession(adminSession);
+      const missingIds = await dispatch(
+        "/api/private/admin/members",
+        createEnv([statement({ first: userRow() })]).env,
+        jsonInit({ teamId: "team-1" }, "PATCH"),
+      );
+
+      const missingTeam = await dispatch(
+        "/api/private/admin/members",
+        createEnv([statement({ first: userRow() }), statement({ first: null })])
+          .env,
+        jsonInit({ teamId: "missing-1", userId: "member-1" }, "PATCH"),
+      );
+
+      const missingMember = await dispatch(
+        "/api/private/admin/members",
+        createEnv([
+          statement({ first: userRow() }),
+          statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+          statement({ first: null }),
+        ]).env,
+        jsonInit({ teamId: "team-1", userId: "missing-1" }, "PATCH"),
+      );
+
+      const ownerRoleChange = await dispatch(
+        "/api/private/admin/members",
+        createEnv([
+          statement({ first: userRow() }),
+          statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+          statement({ first: { role: "member" } }),
+        ]).env,
+        jsonInit(
+          {
+            intent: "update_role",
+            teamId: "team-1",
+            userId: "owner-1",
+            role: "admin",
+          },
+          "PATCH",
+        ),
+      );
+
+      const promoteToOwner = await dispatch(
+        "/api/private/admin/members",
+        createEnv([
+          statement({ first: userRow() }),
+          statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+          statement({ first: { role: "member" } }),
+        ]).env,
+        jsonInit(
+          {
+            intent: "update_role",
+            teamId: "team-1",
+            userId: "member-1",
+            role: "owner",
+          },
+          "PATCH",
+        ),
+      );
+
+      const removeOwner = await dispatch(
+        "/api/private/admin/members",
+        createEnv([
+          statement({ first: userRow() }),
+          statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+          statement({ first: { role: "member" } }),
+        ]).env,
+        jsonInit({ teamId: "team-1", userId: "owner-1" }, "PATCH"),
+      );
+
+      setSession(userSession);
+      const forbidden = await dispatch(
+        "/api/private/admin/members",
+        createEnv([
+          statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+          statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+          statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+          statement({ first: null }),
+        ]).env,
+        jsonInit({ teamId: "team-1", userId: "member-1" }, "PATCH"),
+      );
+
+      const unsupported = await dispatch(
+        "/api/private/admin/members",
+        createEnv([
+          statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        ]).env,
+        { method: "DELETE" },
+      );
+
+      expect(missingIds.status).toBe(400);
+      expect(await missingIds.json()).toEqual({
+        ok: false,
+        error: "teamId and userId are required",
+      });
+      expect(missingTeam.status).toBe(404);
+      expect(await missingTeam.json()).toEqual({
+        ok: false,
+        error: "Team not found",
+      });
+      expect(missingMember.status).toBe(404);
+      expect(await missingMember.json()).toEqual({
+        ok: false,
+        error: "Member not found",
+      });
+      expect(ownerRoleChange.status).toBe(400);
+      expect(await ownerRoleChange.json()).toEqual({
+        ok: false,
+        error: "Cannot change team owner role",
+      });
+      expect(promoteToOwner.status).toBe(400);
+      expect(await promoteToOwner.json()).toEqual({
+        ok: false,
+        error: "Cannot promote to owner; use ownership transfer",
+      });
+      expect(removeOwner.status).toBe(400);
+      expect(await removeOwner.json()).toEqual({
+        ok: false,
+        error: "Cannot remove team owner",
+      });
+      expect(forbidden.status).toBe(403);
+      expect(await forbidden.json()).toEqual({
+        ok: false,
+        error: "Only team owner can manage members",
+      });
+      expect(unsupported.status).toBe(405);
+      expect(await unsupported.json()).toEqual({
+        ok: false,
+        error: "Method Not Allowed",
       });
     });
 
@@ -1853,6 +3055,90 @@ describe("private admin edge handler", () => {
       });
     });
 
+    it("validates site config inputs, access, and fallback storage errors", async () => {
+      setSession(userSession);
+      const missingRead = await dispatch(
+        "/api/private/admin/site-config",
+        createEnv([
+          statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        ]).env,
+      );
+
+      const deniedRead = await dispatch(
+        "/api/private/admin/site-config?siteId=site-1",
+        createEnv([
+          statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+          statement({ first: { team_id: "team-1" } }),
+          statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+          statement({ first: null }),
+        ]).env,
+      );
+
+      const missingWrite = await dispatch(
+        "/api/private/admin/site-config",
+        createEnv([
+          statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+        ]).env,
+        jsonInit({ config: { trackHash: false } }),
+      );
+
+      setSession(adminSession);
+      const missingSite = await dispatch(
+        "/api/private/admin/site-config",
+        createEnv([
+          statement({ first: userRow() }),
+          statement({ first: { team_id: "team-1" } }),
+          statement({ first: null }),
+        ]).env,
+        jsonInit({ siteId: "missing-1" }),
+      );
+
+      upsertSiteScriptSettingsMock.mockRejectedValue("kv failed");
+      const fallbackWriteError = await dispatch(
+        "/api/private/admin/site-config",
+        createEnv([
+          statement({ first: userRow() }),
+          statement({ first: { team_id: "team-1" } }),
+          statement({ first: { domain: "site.example.test" } }),
+        ]).env,
+        jsonInit({ siteId: "site-1", config: null }),
+      );
+
+      expect(missingRead.status).toBe(400);
+      expect(await missingRead.json()).toEqual({
+        ok: false,
+        error: "Missing siteId",
+      });
+      expect(deniedRead.status).toBe(403);
+      expect(await deniedRead.json()).toEqual({
+        ok: false,
+        error: "Site access denied",
+      });
+      expect(missingWrite.status).toBe(400);
+      expect(await missingWrite.json()).toEqual({
+        ok: false,
+        error: "siteId is required",
+      });
+      expect(missingSite.status).toBe(404);
+      expect(await missingSite.json()).toEqual({
+        ok: false,
+        error: "Site not found",
+      });
+      expect(fallbackWriteError.status).toBe(500);
+      expect(await fallbackWriteError.json()).toEqual({
+        ok: false,
+        error: "save_site_config_failed",
+      });
+      expect(upsertSiteScriptSettingsMock).toHaveBeenLastCalledWith(
+        expect.anything(),
+        "site-1",
+        {
+          siteDomain: "site.example.test",
+          settings: {},
+        },
+      );
+    });
+
     it("saves site config after confirming site ownership and domain", async () => {
       setSession(userSession);
       const saved = { ...DEFAULT_SITE_SCRIPT_SETTINGS, trackHash: false };
@@ -1944,6 +3230,54 @@ describe("private admin edge handler", () => {
           snippet:
             '<script defer src="https://cdn.example.test/script.js?siteId=site%201"></script>',
         },
+      });
+    });
+
+    it("uses request origin for snippets and validates snippet access", async () => {
+      setSession(adminSession);
+      const defaultBase = await dispatch(
+        "/api/private/admin/script-snippet?siteId=site-1",
+        createEnv([
+          statement({ first: userRow() }),
+          statement({ first: { team_id: "team-1" } }),
+        ]).env,
+      );
+
+      const missingSiteId = await dispatch(
+        "/api/private/admin/script-snippet",
+        createEnv([statement({ first: userRow() })]).env,
+      );
+
+      setSession(userSession);
+      const denied = await dispatch(
+        "/api/private/admin/script-snippet?siteId=site-1",
+        createEnv([
+          statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
+          statement({ first: { team_id: "team-1" } }),
+          statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+          statement({ first: null }),
+        ]).env,
+      );
+
+      expect(defaultBase.status).toBe(200);
+      expect(await defaultBase.json()).toEqual({
+        ok: true,
+        data: {
+          siteId: "site-1",
+          src: "https://edge.test/script.js?siteId=site-1",
+          snippet:
+            '<script defer src="https://edge.test/script.js?siteId=site-1"></script>',
+        },
+      });
+      expect(missingSiteId.status).toBe(400);
+      expect(await missingSiteId.json()).toEqual({
+        ok: false,
+        error: "Missing siteId",
+      });
+      expect(denied.status).toBe(403);
+      expect(await denied.json()).toEqual({
+        ok: false,
+        error: "Site access denied",
       });
     });
 

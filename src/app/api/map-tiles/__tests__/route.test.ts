@@ -29,6 +29,24 @@ describe("map tile route", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("rejects non-numeric and non-finite tile parameters", async () => {
+    await expect(
+      GET(
+        new Request("https://app.test/api/map-tiles/nope/0/0.png"),
+        params("nope", "0", "0.png"),
+      ),
+    ).resolves.toMatchObject({ status: 400 });
+
+    await expect(
+      GET(
+        new Request("https://app.test/api/map-tiles/2/999/1"),
+        params("2", "9".repeat(400), "1"),
+      ),
+    ).resolves.toMatchObject({ status: 400 });
+
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("normalizes x, resolves dark theme fallback, and returns cached tile headers", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
@@ -65,6 +83,23 @@ describe("map tile route", () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(
       new Uint8Array([1, 2, 3]),
     );
+  });
+
+  it("uses light tiles by default and falls back to image/png content type", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(new Uint8Array([4])));
+
+    const response = await GET(
+      new Request("https://app.test/api/map-tiles/1/0/0"),
+      params("1", "0", "0"),
+    );
+
+    expect(fetch).toHaveBeenCalledWith(
+      "https://basemaps.cartocdn.com/light_all/1/0/0.png",
+      expect.any(Object),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.headers.get("x-map-theme")).toBe("light");
   });
 
   it("returns the last upstream status when every tile upstream fails", async () => {

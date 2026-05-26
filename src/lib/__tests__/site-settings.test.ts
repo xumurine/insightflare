@@ -20,6 +20,7 @@ describe("site settings helpers", () => {
     expect(normalizeSiteDomain("http://[bad")).toBe("");
     expect(normalizeSiteDomain("*.example.com")).toBe("");
     expect(normalizeSiteDomain("bad_host.example")).toBe("");
+    expect(normalizeSiteDomain(`${"a".repeat(256)}.example.com`)).toBe("");
     expect(normalizeSiteDomain(".".repeat(260))).toBe("");
     expect(normalizeSiteDomain("---")).toBe("");
     expect(normalizeSiteDomain(null)).toBe("");
@@ -40,6 +41,13 @@ describe("site settings helpers", () => {
         "",
       ]),
     ).toEqual(["example.com", "docs.example.com"]);
+    expect(
+      parseDomainWhitelist(`
+        HTTPS://Blog.Example.com/articles?id=1
+        sub.example.com/path
+        ...Trailing.Example...
+      `),
+    ).toEqual(["blog.example.com", "sub.example.com", "trailing.example"]);
     expect(parseDomainWhitelist(manyDomains)).toHaveLength(200);
     expect(parseDomainWhitelist(123)).toEqual([]);
   });
@@ -56,6 +64,14 @@ describe("site settings helpers", () => {
         /admin
       `),
     ).toEqual(["/admin", "/checkout/step", "/private", "/badpath"]);
+    expect(
+      parsePathBlacklist([
+        "https://example.com",
+        "reports/#monthly",
+        "/keep%20encoded",
+        "/allowed:segment",
+      ]),
+    ).toEqual(["/", "/reports/", "/keep%20encoded", "/allowed:segment"]);
     expect(
       parsePathBlacklist(Array.from({ length: 205 }, (_, i) => `p${i}`)),
     ).toHaveLength(200);
@@ -102,6 +118,17 @@ describe("site settings helpers", () => {
       }).performanceSampleRate,
     ).toBe(0);
     expect(
+      normalizeSiteScriptSettings({
+        trackingStrength: "strong",
+        trackQueryParams: 1,
+        autoTrackOutboundLinks: 0,
+      }),
+    ).toMatchObject({
+      trackingStrength: "strong",
+      trackQueryParams: true,
+      autoTrackOutboundLinks: false,
+    });
+    expect(
       normalizeSiteScriptSettings({ performanceSampleRate: 101 })
         .performanceSampleRate,
     ).toBe(100);
@@ -113,6 +140,17 @@ describe("site settings helpers", () => {
       normalizeSiteScriptSettings({ performanceSampleRate: "bad" })
         .performanceSampleRate,
     ).toBe(DEFAULT_SITE_SCRIPT_SETTINGS.performanceSampleRate);
+    expect(
+      normalizeSiteScriptSettings({
+        ignoreDoNotTrack: " yes ",
+        trackHash: "maybe",
+        performanceSampleRate: "12.345",
+      }),
+    ).toMatchObject({
+      ignoreDoNotTrack: true,
+      trackHash: DEFAULT_SITE_SCRIPT_SETTINGS.trackHash,
+      performanceSampleRate: 12.35,
+    });
   });
 
   it("normalizes tracking configs and allowed hostnames", () => {
@@ -136,6 +174,13 @@ describe("site settings helpers", () => {
       siteDomain: "primary.example",
       allowedHostnames: ["docs.example.com"],
       trackingStrength: "weak",
+    });
+
+    expect(parsePathBlacklist(["?debug=1", `/${"a".repeat(260)}`])).toEqual([]);
+    expect(normalizeSiteTrackingConfig(null)).toMatchObject({
+      siteId: "",
+      siteDomain: "",
+      allowedHostnames: [],
     });
   });
 });

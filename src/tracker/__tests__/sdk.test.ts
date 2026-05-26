@@ -285,6 +285,21 @@ describe("Tracker Browser SDK Integration Suite", () => {
     });
   });
 
+  it("should honor Do Not Track values case-insensitively when configured", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    Object.defineProperty(navigator, "doNotTrack", {
+      value: " YES ",
+      writable: true,
+      configurable: true,
+    });
+
+    await expect(
+      importConfiguredSdk({ ignoreDoNotTrack: false }),
+    ).rejects.toThrow("InsightFlare: Do Not Track enabled");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("should fall back to standard POST fetch when sendBeacon is unsupported", async () => {
     // Strip sendBeacon capability from mock browser navigator
     const originalSendBeacon = navigator.sendBeacon;
@@ -1715,6 +1730,25 @@ describe("Tracker Browser SDK Integration Suite", () => {
     api.track("empty_ua");
 
     const body = decodeFetchBody(fetchSpy);
+    expect(body.uaClientHints).toBeUndefined();
+  });
+
+  it("should send without UA client hints when reading them rejects", async () => {
+    vi.doMock("../ua-client-hints", () => ({
+      readUaClientHints: () => Promise.reject(new Error("ua unavailable")),
+      withUaClientHints: (payload: unknown) => payload,
+    }));
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+    await new Promise((r) => setTimeout(r, 0));
+
+    const body = decodeFetchBody(fetchSpy);
+    expect(body.kind).toBe("pageview");
     expect(body.uaClientHints).toBeUndefined();
   });
 

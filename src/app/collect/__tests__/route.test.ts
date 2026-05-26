@@ -183,6 +183,21 @@ describe("collect route", () => {
     expect(response.headers.get("vary")).toBe("Origin");
   });
 
+  it("answers CORS preflight without allow-origin when no origin is present", async () => {
+    const request = new Request("https://collector.test/collect", {
+      method: "OPTIONS",
+    });
+
+    const response = await OPTIONS(request);
+
+    expect(response.status).toBe(204);
+    expect(response.headers.has("access-control-allow-origin")).toBe(false);
+    expect(response.headers.has("access-control-allow-credentials")).toBe(
+      false,
+    );
+    expect(response.headers.get("vary")).toBe("Origin");
+  });
+
   it("returns a JSON error for invalid JSON without reading settings", async () => {
     makeRuntimeRequest({
       origin: "https://example.com",
@@ -222,6 +237,46 @@ describe("collect route", () => {
     expect(response.status).toBe(422);
     expect(readSiteTrackingConfigMock).not.toHaveBeenCalled();
     expect(ctx.waitUntil).not.toHaveBeenCalled();
+  });
+
+  it("rejects custom event payloads when eventData cannot be JSON serialized", async () => {
+    const body = JSON.stringify(
+      makePayload({
+        kind: "custom_event",
+        eventName: "Signup",
+        eventData: { explode: true },
+      }),
+    );
+    const stringify = JSON.stringify;
+    const stringifySpy = vi
+      .spyOn(JSON, "stringify")
+      .mockImplementation((value, replacer, space) => {
+        if (
+          value &&
+          typeof value === "object" &&
+          "explode" in value &&
+          value.explode === true
+        ) {
+          throw new TypeError("cannot serialize");
+        }
+        return stringify(value, replacer, space);
+      });
+    makeRuntimeRequest({
+      origin: "https://example.com",
+      body,
+    });
+
+    const response = await POST(new Request("https://collector.test/collect"));
+
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "eventData must be JSON serializable",
+    });
+    expect(response.status).toBe(422);
+    expect(readSiteTrackingConfigMock).not.toHaveBeenCalled();
+    expect(ctx.waitUntil).not.toHaveBeenCalled();
+
+    stringifySpy.mockRestore();
   });
 
   it("drops bot traffic without looking up settings", async () => {
@@ -309,6 +364,27 @@ describe("collect route", () => {
     expect(ctx.waitUntil).not.toHaveBeenCalled();
   });
 
+  it("forwards when a whitelisted origin hostname matches case-insensitively", async () => {
+    readSiteTrackingConfigMock.mockResolvedValue({
+      ...baseSettings,
+      domainWhitelist: ["allowed.example"],
+      allowedHostnames: [" Allowed.Example "],
+    });
+    makeRuntimeRequest({
+      origin: "https://Allowed.Example.",
+      body: makePayload(),
+    });
+
+    const response = await POST(new Request("https://collector.test/collect"));
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://allowed.example.",
+    );
+    expect(env.INGEST_DO.idFromName).toHaveBeenCalledWith("site-1");
+    expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+  });
+
   it("enforces path blacklist settings after normalizing payload paths", async () => {
     readSiteTrackingConfigMock.mockResolvedValue({
       ...baseSettings,
@@ -390,6 +466,29 @@ describe("collect route", () => {
       source: "collect",
       id: expect.any(String),
       acceptedAt: expect.any(Number),
+    });
+  });
+
+  it("normalizes query-only pageview paths to root while ignoring empty blacklist entries", async () => {
+    readSiteTrackingConfigMock.mockResolvedValue({
+      ...baseSettings,
+      pathBlacklist: ["", "/private"],
+    });
+    makeRuntimeRequest({
+      body: makePayload({
+        pathname: "?utm_source=newsletter",
+      }),
+    });
+
+    const response = await POST(new Request("https://collector.test/collect"));
+
+    expect(response.status).toBe(204);
+    expect(response.headers.has("access-control-allow-origin")).toBe(false);
+    const envelope = await readForwardedEnvelope();
+    expect(envelope.client).toMatchObject({
+      siteId: "site-1",
+      kind: "pageview",
+      pathname: "/",
     });
   });
 
@@ -582,6 +681,28 @@ describe("collect route", () => {
     await expect(ctx.waitUntil.mock.calls[0]?.[0]).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining("collect_forward_failed"),
+    );
+  });
+
+  it("logs successful Durable Object responses even when the response body cannot be read", async () => {
+    env.INGEST_DO.get.mockReturnValue({
+      fetch: vi.fn().mockResolvedValue({
+        ok: true,
+        status: 202,
+        text: vi.fn().mockRejectedValue(new Error("stream closed")),
+      }),
+    });
+    makeRuntimeRequest({
+      origin: "https://example.com",
+      body: makePayload(),
+    });
+
+    const response = await POST(new Request("https://collector.test/collect"));
+
+    expect(response.status).toBe(204);
+    await expect(ctx.waitUntil.mock.calls[0]?.[0]).resolves.toBeUndefined();
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining("collect_forward_result"),
     );
   });
 });

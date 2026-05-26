@@ -82,6 +82,16 @@ describe("mock/fact-builder", () => {
       const d = buildDemoFactDataset(SITE_ID, Number.NaN, 100);
       expect(d.visits.length).toBe(0);
     });
+
+    it("caches an empty dataset when a finite window has zero computed views", () => {
+      DEMO_FACT_DATASET_CACHE.clear();
+      const a = buildDemoFactDataset(SITE_ID, 0, 1);
+      const b = buildDemoFactDataset(SITE_ID, 0, 1);
+      expect(a).toBe(b);
+      expect(a.visits).toEqual([]);
+      expect(a.sessions.size).toBe(0);
+      expect(a.visitors.size).toBe(0);
+    });
   });
 
   describe("weightedSessionCount / weightedVisitorCount", () => {
