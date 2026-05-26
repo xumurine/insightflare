@@ -211,6 +211,33 @@ describe("browser-client mock coverage", () => {
     );
   });
 
+  it("returns empty cross dimensions when dimension aggregation has no visitor rows", () => {
+    const visits = [
+      makeVisit({
+        visitId: "chrome-empty-dimension",
+        browser: "Chrome",
+        osVersion: "",
+        deviceType: "",
+      }),
+    ];
+    setFacts(visits);
+    mockAggregateDimensionRowsFromVisits
+      .mockImplementationOnce(() => [
+        { label: "Chrome", views: 1, sessions: 1, visitors: 1 },
+      ])
+      .mockImplementationOnce(() => [])
+      .mockImplementationOnce(() => [
+        { label: "Chrome", views: 1, sessions: 1, visitors: 1 },
+      ])
+      .mockImplementationOnce(() => []);
+
+    expect(generateDemoBrowserCrossBreakdown(SITE_ID, {})).toEqual({
+      ok: true,
+      operatingSystem: { columns: [], rows: [], totalVisitors: 0 },
+      deviceType: { columns: [], rows: [], totalVisitors: 0 },
+    });
+  });
+
   it("builds client dimension combinations for browser, OS version, device, language, and screen fallbacks", () => {
     setFacts([
       makeVisit({

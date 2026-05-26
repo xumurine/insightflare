@@ -11,7 +11,10 @@ import type {
   DemoFilteredFacts,
   DemoVisitFact,
 } from "@/lib/realtime/mock/types";
-import { generateDemoUtmDimension } from "@/lib/realtime/mock/utm-dimensions";
+import {
+  generateDemoUtmDimension,
+  generateDemoUtmTrend,
+} from "@/lib/realtime/mock/utm-dimensions";
 import {
   generateDemoGeoPoints,
   generateDemoOverviewSourceTab,
@@ -99,6 +102,168 @@ describe("mock UTM and fact branch coverage", () => {
       );
     } finally {
       DEMO_SITE_PROFILES.pop();
+    }
+  });
+
+  it("builds source, medium, term, and content UTM dimensions from profile pools", () => {
+    const profile: DemoSiteProfile = {
+      ...DEMO_SITE_PROFILES[0],
+      id: "utm-pool-site",
+      name: "Pool Site",
+      domain: "pool.example",
+      paths: ["/", "/pricing-page", "/docs/getting-started"],
+      titles: ["Home", "Pricing Comparison", "Automation Guide"],
+      topReferrers: [
+        { name: "https://www.Search.Example/path", weight: 1 },
+        { name: "partner", weight: 0.5 },
+        { name: "(direct)", weight: 10 },
+        { name: "", weight: 5 },
+        { name: "zero.example", weight: 0 },
+      ],
+    };
+    DEMO_SITE_PROFILES.push(profile);
+
+    try {
+      setFacts(
+        Array.from({ length: 200 }, (_, index) =>
+          makeVisit({
+            visitId: `utm-${index}`,
+            sessionId: `s${index}`,
+            visitorId: `u${index}`,
+            startedAt: BASE_TIME + index * 1_000,
+          }),
+        ),
+      );
+
+      const source = generateDemoUtmDimension(profile.id, "source", {
+        from: BASE_TIME,
+        to: BASE_TIME + 3_600_000,
+        limit: 12,
+      }) as { data: Array<{ value: string; views: number; sessions: number }> };
+      const sourceValues = source.data.map((row) => row.value);
+      expect(sourceValues).toContain("search");
+      expect(sourceValues).not.toContain("(direct)");
+      expect(sourceValues).not.toContain("zero");
+      expect(source.data.every((row) => row.views >= row.sessions)).toBe(true);
+
+      const medium = generateDemoUtmDimension(profile.id, "medium", {
+        from: BASE_TIME,
+        to: BASE_TIME + 3_600_000,
+        limit: 6,
+      }) as { data: Array<{ value: string }> };
+      expect(medium.data.map((row) => row.value)).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(
+            /^(email|cpc|paid-social|organic-social|referral|affiliate|display|sponsored|community|influencer)$/,
+          ),
+        ]),
+      );
+
+      const term = generateDemoUtmDimension(profile.id, "term", {
+        from: BASE_TIME,
+        to: BASE_TIME + 3_600_000,
+        limit: 10,
+      }) as { data: Array<{ value: string }> };
+      expect(term.data.map((row) => row.value)).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(
+            /^(pricing|comparison|automation|guide|brand|template|free-trial|discount)$/,
+          ),
+        ]),
+      );
+
+      const content = generateDemoUtmDimension(profile.id, "content", {
+        from: BASE_TIME,
+        to: BASE_TIME + 3_600_000,
+        limit: 10,
+      }) as { data: Array<{ value: string }> };
+      expect(content.data.map((row) => row.value)).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(
+            /(-hero|-cta|hero-a|hero-b|pricing-card|email-1|email-2)$/,
+          ),
+        ]),
+      );
+    } finally {
+      DEMO_SITE_PROFILES.pop();
+    }
+  });
+
+  it("returns empty UTM payloads for empty facts and invalid trend dimensions", () => {
+    setFacts([]);
+
+    expect(
+      generateDemoUtmDimension("demo-site-001", "source", {
+        from: BASE_TIME,
+        to: BASE_TIME + 3_600_000,
+      }),
+    ).toEqual({ ok: true, data: [] });
+    expect(
+      generateDemoUtmTrend("demo-site-001", {
+        dimension: "unknown",
+        interval: "minute",
+      }),
+    ).toEqual({
+      ok: true,
+      interval: "minute",
+      series: [],
+      data: [],
+    });
+    expect(
+      generateDemoUtmTrend("demo-site-001", {
+        dimension: "source",
+        from: BASE_TIME,
+        to: BASE_TIME + 3_600_000,
+      }),
+    ).toEqual({
+      ok: true,
+      interval: "day",
+      series: [],
+      data: [],
+    });
+  });
+
+  it("builds UTM trend series with Other and preserves bucket visitor totals", () => {
+    setFacts(
+      Array.from({ length: 120 }, (_, index) =>
+        makeVisit({
+          visitId: `trend-${index}`,
+          sessionId: `s${index}`,
+          visitorId: `u${index}`,
+          startedAt: BASE_TIME + (index % 3) * 3_600_000 + index,
+        }),
+      ),
+    );
+
+    const result = generateDemoUtmTrend("demo-site-001", {
+      dimension: "campaign",
+      from: BASE_TIME,
+      to: BASE_TIME + 2 * 3_600_000,
+      interval: "hour",
+      limit: 1,
+      timeZone: "UTC",
+    }) as {
+      series: Array<{ key: string; label: string; isOther?: boolean }>;
+      data: Array<{
+        totalVisitors: number;
+        visitorsBySeries: Record<string, number>;
+      }>;
+    };
+
+    expect(result.series).toEqual([
+      expect.not.objectContaining({ isOther: expect.anything() }),
+      expect.objectContaining({ key: "other", label: "Other", isOther: true }),
+    ]);
+    for (const point of result.data) {
+      expect(Object.keys(point.visitorsBySeries).sort()).toEqual(
+        result.series.map((series) => series.key).sort(),
+      );
+      expect(
+        Object.values(point.visitorsBySeries).reduce(
+          (sum, value) => sum + value,
+          0,
+        ),
+      ).toBe(point.totalVisitors);
     }
   });
 

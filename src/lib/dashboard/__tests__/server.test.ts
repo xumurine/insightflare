@@ -141,6 +141,20 @@ describe("dashboard server helpers", () => {
         name: "Admin User",
         systemRole: "admin",
       },
+      teams: [],
+    } as any);
+    const { getDefaultTeamSite: getDefaultWithNoTeams } =
+      await loadServerModule();
+    await expect(getDefaultWithNoTeams()).resolves.toBeNull();
+
+    fetchAdminMeMock.mockResolvedValue({
+      user: {
+        id: "user-1",
+        username: "admin",
+        email: "admin@example.test",
+        name: "Admin User",
+        systemRole: "admin",
+      },
       teams: [team("team-1", "team-a")],
     } as any);
     fetchAdminSitesMock.mockResolvedValue([]);

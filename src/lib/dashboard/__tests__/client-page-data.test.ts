@@ -222,6 +222,110 @@ describe("dashboard client page data helpers", () => {
     ]);
   });
 
+  it("merges duplicate page buckets and fills Other from total-only buckets", async () => {
+    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes("/api/private/pages-dashboard")) {
+        return Promise.resolve(
+          jsonResponse({
+            ok: false,
+            interval: "day",
+            data: [
+              {
+                pathname: "/docs",
+                metrics: { views: 2, sessions: 1 },
+                trend: [{ views: "2" }, { timestampMs: 5000, views: null }],
+              },
+              {
+                pathname: "/blog",
+                metrics: { views: 7, sessions: 4 },
+                trend: [
+                  { timestampMs: null, views: 3 },
+                  { timestampMs: 6000, views: 4 },
+                ],
+              },
+            ],
+            meta: {
+              page: 1,
+              pageSize: 2,
+              returned: 2,
+              hasMore: false,
+              nextPage: null,
+            },
+          }),
+        );
+      }
+      return Promise.resolve(
+        jsonResponse({
+          ok: true,
+          interval: "day",
+          data: [
+            { timestampMs: 0, views: 10 },
+            { timestampMs: 7000, views: 2 },
+            { timestampMs: 6000, views: -5 },
+          ],
+        }),
+      );
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const trend = await fetchPagesShareTrend("share-duplicates", window, {
+      path: "/docs",
+    });
+
+    expect(trend.ok).toBe(false);
+    expect(trend.series).toEqual([
+      {
+        key: "page_0",
+        label: "/docs",
+        views: 2,
+        visitors: 2,
+        sessions: 1,
+      },
+      {
+        key: "page_1",
+        label: "/blog",
+        views: 7,
+        visitors: 7,
+        sessions: 4,
+      },
+      {
+        key: "other",
+        label: "Other",
+        views: 7,
+        visitors: 7,
+        sessions: 7,
+        isOther: true,
+      },
+    ]);
+    expect(trend.data).toEqual([
+      {
+        bucket: 0,
+        timestampMs: 0,
+        totalVisitors: 10,
+        visitorsBySeries: { page_0: 2, page_1: 3, other: 5 },
+      },
+      {
+        bucket: 1,
+        timestampMs: 5000,
+        totalVisitors: 0,
+        visitorsBySeries: { page_0: 0 },
+      },
+      {
+        bucket: 2,
+        timestampMs: 6000,
+        totalVisitors: 4,
+        visitorsBySeries: { page_1: 4 },
+      },
+      {
+        bucket: 3,
+        timestampMs: 7000,
+        totalVisitors: 2,
+        visitorsBySeries: { other: 2 },
+      },
+    ]);
+  });
+
   it("uses total trend data when the page dashboard request falls back", async () => {
     delete process.env.NEXT_PUBLIC_DEMO_MODE;
     const fetchMock = vi.fn((url: string) => {
@@ -360,7 +464,9 @@ describe("dashboard client page data helpers", () => {
       .mockResolvedValueOnce(jsonResponse({ ok: true, data: [] }));
     globalThis.fetch = fetchMock;
 
-    await expect(fetchPageCardTabs("tabs-site", window)).resolves.toEqual(tabs);
+    await expect(
+      fetchPageCardTabs("tabs-site", window, { path: "/docs" }),
+    ).resolves.toEqual(tabs);
     await expect(fetchPageCardTabs("tabs-empty", window)).resolves.toEqual({
       path: [],
       title: [],
@@ -369,5 +475,6 @@ describe("dashboard client page data helpers", () => {
       exit: [],
     });
     expect(paramsFromCall(fetchMock, 0).get("limit")).toBe("100");
+    expect(paramsFromCall(fetchMock, 0).get("path")).toBe("/docs");
   });
 });

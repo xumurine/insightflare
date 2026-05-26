@@ -7,6 +7,7 @@ import {
   browserTimeZone,
   endOfZonedDay,
   isValidTimeZone,
+  normalizeTimeZone,
   resolveReportingTimeZone,
   startOfZonedDay,
   startOfZonedHour,
@@ -35,6 +36,15 @@ describe("Timezone & Calendar Calculation Utilities", () => {
       expect(isValidTimeZone("   ")).toBe(false);
       expect(isValidTimeZone("Asia/Beijing")).toBe(false); // Not standard IANA (should be Asia/Shanghai)
       expect(isValidTimeZone("Invalid/Zone_Name")).toBe(false);
+    });
+  });
+
+  describe("normalizeTimeZone", () => {
+    it("should trim valid timezones and return blank for invalid or nullish values", () => {
+      expect(normalizeTimeZone("  UTC  ")).toBe("UTC");
+      expect(normalizeTimeZone("Invalid/Zone")).toBe("");
+      expect(normalizeTimeZone(null)).toBe("");
+      expect(normalizeTimeZone(undefined)).toBe("");
     });
   });
 
@@ -90,6 +100,29 @@ describe("Timezone & Calendar Calculation Utilities", () => {
       const parts = zonedParts(testTimestamp, "Asia/Shanghai");
       const reversedTimestamp = zonedTimeToUtcMs("Asia/Shanghai", parts);
       expect(reversedTimestamp).toBe(testTimestamp);
+    });
+
+    it("should recalculate offsets when the first UTC guess crosses a DST boundary", () => {
+      const timestamp = zonedTimeToUtcMs("America/New_York", {
+        year: 2026,
+        month: 3,
+        day: 8,
+        hour: 3,
+        minute: 30,
+        second: 0,
+        millisecond: 0,
+      });
+
+      expect(new Date(timestamp).toISOString()).toBe(
+        "2026-03-08T07:30:00.000Z",
+      );
+      expect(zonedParts(timestamp, "America/New_York")).toMatchObject({
+        year: 2026,
+        month: 3,
+        day: 8,
+        hour: 3,
+        minute: 30,
+      });
     });
   });
 
@@ -275,6 +308,23 @@ describe("Timezone & Calendar Calculation Utilities", () => {
   });
 
   describe("startOfZonedInterval with Month Interval (Line 305)", () => {
+    it("should dispatch minute, hour, day, and week intervals to their start helpers", () => {
+      const testTimestamp = 1779808496789;
+
+      expect(startOfZonedInterval(testTimestamp, "minute", "UTC")).toBe(
+        startOfZonedMinute(testTimestamp, "UTC"),
+      );
+      expect(startOfZonedInterval(testTimestamp, "hour", "UTC")).toBe(
+        startOfZonedHour(testTimestamp, "UTC"),
+      );
+      expect(startOfZonedInterval(testTimestamp, "day", "UTC")).toBe(
+        startOfZonedDay(testTimestamp, "UTC"),
+      );
+      expect(startOfZonedInterval(testTimestamp, "week", "UTC")).toBe(
+        startOfZonedWeek(testTimestamp, "UTC"),
+      );
+    });
+
     it("should return start of zoned month when interval is 'month'", () => {
       const testTimestamp = 1779808496789; // 2026-05-26 23:14:56.789 Asia/Shanghai
       const startMs = startOfZonedInterval(

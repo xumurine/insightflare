@@ -35,6 +35,12 @@ describe("Geographic Location Parsing and Canonicalization", () => {
       expect(
         buildLocalityLocationValue("cn", "gd", "Guangdong", "Shenzhen"),
       ).toBe("CN::GD::Guangdong::Shenzhen");
+      expect(
+        buildLocalityLocationValue("cn", "", "Guangdong", "Shenzhen"),
+      ).toBe("CN::GUANGDONG::Guangdong::Shenzhen");
+      expect(buildLocalityLocationValue("cn", "gd", "", "Shenzhen")).toBe(
+        "CN::GD::gd::Shenzhen",
+      );
       // Fallback behavior when region segments are missing
       expect(
         buildLocalityLocationValue("cn", null, undefined, "Shenzhen"),
@@ -71,6 +77,9 @@ describe("Geographic Location Parsing and Canonicalization", () => {
       expect(
         canonicalizeGeoLocationValue("cn::gd::Guangdong::Shenzhen::Futian"),
       ).toBe("CN::GD::Guangdong::Shenzhen::Futian");
+      expect(
+        canonicalizeGeoLocationValue(" us :: ca ::  :: Los Angeles "),
+      ).toBe("US::CA::Los Angeles");
     });
   });
 
@@ -154,6 +163,24 @@ describe("Geographic Location Parsing and Canonicalization", () => {
           localityName: "Shenzhen",
         }),
       ).toBe("CN::GD::Guangdong");
+      expect(
+        parentGeoLocationValue({
+          canonical: "CN::GD::Shenzhen",
+          level: "locality",
+          countryCode: "CN",
+          regionCode: "GD",
+          localityName: "Shenzhen",
+        }),
+      ).toBe("CN::GD::GD");
+      expect(
+        parentGeoLocationValue({
+          canonical: "CN::Guangdong::Shenzhen",
+          level: "locality",
+          countryCode: "CN",
+          regionName: "Guangdong",
+          localityName: "Shenzhen",
+        }),
+      ).toBe("CN::GUANGDONG::Guangdong");
     });
 
     it("should resolve country as parent for locality level if region is completely absent", () => {

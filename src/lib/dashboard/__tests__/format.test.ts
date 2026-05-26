@@ -57,6 +57,7 @@ describe("Dashboard Format Utilities", () => {
       expect(shortDateTime("en", Infinity as any)).toBe("--");
       expect(shortDateTime("en", -Infinity as any)).toBe("--");
       expect(shortDateTime("en", new Date("invalid-date-obj"))).toBe("--");
+      expect(shortDateTime("en", false as any)).toBe("--");
     });
 
     it("should return fallback for numeric timestamps less than or equal to zero", () => {
@@ -89,6 +90,11 @@ describe("Dashboard Format Utilities", () => {
       const isoStr = "2026-05-25T03:43:43Z";
       expect(shortDate("en", isoStr, "UTC")).toContain("May");
       expect(shortDateTime("en", isoStr, "UTC")).toContain("43");
+    });
+
+    it("should format without a timezone override when one is not provided", () => {
+      expect(shortDate("zh", "2026-05-25T03:43:43Z")).not.toBe("--");
+      expect(shortDateTime("zh", "2026-05-25T03:43:43Z")).not.toBe("--");
     });
   });
 

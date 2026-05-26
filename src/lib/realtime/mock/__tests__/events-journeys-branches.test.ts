@@ -180,6 +180,66 @@ describe("mock events and journeys branch coverage", () => {
     ]);
   });
 
+  it("paginates visitors and filters search matches before building rows", () => {
+    setFacts([
+      makeVisit({
+        visitId: "alpha",
+        visitorId: "visitor-alpha",
+        sessionId: "session-alpha",
+        startedAt: 30_000,
+        pathname: "/alpha-pricing",
+        title: "Alpha Pricing",
+      }),
+      makeVisit({
+        visitId: "beta",
+        visitorId: "visitor-beta",
+        sessionId: "session-beta",
+        startedAt: 20_000,
+        pathname: "/beta-docs",
+        title: "Beta Docs",
+      }),
+      makeVisit({
+        visitId: "gamma",
+        visitorId: "visitor-gamma",
+        sessionId: "session-gamma",
+        startedAt: 10_000,
+        pathname: "/gamma-help",
+        title: "Gamma Help",
+      }),
+    ]);
+
+    expect(
+      generateDemoVisitors("site", {
+        page: 1,
+        pageSize: 2,
+      }),
+    ).toMatchObject({
+      meta: {
+        page: 1,
+        pageSize: 2,
+        returned: 2,
+        hasMore: true,
+        nextPage: 2,
+      },
+    });
+
+    const searched = generateDemoVisitors("site", {
+      page: 1,
+      pageSize: 2,
+      search: "beta-docs",
+    }) as {
+      data: Array<Record<string, unknown>>;
+      meta: Record<string, unknown>;
+    };
+
+    expect(searched.data.map((row) => row.visitorId)).toEqual(["visitor-beta"]);
+    expect(searched.meta).toMatchObject({
+      returned: 1,
+      hasMore: false,
+      nextPage: null,
+    });
+  });
+
   it("sorts visitor detail sessions newest first and returns null for blank IDs", () => {
     setFacts([
       makeVisit({
@@ -241,6 +301,68 @@ describe("mock events and journeys branch coverage", () => {
       "a-session",
       "b-session",
     ]);
+  });
+
+  it("paginates sessions and filters session search matches", () => {
+    setFacts([
+      makeVisit({
+        visitId: "alpha",
+        sessionId: "session-alpha",
+        visitorId: "visitor-alpha",
+        startedAt: 30_000,
+        pathname: "/alpha-pricing",
+        title: "Alpha Pricing",
+      }),
+      makeVisit({
+        visitId: "beta",
+        sessionId: "session-beta",
+        visitorId: "visitor-beta",
+        startedAt: 20_000,
+        pathname: "/beta-docs",
+        title: "Beta Docs",
+      }),
+      makeVisit({
+        visitId: "gamma",
+        sessionId: "session-gamma",
+        visitorId: "visitor-gamma",
+        startedAt: 10_000,
+        pathname: "/gamma-help",
+        title: "Gamma Help",
+      }),
+    ]);
+
+    expect(
+      generateDemoSessions("site", {
+        page: 1,
+        pageSize: 2,
+      }),
+    ).toMatchObject({
+      meta: {
+        page: 1,
+        pageSize: 2,
+        returned: 2,
+        hasMore: true,
+        nextPage: 2,
+      },
+    });
+
+    const searched = generateDemoSessions("site", {
+      page: 1,
+      pageSize: 2,
+      q: "gamma help",
+    }) as {
+      data: Array<Record<string, unknown>>;
+      meta: Record<string, unknown>;
+    };
+
+    expect(searched.data.map((row) => row.sessionId)).toEqual([
+      "session-gamma",
+    ]);
+    expect(searched.meta).toMatchObject({
+      returned: 1,
+      hasMore: false,
+      nextPage: null,
+    });
   });
 });
 
