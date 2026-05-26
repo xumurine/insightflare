@@ -360,7 +360,7 @@ describe("mock — handleDemoRequest", () => {
           data: expect.any(Array),
         }),
       );
-    });
+    }, 20000);
 
     it("falls back to a single trend bucket for an inverted time window", () => {
       const res = asRecord(

@@ -1,0 +1,43 @@
+import { withDashboardCache } from "@/lib/edge/dashboard-cache";
+import type { Env } from "@/lib/edge/types";
+
+import { fetchPublicSite, notAllowed, resolvePrivateSite } from "./core";
+import { routeQuery } from "./router";
+import { handleTeamDashboard } from "./team";
+
+export async function handlePrivateQuery(
+  request: Request,
+  env: Env,
+  url: URL,
+  ctx?: ExecutionContext,
+): Promise<Response> {
+  if (request.method !== "GET") return notAllowed();
+  const pathname = url.pathname.replace(/^\/api\/private\//, "");
+  if (pathname === "team-dashboard") {
+    return handleTeamDashboard(request, env, url);
+  }
+  const site = await resolvePrivateSite(request, env, url);
+  if (site instanceof Response) return site;
+  // Auth has passed; wrap the read-only dispatch with the edge cache so two
+  // dashboards (and two viewers of the same site) don't repeatedly re-issue
+  // the same aggregation SQL against D1.
+  return withDashboardCache(ctx, url, () =>
+    routeQuery(env, site.id, pathname, url, { publicMode: false }),
+  );
+}
+
+export async function handlePublicQuery(
+  request: Request,
+  env: Env,
+  url: URL,
+  ctx?: ExecutionContext,
+): Promise<Response> {
+  if (request.method !== "GET") return notAllowed();
+  const site = await fetchPublicSite(env, url);
+  if (site instanceof Response) return site;
+  const segments = url.pathname.split("/").filter(Boolean);
+  const pathname = segments.slice(3).join("/");
+  return withDashboardCache(ctx, url, () =>
+    routeQuery(env, site.id, pathname, url, { publicMode: true }),
+  );
+}
