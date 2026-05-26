@@ -1044,6 +1044,266 @@ describe("edge technology query coverage", () => {
     );
   });
 
+  it("defaults nullable browser version rows while filtering empty browser buckets", async () => {
+    const { env } = createD1Env([
+      [
+        { browser: null, views: 9, visitors: 9, sessions: 9 },
+        { browser: " Chrome ", views: null, visitors: "4", sessions: null },
+      ],
+      [
+        {
+          browser: "Chrome",
+          version: null,
+          views: null,
+          visitors: "2",
+          sessions: null,
+        },
+      ],
+    ]);
+
+    await expect(
+      queryBrowserVersionBreakdownFromD1(env, siteId, window, {}, 3, 2),
+    ).resolves.toEqual([
+      {
+        browser: "Chrome",
+        views: 0,
+        visitors: 4,
+        sessions: 0,
+        versions: [
+          {
+            key: "version",
+            label: "",
+            views: 0,
+            visitors: 2,
+            sessions: 0,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("defaults nullable browser cross rows and filters invalid nullable pairs", async () => {
+    const { env } = createD1Env([
+      [
+        { browser: null, views: 9, visitors: 9, sessions: 9 },
+        { browser: " Chrome ", views: null, visitors: "4", sessions: null },
+      ],
+      [{ dimension: null, views: null, visitors: "3", sessions: null }],
+      [
+        {
+          browser: "Chrome",
+          dimension: BROWSER_CROSS_UNKNOWN_TOKEN,
+          views: null,
+          visitors: "2",
+          sessions: null,
+        },
+        {
+          browser: null,
+          dimension: BROWSER_CROSS_UNKNOWN_TOKEN,
+          views: 9,
+          visitors: 9,
+          sessions: 9,
+        },
+        {
+          browser: "Chrome",
+          dimension: null,
+          views: 9,
+          visitors: 9,
+          sessions: 9,
+        },
+      ],
+    ]);
+
+    await expect(
+      queryBrowserCrossDimensionFromD1(
+        env,
+        siteId,
+        window,
+        {},
+        3,
+        3,
+        "TRIM(COALESCE(os, ''))",
+        "os",
+      ),
+    ).resolves.toEqual({
+      columns: [
+        {
+          key: "unknown",
+          label: "Unknown",
+          views: 0,
+          visitors: 3,
+          sessions: 0,
+          isUnknown: true,
+        },
+      ],
+      rows: [
+        {
+          key: "chrome",
+          label: "Chrome",
+          views: 0,
+          visitors: 2,
+          sessions: 0,
+          cells: [
+            {
+              key: "unknown",
+              label: "Unknown",
+              views: 0,
+              visitors: 2,
+              sessions: 0,
+              isUnknown: true,
+            },
+          ],
+        },
+      ],
+      totalVisitors: 2,
+    });
+  });
+
+  it("defaults nullable client cross rows and filters invalid nullable pairs", async () => {
+    const { env } = createD1Env([
+      [
+        { primaryValue: null, views: 9, visitors: 9, sessions: 9 },
+        {
+          primaryValue: " Chrome ",
+          views: null,
+          visitors: "4",
+          sessions: null,
+        },
+      ],
+      [{ secondaryValue: null, views: null, visitors: "3", sessions: null }],
+      [
+        {
+          primaryValue: "Chrome",
+          secondaryValue: CLIENT_CROSS_UNKNOWN_TOKEN,
+          views: null,
+          visitors: "2",
+          sessions: null,
+        },
+        {
+          primaryValue: null,
+          secondaryValue: CLIENT_CROSS_UNKNOWN_TOKEN,
+          views: 9,
+          visitors: 9,
+          sessions: 9,
+        },
+        {
+          primaryValue: "Chrome",
+          secondaryValue: null,
+          views: 9,
+          visitors: 9,
+          sessions: 9,
+        },
+      ],
+    ]);
+
+    await expect(
+      queryClientCrossDimensionFromD1(
+        env,
+        siteId,
+        window,
+        {},
+        3,
+        3,
+        "browser",
+        "deviceType",
+      ),
+    ).resolves.toEqual({
+      columns: [
+        {
+          key: "unknown",
+          label: "Unknown",
+          views: 0,
+          visitors: 3,
+          sessions: 0,
+          isUnknown: true,
+        },
+      ],
+      rows: [
+        {
+          key: "chrome",
+          label: "Chrome",
+          views: 0,
+          visitors: 2,
+          sessions: 0,
+          cells: [
+            {
+              key: "unknown",
+              label: "Unknown",
+              views: 0,
+              visitors: 2,
+              sessions: 0,
+              isUnknown: true,
+            },
+          ],
+        },
+      ],
+      totalVisitors: 2,
+    });
+  });
+
+  it("defaults nullable share trend rows and bucket metrics", async () => {
+    const { env } = createD1Env([
+      [
+        { label: null, views: 9, visitors: 9, sessions: 9 },
+        { label: " Chrome ", views: null, visitors: "4", sessions: null },
+      ],
+      [
+        { label: null, views: 9, visitors: 9, sessions: 9 },
+        { label: "Chrome", views: null, visitors: "3", sessions: null },
+      ],
+      [
+        {
+          bucket: null,
+          label: "Chrome",
+          views: null,
+          visitors: "2",
+          sessions: null,
+        },
+        { bucket: 1, label: null, views: 9, visitors: 9, sessions: 9 },
+      ],
+    ]);
+
+    await expect(
+      queryShareTrendFromD1(
+        env,
+        siteId,
+        window,
+        "hour",
+        {},
+        3,
+        "TRIM(COALESCE(browser, ''))",
+        "browser",
+      ),
+    ).resolves.toMatchObject({
+      series: [
+        {
+          key: "chrome",
+          label: "Chrome",
+          views: 0,
+          visitors: 3,
+          sessions: 0,
+        },
+      ],
+      data: [
+        {
+          bucket: 0,
+          totalVisitors: 2,
+          visitorsBySeries: { chrome: 2 },
+        },
+        {
+          bucket: 1,
+          totalVisitors: 0,
+          visitorsBySeries: { chrome: 0 },
+        },
+        {
+          bucket: 2,
+          totalVisitors: 0,
+          visitorsBySeries: { chrome: 0 },
+        },
+      ],
+    });
+  });
+
   it("defaults nullable radar metrics while filtering invalid rows", async () => {
     const browserEnv = createD1Env([
       [

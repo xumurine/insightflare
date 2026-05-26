@@ -452,6 +452,50 @@ describe("mock remaining generator coverage", () => {
     );
   });
 
+  it("handles unknown filter keys, limits, and geo label fallbacks", () => {
+    setFacts([
+      makeVisit({
+        visitId: "sparse-city",
+        country: "CA",
+        region: "",
+        regionCode: "",
+        regionName: "",
+        city: "CA::",
+        cityName: "",
+      }),
+      makeVisit({
+        visitId: "duplicate-country",
+        sessionId: "s2",
+        visitorId: "u2",
+        country: "CA",
+        region: "",
+        regionCode: "",
+        regionName: "",
+        city: "",
+        cityName: "",
+      }),
+    ]);
+
+    expect(generateDemoFilterOptions(SITE_ID, { filterKey: "nope" })).toEqual({
+      ok: false,
+      data: [],
+    });
+    expect(
+      generateDemoFilterOptions(SITE_ID, {
+        filterKey: "country",
+        limit: 1,
+      }).data,
+    ).toEqual([{ value: "CA", label: "CA" }]);
+    expect(
+      generateDemoFilterOptions(SITE_ID, { filterKey: "geo" }).data,
+    ).toEqual(
+      expect.arrayContaining([
+        { value: "CA", label: "CA", group: "country" },
+        { value: "CA::", label: "CA", group: "city" },
+      ]),
+    );
+  });
+
   it("computes browser and referrer radar metrics and empty branches", () => {
     setFacts([]);
     expect(generateDemoBrowserRadar(SITE_ID, {})).toEqual({
@@ -676,6 +720,53 @@ describe("mock remaining generator coverage", () => {
     ).toEqual({ ok: true, interval: "day", series: [], data: [] });
   });
 
+  it("normalizes single-segment UTM source labels from fallback entries", () => {
+    setFacts([
+      makeVisit({ visitId: "a", sessionId: "s1", visitorId: "u1" }),
+      makeVisit({ visitId: "b", sessionId: "s2", visitorId: "u2" }),
+      makeVisit({ visitId: "c", sessionId: "s3", visitorId: "u3" }),
+      makeVisit({ visitId: "d", sessionId: "s4", visitorId: "u4" }),
+      makeVisit({ visitId: "e", sessionId: "s5", visitorId: "u5" }),
+      makeVisit({ visitId: "f", sessionId: "s6", visitorId: "u6" }),
+    ]);
+
+    const result = generateDemoUtmDimension(SITE_ID, "source", {
+      from: BASE_TIME,
+      to: BASE_TIME + 3_600_000,
+      limit: 12,
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(result.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ value: "newsletter" }),
+      ]),
+    );
+    expect(
+      (result.data as Array<{ value: string }>).some(
+        (row) => row.value === "(direct)" || row.value === "",
+      ),
+    ).toBe(false);
+  });
+
+  it("returns empty UTM rows when rounded tagged views are zero", () => {
+    setFacts([makeVisit({ visitId: "single" })]);
+
+    expect(
+      generateDemoUtmDimension(SITE_ID, "medium", {
+        from: BASE_TIME,
+        to: BASE_TIME + 1,
+      }),
+    ).toEqual({ ok: true, data: [] });
+    expect(
+      generateDemoUtmTrend(SITE_ID, {
+        dimension: "medium",
+        from: BASE_TIME,
+        to: BASE_TIME + 1,
+      }),
+    ).toEqual({ ok: true, interval: "day", series: [], data: [] });
+  });
+
   it("builds non-source UTM dimensions from medium, term, and content pools", () => {
     setFacts([
       makeVisit({ visitId: "a", sessionId: "s1", visitorId: "u1" }),
@@ -878,6 +969,67 @@ describe("mock remaining generator coverage", () => {
         }),
       ]),
       cityCounts: [],
+    });
+  });
+
+  it("wraps overview source domain and geo drilldown tabs", () => {
+    setFacts([
+      makeVisit({
+        visitId: "direct",
+        sessionId: "s1",
+        visitorId: "u1",
+        referrerHost: "",
+        referrerUrl: "",
+        country: "US",
+        region: "US::CA::California",
+        city: "US::CA::California::San Francisco",
+      }),
+      makeVisit({
+        visitId: "referrer",
+        sessionId: "s2",
+        visitorId: "u2",
+        referrerHost: "docs.example.test",
+        referrerUrl: "https://docs.example.test/guide",
+        country: "US",
+        region: "US::NY::New York",
+        city: "US::NY::New York::New York",
+      }),
+    ]);
+
+    expect(
+      generateDemoOverviewSourceTab(SITE_ID, { limit: 5 }, "domain"),
+    ).toEqual({
+      ok: true,
+      data: [
+        {
+          label: "docs.example.test",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
+        },
+      ],
+    });
+    expect(
+      generateDemoOverviewGeoTab(SITE_ID, { limit: 5, geo: "US" }, "region"),
+    ).toMatchObject({
+      ok: true,
+      data: expect.arrayContaining([
+        expect.objectContaining({ label: "US::CA::California" }),
+        expect.objectContaining({ label: "US::NY::New York" }),
+      ]),
+    });
+    expect(
+      generateDemoOverviewGeoTab(
+        SITE_ID,
+        { limit: 5, geo: "US::CA::California" },
+        "city",
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: expect.arrayContaining([
+        expect.objectContaining({ label: "US::CA::California::San Francisco" }),
+        expect.objectContaining({ label: "US::NY::New York::New York" }),
+      ]),
     });
   });
 

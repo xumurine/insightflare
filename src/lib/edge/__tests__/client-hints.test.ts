@@ -96,6 +96,23 @@ describe("tracker UA client hints normalization", () => {
     ).toBeUndefined();
   });
 
+  it("normalizes sparse client hint objects without optional list fields", () => {
+    expect(
+      normalizeTrackerUaClientHints({
+        brands: "Chrome",
+        fullVersionList: null,
+        mobile: true,
+        platform: " Android ",
+        platformVersion: 15,
+        model: "",
+        formFactors: "Mobile",
+      }),
+    ).toEqual({
+      mobile: true,
+      platform: "Android",
+    });
+  });
+
   it("serializes normalized hints into structured headers without mutating the input headers", () => {
     const headers = { "content-type": "application/json" };
     const merged = mergeUaClientHintsIntoHeaders(headers, {
@@ -119,6 +136,53 @@ describe("tracker UA client hints normalization", () => {
       '"Chromium";v="124.0.1"',
     );
     expect(merged["sec-ch-ua-form-factors"]).toBe('"Desktop", "Foldable"');
+  });
+
+  it("serializes only present client hint headers", () => {
+    expect(
+      mergeUaClientHintsIntoHeaders(
+        { existing: "1" },
+        {
+          mobile: false,
+        },
+      ),
+    ).toEqual({
+      existing: "1",
+      "sec-ch-ua-mobile": "?0",
+    });
+
+    expect(
+      mergeUaClientHintsIntoHeaders(
+        {},
+        {
+          platformVersion: " 13.5 ",
+        },
+      ),
+    ).toEqual({
+      "sec-ch-ua-platform-version": '"13.5"',
+    });
+
+    expect(
+      mergeUaClientHintsIntoHeaders(
+        {},
+        {
+          model: "Pixel",
+        },
+      ),
+    ).toEqual({
+      "sec-ch-ua-model": '"Pixel"',
+    });
+
+    expect(
+      mergeUaClientHintsIntoHeaders(
+        {},
+        {
+          formFactors: ["Phone"],
+        },
+      ),
+    ).toEqual({
+      "sec-ch-ua-form-factors": '"Phone"',
+    });
   });
 
   it("returns the same headers object when hints normalize to nothing", () => {

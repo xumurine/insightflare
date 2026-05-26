@@ -293,6 +293,37 @@ describe("edge journey detail D1 queries", () => {
     );
   });
 
+  it("returns zeroed visitor detail metrics when no sessions or events exist", async () => {
+    const { env } = createD1Env([[visitorRow()], [], []]);
+
+    const detail = await queryVisitorDetailFromD1(
+      env,
+      siteId,
+      "visitor-1",
+      "UTC",
+    );
+
+    expect(detail).toMatchObject({
+      metrics: {
+        totalEvents: 0,
+        sessions: 0,
+        views: 0,
+        avgEventsPerSession: 0,
+        bounceRate: 0,
+        avgDurationMs: 0,
+        p90DurationMs: 0,
+        daysActive: 0,
+        conversionEvents: 0,
+        avgTimeBetweenSessionsMs: 0,
+      },
+      sessions: [],
+      events: [],
+      visitedPages: [],
+      eventDistribution: [],
+      activity: [],
+    });
+  });
+
   it("returns session detail with synthetic start and leave events", async () => {
     const { env } = createD1Env([
       [sessionRow()],
@@ -343,6 +374,40 @@ describe("edge journey detail D1 queries", () => {
       { eventType: "leave", count: 1 },
       { eventType: "pageview", count: 1 },
       { eventType: "session start", count: 1 },
+    ]);
+  });
+
+  it("sorts session detail events with id tie-breakers", async () => {
+    const { env } = createD1Env([
+      [
+        sessionRow({
+          active: 1,
+          startedAt: baseMs,
+          endedAt: baseMs + 30_000,
+        }),
+      ],
+      [
+        journeyEventRow({
+          id: "z-event",
+          occurredAt: baseMs + 10_000,
+          visitId: "visit-z",
+        }),
+        journeyEventRow({
+          id: "a-event",
+          occurredAt: baseMs + 10_000,
+          visitId: "visit-a",
+          pathname: "/a",
+        }),
+      ],
+      [],
+    ]);
+
+    const detail = await querySessionDetailFromD1(env, siteId, "session-1");
+
+    expect(detail?.events.map((event) => event.id)).toEqual([
+      "z-event",
+      "a-event",
+      "session-start:session-1",
     ]);
   });
 
@@ -592,6 +657,19 @@ describe("edge journey geo D1 queries", () => {
     expect(calls[1].sql).toContain("GROUP BY country");
   });
 
+  it("defaults missing geo country count fields", async () => {
+    const window = queryWindow();
+    const { env } = createD1Env([[], [{ country: null }]]);
+
+    await expect(
+      queryGeoPointsFromD1(env, siteId, window, {}, 10),
+    ).resolves.toMatchObject({
+      countryCounts: [{ country: "", views: 0, sessions: 0, visitors: 0 }],
+      regionCounts: [],
+      cityCounts: [],
+    });
+  });
+
   it("returns region counts when drilled into a country", async () => {
     const window = queryWindow();
     const { env } = createD1Env([
@@ -668,6 +746,65 @@ describe("edge journey geo D1 queries", () => {
     expect(calls[1].sql).toContain(
       "GROUP BY country, regionCode, region, city",
     );
+  });
+
+  it("defaults missing geo dimension count fields", async () => {
+    const window = queryWindow();
+    const regionEnv = createD1Env([
+      [],
+      [
+        {
+          country: "us",
+          regionCode: "ny",
+        },
+      ],
+    ]);
+
+    await expect(
+      queryGeoPointsFromD1(regionEnv.env, siteId, window, { geo: "US" }, 10),
+    ).resolves.toMatchObject({
+      regionCounts: [
+        {
+          value: "US::NY::NY",
+          label: "NY",
+          views: 0,
+          sessions: 0,
+          visitors: 0,
+        },
+      ],
+      cityCounts: [],
+    });
+
+    const cityEnv = createD1Env([
+      [],
+      [
+        {
+          country: "us",
+          city: "New York",
+        },
+      ],
+    ]);
+
+    await expect(
+      queryGeoPointsFromD1(
+        cityEnv.env,
+        siteId,
+        window,
+        { geo: "US::NY::NY" },
+        10,
+      ),
+    ).resolves.toMatchObject({
+      regionCounts: [],
+      cityCounts: [
+        {
+          value: "US::New York",
+          label: "New York",
+          views: 0,
+          sessions: 0,
+          visitors: 0,
+        },
+      ],
+    });
   });
 
   it("falls back to region names when building geo aggregate values", async () => {

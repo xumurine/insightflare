@@ -95,6 +95,40 @@ describe("custom event read helpers", () => {
     expect(zeroStatement.bind).toHaveBeenCalledWith("site-1", "visit-1", 1);
   });
 
+  it("uses empty and zero fallbacks for missing custom event list columns", async () => {
+    const listStatement = statement({
+      all: [
+        {
+          eventId: null,
+          visitId: undefined,
+          eventName: null,
+          occurredAt: null,
+          receivedAt: undefined,
+          sequence: null,
+          nodeCount: undefined,
+          valueCount: null,
+        },
+      ],
+    });
+    const { env } = envWithStatements([listStatement]);
+
+    await expect(
+      readCustomEventsForVisit(env, "site-1", "visit-1"),
+    ).resolves.toEqual([
+      {
+        eventId: "",
+        visitId: "",
+        eventName: "",
+        occurredAt: 0,
+        receivedAt: 0,
+        sequence: 0,
+        nodeCount: 0,
+        valueCount: 0,
+      },
+    ]);
+    expect(listStatement.bind).toHaveBeenCalledWith("site-1", "visit-1", 100);
+  });
+
   it("reads the visit id for a custom event", async () => {
     const hit = statement({ first: { visitId: "visit-1" } });
     const miss = statement({ first: null });
@@ -356,5 +390,163 @@ describe("custom event read helpers", () => {
     await expect(
       readCustomEventDetail(env, "site-1", "event-1"),
     ).resolves.toMatchObject({ eventData: false });
+  });
+
+  it("uses zero ordering fallbacks when rebuilding object and array children", async () => {
+    const eventStatement = statement({
+      first: {
+        eventPk: 42,
+        eventId: "event-1",
+        siteId: "site-1",
+        visitId: "visit-1",
+        eventName: "checkout",
+        occurredAt: 100,
+        receivedAt: 120,
+        sequence: 3,
+        nodeCount: 8,
+        valueCount: 4,
+      },
+    });
+    const nodesStatement = statement({
+      all: [
+        {
+          nodeId: 1,
+          parentNodeId: null,
+          key: null,
+          valueType: CUSTOM_EVENT_JSON_TYPE.object,
+          memberOrder: null,
+          arrayIndex: null,
+          stringValue: null,
+          numberValue: null,
+          booleanValue: null,
+        },
+        {
+          nodeId: 2,
+          parentNodeId: 1,
+          key: "fallback",
+          valueType: CUSTOM_EVENT_JSON_TYPE.string,
+          memberOrder: null,
+          arrayIndex: null,
+          stringValue: "first",
+          numberValue: null,
+          booleanValue: null,
+        },
+        {
+          nodeId: 3,
+          parentNodeId: 1,
+          key: "later",
+          valueType: CUSTOM_EVENT_JSON_TYPE.string,
+          memberOrder: 2,
+          arrayIndex: null,
+          stringValue: "second",
+          numberValue: null,
+          booleanValue: null,
+        },
+        {
+          nodeId: 4,
+          parentNodeId: 1,
+          key: "items",
+          valueType: CUSTOM_EVENT_JSON_TYPE.array,
+          memberOrder: 3,
+          arrayIndex: null,
+          stringValue: null,
+          numberValue: null,
+          booleanValue: null,
+        },
+        {
+          nodeId: 6,
+          parentNodeId: 4,
+          key: null,
+          valueType: CUSTOM_EVENT_JSON_TYPE.string,
+          memberOrder: null,
+          arrayIndex: 2,
+          stringValue: "last",
+          numberValue: null,
+          booleanValue: null,
+        },
+        {
+          nodeId: 5,
+          parentNodeId: 4,
+          key: null,
+          valueType: CUSTOM_EVENT_JSON_TYPE.string,
+          memberOrder: null,
+          arrayIndex: null,
+          stringValue: "fallback",
+          numberValue: null,
+          booleanValue: null,
+        },
+      ],
+    });
+    const { env } = envWithStatements([eventStatement, nodesStatement]);
+
+    await expect(
+      readCustomEventDetail(env, "site-1", "event-1"),
+    ).resolves.toMatchObject({
+      eventData: {
+        fallback: "first",
+        later: "second",
+        items: ["fallback", "last"],
+      },
+    });
+  });
+
+  it("materializes object and array roots without children", async () => {
+    const baseEvent = {
+      eventPk: 42,
+      eventId: "event-1",
+      siteId: "site-1",
+      visitId: "visit-1",
+      eventName: "checkout",
+      occurredAt: 100,
+      receivedAt: 120,
+      sequence: 3,
+      nodeCount: 1,
+      valueCount: 0,
+    };
+    const objectEvent = statement({ first: baseEvent });
+    const objectNodes = statement({
+      all: [
+        {
+          nodeId: 1,
+          parentNodeId: null,
+          key: null,
+          valueType: CUSTOM_EVENT_JSON_TYPE.object,
+          memberOrder: null,
+          arrayIndex: null,
+          stringValue: null,
+          numberValue: null,
+          booleanValue: null,
+        },
+      ],
+    });
+    const arrayEvent = statement({ first: baseEvent });
+    const arrayNodes = statement({
+      all: [
+        {
+          nodeId: 1,
+          parentNodeId: null,
+          key: null,
+          valueType: CUSTOM_EVENT_JSON_TYPE.array,
+          memberOrder: null,
+          arrayIndex: null,
+          stringValue: null,
+          numberValue: null,
+          booleanValue: null,
+        },
+      ],
+    });
+    const { env } = envWithStatements([
+      objectEvent,
+      objectNodes,
+      arrayEvent,
+      arrayNodes,
+    ]);
+
+    await expect(
+      readCustomEventDetail(env, "site-1", "event-1"),
+    ).resolves.toMatchObject({ eventData: {} });
+    await expect(
+      readCustomEventDetail(env, "site-1", "event-1"),
+    ).resolves.toMatchObject({ eventData: [] });
   });
 });
