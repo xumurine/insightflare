@@ -11,18 +11,32 @@ export async function handlePrivateQuery(
   url: URL,
   ctx?: ExecutionContext,
 ): Promise<Response> {
-  if (request.method !== "GET") return notAllowed();
   const pathname = url.pathname.replace(/^\/api\/private\//, "");
+  const isFunnelMutation =
+    pathname === "funnel-create" || pathname === "funnel-delete";
+  if (request.method !== "GET") {
+    if (!isFunnelMutation || request.method !== "POST") return notAllowed();
+  }
   if (pathname === "team-dashboard") {
     return handleTeamDashboard(request, env, url);
   }
   const site = await resolvePrivateSite(request, env, url);
   if (site instanceof Response) return site;
+  if (isFunnelMutation) {
+    return routeQuery(
+      env,
+      site.id,
+      pathname,
+      url,
+      { publicMode: false },
+      request,
+    );
+  }
   // Auth has passed; wrap the read-only dispatch with the edge cache so two
   // dashboards (and two viewers of the same site) don't repeatedly re-issue
   // the same aggregation SQL against D1.
   return withDashboardCache(ctx, url, () =>
-    routeQuery(env, site.id, pathname, url, { publicMode: false }),
+    routeQuery(env, site.id, pathname, url, { publicMode: false }, request),
   );
 }
 
@@ -38,6 +52,6 @@ export async function handlePublicQuery(
   const segments = url.pathname.split("/").filter(Boolean);
   const pathname = segments.slice(3).join("/");
   return withDashboardCache(ctx, url, () =>
-    routeQuery(env, site.id, pathname, url, { publicMode: true }),
+    routeQuery(env, site.id, pathname, url, { publicMode: true }, request),
   );
 }

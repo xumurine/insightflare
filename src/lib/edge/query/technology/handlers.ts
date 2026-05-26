@@ -322,5 +322,5 @@ export async function handleClientCrossBreakdown(
     primaryDimension,
     secondaryDimension,
   );
-  return jsonResponse(data);
+  return jsonResponse({ ok: true, data });
 }

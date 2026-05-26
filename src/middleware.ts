@@ -157,8 +157,8 @@ function redirectWithPath(
   pathname: string,
   options?: { preserveSearch?: boolean },
 ): NextResponse {
-  const url = request.nextUrl.clone();
-  url.pathname = pathname;
+  const url = new URL(request.url);
+  url.pathname = normalizePathname(pathname);
   if (!options?.preserveSearch) {
     url.search = "";
   }

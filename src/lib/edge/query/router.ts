@@ -11,6 +11,12 @@ import {
   handleEventTypes,
 } from "./events";
 import {
+  handleFunnelAnalysis,
+  handleFunnelCreate,
+  handleFunnelDelete,
+  handleFunnelList,
+} from "./funnels";
+import {
   handleRetention,
   handleSessionDetail,
   handleSessions,
@@ -27,7 +33,12 @@ import {
   handleOverviewSourceTab,
   handleTrend,
 } from "./overview";
-import { handleDimension, handlePagesDashboard } from "./pages";
+import {
+  handleDimension,
+  handlePages,
+  handlePagesDashboard,
+  handleReferrers,
+} from "./pages";
 import { handlePerformance } from "./performance";
 import {
   handleBrowserCrossBreakdown,
@@ -48,10 +59,35 @@ export async function routeQuery(
   pathname: string,
   url: URL,
   options: { publicMode: boolean },
+  request?: Request,
 ): Promise<Response> {
   if (pathname === "overview") return handleOverview(env, siteId, url);
   if (pathname === "trend") return handleTrend(env, siteId, url);
+  if (pathname === "pages") {
+    return handlePages(env, siteId, url, !options.publicMode);
+  }
+  if (pathname === "referrers") {
+    return handleReferrers(
+      env,
+      siteId,
+      url,
+      options.publicMode ? 8 : 20,
+      !options.publicMode,
+    );
+  }
   if (options.publicMode) return notFound();
+  if (pathname === "funnels") {
+    return handleFunnelList(env, siteId, url);
+  }
+  if (pathname === "funnel-analysis") {
+    return handleFunnelAnalysis(env, siteId, url);
+  }
+  if (pathname === "funnel-create") {
+    return handleFunnelCreate(env, siteId, request as Request);
+  }
+  if (pathname === "funnel-delete") {
+    return handleFunnelDelete(env, siteId, url);
+  }
   if (pathname === "pages-dashboard") {
     return handlePagesDashboard(env, siteId, url);
   }

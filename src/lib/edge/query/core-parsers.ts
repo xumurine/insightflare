@@ -21,12 +21,18 @@ import {
 export function parseWindow(url: URL): QueryWindow | null {
   const nowMs = Date.now();
   const defaultFrom = nowMs - ONE_DAY_MS;
-  const fromMs = Math.floor(
-    coerceNumber(url.searchParams.get("from"), defaultFrom) ?? defaultFrom,
-  );
-  const toMs = Math.floor(
-    coerceNumber(url.searchParams.get("to"), nowMs) ?? nowMs,
-  );
+  const rawFrom = url.searchParams.get("from");
+  const rawTo = url.searchParams.get("to");
+  const parsedFrom = coerceNumber(rawFrom, null);
+  const parsedTo = coerceNumber(rawTo, null);
+  if (
+    (rawFrom !== null && parsedFrom === null) ||
+    (rawTo !== null && parsedTo === null)
+  ) {
+    return null;
+  }
+  const fromMs = Math.floor(parsedFrom ?? defaultFrom);
+  const toMs = Math.floor(parsedTo ?? nowMs);
   const timeZone = resolveReportingTimeZone(
     url.searchParams.get("timeZone") || url.searchParams.get("tz"),
   );

@@ -6,6 +6,7 @@ import type {
   BrowserRadarData,
   BrowserTrendData,
   BrowserVersionBreakdownData,
+  ClientCrossBreakdownData,
 } from "@/lib/edge-client";
 
 import { fetchPrivateJson } from "./client-request";
@@ -48,7 +49,7 @@ export async function fetchClientCrossBreakdown(
     secondaryLimit?: number;
   },
 ): Promise<BrowserCrossBreakdownDimensionData> {
-  return fetchPrivateJson<BrowserCrossBreakdownDimensionData>(
+  const response = await fetchPrivateJson<ClientCrossBreakdownData>(
     "/api/private/client-cross-breakdown",
     withFilters(
       {
@@ -64,6 +65,7 @@ export async function fetchClientCrossBreakdown(
       filters,
     ),
   );
+  return response.data;
 }
 
 export async function fetchBrowserTrend(

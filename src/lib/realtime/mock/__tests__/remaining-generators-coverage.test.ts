@@ -506,7 +506,10 @@ describe("mock remaining generator coverage", () => {
         primaryDimension: "browser",
         secondaryDimension: "browser",
       }),
-    ).toEqual({ columns: [], rows: [], totalVisitors: 0 });
+    ).toEqual({
+      ok: true,
+      data: { columns: [], rows: [], totalVisitors: 0 },
+    });
 
     const clientCross = generateDemoClientCrossBreakdown(SITE_ID, {
       primaryDimension: "browser",
@@ -515,13 +518,16 @@ describe("mock remaining generator coverage", () => {
       secondaryLimit: 1,
     });
     expect(clientCross).toMatchObject({
-      columns: expect.arrayContaining([
-        expect.objectContaining({ key: "other", isOther: true }),
-      ]),
-      rows: expect.arrayContaining([
-        expect.objectContaining({ key: "other", isOther: true }),
-      ]),
-      totalVisitors: expect.any(Number),
+      ok: true,
+      data: {
+        columns: expect.arrayContaining([
+          expect.objectContaining({ key: "other", isOther: true }),
+        ]),
+        rows: expect.arrayContaining([
+          expect.objectContaining({ key: "other", isOther: true }),
+        ]),
+        totalVisitors: expect.any(Number),
+      },
     });
   });
 

@@ -147,11 +147,18 @@ export async function fetchPublicOverview(
   params: {
     from: number;
     to: number;
+    filters?: QueryFilters;
   },
 ): Promise<OverviewData> {
   return fetchEdgeJson<OverviewData>({
     path: `/api/public/${encodeURIComponent(slug)}/overview`,
-    params,
+    params: withFilters(
+      {
+        from: params.from,
+        to: params.to,
+      },
+      params.filters,
+    ),
     isPublic: true,
   });
 }
@@ -161,14 +168,19 @@ export async function fetchPublicTrend(
   params: {
     from: number;
     to: number;
+    filters?: QueryFilters;
   },
 ): Promise<TrendData> {
   return fetchEdgeJson<TrendData>({
     path: `/api/public/${encodeURIComponent(slug)}/trend`,
-    params: {
-      ...params,
-      interval: "day",
-    },
+    params: withFilters(
+      {
+        from: params.from,
+        to: params.to,
+        interval: "day",
+      },
+      params.filters,
+    ),
     isPublic: true,
   });
 }
@@ -178,14 +190,19 @@ export async function fetchPublicPages(
   params: {
     from: number;
     to: number;
+    filters?: QueryFilters;
   },
 ): Promise<PagesData> {
   return fetchEdgeJson<PagesData>({
     path: `/api/public/${encodeURIComponent(slug)}/pages`,
-    params: {
-      ...params,
-      limit: 8,
-    },
+    params: withFilters(
+      {
+        from: params.from,
+        to: params.to,
+        limit: 8,
+      },
+      params.filters,
+    ),
     isPublic: true,
   });
 }
@@ -195,14 +212,19 @@ export async function fetchPublicReferrers(
   params: {
     from: number;
     to: number;
+    filters?: QueryFilters;
   },
 ): Promise<ReferrersData> {
   return fetchEdgeJson<ReferrersData>({
     path: `/api/public/${encodeURIComponent(slug)}/referrers`,
-    params: {
-      ...params,
-      limit: 8,
-    },
+    params: withFilters(
+      {
+        from: params.from,
+        to: params.to,
+        limit: 8,
+      },
+      params.filters,
+    ),
     isPublic: true,
   });
 }

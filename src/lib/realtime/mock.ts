@@ -65,6 +65,8 @@ import {
 export type { RealtimeSocketLike } from "@/lib/realtime/mock/socket";
 export { createMockRealtimeSocket } from "@/lib/realtime/mock/socket";
 
+const DEMO_NOT_FOUND_RESPONSE = { ok: false, data: { error: "Not Found" } };
+
 // ---------------------------------------------------------------------------
 //  Route dispatcher — the single entry point for demo mode
 // ---------------------------------------------------------------------------
@@ -359,8 +361,9 @@ export function handleDemoRequest(options: {
     if (subPath === "trend") return generateDemoTrend(siteId, params);
     if (subPath === "pages") return generateDemoPages(siteId, params);
     if (subPath === "referrers") return generateDemoReferrers(siteId, params);
+    return DEMO_NOT_FOUND_RESPONSE;
   }
 
   // Fallback
-  return { ok: true, data: {} };
+  return DEMO_NOT_FOUND_RESPONSE;
 }

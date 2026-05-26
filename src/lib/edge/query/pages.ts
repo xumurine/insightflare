@@ -571,12 +571,14 @@ export async function handleReferrers(
   env: Env,
   siteId: string,
   url: URL,
+  fallbackLimit = 20,
+  allowFullUrlParam = true,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
   const filters = parseFilters(url);
-  const limit = parseLimit(url, 20, 200);
-  const includeFullUrl = parseBooleanFlag(url, "fullUrl");
+  const limit = parseLimit(url, fallbackLimit, 200);
+  const includeFullUrl = allowFullUrlParam && parseBooleanFlag(url, "fullUrl");
   const rows = await queryReferrerAggregate(
     env,
     siteId,

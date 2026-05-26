@@ -115,7 +115,7 @@ describe("middleware", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(
-      "https://app.test/zh/reports/?range=30d",
+      "https://app.test/zh/reports?range=30d",
     );
     expect(response.headers.get("x-pathname")).toBe("/zh/reports");
     expect(response.headers.get("set-cookie")).toContain("if_locale=zh");
@@ -147,7 +147,7 @@ describe("middleware", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(
-      "https://app.test/zh/app/?from=nav",
+      "https://app.test/zh/app?from=nav",
     );
     expect(response.headers.get("x-pathname")).toBe("/zh/app");
     expect(response.headers.get("set-cookie")).toContain("if_locale=zh");

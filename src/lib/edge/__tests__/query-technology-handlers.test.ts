@@ -567,7 +567,7 @@ describe("edge query technology handlers", () => {
     expectNoQueryCalls();
   });
 
-  it("passes parsed client cross breakdown arguments and returns raw data", async () => {
+  it("passes parsed client cross breakdown arguments and returns enveloped data", async () => {
     queryMocks.queryClientCrossDimensionFromD1.mockResolvedValue(
       emptyCrossData,
     );
@@ -584,7 +584,10 @@ describe("edge query technology handlers", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(await responseJson(response)).toEqual(emptyCrossData);
+    expect(await responseJson(response)).toEqual({
+      ok: true,
+      data: emptyCrossData,
+    });
     expect(queryMocks.queryClientCrossDimensionFromD1).toHaveBeenCalledWith(
       env,
       siteId,

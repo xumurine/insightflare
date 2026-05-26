@@ -510,6 +510,17 @@ function generateDemoClientCrossDimensionData(
   };
 }
 
+type DemoClientCrossData = ReturnType<
+  typeof generateDemoClientCrossDimensionData
+>;
+
+function wrapDemoClientCrossData(data: DemoClientCrossData): {
+  ok: true;
+  data: DemoClientCrossData;
+} {
+  return { ok: true, data };
+}
+
 export function generateDemoClientCrossBreakdown(
   siteId: string,
   params: Record<string, string | number>,
@@ -523,11 +534,11 @@ export function generateDemoClientCrossBreakdown(
     !secondaryDimension ||
     primaryDimension === secondaryDimension
   ) {
-    return {
+    return wrapDemoClientCrossData({
       columns: [],
       rows: [],
       totalVisitors: 0,
-    };
+    });
   }
 
   const from = parseDemoNumber(params.from, 0);
@@ -538,13 +549,15 @@ export function generateDemoClientCrossBreakdown(
   const dataset = buildDemoFactDataset(siteId, from, to);
   const filtered = applyDemoFilters(dataset, filters);
 
-  return generateDemoClientCrossDimensionData(
-    dataset,
-    filtered,
-    primaryLimit,
-    secondaryLimit,
-    primaryDimension,
-    secondaryDimension,
+  return wrapDemoClientCrossData(
+    generateDemoClientCrossDimensionData(
+      dataset,
+      filtered,
+      primaryLimit,
+      secondaryLimit,
+      primaryDimension,
+      secondaryDimension,
+    ),
   );
 }
 

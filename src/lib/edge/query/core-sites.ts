@@ -81,7 +81,12 @@ export async function fetchPublicSite(
   url: URL,
 ): Promise<SiteRow | Response> {
   const segments = url.pathname.split("/").filter(Boolean);
-  const slug = decodeURIComponent(segments[2] || "").trim();
+  let slug = "";
+  try {
+    slug = decodeURIComponent(segments[2] || "").trim();
+  } catch {
+    return notFound("Public site not found", PUBLIC_CACHE_HEADERS);
+  }
   if (!slug) return notFound("Public site not found", PUBLIC_CACHE_HEADERS);
 
   const site = await env.DB.prepare(

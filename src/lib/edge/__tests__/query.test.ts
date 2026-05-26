@@ -1534,9 +1534,12 @@ describe("edge query handlers", () => {
     );
     const clientCrossPayload: any = await clientCross.json();
     expect(clientCrossPayload).toMatchObject({
-      columns: expect.any(Array),
-      rows: expect.any(Array),
-      totalVisitors: expect.any(Number),
+      ok: true,
+      data: {
+        columns: expect.any(Array),
+        rows: expect.any(Array),
+        totalVisitors: expect.any(Number),
+      },
     });
     expect(invalidClientCross.status).toBe(400);
     expect(await invalidClientCross.json()).toEqual({

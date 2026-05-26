@@ -72,6 +72,11 @@ export interface BrowserCrossBreakdownDimensionData {
   totalVisitors: number;
 }
 
+export interface ClientCrossBreakdownData {
+  ok: boolean;
+  data: BrowserCrossBreakdownDimensionData;
+}
+
 export interface BrowserCrossBreakdownData {
   ok: boolean;
   operatingSystem: BrowserCrossBreakdownDimensionData;

@@ -219,11 +219,13 @@ export function buildDemoTimeBuckets(
   interval: "minute" | "hour" | "day" | "week" | "month",
   timeZone: string,
 ): DemoTimeBucket[] {
+  const safeFrom = Number.isFinite(from) ? from : 0;
+  const safeTo = Number.isFinite(to) ? to : safeFrom;
   const buckets: DemoTimeBucket[] = [];
-  let current = startOfZonedInterval(from, interval, timeZone);
+  let current = startOfZonedInterval(safeFrom, interval, timeZone);
   const hardLimit = 2000;
 
-  for (let index = 0; index < hardLimit && current <= to; index += 1) {
+  for (let index = 0; index < hardLimit && current <= safeTo; index += 1) {
     let next = addZonedInterval(current, interval, timeZone);
     if (!Number.isFinite(next) || next <= current) {
       next = current + demoIntervalStepMs(interval);
@@ -238,12 +240,12 @@ export function buildDemoTimeBuckets(
   }
 
   if (buckets.length === 0) {
-    const fallbackStart = Math.max(0, Math.floor(from));
+    const fallbackStart = Math.max(0, Math.floor(safeFrom));
     buckets.push({
       index: 0,
       timestampMs: fallbackStart,
       fromMs: fallbackStart,
-      toMs: Math.max(fallbackStart + 1, Math.floor(to) + 1),
+      toMs: Math.max(fallbackStart + 1, Math.floor(safeTo) + 1),
     });
   }
 

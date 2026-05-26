@@ -346,19 +346,31 @@ export function generateDemoFilterOptions(
       includeFullUrl: filterKey === "sourceLink",
       directValue: "",
     });
+    const hasDirectReferrer = filtered.visits.some((visit) =>
+      filterKey === "sourceLink"
+        ? !visit.referrerUrl.trim()
+        : !visit.referrerHost.trim(),
+    );
+    const options =
+      rows.length === 0 && hasDirectReferrer
+        ? [
+            {
+              value: DEMO_DIRECT_REFERRER_FILTER_VALUE,
+              label: "Direct",
+            },
+          ]
+        : rows.map((row) => {
+            const value = String(row.referrer ?? "").trim();
+            return value
+              ? { value, label: value }
+              : {
+                  value: DEMO_DIRECT_REFERRER_FILTER_VALUE,
+                  label: "Direct",
+                };
+          });
     return {
       ok: true,
-      data: dedupeDemoFilterOptions(
-        rows.map((row) => {
-          const value = String(row.referrer ?? "").trim();
-          return value
-            ? { value, label: value }
-            : {
-                value: DEMO_DIRECT_REFERRER_FILTER_VALUE,
-                label: DEMO_DIRECT_REFERRER_FILTER_VALUE,
-              };
-        }),
-      ),
+      data: dedupeDemoFilterOptions(options),
     };
   }
 

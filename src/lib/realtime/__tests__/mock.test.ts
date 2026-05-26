@@ -290,8 +290,14 @@ describe("mock — handleDemoRequest", () => {
         path: "/api/private/client-cross-breakdown",
         params: baseParams,
       }) as Record<string, unknown>;
-      expect(Array.isArray(res.columns)).toBe(true);
-      expect(Array.isArray(res.rows)).toBe(true);
+      expect(res).toMatchObject({
+        ok: true,
+        data: {
+          columns: expect.any(Array),
+          rows: expect.any(Array),
+          totalVisitors: 0,
+        },
+      });
     });
 
     it("client-cross-breakdown returns data for valid dimensions", () => {
@@ -706,9 +712,12 @@ describe("mock — handleDemoRequest", () => {
         }),
       );
       expect(sameDimension).toEqual({
-        columns: [],
-        rows: [],
-        totalVisitors: 0,
+        ok: true,
+        data: {
+          columns: [],
+          rows: [],
+          totalVisitors: 0,
+        },
       });
 
       const clientCross = asRecord(
@@ -723,8 +732,13 @@ describe("mock — handleDemoRequest", () => {
           },
         }),
       );
-      expect(clientCross.columns).toEqual(expect.any(Array));
-      expect(clientCross.rows).toEqual(expect.any(Array));
+      expect(clientCross).toMatchObject({
+        ok: true,
+        data: {
+          columns: expect.any(Array),
+          rows: expect.any(Array),
+        },
+      });
     });
 
     it("returns empty shaped data for inverted-window trend and radar routes", () => {
@@ -800,9 +814,12 @@ describe("mock — handleDemoRequest", () => {
         }),
       );
       expect(clientCross).toEqual({
-        columns: [],
-        rows: [],
-        totalVisitors: 0,
+        ok: true,
+        data: {
+          columns: [],
+          rows: [],
+          totalVisitors: 0,
+        },
       });
     });
 
