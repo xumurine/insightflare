@@ -41,6 +41,19 @@ describe("dashboard chart color palette", () => {
     expect(new Set(hueWrappedPalette).size).toBeGreaterThan(1);
   });
 
+  it("interpolates hex colors across both hue-wrap directions", () => {
+    const greenPalette = buildComplementaryOklchPalette(4, "#00ff00");
+    const magentaPalette = buildComplementaryOklchPalette(4, "#ff00ff");
+    const lowChannelPalette = buildComplementaryOklchPalette(3, "#000011");
+
+    for (const palette of [greenPalette, magentaPalette, lowChannelPalette]) {
+      expect(palette.every((color) => /^#[0-9a-f]{6}$/i.test(color))).toBe(
+        true,
+      );
+      expect(new Set(palette).size).toBeGreaterThan(1);
+    }
+  });
+
   it("throws for unsupported color formats", () => {
     expect(() => buildComplementaryOklchPalette(2, "rgb(1, 2, 3)")).toThrow(
       /Unsupported color format/,

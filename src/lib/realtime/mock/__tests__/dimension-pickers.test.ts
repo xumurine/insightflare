@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { findSiteProfile } from "@/lib/realtime/demo-site-profiles";
 import { mulberry32 } from "@/lib/realtime/demo-utils";
+import type * as DimensionPickersModule from "@/lib/realtime/mock/dimension-pickers";
 import {
   buildCountryPool,
   buildReferrerPool,
@@ -31,8 +32,33 @@ import {
   weightedPickCountry,
   weightedPickIndex,
 } from "@/lib/realtime/mock/dimension-pickers";
+import type * as DimensionPoolsModule from "@/lib/realtime/mock/dimension-pools";
 
 const rng = (seed: number) => mulberry32(seed);
+
+async function withMockedDimensionPools<T>(
+  overrides: Record<string, unknown>,
+  run: (pickers: typeof DimensionPickersModule) => T | Promise<T>,
+): Promise<T> {
+  vi.resetModules();
+  vi.doMock("@/lib/realtime/mock/dimension-pools", async () => {
+    const actual = await vi.importActual<typeof DimensionPoolsModule>(
+      "@/lib/realtime/mock/dimension-pools",
+    );
+    return {
+      ...actual,
+      ...overrides,
+    };
+  });
+
+  try {
+    const pickers = await import("@/lib/realtime/mock/dimension-pickers");
+    return await run(pickers);
+  } finally {
+    vi.doUnmock("@/lib/realtime/mock/dimension-pools");
+    vi.resetModules();
+  }
+}
 
 describe("mock/dimension-pickers", () => {
   describe("pickFromList", () => {
@@ -69,6 +95,10 @@ describe("mock/dimension-pickers", () => {
     it("returns 0 when all weights are zero or negative", () => {
       expect(weightedPickIndex(rng(1), [0, 0, 0])).toBe(0);
       expect(weightedPickIndex(rng(1), [-1, -2])).toBe(0);
+    });
+
+    it("treats non-finite weights as zero", () => {
+      expect(weightedPickIndex(rng(1), [Number.NaN, 0, -1])).toBe(0);
     });
 
     it("returns an index within range when weights are positive", () => {
@@ -128,6 +158,27 @@ describe("mock/dimension-pickers", () => {
       expect(weightedPickCountry(rng(1), [])).toBe("US");
     });
 
+    it("returns US when every country weight is non-positive", () => {
+      expect(
+        weightedPickCountry(rng(1), [
+          { code: "DE", weight: 0 },
+          { code: "JP", weight: -3 },
+        ]),
+      ).toBe("US");
+    });
+
+    it("ignores negative weights while picking positive entries", () => {
+      expect(
+        weightedPickCountry(
+          () => 0.9,
+          [
+            { code: "DE", weight: -10 },
+            { code: "JP", weight: 1 },
+          ],
+        ),
+      ).toBe("JP");
+    });
+
     it("returns a country code from the pool", () => {
       const pool = [
         { code: "US", weight: 1 },
@@ -145,6 +196,19 @@ describe("mock/dimension-pickers", () => {
       const pool = buildCountryPool(rng(1), [], 4);
       expect(pool.length).toBeGreaterThanOrEqual(4);
       expect(pool[0].code).toBe("US");
+    });
+
+    it("falls back to US when base entries are blank or non-positive", () => {
+      const pool = buildCountryPool(
+        rng(1),
+        [
+          { code: "", weight: 1 },
+          { code: "de", weight: 0 },
+          { code: "jp", weight: -1 },
+        ],
+        4,
+      );
+      expect(pool[0]).toMatchObject({ code: "US", weight: 1 });
     });
 
     it("merges duplicate codes and uppercases them", () => {
@@ -200,6 +264,23 @@ describe("mock/dimension-pickers", () => {
         pool.find((entry) => entry.label === "google.com"),
       ).toBeUndefined();
       expect(pool.find((entry) => entry.label === "yahoo.com")).toBeTruthy();
+    });
+
+    it("ignores negative-weight entries before adding fallbacks", () => {
+      const pool = buildReferrerPool(
+        rng(4),
+        [
+          { name: "negative.example", weight: -1 },
+          { name: "  valid.example  ", weight: 0.2 },
+        ],
+        6,
+      );
+      expect(
+        pool.find((entry) => entry.label === "negative.example"),
+      ).toBeUndefined();
+      expect(
+        pool.find((entry) => entry.label === "valid.example"),
+      ).toBeTruthy();
     });
   });
 
@@ -276,6 +357,25 @@ describe("mock/dimension-pickers", () => {
       for (const value of picks) {
         expect(["Desktop", "Mobile", "Tablet"]).toContain(value);
       }
+    });
+
+    it("falls back to Desktop when the profile has no device entries", () => {
+      const profile = {
+        ...findSiteProfile("demo-site-001"),
+        deviceWeights: {} as never,
+      };
+      expect(pickDemoDeviceType(rng(1), profile)).toBe("Desktop");
+    });
+
+    it("returns the first label when all device weights are non-positive", () => {
+      const profile = {
+        ...findSiteProfile("demo-site-001"),
+        deviceWeights: {
+          Mobile: 0,
+          Desktop: -1,
+        } as never,
+      };
+      expect(pickDemoDeviceType(rng(1), profile)).toBe("Mobile");
     });
   });
 
@@ -401,11 +501,29 @@ describe("mock/dimension-pickers", () => {
       const parsed = parseDemoRegionLabel("US::CA");
       expect(parsed?.region).toBe("US::CA::CA");
     });
+
+    it("falls back to region name when the code is missing", () => {
+      const parsed = parseDemoRegionLabel("US::::California");
+      expect(parsed).toEqual({
+        country: "US",
+        regionCode: "",
+        regionName: "California",
+        region: "US::California::California",
+      });
+    });
   });
 
   describe("parseDemoCityLabel", () => {
+    it("returns null when the country segment is missing", () => {
+      expect(parseDemoCityLabel("::CA::California::Los Angeles")).toBeNull();
+    });
+
     it("returns null when city segment is missing", () => {
       expect(parseDemoCityLabel("US::CA::California")).toBeNull();
+    });
+
+    it("returns null when both region code and name are missing", () => {
+      expect(parseDemoCityLabel("US::::::Austin")).toBeNull();
     });
 
     it("parses a full city label", () => {
@@ -418,11 +536,49 @@ describe("mock/dimension-pickers", () => {
       const parsed = parseDemoCityLabel("US::NY::New York::New York::City");
       expect(parsed?.cityName).toBe("New York::City");
     });
+
+    it("falls back to region name when the city region code is missing", () => {
+      const parsed = parseDemoCityLabel("US::::California::Los Angeles");
+      expect(parsed).toEqual({
+        country: "US",
+        regionCode: "",
+        regionName: "California",
+        region: "US::California::California",
+        cityName: "Los Angeles",
+        city: "US::California::California::Los Angeles",
+      });
+    });
+
+    it("falls back to region code when the city region name is missing", () => {
+      const parsed = parseDemoCityLabel("US::CA::::Los Angeles");
+      expect(parsed).toEqual({
+        country: "US",
+        regionCode: "CA",
+        regionName: "CA",
+        region: "US::CA::CA",
+        cityName: "Los Angeles",
+        city: "US::CA::CA::Los Angeles",
+      });
+    });
   });
 
   describe("pickReferrerByCountry", () => {
     it("returns the fallback for empty pool when bias has no entries", () => {
       expect(pickReferrerByCountry(rng(1), [], "XX")).toBe("(direct)");
+    });
+
+    it("returns the fallback when every un-biased referrer weight is non-positive", () => {
+      expect(
+        pickReferrerByCountry(
+          rng(1),
+          [
+            { label: "example.com", weight: 0 },
+            { label: "negative.example", weight: -1 },
+          ],
+          "XX",
+          "fallback.example",
+        ),
+      ).toBe("fallback.example");
     });
 
     it("injects flagship referrers for biased countries even when missing", () => {
@@ -451,6 +607,71 @@ describe("mock/dimension-pickers", () => {
       const ctx = pickDemoGeoContext(rng(2), "XX");
       expect(ctx.region).toBe("");
       expect(ctx.city).toBe("");
+    });
+
+    it("falls back from city candidates to region candidates when the city label is incomplete", async () => {
+      await withMockedDimensionPools(
+        {
+          ALL_CITIES: ["ZZ::::::Austin"],
+          ALL_REGIONS: ["ZZ::TX::Texas"],
+          COUNTRY_COORDINATE_ANCHORS: {
+            ZZ: { latitude: 10, longitude: 20 },
+          },
+          COUNTRY_GEO_CLUSTERS: {},
+          DEMO_COUNTRY_TO_CONTINENT: { ZZ: "Test Continent" },
+          DEMO_COUNTRY_TO_LANGUAGES: {},
+          DEMO_COUNTRY_TO_TIMEZONES: { ZZ: ["Test/Zone"] },
+        },
+        (pickers) => {
+          const ctx = pickers.pickDemoGeoContext(() => 0, "ZZ");
+          expect(ctx.regionCode).toBe("TX");
+          expect(ctx.regionName).toBe("Texas");
+          expect(ctx.region).toBe("ZZ::TX::Texas");
+          expect(ctx.city).toBe("");
+          expect(ctx.continent).toBe("Test Continent");
+          expect(ctx.timezone).toBe("Test/Zone");
+        },
+      );
+    });
+
+    it("uses default fallback values when static candidate pools are empty", async () => {
+      await withMockedDimensionPools(
+        {
+          ALL_CONTINENTS: [],
+          ALL_LANGUAGES: ["fallback-lang"],
+          ALL_TIMEZONES: ["Fallback/Zone"],
+          BROWSER_MARKET_WEIGHTS: [],
+          DEMO_COUNTRY_TO_CONTINENT: {},
+          DEMO_COUNTRY_TO_LANGUAGES: {},
+          DEMO_COUNTRY_TO_TIMEZONES: {},
+          DEMO_DESKTOP_OS: [],
+          DEMO_DESKTOP_SCREENS: [],
+          DEMO_MOBILE_OS: [],
+          DEMO_MOBILE_SCREENS: [],
+          DEMO_TABLET_SCREENS: [],
+        },
+        (pickers) => {
+          expect(pickers.pickDemoBrowser(rng(1), "Desktop")).toBe("Chrome");
+          expect(pickers.pickDemoLanguage(rng(1), "ZZ")).toBe("fallback-lang");
+          expect(pickers.pickDemoTimezone(rng(1), "ZZ")).toBe("Fallback/Zone");
+          expect(pickers.pickDemoContinent(rng(1), "ZZ")).toBe("North America");
+          expect(pickers.pickDemoOsVersion(rng(1), "Mobile")).toBe(
+            "Android 15",
+          );
+          expect(pickers.pickDemoOsVersion(rng(1), "Desktop")).toBe(
+            "Windows 11",
+          );
+          expect(pickers.pickDemoOsVersion(() => 0, "Tablet")).toBe("iOS 18");
+          expect(pickers.pickDemoOsVersion(() => 0.75, "Tablet")).toBe(
+            "Windows 11",
+          );
+          expect(pickers.pickDemoScreenSize(rng(1), "Mobile")).toBe("390x844");
+          expect(pickers.pickDemoScreenSize(rng(1), "Tablet")).toBe("834x1194");
+          expect(pickers.pickDemoScreenSize(rng(1), "Desktop")).toBe(
+            "1920x1080",
+          );
+        },
+      );
     });
   });
 });

@@ -19,6 +19,7 @@ import type { DemoVisitFact } from "@/lib/realtime/mock/types";
 
 describe("mock/journey-helpers coverage", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -121,6 +122,40 @@ describe("mock/journey-helpers coverage", () => {
       screenHeight: 844,
     });
     expect(createDemoJourneySession("empty", [])).toBeNull();
+    expect(
+      createDemoJourneySession(
+        "missing-first-last",
+        new Array(1) as DemoVisitFact[],
+      ),
+    ).toBeNull();
+  });
+
+  it("uses visit ids to order session visits with matching timestamps", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(600_000);
+    const session = createDemoJourneySession("same-timestamp", [
+      makeVisit({
+        visitId: "z-exit",
+        startedAt: 100_000,
+        pathname: "/exit",
+        durationMs: 1_000,
+      }),
+      makeVisit({
+        visitId: "a-entry",
+        startedAt: 100_000,
+        pathname: "/entry",
+        durationMs: 2_000,
+      }),
+    ]);
+
+    expect(session).toMatchObject({
+      sessionId: "same-timestamp",
+      startedAt: 100_000,
+      endedAt: 102_000,
+      durationMs: 3_000,
+      entryPath: "/entry",
+      exitPath: "/exit",
+    });
   });
 
   it("groups visits by session without sorting or dropping entries", () => {
@@ -179,6 +214,99 @@ describe("mock/journey-helpers coverage", () => {
     });
   });
 
+  it("skips null sessions when adding session start and end events", () => {
+    const originalEntries = Map.prototype.entries;
+    vi.spyOn(Map.prototype, "entries").mockImplementation(function (
+      this: Map<unknown, unknown>,
+    ) {
+      const entries = Array.from(originalEntries.call(this));
+      const sessionVisitMap = entries.some(
+        ([, value]) =>
+          Array.isArray(value) &&
+          value.some((visit) =>
+            Boolean((visit as Partial<DemoVisitFact> | undefined)?.visitId),
+          ),
+      );
+      if (!sessionVisitMap) {
+        return entries[Symbol.iterator]() as ReturnType<
+          Map<unknown, unknown>["entries"]
+        >;
+      }
+
+      return [...entries, ["empty-session", []]][
+        Symbol.iterator
+      ]() as ReturnType<Map<unknown, unknown>["entries"]>;
+    });
+
+    const events = createDemoJourneyEvents([makeVisit()], {
+      includeSessionStart: true,
+      includeSessionEnd: true,
+    });
+
+    expect(events.some((event) => event.id === "session-start:s1")).toBe(true);
+    expect(
+      events.some((event) => event.id === "session-start:empty-session"),
+    ).toBe(false);
+    expect(
+      events.some((event) => event.id === "session-leave:empty-session"),
+    ).toBe(false);
+  });
+
+  it("adds inactive session leave events from the last visit", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(20 * 60 * 1000);
+    const events = createDemoJourneyEvents(
+      [
+        makeVisit({
+          visitId: "first",
+          startedAt: 50_000,
+          durationMs: 1_000,
+          pathname: "/entry",
+        }),
+        makeVisit({
+          visitId: "last",
+          startedAt: 60_000,
+          durationMs: 5_000,
+          pathname: "",
+          title: "Exit",
+          hostname: "exit.example.test",
+          screenSize: "1366x768",
+        }),
+      ],
+      { includeSessionEnd: true },
+    );
+
+    expect(
+      events.find((event) => event.id === "session-leave:s1"),
+    ).toMatchObject({
+      kind: "leave",
+      eventType: "leave",
+      occurredAt: 65_000,
+      visitId: "last",
+      pathname: "",
+      title: "Exit",
+      hostname: "exit.example.test",
+      screenWidth: 1366,
+      screenHeight: 768,
+    });
+    expect(events.some((event) => event.id === "session-start:s1")).toBe(false);
+  });
+
+  it("sorts same-timestamp events by id descending", () => {
+    const events = createDemoJourneyEvents([
+      makeVisit({
+        visitId: "alpha",
+        startedAt: 1_000,
+      }),
+      makeVisit({
+        visitId: "omega",
+        startedAt: 1_000,
+      }),
+    ]);
+
+    expect(events.map((event) => event.id)).toEqual(["omega", "alpha"]);
+  });
+
   it("summarizes pages, event types, and activity with invalid events ignored", () => {
     const events = [
       { kind: "pageview", pathname: "/pricing", occurredAt: 1000 },
@@ -206,11 +334,35 @@ describe("mock/journey-helpers coverage", () => {
     );
   });
 
+  it("falls back for empty pathname and event type values", () => {
+    expect(
+      summarizeDemoVisitedPages([
+        { kind: "pageview", pathname: "" },
+        { kind: "pageview", pathname: null },
+        { kind: "custom", pathname: "/ignored" },
+      ]),
+    ).toEqual([{ pathname: "/", views: 2 }]);
+
+    expect(
+      summarizeDemoEventDistribution([
+        { kind: "custom", eventType: "" },
+        { kind: "", eventType: "" },
+        { kind: null, eventType: null },
+        { kind: "custom", eventType: "purchase" },
+      ]),
+    ).toEqual([
+      { eventType: "event", count: 2 },
+      { eventType: "custom", count: 1 },
+      { eventType: "purchase", count: 1 },
+    ]);
+  });
+
   it("computes percentiles and average gaps from finite non-negative inputs", () => {
     expect(demoJourneyPercentile([50, -1, 10, Number.NaN, 30], 50)).toBe(30);
     expect(demoJourneyPercentile([10, 20, 30], 0)).toBe(10);
     expect(demoJourneyPercentile([10, 20, 30], 999)).toBe(30);
     expect(demoJourneyPercentile([], 95)).toBe(0);
+    expect(demoJourneyPercentile([Number.NaN, -1, -100], 75)).toBe(0);
 
     expect(demoAverageGapMs([100, 200, Number.POSITIVE_INFINITY, 500])).toBe(
       200,

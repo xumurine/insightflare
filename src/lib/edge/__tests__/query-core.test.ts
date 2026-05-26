@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  addDimensionValue,
   addGeoDimensionValue,
   appendSqlConditions,
   buildEventFilterSql,
@@ -16,15 +17,20 @@ import {
   emptyPerformanceRouteMetrics,
   eventPayloadFilterValueType,
   eventRecordOrderBy,
+  finalizeDimensionBuckets,
   finalizeGeoDimensionBuckets,
   formatPageLabel,
+  geoTabLabel,
   intervalBucketMs,
   mapDimensionRowsToFilterOptions,
   mapEventAnalyticsContextCards,
+  mapEventFieldValue,
   mapEventRecord,
+  mapGeoRowsToFilterOptions,
   mapGeoTabs,
   mapOverviewAggregate,
   mapPages,
+  mapReferrerRowsToFilterOptions,
   mapReferrers,
   mapTabs,
   mapTrendRows,
@@ -553,6 +559,173 @@ describe("edge query core mappers", () => {
     ).toEqual([
       { value: "US", label: "Label US", views: 2, sessions: 2, visitors: 2 },
       { value: "CA", label: "Label CA", views: 1, sessions: 1, visitors: 1 },
+    ]);
+  });
+
+  it("maps defensive event values, filter options, geo labels, and tab ordering", () => {
+    expect([
+      mapEventFieldValue({
+        valueType: 1,
+        events: 3,
+        occurrences: 4,
+        firstSeenAt: 10,
+        lastSeenAt: 20,
+        stringValue: "pro",
+        numberValue: null,
+        booleanValue: null,
+      }),
+      mapEventFieldValue({
+        valueType: 2,
+        events: 1,
+        occurrences: 2,
+        firstSeenAt: 30,
+        lastSeenAt: 40,
+        stringValue: null,
+        numberValue: 12.5,
+        booleanValue: null,
+      }),
+      mapEventFieldValue({
+        valueType: 3,
+        events: 5,
+        occurrences: 6,
+        firstSeenAt: 50,
+        lastSeenAt: 60,
+        stringValue: null,
+        numberValue: null,
+        booleanValue: 0,
+      }),
+      mapEventFieldValue({
+        valueType: 0,
+        events: null as unknown as number,
+        occurrences: undefined as unknown as number,
+        firstSeenAt: null as unknown as number,
+        lastSeenAt: undefined as unknown as number,
+        stringValue: "ignored",
+        numberValue: 99,
+        booleanValue: 1,
+      }),
+    ]).toEqual([
+      {
+        value: "pro",
+        events: 3,
+        occurrences: 4,
+        firstSeenAt: 10,
+        lastSeenAt: 20,
+      },
+      {
+        value: 12.5,
+        events: 1,
+        occurrences: 2,
+        firstSeenAt: 30,
+        lastSeenAt: 40,
+      },
+      {
+        value: false,
+        events: 5,
+        occurrences: 6,
+        firstSeenAt: 50,
+        lastSeenAt: 60,
+      },
+      {
+        value: null,
+        events: 0,
+        occurrences: 0,
+        firstSeenAt: 0,
+        lastSeenAt: 0,
+      },
+    ]);
+
+    expect(
+      dedupeFilterOptions([
+        { value: null as unknown as string, label: "empty" },
+        { value: " alpha ", label: undefined as unknown as string },
+        { value: "alpha", label: "duplicate" },
+        { value: " beta ", label: " " },
+      ]),
+    ).toEqual([
+      { value: "alpha", label: "alpha" },
+      { value: "beta", label: "beta" },
+    ]);
+    expect(
+      mapReferrerRowsToFilterOptions([
+        { referrer: "", views: 1, sessions: 1, visitors: 1 },
+        { referrer: "   ", views: 1, sessions: 1, visitors: 1 },
+        { referrer: " news.example ", views: 1, sessions: 1, visitors: 1 },
+        { referrer: "news.example", views: 1, sessions: 1, visitors: 1 },
+      ]),
+    ).toEqual([
+      {
+        value: DIRECT_REFERRER_FILTER_VALUE,
+        label: DIRECT_REFERRER_FILTER_VALUE,
+      },
+      { value: "news.example", label: "news.example" },
+    ]);
+
+    expect(
+      mapGeoRowsToFilterOptions(
+        [
+          { value: "US", views: 1, sessions: 1, visitors: 1 },
+          { value: "::::", views: 1, sessions: 1, visitors: 1 },
+        ],
+        "country",
+      ),
+    ).toEqual([
+      { value: "US", label: "US", group: "country" },
+      { value: "::::", label: "::::", group: "country" },
+    ]);
+    expect(
+      mapGeoRowsToFilterOptions(
+        [
+          { value: "US::CA", views: 1, sessions: 1, visitors: 1 },
+          { value: "US::CA::California", views: 1, sessions: 1, visitors: 1 },
+        ],
+        "region",
+      ),
+    ).toEqual([
+      { value: "US::CA", label: "US", group: "region" },
+      {
+        value: "US::CA::California",
+        label: "California",
+        group: "region",
+      },
+    ]);
+    expect(
+      mapGeoRowsToFilterOptions(
+        [
+          { value: "US::Austin", views: 1, sessions: 1, visitors: 1 },
+          {
+            value: "US::CA::California::San Francisco",
+            views: 1,
+            sessions: 1,
+            visitors: 1,
+          },
+        ],
+        "city",
+      ),
+    ).toEqual([
+      { value: "US::Austin", label: "Austin", group: "city" },
+      {
+        value: "US::CA::California::San Francisco",
+        label: "San Francisco",
+        group: "city",
+      },
+    ]);
+    expect(geoTabLabel("US::CA", "region")).toBe("US");
+    expect(geoTabLabel("US::Austin", "city")).toBe("Austin");
+    expect(geoTabLabel("unknown", "timezone")).toBe("unknown");
+
+    const buckets = new Map();
+    addDimensionValue(buckets, "beta", "session-a", "visitor-a");
+    addDimensionValue(buckets, "alpha", "session-b", "visitor-b");
+    addDimensionValue(buckets, "gamma", "session-c", "visitor-c");
+    addDimensionValue(buckets, "gamma", "session-c", "visitor-c");
+    addDimensionValue(buckets, "gamma", "session-d", "visitor-c");
+    addDimensionValue(buckets, "   ", "session-e", "visitor-e");
+
+    expect(finalizeDimensionBuckets(buckets, 10)).toEqual([
+      { value: "gamma", views: 3, sessions: 2, visitors: 1 },
+      { value: "alpha", views: 1, sessions: 1, visitors: 1 },
+      { value: "beta", views: 1, sessions: 1, visitors: 1 },
     ]);
   });
 
