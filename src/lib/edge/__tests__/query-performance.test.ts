@@ -121,6 +121,51 @@ describe("edge query performance D1 helpers", () => {
     ]);
   });
 
+  it("normalizes sparse metric summary rows", async () => {
+    const { env } = createD1Env([
+      [
+        {
+          metric: "ttfb",
+          samples: null,
+          avgValue: null,
+          p50: undefined,
+          p75: null,
+          p95: undefined,
+        },
+        {
+          metric: null,
+          samples: 99,
+          avgValue: 999,
+          p50: 999,
+          p75: 999,
+          p95: 999,
+        },
+      ],
+    ]);
+
+    const result = await queryPerformanceSummariesFromD1(
+      env,
+      siteId,
+      window,
+      {},
+    );
+
+    expect(result.ttfb).toEqual({
+      avg: 0,
+      p50: null,
+      p75: 0,
+      p95: null,
+      samples: 0,
+    });
+    expect(result.fcp).toEqual({
+      avg: null,
+      p50: null,
+      p75: null,
+      p95: null,
+      samples: 0,
+    });
+  });
+
   it("maps metric trend buckets and constrains the requested metric column", async () => {
     const { env, calls } = createD1Env([
       [
@@ -176,6 +221,35 @@ describe("edge query performance D1 helpers", () => {
     expect(calls[0]?.sql).toContain("perf_lcp_ms IS NOT NULL");
     expect(calls[0]?.sql).toContain("ORDER BY thresholds.bucket ASC");
     expect(calls[0]?.bindings).toEqual([...visitBindings, "/pricing"]);
+  });
+
+  it("normalizes sparse metric trend rows", async () => {
+    const { env } = createD1Env([
+      [
+        {
+          bucket: null,
+          samples: null,
+          avgValue: null,
+          p50: undefined,
+          p75: null,
+          p95: undefined,
+        },
+      ],
+    ]);
+
+    await expect(
+      queryPerformanceTrendFromD1(env, siteId, window, "hour", {}, "ttfb"),
+    ).resolves.toEqual([
+      {
+        bucket: 0,
+        timestampMs: Date.UTC(2026, 0, 2, 1),
+        avg: 0,
+        p50: null,
+        p75: 0,
+        p95: null,
+        samples: 0,
+      },
+    ]);
   });
 
   it("groups route metrics by normalized pathname and preserves empty metric buckets", async () => {
@@ -253,6 +327,51 @@ describe("edge query performance D1 helpers", () => {
     expect(calls[0]?.sql).toContain("path_views AS");
     expect(calls[0]?.sql).toContain("LIMIT ?");
     expect(calls[0]?.bindings).toEqual([...visitBindings, "Chrome", 2]);
+  });
+
+  it("normalizes sparse route metric rows", async () => {
+    const { env } = createD1Env([
+      [
+        {
+          pathname: null,
+          metric: "ttfb",
+          views: null,
+          samples: null,
+          avgValue: null,
+          p50: undefined,
+          p75: null,
+          p95: undefined,
+        },
+        {
+          pathname: "/ignored",
+          metric: null,
+          views: 99,
+          samples: 99,
+          avgValue: 999,
+          p50: 999,
+          p75: 999,
+          p95: 999,
+        },
+      ],
+    ]);
+
+    await expect(
+      queryPerformanceRoutesFromD1(env, siteId, window, {}, 1),
+    ).resolves.toMatchObject([
+      {
+        pathname: "/",
+        views: 0,
+        metrics: {
+          ttfb: {
+            avg: 0,
+            p50: null,
+            p75: 0,
+            p95: null,
+            samples: 0,
+          },
+        },
+      },
+    ]);
   });
 
   it("groups country metrics by uppercase country and skips invalid rows", async () => {
@@ -342,6 +461,61 @@ describe("edge query performance D1 helpers", () => {
     expect(calls[0]?.sql).toContain("country_views AS");
     expect(calls[0]?.sql).toContain("UPPER(TRIM(COALESCE(country, '')))");
     expect(calls[0]?.bindings).toEqual([...visitBindings, "NA", "Example ISP"]);
+  });
+
+  it("normalizes sparse country metric rows", async () => {
+    const { env } = createD1Env([
+      [
+        {
+          country: null,
+          metric: "ttfb",
+          views: 99,
+          samples: 99,
+          avgValue: 999,
+          p50: 999,
+          p75: 999,
+          p95: 999,
+        },
+        {
+          country: "US",
+          metric: null,
+          views: 99,
+          samples: 99,
+          avgValue: 999,
+          p50: 999,
+          p75: 999,
+          p95: 999,
+        },
+        {
+          country: "ca",
+          metric: "lcp",
+          views: null,
+          samples: null,
+          avgValue: null,
+          p50: undefined,
+          p75: null,
+          p95: undefined,
+        },
+      ],
+    ]);
+
+    await expect(
+      queryPerformanceCountriesFromD1(env, siteId, window, {}),
+    ).resolves.toMatchObject([
+      {
+        country: "CA",
+        views: 0,
+        metrics: {
+          lcp: {
+            avg: 0,
+            p50: null,
+            p75: 0,
+            p95: null,
+            samples: 0,
+          },
+        },
+      },
+    ]);
   });
 
   it("rejects invalid handlePerformance windows before querying D1", async () => {

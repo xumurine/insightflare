@@ -349,6 +349,37 @@ describe("mock/events coverage", () => {
       data: null,
     });
   });
+
+  it("maps event records with region fallback and operating system labels", () => {
+    const visits = [
+      makeVisit({
+        visitId: "linux-event",
+        eventType: "download",
+        regionName: "",
+        region: "DE::BE::Berlin",
+        osVersion: "Ubuntu 24.04",
+      }),
+    ];
+    const dataset = makeDataset(visits);
+    mockBuildDemoFactDataset.mockReturnValue(dataset);
+    mockApplyDemoFilters.mockReturnValue(makeFiltered(visits));
+
+    const result = generateDemoEventsRecords("site", {
+      from: 0,
+      to: 10_000,
+    }) as any;
+
+    expect(result.data).toEqual([
+      expect.objectContaining({
+        eventId: "linux-event:download",
+        region: "DE::BE::Berlin",
+        os: "Ubuntu",
+        osVersion: "Ubuntu 24.04",
+        nodeCount: 18,
+        valueCount: 13,
+      }),
+    ]);
+  });
 });
 
 function makeDataset(

@@ -12,6 +12,10 @@ import {
 } from "@/lib/realtime/mock/admin";
 import { generateDemoPerformance } from "@/lib/realtime/mock/analytics-performance";
 import {
+  generateDemoBrowserRadar,
+  generateDemoReferrerRadar,
+} from "@/lib/realtime/mock/browser-client";
+import {
   generateDemoBrowserCrossBreakdown,
   generateDemoBrowserVersionBreakdown,
 } from "@/lib/realtime/mock/browser-client-breakdowns";
@@ -24,6 +28,7 @@ import {
   generateDemoVisitorDetail,
   generateDemoVisitors,
 } from "@/lib/realtime/mock/journeys";
+import { generateDemoTeamDashboard } from "@/lib/realtime/mock/team-dashboard";
 import type {
   DemoFactDataset,
   DemoFilteredFacts,
@@ -33,6 +38,13 @@ import {
   generateDemoUtmDimension,
   generateDemoUtmTrend,
 } from "@/lib/realtime/mock/utm-dimensions";
+import {
+  generateDemoGeoPoints,
+  generateDemoOverviewClientTab,
+  generateDemoOverviewGeoTab,
+  generateDemoOverviewPageTab,
+  generateDemoOverviewSourceTab,
+} from "@/lib/realtime/mock/utm-overview";
 
 const { mockApplyDemoFilters, mockBuildDemoFactDataset } = vi.hoisted(() => ({
   mockApplyDemoFilters: vi.fn(),
@@ -292,6 +304,120 @@ describe("mock remaining generator coverage", () => {
     ).toContainEqual({ value: "__direct__", label: "Direct" });
   });
 
+  it("dedupes and normalizes sparse filter option rows", () => {
+    setFacts([
+      makeVisit({
+        visitId: "first",
+        sessionId: "s1",
+        visitorId: "u1",
+        pathname: "/home",
+        title: "Home",
+        hostname: "example.test",
+        browser: "Chrome",
+      }),
+      makeVisit({
+        visitId: "duplicate",
+        sessionId: "s2",
+        visitorId: "u2",
+        pathname: "/home",
+        title: "   ",
+        hostname: "",
+        browser: "Chrome",
+      }),
+      makeVisit({
+        visitId: "second",
+        sessionId: "s3",
+        visitorId: "u3",
+        pathname: "/about",
+        title: "About",
+        hostname: "docs.example.test",
+        browser: "Firefox",
+      }),
+    ]);
+
+    expect(
+      generateDemoFilterOptions(SITE_ID, { filterKey: "title" }).data,
+    ).toEqual(
+      expect.arrayContaining([
+        { value: "Home", label: "Home" },
+        { value: "About", label: "About" },
+      ]),
+    );
+    expect(
+      generateDemoFilterOptions(SITE_ID, { filterKey: "hostname" }).data,
+    ).toEqual(
+      expect.arrayContaining([
+        { value: "example.test", label: "example.test" },
+        { value: "docs.example.test", label: "docs.example.test" },
+      ]),
+    );
+  });
+
+  it("computes browser and referrer radar metrics and empty branches", () => {
+    setFacts([]);
+    expect(generateDemoBrowserRadar(SITE_ID, {})).toEqual({
+      ok: true,
+      data: [],
+    });
+    expect(generateDemoReferrerRadar(SITE_ID, {})).toEqual({
+      ok: true,
+      data: [],
+    });
+
+    setFacts([
+      makeVisit({
+        visitId: "chrome-1",
+        sessionId: "s1",
+        visitorId: "u1",
+        browser: "Chrome",
+        referrerHost: "search.example",
+      }),
+      makeVisit({
+        visitId: "chrome-2",
+        sessionId: "s1",
+        visitorId: "u1",
+        startedAt: BASE_TIME + 1_000,
+        browser: "Chrome",
+        referrerHost: "search.example",
+        durationMs: 2_000,
+      }),
+      makeVisit({
+        visitId: "safari",
+        sessionId: "s2",
+        visitorId: "u2",
+        startedAt: BASE_TIME + 2_000,
+        browser: "Safari",
+        referrerHost: "social.example",
+      }),
+    ]);
+
+    expect(generateDemoBrowserRadar(SITE_ID, { limit: 2 })).toMatchObject({
+      ok: true,
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          browser: "Chrome",
+          metrics: expect.objectContaining({
+            engagement: 1,
+            depth: 2,
+            traffic: expect.any(Number),
+          }),
+        }),
+      ]),
+    });
+    expect(generateDemoReferrerRadar(SITE_ID, { limit: 1 })).toMatchObject({
+      ok: true,
+      data: [
+        expect.objectContaining({
+          referrer: "search.example",
+          metrics: expect.objectContaining({
+            engagement: 1,
+            depth: 2,
+          }),
+        }),
+      ],
+    });
+  });
+
   it("builds UTM dimension rows, invalid trend fallbacks, and Other trend series", () => {
     setFacts([
       makeVisit({ visitId: "a", sessionId: "s1", visitorId: "u1" }),
@@ -366,6 +492,148 @@ describe("mock remaining generator coverage", () => {
         to: BASE_TIME + 1,
       }),
     ).toEqual({ ok: true, interval: "day", series: [], data: [] });
+  });
+
+  it("returns overview tab wrappers for page, source, client, geo, and map points", () => {
+    setFacts([
+      makeVisit({
+        visitId: "us",
+        sessionId: "s1",
+        visitorId: "u1",
+        pathname: "/home",
+        referrerHost: "",
+        referrerUrl: "",
+        country: "US",
+        region: "US::CA::California",
+        city: "US::CA::California::San Francisco",
+      }),
+      makeVisit({
+        visitId: "de",
+        sessionId: "s2",
+        visitorId: "u2",
+        startedAt: BASE_TIME + 2_000,
+        pathname: "/pricing",
+        browser: "Safari",
+        referrerHost: "search.example",
+        referrerUrl: "https://search.example/result",
+        country: "DE",
+        regionCode: "BE",
+        regionName: "Berlin",
+        region: "DE::BE::Berlin",
+        cityName: "Berlin",
+        city: "DE::BE::Berlin::Berlin",
+        continent: "Europe",
+        timezone: "Europe/Berlin",
+      }),
+    ]);
+
+    expect(
+      generateDemoOverviewPageTab(SITE_ID, { limit: 5 }, "path"),
+    ).toMatchObject({
+      ok: true,
+      data: expect.arrayContaining([
+        expect.objectContaining({ label: "/home" }),
+      ]),
+    });
+    expect(
+      generateDemoOverviewSourceTab(SITE_ID, { limit: 5 }, "link"),
+    ).toEqual({
+      ok: true,
+      data: [
+        {
+          label: "https://search.example/result",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
+        },
+      ],
+    });
+    expect(
+      generateDemoOverviewClientTab(SITE_ID, { limit: 5 }, "browser"),
+    ).toMatchObject({
+      ok: true,
+      data: expect.arrayContaining([
+        expect.objectContaining({ label: "Chrome" }),
+        expect.objectContaining({ label: "Safari" }),
+      ]),
+    });
+    expect(
+      generateDemoOverviewGeoTab(SITE_ID, { limit: 5, geo: "US" }, "country"),
+    ).toMatchObject({
+      ok: true,
+      data: expect.arrayContaining([
+        expect.objectContaining({ label: "DE" }),
+        expect.objectContaining({ label: "US" }),
+      ]),
+    });
+    expect(
+      generateDemoGeoPoints(SITE_ID, {
+        limit: 50,
+        applyGeoFilter: "1",
+        geo: "DE::BE::Berlin",
+      }),
+    ).toMatchObject({
+      ok: true,
+      data: expect.arrayContaining([
+        expect.objectContaining({ country: "US" }),
+        expect.objectContaining({ country: "DE" }),
+      ]),
+      countryCounts: expect.arrayContaining([
+        expect.objectContaining({ country: "DE" }),
+      ]),
+      cityCounts: expect.arrayContaining([
+        expect.objectContaining({ label: "San Francisco" }),
+        expect.objectContaining({ label: "Berlin" }),
+      ]),
+    });
+  });
+
+  it("builds team dashboard site cards and trend buckets for valid and empty teams", () => {
+    const dashboard = generateDemoTeamDashboard("demo-team-001", {
+      from: BASE_TIME - 3_600_000,
+      to: BASE_TIME,
+      interval: "hour",
+      timeZone: "UTC",
+    }) as any;
+    expect(dashboard).toMatchObject({
+      ok: true,
+      data: {
+        sites: expect.arrayContaining([
+          expect.objectContaining({
+            teamId: "demo-team-001",
+            overview: expect.objectContaining({ views: expect.any(Number) }),
+            changeRates: expect.objectContaining({
+              pagesPerSession: null,
+            }),
+          }),
+        ]),
+        trend: expect.arrayContaining([
+          expect.objectContaining({
+            bucket: expect.any(Number),
+            sites: expect.arrayContaining([
+              expect.objectContaining({
+                siteId: expect.any(String),
+                views: expect.any(Number),
+                visitors: expect.any(Number),
+              }),
+            ]),
+          }),
+        ]),
+      },
+    });
+
+    expect(
+      generateDemoTeamDashboard("missing-team", {
+        from: BASE_TIME - 1,
+        to: BASE_TIME,
+      }),
+    ).toMatchObject({
+      ok: true,
+      data: {
+        sites: [],
+        trend: expect.arrayContaining([expect.objectContaining({ sites: [] })]),
+      },
+    });
   });
 
   it("summarizes performance for overall, route, country, and empty journeys", () => {

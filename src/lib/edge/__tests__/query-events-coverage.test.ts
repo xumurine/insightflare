@@ -19,6 +19,7 @@ import {
   siteQueryResponse,
   sqlIntegerLiteral,
 } from "@/lib/edge/query/core";
+import { queryEventTypeOverviewFromD1 } from "@/lib/edge/query/events-overview";
 import {
   queryEventsSummaryFromD1,
   queryEventSummaryMetricsFromD1,
@@ -156,6 +157,88 @@ describe("edge query events summary coverage", () => {
       "mobile",
       3,
     ]);
+  });
+
+  it("normalizes sparse custom event aggregate rows", async () => {
+    queryD1AllMock.mockResolvedValueOnce([
+      {
+        value: null,
+        views: undefined,
+        sessions: null,
+        visitors: undefined,
+      },
+    ]);
+
+    await expect(
+      queryEventTypeAggregate(env, siteId, window, {}, 1),
+    ).resolves.toEqual([{ value: "", views: 0, sessions: 0, visitors: 0 }]);
+  });
+
+  it("computes event type overview fallbacks for sparse summary rows", async () => {
+    queryD1AllMock
+      .mockResolvedValueOnce([
+        { events: 10, eventTypes: 2, sessions: 5, visitors: 4 },
+      ])
+      .mockResolvedValueOnce([
+        {
+          events: null,
+          eventTypes: undefined,
+          sessions: 4,
+          visitors: null,
+        },
+      ])
+      .mockResolvedValueOnce([{ value: "/signup", views: 2 }])
+      .mockResolvedValueOnce([{ value: "US", views: 2 }])
+      .mockResolvedValueOnce([{ value: "desktop", views: 2 }])
+      .mockResolvedValueOnce([{ value: "Chrome", views: 2 }]);
+
+    await expect(
+      queryEventTypeOverviewFromD1(env, siteId, window, {}, "signup"),
+    ).resolves.toEqual({
+      summary: {
+        events: 0,
+        eventTypes: 0,
+        sessions: 4,
+        visitors: 0,
+        avgEventsPerSession: 0,
+        shareOfAllEvents: 0,
+      },
+      breakdowns: {
+        pages: [{ value: "/signup", views: 2 }],
+        countries: [{ value: "US", views: 2 }],
+        devices: [{ value: "desktop", views: 2 }],
+        browsers: [{ value: "Chrome", views: 2 }],
+      },
+    });
+  });
+
+  it("uses zero ratios when event type overview has no rows", async () => {
+    queryD1AllMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await expect(
+      queryEventTypeOverviewFromD1(env, siteId, window, {}, "signup"),
+    ).resolves.toEqual({
+      summary: {
+        events: 0,
+        eventTypes: 0,
+        sessions: 0,
+        visitors: 0,
+        avgEventsPerSession: 0,
+        shareOfAllEvents: 0,
+      },
+      breakdowns: {
+        pages: [],
+        countries: [],
+        devices: [],
+        browsers: [],
+      },
+    });
   });
 });
 
