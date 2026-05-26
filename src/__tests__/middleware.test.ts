@@ -153,6 +153,17 @@ describe("middleware", () => {
     expect(response.headers.get("set-cookie")).toContain("if_locale=zh");
   });
 
+  it("keeps redirect Location pathname and x-pathname consistent", async () => {
+    const response = await callMiddleware(request("/zh/?from=nav"));
+    const location = response.headers.get("location");
+
+    expect(response.status).toBe(307);
+    expect(location).not.toBeNull();
+    expect(new URL(location!).pathname).toBe(
+      response.headers.get("x-pathname"),
+    );
+  });
+
   it("returns unauthorized JSON for protected API routes without a session", async () => {
     const response = await callMiddleware(request("/api/admin/users"));
 

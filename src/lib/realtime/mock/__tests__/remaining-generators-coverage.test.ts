@@ -275,6 +275,23 @@ describe("mock remaining generator coverage", () => {
     );
   });
 
+  it("exposes direct referrers as user-facing filter options with the direct sentinel", () => {
+    setFacts([
+      makeVisit({
+        visitId: "direct",
+        referrerHost: "",
+        referrerUrl: "",
+      }),
+    ]);
+
+    expect(
+      generateDemoFilterOptions(SITE_ID, { filterKey: "sourceDomain" }).data,
+    ).toContainEqual({ value: "__direct__", label: "Direct" });
+    expect(
+      generateDemoFilterOptions(SITE_ID, { filterKey: "sourceLink" }).data,
+    ).toContainEqual({ value: "__direct__", label: "Direct" });
+  });
+
   it("builds UTM dimension rows, invalid trend fallbacks, and Other trend series", () => {
     setFacts([
       makeVisit({ visitId: "a", sessionId: "s1", visitorId: "u1" }),
@@ -506,6 +523,42 @@ describe("mock remaining generator coverage", () => {
       ]),
       totalVisitors: expect.any(Number),
     });
+  });
+
+  it("wraps demo client-cross breakdowns in the analytics response envelope", () => {
+    setFacts([
+      makeVisit({
+        visitId: "chrome",
+        sessionId: "s1",
+        visitorId: "u1",
+        browser: "Chrome",
+        osVersion: "Windows 11",
+      }),
+      makeVisit({
+        visitId: "safari",
+        sessionId: "s2",
+        visitorId: "u2",
+        browser: "Safari",
+        osVersion: "iOS 18",
+      }),
+    ]);
+
+    const payload = generateDemoClientCrossBreakdown(SITE_ID, {
+      primaryDimension: "browser",
+      secondaryDimension: "operatingSystem",
+    }) as Record<string, unknown>;
+
+    expect(payload).toMatchObject({
+      ok: true,
+      data: expect.objectContaining({
+        columns: expect.any(Array),
+        rows: expect.any(Array),
+        totalVisitors: expect.any(Number),
+      }),
+    });
+    expect(payload).not.toHaveProperty("columns");
+    expect(payload).not.toHaveProperty("rows");
+    expect(payload).not.toHaveProperty("totalVisitors");
   });
 
   it("lists and details journeys with search, pagination, metrics, and null fallbacks", () => {

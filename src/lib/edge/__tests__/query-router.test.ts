@@ -42,7 +42,15 @@ const handlerMocks = vi.hoisted(() => {
     },
     pages: {
       handleDimension: vi.fn(respond("dimension")),
+      handlePages: vi.fn(respond("pages")),
       handlePagesDashboard: vi.fn(respond("pages-dashboard")),
+      handleReferrers: vi.fn(respond("referrers")),
+    },
+    funnels: {
+      handleFunnelAnalysis: vi.fn(respond("funnel-analysis")),
+      handleFunnelCreate: vi.fn(respond("funnel-create")),
+      handleFunnelDelete: vi.fn(respond("funnel-delete")),
+      handleFunnelList: vi.fn(respond("funnel-list")),
     },
     performance: {
       handlePerformance: vi.fn(respond("performance")),
@@ -66,6 +74,7 @@ const handlerMocks = vi.hoisted(() => {
 
 vi.mock("@/lib/edge/query/core", () => handlerMocks.core);
 vi.mock("@/lib/edge/query/events", () => handlerMocks.events);
+vi.mock("@/lib/edge/query/funnels", () => handlerMocks.funnels);
 vi.mock("@/lib/edge/query/journeys", () => handlerMocks.journeys);
 vi.mock("@/lib/edge/query/overview", () => handlerMocks.overview);
 vi.mock("@/lib/edge/query/pages", () => handlerMocks.pages);
@@ -139,12 +148,52 @@ describe("edge query router", () => {
 
   it("passes dimension expressions and fixed tab keys to shared handlers", async () => {
     await expect(responseText("page-hash")).resolves.toBe("dimension");
+    await expect(responseText("page-query")).resolves.toBe("dimension");
+    await expect(responseText("utm-medium")).resolves.toBe("dimension");
     await expect(responseText("utm-campaign")).resolves.toBe("dimension");
+    await expect(responseText("utm-term")).resolves.toBe("dimension");
+    await expect(responseText("utm-content")).resolves.toBe("dimension");
     await expect(responseText("countries")).resolves.toBe("dimension");
+    await expect(responseText("overview-page-title")).resolves.toBe(
+      "overview-page-tab",
+    );
+    await expect(responseText("overview-page-hostname")).resolves.toBe(
+      "overview-page-tab",
+    );
+    await expect(responseText("overview-page-entry")).resolves.toBe(
+      "overview-page-tab",
+    );
+    await expect(responseText("overview-page-exit")).resolves.toBe(
+      "overview-page-tab",
+    );
+    await expect(responseText("overview-source-link")).resolves.toBe(
+      "overview-source-tab",
+    );
     await expect(responseText("overview-client-browser")).resolves.toBe(
       "overview-client-tab",
     );
+    await expect(responseText("overview-client-os-version")).resolves.toBe(
+      "overview-client-tab",
+    );
+    await expect(responseText("overview-client-device-type")).resolves.toBe(
+      "overview-client-tab",
+    );
+    await expect(responseText("overview-client-language")).resolves.toBe(
+      "overview-client-tab",
+    );
+    await expect(responseText("overview-client-screen-size")).resolves.toBe(
+      "overview-client-tab",
+    );
     await expect(responseText("overview-geo-city")).resolves.toBe(
+      "overview-geo-tab",
+    );
+    await expect(responseText("overview-geo-continent")).resolves.toBe(
+      "overview-geo-tab",
+    );
+    await expect(responseText("overview-geo-timezone")).resolves.toBe(
+      "overview-geo-tab",
+    );
+    await expect(responseText("overview-geo-organization")).resolves.toBe(
       "overview-geo-tab",
     );
 
@@ -155,23 +204,69 @@ describe("edge query router", () => {
       url,
       "hash_fragment",
     );
+    expect(handlerMocks.pages.handleDimension).toHaveBeenNthCalledWith(
+      2,
+      env,
+      siteId,
+      url,
+      "query_string",
+    );
+    expect(handlerMocks.core.utmDimensionDefinition).toHaveBeenCalledWith(
+      "medium",
+    );
     expect(handlerMocks.core.utmDimensionDefinition).toHaveBeenCalledWith(
       "campaign",
     );
+    expect(handlerMocks.core.utmDimensionDefinition).toHaveBeenCalledWith(
+      "term",
+    );
+    expect(handlerMocks.core.utmDimensionDefinition).toHaveBeenCalledWith(
+      "content",
+    );
     expect(handlerMocks.pages.handleDimension).toHaveBeenNthCalledWith(
-      2,
+      4,
       env,
       siteId,
       url,
       "utm_campaign_expr",
     );
     expect(handlerMocks.pages.handleDimension).toHaveBeenNthCalledWith(
-      3,
+      7,
       env,
       siteId,
       url,
       "country",
       { ignoreGeo: true },
+    );
+    expect(handlerMocks.overview.handleOverviewPageTab).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
+      "title",
+    );
+    expect(handlerMocks.overview.handleOverviewPageTab).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
+      "hostname",
+    );
+    expect(handlerMocks.overview.handleOverviewPageTab).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
+      "entry",
+    );
+    expect(handlerMocks.overview.handleOverviewPageTab).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
+      "exit",
+    );
+    expect(handlerMocks.overview.handleOverviewSourceTab).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
+      "link",
     );
     expect(handlerMocks.overview.handleOverviewClientTab).toHaveBeenCalledWith(
       env,
@@ -179,11 +274,92 @@ describe("edge query router", () => {
       url,
       "browser",
     );
+    expect(handlerMocks.overview.handleOverviewClientTab).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
+      "osVersion",
+    );
+    expect(handlerMocks.overview.handleOverviewClientTab).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
+      "deviceType",
+    );
+    expect(handlerMocks.overview.handleOverviewClientTab).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
+      "language",
+    );
+    expect(handlerMocks.overview.handleOverviewClientTab).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
+      "screenSize",
+    );
     expect(handlerMocks.overview.handleOverviewGeoTab).toHaveBeenCalledWith(
       env,
       siteId,
       url,
       "city",
+    );
+    expect(handlerMocks.overview.handleOverviewGeoTab).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
+      "continent",
+    );
+    expect(handlerMocks.overview.handleOverviewGeoTab).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
+      "timezone",
+    );
+    expect(handlerMocks.overview.handleOverviewGeoTab).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
+      "organization",
+    );
+  });
+
+  it("routes public pages and referrers advertised by the edge client", async () => {
+    await expect(responseText("pages", true)).resolves.toBe("pages");
+    await expect(responseText("referrers", true)).resolves.toBe("referrers");
+
+    expect(handlerMocks.pages.handlePages).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
+      false,
+    );
+    expect(handlerMocks.pages.handleReferrers).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
+      8,
+      false,
+    );
+  });
+
+  it("routes funnel endpoints to their handlers", async () => {
+    await expect(responseText("funnels")).resolves.toBe("funnel-list");
+    await expect(responseText("funnel-analysis")).resolves.toBe(
+      "funnel-analysis",
+    );
+    await expect(responseText("funnel-create")).resolves.toBe("funnel-create");
+    await expect(responseText("funnel-delete")).resolves.toBe("funnel-delete");
+
+    expect(handlerMocks.funnels.handleFunnelList).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
+    );
+    expect(handlerMocks.funnels.handleFunnelAnalysis).toHaveBeenCalledWith(
+      env,
+      siteId,
+      url,
     );
   });
 

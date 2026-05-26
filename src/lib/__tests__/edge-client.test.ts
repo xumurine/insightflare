@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getSessionToken } from "@/lib/auth";
@@ -195,6 +197,69 @@ describe("edge client request wrappers", () => {
     );
   });
 
+  it("serializes remaining admin mutation wrapper bodies", async () => {
+    await loginAdminAccount({ username: "admin", password: "secret" });
+
+    let [url, init] = lastFetchCall();
+    expect(url).toBe("https://edge.example.test/api/private/admin/auth/login");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(
+      JSON.stringify({ username: "admin", password: "secret" }),
+    );
+
+    await updateMyProfile({
+      username: "admin2",
+      email: "admin2@example.test",
+      currentPassword: "old-secret",
+      password: "new-secret",
+      timeZone: "Asia/Shanghai",
+    });
+    [url, init] = lastFetchCall();
+    expect(url).toBe("https://edge.example.test/api/private/admin/profile");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(
+      JSON.stringify({
+        username: "admin2",
+        email: "admin2@example.test",
+        currentPassword: "old-secret",
+        password: "new-secret",
+        timeZone: "Asia/Shanghai",
+      }),
+    );
+
+    await transferAdminTeamOwner({
+      teamId: "team-1",
+      newOwnerUserId: "user-2",
+    });
+    [, init] = lastFetchCall();
+    expect(init.method).toBe("PATCH");
+    expect(init.body).toBe(
+      JSON.stringify({
+        teamId: "team-1",
+        newOwnerUserId: "user-2",
+        intent: "transfer_owner",
+      }),
+    );
+
+    await removeAdminSite({ siteId: "site-1" });
+    [, init] = lastFetchCall();
+    expect(init.body).toBe(
+      JSON.stringify({ siteId: "site-1", intent: "remove" }),
+    );
+
+    await removeAdminUser({ userId: "user-1" });
+    [, init] = lastFetchCall();
+    expect(init.body).toBe(
+      JSON.stringify({ userId: "user-1", intent: "remove" }),
+    );
+
+    await removeAdminMember({ teamId: "team-1", userId: "user-1" });
+    [, init] = lastFetchCall();
+    expect(init.body).toBe(
+      JSON.stringify({ teamId: "team-1", userId: "user-1" }),
+    );
+  });
+
   it("unwraps data for the remaining admin wrappers", async () => {
     await fetchAdminSites("team-1");
     await createAdminSite({
@@ -354,6 +419,21 @@ describe("edge client request wrappers", () => {
     );
   });
 
+  it("uses http for 127.0.0.1 server hosts when forwarded proto is absent", async () => {
+    vi.stubEnv("INSIGHTFLARE_EDGE_URL", "");
+    vi.doMock("next/headers", () => ({
+      headers: vi
+        .fn()
+        .mockResolvedValue(new Headers({ host: "127.0.0.1:3000" })),
+    }));
+
+    await fetchAdminUsers();
+
+    expect(lastFetchCall()[0]).toBe(
+      "http://127.0.0.1:3000/api/private/admin/users",
+    );
+  });
+
   it("delegates to the realtime demo handler in demo mode", async () => {
     vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "1");
     handleDemoRequestMock.mockReturnValue({
@@ -371,5 +451,32 @@ describe("edge client request wrappers", () => {
       body: undefined,
     });
     expect(fetchMock()).not.toHaveBeenCalled();
+  });
+
+  it("delegates private POST wrappers to the demo handler with method and body", async () => {
+    vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "1");
+    handleDemoRequestMock.mockReturnValue({
+      ok: true,
+      data: { id: "team-1", name: "Team" },
+    });
+
+    const result = await createAdminTeam({ name: "Team", slug: "team" });
+
+    expect(result).toEqual({ id: "team-1", name: "Team" });
+    expect(handleDemoRequestMock).toHaveBeenCalledWith({
+      path: "/api/private/admin/teams",
+      method: "POST",
+      params: undefined,
+      body: { name: "Team", slug: "team" },
+    });
+    expect(fetchMock()).not.toHaveBeenCalled();
+    expect(getSessionTokenMock).not.toHaveBeenCalled();
+  });
+
+  it("wires the edge-client filter helper into at least one exported request wrapper", () => {
+    const source = readFileSync("src/lib/edge-client.ts", "utf8");
+    const callSites = source.match(/\bwithFilters\s*\(/g) ?? [];
+
+    expect(callSites.length).toBeGreaterThan(1);
   });
 });

@@ -215,6 +215,23 @@ describe("private archive edge query handler", () => {
       expect(prepare).not.toHaveBeenCalled();
     });
 
+    it("rejects non-numeric manifest time windows instead of using defaults", async () => {
+      requireSessionMock.mockResolvedValue(adminSession);
+      const { env, prepare } = createEnv();
+
+      const response = await dispatch(
+        "/api/private/archive/manifest?siteId=site-1&from=nope&to=wat",
+        env,
+      );
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "Invalid time window",
+      });
+      expect(prepare).not.toHaveBeenCalled();
+    });
+
     it("uses the default one-year time window when from and to are omitted", async () => {
       requireSessionMock.mockResolvedValue(adminSession);
       const nowMs = Date.UTC(2026, 4, 25, 12, 30);

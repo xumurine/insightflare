@@ -239,6 +239,26 @@ describe("collect route", () => {
     expect(ctx.waitUntil).not.toHaveBeenCalled();
   });
 
+  it("returns a controlled validation error when custom event payloads omit eventData", async () => {
+    makeRuntimeRequest({
+      origin: "https://example.com",
+      body: makePayload({
+        kind: "custom_event",
+        eventName: "Signup",
+      }),
+    });
+
+    const response = await POST(new Request("https://collector.test/collect"));
+
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "eventData is required",
+    });
+    expect(response.status).toBe(422);
+    expect(readSiteTrackingConfigMock).not.toHaveBeenCalled();
+    expect(ctx.waitUntil).not.toHaveBeenCalled();
+  });
+
   it("rejects custom event payloads when eventData cannot be JSON serialized", async () => {
     const body = JSON.stringify(
       makePayload({

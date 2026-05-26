@@ -96,6 +96,20 @@ describe("mock/shared coverage", () => {
     ]);
   });
 
+  it("does not throw or emit non-finite buckets for non-finite time bounds", () => {
+    let buckets: ReturnType<typeof buildDemoTimeBuckets> = [];
+
+    expect(() => {
+      buckets = buildDemoTimeBuckets(Number.NaN, Number.NaN, "hour", "UTC");
+    }).not.toThrow();
+    expect(buckets.length).toBeGreaterThan(0);
+    for (const bucket of buckets) {
+      expect(Number.isFinite(bucket.timestampMs)).toBe(true);
+      expect(Number.isFinite(bucket.fromMs)).toBe(true);
+      expect(Number.isFinite(bucket.toMs)).toBe(true);
+    }
+  });
+
   it("builds weighted trend rows with session starts and bounces in their first bucket", () => {
     const visits = [
       makeVisit({

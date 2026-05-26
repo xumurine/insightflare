@@ -1943,6 +1943,42 @@ describe("edge query handlers", () => {
     });
   });
 
+  it("returns a JSON error for malformed public slugs", async () => {
+    const { env, prepare } = createEnv();
+
+    const response = await publicQuery(
+      `/api/public-sites/%E0%A4%A/overview?${windowParams}`,
+      env,
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: "Public site not found",
+    });
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it("serves public pages and referrers advertised by the edge client", async () => {
+    const { env } = createEnv({
+      matches: [...publicAuthMatches(), ...commonQueryMatches()],
+    });
+
+    const pages = await publicQuery(publicPath("pages"), env);
+    const referrers = await publicQuery(publicPath("referrers"), env);
+
+    expect(pages.status).toBe(200);
+    expect(await pages.json()).toMatchObject({
+      ok: true,
+      data: expect.any(Array),
+    });
+    expect(referrers.status).toBe(200);
+    expect(await referrers.json()).toMatchObject({
+      ok: true,
+      data: expect.any(Array),
+    });
+  });
+
   it("returns not found for unknown private paths after authorization", async () => {
     const { env } = createEnv({ matches: authMatches() });
 

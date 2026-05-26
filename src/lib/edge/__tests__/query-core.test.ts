@@ -90,6 +90,7 @@ describe("edge query core parsers", () => {
       timeZone: "UTC",
     });
 
+    expect(parseWindow(url("?from=nope&to=wat"))).toBeNull();
     expect(parseWindow(url("?from=-1&to=10"))).toBeNull();
     expect(parseWindow(url("?from=20&to=10"))).toBeNull();
   });

@@ -1034,17 +1034,18 @@ describe("mock — handleDemoRequest", () => {
           params,
         }),
       );
-      expect(res.ok).toBe(true);
+      expect(res.ok).toBe(false);
+      expect(res.data).toEqual({ error: "Not Found" });
     });
   });
 
   describe("fallback", () => {
-    it("returns empty success for unrecognized GET paths", () => {
+    it("returns a not-found error for unrecognized GET paths", () => {
       const res = ok(
         handleDemoRequest({ path: "/api/private/totally-unknown" }),
       );
-      expect(res.ok).toBe(true);
-      expect(res.data).toEqual({});
+      expect(res.ok).toBe(false);
+      expect(res.data).toEqual({ error: "Not Found" });
     });
   });
 });
