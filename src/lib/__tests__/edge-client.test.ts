@@ -149,6 +149,107 @@ describe("edge client request wrappers", () => {
     );
   });
 
+  it("serializes supported public dashboard filters", async () => {
+    await fetchPublicOverview("slug", {
+      from: 1,
+      to: 2,
+      filters: {
+        country: "US",
+        device: "desktop",
+        browser: "Chrome",
+        path: "/docs",
+        query: "q=1",
+        title: "Docs",
+        hostname: "example.com",
+        entry: "/entry",
+        exit: "/exit",
+        sourceDomain: "search.example",
+        sourceLink: "https://search.example/?q=docs",
+        clientBrowser: "Chrome",
+        clientOsVersion: "Windows 11",
+        clientDeviceType: "desktop",
+        clientLanguage: "en-US",
+        clientScreenSize: "1920x1080",
+        geo: "US-CA",
+        geoContinent: "NA",
+        geoTimezone: "America/Los_Angeles",
+        geoOrganization: "Example ISP",
+        eventPayloadFilters: [
+          { path: "/plan", operator: "eq", value: "pro" },
+          { path: "/trial", operator: "ne", value: false },
+        ],
+      },
+    });
+
+    const [url] = lastFetchCall();
+    const params = new URL(url).searchParams;
+
+    expect(params.get("from")).toBe("1");
+    expect(params.get("to")).toBe("2");
+    expect(params.get("country")).toBe("US");
+    expect(params.get("device")).toBe("desktop");
+    expect(params.get("browser")).toBe("Chrome");
+    expect(params.get("path")).toBe("/docs");
+    expect(params.get("query")).toBe("q=1");
+    expect(params.get("title")).toBe("Docs");
+    expect(params.get("hostname")).toBe("example.com");
+    expect(params.get("entry")).toBe("/entry");
+    expect(params.get("exit")).toBe("/exit");
+    expect(params.get("sourceDomain")).toBe("search.example");
+    expect(params.get("sourceLink")).toBe("https://search.example/?q=docs");
+    expect(params.get("clientBrowser")).toBe("Chrome");
+    expect(params.get("clientOsVersion")).toBe("Windows 11");
+    expect(params.get("clientDeviceType")).toBe("desktop");
+    expect(params.get("clientLanguage")).toBe("en-US");
+    expect(params.get("clientScreenSize")).toBe("1920x1080");
+    expect(params.get("geo")).toBe("US-CA");
+    expect(params.get("geoContinent")).toBe("NA");
+    expect(params.get("geoTimezone")).toBe("America/Los_Angeles");
+    expect(params.get("geoOrganization")).toBe("Example ISP");
+    expect(JSON.parse(params.get("eventPayloadFilters") ?? "[]")).toEqual([
+      { path: "/plan", operator: "eq", value: "pro" },
+      { path: "/trial", operator: "ne", value: false },
+    ]);
+  });
+
+  it("omits blank public dashboard filters", async () => {
+    await fetchPublicPages("slug", {
+      from: 1,
+      to: 2,
+      filters: {
+        country: "",
+        device: "",
+        browser: "",
+        path: "",
+        query: "",
+        title: "",
+        hostname: "",
+        entry: "",
+        exit: "",
+        sourceDomain: "",
+        sourceLink: "",
+        clientBrowser: "",
+        clientOsVersion: "",
+        clientDeviceType: "",
+        clientLanguage: "",
+        clientScreenSize: "",
+        geo: "",
+        geoContinent: "",
+        geoTimezone: "",
+        geoOrganization: "",
+        eventPayloadFilters: [],
+      },
+    });
+
+    const [url] = lastFetchCall();
+    const params = new URL(url).searchParams;
+
+    expect(url).toBe(
+      "https://edge.example.test/api/public/slug/pages?from=1&to=2&limit=8",
+    );
+    expect(params.has("eventPayloadFilters")).toBe(false);
+  });
+
   it("omits optional query params when they are not provided", async () => {
     await fetchAdminTeams();
 

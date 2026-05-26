@@ -7,6 +7,7 @@ import {
   buildEventPayloadFilterSql,
   buildTimeBuckets,
   buildVisitFilterSql,
+  clientDimensionDefinition,
   customEventJsonTypeCode,
   customEventJsonTypeLabel,
   dedupeFilterOptions,
@@ -16,6 +17,7 @@ import {
   eventPayloadFilterValueType,
   eventRecordOrderBy,
   finalizeGeoDimensionBuckets,
+  formatPageLabel,
   intervalBucketMs,
   mapDimensionRowsToFilterOptions,
   mapEventAnalyticsContextCards,
@@ -216,11 +218,13 @@ describe("edge query core parsers", () => {
   it("parses focused query params and filter option helpers", () => {
     expect(parseListSearch(url("?search=%20checkout%20"))).toBe("checkout");
     expect(parseListSearch(url("?q=%20%20"))).toBeUndefined();
+    expect(parseListSearch(url())).toBeUndefined();
     expect(parseEventName(url("?eventName=%20signup%20"))).toBe("signup");
     expect(parseEventName(url("?eventName=%20%20"))).toBeUndefined();
     expect(parseEventFieldPath(url("?fieldPath=/payload/plan"))).toBe(
       "/payload/plan",
     );
+    expect(parseEventFieldPath(url("?fieldPath="))).toBeUndefined();
     expect(parseEventFieldPath(url())).toBeUndefined();
     expect(parseEventFieldValueType(url("?fieldValueType=Object"))).toBe(
       "object",
@@ -229,6 +233,7 @@ describe("edge query core parsers", () => {
       undefined,
     );
     expect(parseEventId(url("?eventId=%20evt_123%20"))).toBe("evt_123");
+    expect(parseEventId(url("?eventId=%20%20"))).toBeUndefined();
     expect(parseFilterOptionKey(url("?filterKey=geoTimezone"))).toBe(
       "geoTimezone",
     );
@@ -239,6 +244,52 @@ describe("edge query core parsers", () => {
     expect(
       withoutFilterKey({ country: "US", browser: "Chrome" }, "country"),
     ).toEqual({ browser: "Chrome" });
+  });
+
+  it("drops malformed payload filters while preserving valid rules", () => {
+    expect(parseEventPayloadFilters("")).toBeUndefined();
+    expect(
+      parseEventPayloadFilters(
+        JSON.stringify([
+          null,
+          "bad",
+          42,
+          { path: "/", value: "skip" },
+          { path: "bad", value: { nested: true } },
+          { path: "$.flags.enabled", operator: "ne", value: false },
+        ]),
+      ),
+    ).toEqual([{ path: "/flags/enabled", operator: "ne", value: false }]);
+  });
+});
+
+describe("edge query core dimensions", () => {
+  it("formats page labels with optional query and hash details", () => {
+    expect(formatPageLabel("", "", "", false)).toBe("/");
+    expect(formatPageLabel("/docs", "?tab=api", "", true)).toBe(
+      "/docs?tab=api",
+    );
+    expect(formatPageLabel("/docs", "", "#install", true)).toBe(
+      "/docs#install",
+    );
+  });
+
+  it("emits aliased and unaliased client dimension expressions", () => {
+    expect(clientDimensionDefinition("browser")).toEqual({
+      labelExpr: "TRIM(COALESCE(browser, ''))",
+      fallbackKeyBase: "browser",
+    });
+    expect(clientDimensionDefinition("deviceType")).toEqual({
+      labelExpr: "TRIM(COALESCE(device_type, ''))",
+      fallbackKeyBase: "device",
+    });
+    expect(clientDimensionDefinition("language")).toEqual({
+      labelExpr: "TRIM(COALESCE(language, ''))",
+      fallbackKeyBase: "language",
+    });
+    expect(clientDimensionDefinition("browser", "v").labelExpr).toBe(
+      "TRIM(COALESCE(v.browser, ''))",
+    );
   });
 });
 

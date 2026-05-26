@@ -6,6 +6,7 @@ import {
   demoEventSummaryCards,
 } from "@/lib/realtime/mock/events-context";
 import type { DemoCustomEventFact } from "@/lib/realtime/mock/events-facts";
+import { filterDemoCustomEventsByPayload } from "@/lib/realtime/mock/events-payload-filter";
 import {
   parseDemoEventRecordSort,
   sortDemoEventRecords,
@@ -279,6 +280,38 @@ describe("mock/events-context branch behavior", () => {
       label: "example.test",
       views: 3,
     });
+  });
+});
+
+describe("mock/events-payload-filter branch behavior", () => {
+  it("filters boolean payload values and rejects mismatched expected types", () => {
+    const signedIn = makeEvent("signed-in", "signup", 200);
+    const signedOut = makeEvent("alpha", "signup", 100);
+    const events = [signedIn, signedOut];
+
+    expect(
+      filterDemoCustomEventsByPayload(events, {
+        eventPayloadFilters: [
+          { path: "/flags/signedIn", operator: "eq", value: true },
+        ],
+      }).map((event) => event.eventId),
+    ).toEqual(["signed-in"]);
+
+    expect(
+      filterDemoCustomEventsByPayload(events, {
+        eventPayloadFilters: [
+          { path: "/flags/signedIn", operator: "ne", value: false },
+        ],
+      }).map((event) => event.eventId),
+    ).toEqual(["signed-in"]);
+
+    expect(
+      filterDemoCustomEventsByPayload(events, {
+        eventPayloadFilters: [
+          { path: "/flags/signedIn", operator: "eq", value: "true" },
+        ],
+      }),
+    ).toEqual([]);
   });
 });
 
