@@ -400,6 +400,118 @@ describe("edge team query coverage", () => {
       bindings: ["team-1"],
     });
   });
+
+  it("rejects invalid team dashboard windows before auth or database access", async () => {
+    const { env, prepare } = createD1Env([]);
+
+    const response = await handleTeamDashboard(
+      new Request("https://edge.test/api/private/team-dashboard"),
+      env,
+      url("/api/private/team-dashboard", {
+        teamId: "team-1",
+        from: "bad",
+        to: window.toMs,
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "Invalid time window",
+    });
+    expect(requireSessionMock).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it("passes through private team resolution failures without querying sites", async () => {
+    requireSessionMock.mockResolvedValue(null);
+    const { env, prepare } = createD1Env([]);
+
+    const response = await handleTeamDashboard(
+      new Request("https://edge.test/api/private/team-dashboard"),
+      env,
+      url("/api/private/team-dashboard", {
+        teamId: "team-1",
+        from: window.fromMs,
+        to: window.toMs,
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "Unauthorized",
+    });
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it("returns an empty team dashboard when the resolved team has no sites", async () => {
+    requireSessionMock.mockResolvedValue(adminSession);
+    const { env, calls } = createD1Env([[]], [{ id: "team-empty" }]);
+
+    const response = await handleTeamDashboard(
+      new Request("https://edge.test/api/private/team-dashboard"),
+      env,
+      url("/api/private/team-dashboard", {
+        teamId: "team-empty",
+        from: window.fromMs,
+        to: window.toMs,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        sites: [],
+        trend: [],
+      },
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toMatchObject({
+      kind: "first",
+      bindings: ["team-empty"],
+    });
+    expect(calls[1]).toMatchObject({
+      kind: "all",
+      bindings: ["team-empty"],
+    });
+  });
+
+  it("propagates database errors from team site listing", async () => {
+    requireSessionMock.mockResolvedValue(adminSession);
+    const failingEnv = {
+      DB: {
+        prepare: vi
+          .fn()
+          .mockReturnValueOnce({
+            bind: vi.fn().mockReturnValue({
+              first: vi.fn().mockResolvedValue({ id: "team-1" }),
+            }),
+          })
+          .mockReturnValueOnce({
+            bind: vi.fn().mockReturnValue({
+              all: vi.fn().mockRejectedValue(new Error("sites unavailable")),
+            }),
+          }),
+      } as unknown as D1Database,
+      DAILY_SALT_SECRET: "test-secret",
+      INGEST_DO: {} as DurableObjectNamespace,
+    } as Env;
+
+    await expect(
+      handleTeamDashboard(
+        new Request("https://edge.test/api/private/team-dashboard"),
+        failingEnv,
+        url("/api/private/team-dashboard", {
+          teamId: "team-1",
+          from: window.fromMs,
+          to: window.toMs,
+        }),
+      ),
+    ).rejects.toThrow("sites unavailable");
+  });
 });
 
 describe("edge journey retention coverage", () => {

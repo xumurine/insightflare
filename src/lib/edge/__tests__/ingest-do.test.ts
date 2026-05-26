@@ -140,6 +140,10 @@ class FakeD1Statement {
   }
 
   async run(): Promise<{ success: true; meta: { changes: number } }> {
+    if (this.d1.failRunCalls > 0) {
+      this.d1.failRunCalls -= 1;
+      throw new Error("forced run failure");
+    }
     const result = this.d1.db.prepare(this.query).run(...this.bindings);
     return {
       success: true,
@@ -167,6 +171,7 @@ type FakeBatchHook = (statements: FakeD1Statement[]) => void | Promise<void>;
 class FakeD1Database {
   readonly db = new DatabaseSync(":memory:");
   failBatchCalls = 0;
+  failRunCalls = 0;
   beforeBatch: FakeBatchHook | null = null;
   readonly prepare = vi.fn((query: string) => new FakeD1Statement(this, query));
   readonly batch = vi.fn(async (statements: FakeD1Statement[]) => {
@@ -1995,6 +2000,31 @@ describe("IngestDurableObject", () => {
     ).toBe(1);
   });
 
+  it("reschedules alarms when dirty visits remain after the alarm flush budget", async () => {
+    const ctx = createTestDo();
+    for (let index = 0; index < 201; index += 1) {
+      insertBufferedVisit(ctx.sql, {
+        visit_id: `visit-budget-${index}`,
+        session_id: `session-budget-${index}`,
+        status: "complete",
+        ended_at: NOW - 1_000,
+        finalized_at: NOW - 1_000,
+        dirty: 1,
+      });
+    }
+
+    await ctx.object.alarm();
+
+    expect(ctx.getAlarmAt()).toBe(NOW + 60_000);
+    expect(
+      localRows<{ dirty: number }>(
+        ctx.sql,
+        "SELECT COUNT(*) AS dirty FROM buffered_visits WHERE dirty = 1",
+      )[0]?.dirty,
+    ).toBe(1);
+    expect(ctx.state.storage.deleteAlarm).not.toHaveBeenCalled();
+  });
+
   it("deletes old flushed custom event rows immediately after successful D1 flush", async () => {
     const ctx = createTestDo();
     ctx.d1.insertVisit({
@@ -2105,6 +2135,68 @@ describe("IngestDurableObject", () => {
     );
   });
 
+  it("ignores leave updates that lose the open-visit race", async () => {
+    const ctx = createTestDo();
+    await postIngest(
+      ctx.object,
+      envelope({
+        visitId: "race-visit",
+        sessionId: "race-session",
+        startedAt: NOW - 10_000,
+        timestamp: NOW - 10_000,
+      }),
+    );
+
+    const originalExec = ctx.sql.exec.bind(ctx.sql);
+    vi.spyOn(ctx.sql, "exec").mockImplementation(
+      (query: string, ...bindings: SqlBinding[]) => {
+        const normalized = query.replace(/\s+/g, " ");
+        if (
+          normalized.includes("UPDATE buffered_visits") &&
+          normalized.includes("duration_source = 'reported'") &&
+          normalized.includes("WHERE visit_id = ? AND status = 'open'")
+        ) {
+          originalExec(
+            "UPDATE buffered_visits SET status = 'complete' WHERE visit_id = ?",
+            "race-visit",
+          );
+        }
+        return originalExec(query, ...bindings);
+      },
+    );
+
+    const response = await postIngest(
+      ctx.object,
+      envelope({
+        kind: "leave",
+        visitId: "race-visit",
+        sessionId: "race-session",
+        timestamp: NOW,
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining('"event":"do_leave_no_rows_updated"'),
+    );
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining('"reason":"visit_not_open"'),
+    );
+    await expect(
+      (
+        await ctx.object.fetch(
+          new Request(
+            "https://ingest.internal/snapshot?from=0&to=9999999999999&limit=10",
+          ),
+        )
+      ).json(),
+    ).resolves.toMatchObject({
+      data: expect.not.arrayContaining([
+        expect.objectContaining({ eventType: "__presence_leave" }),
+      ]),
+    });
+  });
+
   it("does not hydrate performance rows when neither buffered nor persisted visit exists", async () => {
     const ctx = createTestDo();
 
@@ -2127,5 +2219,60 @@ describe("IngestDurableObject", () => {
         "SELECT COUNT(*) AS visits FROM buffered_visits",
       )[0]?.visits,
     ).toBe(0);
+  });
+
+  it("identifies persisted visits without user names or session ids and swallows D1 write failures", async () => {
+    const persistedCtx = createTestDo();
+    persistedCtx.d1.insertVisit({
+      visit_id: "persisted-no-name",
+      user_id: "",
+      user_name: "",
+    });
+
+    const persistedIdentify = await postIngest(
+      persistedCtx.object,
+      envelope({
+        kind: "identify",
+        visitId: "persisted-no-name",
+        sessionId: "",
+        userId: "user-without-name",
+        userName: "",
+      }),
+    );
+
+    expect(persistedIdentify.status).toBe(202);
+    expect(
+      persistedCtx.d1.all<{ user_id: string; user_name: string | null }>(
+        "SELECT user_id, user_name FROM visits WHERE visit_id = ?",
+        "persisted-no-name",
+      )[0],
+    ).toEqual({ user_id: "user-without-name", user_name: null });
+
+    const failingCtx = createTestDo();
+    failingCtx.d1.insertVisit({
+      visit_id: "persisted-failing-identify",
+      user_id: "",
+      user_name: "",
+    });
+    failingCtx.d1.failRunCalls = 1;
+
+    const failingIdentify = await postIngest(
+      failingCtx.object,
+      envelope({
+        kind: "identify",
+        visitId: "persisted-failing-identify",
+        sessionId: "",
+        userId: "lost-user",
+        userName: "",
+      }),
+    );
+
+    expect(failingIdentify.status).toBe(202);
+    expect(
+      failingCtx.d1.all<{ user_id: string; user_name: string | null }>(
+        "SELECT user_id, user_name FROM visits WHERE visit_id = ?",
+        "persisted-failing-identify",
+      )[0],
+    ).toEqual({ user_id: "", user_name: "" });
   });
 });
