@@ -14,6 +14,26 @@ import {
   visitSourceBindings,
 } from "./core";
 
+const FUNNEL_ANALYSIS_KIND = "funnel";
+
+interface FunnelStepConfig {
+  type: string;
+  value: string;
+}
+
+function parseFunnelSteps(configJson: string): FunnelStepConfig[] {
+  const parsed = JSON.parse(configJson) as
+    | FunnelStepConfig[]
+    | { steps?: FunnelStepConfig[] };
+  if (Array.isArray(parsed)) return parsed;
+  if (Array.isArray(parsed.steps)) return parsed.steps;
+  return [];
+}
+
+function serializeFunnelConfig(steps: FunnelStepConfig[]): string {
+  return JSON.stringify({ steps });
+}
+
 export async function handleFunnelList(
   env: Env,
   siteId: string,
@@ -21,14 +41,14 @@ export async function handleFunnelList(
 ): Promise<Response> {
   const rows = await queryD1All<Record<string, unknown>>(
     env,
-    "SELECT id, site_id, type, name, config_json, created_at, updated_at FROM widgets WHERE site_id = ? AND type = 'funnel' ORDER BY created_at DESC",
-    [siteId],
+    "SELECT id, site_id, kind, name, config_json, created_at, updated_at FROM analysis_definitions WHERE site_id = ? AND kind = ? AND archived_at IS NULL ORDER BY created_at DESC",
+    [siteId, FUNNEL_ANALYSIS_KIND],
   );
   const funnels = rows.map((row) => ({
     id: String(row.id ?? ""),
     siteId: String(row.site_id ?? ""),
     name: String(row.name ?? ""),
-    steps: JSON.parse(String(row.config_json ?? "[]")),
+    steps: parseFunnelSteps(String(row.config_json ?? "{}")),
     createdAt: Number(row.created_at ?? 0),
     updatedAt: Number(row.updated_at ?? 0),
   }));
@@ -60,9 +80,17 @@ export async function handleFunnelCreate(
   const id = crypto.randomUUID();
   const now = Math.floor(Date.now() / 1000);
   await env.DB.prepare(
-    "INSERT INTO widgets (id, site_id, type, name, config_json, created_at, updated_at) VALUES (?, ?, 'funnel', ?, ?, ?, ?)",
+    "INSERT INTO analysis_definitions (id, site_id, kind, name, config_json, config_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
   )
-    .bind(id, siteId, name, JSON.stringify(steps), now, now)
+    .bind(
+      id,
+      siteId,
+      FUNNEL_ANALYSIS_KIND,
+      name,
+      serializeFunnelConfig(steps),
+      now,
+      now,
+    )
     .run();
 
   return jsonResponse(
@@ -81,10 +109,11 @@ export async function handleFunnelDelete(
 ): Promise<Response> {
   const funnelId = url.searchParams.get("id");
   if (!funnelId) return badRequest("Funnel id is required");
+  const now = Math.floor(Date.now() / 1000);
   await env.DB.prepare(
-    "DELETE FROM widgets WHERE id = ? AND site_id = ? AND type = 'funnel'",
+    "UPDATE analysis_definitions SET archived_at = ?, updated_at = ? WHERE id = ? AND site_id = ? AND kind = ? AND archived_at IS NULL",
   )
-    .bind(funnelId, siteId)
+    .bind(now, now, funnelId, siteId, FUNNEL_ANALYSIS_KIND)
     .run();
   return jsonResponse({ ok: true });
 }
@@ -102,13 +131,11 @@ export async function handleFunnelAnalysis(
 
   const funnelRow = await queryD1All<Record<string, unknown>>(
     env,
-    "SELECT config_json FROM widgets WHERE id = ? AND site_id = ? AND type = 'funnel'",
-    [funnelId, siteId],
+    "SELECT config_json FROM analysis_definitions WHERE id = ? AND site_id = ? AND kind = ? AND archived_at IS NULL",
+    [funnelId, siteId, FUNNEL_ANALYSIS_KIND],
   );
   if (funnelRow.length === 0) return notFound();
-  const steps: Array<{ type: string; value: string }> = JSON.parse(
-    String(funnelRow[0].config_json ?? "[]"),
-  );
+  const steps = parseFunnelSteps(String(funnelRow[0].config_json ?? "{}"));
   if (steps.length < 2) return badRequest("Funnel has fewer than 2 steps");
 
   const filter = buildVisitFilterSql(filters);
