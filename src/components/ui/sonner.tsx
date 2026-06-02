@@ -10,13 +10,25 @@ import {
 } from "@remixicon/react";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
-const Toaster = ({ ...props }: ToasterProps) => {
+import { cn } from "@/lib/utils";
+
+const TOAST_LAYER_Z_INDEX = 2147483647;
+
+const Toaster = ({
+  className,
+  style,
+  toastOptions,
+  ...props
+}: ToasterProps) => {
   const { theme = "system" } = useTheme();
 
   return (
     <Sonner
       theme={theme as ToasterProps["theme"]}
-      className="toaster group rounded-none"
+      className={cn(
+        "toaster group pointer-events-auto rounded-none",
+        className,
+      )}
       icons={{
         success: <RiCheckboxCircleLine className="size-4" />,
         info: <RiInformationLine className="size-4" />,
@@ -30,11 +42,19 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "var(--border)",
           "--border-radius": "0px",
+          pointerEvents: "auto",
+          zIndex: TOAST_LAYER_Z_INDEX,
+          ...style,
         } as React.CSSProperties
       }
       toastOptions={{
+        ...toastOptions,
         classNames: {
-          toast: "cn-toast",
+          ...toastOptions?.classNames,
+          toast: cn(
+            "cn-toast pointer-events-auto",
+            toastOptions?.classNames?.toast,
+          ),
         },
       }}
       {...props}

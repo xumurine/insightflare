@@ -300,6 +300,11 @@ export function EventTypeDetailClientPage({
             <EventFieldsCard
               locale={locale}
               labels={labels}
+              siteId={siteId}
+              window={requestWindow}
+              filters={requestFilters}
+              eventName={eventName}
+              loading={loading}
               fields={detail.fields}
             />
 

@@ -6,13 +6,24 @@
  * Placeholder strings (__IF_*__) survive minification and are replaced at serve time.
  */
 import * as esbuild from "esbuild";
-import { writeFileSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { dirname, resolve } from "path";
+import Rlog from "rlog-js";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 const entry = resolve(root, "src/tracker/sdk.ts");
+
+const logsDir = resolve(root, "logs");
+if (!existsSync(logsDir)) {
+  mkdirSync(logsDir, { recursive: true });
+}
+
+const rlog = new Rlog({
+  logFilePath: resolve(logsDir, "build-sdk.log"),
+  enableColorfulOutput: true,
+});
 
 const commonOpts: esbuild.BuildOptions = {
   entryPoints: [entry],
@@ -35,6 +46,7 @@ function generateOutput(text: string, label: string): string {
 }
 
 async function build() {
+  rlog.info("Building tracker SDK variants...");
   // Variant A: Full (with performance)
   const fullResult = await esbuild.build({
     ...commonOpts,
@@ -47,7 +59,7 @@ async function build() {
     generateOutput(fullText, "full (performance included)"),
     "utf-8",
   );
-  console.log(
+  rlog.success(
     `  sdk.min.ts        : ${(fullText.length / 1024).toFixed(2)} KB (performance: yes)`,
   );
 
@@ -63,17 +75,17 @@ async function build() {
     generateOutput(noPerfText, "no-perf (performance stripped)"),
     "utf-8",
   );
-  console.log(
+  rlog.success(
     `  sdk.no-perf.min.ts: ${(noPerfText.length / 1024).toFixed(2)} KB (performance: no)`,
   );
 
   const saved = fullText.length - noPerfText.length;
-  console.log(
+  rlog.info(
     `  Saved ${saved} bytes (${(saved / 1024).toFixed(2)} KB) when performance disabled`,
   );
 }
 
 build().catch((err) => {
-  console.error("Failed to build tracker SDK:", err);
+  rlog.error("Failed to build tracker SDK:", err);
   process.exit(1);
 });

@@ -1,0 +1,248 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { handleTrackerScriptRequest } from "@/lib/edge/script-endpoint";
+import type * as SiteSettingsStoreModule from "@/lib/edge/site-settings-store";
+import { readSiteTrackingConfig } from "@/lib/edge/site-settings-store";
+import type { Env } from "@/lib/edge/types";
+import type { SiteTrackingConfig } from "@/lib/site-settings";
+
+vi.mock("@/tracker/sdk.min", () => ({
+  SDK_MIN:
+    'full:"__IF_SITE_ID__","__IF_IS_EU_MODE__","__IF_TRACK_QUERY_PARAMS__","__IF_TRACK_HASH__","__IF_IGNORE_DO_NOT_TRACK__","__IF_AUTO_TRACK_OUTBOUND_LINKS__","__IF_PERFORMANCE_SAMPLE_RATE__","__IF_SESSION_WINDOW_MS__"',
+}));
+
+vi.mock("@/tracker/sdk.no-perf.min", () => ({
+  SDK_MIN:
+    'no-perf:"__IF_SITE_ID__","__IF_IS_EU_MODE__","__IF_TRACK_QUERY_PARAMS__","__IF_TRACK_HASH__","__IF_IGNORE_DO_NOT_TRACK__","__IF_AUTO_TRACK_OUTBOUND_LINKS__","__IF_PERFORMANCE_SAMPLE_RATE__","__IF_SESSION_WINDOW_MS__"',
+}));
+
+vi.mock("@/lib/edge/site-settings-store", async () => {
+  const actual = await vi.importActual<typeof SiteSettingsStoreModule>(
+    "@/lib/edge/site-settings-store",
+  );
+  return {
+    ...actual,
+    readSiteTrackingConfig: vi.fn(),
+  };
+});
+
+const readSiteTrackingConfigMock = vi.mocked(readSiteTrackingConfig);
+
+function makeEnv(overrides: Partial<Env> = {}): Env {
+  return overrides as Env;
+}
+
+function makeSettings(
+  overrides: Partial<SiteTrackingConfig> = {},
+): SiteTrackingConfig {
+  return {
+    siteId: "site-1",
+    siteDomain: "example.com",
+    allowedHostnames: ["example.com"],
+    trackingStrength: "smart",
+    trackQueryParams: true,
+    trackHash: true,
+    autoTrackOutboundLinks: false,
+    domainWhitelist: [],
+    pathBlacklist: [],
+    ignoreDoNotTrack: true,
+    performanceSampleRate: 50,
+    ...overrides,
+  };
+}
+
+function makeRequest(input: {
+  url?: string;
+  method?: string;
+  isEUCountry?: boolean;
+}): Request {
+  const request = new Request(
+    input.url ?? "https://example.com/script.js?siteId=site-1",
+    { method: input.method ?? "GET" },
+  );
+  if (input.isEUCountry !== undefined) {
+    Object.defineProperty(request, "cf", {
+      value: { isEUCountry: input.isEUCountry },
+      configurable: true,
+    });
+  }
+  return request;
+}
+
+function cacheStorageWith(cache: Partial<Cache>) {
+  return {
+    open: vi.fn().mockResolvedValue(cache),
+  };
+}
+
+describe("edge script endpoint", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    readSiteTrackingConfigMock.mockReset();
+    readSiteTrackingConfigMock.mockResolvedValue(makeSettings());
+  });
+
+  it("rejects non-GET requests and missing site IDs", async () => {
+    const postResponse = await handleTrackerScriptRequest(
+      makeRequest({ method: "POST" }),
+      makeEnv(),
+    );
+    const missingSiteResponse = await handleTrackerScriptRequest(
+      makeRequest({ url: "https://example.com/script.js?siteId=%20%20" }),
+      makeEnv(),
+    );
+
+    await expect(postResponse.text()).resolves.toBe("Method Not Allowed");
+    expect(postResponse.status).toBe(405);
+    await expect(missingSiteResponse.text()).resolves.toBe("Missing siteId");
+    expect(missingSiteResponse.status).toBe(400);
+    expect(readSiteTrackingConfigMock).not.toHaveBeenCalled();
+  });
+
+  it("returns settings lookup errors and missing-site responses", async () => {
+    readSiteTrackingConfigMock.mockRejectedValueOnce(new Error("KV down"));
+    const errorResponse = await handleTrackerScriptRequest(
+      makeRequest({}),
+      makeEnv(),
+    );
+
+    readSiteTrackingConfigMock.mockRejectedValueOnce("boom");
+    const unknownErrorResponse = await handleTrackerScriptRequest(
+      makeRequest({}),
+      makeEnv(),
+    );
+
+    readSiteTrackingConfigMock.mockResolvedValueOnce(null);
+    const notFoundResponse = await handleTrackerScriptRequest(
+      makeRequest({}),
+      makeEnv(),
+    );
+
+    await expect(errorResponse.text()).resolves.toBe("KV down");
+    expect(errorResponse.status).toBe(500);
+    await expect(unknownErrorResponse.text()).resolves.toBe(
+      "site_settings_unavailable",
+    );
+    expect(unknownErrorResponse.status).toBe(500);
+    await expect(notFoundResponse.text()).resolves.toBe("Not Found");
+    expect(notFoundResponse.status).toBe(404);
+  });
+
+  it("injects site settings into the full SDK and writes cache entries", async () => {
+    const cache = {
+      match: vi.fn().mockResolvedValue(null),
+      put: vi.fn().mockResolvedValue(undefined),
+    };
+    const storage = cacheStorageWith(cache);
+    vi.stubGlobal("caches", storage);
+    readSiteTrackingConfigMock.mockResolvedValueOnce(
+      makeSettings({
+        trackingStrength: "smart",
+        trackQueryParams: false,
+        trackHash: true,
+        ignoreDoNotTrack: false,
+        autoTrackOutboundLinks: true,
+        performanceSampleRate: 125,
+      }),
+    );
+
+    const response = await handleTrackerScriptRequest(
+      makeRequest({
+        url: "https://example.com/script.js?siteId=%20site-1%20",
+        isEUCountry: true,
+      }),
+      makeEnv({
+        SCRIPT_CACHE_TTL_SECONDS: "12.9",
+        SESSION_WINDOW_MINUTES: "0",
+      }),
+    );
+
+    const script = await response.text();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(
+      "application/javascript; charset=utf-8",
+    );
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(response.headers.get("cache-control")).toBe(
+      "public, max-age=12, s-maxage=12",
+    );
+    expect(script).toBe('full:"site-1",true,false,true,false,true,100,1800000');
+    expect(storage.open).toHaveBeenCalledWith("insightflare-script-cache");
+    expect(cache.match).toHaveBeenCalledTimes(1);
+    expect(cache.put).toHaveBeenCalledTimes(1);
+    expect((cache.put.mock.calls[0]![0] as Request).url).toContain(
+      "https://insightflare.internal/__script/site-1?eu=1&fp=",
+    );
+  });
+
+  it("uses cached script responses before rendering a new SDK", async () => {
+    const cached = new Response("cached script", {
+      headers: { "x-cache-hit": "1" },
+    });
+    const cache = {
+      match: vi.fn().mockResolvedValue(cached),
+      put: vi.fn(),
+    };
+    vi.stubGlobal("caches", cacheStorageWith(cache));
+
+    const response = await handleTrackerScriptRequest(
+      makeRequest({}),
+      makeEnv(),
+    );
+
+    await expect(response.text()).resolves.toBe("cached script");
+    expect(response.headers.get("x-cache-hit")).toBe("1");
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+
+  it("serves no-perf scripts and clamps weak-mode cache/session settings", async () => {
+    readSiteTrackingConfigMock.mockResolvedValueOnce(
+      makeSettings({
+        trackingStrength: "weak",
+        trackQueryParams: true,
+        trackHash: false,
+        performanceSampleRate: -10,
+      }),
+    );
+
+    const response = await handleTrackerScriptRequest(
+      makeRequest({ isEUCountry: false }),
+      makeEnv({
+        SCRIPT_CACHE_TTL_SECONDS: "999999",
+        SESSION_WINDOW_MINUTES: "99999",
+      }),
+    );
+
+    await expect(response.text()).resolves.toBe(
+      'no-perf:"site-1",true,true,false,true,false,0,86400000',
+    );
+    expect(response.headers.get("cache-control")).toBe(
+      "public, max-age=86400, s-maxage=86400",
+    );
+  });
+
+  it("forces strong-mode non-EU scripts and ignores unavailable caches", async () => {
+    vi.stubGlobal("caches", {
+      open: vi.fn().mockRejectedValue(new Error("cache unavailable")),
+    });
+    readSiteTrackingConfigMock.mockResolvedValueOnce(
+      makeSettings({
+        trackingStrength: "strong",
+        performanceSampleRate: 1,
+      }),
+    );
+
+    const response = await handleTrackerScriptRequest(
+      makeRequest({ isEUCountry: true }),
+      makeEnv({
+        SCRIPT_CACHE_TTL_SECONDS: "-1",
+        SESSION_WINDOW_MINUTES: "abc",
+      }),
+    );
+
+    await expect(response.text()).resolves.toContain('full:"site-1",false');
+    expect(response.headers.get("cache-control")).toBe(
+      "public, max-age=3600, s-maxage=3600",
+    );
+  });
+});

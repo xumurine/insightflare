@@ -28,7 +28,7 @@ import {
 import { PageHeading } from "@/components/dashboard/page-heading";
 import {
   DETAIL_QUERY_PARAM,
-  DetailModal,
+  DetailDrawer,
 } from "@/components/dashboard/site-pages/detail-query-modal";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -71,6 +71,19 @@ const VisitorDetailClientPage = dynamic(
   () =>
     import("@/components/dashboard/site-pages/visitor-detail-client-page").then(
       (module) => module.VisitorDetailClientPage,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="p-6 text-sm text-muted-foreground">Loading...</div>
+    ),
+  },
+);
+
+const SessionDetailClientPage = dynamic(
+  () =>
+    import("@/components/dashboard/site-pages/session-detail-client-page").then(
+      (module) => module.SessionDetailClientPage,
     ),
   {
     ssr: false,
@@ -280,6 +293,7 @@ export function VisitorsClientPage({
   );
   const searchParams = useLiveSearchParams();
   const detailVisitorId = searchParams.get(DETAIL_QUERY_PARAM)?.trim() || "";
+  const [detailSessionId, setDetailSessionId] = useState("");
   const openedDetailFromListRef = useRef(false);
   const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
@@ -315,6 +329,7 @@ export function VisitorsClientPage({
   useEffect(() => {
     if (!detailVisitorId) {
       openedDetailFromListRef.current = false;
+      setDetailSessionId("");
     }
   }, [detailVisitorId]);
 
@@ -485,6 +500,10 @@ export function VisitorsClientPage({
     const query = params.toString();
     replaceUrlWithoutNavigation(query ? `${pathname}?${query}` : pathname);
   }, [pathname]);
+  const sessionsPathname = useMemo(
+    () => pathname.replace(/\/visitors(?:\/detail)?$/, "/sessions"),
+    [pathname],
+  );
 
   const bodyState = replacingRows
     ? "loading"
@@ -729,10 +748,13 @@ export function VisitorsClientPage({
       </Card>
 
       {detailVisitorId ? (
-        <DetailModal
+        <DetailDrawer
           ariaLabel={messages.visitors.title}
-          modalKey={`visitor:${detailVisitorId}`}
-          onClose={closeVisitorDetail}
+          drawerKey={`visitor:${detailVisitorId}`}
+          open={Boolean(detailVisitorId)}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) closeVisitorDetail();
+          }}
         >
           <VisitorDetailClientPage
             locale={locale}
@@ -740,8 +762,29 @@ export function VisitorsClientPage({
             siteId={siteId}
             pathname={pathname}
             visitorId={detailVisitorId}
+            onOpenSession={setDetailSessionId}
           />
-        </DetailModal>
+        </DetailDrawer>
+      ) : null}
+
+      {detailSessionId ? (
+        <DetailDrawer
+          ariaLabel={messages.sessionDetail.visitDetailsTitle}
+          drawerKey={`visitor-session:${detailSessionId}`}
+          open={Boolean(detailSessionId)}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setDetailSessionId("");
+          }}
+        >
+          <SessionDetailClientPage
+            locale={locale}
+            messages={messages}
+            siteId={siteId}
+            pathname={sessionsPathname}
+            sessionId={detailSessionId}
+            onOpenVisitor={openVisitorDetail}
+          />
+        </DetailDrawer>
       ) : null}
     </div>
   );

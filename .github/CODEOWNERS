@@ -1,0 +1,24 @@
+# Default owner for all changes.
+* @RavelloH
+
+# Project automation and repository governance.
+/.github/ @RavelloH
+
+# Cloudflare deployment and data migrations.
+/wrangler.toml @RavelloH
+/migrations/ @RavelloH
+/workers/ @RavelloH
+
+# Build, validation, and maintenance scripts.
+/scripts/ @RavelloH
+/package.json @RavelloH
+/package-lock.json @RavelloH
+
+# Analytics ingestion, edge runtime behavior, and tracker SDK.
+/src/app/collect/ @RavelloH
+/src/lib/edge/ @RavelloH
+/src/tracker/ @RavelloH
+
+# Authentication and dashboard server behavior.
+/src/lib/auth.ts @RavelloH
+/src/lib/dashboard/ @RavelloH

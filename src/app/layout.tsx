@@ -17,6 +17,16 @@ const appMono = JetBrains_Mono({
 const DEMO_ANALYTICS_SCRIPT_SRC =
   "https://insight.ravelloh.com/script.js?siteId=04de9d96-fcec-41b1-b259-56e0dbaa2c5e";
 
+const ESBUILD_NAME_HELPER_SCRIPT = `
+(function () {
+  if (typeof globalThis.__name !== "function") {
+    globalThis.__name = function (target) {
+      return target;
+    };
+  }
+})();
+`;
+
 export const metadata: Metadata = {
   title: {
     default: APP_NAME,
@@ -37,6 +47,9 @@ export default function RootLayout({
         data-overlayscrollbars-initialize
       >
         <GlobalScrollbars />
+        <script
+          dangerouslySetInnerHTML={{ __html: ESBUILD_NAME_HELPER_SCRIPT }}
+        />
         <ThemeProvider>
           <TooltipProvider>{children}</TooltipProvider>
           <Toaster />
