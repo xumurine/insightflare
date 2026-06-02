@@ -1,0 +1,138 @@
+import type { UtmDimensionTab } from "@/lib/dashboard/client-data-types";
+import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type {
+  BrowserTrendData,
+  DimensionData,
+  ReferrerRadarData,
+  ReferrersData,
+} from "@/lib/edge-client";
+
+import { fetchPrivateJson } from "./client-request";
+import { withFilters } from "./client-utils";
+
+const utmPathMap: Record<UtmDimensionTab, string> = {
+  source: "utm-source",
+  medium: "utm-medium",
+  campaign: "utm-campaign",
+  term: "utm-term",
+  content: "utm-content",
+};
+
+export async function fetchReferrers(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+  options?: {
+    fullUrl?: boolean;
+    limit?: number;
+  },
+): Promise<ReferrersData> {
+  return fetchPrivateJson<ReferrersData>(
+    "/api/private/referrers",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        timeZone: window.timeZone,
+        limit: options?.limit ?? 100,
+        fullUrl: options?.fullUrl ? 1 : 0,
+      },
+      filters,
+    ),
+  );
+}
+
+export async function fetchUtmDimension(
+  siteId: string,
+  window: TimeWindow,
+  tab: UtmDimensionTab,
+  filters?: DashboardFilters,
+): Promise<DimensionData> {
+  return fetchPrivateJson<DimensionData>(
+    `/api/private/${utmPathMap[tab]}`,
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        timeZone: window.timeZone,
+        limit: 100,
+      },
+      filters,
+    ),
+  );
+}
+
+export async function fetchUtmTrend(
+  siteId: string,
+  window: TimeWindow,
+  tab: UtmDimensionTab,
+  filters?: DashboardFilters,
+  options?: {
+    limit?: number;
+  },
+): Promise<BrowserTrendData> {
+  return fetchPrivateJson<BrowserTrendData>(
+    "/api/private/utm-dimension-trend",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        timeZone: window.timeZone,
+        interval: window.interval,
+        dimension: tab,
+        limit: options?.limit ?? 5,
+      },
+      filters,
+    ),
+  );
+}
+
+export async function fetchReferrerTrend(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+  options?: {
+    limit?: number;
+  },
+): Promise<BrowserTrendData> {
+  return fetchPrivateJson<BrowserTrendData>(
+    "/api/private/referrer-dimension-trend",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        timeZone: window.timeZone,
+        interval: window.interval,
+        limit: options?.limit ?? 5,
+      },
+      filters,
+    ),
+  );
+}
+
+export async function fetchReferrerRadar(
+  siteId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+  options?: {
+    limit?: number;
+  },
+): Promise<ReferrerRadarData> {
+  return fetchPrivateJson<ReferrerRadarData>(
+    "/api/private/referrer-radar",
+    withFilters(
+      {
+        siteId,
+        from: window.from,
+        to: window.to,
+        timeZone: window.timeZone,
+        limit: options?.limit ?? 24,
+      },
+      filters,
+    ),
+  );
+}

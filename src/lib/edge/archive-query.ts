@@ -85,12 +85,18 @@ function parseWindowHours(
 ): { fromHour: number; toHour: number } | null {
   const nowMs = Date.now();
   const defaultFrom = nowMs - 365 * 24 * ONE_HOUR_MS;
-  const fromMs = Math.floor(
-    coerceNumber(url.searchParams.get("from"), defaultFrom) ?? defaultFrom,
-  );
-  const toMs = Math.floor(
-    coerceNumber(url.searchParams.get("to"), nowMs) ?? nowMs,
-  );
+  const rawFrom = url.searchParams.get("from");
+  const rawTo = url.searchParams.get("to");
+  const parsedFrom = coerceNumber(rawFrom, null);
+  const parsedTo = coerceNumber(rawTo, null);
+  if (
+    (rawFrom !== null && parsedFrom === null) ||
+    (rawTo !== null && parsedTo === null)
+  ) {
+    return null;
+  }
+  const fromMs = Math.floor(parsedFrom ?? defaultFrom);
+  const toMs = Math.floor(parsedTo ?? nowMs);
   if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs < fromMs) {
     return null;
   }

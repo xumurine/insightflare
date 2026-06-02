@@ -1380,6 +1380,7 @@ export function TeamManagementClient({
                     interval={chartWindow.interval}
                     viewsLabel={messages.common.views}
                     visitorsLabel={messages.common.visitors}
+                    loading={isSitesChartsLoading}
                     className={isSitesChartsLoading ? "opacity-40" : undefined}
                   />
                   <AutoTransition

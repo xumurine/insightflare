@@ -10,4 +10,5 @@ tmp
 *.log
 *.tsbuildinfo
 next-env.d.ts
-README.md
+**/*.md
+*.md

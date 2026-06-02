@@ -43,6 +43,16 @@ export interface TimeWindow {
   timeZone: string;
 }
 
+export type EventPayloadFilterOperator = "eq" | "ne";
+
+export type EventPayloadFilterValue = string | number | boolean | null;
+
+export interface EventPayloadFilterRule {
+  path: string;
+  operator: EventPayloadFilterOperator;
+  value: EventPayloadFilterValue;
+}
+
 export interface DashboardFilters {
   country?: string;
   device?: string;
@@ -64,6 +74,7 @@ export interface DashboardFilters {
   geoContinent?: string;
   geoTimezone?: string;
   geoOrganization?: string;
+  eventPayloadFilters?: EventPayloadFilterRule[];
 }
 
 export const DEFAULT_RANGE_PRESET: RangePreset = "30d";
@@ -107,6 +118,68 @@ function normalizeFilterValue(
   if (typeof value !== "string") return undefined;
   const normalized = value.trim().slice(0, 120);
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeEventPayloadFilterPath(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().slice(0, 240);
+  if (!normalized || normalized === "/") return null;
+  if (normalized.startsWith("/")) {
+    const segments = normalized
+      .split("/")
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    return segments.length > 0 ? `/${segments.join("/")}` : null;
+  }
+
+  const dotPath = normalized
+    .replace(/^\$\.?/, "")
+    .replace(/\[(?:\d+|\*)\]/g, ".*")
+    .split(".")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  return dotPath.length > 0 ? `/${dotPath.join("/")}` : null;
+}
+
+function normalizeEventPayloadFilterValue(
+  value: unknown,
+): EventPayloadFilterValue | undefined {
+  if (value === null) return null;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.slice(0, 240);
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return undefined;
+}
+
+function parseEventPayloadFiltersParam(
+  value: string | null | undefined,
+): EventPayloadFilterRule[] | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed)) return undefined;
+
+  const rules: EventPayloadFilterRule[] = [];
+  for (const item of parsed.slice(0, 12)) {
+    if (!item || typeof item !== "object") continue;
+    const candidate = item as {
+      path?: unknown;
+      operator?: unknown;
+      value?: unknown;
+    };
+    const path = normalizeEventPayloadFilterPath(candidate.path);
+    const operator =
+      candidate.operator === "ne" || candidate.operator === "!=" ? "ne" : "eq";
+    const filterValue = normalizeEventPayloadFilterValue(candidate.value);
+    if (!path || filterValue === undefined) continue;
+    rules.push({ path, operator, value: filterValue });
+  }
+
+  return rules.length > 0 ? rules : undefined;
 }
 
 function isRangePreset(value: string): value is RangePreset {
@@ -315,6 +388,9 @@ export function parseDashboardFiltersFromSearchParams(
     geoContinent: normalizeFilterValue(searchParams.get("geoContinent")),
     geoTimezone: normalizeFilterValue(searchParams.get("geoTimezone")),
     geoOrganization: normalizeFilterValue(searchParams.get("geoOrganization")),
+    eventPayloadFilters: parseEventPayloadFiltersParam(
+      searchParams.get("eventPayloadFilters"),
+    ),
   };
 }
 
@@ -348,6 +424,12 @@ function applyFiltersToParams(
   if (filters.geoTimezone) params.set("geoTimezone", filters.geoTimezone);
   if (filters.geoOrganization)
     params.set("geoOrganization", filters.geoOrganization);
+  if (filters.eventPayloadFilters?.length) {
+    params.set(
+      "eventPayloadFilters",
+      JSON.stringify(filters.eventPayloadFilters),
+    );
+  }
   return params;
 }
 

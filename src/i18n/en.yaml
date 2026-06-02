@@ -27,7 +27,6 @@ common:
   visitors: Visitors
   bounceRate: Bounce Rate
   avgDuration: Avg. Duration
-  page: Page
   path: Path
   title: Title
   hostname: Hostname
@@ -36,12 +35,10 @@ common:
   exitPage: Exit Page
   referrer: Referrer
   startedAt: Started
-  endedAt: Ended
   event: Event
   location: Location
   browser: Browser
   operatingSystem: Operating System
-  device: Device
   deviceType: Device Type
   country: Country
   region: Region
@@ -159,8 +156,6 @@ realtime:
   visitorMapSection: Visitor location
   visitorMapSubtitle: Approximate location inferred from this event's coordinates.
   visitorMapUnavailable: This event does not include usable coordinates.
-  mapZoomIn: Zoom in
-  mapZoomOut: Zoom out
   visitorId: Visitor ID
   sessionId: Session ID
   visitId: Visit ID
@@ -170,8 +165,6 @@ overview:
   title: Traffic Overview
   subtitle: Monitor high-level performance and audience behavior.
   trendTitle: Traffic Trend
-  topPages: Top Pages
-  topReferrers: Top Referrers
   sourceTab: Source
   sourceDomainColumn: Source (Domain)
   sourceLinkTab: Source Link
@@ -184,14 +177,9 @@ pages:
   pagesPerSession: Pages / Session
   untitled: Untitled Page
   empty: No page data matches the current filters.
-  loading: Loading page cards...
-  loadingMore: Loading more pages...
   loadError: Failed to load page data. Please try again later.
   loadMoreError: Failed to load more pages.
   retry: Retry
-  tabPages: Pages
-  tabEntryPages: Entry Pages
-  tabExitPages: Exit Pages
   trendTitle: Page Traffic Trend
   otherPages: Other Pages
   hashTab: Anchor
@@ -218,35 +206,22 @@ referrers:
   directSourceNote: This traffic arrived without an external referring website.
   breakdownTitle: Source Breakdown
   directViews: Direct Views
-  directShare: Direct Share
   uniqueDomains: Unique Domains
   uniqueLinks: Unique Links
   topSource: Top External Source
   topSourceShare: Share of Views
   noExternalSource: No external source
-  externalViews: External Views
-  externalShare: External Share
   externalLabel: External
   nextSources: Next 4 Sources
   longTail: Long Tail
 campaigns:
   title: Campaigns
   subtitle: UTM campaign performance and traffic attribution.
-  trendTitle: UTM Share Trend
   tabSource: Source
   tabMedium: Medium
   tabCampaign: Campaign
   tabTerm: Term
   tabContent: Content
-  overviewAcquisitionTitle: Acquisition Surface
-  overviewAcquisitionSubtitle: Track which tagged sources and media are driving traffic.
-  overviewSignalsTitle: Campaign Signals
-  overviewSignalsSubtitle: Review the strongest campaign, term, and creative combinations.
-  topSource: Top Source
-  topMedium: Top Medium
-  topCampaign: Top Campaign
-  topTerm: Top Term
-  topContent: Top Content
   breakdownTitle: UTM Breakdown
   notSet: Not set
   noTaggedTraffic: No tagged campaign traffic in the selected range.
@@ -261,19 +236,15 @@ sessions:
   entryPage: Entry Page
   exitPage: Exit Page
   duration: Duration
-  bounce: Bounce
   referrer: Referrer
   location: Location
   os: OS
   browser: Browser
   device: Device
   pageViews: Page Views
-  yes: Yes
-  no: No
   loadError: Unable to load sessions.
   empty: No sessions in this time range.
 sessionDetail:
-  titlePrefix: Session
   anonymous: Anonymous
   back: Back to sessions
   missing: Missing sessionId.
@@ -304,9 +275,8 @@ sessionDetail:
   customEvent: Custom event
   eventTitleSeparator: ": "
   visitDetailsTitle: Visit details
-  visitDetailsSubtitle: Session start, pageviews, exits, and custom events in the order they happened.
-  path: Path
-  title: Title
+  visitDetailsSubtitle: Session start, pageviews, exits, and custom events in the
+    order they happened.
   location: Location
   visitorId: Visitor ID
   sessionId: Session ID
@@ -334,13 +304,22 @@ events:
   triggerVisitors: Triggered Visitors
   trendTitle: Event Trend
   topEvents: Top Events
-  topPages: Top Pages
-  topCountries: Countries
-  topDevices: Devices
-  topBrowsers: Browsers
   recordsTitle: Event Records
   fieldsTitle: Payload Fields
-  fieldsSubtitle: JSON paths by frequency, type, and sample value.
+  fieldsSubtitle: Select a field to inspect its values and metadata.
+  fieldValuesTitle: Field Values
+  fieldValuesSubtitle: Records and occurrence counts for the selected field. Click a row to filter.
+  fieldValuesEmpty: No values recorded for this field.
+  payloadFilter: Filter
+  payloadFilterTitle: Payload Filters
+  payloadFilterSubtitle: Add one condition per line. Combine filters with == or !=.
+  payloadFilterPlaceholder: "path.value == \"a\"\nlevel != 0"
+  payloadFilterApply: Apply Filters
+  payloadFilterClear: Clear Filters
+  payloadFilterInvalid: Unable to parse the filter conditions. Check the field
+    path, operator, and value.
+  expandField: Expand field
+  collapseField: Collapse field
   breakdownTitle: Context Breakdown
   search: Search event name, IDs, visitor, session, page...
   eventName: Event Name
@@ -350,7 +329,6 @@ events:
   page: Page
   context: Context
   visitor: Visitor
-  session: Session
   visit: Visit
   referrer: Referrer
   location: Location
@@ -361,44 +339,24 @@ events:
   payloadFields: Payload Fields
   values: Values
   nodes: Nodes
-  jsonPath: JSON path
-  type: Type
   occurrences: Occurrences
-  firstSeen: First Seen
-  lastSeen: Last Seen
-  sample: Sample
   openVisitor: Open Visitor
   openSession: Open Session
+  copyJson: Copy JSON
+  copiedJson: JSON copied.
+  copyJsonFailed: Unable to copy JSON.
+  copyValue: Copy value
+  copiedValue: Value copied.
+  copyValueFailed: Failed to copy value.
   loadError: Unable to load event data.
   empty: No custom events in this range.
   emptyFields: No payload fields for this event.
   noEventName: Missing event name.
   loading: Loading
   other: Other
-  unknown: Unknown
 funnels:
   title: Funnels
   subtitle: Measure conversion through multi-step user journeys.
-  createFunnel: Create Funnel
-  editFunnel: Edit Funnel
-  funnelName: Funnel Name
-  funnelNamePlaceholder: "e.g. Signup Flow"
-  addStep: Add Step
-  removeStep: Remove
-  stepType: Step Type
-  stepValue: Value
-  pageview: Pageview
-  event: Custom Event
-  save: Save
-  cancel: Cancel
-  delete: Delete Funnel
-  deleteConfirm: Are you sure you want to delete this funnel?
-  noFunnels: No funnels configured yet. Create one to start tracking conversions.
-  selectFunnel: Select a funnel
-  conversionRate: Conversion
-  dropOff: Drop-off
-  overallConversion: Overall Conversion
-  step: "Step {n}"
 visitors:
   title: Visitors
   subtitle: Visitor-level breakdown and recency.
@@ -425,17 +383,14 @@ visitorDetail:
   loadError: Unable to load visitor detail.
   totalDuration: Total Duration
   events: Events
-  sessions: Sessions
   views: Pageviews
   uniquePages: Unique Pages
   avgPagesPerSession: Avg Pages/Session
   avgEventsPerSession: Avg Events/Session
   avgStay: Avg Stay
-  p90Duration: Session Duration (P90)
   firstSeen: First seen
   lastSeen: Last seen
   daysActive: Days Active
-  conversionEvents: Conversion Events
   avgTimeBetweenSessions: Avg Time Between Sessions
   activity: Activity
   sessionRecords: Session records
@@ -445,9 +400,8 @@ visitorDetail:
   referrer: Referrer
   pageViews: Page Views
   visitDetailsTitle: Visit details
-  visitDetailsSubtitle: Session starts, pageviews, exits, and custom events for this visitor in the order they happened.
-  path: Path
-  title: Title
+  visitDetailsSubtitle: Session starts, pageviews, exits, and custom events for
+    this visitor in the order they happened.
   customEvents: Custom events
   emptyEvents: No events recorded.
   emptyCustomEvents: No custom events.
@@ -463,12 +417,6 @@ visitorDetail:
   screen: Screen
   entryPath: Entry Path
   exitPath: Exit Path
-  bounce: Bounce
-  status: Status
-  active: Active
-  inactive: Ended
-  yes: Yes
-  no: No
   sessionStarted: Session started
   pageview: Pageview
   exitPage: Exit page
@@ -485,7 +433,8 @@ retention:
   cohortSize: Size
   periodLabel: "Period {n}"
   matrixTitle: Retention Matrix
-  matrixSubtitle: "Each row is a first-seen cohort; each column shows the share that returned in a later period."
+  matrixSubtitle: "Each row is a first-seen cohort; each column shows the share
+    that returned in a later period."
   cohortsMetric: Cohorts
   visitorsMetric: Cohort Visitors
   periodOneMetric: First Return
@@ -499,7 +448,8 @@ retention:
   legendHigh: High
   periodZero: Initial
   empty: Not enough return data in this time range.
-  emptyHint: Use a wider range or choose a coarser interval from the top selector to reveal the retention shape sooner.
+  emptyHint: Use a wider range or choose a coarser interval from the top selector
+    to reveal the retention shape sooner.
   loadError: Unable to load retention data.
   unavailableCell: This cohort has not reached this period yet.
   visitorsDetail: Visitors
@@ -518,7 +468,8 @@ geo:
   investigationNotice: This data comes from the web and may contain errors.
   timezoneDeltaVsLocal: "{delta} vs local"
   visitorCoordinates: Visitor Coordinates
-  ipNotice: Estimated location via IP. Coordinates are approximate and do not pinpoint a precise address.
+  ipNotice: Estimated location via IP. Coordinates are approximate and do not
+    pinpoint a precise address.
   multipleNotice: Estimated locations via IP. Multi-session journeys may span multiple cities.
   investigation:
     countryScopedLabel: "Country {label}"
@@ -569,7 +520,6 @@ devices:
   osTrendTitle: Operating System Trend
   screenDistributionTitle: Screen Size Distribution
   screenDistributionSubtitle: Surface the most common viewports and responsive breakpoints.
-  topSizesCoverageLabel: Top size coverage
   screenBucketTitle: Breakpoint Buckets
   screenPreviewTitle: Screen Preview
   selectedViewportLabel: Selected viewport
@@ -577,13 +527,6 @@ devices:
   previewUnavailableLabel: No previewable screen sizes are available right now.
   browserByDeviceTitle: Device Type x Browser
   osByDeviceTitle: Device Type x Operating System
-  priorityTitle: Adaptation Priority
-  prioritySubtitle: Turn current visitor structure into a focused device test matrix.
-  dominantSegmentLabel: Dominant Segment
-  dominantOsLabel: Dominant OS
-  responsiveFocusLabel: Responsive Focus
-  testMatrixTitle: Test Matrix
-  shareLabel: Share
   otherLabel: Other
   screenBucketLabels:
     phoneCompact: Compact Phone
@@ -600,9 +543,6 @@ browsers:
   versionBreakdownTitle: Browser Version Breakdown
   osBreakdownTitle: Browser x Operating System
   deviceTypeBreakdownTitle: Browser x Device Type
-  trendSubtitle: Compare how each browser contributes across the selected window.
-  topBrowserLabel: Top Browser
-  shareLabel: Share
   otherLabel: Other
   browserShareTitle: Browser Share
   engineShareTitle: Engine Share
@@ -640,23 +580,32 @@ performance:
   lcp: Largest Contentful Paint
   cls: Cumulative Layout Shift
   inp: Interaction to Next Paint
-  ttfbDescription: Measures how long the browser waits before receiving the first byte from the server. It reflects backend latency, network delay, and cache effectiveness.
-  fcpDescription: Measures when the first text or image is painted. It reflects how quickly visitors see that the page is starting to load.
-  lcpDescription: Measures when the largest visible content element finishes rendering. It is the main loading speed signal for perceived page readiness.
-  clsDescription: Measures unexpected layout movement during the page lifecycle. Lower values mean the page is visually stable.
-  inpDescription: Measures the latency of user interactions before the next paint. It reflects how responsive the page feels after loading.
+  ttfbDescription: Measures how long the browser waits before receiving the first
+    byte from the server. It reflects backend latency, network delay, and cache
+    effectiveness.
+  fcpDescription: Measures when the first text or image is painted. It reflects
+    how quickly visitors see that the page is starting to load.
+  lcpDescription: Measures when the largest visible content element finishes
+    rendering. It is the main loading speed signal for perceived page readiness.
+  clsDescription: Measures unexpected layout movement during the page lifecycle.
+    Lower values mean the page is visually stable.
+  inpDescription: Measures the latency of user interactions before the next paint.
+    It reflects how responsive the page feels after loading.
   msUnit: ms
   secondsUnit: s
   clsUnit: score
   score: Experience Score
-  scoreDescription: Combines P75 loading, stability, and interaction metrics into a 0 to 100 experience score. Higher is better.
+  scoreDescription: Combines P75 loading, stability, and interaction metrics into
+    a 0 to 100 experience score. Higher is better.
   great: Great
   needsImprovement: Needs Improvement
   poor: Poor
   datasetTitle: Dataset Overview
   interpretationTitle: Current Reading
-  currentReading: "{metric} is {value} at P75 with an experience score of {score} across {samples} samples. Current status: {status}."
-  metricThresholdText: "Great is at or below {good}; needs improvement is between {good} and {poor}; poor is above {poor}."
+  currentReading: "{metric} is {value} at P75 with an experience score of {score}
+    across {samples} samples. Current status: {status}."
+  metricThresholdText: "Great is at or below {good}; needs improvement is between
+    {good} and {poor}; poor is above {poor}."
   scoreThresholdText: Great is above 90, needs improvement is 50 to 90, and poor is below 50.
   countryHealthTitle: Country Health
   countryHealthSubtitle: Boundary fill shows {metric} health by country or region.
@@ -678,9 +627,12 @@ siteSettings:
   trackingStrengthStrong: Strong
   trackingStrengthSmart: Smart
   trackingStrengthWeak: Weak
-  trackingStrengthStrongDescription: Always use high-precision visitor tracking. This may violate regulations in some countries, such as GDPR.
+  trackingStrengthStrongDescription: Always use high-precision visitor tracking.
+    This may violate regulations in some countries, such as GDPR.
   trackingStrengthSmartDescription: Automatically switch tracking strength based on the visitor's country.
-  trackingStrengthWeakDescription: Always reduce tracking precision. This can count the same visitor multiple times across visits and make retention impossible.
+  trackingStrengthWeakDescription: Always reduce tracking precision. This can
+    count the same visitor multiple times across visits and make retention
+    impossible.
   queryHashGroupTitle: Query and Hash Tracking
   queryHashGroupDescription: Control how query strings, URL hashes, and Do Not Track are handled.
   trackQueryParamsLabel: Track Query Parameters
@@ -703,11 +655,13 @@ siteSettings:
   autoTrackGroupTitle: Auto Tracking
   autoTrackGroupDescription: Control automatic event capture behavior.
   autoTrackOutboundLinksLabel: Auto-track outbound link clicks
-  autoTrackOutboundLinksHint: When enabled, clicking links to external domains automatically reports outbound_click events.
+  autoTrackOutboundLinksHint: When enabled, clicking links to external domains
+    automatically reports outbound_click events.
   performanceGroupTitle: Performance Tracking
   performanceGroupDescription: Control Web performance metric collection with one sampling rate.
   performanceSampleRateLabel: Performance Sample Rate (%)
-  performanceSampleRateHint: A sampled visit records TTFB, FCP, LCP, CLS, and INP on leave. Use 0 to disable sampling or 100 for full coverage.
+  performanceSampleRateHint: A sampled visit records TTFB, FCP, LCP, CLS, and INP
+    on leave. Use 0 to disable sampling or 100 for full coverage.
   booleanOn: On
   booleanOff: Off
   loadingSettings: Loading script settings...
@@ -722,7 +676,8 @@ siteSettings:
   transferring: Transferring...
   scriptTitle: Install Tracking Script
   scriptSubtitle: Add this script to your website to start collecting analytics.
-  scriptHint: Recommended before </head>; if needed you can place it before </body>, but ensure it's loaded once per page.
+  scriptHint: Recommended before </head>; if needed you can place it before
+    </body>, but ensure it's loaded once per page.
   copyScript: Copy Script
   copiedScript: Script copied.
   loadingScript: Loading script...
@@ -773,14 +728,16 @@ accountSettings:
   passwordSaved: Password changed.
   passwordSaveFailed: Failed to change password.
   timeZoneTitle: Reporting Timezone
-  timeZoneDescription: Calendar ranges and aggregation buckets use this timezone across the dashboard.
+  timeZoneDescription: Calendar ranges and aggregation buckets use this timezone
+    across the dashboard.
   activeTimeZone: Active timezone
   browserTimeZone: Browser timezone
   browserUnavailable: Not detected
   browserSource: Browser
   manualSource: Manual
   preferenceLabel: Timezone preference
-  preferenceDescription: Browser mode follows this device. Manual mode keeps the same timezone on every device.
+  preferenceDescription: Browser mode follows this device. Manual mode keeps the
+    same timezone on every device.
   useBrowser: Use browser timezone
   useCustom: Choose a timezone
   customTimeZoneLabel: Timezone
@@ -877,12 +834,14 @@ teamManagement:
     deleting: Deleting...
     deleteConfirm: Delete this team and all its data? This action cannot be undone.
     transferTitle: Transfer Ownership
-    transferSubtitle: Transfer team ownership to another member. The current owner will be demoted to admin.
+    transferSubtitle: Transfer team ownership to another member. The current owner
+      will be demoted to admin.
     transferTargetLabel: New Owner
     transferTargetPlaceholder: Choose a team member
     transfer: Transfer ownership
     transferring: Transferring...
-    transferConfirm: This action cannot be undone. You will lose ownership but keep admin access. Continue?
+    transferConfirm: This action cannot be undone. You will lose ownership but keep
+      admin access. Continue?
     noTransferableMembers: No other members are available to transfer to. Add a member first.
   members:
     title: Members
@@ -1002,7 +961,8 @@ adminTeams:
     action: Action
 systemPerformance:
   title: System Performance
-  subtitle: Monitor InsightFlare collection, buffering, and write health from existing analytics rows.
+  subtitle: Monitor InsightFlare collection, buffering, and write health from
+    existing analytics rows.
   refresh: Refresh
   loadFailed: Failed to load system performance data.
   noData: No system performance data in this window.
@@ -1023,20 +983,23 @@ systemPerformance:
   delayed: Delayed
   future: Future clock
   latencyPercentileTrend: Latency Percentile Trend
-  latencyPercentileTrendDescription: P50, P75, and P95 estimated delay for trusted samples grouped by server write time.
+  latencyPercentileTrendDescription: P50, P75, and P95 estimated delay for trusted
+    samples grouped by server write time.
   throughputTrend: Accepted Event Throughput
   throughputTrendDescription: Rows grouped by server write time. Bars combine visits and custom events.
   visits: Visits
   customEvents: Custom Events
   anomalyBucket: Anomaly bucket
   openVisitHealth: Open Visit Backlog
-  openVisitHealthDescription: Open rows that have not been closed by leave, route change, or timeout finalization.
+  openVisitHealthDescription: Open rows that have not been closed by leave, route
+    change, or timeout finalization.
   open: Open
   stale: Stale
   timedOut: Timed out
   oldestOpen: Oldest open
   latestActivity: Latest activity
-  estimationNote: Estimated delay is server write time minus client event time, so browser queueing and wrong client clocks are included.
+  estimationNote: Estimated delay is server write time minus client event time, so
+    browser queueing and wrong client clocks are included.
   latencySampleHealth: Latency Sample Health
   latencySampleHealthDescription: Counts only non-negative delay samples below the trusted upper bound.
   trustedSamples: Trusted samples
@@ -1050,7 +1013,9 @@ systemPerformance:
   serverTime: Server write time
   estimatedDelay: Estimated delay
   doDiagnosticTitle: DO Buffer Diagnostic
-  doDiagnosticDescription: Asks each site's Durable Object directly for the state of buffered_visits / buffered_custom_events to surface stale rows, future-skewed timestamps, or stuck dirty rows.
+  doDiagnosticDescription: Asks each site's Durable Object directly for the state
+    of buffered_visits / buffered_custom_events to surface stale rows,
+    future-skewed timestamps, or stuck dirty rows.
   doDiagnosticLoadFailed: Failed to load DO diagnostic data.
   doDiagnosticLoading: Fetching DO state per site…
   doDiagnosticEmpty: No DO state available.
@@ -1064,17 +1029,13 @@ systemPerformance:
   doDiagnosticOpenTimedOut: Open idle >12h
   doDiagnosticOpenHardAged: Started >36h ago
   doDiagnosticOpenFutureSkew: Future timestamps
-  doDiagnosticDirtyVisits: Dirty visits
   doDiagnosticStuckDirty: Stuck dirty
   doDiagnosticMaxFlushAttempts: Max retry attempts
   doDiagnosticBufferedCustomEvents: Buffered custom events
-  doDiagnosticDirtyCustomEvents: Dirty custom events
-  doDiagnosticStuckDirtyCustomEvents: Stuck dirty custom events
   doDiagnosticOldestOpen: Oldest open started_at
   doDiagnosticFutureMaxActivity: Farthest future last_activity
   doDiagnosticSiteList: Top risk sites
   doDiagnosticSiteListDescription: Top 20 sites by risk score, snapshotted from per-DO buffered state.
-  doDiagnosticSiteOk: Responded
   doDiagnosticSiteFailed: Unreachable
   doDiagnosticSiteOpen: open
   doDiagnosticSiteStuck: stuck
@@ -1084,7 +1045,8 @@ systemPerformance:
   doDiagnosticSiteAlarmNone: none
   doDiagnosticSiteAlarmDue: due
   doDiagnosticSiteResponseMs: Response time
-  doDiagnosticThresholdsHint: Thresholds — stale {stale}, timeout {timeout}, hardAged {hardAged}, stuck flush_attempts ≥ {stuck}
+  doDiagnosticThresholdsHint: Thresholds — stale {stale}, timeout {timeout},
+    hardAged {hardAged}, stuck flush_attempts ≥ {stuck}
   doDiagnosticHealthy: No abnormal buffered rows detected.
 loginForm:
   signingIn: Signing in...

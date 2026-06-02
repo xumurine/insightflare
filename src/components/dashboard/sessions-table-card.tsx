@@ -39,23 +39,7 @@ export interface SessionSortState {
   direction: SessionSortDirection;
 }
 
-export interface SessionsTableLabels {
-  started: string;
-  sessionId: string;
-  visitor: string;
-  anonymous: string;
-  entryPage: string;
-  exitPage: string;
-  duration: string;
-  referrer: string;
-  location: string;
-  os: string;
-  browser: string;
-  device: string;
-  pageViews: string;
-  loadError: string;
-  empty: string;
-}
+export type SessionsTableLabels = AppMessages["sessions"];
 
 interface SessionsTableCardProps {
   locale: Locale;

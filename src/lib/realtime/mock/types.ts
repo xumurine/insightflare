@@ -27,6 +27,13 @@ export interface DemoQueryFilters {
   geoContinent?: string;
   geoTimezone?: string;
   geoOrganization?: string;
+  eventPayloadFilters?: DemoEventPayloadFilterRule[];
+}
+
+export interface DemoEventPayloadFilterRule {
+  path: string;
+  operator: "eq" | "ne";
+  value: string | number | boolean | null;
 }
 
 export interface ParsedDemoGeoFilter {

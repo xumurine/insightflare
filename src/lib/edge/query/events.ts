@@ -1,0 +1,258 @@
+import type { Env } from "@/lib/edge/types";
+
+import {
+  badRequest,
+  jsonResponse,
+  mapEventAnalyticsContextCards,
+  mapEventField,
+  mapEventFieldValue,
+  mapEventRecord,
+  mapEventSummaryCards,
+  mapTabs,
+  parseEventFieldPath,
+  parseEventFieldValueType,
+  parseEventId,
+  parseEventName,
+  parseEventRecordSort,
+  parseFilters,
+  parseInterval,
+  parseLimit,
+  parseListSearch,
+  parseQueryLimit,
+  parseWindow,
+} from "./core";
+import {
+  queryEventAnalyticsContextCardsFromD1,
+  queryEventDimensionRowsFromFilteredEvents,
+  queryEventGeoRowsFromFilteredEvents,
+  queryEventSessionBoundaryRowsFromFilteredEvents,
+} from "./events-context";
+import {
+  queryEventFieldsFromD1,
+  queryEventFieldValuesFromD1,
+} from "./events-fields";
+import { queryEventTypeOverviewFromD1 } from "./events-overview";
+import {
+  queryEventRecordDetailFromD1,
+  queryEventRecordsFromD1,
+} from "./events-records";
+import {
+  queryEventsSummaryFromD1,
+  queryEventSummaryMetricsFromD1,
+  queryEventTypeAggregate,
+} from "./events-summary";
+import {
+  queryEventsTrendFromD1,
+  queryEventTypeTrendFromD1,
+} from "./events-trend";
+
+export {
+  queryEventAnalyticsContextCardsFromD1,
+  queryEventDimensionRowsFromFilteredEvents,
+  queryEventFieldsFromD1,
+  queryEventFieldValuesFromD1,
+  queryEventGeoRowsFromFilteredEvents,
+  queryEventRecordDetailFromD1,
+  queryEventRecordsFromD1,
+  queryEventSessionBoundaryRowsFromFilteredEvents,
+  queryEventsSummaryFromD1,
+  queryEventsTrendFromD1,
+  queryEventSummaryMetricsFromD1,
+  queryEventTypeAggregate,
+  queryEventTypeOverviewFromD1,
+  queryEventTypeTrendFromD1,
+};
+
+export async function handleEventTypes(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const limit = parseLimit(url, 20, 200);
+  const rows = await queryEventTypeAggregate(
+    env,
+    siteId,
+    window,
+    filters,
+    limit,
+  );
+  return jsonResponse({ ok: true, data: mapTabs(rows) });
+}
+
+export async function handleEventsSummary(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const data = await queryEventsSummaryFromD1(env, siteId, window, filters);
+  return jsonResponse({
+    ok: true,
+    summary: {
+      events: Number(data.summary.events ?? 0),
+      eventTypes: Number(data.summary.eventTypes ?? 0),
+      sessions: Number(data.summary.sessions ?? 0),
+      visitors: Number(data.summary.visitors ?? 0),
+      avgEventsPerSession:
+        Number(data.summary.sessions ?? 0) > 0
+          ? Number(data.summary.events ?? 0) /
+            Number(data.summary.sessions ?? 0)
+          : 0,
+    },
+    cards: mapEventSummaryCards(data.cards),
+  });
+}
+
+export async function handleEventsTrend(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const interval = parseInterval(url);
+  const limit = parseLimit(url, 8, 12);
+  const eventName = parseEventName(url);
+  const trend = await queryEventsTrendFromD1(
+    env,
+    siteId,
+    window,
+    interval,
+    filters,
+    limit,
+    eventName,
+  );
+  return jsonResponse({ ok: true, interval, ...trend });
+}
+
+export async function handleEventsRecords(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const page = parseQueryLimit(url, "page", 1, 1, 10_000);
+  const pageSize = parseQueryLimit(url, "pageSize", 80, 1, 120);
+  const sort = parseEventRecordSort(url);
+  const search = parseListSearch(url);
+  const eventName = parseEventName(url);
+  const rows = await queryEventRecordsFromD1(env, siteId, window, filters, {
+    limit: pageSize + 1,
+    offset: (page - 1) * pageSize,
+    sort,
+    search,
+    eventName,
+  });
+  const hasMore = rows.length > pageSize;
+  const currentRows = hasMore ? rows.slice(0, pageSize) : rows;
+  return jsonResponse({
+    ok: true,
+    data: currentRows.map(mapEventRecord),
+    meta: {
+      page,
+      pageSize,
+      returned: currentRows.length,
+      hasMore,
+      nextPage: hasMore ? page + 1 : null,
+    },
+  });
+}
+
+export async function handleEventTypeDetail(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const eventName = parseEventName(url);
+  if (!eventName) return badRequest("eventName is required");
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const interval = parseInterval(url);
+  const [overview, trend, fields, cards] = await Promise.all([
+    queryEventTypeOverviewFromD1(env, siteId, window, filters, eventName),
+    queryEventTypeTrendFromD1(
+      env,
+      siteId,
+      window,
+      interval,
+      filters,
+      eventName,
+    ),
+    queryEventFieldsFromD1(env, siteId, window, filters, eventName, 100),
+    queryEventAnalyticsContextCardsFromD1(
+      env,
+      siteId,
+      window,
+      filters,
+      100,
+      eventName,
+    ),
+  ]);
+  return jsonResponse({
+    ok: true,
+    eventName,
+    summary: overview.summary,
+    trend,
+    breakdowns: {
+      pages: mapTabs(overview.breakdowns.pages),
+      countries: mapTabs(overview.breakdowns.countries),
+      devices: mapTabs(overview.breakdowns.devices),
+      browsers: mapTabs(overview.breakdowns.browsers),
+    },
+    cards: mapEventAnalyticsContextCards(cards),
+    fields: fields.map(mapEventField),
+  });
+}
+
+export async function handleEventTypeFieldValues(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const eventName = parseEventName(url);
+  const fieldPath = parseEventFieldPath(url);
+  const fieldValueType = parseEventFieldValueType(url);
+  if (!eventName) return badRequest("eventName is required");
+  if (!fieldPath) return badRequest("fieldPath is required");
+  if (!fieldValueType) return badRequest("fieldValueType is required");
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const filters = parseFilters(url);
+  const limit = parseLimit(url, 25, 100);
+  const rows = await queryEventFieldValuesFromD1(
+    env,
+    siteId,
+    window,
+    filters,
+    eventName,
+    fieldPath,
+    fieldValueType,
+    limit,
+  );
+  return jsonResponse({
+    ok: true,
+    fieldPath,
+    fieldValueType,
+    data: rows.map(mapEventFieldValue),
+  });
+}
+
+export async function handleEventRecordDetail(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const eventId = parseEventId(url);
+  if (!eventId) return badRequest("eventId is required");
+  const detail = await queryEventRecordDetailFromD1(env, siteId, eventId);
+  return jsonResponse({ ok: true, data: detail });
+}

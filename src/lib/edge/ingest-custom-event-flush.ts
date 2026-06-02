@@ -1,0 +1,382 @@
+import {
+  expandCustomEventDataJson,
+  type ExpandedCustomEventData,
+} from "./custom-event-json";
+import { FLUSHED_BUFFER_RETENTION_MS } from "./ingest-constants";
+import type { IngestFlushContext } from "./ingest-flush-types";
+import { logDoTrace } from "./ingest-log";
+import type { BufferedCustomEventRow, DictionaryKind } from "./ingest-types";
+import { clampString } from "./utils";
+
+export async function flushCustomEventRowIndividually(
+  context: IngestFlushContext,
+  row: BufferedCustomEventRow,
+): Promise<boolean> {
+  try {
+    if (!(await hasPersistedVisit(context, row))) {
+      logDoTrace(
+        "d1_flush_custom_event_skipped",
+        {
+          eventId: row.eventId,
+          siteId: row.siteId,
+          visitId: row.visitId,
+          eventName: row.eventName,
+          occurredAt: row.occurredAt,
+          createdAt: row.createdAt,
+          flushAttempts: row.flushAttempts,
+          reason: "waiting_for_visit",
+        },
+        "warn",
+      );
+      markCustomEventRowsFailed(context, [row], "waiting_for_visit");
+      return false;
+    }
+    const expanded = expandCustomEventDataJson(row.eventDataJson);
+    if (!expanded.ok) {
+      throw new Error(expanded.error);
+    }
+    const ids = await resolveCustomEventDictionaryIds(
+      context,
+      row,
+      expanded.data,
+    );
+    await context.env.DB.batch(
+      prepareCustomEventStatements(context, row, expanded.data, ids),
+    );
+    if (!(await hasPersistedCustomEvent(context, row.eventId))) {
+      logDoTrace(
+        "d1_flush_custom_event_skipped",
+        {
+          eventId: row.eventId,
+          siteId: row.siteId,
+          visitId: row.visitId,
+          eventName: row.eventName,
+          occurredAt: row.occurredAt,
+          createdAt: row.createdAt,
+          flushAttempts: row.flushAttempts,
+          reason: "insert_did_not_create_event",
+        },
+        "warn",
+      );
+      markCustomEventRowsFailed(context, [row], "insert_did_not_create_event");
+      return false;
+    }
+    logDoTrace("d1_flush_custom_event_ok", {
+      eventId: row.eventId,
+      siteId: row.siteId,
+      visitId: row.visitId,
+      eventName: row.eventName,
+      nodes: expanded.data.nodes.length,
+      values: expanded.data.values.length,
+    });
+    markCustomEventRowsFlushed(context, [row]);
+    return true;
+  } catch (error) {
+    const message = clampString(
+      String(error instanceof Error ? error.message : error),
+      400,
+    );
+    logDoTrace(
+      "d1_flush_custom_event_failed",
+      {
+        eventId: row.eventId,
+        siteId: row.siteId,
+        visitId: row.visitId,
+        eventName: row.eventName,
+        occurredAt: row.occurredAt,
+        createdAt: row.createdAt,
+        flushAttempts: row.flushAttempts,
+        error: message,
+      },
+      "error",
+    );
+    markCustomEventRowsFailed(context, [row], message);
+    return false;
+  }
+}
+
+function markCustomEventRowsFlushed(
+  context: IngestFlushContext,
+  rows: BufferedCustomEventRow[],
+): void {
+  if (rows.length === 0) return;
+  const ids = rows.map((row) => row.eventId);
+  const updated = context.sqlRun(
+    `UPDATE buffered_custom_events SET dirty = 0, flush_attempts = 0, last_flush_error = NULL WHERE event_id IN (${ids.map(() => "?").join(",")})`,
+    ...ids,
+  );
+  logDoTrace("do_custom_event_rows_marked_flushed", {
+    count: rows.length,
+    updated,
+    eventIds: ids.slice(0, 10),
+  });
+  deleteFlushedCustomEventRows(context, rows);
+}
+
+function markCustomEventRowsFailed(
+  context: IngestFlushContext,
+  rows: BufferedCustomEventRow[],
+  errorMessage: string,
+): void {
+  if (rows.length === 0) return;
+  const ids = rows.map((row) => row.eventId);
+  const deleted = context.sqlRun(
+    `DELETE FROM buffered_custom_events WHERE event_id IN (${ids.map(() => "?").join(",")})`,
+    ...ids,
+  );
+  logDoTrace(
+    "do_failed_custom_event_rows_deleted",
+    {
+      count: deleted,
+      reason: errorMessage,
+      eventIds: ids.slice(0, 20),
+    },
+    "error",
+  );
+}
+
+function dictionarySql(kind: DictionaryKind): {
+  table: string;
+  column: string;
+} {
+  if (kind === "name") {
+    return { table: "custom_event_names", column: "name" };
+  }
+  if (kind === "key") {
+    return { table: "custom_event_json_keys", column: '"key"' };
+  }
+  return { table: "custom_event_json_paths", column: "path" };
+}
+
+async function resolveDictionaryId(
+  context: IngestFlushContext,
+  kind: DictionaryKind,
+  siteId: string,
+  value: string,
+  seenAt: number,
+): Promise<number> {
+  const cacheKey = `${kind}:${siteId}:${value}`;
+  const cached = context.dictionaryIds.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const spec = dictionarySql(kind);
+  await context.env.DB.prepare(
+    `
+      INSERT INTO ${spec.table} (site_id, ${spec.column}, created_at, last_seen_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(site_id, ${spec.column}) DO UPDATE SET
+        last_seen_at = excluded.last_seen_at
+    `,
+  )
+    .bind(siteId, value, seenAt, seenAt)
+    .run();
+
+  const row = await context.env.DB.prepare(
+    `
+      SELECT id
+      FROM ${spec.table}
+      WHERE site_id = ? AND ${spec.column} = ?
+      LIMIT 1
+    `,
+  )
+    .bind(siteId, value)
+    .first<{ id: number }>();
+  const id = Number(row?.id ?? 0);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error(`Failed to resolve custom event ${kind} dictionary id`);
+  }
+  context.dictionaryIds.set(cacheKey, id);
+  return id;
+}
+
+async function resolveCustomEventDictionaryIds(
+  context: IngestFlushContext,
+  row: BufferedCustomEventRow,
+  expanded: ExpandedCustomEventData,
+): Promise<{
+  eventNameId: number;
+  keyIds: Map<string, number>;
+  pathIds: Map<string, number>;
+}> {
+  const seenAt = row.createdAt;
+  const eventNameId = await resolveDictionaryId(
+    context,
+    "name",
+    row.siteId,
+    row.eventName,
+    seenAt,
+  );
+  const keyIds = new Map<string, number>();
+  for (const key of expanded.keys) {
+    keyIds.set(
+      key,
+      await resolveDictionaryId(context, "key", row.siteId, key, seenAt),
+    );
+  }
+  const pathIds = new Map<string, number>();
+  for (const path of expanded.paths) {
+    pathIds.set(
+      path,
+      await resolveDictionaryId(context, "path", row.siteId, path, seenAt),
+    );
+  }
+  return { eventNameId, keyIds, pathIds };
+}
+
+async function hasPersistedVisit(
+  context: IngestFlushContext,
+  row: Pick<BufferedCustomEventRow, "siteId" | "visitId">,
+): Promise<boolean> {
+  const persisted = await context.env.DB.prepare(
+    `
+      SELECT 1 AS ok
+      FROM visits
+      WHERE site_id = ? AND visit_id = ?
+      LIMIT 1
+    `,
+  )
+    .bind(row.siteId, row.visitId)
+    .first<{ ok: number }>();
+  return persisted !== null;
+}
+
+async function hasPersistedCustomEvent(
+  context: IngestFlushContext,
+  eventId: string,
+): Promise<boolean> {
+  const persisted = await context.env.DB.prepare(
+    `
+      SELECT 1 AS ok
+      FROM custom_events
+      WHERE event_id = ?
+      LIMIT 1
+    `,
+  )
+    .bind(eventId)
+    .first<{ ok: number }>();
+  return persisted !== null;
+}
+
+function prepareCustomEventStatements(
+  context: IngestFlushContext,
+  row: BufferedCustomEventRow,
+  expanded: ExpandedCustomEventData,
+  ids: {
+    eventNameId: number;
+    keyIds: Map<string, number>;
+    pathIds: Map<string, number>;
+  },
+): D1PreparedStatement[] {
+  const eventStatement = context.env.DB.prepare(
+    `
+      INSERT OR IGNORE INTO custom_events (
+        event_id, site_id, visit_id, event_name_id, occurred_at, received_at,
+        sequence, node_count, value_count, user_id, ae_synced_at, created_at
+      )
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?
+      FROM visits
+      WHERE site_id = ? AND visit_id = ?
+      LIMIT 1
+    `,
+  ).bind(
+    row.eventId,
+    row.siteId,
+    row.visitId,
+    ids.eventNameId,
+    row.occurredAt,
+    row.receivedAt,
+    row.sequence,
+    expanded.nodes.length,
+    expanded.values.length,
+    row.userId || null,
+    row.createdAt,
+    row.siteId,
+    row.visitId,
+  );
+
+  const nodeStatements = expanded.nodes.map((node) => {
+    const pathId = ids.pathIds.get(node.path);
+    if (pathId === undefined) {
+      throw new Error(`Missing custom event path id for ${node.path}`);
+    }
+    const keyId = node.key === null ? null : ids.keyIds.get(node.key);
+    if (node.key !== null && keyId === undefined) {
+      throw new Error(`Missing custom event key id for ${node.key}`);
+    }
+    return context.env.DB.prepare(
+      `
+        INSERT OR IGNORE INTO custom_event_json_nodes (
+          event_pk, node_id, parent_node_id, key_id, path_id, value_type,
+          member_order, array_index, depth
+        )
+        SELECT event_pk, ?, ?, ?, ?, ?, ?, ?, ?
+        FROM custom_events
+        WHERE event_id = ?
+      `,
+    ).bind(
+      node.nodeId,
+      node.parentNodeId,
+      keyId ?? null,
+      pathId,
+      node.valueType,
+      node.memberOrder,
+      node.arrayIndex,
+      node.depth,
+      row.eventId,
+    );
+  });
+
+  const valueStatements = expanded.values.map((value) => {
+    const pathId = ids.pathIds.get(value.path);
+    if (pathId === undefined) {
+      throw new Error(`Missing custom event value path id for ${value.path}`);
+    }
+    return context.env.DB.prepare(
+      `
+        INSERT OR IGNORE INTO custom_event_json_values (
+          event_pk, node_id, site_id, event_name_id, path_id, occurred_at,
+          scope_node_id, value_type, string_value, string_hash, number_value,
+          boolean_value
+        )
+        SELECT event_pk, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        FROM custom_events
+        WHERE event_id = ?
+      `,
+    ).bind(
+      value.nodeId,
+      row.siteId,
+      ids.eventNameId,
+      pathId,
+      row.occurredAt,
+      value.scopeNodeId,
+      value.valueType,
+      value.stringValue,
+      value.stringHash,
+      value.numberValue,
+      value.booleanValue,
+      row.eventId,
+    );
+  });
+
+  return [eventStatement, ...nodeStatements, ...valueStatements];
+}
+
+function deleteFlushedCustomEventRows(
+  context: IngestFlushContext,
+  rows: BufferedCustomEventRow[],
+): void {
+  const cutoffMs = Date.now() - FLUSHED_BUFFER_RETENTION_MS;
+  const ids = rows
+    .filter((row) => row.occurredAt < cutoffMs)
+    .map((row) => row.eventId);
+  if (ids.length === 0) return;
+  const deleted = context.sqlRun(
+    `DELETE FROM buffered_custom_events WHERE event_id IN (${ids.map(() => "?").join(",")})`,
+    ...ids,
+  );
+  logDoTrace("do_flushed_custom_event_rows_deleted", {
+    count: deleted,
+    cutoffMs,
+    eventIds: ids.slice(0, 20),
+  });
+}

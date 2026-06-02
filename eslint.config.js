@@ -137,4 +137,10 @@ export default [
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
+  {
+    files: ["**/*.test.{ts,tsx,mts}", "**/__tests__/**/*.{ts,tsx,mts}"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
 ];
