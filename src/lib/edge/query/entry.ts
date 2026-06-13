@@ -12,17 +12,21 @@ export async function handlePrivateQuery(
   ctx?: ExecutionContext,
 ): Promise<Response> {
   const pathname = url.pathname.replace(/^\/api\/private\//, "");
-  const isFunnelMutation =
-    pathname === "funnel-create" || pathname === "funnel-delete";
+  const isFunnelResource = pathname === "funnel";
   if (request.method !== "GET") {
-    if (!isFunnelMutation || request.method !== "POST") return notAllowed();
+    if (
+      !isFunnelResource ||
+      (request.method !== "POST" && request.method !== "DELETE")
+    ) {
+      return notAllowed();
+    }
   }
   if (pathname === "team-dashboard") {
     return handleTeamDashboard(request, env, url);
   }
   const site = await resolvePrivateSite(request, env, url);
   if (site instanceof Response) return site;
-  if (isFunnelMutation) {
+  if (isFunnelResource) {
     return routeQuery(
       env,
       site.id,

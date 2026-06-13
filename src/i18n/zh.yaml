@@ -355,6 +355,52 @@ events:
 funnels:
   title: 漏斗分析
   subtitle: 衡量多步骤用户旅程的转化情况。
+  listTitle: 漏斗定义
+  listSubtitle: 构建可复用的步骤序列，并按当前看板时间窗查看转化。
+  create: 新建漏斗
+  createTitle: 创建漏斗
+  createDescription: 至少定义两个有顺序的页面浏览或自定义事件步骤。
+  nameLabel: 名称
+  namePlaceholder: 注册激活
+  stepsLabel: 步骤
+  addStep: 添加步骤
+  removeStep: 移除步骤
+  stepTypePageview: 页面浏览
+  stepTypeEvent: 事件
+  stepValueLabel: 值
+  pageviewPlaceholder: /pricing
+  eventPlaceholder: signup_started
+  save: 创建
+  creating: 创建中...
+  cancel: 取消
+  delete: 删除
+  deleteTitle: 删除漏斗
+  deleteDescription: 这会移除已保存的漏斗定义，不会删除历史分析数据。
+  deleteConfirm: 删除漏斗
+  deleting: 删除中...
+  empty: 暂无漏斗。
+  emptyHint: 使用页面浏览和自定义事件创建漏斗来跟踪转化。
+  loadError: 无法加载漏斗。
+  detailLoadError: 无法加载漏斗分析。
+  invalidFunnel: 请填写名称，并至少补全两个步骤。
+  created: 漏斗已创建。
+  createFailed: 创建漏斗失败。
+  deleted: 漏斗已删除。
+  deleteFailed: 删除漏斗失败。
+  selectPrompt: 选择一个漏斗查看转化。
+  overallConversion: 总转化率
+  startedSessions: 起始会话
+  convertedSessions: 转化会话
+  convertedVisitors: 转化访客
+  largestDropOff: 最大流失
+  noDropOff: 无流失
+  step: 步骤
+  sessions: 会话
+  visitors: 访客
+  conversion: 转化率
+  stepConversion: 步骤转化
+  dropOff: 流失
+  updated: 更新于
 visitors:
   title: 访客分析
   subtitle: 访客级别明细与最近活跃情况。
@@ -984,7 +1030,8 @@ systemPerformance:
   serverTime: 服务端写入时间
   estimatedDelay: 估算延迟
   doDiagnosticTitle: DO 内部缓冲诊断
-  doDiagnosticDescription: 直接询问每个站点的 Durable Object，统计 buffered_visits /
+  doDiagnosticDescription:
+    直接询问每个站点的 Durable Object，统计 buffered_visits /
     buffered_custom_events 是否存在停滞、未来时间戳或永久未刷新（脏）行。
   doDiagnosticLoadFailed: 加载 DO 诊断数据失败。
   doDiagnosticLoading: 正在拉取每个 DO 的状态…

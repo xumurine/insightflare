@@ -10,12 +10,7 @@ import {
   handleEventTypeFieldValues,
   handleEventTypes,
 } from "./events";
-import {
-  handleFunnelAnalysis,
-  handleFunnelCreate,
-  handleFunnelDelete,
-  handleFunnelList,
-} from "./funnels";
+import { handleFunnel } from "./funnels";
 import {
   handleRetention,
   handleSessionDetail,
@@ -76,17 +71,8 @@ export async function routeQuery(
     );
   }
   if (options.publicMode) return notFound();
-  if (pathname === "funnels") {
-    return handleFunnelList(env, siteId, url);
-  }
-  if (pathname === "funnel-analysis") {
-    return handleFunnelAnalysis(env, siteId, url);
-  }
-  if (pathname === "funnel-create") {
-    return handleFunnelCreate(env, siteId, request as Request);
-  }
-  if (pathname === "funnel-delete") {
-    return handleFunnelDelete(env, siteId, url);
+  if (pathname === "funnel") {
+    return handleFunnel(env, siteId, url, request as Request);
   }
   if (pathname === "pages-dashboard") {
     return handlePagesDashboard(env, siteId, url);

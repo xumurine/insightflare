@@ -27,6 +27,11 @@ import type {
   EventsSummaryData,
   EventsTrendData,
   EventTypeDetailData,
+  FunnelDeleteData,
+  FunnelDetailData,
+  FunnelListData,
+  FunnelMutationData,
+  FunnelStep,
   OverviewData,
   PagesData,
   PerformanceData,
@@ -38,7 +43,7 @@ import type {
   VisitorsData,
 } from "@/lib/edge-client";
 
-import { fetchPrivateJson } from "./client-request";
+import { fetchPrivateJson, fetchPrivateJsonMutate } from "./client-request";
 import { withFilters } from "./client-utils";
 
 export async function fetchOverview(
@@ -230,6 +235,62 @@ export async function fetchSessionDetail(
       ...(timeZone ? { timeZone } : {}),
     },
     { signal: options?.signal, dedupe: false },
+  );
+}
+
+export async function fetchFunnels(siteId: string): Promise<FunnelListData> {
+  return fetchPrivateJson<FunnelListData>("/api/private/funnel", {
+    siteId,
+  });
+}
+
+export async function fetchFunnelDetail(
+  siteId: string,
+  funnelId: string,
+  window: TimeWindow,
+  filters?: DashboardFilters,
+): Promise<FunnelDetailData> {
+  const normalizedFunnelId = funnelId.trim();
+  if (!normalizedFunnelId) {
+    throw new Error("Funnel id is required");
+  }
+  return fetchPrivateJson<FunnelDetailData>(
+    "/api/private/funnel",
+    withFilters(
+      {
+        siteId,
+        id: normalizedFunnelId,
+        from: window.from,
+        to: window.to,
+        timeZone: window.timeZone,
+      },
+      filters,
+    ),
+    { dedupe: false },
+  );
+}
+
+export async function createFunnel(
+  siteId: string,
+  name: string,
+  steps: FunnelStep[],
+): Promise<FunnelMutationData> {
+  return fetchPrivateJsonMutate<FunnelMutationData>(
+    "/api/private/funnel",
+    "POST",
+    { siteId },
+    { name, steps },
+  );
+}
+
+export async function deleteFunnel(
+  siteId: string,
+  funnelId: string,
+): Promise<FunnelDeleteData> {
+  return fetchPrivateJsonMutate<FunnelDeleteData>(
+    "/api/private/funnel",
+    "DELETE",
+    { siteId, id: funnelId },
   );
 }
 

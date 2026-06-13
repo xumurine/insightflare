@@ -14,12 +14,16 @@ export {
   fetchClientDimensionTrend,
 } from "./client-browser-data";
 export {
+  createFunnel,
+  deleteFunnel,
   fetchEventRecordDetail,
   fetchEventsRecords,
   fetchEventsSummary,
   fetchEventsTrend,
   fetchEventTypeDetail,
   fetchEventTypeFieldValues,
+  fetchFunnelDetail,
+  fetchFunnels,
   fetchOverview,
   fetchPages,
   fetchPerformance,

@@ -35,6 +35,11 @@ import {
   generateDemoEventTypeFieldValues,
 } from "@/lib/realtime/mock/events";
 import {
+  createDemoFunnel,
+  deleteDemoFunnel,
+  generateDemoFunnels,
+} from "@/lib/realtime/mock/funnels";
+import {
   generateDemoSessionDetail,
   generateDemoSessions,
   generateDemoVisitorDetail,
@@ -88,6 +93,10 @@ export function handleDemoRequest(options: {
     method === "PUT" ||
     method === "DELETE"
   ) {
+    if (path.includes("/funnel")) {
+      if (method === "DELETE") return deleteDemoFunnel(siteId, params);
+      return createDemoFunnel(siteId, options.body);
+    }
     // Special cases that need real-looking responses
     if (path.includes("/auth/login")) {
       const user = getDemoUser();
@@ -261,6 +270,9 @@ export function handleDemoRequest(options: {
   }
   if (path.includes("/pages-dashboard")) {
     return generateDemoPagesDashboard(siteId, params);
+  }
+  if (path.includes("/funnel")) {
+    return generateDemoFunnels(siteId, params);
   }
   if (path.includes("/retention")) {
     return generateDemoRetention(siteId, params);

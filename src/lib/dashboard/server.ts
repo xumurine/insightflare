@@ -189,6 +189,7 @@ export function buildSitePath(
     | "sessions"
     | "campaigns"
     | "events"
+    | "funnel"
     | "funnels"
     | "visitors"
     | "retention"

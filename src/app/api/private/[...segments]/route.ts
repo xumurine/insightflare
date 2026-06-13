@@ -48,3 +48,13 @@ export async function PATCH(request: Request): Promise<Response> {
   } = await resolveEdgeRuntime(request);
   return routePrivateRequest(requestWithCf, env, url, ctx);
 }
+
+export async function DELETE(request: Request): Promise<Response> {
+  const {
+    request: requestWithCf,
+    env,
+    ctx,
+    url,
+  } = await resolveEdgeRuntime(request);
+  return routePrivateRequest(requestWithCf, env, url, ctx);
+}

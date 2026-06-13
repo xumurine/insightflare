@@ -47,10 +47,7 @@ const handlerMocks = vi.hoisted(() => {
       handleReferrers: vi.fn(respond("referrers")),
     },
     funnels: {
-      handleFunnelAnalysis: vi.fn(respond("funnel-analysis")),
-      handleFunnelCreate: vi.fn(respond("funnel-create")),
-      handleFunnelDelete: vi.fn(respond("funnel-delete")),
-      handleFunnelList: vi.fn(respond("funnel-list")),
+      handleFunnel: vi.fn(respond("funnel")),
     },
     performance: {
       handlePerformance: vi.fn(respond("performance")),
@@ -343,23 +340,14 @@ describe("edge query router", () => {
     );
   });
 
-  it("routes funnel endpoints to their handlers", async () => {
-    await expect(responseText("funnels")).resolves.toBe("funnel-list");
-    await expect(responseText("funnel-analysis")).resolves.toBe(
-      "funnel-analysis",
-    );
-    await expect(responseText("funnel-create")).resolves.toBe("funnel-create");
-    await expect(responseText("funnel-delete")).resolves.toBe("funnel-delete");
+  it("routes the private funnel resource to its handler", async () => {
+    await expect(responseText("funnel")).resolves.toBe("funnel");
 
-    expect(handlerMocks.funnels.handleFunnelList).toHaveBeenCalledWith(
+    expect(handlerMocks.funnels.handleFunnel).toHaveBeenCalledWith(
       env,
       siteId,
       url,
-    );
-    expect(handlerMocks.funnels.handleFunnelAnalysis).toHaveBeenCalledWith(
-      env,
-      siteId,
-      url,
+      undefined,
     );
   });
 

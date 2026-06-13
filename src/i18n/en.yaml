@@ -275,7 +275,8 @@ sessionDetail:
   customEvent: Custom event
   eventTitleSeparator: ": "
   visitDetailsTitle: Visit details
-  visitDetailsSubtitle: Session start, pageviews, exits, and custom events in the
+  visitDetailsSubtitle:
+    Session start, pageviews, exits, and custom events in the
     order they happened.
   location: Location
   visitorId: Visitor ID
@@ -357,6 +358,52 @@ events:
 funnels:
   title: Funnels
   subtitle: Measure conversion through multi-step user journeys.
+  listTitle: Funnel definitions
+  listSubtitle: Build a reusable sequence, then inspect conversion for the current dashboard window.
+  create: New funnel
+  createTitle: Create funnel
+  createDescription: Define at least two ordered pageview or custom event steps.
+  nameLabel: Name
+  namePlaceholder: Signup activation
+  stepsLabel: Steps
+  addStep: Add step
+  removeStep: Remove step
+  stepTypePageview: Pageview
+  stepTypeEvent: Event
+  stepValueLabel: Value
+  pageviewPlaceholder: /pricing
+  eventPlaceholder: signup_started
+  save: Create
+  creating: Creating...
+  cancel: Cancel
+  delete: Delete
+  deleteTitle: Delete funnel
+  deleteDescription: This removes the saved funnel definition. Historical analytics data is not deleted.
+  deleteConfirm: Delete funnel
+  deleting: Deleting...
+  empty: No funnels yet.
+  emptyHint: Create a funnel from pageviews and custom events to track conversion.
+  loadError: Unable to load funnels.
+  detailLoadError: Unable to load funnel analysis.
+  invalidFunnel: Add a name and at least two complete steps.
+  created: Funnel created.
+  createFailed: Unable to create funnel.
+  deleted: Funnel deleted.
+  deleteFailed: Unable to delete funnel.
+  selectPrompt: Select a funnel to inspect conversion.
+  overallConversion: Overall conversion
+  startedSessions: Started sessions
+  convertedSessions: Converted sessions
+  convertedVisitors: Converted visitors
+  largestDropOff: Largest drop-off
+  noDropOff: No drop-off
+  step: Step
+  sessions: Sessions
+  visitors: Visitors
+  conversion: Conversion
+  stepConversion: Step conversion
+  dropOff: Drop-off
+  updated: Updated
 visitors:
   title: Visitors
   subtitle: Visitor-level breakdown and recency.
@@ -448,7 +495,8 @@ retention:
   legendHigh: High
   periodZero: Initial
   empty: Not enough return data in this time range.
-  emptyHint: Use a wider range or choose a coarser interval from the top selector
+  emptyHint:
+    Use a wider range or choose a coarser interval from the top selector
     to reveal the retention shape sooner.
   loadError: Unable to load retention data.
   unavailableCell: This cohort has not reached this period yet.
@@ -580,7 +628,8 @@ performance:
   lcp: Largest Contentful Paint
   cls: Cumulative Layout Shift
   inp: Interaction to Next Paint
-  ttfbDescription: Measures how long the browser waits before receiving the first
+  ttfbDescription:
+    Measures how long the browser waits before receiving the first
     byte from the server. It reflects backend latency, network delay, and cache
     effectiveness.
   fcpDescription: Measures when the first text or image is painted. It reflects
@@ -589,22 +638,26 @@ performance:
     rendering. It is the main loading speed signal for perceived page readiness.
   clsDescription: Measures unexpected layout movement during the page lifecycle.
     Lower values mean the page is visually stable.
-  inpDescription: Measures the latency of user interactions before the next paint.
+  inpDescription:
+    Measures the latency of user interactions before the next paint.
     It reflects how responsive the page feels after loading.
   msUnit: ms
   secondsUnit: s
   clsUnit: score
   score: Experience Score
-  scoreDescription: Combines P75 loading, stability, and interaction metrics into
+  scoreDescription:
+    Combines P75 loading, stability, and interaction metrics into
     a 0 to 100 experience score. Higher is better.
   great: Great
   needsImprovement: Needs Improvement
   poor: Poor
   datasetTitle: Dataset Overview
   interpretationTitle: Current Reading
-  currentReading: "{metric} is {value} at P75 with an experience score of {score}
+  currentReading:
+    "{metric} is {value} at P75 with an experience score of {score}
     across {samples} samples. Current status: {status}."
-  metricThresholdText: "Great is at or below {good}; needs improvement is between
+  metricThresholdText:
+    "Great is at or below {good}; needs improvement is between
     {good} and {poor}; poor is above {poor}."
   scoreThresholdText: Great is above 90, needs improvement is 50 to 90, and poor is below 50.
   countryHealthTitle: Country Health
@@ -660,7 +713,8 @@ siteSettings:
   performanceGroupTitle: Performance Tracking
   performanceGroupDescription: Control Web performance metric collection with one sampling rate.
   performanceSampleRateLabel: Performance Sample Rate (%)
-  performanceSampleRateHint: A sampled visit records TTFB, FCP, LCP, CLS, and INP
+  performanceSampleRateHint:
+    A sampled visit records TTFB, FCP, LCP, CLS, and INP
     on leave. Use 0 to disable sampling or 100 for full coverage.
   booleanOn: On
   booleanOff: Off
@@ -834,13 +888,15 @@ teamManagement:
     deleting: Deleting...
     deleteConfirm: Delete this team and all its data? This action cannot be undone.
     transferTitle: Transfer Ownership
-    transferSubtitle: Transfer team ownership to another member. The current owner
+    transferSubtitle:
+      Transfer team ownership to another member. The current owner
       will be demoted to admin.
     transferTargetLabel: New Owner
     transferTargetPlaceholder: Choose a team member
     transfer: Transfer ownership
     transferring: Transferring...
-    transferConfirm: This action cannot be undone. You will lose ownership but keep
+    transferConfirm:
+      This action cannot be undone. You will lose ownership but keep
       admin access. Continue?
     noTransferableMembers: No other members are available to transfer to. Add a member first.
   members:
@@ -983,7 +1039,8 @@ systemPerformance:
   delayed: Delayed
   future: Future clock
   latencyPercentileTrend: Latency Percentile Trend
-  latencyPercentileTrendDescription: P50, P75, and P95 estimated delay for trusted
+  latencyPercentileTrendDescription:
+    P50, P75, and P95 estimated delay for trusted
     samples grouped by server write time.
   throughputTrend: Accepted Event Throughput
   throughputTrendDescription: Rows grouped by server write time. Bars combine visits and custom events.
@@ -991,14 +1048,16 @@ systemPerformance:
   customEvents: Custom Events
   anomalyBucket: Anomaly bucket
   openVisitHealth: Open Visit Backlog
-  openVisitHealthDescription: Open rows that have not been closed by leave, route
+  openVisitHealthDescription:
+    Open rows that have not been closed by leave, route
     change, or timeout finalization.
   open: Open
   stale: Stale
   timedOut: Timed out
   oldestOpen: Oldest open
   latestActivity: Latest activity
-  estimationNote: Estimated delay is server write time minus client event time, so
+  estimationNote:
+    Estimated delay is server write time minus client event time, so
     browser queueing and wrong client clocks are included.
   latencySampleHealth: Latency Sample Health
   latencySampleHealthDescription: Counts only non-negative delay samples below the trusted upper bound.
@@ -1013,7 +1072,8 @@ systemPerformance:
   serverTime: Server write time
   estimatedDelay: Estimated delay
   doDiagnosticTitle: DO Buffer Diagnostic
-  doDiagnosticDescription: Asks each site's Durable Object directly for the state
+  doDiagnosticDescription:
+    Asks each site's Durable Object directly for the state
     of buffered_visits / buffered_custom_events to surface stale rows,
     future-skewed timestamps, or stuck dirty rows.
   doDiagnosticLoadFailed: Failed to load DO diagnostic data.

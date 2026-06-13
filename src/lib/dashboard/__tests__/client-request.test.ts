@@ -173,4 +173,17 @@ describe("dashboard client request helpers", () => {
       cache: "no-store",
     });
   });
+
+  it("routes mutations through the demo dispatcher in demo mode", async () => {
+    process.env.NEXT_PUBLIC_DEMO_MODE = "1";
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock;
+
+    await expect(
+      fetchPrivateJsonMutate("/api/private/auth/login", "POST", undefined, {
+        username: "demo",
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

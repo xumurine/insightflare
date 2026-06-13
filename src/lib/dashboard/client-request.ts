@@ -69,6 +69,10 @@ export async function fetchPrivateJsonMutate<T>(
   params?: PrivateRequestParams,
   body?: unknown,
 ): Promise<T> {
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+    const { handleDemoRequest } = await import("@/lib/realtime/mock");
+    return handleDemoRequest({ path, method, params, body }) as T;
+  }
   const url = `${path}${toQueryString(params)}`;
   const res = await fetch(url, {
     method,

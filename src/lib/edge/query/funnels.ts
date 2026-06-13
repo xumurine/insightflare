@@ -1,12 +1,15 @@
 import type { Env } from "@/lib/edge/types";
 
+import type { DashboardFilters, QueryWindow } from "./core";
 import {
   badRequest,
-  buildCustomEventSourceCte,
+  buildEventAnalyticsSourceCte,
+  buildEventFilterSql,
   buildVisitFilterSql,
   buildVisitSourceCte,
   eventSourceBindings,
   jsonResponse,
+  notAllowed,
   notFound,
   parseFilters,
   parseWindow,
@@ -15,67 +18,412 @@ import {
 } from "./core";
 
 const FUNNEL_ANALYSIS_KIND = "funnel";
+const MAX_FUNNEL_STEPS = 12;
 
-interface FunnelStepConfig {
-  type: string;
+export interface FunnelStepConfig {
+  type: "pageview" | "event";
   value: string;
 }
 
+export interface FunnelDefinition {
+  id: string;
+  siteId: string;
+  name: string;
+  steps: FunnelStepConfig[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface FunnelEvent {
+  sessionId: string;
+  visitorId: string;
+  type: FunnelStepConfig["type"];
+  value: string;
+  timestampMs: number;
+  sourceOrder: number;
+  sourceId: string;
+}
+
+export interface FunnelAnalysisStep {
+  index: number;
+  label: string;
+  type: FunnelStepConfig["type"];
+  sessions: number;
+  visitors: number;
+  conversionRate: number;
+  stepConversionRate: number;
+  dropOffSessions: number;
+  dropOffRate: number;
+}
+
+export interface FunnelAnalysis {
+  steps: FunnelAnalysisStep[];
+  summary: {
+    totalSessions: number;
+    convertedSessions: number;
+    totalVisitors: number;
+    convertedVisitors: number;
+    overallConversionRate: number;
+    largestDropOffStepIndex: number | null;
+  };
+}
+
+function isFunnelStepType(value: unknown): value is FunnelStepConfig["type"] {
+  return value === "pageview" || value === "event";
+}
+
+export function normalizeFunnelSteps(input: unknown): FunnelStepConfig[] {
+  if (!Array.isArray(input)) return [];
+
+  const steps: FunnelStepConfig[] = [];
+  for (const item of input) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    if (!isFunnelStepType(record.type)) continue;
+    const value = String(record.value ?? "").trim();
+    if (!value) continue;
+    steps.push({ type: record.type, value });
+    if (steps.length >= MAX_FUNNEL_STEPS) break;
+  }
+  return steps;
+}
+
 function parseFunnelSteps(configJson: string): FunnelStepConfig[] {
-  const parsed = JSON.parse(configJson) as
-    | FunnelStepConfig[]
-    | { steps?: FunnelStepConfig[] };
-  if (Array.isArray(parsed)) return parsed;
-  if (Array.isArray(parsed.steps)) return parsed.steps;
-  return [];
+  try {
+    const parsed = JSON.parse(configJson) as
+      | FunnelStepConfig[]
+      | { steps?: FunnelStepConfig[] };
+    return normalizeFunnelSteps(Array.isArray(parsed) ? parsed : parsed.steps);
+  } catch {
+    return [];
+  }
 }
 
 function serializeFunnelConfig(steps: FunnelStepConfig[]): string {
   return JSON.stringify({ steps });
 }
 
-export async function handleFunnelList(
-  env: Env,
-  siteId: string,
-  _url: URL,
-): Promise<Response> {
-  const rows = await queryD1All<Record<string, unknown>>(
-    env,
-    "SELECT id, site_id, kind, name, config_json, created_at, updated_at FROM analysis_definitions WHERE site_id = ? AND kind = ? AND archived_at IS NULL ORDER BY created_at DESC",
-    [siteId, FUNNEL_ANALYSIS_KIND],
-  );
-  const funnels = rows.map((row) => ({
+function mapFunnelDefinition(row: Record<string, unknown>): FunnelDefinition {
+  return {
     id: String(row.id ?? ""),
     siteId: String(row.site_id ?? ""),
     name: String(row.name ?? ""),
     steps: parseFunnelSteps(String(row.config_json ?? "{}")),
     createdAt: Number(row.created_at ?? 0),
     updatedAt: Number(row.updated_at ?? 0),
-  }));
-  return jsonResponse({ ok: true, funnels });
+  };
 }
 
-export async function handleFunnelCreate(
+async function queryFunnelDefinitions(
+  env: Env,
+  siteId: string,
+): Promise<FunnelDefinition[]> {
+  const rows = await queryD1All<Record<string, unknown>>(
+    env,
+    "SELECT id, site_id, kind, name, config_json, created_at, updated_at FROM analysis_definitions WHERE site_id = ? AND kind = ? AND archived_at IS NULL ORDER BY created_at DESC",
+    [siteId, FUNNEL_ANALYSIS_KIND],
+  );
+  return rows.map(mapFunnelDefinition);
+}
+
+async function queryFunnelDefinition(
+  env: Env,
+  siteId: string,
+  funnelId: string,
+): Promise<FunnelDefinition | null> {
+  const rows = await queryD1All<Record<string, unknown>>(
+    env,
+    "SELECT id, site_id, kind, name, config_json, created_at, updated_at FROM analysis_definitions WHERE id = ? AND site_id = ? AND kind = ? AND archived_at IS NULL LIMIT 1",
+    [funnelId, siteId, FUNNEL_ANALYSIS_KIND],
+  );
+  return rows[0] ? mapFunnelDefinition(rows[0]) : null;
+}
+
+function uniqueStepValues(
+  steps: FunnelStepConfig[],
+  type: FunnelStepConfig["type"],
+): string[] {
+  return Array.from(
+    new Set(
+      steps
+        .filter((step) => step.type === type)
+        .map((step) => step.value)
+        .filter(Boolean),
+    ),
+  );
+}
+
+async function queryFunnelPageviewEvents(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+  steps: FunnelStepConfig[],
+): Promise<FunnelEvent[]> {
+  const values = uniqueStepValues(steps, "pageview");
+  if (values.length === 0) return [];
+
+  const filter = buildVisitFilterSql(filters, "vs");
+  const filterClause = filter.clause
+    ? `AND ${filter.clause.replace(/^WHERE\s+/i, "")}`
+    : "";
+  const sql = `
+WITH ${buildVisitSourceCte()}
+SELECT
+  vs.session_id AS sessionId,
+  vs.visitor_id AS visitorId,
+  vs.pathname AS value,
+  vs.started_at AS timestampMs,
+  vs.visit_id AS sourceId
+FROM visit_source vs
+WHERE TRIM(COALESCE(vs.session_id, '')) != ''
+  ${filterClause}
+  AND vs.pathname IN (${values.map(() => "?").join(", ")})
+ORDER BY timestampMs ASC, sourceId ASC
+`;
+  const rows = await queryD1All<Record<string, unknown>>(env, sql, [
+    ...visitSourceBindings(siteId, window),
+    ...filter.bindings,
+    ...values,
+  ]);
+
+  return rows.map((row) => ({
+    sessionId: String(row.sessionId ?? ""),
+    visitorId: String(row.visitorId ?? ""),
+    type: "pageview" as const,
+    value: String(row.value ?? ""),
+    timestampMs: Number(row.timestampMs ?? 0),
+    sourceOrder: 0,
+    sourceId: String(row.sourceId ?? ""),
+  }));
+}
+
+async function queryFunnelCustomEvents(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+  steps: FunnelStepConfig[],
+): Promise<FunnelEvent[]> {
+  const values = uniqueStepValues(steps, "event");
+  if (values.length === 0) return [];
+
+  const filter = buildEventFilterSql(filters, "es");
+  const filterClause = filter.clause
+    ? `AND ${filter.clause.replace(/^WHERE\s+/i, "")}`
+    : "";
+  const sql = `
+WITH
+${buildVisitSourceCte()},
+${buildEventAnalyticsSourceCte()}
+SELECT
+  es.session_id AS sessionId,
+  es.visitor_id AS visitorId,
+  es.event_name AS value,
+  es.occurred_at AS timestampMs,
+  COALESCE(es.sequence, 0) AS sequence,
+  es.event_id AS sourceId
+FROM event_source es
+WHERE TRIM(COALESCE(es.session_id, '')) != ''
+  ${filterClause}
+  AND es.event_name IN (${values.map(() => "?").join(", ")})
+ORDER BY timestampMs ASC, sequence ASC, sourceId ASC
+`;
+  const rows = await queryD1All<Record<string, unknown>>(env, sql, [
+    ...visitSourceBindings(siteId, window),
+    ...eventSourceBindings(siteId, window),
+    ...filter.bindings,
+    ...values,
+  ]);
+
+  return rows.map((row) => ({
+    sessionId: String(row.sessionId ?? ""),
+    visitorId: String(row.visitorId ?? ""),
+    type: "event" as const,
+    value: String(row.value ?? ""),
+    timestampMs: Number(row.timestampMs ?? 0),
+    sourceOrder: 1,
+    sourceId: String(row.sourceId ?? ""),
+  }));
+}
+
+function compareFunnelEvents(left: FunnelEvent, right: FunnelEvent): number {
+  if (left.timestampMs !== right.timestampMs) {
+    return left.timestampMs - right.timestampMs;
+  }
+  if (left.sourceOrder !== right.sourceOrder) {
+    return left.sourceOrder - right.sourceOrder;
+  }
+  return left.sourceId.localeCompare(right.sourceId);
+}
+
+function groupEventsBySession(
+  events: FunnelEvent[],
+): Map<string, FunnelEvent[]> {
+  const sessions = new Map<string, FunnelEvent[]>();
+  for (const event of events) {
+    if (!event.sessionId) continue;
+    const group = sessions.get(event.sessionId) ?? [];
+    group.push(event);
+    sessions.set(event.sessionId, group);
+  }
+  for (const group of sessions.values()) {
+    group.sort(compareFunnelEvents);
+  }
+  return sessions;
+}
+
+export function analyzeFunnelEvents(
+  steps: FunnelStepConfig[],
+  events: FunnelEvent[],
+): FunnelAnalysis {
+  const sessions = groupEventsBySession(events);
+  const sessionCounts = steps.map(() => 0);
+  const visitorSets = steps.map(() => new Set<string>());
+
+  for (const group of sessions.values()) {
+    let cursor = 0;
+    let visitorId = "";
+
+    for (let index = 0; index < steps.length; index += 1) {
+      const step = steps[index];
+      const matchIndex = group.findIndex(
+        (event, eventIndex) =>
+          eventIndex >= cursor &&
+          event.type === step.type &&
+          event.value === step.value,
+      );
+      if (matchIndex === -1) break;
+
+      const match = group[matchIndex];
+      cursor = matchIndex + 1;
+      visitorId = match.visitorId || visitorId;
+      sessionCounts[index] += 1;
+      if (visitorId) visitorSets[index].add(visitorId);
+    }
+  }
+
+  const totalSessions = sessionCounts[0] ?? 0;
+  const totalVisitors = visitorSets[0]?.size ?? 0;
+  let largestDropOffStepIndex: number | null = null;
+  let largestDropOffSessions = 0;
+
+  const analyzedSteps = steps.map((step, index) => {
+    const sessionsAtStep = sessionCounts[index] ?? 0;
+    const previousSessions =
+      index === 0 ? sessionsAtStep : (sessionCounts[index - 1] ?? 0);
+    const dropOffSessions =
+      index === 0 ? 0 : Math.max(0, previousSessions - sessionsAtStep);
+    if (index > 0 && dropOffSessions > largestDropOffSessions) {
+      largestDropOffSessions = dropOffSessions;
+      largestDropOffStepIndex = index;
+    }
+
+    return {
+      index,
+      label: step.value,
+      type: step.type,
+      sessions: sessionsAtStep,
+      visitors: visitorSets[index]?.size ?? 0,
+      conversionRate: totalSessions > 0 ? sessionsAtStep / totalSessions : 0,
+      stepConversionRate:
+        index === 0
+          ? sessionsAtStep > 0
+            ? 1
+            : 0
+          : previousSessions > 0
+            ? sessionsAtStep / previousSessions
+            : 0,
+      dropOffSessions,
+      dropOffRate:
+        index === 0 || previousSessions <= 0
+          ? 0
+          : dropOffSessions / previousSessions,
+    };
+  });
+
+  const convertedStep = analyzedSteps[analyzedSteps.length - 1];
+
+  return {
+    steps: analyzedSteps,
+    summary: {
+      totalSessions,
+      convertedSessions: convertedStep?.sessions ?? 0,
+      totalVisitors,
+      convertedVisitors: convertedStep?.visitors ?? 0,
+      overallConversionRate:
+        totalSessions > 0 ? (convertedStep?.sessions ?? 0) / totalSessions : 0,
+      largestDropOffStepIndex,
+    },
+  };
+}
+
+async function queryFunnelAnalysis(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: DashboardFilters,
+  steps: FunnelStepConfig[],
+): Promise<FunnelAnalysis> {
+  const [pageviews, events] = await Promise.all([
+    queryFunnelPageviewEvents(env, siteId, window, filters, steps),
+    queryFunnelCustomEvents(env, siteId, window, filters, steps),
+  ]);
+  return analyzeFunnelEvents(steps, [...pageviews, ...events]);
+}
+
+async function handleFunnelList(env: Env, siteId: string): Promise<Response> {
+  return jsonResponse({
+    ok: true,
+    funnels: await queryFunnelDefinitions(env, siteId),
+  });
+}
+
+async function handleFunnelDetail(
+  env: Env,
+  siteId: string,
+  url: URL,
+): Promise<Response> {
+  const funnelId = url.searchParams.get("id")?.trim();
+  if (!funnelId) return handleFunnelList(env, siteId);
+
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const funnel = await queryFunnelDefinition(env, siteId, funnelId);
+  if (!funnel) return notFound();
+  if (funnel.steps.length < 2) {
+    return badRequest("Funnel has fewer than 2 steps");
+  }
+
+  const filters = parseFilters(url);
+  const analysis = await queryFunnelAnalysis(
+    env,
+    siteId,
+    window,
+    filters,
+    funnel.steps,
+  );
+
+  return jsonResponse({ ok: true, funnel, analysis });
+}
+
+async function handleFunnelCreate(
   env: Env,
   siteId: string,
   request: Request,
 ): Promise<Response> {
-  let body: { name?: string; steps?: Array<{ type: string; value: string }> };
+  let body: { name?: string; steps?: unknown };
   try {
-    body = await request.json();
+    body = (await request.json()) as { name?: string; steps?: unknown };
   } catch {
     return badRequest("Invalid JSON body");
   }
+
   const name = String(body.name ?? "").trim();
   if (!name) return badRequest("Name is required");
-  const steps = Array.isArray(body.steps) ? body.steps : [];
+
+  const steps = normalizeFunnelSteps(body.steps);
   if (steps.length < 2) return badRequest("At least 2 steps are required");
-  for (const step of steps) {
-    if (!step.type || !step.value)
-      return badRequest("Each step needs type and value");
-    if (step.type !== "pageview" && step.type !== "event")
-      return badRequest("Step type must be pageview or event");
-  }
 
   const id = crypto.randomUUID();
   const now = Math.floor(Date.now() / 1000);
@@ -102,169 +450,35 @@ export async function handleFunnelCreate(
   );
 }
 
-export async function handleFunnelDelete(
+async function handleFunnelDelete(
   env: Env,
   siteId: string,
   url: URL,
 ): Promise<Response> {
-  const funnelId = url.searchParams.get("id");
+  const funnelId = url.searchParams.get("id")?.trim();
   if (!funnelId) return badRequest("Funnel id is required");
+
   const now = Math.floor(Date.now() / 1000);
   await env.DB.prepare(
     "UPDATE analysis_definitions SET archived_at = ?, updated_at = ? WHERE id = ? AND site_id = ? AND kind = ? AND archived_at IS NULL",
   )
     .bind(now, now, funnelId, siteId, FUNNEL_ANALYSIS_KIND)
     .run();
+
   return jsonResponse({ ok: true });
 }
 
-export async function handleFunnelAnalysis(
+export async function handleFunnel(
   env: Env,
   siteId: string,
   url: URL,
+  request?: Request,
 ): Promise<Response> {
-  const funnelId = url.searchParams.get("funnelId");
-  if (!funnelId) return badRequest("funnelId is required");
-  const window = parseWindow(url);
-  if (!window) return badRequest("Invalid time window");
-  const filters = parseFilters(url);
-
-  const funnelRow = await queryD1All<Record<string, unknown>>(
-    env,
-    "SELECT config_json FROM analysis_definitions WHERE id = ? AND site_id = ? AND kind = ? AND archived_at IS NULL",
-    [funnelId, siteId, FUNNEL_ANALYSIS_KIND],
-  );
-  if (funnelRow.length === 0) return notFound();
-  const steps = parseFunnelSteps(String(funnelRow[0].config_json ?? "{}"));
-  if (steps.length < 2) return badRequest("Funnel has fewer than 2 steps");
-
-  const filter = buildVisitFilterSql(filters);
-
-  const pageviewSteps = steps.filter((s) => s.type === "pageview");
-  const eventSteps = steps.filter((s) => s.type === "event");
-
-  const sessionData: Map<
-    string,
-    Array<{ type: string; value: string; ts: number }>
-  > = new Map();
-
-  if (pageviewSteps.length > 0) {
-    const pvFilter = filter.clause
-      ? filter.clause.replace(/^WHERE\s+/i, "AND ")
-      : "";
-    const pvSql = `
-WITH ${buildVisitSourceCte()},
-filtered AS (
-  SELECT session_id, pathname, started_at
-  FROM visit_source
-  WHERE session_id != '' ${pvFilter}
-)
-SELECT session_id AS sessionId, pathname, started_at AS ts
-FROM filtered
-WHERE pathname IN (${pageviewSteps.map(() => "?").join(",")})
-ORDER BY ts ASC
-`;
-    const pvBindings = [
-      ...visitSourceBindings(siteId, window),
-      ...filter.bindings,
-      ...pageviewSteps.map((s) => s.value),
-    ];
-    const pvRows = await queryD1All<Record<string, unknown>>(
-      env,
-      pvSql,
-      pvBindings,
-    );
-    for (const row of pvRows) {
-      const sid = String(row.sessionId ?? "");
-      if (!sid) continue;
-      if (!sessionData.has(sid)) sessionData.set(sid, []);
-      sessionData.get(sid)!.push({
-        type: "pageview",
-        value: String(row.pathname ?? ""),
-        ts: Number(row.ts ?? 0),
-      });
-    }
+  const method = request?.method ?? "GET";
+  if (method === "GET") return handleFunnelDetail(env, siteId, url);
+  if (method === "POST" && request) {
+    return handleFunnelCreate(env, siteId, request);
   }
-
-  if (eventSteps.length > 0) {
-    const evSql = `
-WITH ${buildCustomEventSourceCte()},
-filtered AS (
-  SELECT session_id, event_name, occurred_at
-  FROM event_source
-  WHERE session_id != ''
-)
-SELECT session_id AS sessionId, event_name AS eventName, occurred_at AS ts
-FROM filtered
-WHERE event_name IN (${eventSteps.map(() => "?").join(",")})
-ORDER BY ts ASC
-`;
-    const evBindings = [
-      ...eventSourceBindings(siteId, window),
-      ...eventSteps.map((s) => s.value),
-    ];
-    const evRows = await queryD1All<Record<string, unknown>>(
-      env,
-      evSql,
-      evBindings,
-    );
-    for (const row of evRows) {
-      const sid = String(row.sessionId ?? "");
-      if (!sid) continue;
-      if (!sessionData.has(sid)) sessionData.set(sid, []);
-      sessionData.get(sid)!.push({
-        type: "event",
-        value: String(row.eventName ?? ""),
-        ts: Number(row.ts ?? 0),
-      });
-    }
-  }
-
-  const stepResults = steps.map((step, i) => ({
-    index: i,
-    label: step.value,
-    type: step.type,
-    sessions: 0,
-    dropOffRate: 0,
-    conversionRate: 0,
-  }));
-
-  for (const [, events] of sessionData) {
-    events.sort((a, b) => a.ts - b.ts);
-    let lastTs = -1;
-    let matched = true;
-    for (let i = 0; i < steps.length; i++) {
-      const step = steps[i];
-      const matchIdx = events.findIndex(
-        (e) => e.type === step.type && e.value === step.value && e.ts > lastTs,
-      );
-      if (matchIdx === -1) {
-        matched = false;
-        break;
-      }
-      lastTs = events[matchIdx].ts;
-      stepResults[i].sessions++;
-    }
-    if (!matched) {
-      // partial match already counted in the loop
-    }
-  }
-
-  const totalSessions = stepResults[0].sessions || 1;
-  for (let i = 0; i < stepResults.length; i++) {
-    stepResults[i].conversionRate = stepResults[i].sessions / totalSessions;
-    stepResults[i].dropOffRate =
-      i === 0
-        ? 0
-        : 1 - stepResults[i].sessions / (stepResults[i - 1].sessions || 1);
-  }
-
-  return jsonResponse({
-    ok: true,
-    steps: stepResults,
-    overallConversionRate:
-      stepResults.length > 0
-        ? stepResults[stepResults.length - 1].sessions / totalSessions
-        : 0,
-  });
+  if (method === "DELETE") return handleFunnelDelete(env, siteId, url);
+  return notAllowed();
 }

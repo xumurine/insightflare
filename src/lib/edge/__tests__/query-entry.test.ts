@@ -103,8 +103,32 @@ describe("edge query entry handlers", () => {
     expect(withDashboardCacheMock).not.toHaveBeenCalled();
   });
 
-  it("bypasses dashboard cache for allowed private funnel mutations", async () => {
-    const edgeRequest = request("/api/private/funnel-create", {
+  it("bypasses dashboard cache for private funnel reads and mutations", async () => {
+    const readRequest = request("/api/private/funnel");
+    const readUrl = new URL(readRequest.url);
+
+    await expect(
+      (await handlePrivateQuery(readRequest, env, readUrl)).text(),
+    ).resolves.toBe("routed");
+    expect(routeQueryMock).toHaveBeenCalledWith(
+      env,
+      "site-private",
+      "funnel",
+      readUrl,
+      { publicMode: false },
+      readRequest,
+    );
+    expect(withDashboardCacheMock).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    resolvePrivateSiteMock.mockResolvedValue({
+      id: "site-private",
+      name: "Private",
+      domain: "private.example",
+    });
+    routeQueryMock.mockResolvedValue(new Response("routed"));
+
+    const edgeRequest = request("/api/private/funnel", {
       method: "POST",
     });
     const url = new URL(edgeRequest.url);
@@ -115,10 +139,36 @@ describe("edge query entry handlers", () => {
     expect(routeQueryMock).toHaveBeenCalledWith(
       env,
       "site-private",
-      "funnel-create",
+      "funnel",
       url,
       { publicMode: false },
       edgeRequest,
+    );
+    expect(withDashboardCacheMock).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    resolvePrivateSiteMock.mockResolvedValue({
+      id: "site-private",
+      name: "Private",
+      domain: "private.example",
+    });
+    routeQueryMock.mockResolvedValue(new Response("routed"));
+
+    const deleteRequest = request("/api/private/funnel?id=funnel-1", {
+      method: "DELETE",
+    });
+    const deleteUrl = new URL(deleteRequest.url);
+
+    await expect(
+      (await handlePrivateQuery(deleteRequest, env, deleteUrl)).text(),
+    ).resolves.toBe("routed");
+    expect(routeQueryMock).toHaveBeenCalledWith(
+      env,
+      "site-private",
+      "funnel",
+      deleteUrl,
+      { publicMode: false },
+      deleteRequest,
     );
     expect(withDashboardCacheMock).not.toHaveBeenCalled();
   });

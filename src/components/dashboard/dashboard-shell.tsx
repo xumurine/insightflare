@@ -353,7 +353,7 @@ export function DashboardShell({
           { key: "sessions", href: `${activeSiteBase}/sessions` },
           { key: "visitors", href: `${activeSiteBase}/visitors` },
           { key: "events", href: `${activeSiteBase}/events` },
-          { key: "funnels", href: `${activeSiteBase}/funnels` },
+          { key: "funnels", href: `${activeSiteBase}/funnel` },
           { key: "retention", href: `${activeSiteBase}/retention` },
           { key: "geo", href: `${activeSiteBase}/geo` },
           { key: "devices", href: `${activeSiteBase}/devices` },
