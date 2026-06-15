@@ -933,6 +933,53 @@ managementPages:
   scheduledTasks:
     subtitle: View and manage system scheduled tasks.
     empty: No scheduled task exists yet.
+    refresh: Refresh
+    loadFailed: Failed to load scheduled tasks.
+    allTasks: All tasks
+    allStatuses: All statuses
+    runs24h: 24h runs
+    successRate24h: 24h success rate
+    successRateDescription: Counts only successful runs.
+    problemRuns24h: Problem runs
+    retentionPrefix: Retained for
+    days: days
+    failed: Failed
+    partial: Partial
+    lastRun: Last run
+    staleRunning: Stale running
+    noStaleRunning: No stale running runs
+    taskListTitle: Tasks
+    taskListDescription: Registered scheduled tasks and 30-day health.
+    task: Task
+    schedule: Schedule
+    enabled: State
+    enabledYes: Enabled
+    enabledNo: Disabled
+    lastStatus: Last status
+    runs30d: 30d runs
+    successRate30d: 30d success rate
+    avgDuration: Avg duration
+    runHistoryTitle: Run history
+    runHistoryDescription: Task runs retained over the last 30 days.
+    noRuns: No run exists yet.
+    startedAt: Started
+    statusLabel: Status
+    duration: Duration
+    sites: Sites
+    hours: Hours
+    rows: Rows
+    logs: Logs
+    viewLogs: View
+    logTitle: Run logs
+    noRunSelected: Select a run to inspect logs.
+    noLogs: No logs for this run.
+    error: Error
+    status:
+      running: Running
+      success: Success
+      partial: Partial
+      failed: Failed
+      skipped: Skipped
 adminUsers:
   title: User Management
   subtitle: Only system admins can create and manage dashboard users.

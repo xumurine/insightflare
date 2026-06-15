@@ -22,6 +22,7 @@ interface DataTableSwitchProps {
   header: ReactNode;
   rows: ReactNode;
   contentKey?: string | number;
+  animate?: boolean;
 }
 
 export function DataTableSwitch({
@@ -33,48 +34,51 @@ export function DataTableSwitch({
   header,
   rows,
   contentKey,
+  animate = true,
 }: DataTableSwitchProps) {
+  const table = loading ? (
+    <Table key="loading">
+      <TableHeader>{header}</TableHeader>
+      <TableBody>
+        <TableRow>
+          <TableCell
+            colSpan={colSpan}
+            className="h-32 text-center text-muted-foreground"
+          >
+            <span className="inline-flex items-center gap-2">
+              <Spinner className="size-4" />
+              {loadingLabel}
+            </span>
+          </TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
+  ) : hasContent ? (
+    <Table key={contentKey ?? "content"}>
+      <TableHeader>{header}</TableHeader>
+      <TableBody>{rows}</TableBody>
+    </Table>
+  ) : (
+    <Table key="empty">
+      <TableHeader>{header}</TableHeader>
+      <TableBody>
+        <TableRow>
+          <TableCell
+            colSpan={colSpan}
+            className="h-24 text-center text-muted-foreground"
+          >
+            {emptyLabel}
+          </TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
+  );
+
+  if (!animate) return table;
+
   return (
     <AutoResizer initial>
-      <AutoTransition initial>
-        {loading ? (
-          <Table key="loading">
-            <TableHeader>{header}</TableHeader>
-            <TableBody>
-              <TableRow>
-                <TableCell
-                  colSpan={colSpan}
-                  className="h-32 text-center text-muted-foreground"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <Spinner className="size-4" />
-                    {loadingLabel}
-                  </span>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        ) : hasContent ? (
-          <Table key={contentKey ?? "content"}>
-            <TableHeader>{header}</TableHeader>
-            <TableBody>{rows}</TableBody>
-          </Table>
-        ) : (
-          <Table key="empty">
-            <TableHeader>{header}</TableHeader>
-            <TableBody>
-              <TableRow>
-                <TableCell
-                  colSpan={colSpan}
-                  className="h-24 text-center text-muted-foreground"
-                >
-                  {emptyLabel}
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        )}
-      </AutoTransition>
+      <AutoTransition initial>{table}</AutoTransition>
     </AutoResizer>
   );
 }

@@ -1,5 +1,6 @@
 import { requireActor } from "./admin-auth";
 import { nf } from "./admin-response";
+import { handleScheduledTasksAdmin } from "./admin-scheduled-tasks";
 import {
   handleScriptSnippetAdmin,
   handleSiteConfigAdmin,
@@ -42,6 +43,8 @@ export async function handlePrivateAdmin(
     return handleScriptSnippetAdmin(request, env, url);
   if (p === "/api/private/admin/system-performance")
     return handleSystemPerformanceAdmin(request, env, url, requireActor);
+  if (p === "/api/private/admin/scheduled-tasks")
+    return handleScheduledTasksAdmin(request, env, url, requireActor);
   if (p === "/api/private/admin/do-diagnostic")
     return handleDoDiagnosticAdmin(request, env, url, requireActor);
   return nf();

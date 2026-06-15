@@ -157,6 +157,39 @@ describe("mock/admin branch coverage", () => {
     vi.restoreAllMocks();
   });
 
+  it("paginates scheduled task runs and resolves selected run details", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIME);
+
+    await withMockedAdmin({
+      run: (admin) => {
+        const firstPage = admin.generateDemoScheduledTasks({
+          page: 1,
+          pageSize: 3,
+        });
+        const secondPage = admin.generateDemoScheduledTasks({
+          page: 2,
+          pageSize: 3,
+          runId: firstPage.runs[0]?.id ?? "",
+        });
+
+        expect(firstPage.runs).toHaveLength(3);
+        expect(firstPage.runsMeta).toEqual({
+          page: 1,
+          pageSize: 3,
+          returned: 3,
+          hasMore: true,
+          nextPage: 2,
+        });
+        expect(secondPage.runs.map((run) => run.id)).not.toContain(
+          firstPage.runs[0]?.id,
+        );
+        expect(secondPage.selectedRun?.id).toBe(firstPage.runs[0]?.id);
+        expect(secondPage.logs.length).toBeGreaterThan(0);
+      },
+    });
+  });
+
   it("returns null system performance aggregates when no latency samples exist", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(BASE_TIME);

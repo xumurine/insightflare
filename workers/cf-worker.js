@@ -1,6 +1,8 @@
 import nextWorker from "../.open-next/worker.js";
 import { runHourlyAggregation } from "../src/lib/edge/hourly-rollup";
 import { IngestDurableObject as BaseIngestDurableObject } from "../src/lib/edge/ingest-do";
+import { getScheduledTaskDefinition } from "../src/lib/edge/scheduled-task-registry";
+import { runScheduledTask } from "../src/lib/edge/scheduled-task-runner";
 
 async function handleAdminWs(request, env) {
   const incomingUrl = new URL(request.url);
@@ -24,6 +26,19 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(runHourlyAggregation(env, controller.scheduledTime));
+    const task = getScheduledTaskDefinition("visit_hourly_rollup");
+    ctx.waitUntil(
+      runScheduledTask(
+        env,
+        {
+          key: task?.key || "visit_hourly_rollup",
+          name: task?.name || "Hourly visit aggregation",
+          triggerType: "cron",
+        },
+        controller.scheduledTime,
+        ({ logger }) =>
+          runHourlyAggregation(env, controller.scheduledTime, { logger }),
+      ),
+    );
   },
 };

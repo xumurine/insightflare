@@ -6,6 +6,10 @@ import type {
   QueryWindow,
   TrendAggregateRow,
 } from "./query/core-types";
+import type {
+  ScheduledTaskLogger,
+  ScheduledTaskOutcome,
+} from "./scheduled-task-runner";
 import type { Env } from "./types";
 import { ONE_HOUR_MS } from "./utils";
 
@@ -15,6 +19,23 @@ export const ROLLUP_SCHEMA_VERSION = 1;
 const ROLLUP_MAX_HOURS_PER_SITE = 24 * 7;
 
 type SqlValue = string | number | null;
+
+interface HourlyAggregationOptions {
+  logger?: ScheduledTaskLogger;
+}
+
+interface HourlyAggregationSummary {
+  cutoffMs: number;
+  endHour: number;
+  candidateSites: number;
+  sitesProcessed: number;
+  sitesSkippedNoClosedVisit: number;
+  sitesAlreadyCurrent: number;
+  sitesBlockedByOpenVisit: number;
+  sitesFailed: number;
+  hoursAggregated: number;
+  rollupRowsWritten: number;
+}
 
 interface AggregationCandidateRow {
   siteId: string;
@@ -856,8 +877,8 @@ async function aggregateSiteHours(
   startHour: number,
   endHour: number,
   inputCutoffMs: number,
-): Promise<void> {
-  if (endHour < startHour) return;
+): Promise<number> {
+  if (endHour < startHour) return 0;
   const startMs = startHour * ONE_HOUR_MS;
   const endExclusiveMs = (endHour + 1) * ONE_HOUR_MS;
   const basic = await env.DB.prepare(
@@ -1062,6 +1083,7 @@ async function aggregateSiteHours(
   );
 
   await env.DB.batch(statements);
+  return byHour.size;
 }
 
 async function markAggregationFailed(
@@ -1090,28 +1112,70 @@ async function markAggregationFailed(
 export async function runHourlyAggregation(
   env: Env,
   scheduledTime?: number,
-): Promise<void> {
+  options: HourlyAggregationOptions = {},
+): Promise<ScheduledTaskOutcome> {
   const nowMs =
     typeof scheduledTime === "number" && Number.isFinite(scheduledTime)
       ? scheduledTime
       : Date.now();
   const cutoffMs = nowMs - ROLLUP_LAG_HOURS * ONE_HOUR_MS;
   const endHour = Math.floor(cutoffMs / ONE_HOUR_MS) - 1;
-  if (endHour < 0) return;
+  const summary: HourlyAggregationSummary = {
+    cutoffMs,
+    endHour,
+    candidateSites: 0,
+    sitesProcessed: 0,
+    sitesSkippedNoClosedVisit: 0,
+    sitesAlreadyCurrent: 0,
+    sitesBlockedByOpenVisit: 0,
+    sitesFailed: 0,
+    hoursAggregated: 0,
+    rollupRowsWritten: 0,
+  };
+  if (endHour < 0) {
+    await options.logger?.info(
+      "aggregation_skipped",
+      "Cutoff is before epoch",
+      {
+        cutoffMs,
+        endHour,
+      },
+    );
+    return { status: "skipped", summary: { ...summary } };
+  }
 
-  for (const site of await listAggregationCandidates(env, endHour)) {
+  const candidates = await listAggregationCandidates(env, endHour);
+  summary.candidateSites = candidates.length;
+  await options.logger?.info(
+    "aggregation_candidates",
+    "Aggregation candidates loaded",
+    {
+      candidateSites: candidates.length,
+      endHour,
+      lagHours: ROLLUP_LAG_HOURS,
+      maxHoursPerSite: ROLLUP_MAX_HOURS_PER_SITE,
+    },
+  );
+
+  for (const site of candidates) {
     if (!site.siteId) continue;
     const firstClosedHour = await readFirstClosedHour(
       env,
       site.siteId,
       endHour,
     );
-    if (firstClosedHour === null) continue;
+    if (firstClosedHour === null) {
+      summary.sitesSkippedNoClosedVisit += 1;
+      continue;
+    }
     const startHour =
       site.aggregatedUntilHour === null
         ? firstClosedHour
         : Math.max(firstClosedHour, site.aggregatedUntilHour + 1);
-    if (startHour > endHour) continue;
+    if (startHour > endHour) {
+      summary.sitesAlreadyCurrent += 1;
+      continue;
+    }
     const batchEndHour = Math.min(
       endHour,
       startHour + ROLLUP_MAX_HOURS_PER_SITE - 1,
@@ -1121,17 +1185,49 @@ export async function runHourlyAggregation(
       minOpenHour !== null && minOpenHour <= batchEndHour
         ? minOpenHour - 1
         : batchEndHour;
-    if (safeEndHour < startHour) continue;
+    if (safeEndHour < startHour) {
+      summary.sitesBlockedByOpenVisit += 1;
+      continue;
+    }
     try {
-      await aggregateSiteHours(
+      const rollupRowsWritten = await aggregateSiteHours(
         env,
         site.siteId,
         startHour,
         safeEndHour,
         cutoffMs,
       );
+      summary.sitesProcessed += 1;
+      summary.hoursAggregated += safeEndHour - startHour + 1;
+      summary.rollupRowsWritten += rollupRowsWritten;
     } catch (error) {
+      summary.sitesFailed += 1;
+      await options.logger?.error(
+        "site_aggregation_failed",
+        "Failed to aggregate a site",
+        {
+          siteId: site.siteId,
+          startHour,
+          endHour: safeEndHour,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       await markAggregationFailed(env, site.siteId, error);
     }
   }
+  const status =
+    summary.sitesFailed > 0
+      ? "partial"
+      : summary.sitesProcessed > 0
+        ? "success"
+        : "skipped";
+  await options.logger?.info("aggregation_summary", "Aggregation completed", {
+    status,
+    candidateSites: summary.candidateSites,
+    sitesProcessed: summary.sitesProcessed,
+    sitesFailed: summary.sitesFailed,
+    hoursAggregated: summary.hoursAggregated,
+    rollupRowsWritten: summary.rollupRowsWritten,
+  });
+  return { status, summary: { ...summary } };
 }

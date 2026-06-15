@@ -1,6 +1,7 @@
 import { normalizeTimeZone } from "@/lib/dashboard/time-zone";
 import {
   generateDemoDoDiagnostic,
+  generateDemoScheduledTasks,
   generateDemoSystemPerformance,
   getDemoMembers,
   getDemoScriptSnippet,
@@ -177,6 +178,9 @@ export function handleDemoRequest(options: {
   }
   if (path.includes("/admin/script-snippet")) {
     return { ok: true, data: getDemoScriptSnippet(siteId) };
+  }
+  if (path.includes("/admin/scheduled-tasks")) {
+    return generateDemoScheduledTasks(params);
   }
   if (path.includes("/admin/system-performance")) {
     return generateDemoSystemPerformance(params);

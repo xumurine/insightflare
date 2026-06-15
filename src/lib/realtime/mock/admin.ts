@@ -4,6 +4,14 @@ import {
 } from "@/lib/realtime/demo-site-profiles";
 import { fnv1a, mulberry32, sFloat, sInt } from "@/lib/realtime/demo-utils";
 import { integrateViews } from "@/lib/realtime/mock/site-curves";
+import {
+  SCHEDULED_TASK_LOG_RETENTION_DAYS,
+  type ScheduledTaskRun,
+  type ScheduledTaskRunLog,
+  type ScheduledTasksData,
+  type ScheduledTaskStatus,
+  type ScheduledTaskSummary,
+} from "@/lib/scheduled-tasks";
 import type {
   DoDiagnosticAggregate,
   DoDiagnosticSiteEntry,
@@ -103,6 +111,278 @@ export function getDemoScriptSnippet(siteId: string) {
     siteId,
     src,
     snippet: `<script defer src="${src}"></script>`,
+  };
+}
+
+const DEMO_SCHEDULED_TASK_DEFINITIONS = [
+  {
+    key: "visit_hourly_rollup",
+    name: "Hourly visit aggregation",
+    description:
+      "Aggregates closed visit rows into hourly rollups for dashboard counters and trends.",
+    schedule: "Every hour",
+    trigger: "cron" as const,
+    enabled: true,
+  },
+  {
+    key: "email_digest",
+    name: "Scheduled email delivery",
+    description:
+      "Reserved for scheduled team reports and alert digests. Not enabled yet.",
+    schedule: "Not configured",
+    trigger: "cron" as const,
+    enabled: false,
+  },
+];
+
+function demoScheduledTaskStatus(index: number): ScheduledTaskStatus {
+  if (index === 0) return "success";
+  if (index % 29 === 0) return "failed";
+  if (index % 17 === 0) return "partial";
+  if (index % 11 === 0) return "skipped";
+  return "success";
+}
+
+function demoScheduledRuns(now: number): ScheduledTaskRun[] {
+  const runs: ScheduledTaskRun[] = [];
+  for (let index = 0; index < 30 * 24; index += 1) {
+    const startedAt =
+      now -
+      index * 60 * 60 * 1000 -
+      sInt(mulberry32(fnv1a(`scheduled-run:${index}:offset`)), 8_000, 90_000);
+    const status = demoScheduledTaskStatus(index);
+    const rng = mulberry32(fnv1a(`scheduled-run:${index}`));
+    const processedSites = status === "skipped" ? 0 : sInt(rng, 7, 12);
+    const failedSites = status === "failed" ? 3 : status === "partial" ? 1 : 0;
+    const hoursAggregated =
+      status === "skipped" ? 0 : processedSites * sInt(rng, 4, 14);
+    const durationMs =
+      status === "skipped" ? sInt(rng, 140, 420) : sInt(rng, 1_300, 7_800);
+    runs.push({
+      id: `demo-run-${String(index).padStart(4, "0")}`,
+      invocationId: `demo-invocation-${String(index).padStart(4, "0")}`,
+      taskKey: "visit_hourly_rollup",
+      taskName: "Hourly visit aggregation",
+      triggerType: "cron",
+      status,
+      scheduledAt: Math.floor(startedAt / (60 * 60 * 1000)) * 60 * 60 * 1000,
+      startedAt,
+      finishedAt: startedAt + durationMs,
+      durationMs,
+      scopeType: "system",
+      scopeId: null,
+      summary: {
+        cutoffMs: startedAt - 12 * 60 * 60 * 1000,
+        candidateSites: processedSites + (status === "skipped" ? 0 : 1),
+        sitesProcessed: processedSites,
+        sitesFailed: failedSites,
+        sitesBlockedByOpenVisit: status === "partial" ? 1 : 0,
+        hoursAggregated,
+        rollupRowsWritten:
+          status === "skipped" ? 0 : hoursAggregated - sInt(rng, 0, 6),
+      },
+      errorName: status === "failed" ? "D1BatchError" : null,
+      errorMessage:
+        status === "failed"
+          ? "D1 batch rejected while updating one site rollup"
+          : status === "partial"
+            ? "One site failed; remaining sites completed"
+            : null,
+      workerVersion: "demo",
+      createdAt: startedAt,
+      expiresAt:
+        startedAt + SCHEDULED_TASK_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+    });
+  }
+  return runs;
+}
+
+function demoScheduledLogs(run: ScheduledTaskRun): ScheduledTaskRunLog[] {
+  const summary = run.summary as Record<string, number>;
+  const base = run.startedAt;
+  const rows: ScheduledTaskRunLog[] = [
+    {
+      id: `${run.id}-log-1`,
+      runId: run.id,
+      taskKey: run.taskKey,
+      sequence: 1,
+      level: "info",
+      event: "start",
+      message: "Task run started",
+      data: {
+        triggerType: run.triggerType,
+        scheduledAt: run.scheduledAt,
+      },
+      createdAt: base,
+    },
+    {
+      id: `${run.id}-log-2`,
+      runId: run.id,
+      taskKey: run.taskKey,
+      sequence: 2,
+      level: "info",
+      event: "aggregation_candidates",
+      message: "Aggregation candidates loaded",
+      data: {
+        candidateSites: summary.candidateSites ?? 0,
+        lagHours: 12,
+        maxHoursPerSite: 168,
+      },
+      createdAt: base + 120,
+    },
+  ];
+  if (run.status === "partial" || run.status === "failed") {
+    rows.push({
+      id: `${run.id}-log-3`,
+      runId: run.id,
+      taskKey: run.taskKey,
+      sequence: 3,
+      level: run.status === "failed" ? "error" : "warn",
+      event: "site_aggregation_failed",
+      message: "Failed to aggregate a site",
+      data: {
+        siteId: "demo-site-006",
+        error: run.errorMessage ?? "Unknown aggregation failure",
+      },
+      createdAt: base + 360,
+    });
+  }
+  rows.push(
+    {
+      id: `${run.id}-log-4`,
+      runId: run.id,
+      taskKey: run.taskKey,
+      sequence: 4,
+      level: "info",
+      event: "aggregation_summary",
+      message: "Aggregation completed",
+      data: {
+        status: run.status,
+        sitesProcessed: summary.sitesProcessed ?? 0,
+        sitesFailed: summary.sitesFailed ?? 0,
+        hoursAggregated: summary.hoursAggregated ?? 0,
+        rollupRowsWritten: summary.rollupRowsWritten ?? 0,
+      },
+      createdAt: base + Math.max(420, Math.floor((run.durationMs ?? 0) * 0.72)),
+    },
+    {
+      id: `${run.id}-log-5`,
+      runId: run.id,
+      taskKey: run.taskKey,
+      sequence: 5,
+      level: run.status === "failed" ? "error" : "info",
+      event: run.status === "failed" ? "error" : "finish",
+      message:
+        run.status === "failed"
+          ? (run.errorMessage ?? "Task failed")
+          : "Task run finished",
+      data: {
+        status: run.status,
+        durationMs: run.durationMs ?? 0,
+      },
+      createdAt: run.finishedAt ?? base,
+    },
+  );
+  return rows.sort((left, right) => left.sequence - right.sequence);
+}
+
+function countByStatus(runs: ScheduledTaskRun[], status: ScheduledTaskStatus) {
+  return runs.filter((run) => run.status === status).length;
+}
+
+function demoTaskSummary(
+  definition: (typeof DEMO_SCHEDULED_TASK_DEFINITIONS)[number],
+  runs: ScheduledTaskRun[],
+): ScheduledTaskSummary {
+  const taskRuns = runs.filter((run) => run.taskKey === definition.key);
+  const success30d = countByStatus(taskRuns, "success");
+  const durations = taskRuns
+    .map((run) => run.durationMs)
+    .filter((value): value is number => typeof value === "number");
+  return {
+    ...definition,
+    lastRun: taskRuns[0] ?? null,
+    runs30d: taskRuns.length,
+    success30d,
+    partial30d: countByStatus(taskRuns, "partial"),
+    failed30d: countByStatus(taskRuns, "failed"),
+    skipped30d: countByStatus(taskRuns, "skipped"),
+    running: countByStatus(taskRuns, "running"),
+    successRate30d: taskRuns.length > 0 ? success30d / taskRuns.length : null,
+    avgDurationMs:
+      durations.length > 0
+        ? durations.reduce((sum, value) => sum + value, 0) / durations.length
+        : null,
+  };
+}
+
+function parseDemoScheduledTaskLimit(
+  value: string | number | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = Math.trunc(Number(value ?? fallback));
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+export function generateDemoScheduledTasks(
+  params: Record<string, string | number>,
+): ScheduledTasksData {
+  const now = Date.now();
+  const allRuns = demoScheduledRuns(now);
+  const taskKey = String(params.taskKey || "");
+  const status = String(params.status || "");
+  const page = parseDemoScheduledTaskLimit(params.page, 1, 1, 10_000);
+  const pageSize = parseDemoScheduledTaskLimit(
+    params.pageSize ?? params.limit,
+    50,
+    1,
+    100,
+  );
+  const filteredRuns = allRuns
+    .filter((run) => !taskKey || run.taskKey === taskKey)
+    .filter((run) => !status || run.status === status);
+  const offset = (page - 1) * pageSize;
+  const requestedRuns = filteredRuns.slice(offset, offset + pageSize + 1);
+  const hasMore = requestedRuns.length > pageSize;
+  const runs = requestedRuns.slice(0, pageSize);
+  const requestedRunId = String(params.runId || "");
+  const selectedRun =
+    (requestedRunId
+      ? (allRuns.find((run) => run.id === requestedRunId) ?? null)
+      : runs[0]) ?? null;
+  const runs24h = allRuns.filter(
+    (run) => run.startedAt >= now - 24 * 60 * 60 * 1000,
+  );
+  const success24h = countByStatus(runs24h, "success");
+  return {
+    ok: true,
+    generatedAt: now,
+    retentionDays: SCHEDULED_TASK_LOG_RETENTION_DAYS,
+    tasks: DEMO_SCHEDULED_TASK_DEFINITIONS.map((task) =>
+      demoTaskSummary(task, allRuns),
+    ),
+    runs,
+    runsMeta: {
+      page,
+      pageSize,
+      returned: runs.length,
+      hasMore,
+      nextPage: hasMore ? page + 1 : null,
+    },
+    selectedRun,
+    logs: selectedRun ? demoScheduledLogs(selectedRun) : [],
+    health: {
+      totalRuns24h: runs24h.length,
+      failedRuns24h: countByStatus(runs24h, "failed"),
+      partialRuns24h: countByStatus(runs24h, "partial"),
+      runningRuns: countByStatus(runs24h, "running"),
+      staleRunningRuns: 0,
+      successRate24h: runs24h.length > 0 ? success24h / runs24h.length : null,
+      lastRunAt: allRuns[0]?.startedAt ?? null,
+    },
   };
 }
 
