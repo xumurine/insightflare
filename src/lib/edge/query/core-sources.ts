@@ -21,10 +21,6 @@ visit_source AS (
   SELECT ${VISIT_SOURCE_COLUMNS}
   FROM visits
   WHERE site_id = ? AND started_at BETWEEN ? AND ?
-  UNION ALL
-  SELECT ${VISIT_SOURCE_COLUMNS}
-  FROM visits_archive
-  WHERE site_id = ? AND started_at BETWEEN ? AND ?
 )`;
 }
 
@@ -76,10 +72,6 @@ export function buildTargetVisitSourceCte(
 visit_source AS (
   SELECT ${VISIT_SOURCE_COLUMNS}
   FROM visits
-  WHERE site_id = ? AND ${targetColumn} = ?
-  UNION ALL
-  SELECT ${VISIT_SOURCE_COLUMNS}
-  FROM visits_archive
   WHERE site_id = ? AND ${targetColumn} = ?
 )`;
 }
@@ -187,14 +179,7 @@ export function visitSourceBindings(
   siteId: string,
   window: QueryWindow,
 ): Array<string | number> {
-  return [
-    siteId,
-    window.fromMs,
-    window.toMs,
-    siteId,
-    window.fromMs,
-    window.toMs,
-  ];
+  return [siteId, window.fromMs, window.toMs];
 }
 
 export function eventSourceBindings(
@@ -208,7 +193,7 @@ export function targetVisitSourceBindings(
   siteId: string,
   targetValue: string,
 ): Array<string | number> {
-  return [siteId, targetValue, siteId, targetValue];
+  return [siteId, targetValue];
 }
 
 export function detailCustomEventSourceBindings(
@@ -224,10 +209,6 @@ visit_source AS (
   SELECT ${VISIT_SOURCE_COLUMNS}
   FROM visits
   WHERE site_id IN (${placeholders}) AND started_at BETWEEN ? AND ?
-  UNION ALL
-  SELECT ${VISIT_SOURCE_COLUMNS}
-  FROM visits_archive
-  WHERE site_id IN (${placeholders}) AND started_at BETWEEN ? AND ?
 )`;
 }
 
@@ -235,14 +216,7 @@ export function visitSourceBindingsForSites(
   siteIds: string[],
   window: QueryWindow,
 ): Array<string | number> {
-  return [
-    ...siteIds,
-    window.fromMs,
-    window.toMs,
-    ...siteIds,
-    window.fromMs,
-    window.toMs,
-  ];
+  return [...siteIds, window.fromMs, window.toMs];
 }
 
 export async function queryD1All<T extends object>(

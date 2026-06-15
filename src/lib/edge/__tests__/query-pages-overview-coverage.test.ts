@@ -70,14 +70,7 @@ function createD1Env(resultSets: D1Row[][]): {
 }
 
 function visitBindings(targetWindow = window): QueryBinding[] {
-  return [
-    siteId,
-    targetWindow.fromMs,
-    targetWindow.toMs,
-    siteId,
-    targetWindow.fromMs,
-    targetWindow.toMs,
-  ];
+  return [siteId, targetWindow.fromMs, targetWindow.toMs];
 }
 
 function url(path: string, params: Record<string, string | number | boolean>) {
@@ -688,9 +681,6 @@ describe("edge pages handlers", () => {
       siteId,
       Math.max(window.fromMs - 1 - (window.toMs - window.fromMs), 0),
       window.fromMs - 1,
-      siteId,
-      Math.max(window.fromMs - 1 - (window.toMs - window.fromMs), 0),
-      window.fromMs - 1,
       "/pricing",
       "/docs",
     ]);
@@ -795,6 +785,7 @@ describe("edge overview D1 queries and handlers", () => {
 
   it("returns overview metrics with previous change rates and detail trend mapping", async () => {
     const { env, calls } = createD1Env([
+      [],
       [
         {
           views: 10,
@@ -805,6 +796,7 @@ describe("edge overview D1 queries and handlers", () => {
           durationViews: 10,
         },
       ],
+      [],
       [
         {
           views: 5,
@@ -815,6 +807,7 @@ describe("edge overview D1 queries and handlers", () => {
           durationViews: 5,
         },
       ],
+      [],
       [
         {
           bucket: 0,
@@ -887,17 +880,17 @@ describe("edge overview D1 queries and handlers", () => {
         ],
       },
     });
-    expect(calls).toHaveLength(3);
-    expect(calls[0].bindings).toEqual(visitBindings());
-    expect(calls[1].bindings).toEqual([
-      siteId,
-      Math.max(window.fromMs - 1 - (window.toMs - window.fromMs), 0),
-      window.fromMs - 1,
+    expect(calls).toHaveLength(6);
+    expect(calls[0].sql).toContain("visit_hourly_aggregation_state");
+    expect(calls[1].bindings).toEqual(visitBindings());
+    expect(calls[2].sql).toContain("visit_hourly_aggregation_state");
+    expect(calls[3].bindings).toEqual([
       siteId,
       Math.max(window.fromMs - 1 - (window.toMs - window.fromMs), 0),
       window.fromMs - 1,
     ]);
-    expect(calls[2].bindings).toEqual(visitBindings());
+    expect(calls[4].sql).toContain("visit_hourly_aggregation_state");
+    expect(calls[5].bindings).toEqual(visitBindings());
   });
 
   it("maps trend handler rows without optional overview change payload", async () => {

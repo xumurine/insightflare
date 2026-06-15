@@ -180,11 +180,15 @@ export async function handleTeamsAdmin(
           .bind(...siteIds)
           .run();
         await env.DB.prepare(
-          `DELETE FROM visits_archive WHERE site_id IN (${sitePlaceholders})`,
+          `DELETE FROM visit_hourly_rollups WHERE site_id IN (${sitePlaceholders})`,
         )
           .bind(...siteIds)
           .run();
-
+        await env.DB.prepare(
+          `DELETE FROM visit_hourly_aggregation_state WHERE site_id IN (${sitePlaceholders})`,
+        )
+          .bind(...siteIds)
+          .run();
         const configKeys = siteIds.map((id) => `site:${id}`);
         const cfgPlaceholders = configKeys.map(() => "?").join(",");
         await env.DB.prepare(

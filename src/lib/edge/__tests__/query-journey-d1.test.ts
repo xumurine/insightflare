@@ -67,14 +67,7 @@ function createD1Env(resultSets: D1Row[][]): {
 }
 
 function visitBindings(window: QueryWindow): QueryBinding[] {
-  return [
-    siteId,
-    window.fromMs,
-    window.toMs,
-    siteId,
-    window.fromMs,
-    window.toMs,
-  ];
+  return [siteId, window.fromMs, window.toMs];
 }
 
 function eventBindings(window: QueryWindow): QueryBinding[] {
@@ -197,13 +190,7 @@ describe("edge journey detail D1 queries", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0].sql).toContain("visitor_id = ?");
-    expect(calls[0].bindings).toEqual([
-      siteId,
-      "visitor-missing",
-      siteId,
-      "visitor-missing",
-      siteId,
-    ]);
+    expect(calls[0].bindings).toEqual([siteId, "visitor-missing", siteId]);
   });
 
   it("combines visitor, session, and event rows into visitor detail metrics", async () => {
@@ -270,9 +257,9 @@ describe("edge journey detail D1 queries", () => {
       "session-start:session-2",
     );
     expect(calls.map((call) => call.bindings)).toEqual([
-      [siteId, "visitor-1", siteId, "visitor-1", siteId],
-      [siteId, "visitor-1", siteId, "visitor-1", siteId],
-      [siteId, "visitor-1", siteId, "visitor-1", siteId],
+      [siteId, "visitor-1", siteId],
+      [siteId, "visitor-1", siteId],
+      [siteId, "visitor-1", siteId],
     ]);
   });
 
@@ -479,12 +466,7 @@ describe("edge journey detail D1 queries", () => {
 
     expect(calls[0].sql).toContain("session_id = ?");
     expect(calls[1].sql).toContain("UNION ALL");
-    expect(calls[2].bindings).toEqual([
-      siteId,
-      "session-2",
-      siteId,
-      "session-2",
-    ]);
+    expect(calls[2].bindings).toEqual([siteId, "session-2"]);
   });
 });
 
@@ -524,7 +506,7 @@ describe("edge journey list D1 queries", () => {
 
     expect(calls[0].sql).toContain("matched_visitors");
     expect(calls[0].sql).toContain("ORDER BY views ASC");
-    expect(calls[0].bindings.slice(0, 11)).toEqual([
+    expect(calls[0].bindings.slice(0, 8)).toEqual([
       ...visitBindings(window),
       ...eventBindings(window),
       "123",
@@ -554,7 +536,7 @@ describe("edge journey list D1 queries", () => {
 
     expect(calls[0].sql).toContain("matched_sessions");
     expect(calls[0].sql).toContain("ORDER BY totalDurationMs ASC");
-    expect(calls[0].bindings.slice(0, 11)).toEqual([
+    expect(calls[0].bindings.slice(0, 8)).toEqual([
       ...visitBindings(window),
       ...eventBindings(window),
       "session-1",

@@ -2034,7 +2034,7 @@ describe("private admin edge handler", () => {
     it("deletes teams and cascades site data cleanup", async () => {
       setSession(adminSession);
       deleteSiteScriptSettingsMock.mockResolvedValue(undefined);
-      const deleteStatements = Array.from({ length: 10 }, () => statement());
+      const deleteStatements = Array.from({ length: 12 }, () => statement());
       const { env } = createEnv([
         statement({ first: userRow() }),
         statement({
@@ -2063,11 +2063,13 @@ describe("private admin edge handler", () => {
         data: { teamId: "team-1", removed: true },
       });
       expect(deleteStatements[0].bind).toHaveBeenCalledWith("site-1", "site-2");
-      expect(deleteStatements[8].bind).toHaveBeenCalledWith(
+      expect(deleteStatements[7].bind).toHaveBeenCalledWith("site-1", "site-2");
+      expect(deleteStatements[8].bind).toHaveBeenCalledWith("site-1", "site-2");
+      expect(deleteStatements[9].bind).toHaveBeenCalledWith(
         "site:site-1",
         "site:site-2",
       );
-      expect(deleteStatements[9].bind).toHaveBeenCalledWith("team-1");
+      expect(deleteStatements[10].bind).toHaveBeenCalledWith("team-1");
       expect(deleteSiteScriptSettingsMock).toHaveBeenCalledWith(env, "site-1");
       expect(deleteSiteScriptSettingsMock).toHaveBeenCalledWith(env, "site-2");
     });
@@ -2480,7 +2482,7 @@ describe("private admin edge handler", () => {
     it("removes sites and ignores best-effort settings cleanup failures", async () => {
       setSession(adminSession);
       deleteSiteScriptSettingsMock.mockRejectedValue(new Error("kv down"));
-      const deleteStatements = Array.from({ length: 10 }, () => statement());
+      const deleteStatements = Array.from({ length: 12 }, () => statement());
       const { env } = createEnv([
         statement({ first: userRow() }),
         statement({
@@ -2507,7 +2509,9 @@ describe("private admin edge handler", () => {
         ok: true,
         data: { siteId: "site-1", teamId: "team-1", removed: true },
       });
-      expect(deleteStatements.at(-1)?.bind).toHaveBeenCalledWith("site-1");
+      expect(deleteStatements[8].bind).toHaveBeenCalledWith("site-1");
+      expect(deleteStatements[9].bind).toHaveBeenCalledWith("site-1");
+      expect(deleteStatements[10].bind).toHaveBeenCalledWith("site-1");
       expect(deleteSiteScriptSettingsMock).toHaveBeenCalledWith(env, "site-1");
     });
   });

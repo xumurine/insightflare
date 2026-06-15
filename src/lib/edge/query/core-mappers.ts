@@ -59,10 +59,7 @@ export function mapPageCardMetrics(row: OverviewAggregateRow) {
   };
 }
 
-export function mapTrendRows(
-  rows: TrendAggregateRow[],
-  source: "detail" | "archive" | "mixed",
-) {
+export function mapTrendRows(rows: TrendAggregateRow[], source: "detail") {
   return rows.map((row) => ({
     bucket: row.bucket,
     timestampMs: row.timestampMs,

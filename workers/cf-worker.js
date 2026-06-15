@@ -1,5 +1,5 @@
 import nextWorker from "../.open-next/worker.js";
-import { runHourlyArchive } from "../src/lib/edge/archive";
+import { runHourlyAggregation } from "../src/lib/edge/hourly-rollup";
 import { IngestDurableObject as BaseIngestDurableObject } from "../src/lib/edge/ingest-do";
 
 async function handleAdminWs(request, env) {
@@ -24,6 +24,6 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(runHourlyArchive(env, controller.scheduledTime));
+    ctx.waitUntil(runHourlyAggregation(env, controller.scheduledTime));
   },
 };

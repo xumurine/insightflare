@@ -1,3 +1,8 @@
+import {
+  hasDashboardFilters,
+  queryOverviewForSitesFromHourlyRollups,
+  queryTrendForSitesFromHourlyRollups,
+} from "@/lib/edge/hourly-rollup";
 import type { Env } from "@/lib/edge/types";
 
 import type {
@@ -187,6 +192,21 @@ export async function queryOverviewAggregate(
   window: QueryWindow,
   filters: DashboardFilters,
 ): Promise<PreferredSourceResult<OverviewAggregateRow>> {
+  if (!hasDashboardFilters(filters)) {
+    const rollup = await queryOverviewForSitesFromHourlyRollups(
+      env,
+      [siteId],
+      window,
+    );
+    const value = rollup?.get(siteId);
+    if (value) {
+      return {
+        value,
+        source: "d1",
+        approximateVisitors: false,
+      };
+    }
+  }
   return {
     value: await queryOverviewFromD1(env, siteId, window, filters),
     source: "d1",
@@ -201,6 +221,22 @@ export async function queryTrendAggregate(
   interval: Interval,
   filters: DashboardFilters,
 ): Promise<PreferredSourceResult<TrendAggregateRow[]>> {
+  if (!hasDashboardFilters(filters)) {
+    const rollup = await queryTrendForSitesFromHourlyRollups(
+      env,
+      [siteId],
+      window,
+      interval,
+    );
+    if (rollup) {
+      return {
+        value: rollup
+          .filter((row) => row.siteId === siteId)
+          .map(({ siteId: _siteId, ...row }) => row),
+        source: "d1",
+      };
+    }
+  }
   return {
     value: await queryTrendFromD1(env, siteId, window, interval, filters),
     source: "d1",

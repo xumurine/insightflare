@@ -205,6 +205,9 @@ describe("edge team query low branch coverage", () => {
         ],
         [],
         [],
+        [],
+        [],
+        [],
         [{ siteId: "site-1", bucket: 0, views: 3, visitors: 2 }],
       ],
       [{ id: "team-1" }],
@@ -241,8 +244,8 @@ describe("edge team query low branch coverage", () => {
         ],
       },
     });
-    expect(calls).toHaveLength(5);
-    expect(calls[4].sql).toContain(
+    expect(calls).toHaveLength(8);
+    expect(calls[7].sql).toContain(
       `started_at >= ${FROM} AND started_at < ${FROM + 24 * 60 * 60 * 1000}`,
     );
   });

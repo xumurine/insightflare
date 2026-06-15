@@ -56,14 +56,7 @@ function createD1Env(resultSets: D1Row[][]): {
 }
 
 function visitBindings(siteId: string, window: QueryWindow) {
-  return [
-    siteId,
-    window.fromMs,
-    window.toMs,
-    siteId,
-    window.fromMs,
-    window.toMs,
-  ];
+  return [siteId, window.fromMs, window.toMs];
 }
 
 describe("edge query technology dimension parsers", () => {

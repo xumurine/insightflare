@@ -1,3 +1,7 @@
+import {
+  queryOverviewForSitesFromHourlyRollups,
+  queryTrendForSitesFromHourlyRollups,
+} from "@/lib/edge/hourly-rollup";
 import type { Env } from "@/lib/edge/types";
 
 import type {
@@ -92,6 +96,20 @@ GROUP BY siteId
   );
 }
 
+async function queryTeamOverviewAggregate(
+  env: Env,
+  siteIds: string[],
+  window: QueryWindow,
+): Promise<Map<string, OverviewAggregateRow>> {
+  const rollup = await queryOverviewForSitesFromHourlyRollups(
+    env,
+    siteIds,
+    window,
+  );
+  if (rollup) return rollup;
+  return queryTeamOverviewFromD1(env, siteIds, window);
+}
+
 export interface TeamTrendRow {
   siteId: string;
   bucket: number;
@@ -133,6 +151,30 @@ ORDER BY bucket ASC, siteId ASC
     views: Number(row.views ?? 0),
     visitors: Number(row.visitors ?? 0),
   }));
+}
+
+async function queryTeamTrendAggregate(
+  env: Env,
+  siteIds: string[],
+  window: QueryWindow,
+  interval: Interval,
+): Promise<TeamTrendRow[]> {
+  const rollup = await queryTrendForSitesFromHourlyRollups(
+    env,
+    siteIds,
+    window,
+    interval,
+  );
+  if (rollup) {
+    return rollup.map((row) => ({
+      siteId: row.siteId,
+      bucket: row.bucket,
+      timestampMs: row.timestampMs,
+      views: row.views,
+      visitors: row.visitors,
+    }));
+  }
+  return queryTeamTrendFromD1(env, siteIds, window, interval);
 }
 
 export async function listTeamSites(
@@ -196,9 +238,9 @@ export async function handleTeamDashboard(
   };
   const siteIds = sites.map((site) => site.id);
   const [currentOverview, previousOverview, trendRows] = await Promise.all([
-    queryTeamOverviewFromD1(env, siteIds, window),
-    queryTeamOverviewFromD1(env, siteIds, previousWindow),
-    queryTeamTrendFromD1(env, siteIds, window, interval),
+    queryTeamOverviewAggregate(env, siteIds, window),
+    queryTeamOverviewAggregate(env, siteIds, previousWindow),
+    queryTeamTrendAggregate(env, siteIds, window, interval),
   ]);
 
   const sitePayload = sites.map((site, index) => {

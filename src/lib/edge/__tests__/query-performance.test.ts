@@ -44,14 +44,7 @@ const window: QueryWindow = {
   nowMs: Date.UTC(2026, 0, 2, 3, 5),
   timeZone: "UTC",
 };
-const visitBindings = [
-  siteId,
-  window.fromMs,
-  window.toMs,
-  siteId,
-  window.fromMs,
-  window.toMs,
-];
+const visitBindings = [siteId, window.fromMs, window.toMs];
 
 describe("edge query performance D1 helpers", () => {
   it("maps metric summaries, leaves missing metrics empty, and binds filters", async () => {
@@ -111,7 +104,7 @@ describe("edge query performance D1 helpers", () => {
     });
     expect(calls).toHaveLength(1);
     expect(calls[0]?.sql).toContain("metric_thresholds AS");
-    expect(calls[0]?.sql).toContain("FROM visits_archive");
+    expect(calls[0]?.sql).toContain("FROM visits");
     expect(calls[0]?.sql).toContain("perf_cls AS metricValue");
     expect(calls[0]?.bindings).toEqual([
       ...visitBindings,

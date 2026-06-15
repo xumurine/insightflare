@@ -83,14 +83,7 @@ function createD1Env(resultSets: D1Row[][]): {
 }
 
 function visitBindings(targetWindow = window): QueryBinding[] {
-  return [
-    siteId,
-    targetWindow.fromMs,
-    targetWindow.toMs,
-    siteId,
-    targetWindow.fromMs,
-    targetWindow.toMs,
-  ];
+  return [siteId, targetWindow.fromMs, targetWindow.toMs];
 }
 
 function eventBindings(targetWindow = window): QueryBinding[] {

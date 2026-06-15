@@ -4,7 +4,7 @@ import {
 } from "@/lib/dashboard/time-zone";
 import { ONE_DAY_MS, ONE_HOUR_MS } from "@/lib/edge/utils";
 
-import { type Interval, type QueryWindow, RETENTION_DAYS } from "./core-types";
+import { type Interval, type QueryWindow } from "./core-types";
 
 export function appendSqlConditions(
   baseClause: string,
@@ -20,12 +20,7 @@ export function appendSqlConditions(
   return `WHERE ${normalizedConditions.join(" AND ")}`;
 }
 
-export function sourceLabel(
-  window: QueryWindow,
-): "detail" | "archive" | "mixed" {
-  const archiveCutoff = window.nowMs - RETENTION_DAYS * ONE_DAY_MS;
-  if (window.toMs < archiveCutoff) return "archive";
-  if (window.fromMs < archiveCutoff) return "mixed";
+export function sourceLabel(_window: QueryWindow): "detail" {
   return "detail";
 }
 

@@ -87,25 +87,11 @@ function createD1Env(resultSets: D1Row[][], firstRows: D1Row[] = []) {
 }
 
 function visitBindingsForSites(siteIds: string[]) {
-  return [
-    ...siteIds,
-    window.fromMs,
-    window.toMs,
-    ...siteIds,
-    window.fromMs,
-    window.toMs,
-  ];
+  return [...siteIds, window.fromMs, window.toMs];
 }
 
 function visitBindings(targetWindow = window) {
-  return [
-    siteId,
-    targetWindow.fromMs,
-    targetWindow.toMs,
-    siteId,
-    targetWindow.fromMs,
-    targetWindow.toMs,
-  ];
+  return [siteId, targetWindow.fromMs, targetWindow.toMs];
 }
 
 function url(path: string, params: Record<string, string | number | boolean>) {
@@ -296,6 +282,9 @@ describe("edge team query coverage", () => {
             updatedAt: 18,
           },
         ],
+        [],
+        [],
+        [],
         [
           {
             siteId: "site-a",
@@ -398,6 +387,22 @@ describe("edge team query coverage", () => {
     expect(calls[1]).toMatchObject({
       kind: "all",
       bindings: ["team-1"],
+    });
+    expect(calls[2]).toMatchObject({
+      kind: "all",
+      bindings: ["site-a", "site-b"],
+    });
+    expect(calls[3]).toMatchObject({
+      kind: "all",
+      bindings: ["site-a", "site-b"],
+    });
+    expect(calls[4]).toMatchObject({
+      kind: "all",
+      bindings: ["site-a", "site-b"],
+    });
+    expect(calls[5]).toMatchObject({
+      kind: "all",
+      bindings: ["site-a", "site-b", window.fromMs, window.toMs],
     });
   });
 

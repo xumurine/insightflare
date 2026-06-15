@@ -27,7 +27,7 @@ export interface OverviewDetailPoint {
   bounces: number;
   totalDurationMs: number;
   avgDurationMs: number;
-  source: "detail" | "archive" | "mixed";
+  source: "detail";
 }
 
 export interface OverviewDetailData {
@@ -52,7 +52,7 @@ export interface TrendPoint {
   bounces: number;
   totalDurationMs: number;
   avgDurationMs: number;
-  source: "detail" | "archive" | "mixed";
+  source: "detail";
 }
 
 export interface TrendData {

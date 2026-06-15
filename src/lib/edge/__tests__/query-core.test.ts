@@ -55,7 +55,6 @@ import {
   parseWindow,
   performanceMetricColumn,
   type QueryWindow,
-  RETENTION_DAYS,
   shareTrendSeriesKey,
   sourceLabel,
   timeBucketCase,
@@ -301,18 +300,13 @@ describe("edge query core dimensions", () => {
 
 describe("edge query core time helpers", () => {
   const nowMs = Date.UTC(2026, 4, 26);
-  const cutoff = nowMs - RETENTION_DAYS * 86_400_000;
 
   function window(fromMs: number, toMs: number): QueryWindow {
     return { fromMs, toMs, nowMs, timeZone: "UTC" };
   }
 
-  it("labels query windows by detail/archive coverage", () => {
-    expect(sourceLabel(window(cutoff, nowMs))).toBe("detail");
-    expect(sourceLabel(window(cutoff - 1, cutoff))).toBe("mixed");
-    expect(sourceLabel(window(cutoff - 86_400_000, cutoff - 1))).toBe(
-      "archive",
-    );
+  it("labels query windows as detail data", () => {
+    expect(sourceLabel(window(0, nowMs))).toBe("detail");
   });
 
   it("builds zoned buckets and SQL bucket cases", () => {
@@ -429,7 +423,7 @@ describe("edge query core mappers", () => {
             durationViews: 0,
           },
         ],
-        "mixed",
+        "detail",
       ),
     ).toEqual([
       {
@@ -441,7 +435,7 @@ describe("edge query core mappers", () => {
         bounces: 1,
         totalDurationMs: 999,
         avgDurationMs: 500,
-        source: "mixed",
+        source: "detail",
       },
     ]);
 

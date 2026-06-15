@@ -133,10 +133,15 @@ export async function handleSitesAdmin(
       )
         .bind(siteId)
         .run();
-      await env.DB.prepare("DELETE FROM visits_archive WHERE site_id=?")
+      await env.DB.prepare("DELETE FROM visits WHERE site_id=?")
         .bind(siteId)
         .run();
-      await env.DB.prepare("DELETE FROM visits WHERE site_id=?")
+      await env.DB.prepare("DELETE FROM visit_hourly_rollups WHERE site_id=?")
+        .bind(siteId)
+        .run();
+      await env.DB.prepare(
+        "DELETE FROM visit_hourly_aggregation_state WHERE site_id=?",
+      )
         .bind(siteId)
         .run();
       await env.DB.prepare("DELETE FROM sites WHERE id=?").bind(siteId).run();

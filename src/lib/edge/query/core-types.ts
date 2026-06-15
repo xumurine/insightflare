@@ -1,4 +1,3 @@
-export const RETENTION_DAYS = 365;
 export const PRIVATE_CACHE_HEADERS = {
   "cache-control": "private, no-store",
   vary: "authorization, cookie",
