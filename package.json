@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "npm run build:sdk && next dev --port 3000",
     "build:sdk": "tsx scripts/build-tracker-sdk.ts",
-    "build:pre": "tsx scripts/prebuild.ts && tsx scripts/build-tracker-sdk.ts",
+    "build:pre": "tsx scripts/prebuild.ts",
     "build:pre:local": "npm run build:pre -- --config wrangler.toml --target local",
     "build:pre:remote": "npm run build:pre -- --config wrangler.toml --target remote",
     "build": "npm run ci:build",

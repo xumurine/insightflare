@@ -75,6 +75,20 @@ function resolveWranglerCli(rootDir: string, edgeDir: string): string {
   );
 }
 
+function resolveTsxCli(rootDir: string): string {
+  const candidate = path.join(
+    rootDir,
+    "node_modules",
+    "tsx",
+    "dist",
+    "cli.mjs",
+  );
+  if (fs.existsSync(candidate)) return candidate;
+  throw new Error(
+    "Cannot resolve local tsx CLI (node_modules/tsx/dist/cli.mjs)",
+  );
+}
+
 async function main(): Promise<void> {
   const autoMigrateArg = pickArg("auto-migrate");
   const autoMigrate =
@@ -130,6 +144,15 @@ async function main(): Promise<void> {
   } else {
     log("INSIGHTFLARE_AUTO_MIGRATE=0, skip D1 migrations", "warn");
   }
+
+  run(
+    process.execPath,
+    [
+      resolveTsxCli(rootDir),
+      path.join(rootDir, "scripts", "build-tracker-sdk.ts"),
+    ],
+    rootDir,
+  );
 
   const cacheDir = path.join(process.cwd(), ".cache");
   if (!fs.existsSync(cacheDir)) {
