@@ -15,6 +15,10 @@ async function handleAdminWs(request, env) {
 
 export class IngestDurableObject extends BaseIngestDurableObject {}
 
+function shouldSkipScheduledTasks(env) {
+  return env.DISABLE_CRON_TASKS === "1" || env.NEXT_PUBLIC_DEMO_MODE === "1";
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -26,6 +30,15 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
+    if (shouldSkipScheduledTasks(env)) {
+      console.info(
+        JSON.stringify({
+          event: "scheduled_tasks_skipped",
+          reason: "disabled_by_environment",
+        }),
+      );
+      return;
+    }
     const task = getScheduledTaskDefinition("visit_hourly_rollup");
     ctx.waitUntil(
       runScheduledTask(

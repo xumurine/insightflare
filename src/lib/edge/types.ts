@@ -3,6 +3,8 @@ export interface Env {
   INGEST_DO: DurableObjectNamespace;
   ARCHIVE_BUCKET?: R2Bucket;
   DAILY_SALT_SECRET: string;
+  NEXT_PUBLIC_DEMO_MODE?: string;
+  DISABLE_CRON_TASKS?: string;
   ADMIN_WS_TOKEN?: string;
   DASHBOARD_SESSION_SECRET?: string;
   SESSION_SECRET?: string;
