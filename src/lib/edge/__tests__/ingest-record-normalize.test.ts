@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { normalizeIngestRecord } from "@/lib/edge/ingest-record-normalize";
-import type { StoredOpenVisit } from "@/lib/edge/ingest-types";
+import type {
+  RecentVisitorSession,
+  StoredOpenVisit,
+} from "@/lib/edge/ingest-types";
 import type {
   IngestEnvelopePayload,
   TrackerClientPayload,
@@ -104,6 +107,7 @@ function makeVisit(overrides: Partial<StoredOpenVisit> = {}): StoredOpenVisit {
 function makeContext(
   options: {
     visit?: StoredOpenVisit | null;
+    recentSession?: RecentVisitorSession | null;
     inserted?: boolean;
   } = {},
 ) {
@@ -114,6 +118,7 @@ function makeContext(
     context: {
       env: { DAILY_SALT_SECRET: "test-secret" },
       getVisitContext: async () => options.visit ?? null,
+      findRecentVisitorSession: async () => options.recentSession ?? null,
       insertBufferedCustomEvent: (record: never) => {
         buffered.push(record);
         return options.inserted ?? true;
@@ -262,6 +267,7 @@ describe("normalizeIngestRecord pageview records", () => {
       throw new Error("Expected a pageview record");
     }
     expect(result.record.sessionId).not.toBe("");
+    expect(result.record.clientSessionId).toBe("");
   });
 
   it("preserves non-EU visitor fields, parses cross-site referrers, and prefers client timezone", async () => {
@@ -313,7 +319,7 @@ describe("normalizeIngestRecord pageview records", () => {
     expect(result.record).toMatchObject({
       kind: "pageview",
       visitorId: "visitor-1",
-      sessionId: "session-1",
+      clientSessionId: "session-1",
       pathname: "/docs",
       hostname: "blog.example.com",
       referrerUrl: "https://search.example/results?q=docs",
@@ -339,6 +345,39 @@ describe("normalizeIngestRecord pageview records", () => {
       screenHeight: 900,
       browser: "Chromium",
       os: "Windows",
+    });
+    if (result.record?.kind !== "pageview") {
+      throw new Error("Expected a pageview record");
+    }
+    expect(result.record.sessionId).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("reuses a recent server-side visitor session", async () => {
+    const { context } = makeContext({
+      recentSession: {
+        sessionId: "server-session-1",
+        startedAt: receivedAt - 10_000,
+        lastActivityAt: receivedAt - 5_000,
+      },
+    });
+
+    await expect(
+      normalizeIngestRecord(
+        makeEnvelope({
+          kind: "pageview",
+          visitId: "visit-2",
+          visitorId: "visitor-1",
+          sessionId: "client-tab-session-2",
+          hostname: "example.com",
+        }),
+        context,
+      ),
+    ).resolves.toMatchObject({
+      record: {
+        kind: "pageview",
+        sessionId: "server-session-1",
+        clientSessionId: "client-tab-session-2",
+      },
     });
   });
 
@@ -387,7 +426,7 @@ describe("normalizeIngestRecord pageview records", () => {
       siteId: "s".repeat(120),
       visitId: "v".repeat(128),
       visitorId: expectedVisitorId,
-      sessionId: "session-1",
+      clientSessionId: "session-1",
       referrerUrl: "not a url",
       referrerHost: "",
       utmSource: longUtm.slice(0, 255),
@@ -403,6 +442,7 @@ describe("normalizeIngestRecord pageview records", () => {
       throw new Error("Expected a pageview record");
     }
     expect(result.record.pathname).toHaveLength(2048);
+    expect(result.record.sessionId).toMatch(/^[0-9a-f]{64}$/);
     expect(result.record.queryString).toHaveLength(2048);
     expect(result.record.hashFragment).toHaveLength(1024);
     expect(result.record.title).toHaveLength(1024);

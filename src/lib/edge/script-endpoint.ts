@@ -6,6 +6,7 @@ import {
   readSiteTrackingConfig,
 } from "./site-settings-store";
 import type { Env } from "./types";
+import { resolveSessionWindowMinutes } from "./utils";
 
 const SCRIPT_RESPONSE_CACHE_NAME = "insightflare-script-cache";
 const SCRIPT_RESPONSE_CACHE_TTL_SECONDS = 60 * 60;
@@ -174,11 +175,7 @@ export async function handleTrackerScriptRequest(
 
   const requestEuMode = isEUCountry(request);
   const euMode = determineEuMode(settings.trackingStrength, requestEuMode);
-  const sessionWindowMinutes = (() => {
-    const raw = Number(env.SESSION_WINDOW_MINUTES || "30");
-    if (!Number.isFinite(raw) || raw <= 0) return 30;
-    return Math.max(1, Math.min(24 * 60, Math.floor(raw)));
-  })();
+  const sessionWindowMinutes = resolveSessionWindowMinutes(env);
   const ttlSeconds = resolveScriptCacheTtlSeconds(env);
   const performanceSampleRate = Math.max(
     0,

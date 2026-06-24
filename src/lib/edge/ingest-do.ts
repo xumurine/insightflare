@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 
 import {
   attachPerformanceToVisit as attachPerformanceToVisitInBufferStore,
+  findRecentVisitorSession as findRecentVisitorSessionInBufferStore,
   getVisitContext as getVisitContextFromBufferStore,
   insertBufferedCustomEvent as insertBufferedCustomEventInBufferStore,
   insertBufferedVisitRow as insertBufferedVisitRowInBufferStore,
@@ -45,6 +46,7 @@ import type {
   BufferedCustomEventInput,
   BufferedVisitRow,
   NormalizeResult,
+  RecentVisitorSession,
   StoredOpenVisit,
 } from "./ingest-types";
 import type {
@@ -309,6 +311,7 @@ export class IngestDurableObject extends DurableObject {
     return normalizeIngestRecord(envelope, {
       env: this.doEnv,
       getVisitContext: this.getVisitContext.bind(this),
+      findRecentVisitorSession: this.findRecentVisitorSession.bind(this),
       insertBufferedCustomEvent: this.insertBufferedCustomEvent.bind(this),
       ensureAlarm: this.ensureAlarm.bind(this),
     });
@@ -317,30 +320,31 @@ export class IngestDurableObject extends DurableObject {
   private async handlePageview(record: NormalizedPageview): Promise<void> {
     const now = toUnixSeconds(record.receivedAt);
 
-    // Complete the previous open visit for this session (server-side duration calculation)
-    const prevVisit = this.sqlOne<{
-      visitId: string;
-      startedAt: number;
-      visitorId: string;
-      pathname: string;
-      country: string;
-      browser: string;
-    }>(
-      `
-        SELECT visit_id AS visitId, started_at AS startedAt, visitor_id AS visitorId,
-               pathname, country, browser
-        FROM buffered_visits
-        WHERE site_id = ?
-          AND session_id = ?
-          AND visit_id != ?
-          AND status IN ('open', 'hidden_pending')
-        ORDER BY started_at DESC
-        LIMIT 1
-      `,
-      record.siteId,
-      record.sessionId,
-      record.visitId,
-    );
+    const prevVisit = record.clientSessionId
+      ? this.sqlOne<{
+          visitId: string;
+          startedAt: number;
+          visitorId: string;
+          pathname: string;
+          country: string;
+          browser: string;
+        }>(
+          `
+            SELECT visit_id AS visitId, started_at AS startedAt, visitor_id AS visitorId,
+                   pathname, country, browser
+            FROM buffered_visits
+            WHERE site_id = ?
+              AND client_session_id = ?
+              AND visit_id != ?
+              AND status IN ('open', 'hidden_pending')
+            ORDER BY started_at DESC
+            LIMIT 1
+          `,
+          record.siteId,
+          record.clientSessionId,
+          record.visitId,
+        )
+      : null;
     if (prevVisit) {
       const durationMs = Math.max(0, record.startedAt - prevVisit.startedAt);
       const closedPrevious = this.sqlRun(
@@ -756,7 +760,19 @@ export class IngestDurableObject extends DurableObject {
   }
 
   private async handleIdentify(record: NormalizedIdentify): Promise<void> {
-    // Update buffered_visits
+    const updatedAt = toUnixSeconds(Date.now());
+    let serverSessionId =
+      this.sqlOne<{ sessionId: string }>(
+        `
+          SELECT session_id AS sessionId
+          FROM buffered_visits
+          WHERE visit_id = ? AND site_id = ?
+          LIMIT 1
+        `,
+        record.visitId,
+        record.siteId,
+      )?.sessionId || "";
+
     const rowsUpdated = this.sqlRun(
       `
         UPDATE buffered_visits
@@ -765,7 +781,7 @@ export class IngestDurableObject extends DurableObject {
       `,
       record.userId,
       record.userName || null,
-      toUnixSeconds(Date.now()),
+      updatedAt,
       record.visitId,
       record.siteId,
     );
@@ -782,8 +798,21 @@ export class IngestDurableObject extends DurableObject {
       record.siteId,
     );
 
-    // If the visit is already flushed to D1, update there too
     if (rowsUpdated === 0) {
+      if (!serverSessionId) {
+        const persistedVisit = await this.doEnv.DB.prepare(
+          `
+            SELECT session_id AS sessionId
+            FROM visits
+            WHERE visit_id = ? AND site_id = ?
+            LIMIT 1
+          `,
+        )
+          .bind(record.visitId, record.siteId)
+          .first<{ sessionId: string }>()
+          .catch(() => null);
+        serverSessionId = persistedVisit?.sessionId || "";
+      }
       await this.doEnv.DB.prepare(
         `
           UPDATE visits
@@ -801,8 +830,7 @@ export class IngestDurableObject extends DurableObject {
         .catch(() => {});
     }
 
-    // Also update any other buffered visits in the same session
-    if (record.sessionId) {
+    if (serverSessionId) {
       this.sqlRun(
         `
           UPDATE buffered_visits
@@ -811,8 +839,8 @@ export class IngestDurableObject extends DurableObject {
         `,
         record.userId,
         record.userName || null,
-        toUnixSeconds(Date.now()),
-        record.sessionId,
+        updatedAt,
+        serverSessionId,
         record.siteId,
         record.visitId,
       );
@@ -821,7 +849,7 @@ export class IngestDurableObject extends DurableObject {
       traceId: record.traceId || "",
       siteId: record.siteId,
       visitId: record.visitId,
-      sessionId: record.sessionId,
+      sessionId: serverSessionId,
       bufferedVisitRowsUpdated: rowsUpdated,
       updatedPersistedVisit: rowsUpdated === 0,
     });
@@ -835,6 +863,19 @@ export class IngestDurableObject extends DurableObject {
       this.bufferStoreContext(),
       siteId,
       visitId,
+    );
+  }
+
+  private async findRecentVisitorSession(input: {
+    siteId: string;
+    visitorId: string;
+    visitId: string;
+    startedAt: number;
+    sessionWindowMs: number;
+  }): Promise<RecentVisitorSession | null> {
+    return findRecentVisitorSessionInBufferStore(
+      this.bufferStoreContext(),
+      input,
     );
   }
 

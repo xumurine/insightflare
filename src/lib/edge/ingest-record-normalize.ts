@@ -11,6 +11,7 @@ import {
 import type {
   BufferedCustomEventInput,
   NormalizeResult,
+  RecentVisitorSession,
   StoredOpenVisit,
 } from "./ingest-types";
 import type {
@@ -29,16 +30,25 @@ import {
   coerceNumber,
   coerceString,
   deriveEuVisitorId,
+  deriveServerSessionId,
   isSameHostname,
+  resolveSessionWindowMinutes,
   safeHostname,
 } from "./utils";
 
 interface NormalizeRecordContext {
-  env: Pick<Env, "DAILY_SALT_SECRET">;
+  env: Pick<Env, "DAILY_SALT_SECRET" | "SESSION_WINDOW_MINUTES">;
   getVisitContext(
     siteId: string,
     visitId: string,
   ): Promise<StoredOpenVisit | null>;
+  findRecentVisitorSession(input: {
+    siteId: string;
+    visitorId: string;
+    visitId: string;
+    startedAt: number;
+    sessionWindowMs: number;
+  }): Promise<RecentVisitorSession | null>;
   insertBufferedCustomEvent(record: BufferedCustomEventInput): boolean;
   ensureAlarm(): Promise<void>;
 }
@@ -161,8 +171,24 @@ export async function normalizeIngestRecord(
     const referrerIsSameHostname = isSameHostname(rawReferrerHost, hostname);
     const referrerUrl = referrerIsSameHostname ? "" : rawReferrerUrl;
     const referrerHost = referrerIsSameHostname ? "" : rawReferrerHost;
+    const clientSessionId = clampString(coerceString(client.sessionId), 128);
+    const sessionWindowMinutes = resolveSessionWindowMinutes(context.env);
+    const recentSession = await context.findRecentVisitorSession({
+      siteId,
+      visitorId,
+      visitId,
+      startedAt,
+      sessionWindowMs: sessionWindowMinutes * 60 * 1000,
+    });
     const sessionId =
-      clampString(coerceString(client.sessionId), 128) || crypto.randomUUID();
+      recentSession?.sessionId ||
+      (await deriveServerSessionId({
+        siteId,
+        visitorId,
+        visitId,
+        startedAt,
+        secret: context.env.DAILY_SALT_SECRET,
+      }));
     const queryString = clampString(coerceString(client.query || ""), 2048);
     return {
       record: {
@@ -173,6 +199,7 @@ export async function normalizeIngestRecord(
         visitId,
         visitorId,
         sessionId,
+        clientSessionId,
         startedAt,
         pathname,
         queryString,

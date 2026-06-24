@@ -1,6 +1,8 @@
 export const TEN_MINUTES_MS = 10 * 60 * 1000;
 export const ONE_HOUR_MS = 60 * 60 * 1000;
 export const ONE_DAY_MS = 24 * ONE_HOUR_MS;
+export const DEFAULT_SESSION_WINDOW_MINUTES = 30;
+export const MAX_SESSION_WINDOW_MINUTES = 24 * 60;
 
 export function coerceString(input: unknown, fallback = ""): string {
   if (typeof input !== "string") {
@@ -89,6 +91,35 @@ export async function deriveEuVisitorId(input: {
 }): Promise<string> {
   const dailySalt = await deriveDailySalt(input.secret, input.eventAtMs);
   return sha256Hex(`${input.ip}|${input.ua}|${dailySalt}`);
+}
+
+export function resolveSessionWindowMinutes(input: {
+  SESSION_WINDOW_MINUTES?: string;
+}): number {
+  const raw = Number(input.SESSION_WINDOW_MINUTES || "");
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return DEFAULT_SESSION_WINDOW_MINUTES;
+  }
+  return Math.max(1, Math.min(MAX_SESSION_WINDOW_MINUTES, Math.floor(raw)));
+}
+
+export async function deriveServerSessionId(input: {
+  siteId: string;
+  visitorId: string;
+  visitId: string;
+  startedAt: number;
+  secret: string;
+}): Promise<string> {
+  return sha256Hex(
+    [
+      "server-session-v1",
+      input.siteId,
+      input.visitorId,
+      input.visitId,
+      String(Math.floor(input.startedAt)),
+      input.secret,
+    ].join("|"),
+  );
 }
 
 export async function deriveSessionId(input: {

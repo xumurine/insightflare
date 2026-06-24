@@ -4,14 +4,18 @@ import {
   clampString,
   coerceNumber,
   coerceString,
+  DEFAULT_SESSION_WINDOW_MINUTES,
   deriveDailySalt,
   deriveEuVisitorId,
+  deriveServerSessionId,
   deriveSessionId,
   isSameHostname,
   jsonCloneRecord,
+  MAX_SESSION_WINDOW_MINUTES,
   nowEpochSeconds,
   ONE_DAY_MS,
   ONE_HOUR_MS,
+  resolveSessionWindowMinutes,
   safeHostname,
   sha256Hex,
   TEN_MINUTES_MS,
@@ -22,6 +26,8 @@ describe("edge utility helpers", () => {
     expect(TEN_MINUTES_MS).toBe(600_000);
     expect(ONE_HOUR_MS).toBe(3_600_000);
     expect(ONE_DAY_MS).toBe(86_400_000);
+    expect(DEFAULT_SESSION_WINDOW_MINUTES).toBe(30);
+    expect(MAX_SESSION_WINDOW_MINUTES).toBe(1440);
   });
 
   it("coerces strings and numbers with fallbacks", () => {
@@ -100,6 +106,39 @@ describe("edge utility helpers", () => {
         sessionWindowMinutes: 30,
       }),
     ).resolves.toBe(sessionId);
+
+    const serverSessionId = await deriveServerSessionId({
+      siteId: "site-1",
+      visitorId,
+      visitId: "visit-1",
+      startedAt: eventAtMs,
+      secret: "secret",
+    });
+    expect(serverSessionId).toMatch(/^[0-9a-f]{64}$/);
+    await expect(
+      deriveServerSessionId({
+        siteId: "site-1",
+        visitorId,
+        visitId: "visit-1",
+        startedAt: eventAtMs,
+        secret: "secret",
+      }),
+    ).resolves.toBe(serverSessionId);
+  });
+
+  it("normalizes session window configuration", () => {
+    expect(resolveSessionWindowMinutes({ SESSION_WINDOW_MINUTES: "45" })).toBe(
+      45,
+    );
+    expect(resolveSessionWindowMinutes({ SESSION_WINDOW_MINUTES: "0" })).toBe(
+      30,
+    );
+    expect(resolveSessionWindowMinutes({ SESSION_WINDOW_MINUTES: "abc" })).toBe(
+      30,
+    );
+    expect(
+      resolveSessionWindowMinutes({ SESSION_WINDOW_MINUTES: "99999" }),
+    ).toBe(1440);
   });
 
   it("returns epoch seconds for the current time", () => {

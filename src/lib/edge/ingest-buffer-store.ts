@@ -2,6 +2,7 @@ import { errorToMessage, logDoTrace, toUnixSeconds } from "./ingest-log";
 import type {
   BufferedCustomEventInput,
   BufferedVisitRow,
+  RecentVisitorSession,
   SqlWriter,
   StoredOpenVisit,
   VisitRow,
@@ -121,6 +122,61 @@ export async function getVisitContext(
   };
 }
 
+export async function findRecentVisitorSession(
+  context: BufferStoreContext,
+  input: {
+    siteId: string;
+    visitorId: string;
+    visitId: string;
+    startedAt: number;
+    sessionWindowMs: number;
+  },
+): Promise<RecentVisitorSession | null> {
+  const cutoff = input.startedAt - input.sessionWindowMs;
+  const buffered = context.sqlOne<RecentVisitorSession>(
+    `
+      SELECT
+        session_id AS sessionId,
+        started_at AS startedAt,
+        last_activity_at AS lastActivityAt
+      FROM buffered_visits
+      WHERE site_id = ?
+        AND visitor_id = ?
+        AND visit_id != ?
+        AND session_id != ''
+        AND last_activity_at >= ?
+      ORDER BY last_activity_at DESC, started_at DESC
+      LIMIT 1
+    `,
+    input.siteId,
+    input.visitorId,
+    input.visitId,
+    cutoff,
+  );
+  if (buffered) return buffered;
+
+  const persisted = await context.env.DB.prepare(
+    `
+      SELECT
+        session_id AS sessionId,
+        started_at AS startedAt,
+        last_activity_at AS lastActivityAt
+      FROM visits
+      WHERE site_id = ?
+        AND visitor_id = ?
+        AND visit_id != ?
+        AND session_id != ''
+        AND last_activity_at >= ?
+      ORDER BY last_activity_at DESC, started_at DESC
+      LIMIT 1
+    `,
+  )
+    .bind(input.siteId, input.visitorId, input.visitId, cutoff)
+    .first<RecentVisitorSession>();
+
+  return persisted ?? null;
+}
+
 export async function readVisitRow(
   context: Pick<BufferStoreContext, "sqlOne">,
   siteId: string,
@@ -134,6 +190,7 @@ export async function readVisitRow(
         site_id AS siteId,
         visitor_id AS visitorId,
         session_id AS sessionId,
+        client_session_id AS clientSessionId,
         started_at AS startedAt,
         last_activity_at AS lastActivityAt,
         pathname,
@@ -198,6 +255,7 @@ export async function readPersistedVisitRow(
         site_id AS siteId,
         visitor_id AS visitorId,
         session_id AS sessionId,
+        '' AS clientSessionId,
         started_at AS startedAt,
         last_activity_at AS lastActivityAt,
         ended_at AS endedAt,
@@ -274,6 +332,7 @@ export function insertBufferedVisitRow(
     row.siteId,
     row.visitorId,
     row.sessionId,
+    row.clientSessionId,
     row.status,
     row.startedAt,
     row.lastActivityAt,
@@ -332,7 +391,7 @@ export function insertBufferedVisitRow(
   context.sqlRun(
     `
       INSERT OR REPLACE INTO buffered_visits (
-        visit_id, site_id, visitor_id, session_id, status, started_at, last_activity_at,
+        visit_id, site_id, visitor_id, session_id, client_session_id, status, started_at, last_activity_at,
         hidden_at, ended_at, finalized_at, duration_ms, duration_source, exit_reason,
         pathname, query_string, hash_fragment, hostname, title, referrer_url, referrer_host,
         utm_source, utm_medium, utm_campaign, utm_term, utm_content,
@@ -353,11 +412,66 @@ export async function insertVisit(
   record: NormalizedPageview,
 ): Promise<boolean> {
   const createdAt = toUnixSeconds(record.receivedAt);
+  const bindings: Array<string | number | null> = [
+    record.visitId,
+    record.siteId,
+    record.visitorId,
+    record.sessionId,
+    record.clientSessionId,
+    "open",
+    record.startedAt,
+    record.startedAt,
+    record.pathname,
+    record.queryString,
+    record.hashFragment,
+    record.hostname,
+    record.title,
+    record.referrerUrl,
+    record.referrerHost,
+    record.utmSource,
+    record.utmMedium,
+    record.utmCampaign,
+    record.utmTerm,
+    record.utmContent,
+    record.isEU ? 1 : 0,
+    record.country,
+    record.region,
+    record.regionCode,
+    record.city,
+    record.continent,
+    record.latitude,
+    record.longitude,
+    record.postalCode,
+    record.metroCode,
+    record.timezone,
+    record.asOrganization,
+    record.uaRaw,
+    record.browser,
+    record.browserVersion,
+    record.os,
+    record.osVersion,
+    record.deviceType,
+    record.screenWidth,
+    record.screenHeight,
+    record.language,
+    record.userId || "",
+    record.userName || "",
+    null,
+    null,
+    null,
+    null,
+    null,
+    1,
+    0,
+    null,
+    createdAt,
+    createdAt,
+  ];
   try {
     const rowsWritten = context.sqlRun(
       `
-        INSERT INTO buffered_visits (
-          visit_id, site_id, visitor_id, session_id, status, started_at, last_activity_at,
+      INSERT INTO buffered_visits (
+          visit_id, site_id, visitor_id, session_id, client_session_id, status, started_at, last_activity_at,
           pathname, query_string, hash_fragment, hostname, title, referrer_url, referrer_host,
           utm_source, utm_medium, utm_campaign, utm_term, utm_content,
           is_eu, country, region, region_code, city, continent, latitude, longitude,
@@ -366,52 +480,10 @@ export async function insertVisit(
           user_id, user_name,
           perf_ttfb_ms, perf_fcp_ms, perf_lcp_ms, perf_cls, perf_inp_ms,
           dirty, flush_attempts, last_flush_error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, 1, 0, NULL, ?, ?)
+        ) VALUES (${bindings.map(() => "?").join(", ")})
         ON CONFLICT(visit_id) DO NOTHING
       `,
-      record.visitId,
-      record.siteId,
-      record.visitorId,
-      record.sessionId,
-      record.startedAt,
-      record.startedAt,
-      record.pathname,
-      record.queryString,
-      record.hashFragment,
-      record.hostname,
-      record.title,
-      record.referrerUrl,
-      record.referrerHost,
-      record.utmSource,
-      record.utmMedium,
-      record.utmCampaign,
-      record.utmTerm,
-      record.utmContent,
-      record.isEU ? 1 : 0,
-      record.country,
-      record.region,
-      record.regionCode,
-      record.city,
-      record.continent,
-      record.latitude,
-      record.longitude,
-      record.postalCode,
-      record.metroCode,
-      record.timezone,
-      record.asOrganization,
-      record.uaRaw,
-      record.browser,
-      record.browserVersion,
-      record.os,
-      record.osVersion,
-      record.deviceType,
-      record.screenWidth,
-      record.screenHeight,
-      record.language,
-      record.userId || "",
-      record.userName || "",
-      createdAt,
-      createdAt,
+      ...bindings,
     );
     return rowsWritten > 0;
   } catch (error) {

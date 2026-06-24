@@ -159,6 +159,7 @@ export interface NormalizedVisitContext {
 
 export interface NormalizedPageview extends NormalizedVisitContext {
   kind: "pageview";
+  clientSessionId: string;
   receivedAt: number;
 }
 

@@ -11,6 +11,7 @@ export interface VisitRow {
   siteId: string;
   visitorId: string;
   sessionId: string;
+  clientSessionId: string;
   startedAt: number;
   lastActivityAt: number;
   pathname: string;
@@ -93,6 +94,12 @@ export interface BufferedCustomEventInput {
   eventName: string;
   eventDataJson: string;
   userId: string;
+}
+
+export interface RecentVisitorSession {
+  sessionId: string;
+  startedAt: number;
+  lastActivityAt: number;
 }
 
 export type DictionaryKind = "name" | "key" | "path";

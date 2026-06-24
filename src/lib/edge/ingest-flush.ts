@@ -62,6 +62,7 @@ export async function flushPendingToD1(
           site_id AS siteId,
           visitor_id AS visitorId,
           session_id AS sessionId,
+          client_session_id AS clientSessionId,
           started_at AS startedAt,
           last_activity_at AS lastActivityAt,
           ended_at AS endedAt,

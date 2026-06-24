@@ -75,7 +75,10 @@ const VISIT_COLUMNS = [
 ] as const;
 
 const BUFFERED_VISIT_COLUMNS = [
-  ...VISIT_COLUMNS.filter((column) => column !== "ae_synced_at"),
+  ...VISIT_COLUMNS.filter((column) => column !== "ae_synced_at").flatMap(
+    (column) =>
+      column === "session_id" ? [column, "client_session_id"] : [column],
+  ),
   "hidden_at",
   "dirty",
   "flush_attempts",
@@ -474,6 +477,7 @@ function bufferedVisitRecord(
         (column) => [column, base[column]],
       ),
     ),
+    client_session_id: overrides.client_session_id ?? base.session_id,
     hidden_at: null,
     dirty: 1,
     flush_attempts: 0,
@@ -788,6 +792,7 @@ describe("IngestDurableObject", () => {
 
     const [visit] = localRows<{
       visit_id: string;
+      session_id: string;
       status: string;
       pathname: string;
       query_string: string;
@@ -803,7 +808,7 @@ describe("IngestDurableObject", () => {
       ctx.sql,
       `
         SELECT visit_id, status, pathname, query_string, hash_fragment,
-               utm_source, utm_medium, utm_campaign, referrer_host,
+               session_id, utm_source, utm_medium, utm_campaign, referrer_host,
                screen_width, screen_height, dirty
         FROM buffered_visits
       `,
@@ -838,7 +843,7 @@ describe("IngestDurableObject", () => {
           id: "visit-1",
           eventType: "visit",
           visitId: "visit-1",
-          sessionId: "session-1",
+          sessionId: visit.session_id,
           pathname: "/docs",
           hostname: "example.com",
           visitorId: "visitor-1",
@@ -978,6 +983,100 @@ describe("IngestDurableObject", () => {
         perf_inp_ms: 100,
       },
     ]);
+  });
+
+  it("reuses server sessions across browser contexts without closing other tabs", async () => {
+    const ctx = createTestDo();
+
+    await postIngest(
+      ctx.object,
+      envelope({
+        visitId: "tab-a-visit",
+        sessionId: "client-tab-a",
+        startedAt: NOW - 20_000,
+        timestamp: NOW - 20_000,
+        pathname: "/tab-a",
+      }),
+    );
+    await postIngest(
+      ctx.object,
+      envelope({
+        visitId: "tab-b-visit",
+        sessionId: "client-tab-b",
+        startedAt: NOW - 10_000,
+        timestamp: NOW - 10_000,
+        pathname: "/tab-b",
+      }),
+    );
+
+    const rows = localRows<{
+      visit_id: string;
+      session_id: string;
+      client_session_id: string;
+      status: string;
+    }>(
+      ctx.sql,
+      `
+        SELECT visit_id, session_id, client_session_id, status
+        FROM buffered_visits
+        ORDER BY visit_id
+      `,
+    );
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.session_id).toBe(rows[1]?.session_id);
+    expect(rows).toMatchObject([
+      {
+        visit_id: "tab-a-visit",
+        client_session_id: "client-tab-a",
+        status: "open",
+      },
+      {
+        visit_id: "tab-b-visit",
+        client_session_id: "client-tab-b",
+        status: "open",
+      },
+    ]);
+  });
+
+  it("starts a new server session after the configured inactivity window", async () => {
+    const ctx = createTestDo({ SESSION_WINDOW_MINUTES: "1" });
+
+    await postIngest(
+      ctx.object,
+      envelope(
+        {
+          visitId: "old-visit",
+          sessionId: "old-client-tab",
+          startedAt: NOW - 120_000,
+          timestamp: NOW - 120_000,
+          pathname: "/old",
+        },
+        { receivedAt: NOW - 120_000 },
+      ),
+    );
+    await postIngest(
+      ctx.object,
+      envelope({
+        visitId: "new-visit",
+        sessionId: "new-client-tab",
+        startedAt: NOW,
+        timestamp: NOW,
+        pathname: "/new",
+      }),
+    );
+
+    const rows = localRows<{ session_id: string }>(
+      ctx.sql,
+      `
+        SELECT session_id
+        FROM buffered_visits
+        ORDER BY visit_id
+      `,
+    );
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.session_id).not.toBe(rows[1]?.session_id);
   });
 
   it("keeps hidden visits pending and lets pagehide override within the grace window", async () => {
