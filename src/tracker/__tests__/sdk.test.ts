@@ -800,7 +800,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     a.remove();
   });
 
-  it("should send leave event via sendBeacon on visibilitychange to hidden", async () => {
+  it("should send visibility event via sendBeacon on visibilitychange to hidden", async () => {
     const sendBeaconSpy = vi.fn().mockReturnValue(true);
     (navigator as any).sendBeacon = sendBeaconSpy;
 
@@ -817,6 +817,10 @@ describe("Tracker Browser SDK Integration Suite", () => {
     const [calledUrl, blob] = sendBeaconSpy.mock.calls[0];
     expect(calledUrl).toContain("/collect");
     expect(blob).toBeInstanceOf(Blob);
+    await expect(decodeBeaconBody(blob)).resolves.toMatchObject({
+      kind: "visibility",
+      visibilityState: "hidden",
+    });
   });
 
   it("should send leave event on pagehide", async () => {
@@ -829,7 +833,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     expect(sendBeaconSpy).toHaveBeenCalled();
   });
 
-  it("should NOT double-send leave on multiple visibility/pagehide events", async () => {
+  it("should not double-send hidden visibility or leave events", async () => {
     const sendBeaconSpy = vi.fn().mockReturnValue(true);
     (navigator as any).sendBeacon = sendBeaconSpy;
 
@@ -843,7 +847,11 @@ describe("Tracker Browser SDK Integration Suite", () => {
     document.dispatchEvent(new Event("visibilitychange"));
     window.dispatchEvent(new Event("pagehide"));
 
-    expect(sendBeaconSpy).toHaveBeenCalledTimes(1);
+    expect(sendBeaconSpy).toHaveBeenCalledTimes(2);
+    const bodies = await Promise.all(
+      sendBeaconSpy.mock.calls.map(([, blob]) => decodeBeaconBody(blob)),
+    );
+    expect(bodies.map((body) => body.kind)).toEqual(["visibility", "leave"]);
   });
 
   it("should expose debug mode and surface track logs after debug() is called", async () => {

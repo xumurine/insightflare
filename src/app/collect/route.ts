@@ -26,6 +26,7 @@ const CORS_BASE_HEADERS = {
 const SUPPORTED_KINDS = new Set<TrackerPayloadKind>([
   "pageview",
   "leave",
+  "visibility",
   "custom_event",
   "identify",
 ]);
@@ -322,6 +323,7 @@ function normalizeForwardPayload(
   const canCheckPath =
     kind === "pageview" ||
     kind === "custom_event" ||
+    kind === "visibility" ||
     (kind === "leave" &&
       coerceTrimmedString(payload.pathname, 4096).length > 0);
 
@@ -360,6 +362,18 @@ function normalizeForwardPayload(
     const eventName = coerceTrimmedString(payload.eventName, 120);
     if (!eventName) return { payload: null, reason: "missing_event_name" };
     normalizedPayload.eventName = eventName;
+  }
+
+  if (kind === "visibility") {
+    const visibilityState = coerceTrimmedString(payload.visibilityState, 20);
+    if (visibilityState !== "hidden" && visibilityState !== "visible") {
+      return {
+        payload: null,
+        reason: "invalid_visibility_state",
+        detail: { visibilityState },
+      };
+    }
+    normalizedPayload.visibilityState = visibilityState;
   }
 
   return { payload: normalizedPayload, reason: "" };
@@ -410,6 +424,7 @@ function compactPayloadForLog(
     sessionId: payload.sessionId || "",
     eventId: payload.eventId || "",
     eventName: payload.eventName || "",
+    visibilityState: payload.visibilityState || "",
     pathname: payload.pathname || "",
     hostname: payload.hostname || "",
     timestamp: payload.timestamp ?? null,

@@ -3,6 +3,7 @@ import {
   D1_FLUSH_CUSTOM_EVENT_BATCH_SIZE,
   D1_FLUSH_MAX_BATCHES_PER_ALARM,
   FLUSHED_BUFFER_RETENTION_MS,
+  HIDDEN_LEAVE_GRACE_MS,
   ORPHAN_CUSTOM_EVENT_TIMEOUT_MS,
   TIMEOUT_FINALIZE_BATCH_SIZE,
   VISIT_TIMEOUT_MS,
@@ -20,8 +21,10 @@ interface TimedOutVisitCandidate {
   siteId: string;
   visitorId: string;
   sessionId: string;
+  status: string;
   startedAt: number;
   lastActivityAt: number;
+  hiddenAt: number | null;
   pathname: string;
   hash: string;
   title: string;
@@ -201,7 +204,8 @@ export async function cleanupBufferedRows(
   context: IngestFlushContext,
 ): Promise<void> {
   const now = Date.now();
-  const visitCutoff = Date.now() - FLUSHED_BUFFER_RETENTION_MS;
+  const visitCutoff = now - FLUSHED_BUFFER_RETENTION_MS;
+  const hiddenFallbackCutoff = now - VISIT_TIMEOUT_MS;
   const eventCutoff = visitCutoff;
   const deletedVisits = context.sqlRun(
     `
@@ -210,11 +214,18 @@ export async function cleanupBufferedRows(
         AND (
           status = 'timeout'
           OR (
-            status != 'open'
+            status NOT IN ('open', 'hidden_pending')
+            AND (COALESCE(duration_source, '') = 'hidden' OR COALESCE(exit_reason, '') = 'hidden_timeout')
+            AND COALESCE(finalized_at, ended_at, started_at) < ?
+          )
+          OR (
+            status NOT IN ('open', 'hidden_pending')
+            AND NOT (COALESCE(duration_source, '') = 'hidden' OR COALESCE(exit_reason, '') = 'hidden_timeout')
             AND COALESCE(finalized_at, ended_at, started_at) < ?
           )
         )
     `,
+    hiddenFallbackCutoff,
     visitCutoff,
   );
   if (deletedVisits > 0) {
@@ -244,6 +255,7 @@ export async function flushTimeouts(
   context: IngestFlushContext,
 ): Promise<void> {
   const now = Date.now();
+  await flushHiddenFallbacks(context, now);
   const rows = context.sqlAll<TimedOutVisitCandidate>(
     `
       SELECT
@@ -251,8 +263,10 @@ export async function flushTimeouts(
         site_id AS siteId,
         visitor_id AS visitorId,
         session_id AS sessionId,
+        status,
         started_at AS startedAt,
         last_activity_at AS lastActivityAt,
+        hidden_at AS hiddenAt,
         pathname,
         hash_fragment AS hash,
         title,
@@ -281,7 +295,7 @@ export async function flushTimeouts(
         latitude,
         longitude
       FROM buffered_visits
-      WHERE status = 'open'
+      WHERE status IN ('open', 'hidden_pending')
         AND last_activity_at <= ?
       LIMIT ?
     `,
@@ -302,13 +316,14 @@ export async function flushTimeouts(
         UPDATE buffered_visits
         SET status = 'timeout',
             last_activity_at = ?,
+            hidden_at = NULL,
             ended_at = ?,
             finalized_at = ?,
             duration_ms = NULL,
             duration_source = 'timeout',
             dirty = 1,
             updated_at = ?
-        WHERE site_id = ? AND visit_id = ? AND status = 'open'
+        WHERE site_id = ? AND visit_id = ? AND status IN ('open', 'hidden_pending')
       `,
       now,
       now,
@@ -331,6 +346,132 @@ export async function flushTimeouts(
         id: `leave:${visit.visitId}`,
         eventType: WS_PRESENCE_LEAVE_EVENT,
         eventAt: now,
+        visitId: visit.visitId,
+        sessionId: visit.sessionId,
+        pathname: visit.pathname,
+        hash: visit.hash,
+        title: visit.title,
+        hostname: visit.hostname,
+        referrerUrl: visit.referrerUrl,
+        referrerHost: visit.referrerHost,
+        visitorId: visit.visitorId,
+        country: visit.country,
+        region: visit.region,
+        regionCode: visit.regionCode,
+        city: visit.city,
+        continent: visit.continent,
+        timezone: visit.timezone,
+        organization: visit.organization,
+        browser: visit.browser,
+        os: visit.os,
+        osVersion: visit.osVersion,
+        deviceType: visit.deviceType,
+        language: visit.language,
+        screenSize: visit.screenSize,
+        latitude: visit.latitude,
+        longitude: visit.longitude,
+      });
+    }
+  }
+}
+
+async function flushHiddenFallbacks(
+  context: IngestFlushContext,
+  now: number,
+): Promise<void> {
+  const rows = context.sqlAll<TimedOutVisitCandidate>(
+    `
+      SELECT
+        visit_id AS visitId,
+        site_id AS siteId,
+        visitor_id AS visitorId,
+        session_id AS sessionId,
+        status,
+        started_at AS startedAt,
+        last_activity_at AS lastActivityAt,
+        hidden_at AS hiddenAt,
+        pathname,
+        hash_fragment AS hash,
+        title,
+        hostname,
+        referrer_url AS referrerUrl,
+        referrer_host AS referrerHost,
+        country,
+        region,
+        region_code AS regionCode,
+        city,
+        continent,
+        timezone,
+        as_organization AS organization,
+        browser,
+        os,
+        os_version AS osVersion,
+        device_type AS deviceType,
+        language,
+        CASE
+          WHEN screen_width IS NOT NULL AND screen_height IS NOT NULL
+            THEN CAST(screen_width AS TEXT) || 'x' || CAST(screen_height AS TEXT)
+          ELSE ''
+        END AS screenSize,
+        latitude,
+        longitude
+      FROM buffered_visits
+      WHERE status = 'hidden_pending'
+        AND hidden_at IS NOT NULL
+        AND hidden_at <= ?
+      LIMIT ?
+    `,
+    now - HIDDEN_LEAVE_GRACE_MS,
+    TIMEOUT_FINALIZE_BATCH_SIZE,
+  );
+  if (rows.length > 0) {
+    logDoTrace("do_hidden_fallback_found", {
+      count: rows.length,
+      cutoffMs: now - HIDDEN_LEAVE_GRACE_MS,
+      visitIds: rows.slice(0, 20).map((row) => row.visitId),
+    });
+  }
+
+  for (const visit of rows) {
+    const hiddenAt = Math.max(visit.hiddenAt ?? now, visit.startedAt);
+    const durationMs = Math.max(0, hiddenAt - visit.startedAt);
+    const rowsWritten = context.sqlRun(
+      `
+        UPDATE buffered_visits
+        SET status = 'complete',
+            last_activity_at = ?,
+            hidden_at = NULL,
+            ended_at = ?,
+            finalized_at = ?,
+            duration_ms = ?,
+            duration_source = 'hidden',
+            exit_reason = 'hidden_timeout',
+            dirty = 1,
+            updated_at = ?
+        WHERE site_id = ? AND visit_id = ? AND status = 'hidden_pending'
+      `,
+      hiddenAt,
+      hiddenAt,
+      hiddenAt,
+      durationMs,
+      toUnixSeconds(now),
+      visit.siteId,
+      visit.visitId,
+    );
+    if (rowsWritten === 0) continue;
+    logDoTrace("do_hidden_fallback_closed_visit", {
+      siteId: visit.siteId,
+      visitId: visit.visitId,
+      visitorId: visit.visitorId,
+      startedAt: visit.startedAt,
+      hiddenAt,
+      durationMs,
+    });
+    if (!context.hasOpenVisitsForVisitor(visit.siteId, visit.visitorId)) {
+      await context.pushRealtimeRecord({
+        id: `leave:${visit.visitId}`,
+        eventType: WS_PRESENCE_LEAVE_EVENT,
+        eventAt: hiddenAt,
         visitId: visit.visitId,
         sessionId: visit.sessionId,
         pathname: visit.pathname,
@@ -411,12 +552,14 @@ function deleteFlushedVisitRows(
   context: IngestFlushContext,
   rows: BufferedVisitRow[],
 ): void {
-  const cutoffMs = Date.now() - FLUSHED_BUFFER_RETENTION_MS;
+  const now = Date.now();
+  const cutoffMs = now - FLUSHED_BUFFER_RETENTION_MS;
+  const hiddenFallbackCutoffMs = now - VISIT_TIMEOUT_MS;
   const ids = rows
     .filter(
       (row) =>
         row.status === "timeout" ||
-        visitEndedBeforeRealtimeCutoff(row, cutoffMs),
+        visitEndedBeforeRealtimeCutoff(row, cutoffMs, hiddenFallbackCutoffMs),
     )
     .map((row) => row.visitId);
   if (ids.length === 0) return;
@@ -434,12 +577,21 @@ function deleteFlushedVisitRows(
 function visitEndedBeforeRealtimeCutoff(
   row: Pick<
     BufferedVisitRow,
-    "status" | "startedAt" | "endedAt" | "finalizedAt"
+    | "status"
+    | "startedAt"
+    | "endedAt"
+    | "finalizedAt"
+    | "durationSource"
+    | "exitReason"
   >,
   cutoffMs: number,
+  hiddenFallbackCutoffMs: number,
 ): boolean {
-  if (row.status === "open") return false;
+  if (row.status === "open" || row.status === "hidden_pending") return false;
   const eventAt = row.finalizedAt ?? row.endedAt ?? row.startedAt;
+  if (row.durationSource === "hidden" || row.exitReason === "hidden_timeout") {
+    return eventAt < hiddenFallbackCutoffMs;
+  }
   return eventAt < cutoffMs;
 }
 

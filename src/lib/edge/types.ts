@@ -37,6 +37,7 @@ export interface IngestTracePayload {
 export type TrackerPayloadKind =
   | "pageview"
   | "leave"
+  | "visibility"
   | "custom_event"
   | "identify";
 
@@ -88,6 +89,7 @@ export interface TrackerClientPayload {
   userName?: string;
   durationMs?: number;
   exitReason?: string;
+  visibilityState?: string;
   eventName?: string;
   eventData?: unknown;
   performance?: TrackerPerformancePayload;
@@ -170,7 +172,18 @@ export interface NormalizedLeave {
   receivedAt: number;
   leaveAt: number;
   durationMs: number | null;
+  exitReason: string;
   performance: TrackerPerformancePayload | null;
+}
+
+export interface NormalizedVisibility {
+  kind: "visibility";
+  traceId?: string;
+  siteId: string;
+  visitId: string;
+  visibilityState: "hidden" | "visible";
+  receivedAt: number;
+  eventAt: number;
 }
 
 export interface NormalizedCustomEvent extends NormalizedVisitContext {
@@ -197,5 +210,6 @@ export interface NormalizedIdentify {
 export type NormalizedIngestRecord =
   | NormalizedPageview
   | NormalizedLeave
+  | NormalizedVisibility
   | NormalizedCustomEvent
   | NormalizedIdentify;

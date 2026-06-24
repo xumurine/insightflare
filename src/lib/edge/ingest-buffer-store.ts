@@ -84,7 +84,7 @@ export async function getVisitContext(
     visitorId: row.visitorId,
     sessionId: row.sessionId,
     startedAt: row.startedAt,
-    lastActivityAt: row.startedAt,
+    lastActivityAt: row.lastActivityAt,
     pathname: row.pathname,
     queryString: row.queryString,
     hashFragment: row.hashFragment,
@@ -135,6 +135,7 @@ export async function readVisitRow(
         visitor_id AS visitorId,
         session_id AS sessionId,
         started_at AS startedAt,
+        last_activity_at AS lastActivityAt,
         pathname,
         query_string AS queryString,
         hash_fragment AS hashFragment,
@@ -259,6 +260,7 @@ export async function readPersistedVisitRow(
         ...row,
         dirty: 0,
         flushAttempts: 0,
+        hiddenAt: null,
       }
     : null;
 }
@@ -275,6 +277,7 @@ export function insertBufferedVisitRow(
     row.status,
     row.startedAt,
     row.lastActivityAt,
+    row.hiddenAt ?? null,
     row.endedAt,
     row.finalizedAt,
     row.durationMs,
@@ -330,7 +333,7 @@ export function insertBufferedVisitRow(
     `
       INSERT OR REPLACE INTO buffered_visits (
         visit_id, site_id, visitor_id, session_id, status, started_at, last_activity_at,
-        ended_at, finalized_at, duration_ms, duration_source, exit_reason,
+        hidden_at, ended_at, finalized_at, duration_ms, duration_source, exit_reason,
         pathname, query_string, hash_fragment, hostname, title, referrer_url, referrer_host,
         utm_source, utm_medium, utm_campaign, utm_term, utm_content,
         is_eu, country, region, region_code, city, continent, latitude, longitude,

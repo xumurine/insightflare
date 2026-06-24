@@ -50,6 +50,7 @@ let pendingRouteChange: {
 } | null = null;
 let routeChangeTimer = 0;
 let leaveSent = false;
+let pendingHiddenAt = 0;
 let userIdentifiedId = "";
 let userIdentifiedName = "";
 let globalProperties: Record<string, unknown> = {};
@@ -196,6 +197,7 @@ function startVisit(
   startedAt: number,
 ): void {
   leaveSent = false;
+  pendingHiddenAt = 0;
   currentVisit = {
     id: crypto.randomUUID(),
     startedAt,
@@ -233,6 +235,7 @@ function startVisit(
 function sendLeave(): void {
   if (!currentVisit || leaveSent) return;
   leaveSent = true;
+  pendingHiddenAt = 0;
   const eventAt = Date.now();
   const url = new URL(currentVisit.href, window.location.href);
   const performancePayload = BUILD_PERFORMANCE
@@ -248,11 +251,53 @@ function sendLeave(): void {
       durationMs: Math.max(0, eventAt - currentVisit.startedAt),
       pathname: url.pathname || "/",
       hostname: url.hostname || "",
+      exitReason: "pagehide",
       ...(performancePayload || {}),
     },
     true,
   );
   if (BUILD_PERFORMANCE) performanceTracker.stop();
+}
+
+function sendVisibility(
+  visibilityState: "hidden" | "visible",
+  eventAt: number,
+): void {
+  if (!currentVisit || leaveSent) return;
+  const url = new URL(currentVisit.href, window.location.href);
+  send(
+    {
+      kind: "visibility",
+      siteId: SITE_ID,
+      visitId: currentVisit.id,
+      sessionId: session.getSessionId(),
+      visibilityState,
+      timestamp: eventAt,
+      pathname: url.pathname || "/",
+      hostname: url.hostname || "",
+    },
+    true,
+  );
+}
+
+function handleDocumentHidden(): void {
+  flushPendingRouteChange();
+  if (!currentVisit || leaveSent || pendingHiddenAt > 0) return;
+  pendingHiddenAt = Date.now();
+  sendVisibility("hidden", pendingHiddenAt);
+}
+
+function handleDocumentVisible(): void {
+  if (!currentVisit || leaveSent || pendingHiddenAt <= 0) return;
+  const eventAt = Date.now();
+  if (eventAt - pendingHiddenAt > (SESSION_WINDOW_MS as unknown as number)) {
+    const referrerUrl = currentVisit.href;
+    if (BUILD_PERFORMANCE) performanceTracker.stop();
+    startVisit(window.location.href, referrerUrl, eventAt);
+    return;
+  }
+  sendVisibility("visible", eventAt);
+  pendingHiddenAt = 0;
 }
 
 function commitRouteChange(routeChange: {
@@ -444,8 +489,11 @@ window.addEventListener("hashchange", () => {
 });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
-    flushPendingRouteChange();
-    sendLeave();
+    handleDocumentHidden();
+    return;
+  }
+  if (document.visibilityState === "visible") {
+    handleDocumentVisible();
   }
 });
 window.addEventListener("pagehide", () => {

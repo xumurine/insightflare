@@ -194,7 +194,7 @@ export function readRecentRealtimeEvents(
           latitude,
           longitude
         FROM buffered_visits
-        WHERE status <> 'open'
+        WHERE status NOT IN ('open', 'hidden_pending')
           AND ended_at IS NOT NULL
           AND ended_at BETWEEN ? AND ?
       )

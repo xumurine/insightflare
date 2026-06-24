@@ -20,6 +20,7 @@ import type {
   NormalizedIdentify,
   NormalizedLeave,
   NormalizedPageview,
+  NormalizedVisibility,
   TrackerClientPayload,
   TrackerPayloadKind,
 } from "./types";
@@ -209,8 +210,36 @@ export async function normalizeIngestRecord(
         receivedAt,
         leaveAt: eventAt,
         durationMs: coerceNumber(client.durationMs, null),
+        exitReason:
+          clampString(coerceString(client.exitReason || ""), 40) || "pagehide",
         performance: normalizePerformancePayload(client.performance),
       } satisfies NormalizedLeave,
+    };
+  }
+
+  if (kind === "visibility") {
+    if (!visitId) return { record: null, reason: "missing_visit_id" };
+    const visibilityState = clampString(
+      coerceString(client.visibilityState || ""),
+      20,
+    );
+    if (visibilityState !== "hidden" && visibilityState !== "visible") {
+      return {
+        record: null,
+        reason: "invalid_visibility_state",
+        detail: { visibilityState },
+      };
+    }
+    return {
+      record: {
+        kind: "visibility",
+        traceId,
+        siteId,
+        visitId,
+        visibilityState,
+        receivedAt,
+        eventAt,
+      } satisfies NormalizedVisibility,
     };
   }
 

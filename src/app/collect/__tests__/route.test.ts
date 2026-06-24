@@ -630,6 +630,29 @@ describe("collect route", () => {
     });
   });
 
+  it("forwards visibility events after state and path normalization", async () => {
+    makeRuntimeRequest({
+      origin: "https://example.com",
+      body: makePayload({
+        kind: "visibility",
+        visibilityState: "hidden",
+        pathname: "https://example.com/docs/page?tab=one",
+      }),
+    });
+
+    const response = await POST(new Request("https://collector.test/collect"));
+
+    expect(response.status).toBe(204);
+    const envelope = await readForwardedEnvelope();
+    expect(envelope.client).toMatchObject({
+      siteId: "site-1",
+      kind: "visibility",
+      visitId: "visit-1",
+      visibilityState: "hidden",
+      pathname: "/docs/page",
+    });
+  });
+
   it("falls back to timestamp/random trace ids when randomUUID is unavailable", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-25T12:00:00.000Z"));

@@ -258,8 +258,10 @@ describe("normalizeIngestRecord pageview records", () => {
       latitude: null,
       longitude: null,
     });
-    expect(result.record).toHaveProperty("sessionId");
-    expect(result.record?.sessionId).not.toBe("");
+    if (result.record?.kind !== "pageview") {
+      throw new Error("Expected a pageview record");
+    }
+    expect(result.record.sessionId).not.toBe("");
   });
 
   it("preserves non-EU visitor fields, parses cross-site referrers, and prefers client timezone", async () => {
@@ -500,6 +502,7 @@ describe("normalizeIngestRecord leave and identify records", () => {
       receivedAt,
       leaveAt: receivedAt - 1_000,
       durationMs: null,
+      exitReason: "pagehide",
       performance: {
         ttfb: 10.123,
       },
@@ -535,6 +538,7 @@ describe("normalizeIngestRecord leave and identify records", () => {
         receivedAt,
         leaveAt: receivedAt - 1_000,
         durationMs: 1234.5,
+        exitReason: "pagehide",
         performance: null,
       },
     });
@@ -587,6 +591,45 @@ describe("normalizeIngestRecord leave and identify records", () => {
       sessionId: "s".repeat(128),
       userId: "u".repeat(255),
       userName: "",
+    });
+  });
+
+  it("normalizes visibility records", async () => {
+    const { context } = makeContext();
+
+    await expect(
+      normalizeIngestRecord(
+        makeEnvelope({
+          kind: "visibility",
+          visitId: "visit-1",
+          visibilityState: "hidden",
+        }),
+        context,
+      ),
+    ).resolves.toEqual({
+      record: {
+        kind: "visibility",
+        traceId: "trace-1",
+        siteId: "site-1",
+        visitId: "visit-1",
+        visibilityState: "hidden",
+        receivedAt,
+        eventAt: receivedAt - 1_000,
+      },
+    });
+
+    await expect(
+      normalizeIngestRecord(
+        makeEnvelope({
+          kind: "visibility",
+          visitId: "visit-1",
+          visibilityState: "minimized",
+        }),
+        context,
+      ),
+    ).resolves.toMatchObject({
+      record: null,
+      reason: "invalid_visibility_state",
     });
   });
 });

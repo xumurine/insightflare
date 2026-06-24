@@ -12,6 +12,7 @@ export interface VisitRow {
   visitorId: string;
   sessionId: string;
   startedAt: number;
+  lastActivityAt: number;
   pathname: string;
   queryString: string;
   hashFragment: string;
@@ -55,7 +56,7 @@ export interface VisitRow {
 }
 
 export interface BufferedVisitRow extends VisitRow, VisitBindingRow {
-  lastActivityAt: number;
+  hiddenAt?: number | null;
   endedAt: number | null;
   finalizedAt: number | null;
   durationMs: number | null;

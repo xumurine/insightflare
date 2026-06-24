@@ -40,6 +40,7 @@ export function initializeIngestSqlSchema(sql: DurableObjectSqlStorage): void {
         status TEXT NOT NULL,
         started_at INTEGER NOT NULL,
         last_activity_at INTEGER NOT NULL,
+        hidden_at INTEGER,
         ended_at INTEGER,
         finalized_at INTEGER,
         duration_ms INTEGER,
@@ -99,6 +100,7 @@ export function initializeIngestSqlSchema(sql: DurableObjectSqlStorage): void {
   ensureColumn(sql, "buffered_visits", "perf_inp_ms", "REAL");
   ensureColumn(sql, "buffered_visits", "user_id", "TEXT NOT NULL DEFAULT ''");
   ensureColumn(sql, "buffered_visits", "user_name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(sql, "buffered_visits", "hidden_at", "INTEGER");
   sql.exec(`
       CREATE INDEX IF NOT EXISTS idx_buffered_visits_dirty_updated
       ON buffered_visits(dirty, updated_at, started_at)
@@ -106,6 +108,10 @@ export function initializeIngestSqlSchema(sql: DurableObjectSqlStorage): void {
   sql.exec(`
       CREATE INDEX IF NOT EXISTS idx_buffered_visits_status_last_activity
       ON buffered_visits(status, last_activity_at, started_at)
+    `);
+  sql.exec(`
+      CREATE INDEX IF NOT EXISTS idx_buffered_visits_status_hidden_at
+      ON buffered_visits(status, hidden_at)
     `);
   sql.exec(`
       CREATE INDEX IF NOT EXISTS idx_buffered_visits_site_session_status_started

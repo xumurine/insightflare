@@ -76,6 +76,7 @@ const VISIT_COLUMNS = [
 
 const BUFFERED_VISIT_COLUMNS = [
   ...VISIT_COLUMNS.filter((column) => column !== "ae_synced_at"),
+  "hidden_at",
   "dirty",
   "flush_attempts",
   "last_flush_error",
@@ -473,6 +474,7 @@ function bufferedVisitRecord(
         (column) => [column, base[column]],
       ),
     ),
+    hidden_at: null,
     dirty: 1,
     flush_attempts: 0,
     last_flush_error: null,
@@ -976,6 +978,133 @@ describe("IngestDurableObject", () => {
         perf_inp_ms: 100,
       },
     ]);
+  });
+
+  it("keeps hidden visits pending and lets pagehide override within the grace window", async () => {
+    const ctx = createTestDo();
+
+    await postIngest(
+      ctx.object,
+      envelope({
+        visitId: "hidden-visit",
+        startedAt: NOW - 20_000,
+        timestamp: NOW - 20_000,
+      }),
+    );
+    await postIngest(
+      ctx.object,
+      envelope({
+        kind: "visibility",
+        visitId: "hidden-visit",
+        visibilityState: "hidden",
+        timestamp: NOW - 10_000,
+      }),
+    );
+
+    expect(
+      localRows<{ status: string; hidden_at: number | null }>(
+        ctx.sql,
+        "SELECT status, hidden_at FROM buffered_visits WHERE visit_id = ?",
+        "hidden-visit",
+      )[0],
+    ).toEqual({ status: "hidden_pending", hidden_at: NOW - 10_000 });
+
+    await postIngest(
+      ctx.object,
+      envelope({
+        kind: "leave",
+        visitId: "hidden-visit",
+        timestamp: NOW,
+        durationMs: 20_000,
+      }),
+    );
+
+    expect(
+      localRows<{
+        status: string;
+        hidden_at: number | null;
+        ended_at: number | null;
+        duration_ms: number | null;
+        duration_source: string | null;
+        exit_reason: string | null;
+      }>(
+        ctx.sql,
+        `SELECT status, hidden_at, ended_at, duration_ms, duration_source, exit_reason
+         FROM buffered_visits
+         WHERE visit_id = ?`,
+        "hidden-visit",
+      )[0],
+    ).toEqual({
+      status: "complete",
+      hidden_at: null,
+      ended_at: NOW,
+      duration_ms: 20_000,
+      duration_source: "reported",
+      exit_reason: "pagehide",
+    });
+  });
+
+  it("finalizes stale hidden visits at hidden_at during flush", async () => {
+    const ctx = createTestDo();
+    const startedAt = NOW - 40 * 60 * 1000;
+    const hiddenAt = NOW - RECENT_EVENT_RETENTION_MS - 60_000;
+
+    await postIngest(
+      ctx.object,
+      envelope(
+        {
+          visitId: "hidden-timeout-visit",
+          startedAt,
+          timestamp: startedAt,
+        },
+        { receivedAt: startedAt },
+      ),
+    );
+    await postIngest(
+      ctx.object,
+      envelope(
+        {
+          kind: "visibility",
+          visitId: "hidden-timeout-visit",
+          visibilityState: "hidden",
+          timestamp: hiddenAt,
+        },
+        { receivedAt: hiddenAt },
+      ),
+    );
+
+    const flush = await ctx.object.fetch(
+      new Request("https://ingest.internal/flush", { method: "POST" }),
+    );
+
+    expect(flush.status).toBe(200);
+    expect(
+      ctx.d1.all<{
+        status: string;
+        ended_at: number | null;
+        duration_ms: number | null;
+        duration_source: string | null;
+        exit_reason: string | null;
+      }>(
+        `SELECT status, ended_at, duration_ms, duration_source, exit_reason
+         FROM visits
+         WHERE visit_id = ?`,
+        "hidden-timeout-visit",
+      )[0],
+    ).toEqual({
+      status: "complete",
+      ended_at: hiddenAt,
+      duration_ms: hiddenAt - startedAt,
+      duration_source: "hidden",
+      exit_reason: "hidden_timeout",
+    });
+    expect(
+      localRows<{ status: string; dirty: number }>(
+        ctx.sql,
+        "SELECT status, dirty FROM buffered_visits WHERE visit_id = ?",
+        "hidden-timeout-visit",
+      )[0],
+    ).toEqual({ status: "complete", dirty: 0 });
   });
 
   it("applies identify updates to buffered visits, buffered events, and persisted D1 visits", async () => {
@@ -2153,8 +2282,11 @@ describe("IngestDurableObject", () => {
         const normalized = query.replace(/\s+/g, " ");
         if (
           normalized.includes("UPDATE buffered_visits") &&
-          normalized.includes("duration_source = 'reported'") &&
-          normalized.includes("WHERE visit_id = ? AND status = 'open'")
+          normalized.includes("duration_source = ?") &&
+          normalized.includes("exit_reason = ?") &&
+          normalized.includes(
+            "WHERE visit_id = ? AND status IN ('open', 'hidden_pending')",
+          )
         ) {
           originalExec(
             "UPDATE buffered_visits SET status = 'complete' WHERE visit_id = ?",

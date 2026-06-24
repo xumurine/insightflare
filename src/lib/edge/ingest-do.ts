@@ -12,6 +12,7 @@ import {
 } from "./ingest-buffer-store";
 import {
   D1_FLUSH_INTERVAL_MS,
+  HIDDEN_LEAVE_GRACE_MS,
   WS_PRESENCE_LEAVE_EVENT,
 } from "./ingest-constants";
 import { handleIngestDiagnostic } from "./ingest-diagnostic";
@@ -53,6 +54,7 @@ import type {
   NormalizedIdentify,
   NormalizedLeave,
   NormalizedPageview,
+  NormalizedVisibility,
   TrackerPerformancePayload,
 } from "./types";
 
@@ -163,6 +165,8 @@ export class IngestDurableObject extends DurableObject {
       await this.handlePageview(record);
     } else if (record.kind === "leave") {
       await this.handleLeave(record);
+    } else if (record.kind === "visibility") {
+      await this.handleVisibility(record);
     } else if (record.kind === "identify") {
       await this.handleIdentify(record);
     } else {
@@ -326,12 +330,16 @@ export class IngestDurableObject extends DurableObject {
         SELECT visit_id AS visitId, started_at AS startedAt, visitor_id AS visitorId,
                pathname, country, browser
         FROM buffered_visits
-        WHERE site_id = ? AND session_id = ? AND status = 'open'
+        WHERE site_id = ?
+          AND session_id = ?
+          AND visit_id != ?
+          AND status IN ('open', 'hidden_pending')
         ORDER BY started_at DESC
         LIMIT 1
       `,
       record.siteId,
       record.sessionId,
+      record.visitId,
     );
     if (prevVisit) {
       const durationMs = Math.max(0, record.startedAt - prevVisit.startedAt);
@@ -340,13 +348,14 @@ export class IngestDurableObject extends DurableObject {
           UPDATE buffered_visits
           SET status = 'complete',
               last_activity_at = ?,
+              hidden_at = NULL,
               ended_at = ?,
               finalized_at = ?,
               duration_ms = ?,
               duration_source = 'server',
               dirty = 1,
               updated_at = ?
-          WHERE visit_id = ? AND status = 'open'
+          WHERE visit_id = ? AND status IN ('open', 'hidden_pending')
         `,
         record.startedAt,
         record.startedAt,
@@ -446,6 +455,8 @@ export class IngestDurableObject extends DurableObject {
       screenSize: string;
       latitude: number | null;
       longitude: number | null;
+      status: string;
+      hiddenAt: number | null;
     }>(
       `
         SELECT visit_id AS visitId, started_at AS startedAt, visitor_id AS visitorId, site_id AS siteId,
@@ -459,9 +470,10 @@ export class IngestDurableObject extends DurableObject {
                    THEN CAST(screen_width AS TEXT) || 'x' || CAST(screen_height AS TEXT)
                  ELSE ''
                END AS screenSize,
-               latitude, longitude
+               latitude, longitude,
+               status, hidden_at AS hiddenAt
         FROM buffered_visits
-        WHERE site_id = ? AND visit_id = ? AND status = 'open'
+        WHERE site_id = ? AND visit_id = ? AND status IN ('open', 'hidden_pending')
         LIMIT 1
       `,
       record.siteId,
@@ -469,31 +481,49 @@ export class IngestDurableObject extends DurableObject {
     );
 
     let closedVisit = false;
+    let closedLeaveAt = record.leaveAt;
     if (visit) {
-      const leaveAt = Math.max(record.leaveAt, visit.startedAt);
+      const reportedLeaveAt = Math.max(record.leaveAt, visit.startedAt);
+      const hiddenAt =
+        typeof visit.hiddenAt === "number"
+          ? Math.max(visit.hiddenAt, visit.startedAt)
+          : null;
+      const useHiddenFallback =
+        hiddenAt !== null && reportedLeaveAt - hiddenAt > HIDDEN_LEAVE_GRACE_MS;
+      const leaveAt = useHiddenFallback ? hiddenAt : reportedLeaveAt;
+      closedLeaveAt = leaveAt;
       const durationMs =
+        !useHiddenFallback &&
         typeof record.durationMs === "number" &&
         Number.isFinite(record.durationMs)
           ? Math.max(0, Math.floor(record.durationMs))
           : Math.max(0, leaveAt - visit.startedAt);
+      const durationSource = useHiddenFallback ? "hidden" : "reported";
+      const exitReason = useHiddenFallback
+        ? "hidden_timeout"
+        : record.exitReason || "pagehide";
 
       const rowsWritten = this.sqlRun(
         `
           UPDATE buffered_visits
           SET status = 'complete',
               last_activity_at = ?,
+              hidden_at = NULL,
               ended_at = ?,
               finalized_at = ?,
               duration_ms = ?,
-              duration_source = 'reported',
+              duration_source = ?,
+              exit_reason = ?,
               dirty = 1,
               updated_at = ?
-          WHERE visit_id = ? AND status = 'open'
+          WHERE visit_id = ? AND status IN ('open', 'hidden_pending')
         `,
         leaveAt,
         leaveAt,
         leaveAt,
         durationMs,
+        durationSource,
+        exitReason,
         toUnixSeconds(record.receivedAt),
         visit.visitId,
       );
@@ -504,9 +534,11 @@ export class IngestDurableObject extends DurableObject {
           traceId: record.traceId || "",
           siteId: record.siteId,
           visitId: record.visitId,
-          sessionId: record.sessionId,
+          sessionId: visit.sessionId,
           leaveAt,
           durationMs,
+          durationSource,
+          exitReason,
         },
       );
     }
@@ -534,7 +566,7 @@ export class IngestDurableObject extends DurableObject {
       await this.pushRealtimeRecord({
         id: `leave:${visit.visitId}`,
         eventType: WS_PRESENCE_LEAVE_EVENT,
-        eventAt: Math.max(record.leaveAt, visit.startedAt),
+        eventAt: closedLeaveAt,
         visitId: visit.visitId,
         sessionId: visit.sessionId,
         pathname: visit.pathname,
@@ -561,6 +593,96 @@ export class IngestDurableObject extends DurableObject {
         longitude: visit.longitude,
       });
     }
+  }
+
+  private async handleVisibility(record: NormalizedVisibility): Promise<void> {
+    const updatedAt = toUnixSeconds(record.receivedAt);
+    if (record.visibilityState === "hidden") {
+      let rowsWritten = this.sqlRun(
+        `
+          UPDATE buffered_visits
+          SET status = 'hidden_pending',
+              hidden_at = ?,
+              last_activity_at = CASE WHEN last_activity_at > ? THEN last_activity_at ELSE ? END,
+              dirty = 1,
+              updated_at = ?
+          WHERE site_id = ?
+            AND visit_id = ?
+            AND status = 'open'
+        `,
+        record.eventAt,
+        record.eventAt,
+        record.eventAt,
+        updatedAt,
+        record.siteId,
+        record.visitId,
+      );
+      if (rowsWritten === 0) {
+        rowsWritten = this.sqlRun(
+          `
+            UPDATE buffered_visits
+            SET hidden_at = COALESCE(hidden_at, ?),
+                last_activity_at = CASE WHEN last_activity_at > ? THEN last_activity_at ELSE ? END,
+                dirty = 1,
+                updated_at = ?
+            WHERE site_id = ?
+              AND visit_id = ?
+              AND status = 'hidden_pending'
+          `,
+          record.eventAt,
+          record.eventAt,
+          record.eventAt,
+          updatedAt,
+          record.siteId,
+          record.visitId,
+        );
+      }
+      logDoTrace(
+        rowsWritten > 0
+          ? "do_visibility_hidden_buffered"
+          : "do_visibility_hidden_ignored",
+        {
+          traceId: record.traceId || "",
+          siteId: record.siteId,
+          visitId: record.visitId,
+          eventAt: record.eventAt,
+        },
+      );
+      return;
+    }
+
+    const rowsWritten = this.sqlRun(
+      `
+        UPDATE buffered_visits
+        SET status = 'open',
+            hidden_at = NULL,
+            last_activity_at = CASE WHEN last_activity_at > ? THEN last_activity_at ELSE ? END,
+            dirty = 1,
+            updated_at = ?
+        WHERE site_id = ?
+          AND visit_id = ?
+          AND status = 'hidden_pending'
+          AND (hidden_at IS NULL OR ? - hidden_at <= ?)
+      `,
+      record.eventAt,
+      record.eventAt,
+      updatedAt,
+      record.siteId,
+      record.visitId,
+      record.eventAt,
+      HIDDEN_LEAVE_GRACE_MS,
+    );
+    logDoTrace(
+      rowsWritten > 0
+        ? "do_visibility_visible_restored"
+        : "do_visibility_visible_ignored",
+      {
+        traceId: record.traceId || "",
+        siteId: record.siteId,
+        visitId: record.visitId,
+        eventAt: record.eventAt,
+      },
+    );
   }
 
   private async attachPerformanceToVisit(
@@ -781,7 +903,7 @@ export class IngestDurableObject extends DurableObject {
   private async hasOpenVisits(): Promise<boolean> {
     return (
       this.sqlOne<{ ok: number }>(
-        "SELECT 1 AS ok FROM buffered_visits WHERE status = 'open' LIMIT 1",
+        "SELECT 1 AS ok FROM buffered_visits WHERE status IN ('open', 'hidden_pending') LIMIT 1",
       ) !== null
     );
   }
