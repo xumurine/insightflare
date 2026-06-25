@@ -28,6 +28,7 @@ export default defineConfig({
         "src/components/dashboard/**/*.ts",
         "src/hooks/**/*.ts",
         "src/lib/**/*.ts",
+        "src/schemas/**/*.ts",
         "src/middleware.ts",
         "src/tracker/sdk.ts",
       ],
