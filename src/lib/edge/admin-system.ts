@@ -6,6 +6,7 @@ import type {
   SystemPerformanceWindowMinutes,
 } from "@/lib/system-performance";
 
+import { forb, na, jsonResponseFor } from "@/lib/response";
 import type { Env } from "./types";
 import { clampString } from "./utils";
 
@@ -15,13 +16,6 @@ type AdminActorResolver = (
   req: Request,
 ) => Promise<AdminActor | Response>;
 
-const j = (payload: unknown, status = 200) =>
-  new Response(JSON.stringify(payload), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
-const forb = (m = "Forbidden") => j({ ok: false, error: m }, 403);
-const na = () => j({ ok: false, error: "Method Not Allowed" }, 405);
 const SYSTEM_PERFORMANCE_WINDOW_OPTIONS = [15, 60, 360, 1440] as const;
 const SYSTEM_DELAYED_EVENT_MS = 5 * 60 * 1000;
 const SYSTEM_FUTURE_SKEW_MS = 30 * 1000;
@@ -103,8 +97,13 @@ export async function handleSystemPerformanceAdmin(
 ): Promise<Response> {
   const a = await requireActor(env, req);
   if (a instanceof Response) return a;
-  if (!a.isAdmin) return forb("Only system admin can view system performance");
-  if (req.method !== "GET") return na();
+  if (!a.isAdmin)
+    return forb(
+      "Only system admin can view system performance",
+      undefined,
+      req,
+    );
+  if (req.method !== "GET") return na(req);
 
   const minutes = parseSystemPerformanceWindowMinutes(url);
   const generatedAt = Date.now();
@@ -396,7 +395,7 @@ export async function handleSystemPerformanceAdmin(
     })),
   };
 
-  return j(data);
+  return jsonResponseFor(req, data);
 }
 
 const DO_DIAGNOSTIC_FETCH_TIMEOUT_MS = 4000;
@@ -517,8 +516,9 @@ export async function handleDoDiagnosticAdmin(
 ): Promise<Response> {
   const a = await requireActor(env, req);
   if (a instanceof Response) return a;
-  if (!a.isAdmin) return forb("Only system admin can view DO diagnostics");
-  if (req.method !== "GET") return na();
+  if (!a.isAdmin)
+    return forb("Only system admin can view DO diagnostics", undefined, req);
+  if (req.method !== "GET") return na(req);
 
   const generatedAt = Date.now();
   const sitesResult = await env.DB.prepare(
@@ -617,5 +617,5 @@ export async function handleDoDiagnosticAdmin(
     sites: topSites,
   };
 
-  return j(aggregate);
+  return jsonResponseFor(req, aggregate);
 }

@@ -12,11 +12,11 @@ import {
   bad,
   bool,
   forb,
-  j,
   type JsonRecord,
   na,
   nf,
   parseJson,
+  jsonResponseFor,
 } from "./admin-response";
 import {
   deleteSiteScriptSettings,
@@ -76,14 +76,15 @@ export async function handleSitesAdmin(
   if (a instanceof Response) return a;
   if (req.method === "GET") {
     const teamId = clampString(url.searchParams.get("teamId") || "", 120);
-    if (!teamId) return bad("Missing teamId");
-    if (!(await canReadTeam(env, a, teamId))) return forb("Team access denied");
+    if (!teamId) return bad("Missing teamId", undefined, req);
+    if (!(await canReadTeam(env, a, teamId)))
+      return forb("Team access denied", undefined, req);
     const rows = await env.DB.prepare(
       "SELECT id,team_id AS teamId,name,domain,public_enabled AS publicEnabled,public_slug AS publicSlug,created_at AS createdAt,updated_at AS updatedAt FROM sites WHERE team_id=? ORDER BY created_at DESC",
     )
       .bind(teamId)
       .all<Record<string, unknown>>();
-    return j({ ok: true, data: rows.results });
+    return jsonResponseFor(req, { ok: true, data: rows.results });
   }
   if (req.method === "POST") {
     const body = await parseJson(req);
@@ -96,9 +97,9 @@ export async function handleSitesAdmin(
       120,
     );
     if (!teamId || !name || !domain)
-      return bad("teamId, name and domain are required");
+      return bad("teamId, name and domain are required", undefined, req);
     if (!(await canManageTeam(env, a, teamId)))
-      return forb("Only team owner can create sites");
+      return forb("Only team owner can create sites", undefined, req);
     const siteId = crypto.randomUUID();
     await env.DB.prepare(
       "INSERT INTO sites (id,team_id,name,domain,public_enabled,public_slug,created_at,updated_at) VALUES (?,?,?,?,?,?,unixepoch(),unixepoch())",
@@ -114,7 +115,7 @@ export async function handleSitesAdmin(
       await env.DB.prepare("DELETE FROM sites WHERE id=?").bind(siteId).run();
       throw error;
     }
-    return j({
+    return jsonResponseFor(req, {
       ok: true,
       data: {
         id: siteId,
@@ -130,7 +131,7 @@ export async function handleSitesAdmin(
     const body = await parseJson(req);
     const siteId = clampString(String(body.siteId || ""), 120);
     const intent = clampString(String(body.intent || ""), 20);
-    if (!siteId) return bad("siteId is required");
+    if (!siteId) return bad("siteId is required", undefined, req);
     const e = await env.DB.prepare(
       "SELECT id,team_id AS teamId,name,domain,public_enabled AS publicEnabled,public_slug AS publicSlug FROM sites WHERE id=? LIMIT 1",
     )
@@ -143,17 +144,20 @@ export async function handleSitesAdmin(
         publicEnabled: number;
         publicSlug: string | null;
       }>();
-    if (!e) return nf("Site not found");
+    if (!e) return nf("Site not found", undefined, req);
     if (!(await canManageTeam(env, a, e.teamId)))
-      return forb("Only team owner can update sites");
+      return forb("Only team owner can update sites", undefined, req);
     if (intent === "remove") {
       await deleteSiteData(env, siteId);
-      return j({ ok: true, data: { siteId, teamId: e.teamId, removed: true } });
+      return jsonResponseFor(req, {
+        ok: true,
+        data: { siteId, teamId: e.teamId, removed: true },
+      });
     }
     const nextTeamId = clampString(String(body.teamId ?? e.teamId), 120);
-    if (!nextTeamId) return bad("teamId is required");
+    if (!nextTeamId) return bad("teamId is required", undefined, req);
     if (nextTeamId !== e.teamId && !(await canManageTeam(env, a, nextTeamId))) {
-      return forb("Only team owner can transfer sites");
+      return forb("Only team owner can transfer sites", undefined, req);
     }
     const name = clampString(String(body.name ?? e.name), 120);
     const domain = clampString(String(body.domain ?? e.domain), 255);
@@ -170,7 +174,7 @@ export async function handleSitesAdmin(
     await upsertSiteScriptSettings(env, siteId, {
       siteDomain: domain,
     });
-    return j({
+    return jsonResponseFor(req, {
       ok: true,
       data: {
         id: siteId,
@@ -182,7 +186,7 @@ export async function handleSitesAdmin(
       },
     });
   }
-  return na();
+  return na(req);
 }
 
 export async function handleSiteConfigAdmin(
@@ -194,23 +198,27 @@ export async function handleSiteConfigAdmin(
   if (a instanceof Response) return a;
   if (req.method === "GET") {
     const siteId = clampString(url.searchParams.get("siteId") || "", 120);
-    if (!siteId) return bad("Missing siteId");
-    if (!(await canReadSite(env, a, siteId))) return forb("Site access denied");
+    if (!siteId) return bad("Missing siteId", undefined, req);
+    if (!(await canReadSite(env, a, siteId)))
+      return forb("Site access denied", undefined, req);
     try {
       const settings = await readSiteScriptSettings(env, siteId);
-      return j({ ok: true, data: settings ?? DEFAULT_SITE_SCRIPT_SETTINGS });
+      return jsonResponseFor(req, {
+        ok: true,
+        data: settings ?? DEFAULT_SITE_SCRIPT_SETTINGS,
+      });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "load_site_config_failed";
-      return j({ ok: false, error: message }, 500);
+      return jsonResponseFor(req, { ok: false, error: message }, 500);
     }
   }
   if (req.method === "POST") {
     const body = await parseJson(req);
     const siteId = clampString(String(body.siteId || ""), 120);
-    if (!siteId) return bad("siteId is required");
+    if (!siteId) return bad("siteId is required", undefined, req);
     if (!(await canManageSite(env, a, siteId)))
-      return forb("Only team owner can update site config");
+      return forb("Only team owner can update site config", undefined, req);
     const cfg = (
       body.config && typeof body.config === "object" ? body.config : {}
     ) as JsonRecord;
@@ -220,19 +228,19 @@ export async function handleSiteConfigAdmin(
       )
         .bind(siteId)
         .first<{ domain: string }>();
-      if (!site?.domain) return nf("Site not found");
+      if (!site?.domain) return nf("Site not found", undefined, req);
       const next = await upsertSiteScriptSettings(env, siteId, {
         siteDomain: site.domain,
         settings: cfg,
       });
-      return j({ ok: true, data: next });
+      return jsonResponseFor(req, { ok: true, data: next });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "save_site_config_failed";
-      return j({ ok: false, error: message }, 500);
+      return jsonResponseFor(req, { ok: false, error: message }, 500);
     }
   }
-  return na();
+  return na(req);
 }
 
 export async function handleScriptSnippetAdmin(
@@ -240,15 +248,16 @@ export async function handleScriptSnippetAdmin(
   env: Env,
   url: URL,
 ): Promise<Response> {
-  if (req.method !== "GET") return na();
+  if (req.method !== "GET") return na(req);
   const a = await requireActor(env, req);
   if (a instanceof Response) return a;
   const siteId = clampString(url.searchParams.get("siteId") || "", 120);
-  if (!siteId) return bad("Missing siteId");
-  if (!(await canReadSite(env, a, siteId))) return forb("Site access denied");
+  if (!siteId) return bad("Missing siteId", undefined, req);
+  if (!(await canReadSite(env, a, siteId)))
+    return forb("Site access denied", undefined, req);
   const edgeBase = env.EDGE_PUBLIC_BASE_URL || `${url.protocol}//${url.host}`;
   const src = `${edgeBase.replace(/\/$/, "")}/script.js?siteId=${encodeURIComponent(siteId)}`;
-  return j({
+  return jsonResponseFor(req, {
     ok: true,
     data: { siteId, src, snippet: `<script defer src="${src}"></script>` },
   });

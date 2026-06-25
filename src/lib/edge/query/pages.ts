@@ -19,7 +19,7 @@ import {
   buildVisitFilterSql,
   buildVisitSourceCte,
   emptyOverviewAggregateRow,
-  jsonResponse,
+  jsonResponseWith,
   mapPageCardMetrics,
   mapPages,
   mapReferrers,
@@ -32,6 +32,7 @@ import {
   parseQueryLimit,
   parseWindow,
   percentChange,
+  type ResponseContext,
   queryD1All,
   timeBucketCase,
   timeBucketTimestamp,
@@ -395,6 +396,7 @@ export async function handlePages(
   siteId: string,
   url: URL,
   includeTabs: boolean,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -429,13 +431,14 @@ export async function handlePages(
       exit: mapTabs(tabs.exit),
     };
   }
-  return jsonResponse(payload);
+  return jsonResponseWith(ctx!, payload);
 }
 
 export async function handlePagesDashboard(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -460,7 +463,7 @@ export async function handlePagesDashboard(
     ? requestedRows.slice(0, pageSize)
     : requestedRows;
   if (currentRows.length === 0) {
-    return jsonResponse({
+    return jsonResponseWith(ctx!, {
       ok: true,
       interval,
       data: [],
@@ -525,7 +528,7 @@ export async function handlePagesDashboard(
     trendByPath.set(row.pathname, trend);
   }
 
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     interval,
     data: currentRows.map((row) => {
@@ -573,6 +576,7 @@ export async function handleReferrers(
   url: URL,
   fallbackLimit = 20,
   allowFullUrlParam = true,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -587,7 +591,7 @@ export async function handleReferrers(
     limit,
     includeFullUrl,
   );
-  return jsonResponse({ ok: true, data: mapReferrers(rows) });
+  return jsonResponseWith(ctx!, { ok: true, data: mapReferrers(rows) });
 }
 
 export async function handleDimension(
@@ -598,6 +602,7 @@ export async function handleDimension(
   options?: {
     ignoreGeo?: boolean;
   },
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -614,5 +619,5 @@ export async function handleDimension(
     limit,
     d1Expr,
   );
-  return jsonResponse({ ok: true, data: mapTabs(rows) });
+  return jsonResponseWith(ctx!, { ok: true, data: mapTabs(rows) });
 }

@@ -20,9 +20,9 @@ describe("archive manifest route", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "Missing siteId",
+      error: { code: "missing_site_id", message: "Missing siteId" },
     });
     expect(fetchEdgeForServerMock).not.toHaveBeenCalled();
   });
@@ -56,17 +56,19 @@ describe("archive manifest route", () => {
       },
     });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      ok: true,
-      files: [
-        {
-          archiveKey: "site 1/day.parquet",
-          size: 123,
-          fetchUrl: "/api/archive/file?key=site%201%2Fday.parquet",
-        },
-        { archiveKey: 42, size: 456, fetchUrl: undefined },
-      ],
+    const body = (await response.json()) as Record<string, unknown>;
+    const files = body.files as Array<Record<string, unknown>>;
+    expect(files).toHaveLength(2);
+    expect(files[0]).toMatchObject({
+      archiveKey: "site 1/day.parquet",
+      size: 123,
+      fetchUrl: "/api/archive/file?key=site%201%2Fday.parquet",
     });
+    expect(files[1]).toMatchObject({
+      archiveKey: 42,
+      size: 456,
+    });
+    expect(files[1]).not.toHaveProperty("fetchUrl");
   });
 
   it("returns upstream failures and invalid JSON payloads", async () => {
@@ -79,10 +81,12 @@ describe("archive manifest route", () => {
     );
 
     expect(failed.status).toBe(503);
-    expect(await failed.json()).toEqual({
+    expect(await failed.json()).toMatchObject({
       ok: false,
-      error: "Failed to fetch archive manifest",
-      detail: "upstream down",
+      error: {
+        code: "fetch_archive_manifest_failed",
+        message: "upstream down",
+      },
     });
 
     fetchEdgeForServerMock.mockResolvedValueOnce(new Response("{bad json"));
@@ -91,9 +95,12 @@ describe("archive manifest route", () => {
     );
 
     expect(invalidJson.status).toBe(502);
-    expect(await invalidJson.json()).toEqual({
+    expect(await invalidJson.json()).toMatchObject({
       ok: false,
-      error: "Archive manifest payload is invalid JSON",
+      error: {
+        code: "invalid_manifest_json",
+        message: "Archive manifest payload is invalid JSON",
+      },
     });
   });
 });

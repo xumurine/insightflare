@@ -169,9 +169,9 @@ describe("admin response low branches", () => {
     );
     expect(await accepted.json()).toEqual({ ok: true });
 
-    await expect(jsonOf(bad("bad_input"))).resolves.toEqual({
+    await expect(jsonOf(bad("bad_input"))).resolves.toMatchObject({
       ok: false,
-      error: "bad_input",
+      error: { message: "bad_input" },
     });
     expect(bad("bad_input").status).toBe(400);
     expect(una().status).toBe(401);
@@ -323,9 +323,9 @@ describe("admin auth low branches", () => {
     const missingUser = await requireActor(missingUserEnv.env, request);
     expect(missingUser).toBeInstanceOf(Response);
     expect((missingUser as Response).status).toBe(401);
-    await expect((missingUser as Response).json()).resolves.toEqual({
+    await expect((missingUser as Response).json()).resolves.toMatchObject({
       ok: false,
-      error: "User not found",
+      error: { message: "User not found" },
     });
 
     requireSessionMock.mockResolvedValueOnce({ userId: "user-1" } as Awaited<

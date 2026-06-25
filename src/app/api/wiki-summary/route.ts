@@ -1,10 +1,12 @@
 import { resolveLocale } from "@/lib/i18n/config";
+import { jsonResponse } from "@/lib/response";
 
 const WIKIDATA_API_ENDPOINT = "https://www.wikidata.org/w/api.php";
 const DEFAULT_WIKI_LANGUAGE = "en";
 const CACHE_CONTROL_HEADER =
   "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800";
 const WIKIMEDIA_USER_AGENT = "InsightFlare/0.1 (+https://insight.ravelloh.com)";
+const CACHE_HEADERS = { "cache-control": CACHE_CONTROL_HEADER };
 
 interface WikidataTerm {
   value?: string;
@@ -42,16 +44,6 @@ interface WikipediaSummaryResponse {
       page?: string;
     };
   };
-}
-
-function jsonResponse(payload: unknown, status = 200): Response {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": CACHE_CONTROL_HEADER,
-    },
-  });
 }
 
 function isValidWikidataId(value: string): boolean {
@@ -214,6 +206,7 @@ export async function GET(request: Request): Promise<Response> {
         error: "Invalid or missing wikidataId",
       },
       400,
+      CACHE_HEADERS,
     );
   }
 
@@ -232,6 +225,7 @@ export async function GET(request: Request): Promise<Response> {
           error: "Wikidata entity not found",
         },
         404,
+        CACHE_HEADERS,
       );
     }
 
@@ -281,21 +275,25 @@ export async function GET(request: Request): Promise<Response> {
       };
     }
 
-    return jsonResponse({
-      ok: true,
-      wikidataId,
-      requestedLanguage,
-      resolvedLanguage: wikipedia?.language ?? sitelink?.language ?? null,
-      fallback:
-        Boolean(wikipedia?.language || sitelink?.language) &&
-        (wikipedia?.language ?? sitelink?.language) !== requestedLanguage,
-      wikidata: {
-        id: entity.id ?? wikidataId,
-        label,
-        description,
+    return jsonResponse(
+      {
+        ok: true,
+        wikidataId,
+        requestedLanguage,
+        resolvedLanguage: wikipedia?.language ?? sitelink?.language ?? null,
+        fallback:
+          Boolean(wikipedia?.language || sitelink?.language) &&
+          (wikipedia?.language ?? sitelink?.language) !== requestedLanguage,
+        wikidata: {
+          id: entity.id ?? wikidataId,
+          label,
+          description,
+        },
+        wikipedia,
       },
-      wikipedia,
-    });
+      200,
+      CACHE_HEADERS,
+    );
   } catch (error) {
     console.error("[wiki-summary] upstream request failed", error);
     return jsonResponse(
@@ -304,6 +302,7 @@ export async function GET(request: Request): Promise<Response> {
         error: "Wiki upstream unavailable",
       },
       502,
+      CACHE_HEADERS,
     );
   }
 }

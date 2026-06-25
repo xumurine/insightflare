@@ -1,35 +1,14 @@
-import { NextResponse } from "next/server";
-
 import {
   createAdminTeam,
   removeAdminTeam,
   transferAdminTeamOwner,
   updateAdminTeam,
 } from "@/lib/edge-client";
+import { bad, jsonResponseFor } from "@/lib/edge/admin-response";
 import { bodyStr, parseRequestBody } from "@/lib/form-helpers";
+import { errorResponse, normalizeErrorMessage } from "@/lib/response";
 
-function normalizeErrorMessage(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error);
-  const jsonStart = raw.lastIndexOf("{");
-  if (jsonStart >= 0) {
-    const maybeJson = raw.slice(jsonStart).trim();
-    try {
-      const parsed = JSON.parse(maybeJson) as {
-        message?: unknown;
-        error?: unknown;
-      };
-      if (typeof parsed.message === "string" && parsed.message.trim())
-        return parsed.message.trim();
-      if (typeof parsed.error === "string" && parsed.error.trim())
-        return parsed.error.trim();
-    } catch {
-      // fall through to raw
-    }
-  }
-  return raw;
-}
-
-export async function POST(request: Request): Promise<NextResponse> {
+export async function POST(request: Request): Promise<Response> {
   const body = await parseRequestBody(request);
   const intent = bodyStr(body, "intent");
 
@@ -40,49 +19,34 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (intent === "transfer_owner") {
     const newOwnerUserId = bodyStr(body, "newOwnerUserId");
     if (teamId.length === 0 || newOwnerUserId.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "missing_transfer_input" },
-        { status: 400 },
-      );
+      return bad("Missing transfer input", "missing_transfer_input", request);
     }
 
     try {
       const result = await transferAdminTeamOwner({ teamId, newOwnerUserId });
-      return NextResponse.json({ ok: true, data: result });
+      return jsonResponseFor(request, { ok: true, data: result });
     } catch (error) {
       const msg = normalizeErrorMessage(error);
-      return NextResponse.json(
-        { ok: false, error: "transfer_team_failed", message: msg },
-        { status: 500 },
-      );
+      return errorResponse(request, 500, "transfer_team_failed", msg);
     }
   }
 
   if (intent === "remove" || intent === "delete") {
     if (teamId.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "missing_team_id" },
-        { status: 400 },
-      );
+      return bad("Missing team ID", "missing_team_id", request);
     }
 
     try {
       const result = await removeAdminTeam({ teamId });
-      return NextResponse.json({ ok: true, data: result });
+      return jsonResponseFor(request, { ok: true, data: result });
     } catch (error) {
       const msg = normalizeErrorMessage(error);
-      return NextResponse.json(
-        { ok: false, error: "remove_team_failed", message: msg },
-        { status: 500 },
-      );
+      return errorResponse(request, 500, "remove_team_failed", msg);
     }
   }
 
   if (name.length < 2) {
-    return NextResponse.json(
-      { ok: false, error: "invalid_team_name" },
-      { status: 400 },
-    );
+    return bad("Invalid team name", "invalid_team_name", request);
   }
 
   if (teamId.length > 0) {
@@ -92,13 +56,10 @@ export async function POST(request: Request): Promise<NextResponse> {
         name,
         slug: slug || undefined,
       });
-      return NextResponse.json({ ok: true, data: updated });
+      return jsonResponseFor(request, { ok: true, data: updated });
     } catch (error) {
       const msg = normalizeErrorMessage(error);
-      return NextResponse.json(
-        { ok: false, error: "update_team_failed", message: msg },
-        { status: 500 },
-      );
+      return errorResponse(request, 500, "update_team_failed", msg);
     }
   }
 
@@ -107,12 +68,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       name,
       slug: slug || undefined,
     });
-    return NextResponse.json({ ok: true, data: created });
+    return jsonResponseFor(request, { ok: true, data: created });
   } catch (error) {
     const msg = normalizeErrorMessage(error);
-    return NextResponse.json(
-      { ok: false, error: "create_team_failed", message: msg },
-      { status: 500 },
-    );
+    return errorResponse(request, 500, "create_team_failed", msg);
   }
 }

@@ -22,7 +22,7 @@ import {
   buildVisitFilterSql,
   buildVisitSourceCte,
   dedupeFilterOptions,
-  jsonResponse,
+  jsonResponseWith,
   mapDimensionRowsToFilterOptions,
   mapGeoRowsToFilterOptions,
   mapGeoTabs,
@@ -38,6 +38,7 @@ import {
   parseLimit,
   parseWindow,
   percentChange,
+  type ResponseContext,
   queryD1All,
   sourceLabel,
   timeBucketCase,
@@ -273,6 +274,7 @@ export async function handleOverview(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -351,13 +353,14 @@ export async function handleOverview(
     };
   }
 
-  return jsonResponse(payload);
+  return jsonResponseWith(ctx!, payload);
 }
 
 export async function handleTrend(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -370,7 +373,7 @@ export async function handleTrend(
     interval,
     filters,
   );
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     interval,
     data: mapTrendRows(
@@ -407,6 +410,7 @@ export async function handleOverviewPageTab(
   siteId: string,
   url: URL,
   tab: OverviewPageTabKey,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -419,7 +423,7 @@ export async function handleOverviewPageTab(
     filters,
     limit,
   );
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     data: mapTabs(tabs[tab]),
   });
@@ -430,6 +434,7 @@ export async function handleOverviewSourceTab(
   siteId: string,
   url: URL,
   tab: OverviewSourceTabKey,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -443,7 +448,7 @@ export async function handleOverviewSourceTab(
     limit,
     tab === "link",
   );
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     data: rows.map((row) => ({
       label: row.referrer,
@@ -459,6 +464,7 @@ export async function handleOverviewClientTab(
   siteId: string,
   url: URL,
   tab: OverviewClientTabKey,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -471,7 +477,7 @@ export async function handleOverviewClientTab(
     filters,
     limit,
   );
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     data: mapTabs(tabs[tab]),
   });
@@ -482,6 +488,7 @@ export async function handleOverviewGeoTab(
   siteId: string,
   url: URL,
   tab: OverviewGeoTabKey,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -495,7 +502,7 @@ export async function handleOverviewGeoTab(
     filters,
     limit,
   );
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     data: mapGeoTabs(tabs[tab]),
   });
@@ -505,6 +512,7 @@ export async function handleFilterOptions(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const filterKey = parseFilterOptionKey(url);
   if (!filterKey) return badRequest("Invalid filter key");
@@ -625,13 +633,14 @@ export async function handleFilterOptions(
     data = mapDimensionRowsToFilterOptions(tabs[keyMap[filterKey]]);
   }
 
-  return jsonResponse({ ok: true, data });
+  return jsonResponseWith(ctx!, { ok: true, data });
 }
 
 export async function handleOverviewGeoPoints(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -646,7 +655,7 @@ export async function handleOverviewGeoPoints(
     filters,
     limit,
   );
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     data: aggregate.points,
     countryCounts: aggregate.countryCounts,

@@ -5,9 +5,10 @@ import {
   buildTimeBuckets,
   buildVisitFilterSql,
   buildVisitSourceCte,
-  jsonResponse,
+  jsonResponseWith,
   parseFilters,
   parseWindow,
+  type ResponseContext,
   queryD1All,
   timeBucketCase,
   timeBucketTimestamp,
@@ -18,6 +19,7 @@ export async function handleRetention(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -122,5 +124,5 @@ ORDER BY cohort_bucket ASC, visit_bucket ASC
         }),
     }));
 
-  return jsonResponse({ ok: true, granularity, cohorts });
+  return jsonResponseWith(ctx!, { ok: true, granularity, cohorts });
 }

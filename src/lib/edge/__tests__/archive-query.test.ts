@@ -135,9 +135,9 @@ describe("private archive edge query handler", () => {
     const response = await dispatch("/api/private/archive/unknown", env);
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "Not Found",
+      error: { message: "Not Found" },
     });
     expect(requireSessionMock).not.toHaveBeenCalled();
   });
@@ -152,14 +152,14 @@ describe("private archive edge query handler", () => {
       const missingSite = await dispatch("/api/private/archive/manifest", env);
 
       expect(post.status).toBe(405);
-      expect(await post.json()).toEqual({
+      expect(await post.json()).toMatchObject({
         ok: false,
-        error: "Method Not Allowed",
+        error: { message: "Method Not Allowed" },
       });
       expect(missingSite.status).toBe(400);
-      expect(await missingSite.json()).toEqual({
+      expect(await missingSite.json()).toMatchObject({
         ok: false,
-        error: "Missing siteId",
+        error: { message: "Missing siteId" },
       });
       expect(requireSessionMock).not.toHaveBeenCalled();
     });
@@ -174,9 +174,9 @@ describe("private archive edge query handler", () => {
       );
 
       expect(response.status).toBe(401);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Unauthorized",
+        error: { message: "Unauthorized" },
       });
     });
 
@@ -191,9 +191,9 @@ describe("private archive edge query handler", () => {
       );
 
       expect(response.status).toBe(401);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Site access denied for current user",
+        error: { message: "Site access denied for current user" },
       });
       expect(membership.bind).toHaveBeenCalledWith("site-1", "user-1");
     });
@@ -208,9 +208,9 @@ describe("private archive edge query handler", () => {
       );
 
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Invalid time window",
+        error: { message: "Invalid time window" },
       });
       expect(prepare).not.toHaveBeenCalled();
     });
@@ -225,9 +225,9 @@ describe("private archive edge query handler", () => {
       );
 
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Invalid time window",
+        error: { message: "Invalid time window" },
       });
       expect(prepare).not.toHaveBeenCalled();
     });
@@ -330,14 +330,14 @@ describe("private archive edge query handler", () => {
       );
 
       expect(post.status).toBe(405);
-      expect(await post.json()).toEqual({
+      expect(await post.json()).toMatchObject({
         ok: false,
-        error: "Method Not Allowed",
+        error: { message: "Method Not Allowed" },
       });
       expect(missingBucket.status).toBe(404);
-      expect(await missingBucket.json()).toEqual({
+      expect(await missingBucket.json()).toMatchObject({
         ok: false,
-        error: "Archive bucket is not configured",
+        error: { message: "Archive bucket is not configured" },
       });
       expect(requireSessionMock).not.toHaveBeenCalled();
     });
@@ -352,9 +352,9 @@ describe("private archive edge query handler", () => {
       );
 
       expect(response.status).toBe(401);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Unauthorized",
+        error: { message: "Unauthorized" },
       });
     });
 
@@ -366,14 +366,14 @@ describe("private archive edge query handler", () => {
       const blank = await dispatch("/api/private/archive/file?key=%20", env);
 
       expect(missing.status).toBe(400);
-      expect(await missing.json()).toEqual({
+      expect(await missing.json()).toMatchObject({
         ok: false,
-        error: "Missing key",
+        error: { message: "Missing key" },
       });
       expect(blank.status).toBe(400);
-      expect(await blank.json()).toEqual({
+      expect(await blank.json()).toMatchObject({
         ok: false,
-        error: "Missing key",
+        error: { message: "Missing key" },
       });
       expect(prepare).not.toHaveBeenCalled();
     });
@@ -400,14 +400,14 @@ describe("private archive edge query handler", () => {
       );
 
       expect(missing.status).toBe(404);
-      expect(await missing.json()).toEqual({
+      expect(await missing.json()).toMatchObject({
         ok: false,
-        error: "Archive object not found",
+        error: { message: "Archive object not found" },
       });
       expect(csv.status).toBe(404);
-      expect(await csv.json()).toEqual({
+      expect(await csv.json()).toMatchObject({
         ok: false,
-        error: "Archive object is not queryable in precise mode",
+        error: { message: "Archive object is not queryable in precise mode" },
       });
       expect(missingRow.bind).toHaveBeenCalledWith("missing.parquet");
       expect(csvRow.bind).toHaveBeenCalledWith("site/export.csv");
@@ -432,9 +432,9 @@ describe("private archive edge query handler", () => {
       );
 
       expect(response.status).toBe(401);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Site access denied for current user",
+        error: { message: "Site access denied for current user" },
       });
       expect(membership.bind).toHaveBeenCalledWith("site-1", "user-1");
       expect(bucket.get).not.toHaveBeenCalled();
@@ -458,9 +458,9 @@ describe("private archive edge query handler", () => {
       );
 
       expect(response.status).toBe(404);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Archive object content is missing",
+        error: { message: "Archive object content is missing" },
       });
       expect(archiveRow.bind).toHaveBeenCalledWith("site/day.parquet");
       expect(bucket.get).toHaveBeenCalledWith("site/day.parquet", undefined);

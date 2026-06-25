@@ -1,18 +1,14 @@
-import { NextResponse } from "next/server";
-
 import { fetchEdgeForServer } from "@/lib/edge-proxy";
+import { bad, errorResponse, jsonResponseFor } from "@/lib/response";
 
-export async function GET(request: Request): Promise<NextResponse> {
+export async function GET(request: Request): Promise<Response> {
   const incomingUrl = new URL(request.url);
   const siteId = incomingUrl.searchParams.get("siteId") || "";
   const from = incomingUrl.searchParams.get("from") || "";
   const to = incomingUrl.searchParams.get("to") || "";
 
   if (siteId.length === 0) {
-    return NextResponse.json(
-      { ok: false, error: "Missing siteId" },
-      { status: 400 },
-    );
+    return bad("Missing siteId", "missing_site_id", request);
   }
 
   const edgeRes = await fetchEdgeForServer({
@@ -27,9 +23,11 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const text = await edgeRes.text();
   if (!edgeRes.ok) {
-    return NextResponse.json(
-      { ok: false, error: "Failed to fetch archive manifest", detail: text },
-      { status: edgeRes.status },
+    return errorResponse(
+      request,
+      edgeRes.status,
+      "fetch_archive_manifest_failed",
+      text,
     );
   }
 
@@ -37,9 +35,11 @@ export async function GET(request: Request): Promise<NextResponse> {
   try {
     payload = JSON.parse(text) as unknown;
   } catch {
-    return NextResponse.json(
-      { ok: false, error: "Archive manifest payload is invalid JSON" },
-      { status: 502 },
+    return errorResponse(
+      request,
+      502,
+      "invalid_manifest_json",
+      "Archive manifest payload is invalid JSON",
     );
   }
 
@@ -59,7 +59,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         : undefined,
   }));
 
-  return NextResponse.json({
+  return jsonResponseFor(request, {
     ...(payload && typeof payload === "object" ? payload : {}),
     files: normalizedFiles,
   });

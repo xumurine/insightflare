@@ -1,3 +1,5 @@
+import { j as jsonResponse } from "@/lib/response";
+
 import type { TrackerPerformancePayload } from "./types";
 import { coerceNumber } from "./utils";
 
@@ -63,12 +65,7 @@ export interface RealtimeVisitPayloadInput {
   longitude: number | null;
 }
 
-export function jsonResponse(payload: unknown, status = 200): Response {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
-}
+export { jsonResponse };
 
 export function clampTimestamp(input: unknown, fallback: number): number {
   const value = coerceNumber(input, fallback) ?? fallback;

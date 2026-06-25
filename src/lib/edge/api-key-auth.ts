@@ -1,3 +1,5 @@
+import { forb, una } from "@/lib/response";
+
 import {
   type ApiKeyScope,
   apiKeyStatus,
@@ -17,13 +19,6 @@ export interface ApiKeyPrincipal {
   prefix: string;
   scopes: ApiKeyScope[];
   siteIds: string[];
-}
-
-function json(payload: unknown, status: number): Response {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
 }
 
 export function extractApiKeyToken(request: Request): string {
@@ -49,25 +44,25 @@ export async function authenticateApiKey(
   const token = extractApiKeyToken(request);
   const parsed = parseApiKey(token);
   if (!parsed) {
-    return json({ ok: false, error: "invalid_api_key" }, 401);
+    return una("Invalid or missing API key", "invalid_api_key", request);
   }
 
   const row = await getApiKeyByPrefix(env, parsed.prefix);
   if (!row) {
-    return json({ ok: false, error: "invalid_api_key" }, 401);
+    return una("Invalid or missing API key", "invalid_api_key", request);
   }
 
   const actualHash = await hashApiKeySecret(env, token);
   if (!timingSafeEqualString(actualHash, row.key_hash)) {
-    return json({ ok: false, error: "invalid_api_key" }, 401);
+    return una("Invalid or missing API key", "invalid_api_key", request);
   }
 
   const status = apiKeyStatus(row);
   if (status === "revoked") {
-    return json({ ok: false, error: "api_key_revoked" }, 401);
+    return una("API key has been revoked", "api_key_revoked", request);
   }
   if (status === "expired") {
-    return json({ ok: false, error: "api_key_expired" }, 401);
+    return una("API key has expired", "api_key_expired", request);
   }
 
   const update = markApiKeyUsed(env, row.id);
@@ -109,5 +104,5 @@ export function requireApiScope(
   scope: ApiKeyScope,
 ): Response | null {
   if (hasApiScope(principal, scope)) return null;
-  return json({ ok: false, error: "insufficient_scope" }, 403);
+  return forb("Insufficient scope for this action", "insufficient_scope");
 }

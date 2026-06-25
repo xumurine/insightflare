@@ -504,41 +504,41 @@ describe("edge query event handlers low-level coverage", () => {
       new URL("https://edge.test/event-detail"),
     );
 
-    await expect(invalidTypes.json()).resolves.toEqual({
+    await expect(invalidTypes.json()).resolves.toMatchObject({
       ok: false,
-      error: "Invalid time window",
+      error: { message: "Invalid time window" },
     });
-    await expect(invalidSummary.json()).resolves.toEqual({
+    await expect(invalidSummary.json()).resolves.toMatchObject({
       ok: false,
-      error: "Invalid time window",
+      error: { message: "Invalid time window" },
     });
-    await expect(invalidTrend.json()).resolves.toEqual({
+    await expect(invalidTrend.json()).resolves.toMatchObject({
       ok: false,
-      error: "Invalid time window",
+      error: { message: "Invalid time window" },
     });
-    await expect(missingDetailName.json()).resolves.toEqual({
+    await expect(missingDetailName.json()).resolves.toMatchObject({
       ok: false,
-      error: "eventName is required",
+      error: { message: "eventName is required" },
     });
-    await expect(invalidDetailWindow.json()).resolves.toEqual({
+    await expect(invalidDetailWindow.json()).resolves.toMatchObject({
       ok: false,
-      error: "Invalid time window",
+      error: { message: "Invalid time window" },
     });
-    await expect(missingFieldName.json()).resolves.toEqual({
+    await expect(missingFieldName.json()).resolves.toMatchObject({
       ok: false,
-      error: "eventName is required",
+      error: { message: "eventName is required" },
     });
-    await expect(missingFieldPath.json()).resolves.toEqual({
+    await expect(missingFieldPath.json()).resolves.toMatchObject({
       ok: false,
-      error: "fieldPath is required",
+      error: { message: "fieldPath is required" },
     });
-    await expect(missingFieldType.json()).resolves.toEqual({
+    await expect(missingFieldType.json()).resolves.toMatchObject({
       ok: false,
-      error: "fieldValueType is required",
+      error: { message: "fieldValueType is required" },
     });
-    await expect(missingEventId.json()).resolves.toEqual({
+    await expect(missingEventId.json()).resolves.toMatchObject({
       ok: false,
-      error: "eventId is required",
+      error: { message: "eventId is required" },
     });
     expect(prepare).not.toHaveBeenCalled();
   });

@@ -982,13 +982,13 @@ describe("edge journey handlers", () => {
 
     expect(visitors.status).toBe(400);
     expect(sessions.status).toBe(400);
-    await expect(visitors.json()).resolves.toEqual({
+    await expect(visitors.json()).resolves.toMatchObject({
       ok: false,
-      error: "Invalid time window",
+      error: { message: "Invalid time window" },
     });
-    await expect(sessions.json()).resolves.toEqual({
+    await expect(sessions.json()).resolves.toMatchObject({
       ok: false,
-      error: "Invalid time window",
+      error: { message: "Invalid time window" },
     });
     expect(calls).toEqual([]);
   });
@@ -1009,13 +1009,13 @@ describe("edge journey handlers", () => {
 
     expect(visitor.status).toBe(400);
     expect(session.status).toBe(400);
-    await expect(visitor.json()).resolves.toEqual({
+    await expect(visitor.json()).resolves.toMatchObject({
       ok: false,
-      error: "Missing visitorId",
+      error: { message: "Missing visitorId" },
     });
-    await expect(session.json()).resolves.toEqual({
+    await expect(session.json()).resolves.toMatchObject({
       ok: false,
-      error: "Missing sessionId",
+      error: { message: "Missing sessionId" },
     });
     expect(calls).toEqual([]);
   });

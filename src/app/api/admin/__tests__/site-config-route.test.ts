@@ -26,9 +26,9 @@ describe("admin site config route", () => {
     const response = await POST(jsonRequest({ config: {} }));
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "missing_site_id",
+      error: { code: "missing_site_id", message: "Missing site ID" },
     });
     expect(upsertAdminSiteConfigMock).not.toHaveBeenCalled();
   });
@@ -52,7 +52,7 @@ describe("admin site config route", () => {
       },
     });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       data: { saved: true },
     });
@@ -107,10 +107,9 @@ describe("admin site config route", () => {
     const response = await POST(jsonRequest({ siteId: "site-1", config: {} }));
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "save_site_config_failed",
-      message: "Invalid config",
+      error: { code: "save_site_config_failed", message: "Invalid config" },
     });
   });
 
@@ -124,10 +123,12 @@ describe("admin site config route", () => {
     );
 
     expect(messageField.status).toBe(500);
-    expect(await messageField.json()).toEqual({
+    expect(await messageField.json()).toMatchObject({
       ok: false,
-      error: "save_site_config_failed",
-      message: "Config is too large",
+      error: {
+        code: "save_site_config_failed",
+        message: "Config is too large",
+      },
     });
 
     upsertAdminSiteConfigMock.mockRejectedValueOnce(new Error("network down"));
@@ -137,10 +138,9 @@ describe("admin site config route", () => {
     );
 
     expect(rawFallback.status).toBe(500);
-    expect(await rawFallback.json()).toEqual({
+    expect(await rawFallback.json()).toMatchObject({
       ok: false,
-      error: "save_site_config_failed",
-      message: "network down",
+      error: { code: "save_site_config_failed", message: "network down" },
     });
   });
 
@@ -152,10 +152,12 @@ describe("admin site config route", () => {
     const response = await POST(jsonRequest({ siteId: "site-1", config: {} }));
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "save_site_config_failed",
-      message: 'Edge API failed (500): {"message":"","error":""}',
+      error: {
+        code: "save_site_config_failed",
+        message: 'Edge API failed (500): {"message":"","error":""}',
+      },
     });
   });
 });

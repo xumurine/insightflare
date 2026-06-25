@@ -53,7 +53,7 @@ describe("admin user route", () => {
       systemRole: "admin",
     });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       data: { id: "user-1" },
     });
@@ -68,9 +68,9 @@ describe("admin user route", () => {
       }),
     );
     expect(invalidCreate.status).toBe(400);
-    expect(await invalidCreate.json()).toEqual({
+    expect(await invalidCreate.json()).toMatchObject({
       ok: false,
-      error: "invalid_user_input",
+      error: { code: "invalid_user_input", message: "Invalid user input" },
     });
 
     const missingPassword = await POST(
@@ -80,23 +80,23 @@ describe("admin user route", () => {
       }),
     );
     expect(missingPassword.status).toBe(400);
-    expect(await missingPassword.json()).toEqual({
+    expect(await missingPassword.json()).toMatchObject({
       ok: false,
-      error: "invalid_user_input",
+      error: { code: "invalid_user_input", message: "Invalid user input" },
     });
 
     const missingUpdateId = await POST(jsonRequest({ intent: "update" }));
     expect(missingUpdateId.status).toBe(400);
-    expect(await missingUpdateId.json()).toEqual({
+    expect(await missingUpdateId.json()).toMatchObject({
       ok: false,
-      error: "missing_user_id",
+      error: { code: "missing_user_id", message: "Missing user ID" },
     });
 
     const missingRemoveId = await POST(jsonRequest({ intent: "remove" }));
     expect(missingRemoveId.status).toBe(400);
-    expect(await missingRemoveId.json()).toEqual({
+    expect(await missingRemoveId.json()).toMatchObject({
       ok: false,
-      error: "missing_user_id",
+      error: { code: "missing_user_id", message: "Missing user ID" },
     });
   });
 
@@ -126,7 +126,7 @@ describe("admin user route", () => {
       password: undefined,
       systemRole: "user",
     });
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       data: { id: "user-1", updated: true },
     });
@@ -143,7 +143,7 @@ describe("admin user route", () => {
     );
 
     expect(removeAdminUserMock).toHaveBeenCalledWith({ userId: "user-1" });
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       data: { userId: "user-1", removed: true },
     });
@@ -163,10 +163,9 @@ describe("admin user route", () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "user_mutation_failed",
-      message: "Username exists",
+      error: { code: "user_mutation_failed", message: "Username exists" },
     });
   });
 
@@ -192,10 +191,9 @@ describe("admin user route", () => {
       systemRole: "admin",
     });
     expect(messageField.status).toBe(500);
-    expect(await messageField.json()).toEqual({
+    expect(await messageField.json()).toMatchObject({
       ok: false,
-      error: "user_mutation_failed",
-      message: "Email exists",
+      error: { code: "user_mutation_failed", message: "Email exists" },
     });
 
     removeAdminUserMock.mockRejectedValueOnce(new Error("remove failed"));
@@ -205,10 +203,9 @@ describe("admin user route", () => {
     );
 
     expect(rawFallback.status).toBe(500);
-    expect(await rawFallback.json()).toEqual({
+    expect(await rawFallback.json()).toMatchObject({
       ok: false,
-      error: "user_mutation_failed",
-      message: "remove failed",
+      error: { code: "user_mutation_failed", message: "remove failed" },
     });
   });
 
@@ -226,10 +223,12 @@ describe("admin user route", () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "user_mutation_failed",
-      message: 'Edge API failed (500): {"message":"","error":""}',
+      error: {
+        code: "user_mutation_failed",
+        message: 'Edge API failed (500): {"message":"","error":""}',
+      },
     });
   });
 });

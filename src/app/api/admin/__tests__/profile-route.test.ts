@@ -54,7 +54,7 @@ describe("admin profile route", () => {
       timeZone: "Asia/Shanghai",
     });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       data: {
         id: "user-1",
@@ -96,10 +96,9 @@ describe("admin profile route", () => {
     const response = await POST(jsonRequest({ username: "admin" }));
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "profile_update_failed",
-      message: "Name is required",
+      error: { code: "profile_update_failed", message: "Name is required" },
     });
   });
 
@@ -111,10 +110,9 @@ describe("admin profile route", () => {
     const errorField = await POST(jsonRequest({ email: "bad" }));
 
     expect(errorField.status).toBe(500);
-    expect(await errorField.json()).toEqual({
+    expect(await errorField.json()).toMatchObject({
       ok: false,
-      error: "profile_update_failed",
-      message: "Email is invalid",
+      error: { code: "profile_update_failed", message: "Email is invalid" },
     });
 
     updateMyProfileMock.mockRejectedValueOnce(
@@ -124,10 +122,12 @@ describe("admin profile route", () => {
     const rawFallback = await POST(jsonRequest({ username: "admin" }));
 
     expect(rawFallback.status).toBe(500);
-    expect(await rawFallback.json()).toEqual({
+    expect(await rawFallback.json()).toMatchObject({
       ok: false,
-      error: "profile_update_failed",
-      message: 'Edge API failed (500): {"message":',
+      error: {
+        code: "profile_update_failed",
+        message: 'Edge API failed (500): {"message":',
+      },
     });
   });
 
@@ -139,10 +139,12 @@ describe("admin profile route", () => {
     const emptyDetails = await POST(jsonRequest({ username: "admin" }));
 
     expect(emptyDetails.status).toBe(500);
-    expect(await emptyDetails.json()).toEqual({
+    expect(await emptyDetails.json()).toMatchObject({
       ok: false,
-      error: "profile_update_failed",
-      message: 'Edge API failed (500): {"message":"","error":""}',
+      error: {
+        code: "profile_update_failed",
+        message: 'Edge API failed (500): {"message":"","error":""}',
+      },
     });
 
     updateMyProfileMock.mockRejectedValueOnce("plain profile failure");
@@ -150,10 +152,12 @@ describe("admin profile route", () => {
     const plainFailure = await POST(jsonRequest({ username: "admin" }));
 
     expect(plainFailure.status).toBe(500);
-    expect(await plainFailure.json()).toEqual({
+    expect(await plainFailure.json()).toMatchObject({
       ok: false,
-      error: "profile_update_failed",
-      message: "plain profile failure",
+      error: {
+        code: "profile_update_failed",
+        message: "plain profile failure",
+      },
     });
   });
 });

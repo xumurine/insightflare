@@ -152,9 +152,9 @@ describe("edge query technology handlers", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await responseJson(response)).toEqual({
+    expect(await responseJson(response)).toMatchObject({
       ok: false,
-      error: "Invalid time window",
+      error: { message: "Invalid time window" },
     });
     expectNoQueryCalls();
   });
@@ -450,14 +450,14 @@ describe("edge query technology handlers", () => {
     );
 
     expect(clientResponse.status).toBe(400);
-    expect(await responseJson(clientResponse)).toEqual({
+    expect(await responseJson(clientResponse)).toMatchObject({
       ok: false,
-      error: "Invalid client dimension",
+      error: { message: "Invalid client dimension" },
     });
     expect(utmResponse.status).toBe(400);
-    expect(await responseJson(utmResponse)).toEqual({
+    expect(await responseJson(utmResponse)).toMatchObject({
       ok: false,
-      error: "Invalid UTM dimension",
+      error: { message: "Invalid UTM dimension" },
     });
     expectNoQueryCalls();
   });
@@ -552,17 +552,17 @@ describe("edge query technology handlers", () => {
       testUrl({ primaryDimension: "browser", secondaryDimension: "browser" }),
     );
 
-    expect(await responseJson(invalidPrimary)).toEqual({
+    expect(await responseJson(invalidPrimary)).toMatchObject({
       ok: false,
-      error: "Invalid primary dimension",
+      error: { message: "Invalid primary dimension" },
     });
-    expect(await responseJson(invalidSecondary)).toEqual({
+    expect(await responseJson(invalidSecondary)).toMatchObject({
       ok: false,
-      error: "Invalid secondary dimension",
+      error: { message: "Invalid secondary dimension" },
     });
-    expect(await responseJson(duplicate)).toEqual({
+    expect(await responseJson(duplicate)).toMatchObject({
       ok: false,
-      error: "Primary and secondary dimensions must differ",
+      error: { message: "Primary and secondary dimensions must differ" },
     });
     expectNoQueryCalls();
   });

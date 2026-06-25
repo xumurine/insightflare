@@ -14,13 +14,14 @@ import {
   badRequest,
   buildTimeBuckets,
   buildVisitSourceCteForSites,
-  jsonResponse,
+  jsonResponseWith,
   mapOverviewAggregate,
   parseInterval,
   parseWindow,
   percentChange,
   PRIVATE_CACHE_HEADERS,
   queryD1All,
+  type ResponseContext,
   resolvePrivateTeam,
   timeBucketCase,
   timeBucketTimestamp,
@@ -206,13 +207,14 @@ export async function handleTeamDashboard(
   request: Request,
   env: Env,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
-  if (!window) return badRequest("Invalid time window", PRIVATE_CACHE_HEADERS);
+  if (!window) return badRequest("Invalid time window");
   const team = await resolvePrivateTeam(request, env, url);
   if (team instanceof Response) return team;
 
-  return handleTeamDashboardForTeam(env, url, team.id, window);
+  return handleTeamDashboardForTeam(env, url, team.id, window, undefined, ctx);
 }
 
 export async function handleTeamDashboardForTeam(
@@ -221,6 +223,7 @@ export async function handleTeamDashboardForTeam(
   teamId: string,
   window: QueryWindow,
   allowedSiteIds?: string[],
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const interval = parseInterval(url);
   const allSites = await listTeamSites(env, teamId);
@@ -232,7 +235,8 @@ export async function handleTeamDashboardForTeam(
     ? allSites.filter((site) => allowed.has(site.id))
     : allSites;
   if (sites.length === 0) {
-    return jsonResponse(
+    return jsonResponseWith(
+      ctx!,
       {
         ok: true,
         data: {
@@ -330,7 +334,8 @@ export async function handleTeamDashboardForTeam(
     trendByBucket.set(bucket, existing);
   }
 
-  return jsonResponse(
+  return jsonResponseWith(
+    ctx!,
     {
       ok: true,
       data: {

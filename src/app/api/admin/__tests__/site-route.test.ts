@@ -53,7 +53,7 @@ describe("admin site route", () => {
       publicSlug: "docs",
     });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       data: { id: "site-1" },
     });
@@ -64,16 +64,16 @@ describe("admin site route", () => {
       jsonRequest({ teamId: "team-1", name: "", domain: "example.test" }),
     );
     expect(invalidCreate.status).toBe(400);
-    expect(await invalidCreate.json()).toEqual({
+    expect(await invalidCreate.json()).toMatchObject({
       ok: false,
-      error: "invalid_site_input",
+      error: { code: "invalid_site_input", message: "Invalid site input" },
     });
 
     const invalidRemove = await POST(jsonRequest({ intent: "remove" }));
     expect(invalidRemove.status).toBe(400);
-    expect(await invalidRemove.json()).toEqual({
+    expect(await invalidRemove.json()).toMatchObject({
       ok: false,
-      error: "missing_site_id",
+      error: { code: "missing_site_id", message: "Missing site ID" },
     });
   });
 
@@ -83,9 +83,9 @@ describe("admin site route", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "missing_site_id",
+      error: { code: "missing_site_id", message: "Missing site ID" },
     });
     expect(updateAdminSiteMock).not.toHaveBeenCalled();
   });
@@ -114,7 +114,7 @@ describe("admin site route", () => {
       publicEnabled: false,
       publicSlug: undefined,
     });
-    expect(await updated.json()).toEqual({
+    expect(await updated.json()).toMatchObject({
       ok: true,
       data: { updated: true },
     });
@@ -124,7 +124,7 @@ describe("admin site route", () => {
     );
 
     expect(removeAdminSiteMock).toHaveBeenCalledWith({ siteId: "site-1" });
-    expect(await removed.json()).toEqual({
+    expect(await removed.json()).toMatchObject({
       ok: true,
       data: { removed: true },
     });
@@ -144,10 +144,9 @@ describe("admin site route", () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "site_mutation_failed",
-      message: "Domain already exists",
+      error: { code: "site_mutation_failed", message: "Domain already exists" },
     });
   });
 
@@ -161,10 +160,9 @@ describe("admin site route", () => {
     );
 
     expect(messageField.status).toBe(500);
-    expect(await messageField.json()).toEqual({
+    expect(await messageField.json()).toMatchObject({
       ok: false,
-      error: "site_mutation_failed",
-      message: "Slug already exists",
+      error: { code: "site_mutation_failed", message: "Slug already exists" },
     });
 
     removeAdminSiteMock.mockRejectedValueOnce(new Error("delete failed"));
@@ -174,10 +172,9 @@ describe("admin site route", () => {
     );
 
     expect(rawFallback.status).toBe(500);
-    expect(await rawFallback.json()).toEqual({
+    expect(await rawFallback.json()).toMatchObject({
       ok: false,
-      error: "site_mutation_failed",
-      message: "delete failed",
+      error: { code: "site_mutation_failed", message: "delete failed" },
     });
   });
 
@@ -195,10 +192,12 @@ describe("admin site route", () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "site_mutation_failed",
-      message: 'Edge API failed (500): {"message":"","error":""}',
+      error: {
+        code: "site_mutation_failed",
+        message: 'Edge API failed (500): {"message":"","error":""}',
+      },
     });
   });
 });

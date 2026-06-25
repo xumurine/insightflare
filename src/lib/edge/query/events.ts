@@ -2,7 +2,7 @@ import type { Env } from "@/lib/edge/types";
 
 import {
   badRequest,
-  jsonResponse,
+  jsonResponseWith,
   mapEventAnalyticsContextCards,
   mapEventField,
   mapEventFieldValue,
@@ -20,6 +20,7 @@ import {
   parseListSearch,
   parseQueryLimit,
   parseWindow,
+  type ResponseContext,
 } from "./core";
 import {
   queryEventAnalyticsContextCardsFromD1,
@@ -67,6 +68,7 @@ export async function handleEventTypes(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -79,19 +81,20 @@ export async function handleEventTypes(
     filters,
     limit,
   );
-  return jsonResponse({ ok: true, data: mapTabs(rows) });
+  return jsonResponseWith(ctx!, { ok: true, data: mapTabs(rows) });
 }
 
 export async function handleEventsSummary(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
   const filters = parseFilters(url);
   const data = await queryEventsSummaryFromD1(env, siteId, window, filters);
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     summary: {
       events: Number(data.summary.events ?? 0),
@@ -112,6 +115,7 @@ export async function handleEventsTrend(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -128,13 +132,14 @@ export async function handleEventsTrend(
     limit,
     eventName,
   );
-  return jsonResponse({ ok: true, interval, ...trend });
+  return jsonResponseWith(ctx!, { ok: true, interval, ...trend });
 }
 
 export async function handleEventsRecords(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -153,7 +158,7 @@ export async function handleEventsRecords(
   });
   const hasMore = rows.length > pageSize;
   const currentRows = hasMore ? rows.slice(0, pageSize) : rows;
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     data: currentRows.map(mapEventRecord),
     meta: {
@@ -170,6 +175,7 @@ export async function handleEventTypeDetail(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const eventName = parseEventName(url);
   if (!eventName) return badRequest("eventName is required");
@@ -197,7 +203,7 @@ export async function handleEventTypeDetail(
       eventName,
     ),
   ]);
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     eventName,
     summary: overview.summary,
@@ -217,6 +223,7 @@ export async function handleEventTypeFieldValues(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const eventName = parseEventName(url);
   const fieldPath = parseEventFieldPath(url);
@@ -238,7 +245,7 @@ export async function handleEventTypeFieldValues(
     fieldValueType,
     limit,
   );
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     fieldPath,
     fieldValueType,
@@ -250,9 +257,10 @@ export async function handleEventRecordDetail(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const eventId = parseEventId(url);
   if (!eventId) return badRequest("eventId is required");
   const detail = await queryEventRecordDetailFromD1(env, siteId, eventId);
-  return jsonResponse({ ok: true, data: detail });
+  return jsonResponseWith(ctx!, { ok: true, data: detail });
 }

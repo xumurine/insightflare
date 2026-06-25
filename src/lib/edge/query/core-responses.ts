@@ -1,3 +1,4 @@
+import type { ResponseContext } from "@/lib/response";
 import {
   PRIVATE_CACHE_HEADERS,
   PUBLIC_CACHE_HEADERS,
@@ -5,33 +6,17 @@ import {
   type SiteQueryResponseOptions,
 } from "./core-types";
 
-export const jsonResponse = (
-  payload: unknown,
-  status = 200,
-  extraHeaders?: Record<string, string>,
-) =>
-  new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...(extraHeaders ?? {}),
-    },
-  });
-
-export const badRequest = (
-  message: string,
-  extraHeaders?: Record<string, string>,
-) => jsonResponse({ ok: false, error: message }, 400, extraHeaders);
-export const unauthorized = (
-  message = "Unauthorized",
-  extraHeaders?: Record<string, string>,
-) => jsonResponse({ ok: false, error: message }, 401, extraHeaders);
-export const notFound = (
-  message = "Not Found",
-  extraHeaders?: Record<string, string>,
-) => jsonResponse({ ok: false, error: message }, 404, extraHeaders);
-export const notAllowed = (extraHeaders?: Record<string, string>) =>
-  jsonResponse({ ok: false, error: "Method Not Allowed" }, 405, extraHeaders);
+export type { ResponseContext } from "@/lib/response";
+export {
+  bad as badRequest,
+  forb,
+  getRequestId,
+  j as jsonResponse,
+  jsonResponseWith,
+  na as notAllowed,
+  nf as notFound,
+  una as unauthorized,
+} from "@/lib/response";
 
 export function siteQueryHeaders(
   options: SiteQueryResponseOptions,
@@ -43,9 +28,19 @@ export function siteQueryResponse(
   siteId: string,
   payload: Record<string, unknown>,
   options: SiteQueryResponseOptions = {},
+  ctx?: ResponseContext,
 ): Response {
-  const body = options.publicSite
+  const base: Record<string, unknown> = options.publicSite
     ? { ...payload, site: options.publicSite, privacy: PUBLIC_PRIVACY }
     : { ...payload, siteId };
-  return jsonResponse(body, 200, siteQueryHeaders(options));
+  const body = ctx
+    ? { ...base, requestId: ctx.requestId, timestamp: new Date().toISOString() }
+    : base;
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      ...siteQueryHeaders(options),
+    },
+  });
 }

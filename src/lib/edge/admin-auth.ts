@@ -1,6 +1,7 @@
 import { argon2id } from "@noble/hashes/argon2.js";
 
 import { toTeamRole } from "@/lib/dashboard/permissions";
+import { una } from "@/lib/response";
 
 import { uniqueTeamSlug } from "./admin-access";
 import { requireSession } from "./session-auth";
@@ -43,12 +44,6 @@ const ARGON2_MIN_PASSES = 1;
 const ARGON2_MAX_PASSES = 10;
 const ARGON2_MIN_PARALLELISM = 1;
 const ARGON2_MAX_PARALLELISM = 8;
-
-const una = (m = "Unauthorized") =>
-  new Response(JSON.stringify({ ok: false, error: m }), {
-    status: 401,
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
 
 export const normU = (s: string) => clampString(s.trim().toLowerCase(), 80);
 export const normE = (s: string) => clampString(s.trim().toLowerCase(), 200);

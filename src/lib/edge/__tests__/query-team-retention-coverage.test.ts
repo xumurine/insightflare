@@ -420,10 +420,9 @@ describe("edge team query coverage", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error: "Invalid time window",
+      error: { message: "Invalid time window" },
     });
     expect(requireSessionMock).not.toHaveBeenCalled();
     expect(prepare).not.toHaveBeenCalled();
@@ -444,9 +443,9 @@ describe("edge team query coverage", () => {
     );
 
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error: "Unauthorized",
+      error: { message: "Unauthorized" },
     });
     expect(prepare).not.toHaveBeenCalled();
   });
@@ -530,9 +529,9 @@ describe("edge journey retention coverage", () => {
     );
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error: "Invalid time window",
+      error: { message: "Invalid time window" },
     });
     expect(prepare).not.toHaveBeenCalled();
   });

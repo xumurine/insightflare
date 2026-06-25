@@ -24,9 +24,9 @@ describe("archive file route", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "Missing key",
+      error: { code: "missing_key", message: "Missing key" },
     });
     expect(fetchEdgeForServerMock).not.toHaveBeenCalled();
   });
@@ -101,10 +101,9 @@ describe("archive file route", () => {
     );
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "Failed to fetch archive file",
-      detail: "not found",
+      error: { code: "fetch_archive_file_failed", message: "not found" },
     });
   });
 });

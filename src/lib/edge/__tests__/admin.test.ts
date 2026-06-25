@@ -415,9 +415,9 @@ describe("private admin edge handler", () => {
 
       expect(rejected).toBeInstanceOf(Response);
       expect((rejected as Response).status).toBe(401);
-      expect(await (rejected as Response).json()).toEqual({
+      expect(await (rejected as Response).json()).toMatchObject({
         ok: false,
-        error: "Unauthorized",
+        error: { message: "Unauthorized" },
       });
     });
 
@@ -667,7 +667,10 @@ describe("private admin edge handler", () => {
     const response = await dispatch("/api/private/admin/unknown", env);
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({ ok: false, error: "Not Found" });
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { message: "Not Found" },
+    });
     expect(requireSessionMock).not.toHaveBeenCalled();
     expect(prepare).not.toHaveBeenCalled();
   });
@@ -685,13 +688,13 @@ describe("private admin edge handler", () => {
 
       expect(login.status).toBe(405);
       expect(me.status).toBe(405);
-      expect(await login.json()).toEqual({
+      expect(await login.json()).toMatchObject({
         ok: false,
-        error: "Method Not Allowed",
+        error: { message: "Method Not Allowed" },
       });
-      expect(await me.json()).toEqual({
+      expect(await me.json()).toMatchObject({
         ok: false,
-        error: "Method Not Allowed",
+        error: { message: "Method Not Allowed" },
       });
       expect(requireSessionMock).not.toHaveBeenCalled();
       expect(prepare).not.toHaveBeenCalled();
@@ -710,7 +713,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
         error: "bootstrap_admin_failed",
       });
@@ -751,12 +754,12 @@ describe("private admin edge handler", () => {
       );
 
       expect(promoteFailure.status).toBe(500);
-      expect(await promoteFailure.json()).toEqual({
+      expect(await promoteFailure.json()).toMatchObject({
         ok: false,
         error: "bootstrap_admin_failed",
       });
       expect(createFailure.status).toBe(500);
-      expect(await createFailure.json()).toEqual({
+      expect(await createFailure.json()).toMatchObject({
         ok: false,
         error: "bootstrap_admin_failed",
       });
@@ -807,9 +810,9 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "username/email and password are required",
+        error: { message: "username/email and password are required" },
       });
       expect(update.bind).toHaveBeenCalledWith(
         "bootstrap",
@@ -870,7 +873,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: {
           user: publicUser(createdAdmin),
@@ -898,9 +901,9 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(401);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Invalid credentials",
+        error: { message: "Invalid credentials" },
       });
     });
 
@@ -931,7 +934,7 @@ describe("private admin edge handler", () => {
       const response = await dispatch("/api/private/admin/auth/me", env);
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: {
           user: publicUser(actor),
@@ -961,19 +964,19 @@ describe("private admin edge handler", () => {
       );
 
       expect(absent.status).toBe(401);
-      expect(await absent.json()).toEqual({
+      expect(await absent.json()).toMatchObject({
         ok: false,
-        error: "Unauthorized",
+        error: { message: "Unauthorized" },
       });
       expect(stale.status).toBe(401);
-      expect(await stale.json()).toEqual({
+      expect(await stale.json()).toMatchObject({
         ok: false,
-        error: "User not found",
+        error: { message: "User not found" },
       });
       expect(emptyUserId.status).toBe(401);
-      expect(await emptyUserId.json()).toEqual({
+      expect(await emptyUserId.json()).toMatchObject({
         ok: false,
-        error: "Unauthorized",
+        error: { message: "Unauthorized" },
       });
     });
   });
@@ -988,9 +991,9 @@ describe("private admin edge handler", () => {
       const response = await dispatch("/api/private/admin/users", env);
 
       expect(response.status).toBe(403);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Only system admin can manage accounts",
+        error: { message: "Only system admin can manage accounts" },
       });
       expect(prepare).toHaveBeenCalledTimes(1);
     });
@@ -1014,7 +1017,7 @@ describe("private admin edge handler", () => {
       const response = await dispatch("/api/private/admin/users", env);
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ ok: true, data: rows });
+      expect(await response.json()).toMatchObject({ ok: true, data: rows });
     });
 
     it("validates user creation payloads before uniqueness checks", async () => {
@@ -1028,9 +1031,9 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Invalid username",
+        error: { message: "Invalid username" },
       });
       expect(prepare).toHaveBeenCalledTimes(1);
     });
@@ -1060,14 +1063,14 @@ describe("private admin edge handler", () => {
       );
 
       expect(invalidEmail.status).toBe(400);
-      expect(await invalidEmail.json()).toEqual({
+      expect(await invalidEmail.json()).toMatchObject({
         ok: false,
-        error: "A valid email is required",
+        error: { message: "A valid email is required" },
       });
       expect(shortPassword.status).toBe(400);
-      expect(await shortPassword.json()).toEqual({
+      expect(await shortPassword.json()).toMatchObject({
         ok: false,
-        error: "Password must be at least 8 characters",
+        error: { message: "Password must be at least 8 characters" },
       });
     });
 
@@ -1113,7 +1116,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: publicUser(created),
       });
@@ -1169,14 +1172,14 @@ describe("private admin edge handler", () => {
       );
 
       expect(duplicateUsername.status).toBe(400);
-      expect(await duplicateUsername.json()).toEqual({
+      expect(await duplicateUsername.json()).toMatchObject({
         ok: false,
-        error: "Username already exists",
+        error: { message: "Username already exists" },
       });
       expect(duplicateEmail.status).toBe(400);
-      expect(await duplicateEmail.json()).toEqual({
+      expect(await duplicateEmail.json()).toMatchObject({
         ok: false,
-        error: "Email already exists",
+        error: { message: "Email already exists" },
       });
     });
 
@@ -1224,7 +1227,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: publicUser(updated),
       });
@@ -1311,34 +1314,34 @@ describe("private admin edge handler", () => {
       );
 
       expect(invalidUsername.status).toBe(400);
-      expect(await invalidUsername.json()).toEqual({
+      expect(await invalidUsername.json()).toMatchObject({
         ok: false,
-        error: "Invalid username",
+        error: { message: "Invalid username" },
       });
       expect(invalidEmail.status).toBe(400);
-      expect(await invalidEmail.json()).toEqual({
+      expect(await invalidEmail.json()).toMatchObject({
         ok: false,
-        error: "A valid email is required",
+        error: { message: "A valid email is required" },
       });
       expect(duplicateUsername.status).toBe(400);
-      expect(await duplicateUsername.json()).toEqual({
+      expect(await duplicateUsername.json()).toMatchObject({
         ok: false,
-        error: "Username already exists",
+        error: { message: "Username already exists" },
       });
       expect(duplicateEmail.status).toBe(400);
-      expect(await duplicateEmail.json()).toEqual({
+      expect(await duplicateEmail.json()).toMatchObject({
         ok: false,
-        error: "Email already exists",
+        error: { message: "Email already exists" },
       });
       expect(failedReload.status).toBe(400);
-      expect(await failedReload.json()).toEqual({
+      expect(await failedReload.json()).toMatchObject({
         ok: false,
-        error: "Failed to update account",
+        error: { message: "Failed to update account" },
       });
       expect(unsupported.status).toBe(405);
-      expect(await unsupported.json()).toEqual({
+      expect(await unsupported.json()).toMatchObject({
         ok: false,
-        error: "Method Not Allowed",
+        error: { message: "Method Not Allowed" },
       });
     });
 
@@ -1376,17 +1379,17 @@ describe("private admin edge handler", () => {
       );
 
       expect(self.status).toBe(400);
-      expect(await self.json()).toEqual({
+      expect(await self.json()).toMatchObject({
         ok: false,
-        error: "Cannot delete current user",
+        error: { message: "Cannot delete current user" },
       });
       expect(ownsTeams.status).toBe(400);
-      expect(await ownsTeams.json()).toEqual({
+      expect(await ownsTeams.json()).toMatchObject({
         ok: false,
-        error: "Cannot delete user that owns teams",
+        error: { message: "Cannot delete user that owns teams" },
       });
       expect(success.status).toBe(200);
-      expect(await success.json()).toEqual({
+      expect(await success.json()).toMatchObject({
         ok: true,
         data: { userId: "target-1", removed: true },
       });
@@ -1430,19 +1433,19 @@ describe("private admin edge handler", () => {
       );
 
       expect(missingId.status).toBe(400);
-      expect(await missingId.json()).toEqual({
+      expect(await missingId.json()).toMatchObject({
         ok: false,
-        error: "userId is required",
+        error: { message: "userId is required" },
       });
       expect(missingTarget.status).toBe(404);
-      expect(await missingTarget.json()).toEqual({
+      expect(await missingTarget.json()).toMatchObject({
         ok: false,
-        error: "User not found",
+        error: { message: "User not found" },
       });
       expect(failedCreate.status).toBe(400);
-      expect(await failedCreate.json()).toEqual({
+      expect(await failedCreate.json()).toMatchObject({
         ok: false,
-        error: "Failed to create account",
+        error: { message: "Failed to create account" },
       });
     });
   });
@@ -1460,7 +1463,7 @@ describe("private admin edge handler", () => {
       const response = await dispatch("/api/private/admin/profile", env);
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: {
           user: publicUser(actor),
@@ -1494,14 +1497,14 @@ describe("private admin edge handler", () => {
       );
 
       expect(invalidTimeZone.status).toBe(400);
-      expect(await invalidTimeZone.json()).toEqual({
+      expect(await invalidTimeZone.json()).toMatchObject({
         ok: false,
-        error: "Invalid timezone",
+        error: { message: "Invalid timezone" },
       });
       expect(badPassword.status).toBe(400);
-      expect(await badPassword.json()).toEqual({
+      expect(await badPassword.json()).toMatchObject({
         ok: false,
-        error: "Current password is incorrect",
+        error: { message: "Current password is incorrect" },
       });
     });
 
@@ -1570,39 +1573,39 @@ describe("private admin edge handler", () => {
       );
 
       expect(invalidUsername.status).toBe(400);
-      expect(await invalidUsername.json()).toEqual({
+      expect(await invalidUsername.json()).toMatchObject({
         ok: false,
-        error: "Invalid username",
+        error: { message: "Invalid username" },
       });
       expect(invalidEmail.status).toBe(400);
-      expect(await invalidEmail.json()).toEqual({
+      expect(await invalidEmail.json()).toMatchObject({
         ok: false,
-        error: "A valid email is required",
+        error: { message: "A valid email is required" },
       });
       expect(shortPassword.status).toBe(400);
-      expect(await shortPassword.json()).toEqual({
+      expect(await shortPassword.json()).toMatchObject({
         ok: false,
-        error: "Password must be at least 8 characters",
+        error: { message: "Password must be at least 8 characters" },
       });
       expect(duplicateUsername.status).toBe(400);
-      expect(await duplicateUsername.json()).toEqual({
+      expect(await duplicateUsername.json()).toMatchObject({
         ok: false,
-        error: "Username already exists",
+        error: { message: "Username already exists" },
       });
       expect(duplicateEmail.status).toBe(400);
-      expect(await duplicateEmail.json()).toEqual({
+      expect(await duplicateEmail.json()).toMatchObject({
         ok: false,
-        error: "Email already exists",
+        error: { message: "Email already exists" },
       });
       expect(failedReload.status).toBe(400);
-      expect(await failedReload.json()).toEqual({
+      expect(await failedReload.json()).toMatchObject({
         ok: false,
-        error: "Failed to update profile",
+        error: { message: "Failed to update profile" },
       });
       expect(unsupported.status).toBe(405);
-      expect(await unsupported.json()).toEqual({
+      expect(await unsupported.json()).toMatchObject({
         ok: false,
-        error: "Method Not Allowed",
+        error: { message: "Method Not Allowed" },
       });
     });
 
@@ -1646,7 +1649,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: publicUser(updated),
       });
@@ -1687,14 +1690,14 @@ describe("private admin edge handler", () => {
       ]).env;
       const userResponse = await dispatch("/api/private/admin/teams", userEnv);
 
-      expect(await adminResponse.json()).toEqual({
+      expect(await adminResponse.json()).toMatchObject({
         ok: true,
         data: [
           { ...adminRows[0], membershipRole: "owner" },
           { ...adminRows[1], membershipRole: "member" },
         ],
       });
-      expect(await userResponse.json()).toEqual({
+      expect(await userResponse.json()).toMatchObject({
         ok: true,
         data: [{ ...userRows[0], membershipRole: "admin" }],
       });
@@ -1720,7 +1723,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: {
           id: "00000000-0000-4000-8000-000000000201",
@@ -1763,14 +1766,14 @@ describe("private admin edge handler", () => {
       );
 
       expect(missingName.status).toBe(400);
-      expect(await missingName.json()).toEqual({
+      expect(await missingName.json()).toMatchObject({
         ok: false,
-        error: "Team name is required",
+        error: { message: "Team name is required" },
       });
       expect(missingTeamId.status).toBe(400);
-      expect(await missingTeamId.json()).toEqual({
+      expect(await missingTeamId.json()).toMatchObject({
         ok: false,
-        error: "teamId is required",
+        error: { message: "teamId is required" },
       });
     });
 
@@ -1789,9 +1792,9 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(403);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Only team owner can update team",
+        error: { message: "Only team owner can update team" },
       });
     });
 
@@ -1809,9 +1812,9 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(404);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Team not found",
+        error: { message: "Team not found" },
       });
     });
 
@@ -1846,7 +1849,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: {
           id: "team-1",
@@ -1903,7 +1906,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: {
           id: "team-1",
@@ -2010,24 +2013,24 @@ describe("private admin edge handler", () => {
       );
 
       expect(sameOwner.status).toBe(400);
-      expect(await sameOwner.json()).toEqual({
+      expect(await sameOwner.json()).toMatchObject({
         ok: false,
-        error: "Already the team owner",
+        error: { message: "Already the team owner" },
       });
       expect(missingTarget.status).toBe(400);
-      expect(await missingTarget.json()).toEqual({
+      expect(await missingTarget.json()).toMatchObject({
         ok: false,
-        error: "newOwnerUserId is required",
+        error: { message: "newOwnerUserId is required" },
       });
       expect(missingMember.status).toBe(400);
-      expect(await missingMember.json()).toEqual({
+      expect(await missingMember.json()).toMatchObject({
         ok: false,
-        error: "Target user is not a team member",
+        error: { message: "Target user is not a team member" },
       });
       expect(notOwner.status).toBe(403);
-      expect(await notOwner.json()).toEqual({
+      expect(await notOwner.json()).toMatchObject({
         ok: false,
-        error: "Only the team owner can transfer ownership",
+        error: { message: "Only the team owner can transfer ownership" },
       });
     });
 
@@ -2058,7 +2061,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: { teamId: "team-1", removed: true },
       });
@@ -2100,7 +2103,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: { teamId: "team-1", removed: true },
       });
@@ -2117,9 +2120,9 @@ describe("private admin edge handler", () => {
       const response = await dispatch("/api/private/admin/sites", env);
 
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Missing teamId",
+        error: { message: "Missing teamId" },
       });
       expect(prepare).toHaveBeenCalledTimes(1);
     });
@@ -2147,7 +2150,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ ok: true, data: rows });
+      expect(await response.json()).toMatchObject({ ok: true, data: rows });
     });
 
     it("denies site listing when the team is not readable", async () => {
@@ -2164,9 +2167,9 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(403);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Team access denied",
+        error: { message: "Team access denied" },
       });
     });
 
@@ -2195,7 +2198,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: {
           id: "00000000-0000-4000-8000-000000000301",
@@ -2251,14 +2254,14 @@ describe("private admin edge handler", () => {
       );
 
       expect(missingFields.status).toBe(400);
-      expect(await missingFields.json()).toEqual({
+      expect(await missingFields.json()).toMatchObject({
         ok: false,
-        error: "teamId, name and domain are required",
+        error: { message: "teamId, name and domain are required" },
       });
       expect(forbidden.status).toBe(403);
-      expect(await forbidden.json()).toEqual({
+      expect(await forbidden.json()).toMatchObject({
         ok: false,
-        error: "Only team owner can create sites",
+        error: { message: "Only team owner can create sites" },
       });
     });
 
@@ -2332,7 +2335,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: {
           id: "site-1",
@@ -2384,7 +2387,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: {
           id: "site-1",
@@ -2425,14 +2428,14 @@ describe("private admin edge handler", () => {
       );
 
       expect(missingId.status).toBe(400);
-      expect(await missingId.json()).toEqual({
+      expect(await missingId.json()).toMatchObject({
         ok: false,
-        error: "siteId is required",
+        error: { message: "siteId is required" },
       });
       expect(missingSite.status).toBe(404);
-      expect(await missingSite.json()).toEqual({
+      expect(await missingSite.json()).toMatchObject({
         ok: false,
-        error: "Site not found",
+        error: { message: "Site not found" },
       });
     });
 
@@ -2468,14 +2471,14 @@ describe("private admin edge handler", () => {
       );
 
       expect(forbiddenTransfer.status).toBe(403);
-      expect(await forbiddenTransfer.json()).toEqual({
+      expect(await forbiddenTransfer.json()).toMatchObject({
         ok: false,
-        error: "Only team owner can transfer sites",
+        error: { message: "Only team owner can transfer sites" },
       });
       expect(unsupported.status).toBe(405);
-      expect(await unsupported.json()).toEqual({
+      expect(await unsupported.json()).toMatchObject({
         ok: false,
-        error: "Method Not Allowed",
+        error: { message: "Method Not Allowed" },
       });
     });
 
@@ -2505,7 +2508,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: { siteId: "site-1", teamId: "team-1", removed: true },
       });
@@ -2540,7 +2543,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ ok: true, data: rows });
+      expect(await response.json()).toMatchObject({ ok: true, data: rows });
     });
 
     it("validates member listing and add guard rails", async () => {
@@ -2597,34 +2600,34 @@ describe("private admin edge handler", () => {
       );
 
       expect(missingTeamId.status).toBe(400);
-      expect(await missingTeamId.json()).toEqual({
+      expect(await missingTeamId.json()).toMatchObject({
         ok: false,
-        error: "Missing teamId",
+        error: { message: "Missing teamId" },
       });
       expect(deniedList.status).toBe(403);
-      expect(await deniedList.json()).toEqual({
+      expect(await deniedList.json()).toMatchObject({
         ok: false,
-        error: "Team access denied",
+        error: { message: "Team access denied" },
       });
       expect(missingIdentifier.status).toBe(400);
-      expect(await missingIdentifier.json()).toEqual({
+      expect(await missingIdentifier.json()).toMatchObject({
         ok: false,
-        error: "teamId and user identifier are required",
+        error: { message: "teamId and user identifier are required" },
       });
       expect(missingTeam.status).toBe(404);
-      expect(await missingTeam.json()).toEqual({
+      expect(await missingTeam.json()).toMatchObject({
         ok: false,
-        error: "Team not found",
+        error: { message: "Team not found" },
       });
       expect(forbidden.status).toBe(403);
-      expect(await forbidden.json()).toEqual({
+      expect(await forbidden.json()).toMatchObject({
         ok: false,
-        error: "Only team owner can manage members",
+        error: { message: "Only team owner can manage members" },
       });
       expect(missingUser.status).toBe(404);
-      expect(await missingUser.json()).toEqual({
+      expect(await missingUser.json()).toMatchObject({
         ok: false,
-        error: "User not found",
+        error: { message: "User not found" },
       });
     });
 
@@ -2658,7 +2661,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: {
           teamId: "team-1",
@@ -2698,7 +2701,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: {
           teamId: "team-1",
@@ -2738,14 +2741,16 @@ describe("private admin edge handler", () => {
       );
 
       expect(ownerRole.status).toBe(400);
-      expect(await ownerRole.json()).toEqual({
+      expect(await ownerRole.json()).toMatchObject({
         ok: false,
-        error: "Cannot assign owner via member add; use ownership transfer",
+        error: {
+          message: "Cannot assign owner via member add; use ownership transfer",
+        },
       });
       expect(existingOwner.status).toBe(403);
-      expect(await existingOwner.json()).toEqual({
+      expect(await existingOwner.json()).toMatchObject({
         ok: false,
-        error: "Cannot change team owner membership",
+        error: { message: "Cannot change team owner membership" },
       });
     });
 
@@ -2841,44 +2846,44 @@ describe("private admin edge handler", () => {
       );
 
       expect(missingIds.status).toBe(400);
-      expect(await missingIds.json()).toEqual({
+      expect(await missingIds.json()).toMatchObject({
         ok: false,
-        error: "teamId and userId are required",
+        error: { message: "teamId and userId are required" },
       });
       expect(missingTeam.status).toBe(404);
-      expect(await missingTeam.json()).toEqual({
+      expect(await missingTeam.json()).toMatchObject({
         ok: false,
-        error: "Team not found",
+        error: { message: "Team not found" },
       });
       expect(missingMember.status).toBe(404);
-      expect(await missingMember.json()).toEqual({
+      expect(await missingMember.json()).toMatchObject({
         ok: false,
-        error: "Member not found",
+        error: { message: "Member not found" },
       });
       expect(ownerRoleChange.status).toBe(400);
-      expect(await ownerRoleChange.json()).toEqual({
+      expect(await ownerRoleChange.json()).toMatchObject({
         ok: false,
-        error: "Cannot change team owner role",
+        error: { message: "Cannot change team owner role" },
       });
       expect(promoteToOwner.status).toBe(400);
-      expect(await promoteToOwner.json()).toEqual({
+      expect(await promoteToOwner.json()).toMatchObject({
         ok: false,
-        error: "Cannot promote to owner; use ownership transfer",
+        error: { message: "Cannot promote to owner; use ownership transfer" },
       });
       expect(removeOwner.status).toBe(400);
-      expect(await removeOwner.json()).toEqual({
+      expect(await removeOwner.json()).toMatchObject({
         ok: false,
-        error: "Cannot remove team owner",
+        error: { message: "Cannot remove team owner" },
       });
       expect(forbidden.status).toBe(403);
-      expect(await forbidden.json()).toEqual({
+      expect(await forbidden.json()).toMatchObject({
         ok: false,
-        error: "Only team owner can manage members",
+        error: { message: "Only team owner can manage members" },
       });
       expect(unsupported.status).toBe(405);
-      expect(await unsupported.json()).toEqual({
+      expect(await unsupported.json()).toMatchObject({
         ok: false,
-        error: "Method Not Allowed",
+        error: { message: "Method Not Allowed" },
       });
     });
 
@@ -2927,7 +2932,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(updated.status).toBe(200);
-      expect(await updated.json()).toEqual({
+      expect(await updated.json()).toMatchObject({
         ok: true,
         data: {
           teamId: "team-1",
@@ -2937,7 +2942,7 @@ describe("private admin edge handler", () => {
         },
       });
       expect(update.bind).toHaveBeenCalledWith("admin", "team-1", "member-1");
-      expect(await unchanged.json()).toEqual({
+      expect(await unchanged.json()).toMatchObject({
         ok: true,
         data: {
           teamId: "team-1",
@@ -2986,12 +2991,14 @@ describe("private admin edge handler", () => {
       );
 
       expect(selfDemotion.status).toBe(400);
-      expect(await selfDemotion.json()).toEqual({
+      expect(await selfDemotion.json()).toMatchObject({
         ok: false,
-        error: "Cannot demote yourself; ask another admin or the owner",
+        error: {
+          message: "Cannot demote yourself; ask another admin or the owner",
+        },
       });
       expect(removed.status).toBe(200);
-      expect(await removed.json()).toEqual({
+      expect(await removed.json()).toMatchObject({
         ok: true,
         data: { teamId: "team-1", userId: "member-1", removed: true },
       });
@@ -3016,7 +3023,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: DEFAULT_SITE_SCRIPT_SETTINGS,
       });
@@ -3048,12 +3055,12 @@ describe("private admin edge handler", () => {
       );
 
       expect(readResponse.status).toBe(500);
-      expect(await readResponse.json()).toEqual({
+      expect(await readResponse.json()).toMatchObject({
         ok: false,
         error: "read failed",
       });
       expect(writeResponse.status).toBe(500);
-      expect(await writeResponse.json()).toEqual({
+      expect(await writeResponse.json()).toMatchObject({
         ok: false,
         error: "write failed",
       });
@@ -3109,27 +3116,27 @@ describe("private admin edge handler", () => {
       );
 
       expect(missingRead.status).toBe(400);
-      expect(await missingRead.json()).toEqual({
+      expect(await missingRead.json()).toMatchObject({
         ok: false,
-        error: "Missing siteId",
+        error: { message: "Missing siteId" },
       });
       expect(deniedRead.status).toBe(403);
-      expect(await deniedRead.json()).toEqual({
+      expect(await deniedRead.json()).toMatchObject({
         ok: false,
-        error: "Site access denied",
+        error: { message: "Site access denied" },
       });
       expect(missingWrite.status).toBe(400);
-      expect(await missingWrite.json()).toEqual({
+      expect(await missingWrite.json()).toMatchObject({
         ok: false,
-        error: "siteId is required",
+        error: { message: "siteId is required" },
       });
       expect(missingSite.status).toBe(404);
-      expect(await missingSite.json()).toEqual({
+      expect(await missingSite.json()).toMatchObject({
         ok: false,
-        error: "Site not found",
+        error: { message: "Site not found" },
       });
       expect(fallbackWriteError.status).toBe(500);
-      expect(await fallbackWriteError.json()).toEqual({
+      expect(await fallbackWriteError.json()).toMatchObject({
         ok: false,
         error: "save_site_config_failed",
       });
@@ -3161,7 +3168,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ ok: true, data: saved });
+      expect(await response.json()).toMatchObject({ ok: true, data: saved });
       expect(upsertSiteScriptSettingsMock).toHaveBeenCalledWith(env, "site-1", {
         siteDomain: "site.example.test",
         settings: { trackHash: false },
@@ -3184,9 +3191,9 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(403);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Only team owner can update site config",
+        error: { message: "Only team owner can update site config" },
       });
       expect(upsertSiteScriptSettingsMock).not.toHaveBeenCalled();
     });
@@ -3202,9 +3209,9 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(405);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Method Not Allowed",
+        error: { message: "Method Not Allowed" },
       });
     });
 
@@ -3226,7 +3233,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: true,
         data: {
           siteId: "site 1",
@@ -3264,7 +3271,7 @@ describe("private admin edge handler", () => {
       );
 
       expect(defaultBase.status).toBe(200);
-      expect(await defaultBase.json()).toEqual({
+      expect(await defaultBase.json()).toMatchObject({
         ok: true,
         data: {
           siteId: "site-1",
@@ -3274,14 +3281,14 @@ describe("private admin edge handler", () => {
         },
       });
       expect(missingSiteId.status).toBe(400);
-      expect(await missingSiteId.json()).toEqual({
+      expect(await missingSiteId.json()).toMatchObject({
         ok: false,
-        error: "Missing siteId",
+        error: { message: "Missing siteId" },
       });
       expect(denied.status).toBe(403);
-      expect(await denied.json()).toEqual({
+      expect(await denied.json()).toMatchObject({
         ok: false,
-        error: "Site access denied",
+        error: { message: "Site access denied" },
       });
     });
 
@@ -3295,9 +3302,9 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(405);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Method Not Allowed",
+        error: { message: "Method Not Allowed" },
       });
       expect(requireSessionMock).not.toHaveBeenCalled();
       expect(prepare).not.toHaveBeenCalled();
@@ -3317,9 +3324,9 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(403);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Only system admin can view system performance",
+        error: { message: "Only system admin can view system performance" },
       });
     });
 
@@ -3334,9 +3341,9 @@ describe("private admin edge handler", () => {
       );
 
       expect(response.status).toBe(405);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Method Not Allowed",
+        error: { message: "Method Not Allowed" },
       });
       expect(prepare).toHaveBeenCalledTimes(1);
     });
@@ -3609,9 +3616,9 @@ describe("private admin edge handler", () => {
       const response = await dispatch("/api/private/admin/do-diagnostic", env);
 
       expect(response.status).toBe(403);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Only system admin can view DO diagnostics",
+        error: { message: "Only system admin can view DO diagnostics" },
       });
     });
 
@@ -3624,9 +3631,9 @@ describe("private admin edge handler", () => {
       });
 
       expect(response.status).toBe(405);
-      expect(await response.json()).toEqual({
+      expect(await response.json()).toMatchObject({
         ok: false,
-        error: "Method Not Allowed",
+        error: { message: "Method Not Allowed" },
       });
     });
 

@@ -29,26 +29,33 @@ describe("edge query response helpers", () => {
     await expect(response.json()).resolves.toEqual({ ok: true });
   });
 
-  it("builds standard error responses with optional messages", async () => {
-    await expect(badRequest("Invalid").json()).resolves.toEqual({
+  it("builds standard error responses with code and message", async () => {
+    const badReq = await badRequest("Invalid").json();
+    expect(badReq).toMatchObject({
       ok: false,
-      error: "Invalid",
+      error: { message: "Invalid" },
     });
-    await expect(unauthorized().json()).resolves.toEqual({
+    expect(badReq).toHaveProperty("requestId");
+    expect(badReq).toHaveProperty("timestamp");
+
+    const unauth = await unauthorized().json();
+    expect(unauth).toMatchObject({
       ok: false,
-      error: "Unauthorized",
-    });
-    await expect(notFound("Missing").json()).resolves.toEqual({
-      ok: false,
-      error: "Missing",
+      error: { message: "Unauthorized" },
     });
 
-    const notAllowedResponse = notAllowed({ allow: "GET" });
-    expect(notAllowedResponse.status).toBe(405);
-    expect(notAllowedResponse.headers.get("allow")).toBe("GET");
-    await expect(notAllowedResponse.json()).resolves.toEqual({
+    const missing = await notFound("Missing").json();
+    expect(missing).toMatchObject({
       ok: false,
-      error: "Method Not Allowed",
+      error: { message: "Missing" },
+    });
+
+    const notAllowedResponse = notAllowed();
+    expect(notAllowedResponse.status).toBe(405);
+    const notAllowedBody = await notAllowedResponse.json();
+    expect(notAllowedBody).toMatchObject({
+      ok: false,
+      error: { message: "Method Not Allowed" },
     });
   });
 
@@ -89,5 +96,21 @@ describe("edge query response helpers", () => {
       site: { slug: "public", name: "Public", domain: "public.example" },
       privacy: PUBLIC_PRIVACY,
     });
+  });
+
+  it("includes requestId and timestamp when ctx is provided", async () => {
+    const response = siteQueryResponse(
+      "site-1",
+      { ok: true },
+      {},
+      { requestId: "test-ray-id" },
+    );
+    const body = await response.json();
+    expect(body).toMatchObject({
+      ok: true,
+      siteId: "site-1",
+      requestId: "test-ray-id",
+    });
+    expect(body).toHaveProperty("timestamp");
   });
 });

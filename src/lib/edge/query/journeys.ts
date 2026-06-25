@@ -12,7 +12,7 @@ import type {
 import {
   badRequest,
   DEFAULT_VISITOR_LIST_SORT,
-  jsonResponse,
+  jsonResponseWith,
   mapVisitors,
   parseFilters,
   parseLimit,
@@ -21,6 +21,7 @@ import {
   parseSessionListSort,
   parseVisitorListSort,
   parseWindow,
+  type ResponseContext,
 } from "./core";
 import {
   querySessionDetailFromD1,
@@ -114,6 +115,7 @@ export async function handleVisitors(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -139,7 +141,7 @@ export async function handleVisitors(
   );
   const hasMore = paged && requestedRows.length > pageSize;
   const rows = hasMore ? requestedRows.slice(0, pageSize) : requestedRows;
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     data: mapVisitors(rows),
     meta: {
@@ -156,6 +158,7 @@ export async function handleSessions(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -182,7 +185,7 @@ export async function handleSessions(
   );
   const hasMore = paged && requestedRows.length > pageSize;
   const rows = hasMore ? requestedRows.slice(0, pageSize) : requestedRows;
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     data: rows,
     meta: {
@@ -199,6 +202,7 @@ export async function handleVisitorDetail(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const visitorId = (url.searchParams.get("visitorId") || "").trim();
   if (!visitorId) return badRequest("Missing visitorId");
@@ -211,16 +215,17 @@ export async function handleVisitorDetail(
     visitorId,
     timeZone,
   );
-  return jsonResponse({ ok: true, data: detail });
+  return jsonResponseWith(ctx!, { ok: true, data: detail });
 }
 
 export async function handleSessionDetail(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const sessionId = (url.searchParams.get("sessionId") || "").trim();
   if (!sessionId) return badRequest("Missing sessionId");
   const detail = await querySessionDetailFromD1(env, siteId, sessionId);
-  return jsonResponse({ ok: true, data: detail });
+  return jsonResponseWith(ctx!, { ok: true, data: detail });
 }

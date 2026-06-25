@@ -1,34 +1,13 @@
-import { NextResponse } from "next/server";
-
 import {
   createAdminUser,
   removeAdminUser,
   updateAdminUser,
 } from "@/lib/edge-client";
+import { bad, jsonResponseFor } from "@/lib/edge/admin-response";
 import { bodyStr, parseRequestBody } from "@/lib/form-helpers";
+import { errorResponse, normalizeErrorMessage } from "@/lib/response";
 
-function normalizeErrorMessage(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error);
-  const jsonStart = raw.lastIndexOf("{");
-  if (jsonStart >= 0) {
-    const maybeJson = raw.slice(jsonStart).trim();
-    try {
-      const parsed = JSON.parse(maybeJson) as {
-        message?: unknown;
-        error?: unknown;
-      };
-      if (typeof parsed.message === "string" && parsed.message.trim())
-        return parsed.message.trim();
-      if (typeof parsed.error === "string" && parsed.error.trim())
-        return parsed.error.trim();
-    } catch {
-      // fall through to raw
-    }
-  }
-  return raw;
-}
-
-export async function POST(request: Request): Promise<NextResponse> {
+export async function POST(request: Request): Promise<Response> {
   const body = await parseRequestBody(request);
   const intent = bodyStr(body, "intent") || "create";
 
@@ -36,23 +15,17 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (intent === "remove" || intent === "delete") {
       const userId = bodyStr(body, "userId");
       if (!userId) {
-        return NextResponse.json(
-          { ok: false, error: "missing_user_id" },
-          { status: 400 },
-        );
+        return bad("Missing user ID", "missing_user_id", request);
       }
 
       const result = await removeAdminUser({ userId });
-      return NextResponse.json({ ok: true, data: result });
+      return jsonResponseFor(request, { ok: true, data: result });
     }
 
     if (intent === "update") {
       const userId = bodyStr(body, "userId");
       if (!userId) {
-        return NextResponse.json(
-          { ok: false, error: "missing_user_id" },
-          { status: 400 },
-        );
+        return bad("Missing user ID", "missing_user_id", request);
       }
 
       const result = await updateAdminUser({
@@ -66,7 +39,7 @@ export async function POST(request: Request): Promise<NextResponse> {
             ? "admin"
             : "user",
       });
-      return NextResponse.json({ ok: true, data: result });
+      return jsonResponseFor(request, { ok: true, data: result });
     }
 
     const username = bodyStr(body, "username");
@@ -77,10 +50,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       bodyStr(body, "systemRole").toLowerCase() === "admin" ? "admin" : "user";
 
     if (!username || !email || password.length < 8) {
-      return NextResponse.json(
-        { ok: false, error: "invalid_user_input" },
-        { status: 400 },
-      );
+      return bad("Invalid user input", "invalid_user_input", request);
     }
 
     const result = await createAdminUser({
@@ -90,12 +60,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       name: name || undefined,
       systemRole,
     });
-    return NextResponse.json({ ok: true, data: result });
+    return jsonResponseFor(request, { ok: true, data: result });
   } catch (error) {
     const msg = normalizeErrorMessage(error);
-    return NextResponse.json(
-      { ok: false, error: "user_mutation_failed", message: msg },
-      { status: 500 },
-    );
+    return errorResponse(request, 500, "user_mutation_failed", msg);
   }
 }

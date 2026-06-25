@@ -51,7 +51,7 @@ describe("admin team route", () => {
       slug: "docs-team",
     });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       data: { id: "team-1", name: "Docs" },
     });
@@ -72,7 +72,7 @@ describe("admin team route", () => {
       name: "Renamed",
       slug: undefined,
     });
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       data: { id: "team-1", updated: true },
     });
@@ -89,7 +89,7 @@ describe("admin team route", () => {
     );
 
     expect(removeAdminTeamMock).toHaveBeenCalledWith({ teamId: "team-1" });
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       data: { teamId: "team-1", removed: true },
     });
@@ -113,7 +113,7 @@ describe("admin team route", () => {
       teamId: "team-1",
       newOwnerUserId: "user-2",
     });
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       data: { id: "team-1", transferred: true },
     });
@@ -122,25 +122,28 @@ describe("admin team route", () => {
   it("rejects invalid inputs before mutation calls", async () => {
     const invalidName = await POST(jsonRequest({ name: "A" }));
     expect(invalidName.status).toBe(400);
-    expect(await invalidName.json()).toEqual({
+    expect(await invalidName.json()).toMatchObject({
       ok: false,
-      error: "invalid_team_name",
+      error: { code: "invalid_team_name", message: "Invalid team name" },
     });
 
     const missingTeamId = await POST(jsonRequest({ intent: "remove" }));
     expect(missingTeamId.status).toBe(400);
-    expect(await missingTeamId.json()).toEqual({
+    expect(await missingTeamId.json()).toMatchObject({
       ok: false,
-      error: "missing_team_id",
+      error: { code: "missing_team_id", message: "Missing team ID" },
     });
 
     const missingTransferInput = await POST(
       jsonRequest({ intent: "transfer_owner", teamId: "team-1" }),
     );
     expect(missingTransferInput.status).toBe(400);
-    expect(await missingTransferInput.json()).toEqual({
+    expect(await missingTransferInput.json()).toMatchObject({
       ok: false,
-      error: "missing_transfer_input",
+      error: {
+        code: "missing_transfer_input",
+        message: "Missing transfer input",
+      },
     });
   });
 
@@ -154,10 +157,9 @@ describe("admin team route", () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "update_team_failed",
-      message: "Slug already exists",
+      error: { code: "update_team_failed", message: "Slug already exists" },
     });
   });
 
@@ -175,10 +177,9 @@ describe("admin team route", () => {
     );
 
     expect(transfer.status).toBe(500);
-    expect(await transfer.json()).toEqual({
+    expect(await transfer.json()).toMatchObject({
       ok: false,
-      error: "transfer_team_failed",
-      message: "Not allowed",
+      error: { code: "transfer_team_failed", message: "Not allowed" },
     });
 
     removeAdminTeamMock.mockRejectedValueOnce(new Error("remove failed"));
@@ -188,10 +189,9 @@ describe("admin team route", () => {
     );
 
     expect(remove.status).toBe(500);
-    expect(await remove.json()).toEqual({
+    expect(await remove.json()).toMatchObject({
       ok: false,
-      error: "remove_team_failed",
-      message: "remove failed",
+      error: { code: "remove_team_failed", message: "remove failed" },
     });
 
     createAdminTeamMock.mockRejectedValueOnce(new Error("create failed"));
@@ -199,10 +199,9 @@ describe("admin team route", () => {
     const create = await POST(jsonRequest({ name: "Docs" }));
 
     expect(create.status).toBe(500);
-    expect(await create.json()).toEqual({
+    expect(await create.json()).toMatchObject({
       ok: false,
-      error: "create_team_failed",
-      message: "create failed",
+      error: { code: "create_team_failed", message: "create failed" },
     });
   });
 
@@ -214,10 +213,12 @@ describe("admin team route", () => {
     const response = await POST(jsonRequest({ name: "Docs" }));
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "create_team_failed",
-      message: 'Edge API failed (500): {"message":"","error":""}',
+      error: {
+        code: "create_team_failed",
+        message: 'Edge API failed (500): {"message":"","error":""}',
+      },
     });
   });
 });

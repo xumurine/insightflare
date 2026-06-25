@@ -15,6 +15,7 @@ import type {
 } from "@/lib/edge/types";
 import type { TrackerPayloadKind } from "@/lib/edge/types";
 import { jsonCloneRecord } from "@/lib/edge/utils";
+import { jsonResponse } from "@/lib/response";
 import type { SiteTrackingConfig } from "@/lib/site-settings";
 
 const CORS_BASE_HEADERS = {
@@ -440,13 +441,11 @@ function jsonError(
   message: string,
   status: 400 | 413 | 422 = 400,
 ): Response {
-  return new Response(JSON.stringify({ ok: false, error: message }), {
+  return jsonResponse(
+    { ok: false, error: message },
     status,
-    headers: {
-      ...toCorsHeaders(origin),
-      "content-type": "application/json; charset=utf-8",
-    },
-  });
+    toCorsHeaders(origin),
+  );
 }
 
 export async function OPTIONS(request: Request): Promise<Response> {

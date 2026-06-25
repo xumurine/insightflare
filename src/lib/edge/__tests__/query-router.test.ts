@@ -107,11 +107,13 @@ describe("edge query router", () => {
       env,
       siteId,
       url,
+      undefined,
     );
     expect(handlerMocks.overview.handleTrend).toHaveBeenCalledWith(
       env,
       siteId,
       url,
+      undefined,
     );
     expect(handlerMocks.core.notFound).not.toHaveBeenCalled();
   });
@@ -200,6 +202,8 @@ describe("edge query router", () => {
       siteId,
       url,
       "hash_fragment",
+      undefined,
+      undefined,
     );
     expect(handlerMocks.pages.handleDimension).toHaveBeenNthCalledWith(
       2,
@@ -207,6 +211,8 @@ describe("edge query router", () => {
       siteId,
       url,
       "query_string",
+      undefined,
+      undefined,
     );
     expect(handlerMocks.core.utmDimensionDefinition).toHaveBeenCalledWith(
       "medium",
@@ -226,6 +232,8 @@ describe("edge query router", () => {
       siteId,
       url,
       "utm_campaign_expr",
+      undefined,
+      undefined,
     );
     expect(handlerMocks.pages.handleDimension).toHaveBeenNthCalledWith(
       7,
@@ -234,90 +242,105 @@ describe("edge query router", () => {
       url,
       "country",
       { ignoreGeo: true },
+      undefined,
     );
     expect(handlerMocks.overview.handleOverviewPageTab).toHaveBeenCalledWith(
       env,
       siteId,
       url,
       "title",
+      undefined,
     );
     expect(handlerMocks.overview.handleOverviewPageTab).toHaveBeenCalledWith(
       env,
       siteId,
       url,
       "hostname",
+      undefined,
     );
     expect(handlerMocks.overview.handleOverviewPageTab).toHaveBeenCalledWith(
       env,
       siteId,
       url,
       "entry",
+      undefined,
     );
     expect(handlerMocks.overview.handleOverviewPageTab).toHaveBeenCalledWith(
       env,
       siteId,
       url,
       "exit",
+      undefined,
     );
     expect(handlerMocks.overview.handleOverviewSourceTab).toHaveBeenCalledWith(
       env,
       siteId,
       url,
       "link",
+      undefined,
     );
     expect(handlerMocks.overview.handleOverviewClientTab).toHaveBeenCalledWith(
       env,
       siteId,
       url,
       "browser",
+      undefined,
     );
     expect(handlerMocks.overview.handleOverviewClientTab).toHaveBeenCalledWith(
       env,
       siteId,
       url,
       "osVersion",
+      undefined,
     );
     expect(handlerMocks.overview.handleOverviewClientTab).toHaveBeenCalledWith(
       env,
       siteId,
       url,
       "deviceType",
+      undefined,
     );
     expect(handlerMocks.overview.handleOverviewClientTab).toHaveBeenCalledWith(
       env,
       siteId,
       url,
       "language",
+      undefined,
     );
     expect(handlerMocks.overview.handleOverviewClientTab).toHaveBeenCalledWith(
       env,
       siteId,
       url,
       "screenSize",
+      undefined,
     );
     expect(handlerMocks.overview.handleOverviewGeoTab).toHaveBeenCalledWith(
       env,
       siteId,
       url,
       "city",
+      undefined,
     );
     expect(handlerMocks.overview.handleOverviewGeoTab).toHaveBeenCalledWith(
       env,
       siteId,
       url,
       "continent",
+      undefined,
     );
     expect(handlerMocks.overview.handleOverviewGeoTab).toHaveBeenCalledWith(
       env,
       siteId,
       url,
       "timezone",
+      undefined,
     );
     expect(handlerMocks.overview.handleOverviewGeoTab).toHaveBeenCalledWith(
       env,
       siteId,
       url,
       "organization",
+      undefined,
     );
   });
 
@@ -330,6 +353,7 @@ describe("edge query router", () => {
       siteId,
       url,
       false,
+      undefined,
     );
     expect(handlerMocks.pages.handleReferrers).toHaveBeenCalledWith(
       env,
@@ -337,6 +361,7 @@ describe("edge query router", () => {
       url,
       8,
       false,
+      undefined,
     );
   });
 
@@ -347,6 +372,7 @@ describe("edge query router", () => {
       env,
       siteId,
       url,
+      undefined,
       undefined,
     );
   });

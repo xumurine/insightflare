@@ -1,11 +1,12 @@
 import {
   badRequest,
-  jsonResponse,
+  jsonResponseWith,
   parseFilters,
   parseInterval,
   parseLimit,
   parseQueryLimit,
   parseWindow,
+  type ResponseContext,
 } from "@/lib/edge/query/core";
 import type { Env } from "@/lib/edge/types";
 import { coerceNumber } from "@/lib/edge/utils";
@@ -29,6 +30,7 @@ export async function handleBrowserTrend(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -43,7 +45,7 @@ export async function handleBrowserTrend(
     filters,
     limit,
   );
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     interval,
     series: trend.series,
@@ -55,6 +57,7 @@ export async function handleBrowserEngineTrend(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -69,7 +72,7 @@ export async function handleBrowserEngineTrend(
     filters,
     limit,
   );
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     interval,
     series: trend.series,
@@ -81,6 +84,7 @@ export async function handleBrowserVersionBreakdown(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -105,7 +109,7 @@ export async function handleBrowserVersionBreakdown(
     browserLimit,
     versionLimit,
   );
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     data,
   });
@@ -115,6 +119,7 @@ export async function handleBrowserCrossBreakdown(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -131,7 +136,7 @@ export async function handleBrowserCrossBreakdown(
     osLimit,
     deviceTypeLimit,
   );
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     operatingSystem: data.operatingSystem,
     deviceType: data.deviceType,
@@ -142,6 +147,7 @@ export async function handleBrowserRadar(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -166,13 +172,14 @@ export async function handleBrowserRadar(
       traffic: row.trafficShare,
     },
   }));
-  return jsonResponse({ ok: true, data });
+  return jsonResponseWith(ctx!, { ok: true, data });
 }
 
 export async function handleReferrerRadar(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -204,13 +211,14 @@ export async function handleReferrerRadar(
       traffic: row.trafficShare,
     },
   }));
-  return jsonResponse({ ok: true, data });
+  return jsonResponseWith(ctx!, { ok: true, data });
 }
 
 export async function handleClientDimensionTrend(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const dimension = parseClientDimensionKey(url.searchParams.get("dimension"));
   if (!dimension) return badRequest("Invalid client dimension");
@@ -228,7 +236,7 @@ export async function handleClientDimensionTrend(
     dimension,
     limit,
   );
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     interval,
     series: trend.series,
@@ -240,6 +248,7 @@ export async function handleUtmDimensionTrend(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const dimension = parseUtmDimensionKey(url.searchParams.get("dimension"));
   if (!dimension) return badRequest("Invalid UTM dimension");
@@ -257,7 +266,7 @@ export async function handleUtmDimensionTrend(
     dimension,
     limit,
   );
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     interval,
     series: trend.series,
@@ -269,6 +278,7 @@ export async function handleReferrerDimensionTrend(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -283,7 +293,7 @@ export async function handleReferrerDimensionTrend(
     filters,
     limit,
   );
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     interval,
     series: trend.series,
@@ -295,6 +305,7 @@ export async function handleClientCrossBreakdown(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const primaryDimension = parseClientDimensionKey(
     url.searchParams.get("primaryDimension"),
@@ -322,5 +333,5 @@ export async function handleClientCrossBreakdown(
     primaryDimension,
     secondaryDimension,
   );
-  return jsonResponse({ ok: true, data });
+  return jsonResponseWith(ctx!, { ok: true, data });
 }

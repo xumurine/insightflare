@@ -93,7 +93,7 @@ describe("funnel query handler", () => {
     );
     const { request, url } = makeRequest("/api/private/funnel");
 
-    const response = await handleFunnel(env, "site-1", url, request);
+    const response = await handleFunnel(env, "site-1", url, undefined, request);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -143,7 +143,7 @@ describe("funnel query handler", () => {
       method: "POST",
     });
 
-    const response = await handleFunnel(env, "site-1", url, request);
+    const response = await handleFunnel(env, "site-1", url, undefined, request);
 
     const now = nowSeconds();
     expect(response.status).toBe(201);
@@ -179,7 +179,7 @@ describe("funnel query handler", () => {
       method: "DELETE",
     });
 
-    const response = await handleFunnel(env, "site-1", url, request);
+    const response = await handleFunnel(env, "site-1", url, undefined, request);
 
     const now = nowSeconds();
     expect(response.status).toBe(200);
@@ -242,7 +242,7 @@ describe("funnel query handler", () => {
       "/api/private/funnel?id=funnel-1&from=1&to=1000&device=desktop",
     );
 
-    const response = await handleFunnel(env, "site-1", url, request);
+    const response = await handleFunnel(env, "site-1", url, undefined, request);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({

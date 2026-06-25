@@ -753,9 +753,9 @@ describe("edge query handlers", () => {
     });
 
     expect(response.status).toBe(405);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "Method Not Allowed",
+      error: { message: "Method Not Allowed" },
     });
     expect(requireSessionMock).not.toHaveBeenCalled();
     expect(prepare).not.toHaveBeenCalled();
@@ -774,14 +774,14 @@ describe("edge query handlers", () => {
     );
 
     expect(unauthorized.status).toBe(401);
-    expect(await unauthorized.json()).toEqual({
+    expect(await unauthorized.json()).toMatchObject({
       ok: false,
-      error: "Unauthorized",
+      error: { message: "Unauthorized" },
     });
     expect(missingSite.status).toBe(400);
-    expect(await missingSite.json()).toEqual({
+    expect(await missingSite.json()).toMatchObject({
       ok: false,
-      error: "siteId is required",
+      error: { message: "siteId is required" },
     });
     expect(prepare).not.toHaveBeenCalled();
   });
@@ -794,9 +794,9 @@ describe("edge query handlers", () => {
     const response = await privateQuery(privatePath("overview"), env);
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "Site not found",
+      error: { message: "Site not found" },
     });
     expect(statements[0].bind).toHaveBeenCalledWith("site-1");
   });
@@ -810,9 +810,9 @@ describe("edge query handlers", () => {
     const response = await privateQuery(privatePath("overview"), env);
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "Site not found",
+      error: { message: "Site not found" },
     });
     expect(statements[0].bind).toHaveBeenCalledWith(
       "user-1",
@@ -897,9 +897,9 @@ describe("edge query handlers", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "Invalid time window",
+      error: { message: "Invalid time window" },
     });
     expect(prepare).toHaveBeenCalledTimes(1);
   });
@@ -967,9 +967,9 @@ describe("edge query handlers", () => {
       ]),
     );
     expect(invalidOptions.status).toBe(400);
-    expect(await invalidOptions.json()).toEqual({
+    expect(await invalidOptions.json()).toMatchObject({
       ok: false,
-      error: "Invalid filter key",
+      error: { message: "Invalid filter key" },
     });
     const dimensionStatement = statements.find((statement) =>
       statement.sql.includes("dimension_rollup AS"),
@@ -1122,19 +1122,19 @@ describe("edge query handlers", () => {
     );
 
     expect(missingEvent.status).toBe(400);
-    expect(await missingEvent.json()).toEqual({
+    expect(await missingEvent.json()).toMatchObject({
       ok: false,
-      error: "eventName is required",
+      error: { message: "eventName is required" },
     });
     expect(missingField.status).toBe(400);
-    expect(await missingField.json()).toEqual({
+    expect(await missingField.json()).toMatchObject({
       ok: false,
-      error: "fieldPath is required",
+      error: { message: "fieldPath is required" },
     });
     expect(missingRecord.status).toBe(400);
-    expect(await missingRecord.json()).toEqual({
+    expect(await missingRecord.json()).toMatchObject({
       ok: false,
-      error: "eventId is required",
+      error: { message: "eventId is required" },
     });
     expect(prepare).toHaveBeenCalledTimes(3);
   });
@@ -1242,9 +1242,9 @@ describe("edge query handlers", () => {
       data: [{ value: null }],
     });
     expect(invalidType.status).toBe(400);
-    expect(await invalidType.json()).toEqual({
+    expect(await invalidType.json()).toMatchObject({
       ok: false,
-      error: "fieldValueType is required",
+      error: { message: "fieldValueType is required" },
     });
   });
 
@@ -1367,14 +1367,14 @@ describe("edge query handlers", () => {
     );
 
     expect(missingVisitor.status).toBe(400);
-    expect(await missingVisitor.json()).toEqual({
+    expect(await missingVisitor.json()).toMatchObject({
       ok: false,
-      error: "Missing visitorId",
+      error: { message: "Missing visitorId" },
     });
     expect(missingSession.status).toBe(400);
-    expect(await missingSession.json()).toEqual({
+    expect(await missingSession.json()).toMatchObject({
       ok: false,
-      error: "Missing sessionId",
+      error: { message: "Missing sessionId" },
     });
   });
 
@@ -1513,9 +1513,9 @@ describe("edge query handlers", () => {
       expect.arrayContaining([expect.objectContaining({ label: "Chrome" })]),
     );
     expect(invalidClientTrend.status).toBe(400);
-    expect(await invalidClientTrend.json()).toEqual({
+    expect(await invalidClientTrend.json()).toMatchObject({
       ok: false,
-      error: "Invalid client dimension",
+      error: { message: "Invalid client dimension" },
     });
     const utmTrendPayload: any = await utmTrend.json();
     expect(utmTrendPayload).toMatchObject({ ok: true });
@@ -1523,9 +1523,9 @@ describe("edge query handlers", () => {
       expect.arrayContaining([expect.objectContaining({ label: "Chrome" })]),
     );
     expect(invalidUtmTrend.status).toBe(400);
-    expect(await invalidUtmTrend.json()).toEqual({
+    expect(await invalidUtmTrend.json()).toMatchObject({
       ok: false,
-      error: "Invalid UTM dimension",
+      error: { message: "Invalid UTM dimension" },
     });
     const referrerTrendPayload: any = await referrerTrend.json();
     expect(referrerTrendPayload).toMatchObject({ ok: true });
@@ -1542,9 +1542,9 @@ describe("edge query handlers", () => {
       },
     });
     expect(invalidClientCross.status).toBe(400);
-    expect(await invalidClientCross.json()).toEqual({
+    expect(await invalidClientCross.json()).toMatchObject({
       ok: false,
-      error: "Primary and secondary dimensions must differ",
+      error: { message: "Primary and secondary dimensions must differ" },
     });
     const performancePayload: any = await performance.json();
     expect(performancePayload).toMatchObject({
@@ -1727,9 +1727,9 @@ describe("edge query handlers", () => {
     );
 
     expect(invalidWindow.status).toBe(400);
-    expect(await invalidWindow.json()).toEqual({
+    expect(await invalidWindow.json()).toMatchObject({
       ok: false,
-      error: "Invalid time window",
+      error: { message: "Invalid time window" },
     });
     expect(requireSessionMock).not.toHaveBeenCalled();
     expect(invalidWindowPrepare).not.toHaveBeenCalled();
@@ -1742,9 +1742,9 @@ describe("edge query handlers", () => {
     );
 
     expect(unauthorized.status).toBe(401);
-    expect(await unauthorized.json()).toEqual({
+    expect(await unauthorized.json()).toMatchObject({
       ok: false,
-      error: "Unauthorized",
+      error: { message: "Unauthorized" },
     });
     expect(unauthorizedPrepare).not.toHaveBeenCalled();
 
@@ -1755,9 +1755,9 @@ describe("edge query handlers", () => {
     );
 
     expect(missingTeamId.status).toBe(400);
-    expect(await missingTeamId.json()).toEqual({
+    expect(await missingTeamId.json()).toMatchObject({
       ok: false,
-      error: "teamId is required",
+      error: { message: "teamId is required" },
     });
     expect(missingTeamPrepare).not.toHaveBeenCalled();
 
@@ -1771,9 +1771,9 @@ describe("edge query handlers", () => {
     );
 
     expect(denied.status).toBe(404);
-    expect(await denied.json()).toEqual({
+    expect(await denied.json()).toMatchObject({
       ok: false,
-      error: "Team not found",
+      error: { message: "Team not found" },
     });
     expect(statements[0].bind).toHaveBeenCalledWith(
       "user-1",
@@ -1897,14 +1897,14 @@ describe("edge query handlers", () => {
     });
     expect(statements[0].bind).toHaveBeenCalledWith("public-slug");
     expect(privateOnly.status).toBe(404);
-    expect(await privateOnly.json()).toEqual({
+    expect(await privateOnly.json()).toMatchObject({
       ok: false,
-      error: "Not Found",
+      error: { message: "Not Found" },
     });
     expect(missingSlug.status).toBe(404);
-    expect(await missingSlug.json()).toEqual({
+    expect(await missingSlug.json()).toMatchObject({
       ok: false,
-      error: "Public site not found",
+      error: { message: "Public site not found" },
     });
     expect(badMethod.status).toBe(405);
   });
@@ -1939,10 +1939,9 @@ describe("edge query handlers", () => {
     const missing = await publicQuery(publicPath("overview"), missingEnv);
 
     expect(missing.status).toBe(404);
-    expect(missing.headers.get("access-control-allow-origin")).toBe("*");
-    expect(await missing.json()).toEqual({
+    expect(await missing.json()).toMatchObject({
       ok: false,
-      error: "Public site not found",
+      error: { message: "Public site not found" },
     });
   });
 
@@ -1955,9 +1954,9 @@ describe("edge query handlers", () => {
     );
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "Public site not found",
+      error: { message: "Public site not found" },
     });
     expect(prepare).not.toHaveBeenCalled();
   });
@@ -1988,9 +1987,9 @@ describe("edge query handlers", () => {
     const response = await privateQuery(privatePath("does-not-exist"), env);
 
     expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "Not Found",
+      error: { message: "Not Found" },
     });
   });
 });

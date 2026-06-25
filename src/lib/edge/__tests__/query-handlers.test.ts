@@ -40,9 +40,9 @@ async function expectBadRequest(
   message: string,
 ): Promise<void> {
   expect(response.status).toBe(400);
-  await expect(response.json()).resolves.toEqual({
+  await expect(response.json()).resolves.toMatchObject({
     ok: false,
-    error: message,
+    error: { message },
   });
 }
 

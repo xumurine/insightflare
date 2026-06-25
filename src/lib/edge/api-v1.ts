@@ -3,7 +3,16 @@ import { DEFAULT_SITE_SCRIPT_SETTINGS } from "@/lib/site-settings";
 import { parseWindow } from "./query/core";
 import { routeQuery } from "./query/router";
 import { handleTeamDashboardForTeam } from "./query/team";
-import { bad, bool, forb, j, na, nf, parseJson } from "./admin-response";
+import {
+  bad,
+  bool,
+  forb,
+  j,
+  na,
+  nf,
+  parseJson,
+  jsonResponseFor,
+} from "./admin-response";
 import { deleteSiteData } from "./admin-sites";
 import {
   type ApiKeyPrincipal,
@@ -123,21 +132,26 @@ async function handleSitesCollection(
     const denied = requireApiScope(principal, "site:read");
     if (denied) return denied;
     const sites = await listSites(env, principal);
-    return j({ ok: true, data: sites.map(sitePayload) });
+    return jsonResponseFor(request, { ok: true, data: sites.map(sitePayload) });
   }
 
   if (request.method === "POST") {
     const denied = requireApiScope(principal, "site:write");
     if (denied) return denied;
     if (!hasFullSiteAccess(principal)) {
-      return forb("Restricted API keys cannot create sites");
+      return forb(
+        "Restricted API keys cannot create sites",
+        undefined,
+        request,
+      );
     }
     const body = await parseJson(request);
     const name = clampString(String(body.name || ""), 120);
     const domain = clampString(String(body.domain || ""), 255);
     const publicEnabled = bool(body.publicEnabled, false);
     const publicSlug = clampString(String(body.publicSlug || ""), 120);
-    if (!name || !domain) return bad("name and domain are required");
+    if (!name || !domain)
+      return bad("name and domain are required", undefined, request);
     const siteId = crypto.randomUUID();
     await env.DB.prepare(
       "INSERT INTO sites (id,team_id,name,domain,public_enabled,public_slug,created_at,updated_at) VALUES (?,?,?,?,?,?,unixepoch(),unixepoch())",
@@ -158,10 +172,10 @@ async function handleSitesCollection(
     const row = await siteById(env, principal, siteId);
     return row instanceof Response
       ? row
-      : j({ ok: true, data: sitePayload(row) });
+      : jsonResponseFor(request, { ok: true, data: sitePayload(row) });
   }
 
-  return na();
+  return na(request);
 }
 
 async function handleSiteResource(
@@ -176,7 +190,7 @@ async function handleSiteResource(
     const row = await siteById(env, principal, siteId);
     return row instanceof Response
       ? row
-      : j({ ok: true, data: sitePayload(row) });
+      : jsonResponseFor(request, { ok: true, data: sitePayload(row) });
   }
 
   if (request.method === "PATCH") {
@@ -195,7 +209,8 @@ async function handleSiteResource(
       String(body.publicSlug ?? existing.publicSlug ?? ""),
       120,
     );
-    if (!name || !domain) return bad("name and domain are required");
+    if (!name || !domain)
+      return bad("name and domain are required", undefined, request);
     await env.DB.prepare(
       "UPDATE sites SET name=?,domain=?,public_enabled=?,public_slug=?,updated_at=unixepoch() WHERE id=? AND team_id=?",
     )
@@ -212,7 +227,7 @@ async function handleSiteResource(
     const row = await siteById(env, principal, siteId);
     return row instanceof Response
       ? row
-      : j({ ok: true, data: sitePayload(row) });
+      : jsonResponseFor(request, { ok: true, data: sitePayload(row) });
   }
 
   if (request.method === "DELETE") {
@@ -221,13 +236,13 @@ async function handleSiteResource(
     const existing = await siteById(env, principal, siteId);
     if (existing instanceof Response) return existing;
     await deleteSiteData(env, siteId);
-    return j({
+    return jsonResponseFor(request, {
       ok: true,
       data: { siteId, teamId: principal.teamId, removed: true },
     });
   }
 
-  return na();
+  return na(request);
 }
 
 async function handleSiteConfig(
@@ -243,7 +258,10 @@ async function handleSiteConfig(
     const denied = requireApiScope(principal, "site_config:read");
     if (denied) return denied;
     const config = await readSiteScriptSettings(env, siteId);
-    return j({ ok: true, data: config ?? DEFAULT_SITE_SCRIPT_SETTINGS });
+    return jsonResponseFor(request, {
+      ok: true,
+      data: config ?? DEFAULT_SITE_SCRIPT_SETTINGS,
+    });
   }
 
   if (request.method === "PATCH") {
@@ -255,10 +273,10 @@ async function handleSiteConfig(
       settings:
         body.config && typeof body.config === "object" ? body.config : body,
     });
-    return j({ ok: true, data: config });
+    return jsonResponseFor(request, { ok: true, data: config });
   }
 
-  return na();
+  return na(request);
 }
 
 async function handleScriptSnippet(
@@ -287,7 +305,7 @@ async function handleAnalytics(
   siteId: string,
   queryName: string,
 ): Promise<Response> {
-  if (request.method !== "GET") return na();
+  if (request.method !== "GET") return na(request);
   const denied = requireApiScope(principal, "analytics:read");
   if (denied) return denied;
   const site = await siteById(env, principal, siteId);
@@ -308,11 +326,11 @@ async function handleTeamDashboard(
   url: URL,
   principal: ApiKeyPrincipal,
 ): Promise<Response> {
-  if (request.method !== "GET") return na();
+  if (request.method !== "GET") return na(request);
   const denied = requireApiScope(principal, "analytics:read");
   if (denied) return denied;
   const window = parseWindow(url);
-  if (!window) return bad("Invalid time window");
+  if (!window) return bad("Invalid time window", undefined, request);
   return handleTeamDashboardForTeam(
     env,
     url,
@@ -340,7 +358,7 @@ export async function handleApiV1(
     return handleTeamDashboard(request, env, url, principal);
   }
 
-  if (path[0] !== "sites" || !path[1]) return nf();
+  if (path[0] !== "sites" || !path[1]) return nf(undefined, undefined, request);
   const siteId = path[1];
 
   if (path.length === 2) {
@@ -350,12 +368,12 @@ export async function handleApiV1(
     return handleSiteConfig(request, env, principal, siteId);
   }
   if (path.length === 3 && path[2] === "script-snippet") {
-    if (request.method !== "GET") return na();
+    if (request.method !== "GET") return na(request);
     return handleScriptSnippet(env, url, principal, siteId);
   }
   if (path.length === 4 && path[2] === "analytics") {
     return handleAnalytics(request, env, url, principal, siteId, path[3]);
   }
 
-  return nf();
+  return nf(undefined, undefined, request);
 }

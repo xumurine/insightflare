@@ -1,36 +1,14 @@
+import {
+  bad as badRequest,
+  j as jsonResponse,
+  na as notAllowed,
+  nf as notFound,
+  una as unauthorized,
+} from "@/lib/response";
+
 import { requireSession } from "./session-auth";
 import type { Env } from "./types";
 import { coerceNumber, ONE_HOUR_MS } from "./utils";
-
-function jsonResponse(
-  payload: unknown,
-  status = 200,
-  extraHeaders?: Record<string, string>,
-): Response {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...(extraHeaders ?? {}),
-    },
-  });
-}
-
-function badRequest(message: string): Response {
-  return jsonResponse({ ok: false, error: message }, 400);
-}
-
-function unauthorized(message = "Unauthorized"): Response {
-  return jsonResponse({ ok: false, error: message }, 401);
-}
-
-function notFound(message = "Not Found"): Response {
-  return jsonResponse({ ok: false, error: message }, 404);
-}
-
-function notAllowed(message = "Method Not Allowed"): Response {
-  return jsonResponse({ ok: false, error: message }, 405);
-}
 
 function normalizeRange(
   range: R2Range | undefined,

@@ -1,15 +1,11 @@
-import { NextResponse } from "next/server";
-
 import { fetchEdgeForServer } from "@/lib/edge-proxy";
+import { bad, errorResponse } from "@/lib/response";
 
 async function proxyArchiveFile(request: Request): Promise<Response> {
   const incomingUrl = new URL(request.url);
   const key = incomingUrl.searchParams.get("key") || "";
   if (key.length === 0) {
-    return NextResponse.json(
-      { ok: false, error: "Missing key" },
-      { status: 400 },
-    );
+    return bad("Missing key", "missing_key", request);
   }
 
   const rangeHeader = request.headers.get("range") || undefined;
@@ -25,9 +21,11 @@ async function proxyArchiveFile(request: Request): Promise<Response> {
   });
   if (!edgeRes.ok && edgeRes.status !== 206) {
     const text = await edgeRes.text();
-    return NextResponse.json(
-      { ok: false, error: "Failed to fetch archive file", detail: text },
-      { status: edgeRes.status },
+    return errorResponse(
+      request,
+      edgeRes.status,
+      "fetch_archive_file_failed",
+      text,
     );
   }
 

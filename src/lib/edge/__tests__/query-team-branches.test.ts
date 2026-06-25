@@ -135,9 +135,9 @@ describe("edge team query low branch coverage", () => {
     );
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error: "teamId is required",
+      error: { message: "teamId is required" },
     });
     expect(requireSessionMock).toHaveBeenCalledTimes(1);
     expect(prepare).not.toHaveBeenCalled();
@@ -176,9 +176,9 @@ describe("edge team query low branch coverage", () => {
     );
 
     expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error: "Team not found",
+      error: { message: "Team not found" },
     });
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({

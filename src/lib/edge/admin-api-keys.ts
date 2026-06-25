@@ -1,6 +1,13 @@
 import { canManageTeam } from "./admin-access";
 import { requireActor } from "./admin-auth";
-import { bad, forb, j, na, nf, parseJson } from "./admin-response";
+import {
+  bad,
+  forb,
+  na,
+  nf,
+  parseJson,
+  jsonResponseFor,
+} from "./admin-response";
 import {
   createApiKeyRecord,
   expiresAtFromDays,
@@ -39,11 +46,14 @@ export async function handleApiKeysAdmin(
 
   if (req.method === "GET") {
     const teamId = clampString(url.searchParams.get("teamId") || "", 120);
-    if (!teamId) return bad("teamId is required");
+    if (!teamId) return bad("teamId is required", undefined, req);
     if (!(await canManageTeam(env, actor, teamId))) {
-      return forb("Only team admins can manage API keys");
+      return forb("Only team admins can manage API keys", undefined, req);
     }
-    return j({ ok: true, data: await listApiKeys(env, teamId) });
+    return jsonResponseFor(req, {
+      ok: true,
+      data: await listApiKeys(env, teamId),
+    });
   }
 
   if (req.method === "POST") {
@@ -52,14 +62,15 @@ export async function handleApiKeysAdmin(
     const name = clampString(String(body.name || "").trim(), 120);
     const scopes = normalizeApiKeyScopes(body.scopes);
     const siteIds = normalizeApiKeySiteIds(body.siteIds);
-    if (!teamId) return bad("teamId is required");
-    if (name.length < 2) return bad("name is required");
-    if (scopes.length === 0) return bad("at least one scope is required");
+    if (!teamId) return bad("teamId is required", undefined, req);
+    if (name.length < 2) return bad("name is required", undefined, req);
+    if (scopes.length === 0)
+      return bad("at least one scope is required", undefined, req);
     if (!(await canManageTeam(env, actor, teamId))) {
-      return forb("Only team admins can manage API keys");
+      return forb("Only team admins can manage API keys", undefined, req);
     }
     if (!(await assertSitesBelongToTeam(env, teamId, siteIds))) {
-      return bad("siteIds must belong to the team");
+      return bad("siteIds must belong to the team", undefined, req);
     }
     const created = await createApiKeyRecord(env, {
       teamId,
@@ -69,7 +80,7 @@ export async function handleApiKeysAdmin(
       createdByUserId: actor.user.id,
       expiresAt: expiresAtFromDays(body.expiresInDays),
     });
-    return j({ ok: true, data: created });
+    return jsonResponseFor(req, { ok: true, data: created });
   }
 
   if (req.method === "PATCH") {
@@ -77,14 +88,15 @@ export async function handleApiKeysAdmin(
     const intent = clampString(String(body.intent || ""), 24).toLowerCase();
     const teamId = clampString(String(body.teamId || ""), 120);
     const keyId = clampString(String(body.keyId || ""), 120);
-    if (!teamId || !keyId) return bad("teamId and keyId are required");
+    if (!teamId || !keyId)
+      return bad("teamId and keyId are required", undefined, req);
     if (!(await canManageTeam(env, actor, teamId))) {
-      return forb("Only team admins can manage API keys");
+      return forb("Only team admins can manage API keys", undefined, req);
     }
 
     const existing = await getApiKeyById(env, keyId);
     if (!existing || existing.team_id !== teamId)
-      return nf("API key not found");
+      return nf("API key not found", undefined, req);
 
     if (intent === "revoke") {
       const revoked = await revokeApiKeyRecord(env, {
@@ -92,7 +104,7 @@ export async function handleApiKeysAdmin(
         keyId,
         revokedByUserId: actor.user.id,
       });
-      return j({ ok: true, data: revoked });
+      return jsonResponseFor(req, { ok: true, data: revoked });
     }
 
     if (intent === "rotate") {
@@ -110,11 +122,11 @@ export async function handleApiKeysAdmin(
         keyId,
         revokedByUserId: actor.user.id,
       });
-      return j({ ok: true, data: replacement });
+      return jsonResponseFor(req, { ok: true, data: replacement });
     }
 
-    return bad("unsupported intent");
+    return bad("unsupported intent", undefined, req);
   }
 
-  return na();
+  return na(req);
 }

@@ -1,35 +1,14 @@
-import { NextResponse } from "next/server";
-
 import { toTeamRole } from "@/lib/dashboard/permissions";
 import {
   addAdminMember,
   removeAdminMember,
   updateAdminMemberRole,
 } from "@/lib/edge-client";
+import { bad, jsonResponseFor } from "@/lib/edge/admin-response";
 import { bodyStr, parseRequestBody } from "@/lib/form-helpers";
+import { errorResponse, normalizeErrorMessage } from "@/lib/response";
 
-function normalizeErrorMessage(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error);
-  const jsonStart = raw.lastIndexOf("{");
-  if (jsonStart >= 0) {
-    const maybeJson = raw.slice(jsonStart).trim();
-    try {
-      const parsed = JSON.parse(maybeJson) as {
-        message?: unknown;
-        error?: unknown;
-      };
-      if (typeof parsed.message === "string" && parsed.message.trim())
-        return parsed.message.trim();
-      if (typeof parsed.error === "string" && parsed.error.trim())
-        return parsed.error.trim();
-    } catch {
-      // fall through to raw
-    }
-  }
-  return raw;
-}
-
-export async function POST(request: Request): Promise<NextResponse> {
+export async function POST(request: Request): Promise<Response> {
   const body = await parseRequestBody(request);
   const intent = bodyStr(body, "intent") || "add";
 
@@ -37,21 +16,19 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (intent === "remove") {
     const userId = bodyStr(body, "userId");
     if (teamId.length === 0 || userId.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "invalid_member_remove_input" },
-        { status: 400 },
+      return bad(
+        "Invalid member remove input",
+        "invalid_member_remove_input",
+        request,
       );
     }
 
     try {
       const result = await removeAdminMember({ teamId, userId });
-      return NextResponse.json({ ok: true, data: result });
+      return jsonResponseFor(request, { ok: true, data: result });
     } catch (error) {
       const msg = normalizeErrorMessage(error);
-      return NextResponse.json(
-        { ok: false, error: "remove_member_failed", message: msg },
-        { status: 500 },
-      );
+      return errorResponse(request, 500, "remove_member_failed", msg);
     }
   }
 
@@ -59,38 +36,30 @@ export async function POST(request: Request): Promise<NextResponse> {
     const userId = bodyStr(body, "userId");
     const role = toTeamRole(bodyStr(body, "role"));
     if (teamId.length === 0 || userId.length === 0 || role === "owner") {
-      return NextResponse.json(
-        { ok: false, error: "invalid_member_role_input" },
-        { status: 400 },
+      return bad(
+        "Invalid member role input",
+        "invalid_member_role_input",
+        request,
       );
     }
     try {
       const result = await updateAdminMemberRole({ teamId, userId, role });
-      return NextResponse.json({ ok: true, data: result });
+      return jsonResponseFor(request, { ok: true, data: result });
     } catch (error) {
       const msg = normalizeErrorMessage(error);
-      return NextResponse.json(
-        { ok: false, error: "update_member_role_failed", message: msg },
-        { status: 500 },
-      );
+      return errorResponse(request, 500, "update_member_role_failed", msg);
     }
   }
 
   const identifier = bodyStr(body, "identifier");
   if (teamId.length === 0 || identifier.length < 2) {
-    return NextResponse.json(
-      { ok: false, error: "invalid_member_input" },
-      { status: 400 },
-    );
+    return bad("Invalid member input", "invalid_member_input", request);
   }
 
   const requestedRoleRaw = bodyStr(body, "role");
   const requestedRole = requestedRoleRaw ? toTeamRole(requestedRoleRaw) : null;
   if (requestedRole === "owner") {
-    return NextResponse.json(
-      { ok: false, error: "invalid_member_input" },
-      { status: 400 },
-    );
+    return bad("Cannot assign owner role", "invalid_member_input", request);
   }
 
   try {
@@ -99,12 +68,9 @@ export async function POST(request: Request): Promise<NextResponse> {
         ? { teamId, identifier, role: requestedRole }
         : { teamId, identifier },
     );
-    return NextResponse.json({ ok: true, data: result });
+    return jsonResponseFor(request, { ok: true, data: result });
   } catch (error) {
     const msg = normalizeErrorMessage(error);
-    return NextResponse.json(
-      { ok: false, error: "add_member_failed", message: msg },
-      { status: 500 },
-    );
+    return errorResponse(request, 500, "add_member_failed", msg);
   }
 }

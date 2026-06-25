@@ -17,7 +17,7 @@ import {
   buildVisitFilterSql,
   buildVisitSourceCte,
   emptyPerformanceRouteMetrics,
-  jsonResponse,
+  jsonResponseWith,
   normalizePathname,
   parseFilters,
   parseInterval,
@@ -26,6 +26,7 @@ import {
   PERFORMANCE_METRIC_COLUMNS,
   performanceMetricColumn,
   queryD1All,
+  type ResponseContext,
   roundPerformanceValue,
   timeBucketCase,
   timeBucketTimestamp,
@@ -446,6 +447,7 @@ export async function handlePerformance(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -499,7 +501,7 @@ export async function handlePerformance(
       queryPerformanceCountriesFromD1(env, siteId, window, filters),
     ]);
 
-  return jsonResponse({
+  return jsonResponseWith(ctx!, {
     ok: true,
     interval,
     summaries,

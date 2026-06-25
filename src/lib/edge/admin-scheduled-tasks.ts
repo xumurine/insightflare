@@ -8,7 +8,7 @@ import {
   type ScheduledTaskSummary,
 } from "@/lib/scheduled-tasks";
 
-import { forb, j, na } from "./admin-response";
+import { forb, na, jsonResponseFor } from "./admin-response";
 import { SCHEDULED_TASKS } from "./scheduled-task-registry";
 import type { Env } from "./types";
 
@@ -233,8 +233,9 @@ export async function handleScheduledTasksAdmin(
 ): Promise<Response> {
   const actor = await requireActor(env, req);
   if (actor instanceof Response) return actor;
-  if (!actor.isAdmin) return forb("Only system admin can view scheduled tasks");
-  if (req.method !== "GET") return na();
+  if (!actor.isAdmin)
+    return forb("Only system admin can view scheduled tasks", undefined, req);
+  if (req.method !== "GET") return na(req);
 
   const generatedAt = Date.now();
   const since30d = generatedAt - RETENTION_MS;
@@ -415,5 +416,5 @@ export async function handleScheduledTasksAdmin(
           : Number(healthRow.lastRunAt),
     },
   };
-  return j(data);
+  return jsonResponseFor(req, data);
 }

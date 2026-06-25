@@ -1,28 +1,7 @@
-import { NextResponse } from "next/server";
-
 import { upsertAdminSiteConfig } from "@/lib/edge-client";
+import { bad, jsonResponseFor } from "@/lib/edge/admin-response";
 import { bodyStr, parseFormBool, parseRequestBody } from "@/lib/form-helpers";
-
-function normalizeErrorMessage(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error);
-  const jsonStart = raw.lastIndexOf("{");
-  if (jsonStart >= 0) {
-    const maybeJson = raw.slice(jsonStart).trim();
-    try {
-      const parsed = JSON.parse(maybeJson) as {
-        message?: unknown;
-        error?: unknown;
-      };
-      if (typeof parsed.message === "string" && parsed.message.trim())
-        return parsed.message.trim();
-      if (typeof parsed.error === "string" && parsed.error.trim())
-        return parsed.error.trim();
-    } catch {
-      // fall through to raw
-    }
-  }
-  return raw;
-}
+import { errorResponse, normalizeErrorMessage } from "@/lib/response";
 
 function buildLegacyConfig(
   body: Record<string, unknown>,
@@ -39,15 +18,12 @@ function buildLegacyConfig(
   };
 }
 
-export async function POST(request: Request): Promise<NextResponse> {
+export async function POST(request: Request): Promise<Response> {
   const body = await parseRequestBody(request);
   const siteId = bodyStr(body, "siteId");
 
   if (siteId.length === 0) {
-    return NextResponse.json(
-      { ok: false, error: "missing_site_id" },
-      { status: 400 },
-    );
+    return bad("Missing site ID", "missing_site_id", request);
   }
 
   const config =
@@ -60,12 +36,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       siteId,
       config,
     });
-    return NextResponse.json({ ok: true, data: saved });
+    return jsonResponseFor(request, { ok: true, data: saved });
   } catch (error) {
     const msg = normalizeErrorMessage(error);
-    return NextResponse.json(
-      { ok: false, error: "save_site_config_failed", message: msg },
-      { status: 500 },
-    );
+    return errorResponse(request, 500, "save_site_config_failed", msg);
   }
 }

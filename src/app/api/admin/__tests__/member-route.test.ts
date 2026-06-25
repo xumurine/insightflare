@@ -49,7 +49,7 @@ describe("admin member route", () => {
       role: "admin",
     });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       data: { id: "membership-1" },
     });
@@ -60,9 +60,9 @@ describe("admin member route", () => {
       jsonRequest({ teamId: "team-1", identifier: "a" }),
     );
     expect(invalidIdentifier.status).toBe(400);
-    expect(await invalidIdentifier.json()).toEqual({
+    expect(await invalidIdentifier.json()).toMatchObject({
       ok: false,
-      error: "invalid_member_input",
+      error: { code: "invalid_member_input", message: "Invalid member input" },
     });
 
     const ownerRole = await POST(
@@ -91,7 +91,7 @@ describe("admin member route", () => {
       teamId: "team-1",
       userId: "user-1",
     });
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       data: { removed: true },
     });
@@ -106,9 +106,12 @@ describe("admin member route", () => {
     );
 
     expect(missingTeamId.status).toBe(400);
-    expect(await missingTeamId.json()).toEqual({
+    expect(await missingTeamId.json()).toMatchObject({
       ok: false,
-      error: "invalid_member_remove_input",
+      error: {
+        code: "invalid_member_remove_input",
+        message: "Invalid member remove input",
+      },
     });
     expect(removeAdminMemberMock).not.toHaveBeenCalled();
   });
@@ -130,7 +133,7 @@ describe("admin member route", () => {
       userId: "user-1",
       role: "member",
     });
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       data: { role: "member" },
     });
@@ -146,9 +149,12 @@ describe("admin member route", () => {
     );
 
     expect(missingUserId.status).toBe(400);
-    expect(await missingUserId.json()).toEqual({
+    expect(await missingUserId.json()).toMatchObject({
       ok: false,
-      error: "invalid_member_role_input",
+      error: {
+        code: "invalid_member_role_input",
+        message: "Invalid member role input",
+      },
     });
 
     const ownerRole = await POST(
@@ -161,9 +167,12 @@ describe("admin member route", () => {
     );
 
     expect(ownerRole.status).toBe(400);
-    expect(await ownerRole.json()).toEqual({
+    expect(await ownerRole.json()).toMatchObject({
       ok: false,
-      error: "invalid_member_role_input",
+      error: {
+        code: "invalid_member_role_input",
+        message: "Invalid member role input",
+      },
     });
     expect(updateAdminMemberRoleMock).not.toHaveBeenCalled();
   });
@@ -182,7 +191,7 @@ describe("admin member route", () => {
       teamId: "team-1",
       identifier: "user@example.test",
     });
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       data: { id: "membership-2" },
     });
@@ -202,10 +211,9 @@ describe("admin member route", () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "remove_member_failed",
-      message: "Cannot remove owner",
+      error: { code: "remove_member_failed", message: "Cannot remove owner" },
     });
   });
 
@@ -224,10 +232,12 @@ describe("admin member route", () => {
     );
 
     expect(roleResponse.status).toBe(500);
-    expect(await roleResponse.json()).toEqual({
+    expect(await roleResponse.json()).toMatchObject({
       ok: false,
-      error: "update_member_role_failed",
-      message: "Role change denied",
+      error: {
+        code: "update_member_role_failed",
+        message: "Role change denied",
+      },
     });
 
     addAdminMemberMock.mockRejectedValueOnce(new Error("lookup failed"));
@@ -240,10 +250,9 @@ describe("admin member route", () => {
     );
 
     expect(addResponse.status).toBe(500);
-    expect(await addResponse.json()).toEqual({
+    expect(await addResponse.json()).toMatchObject({
       ok: false,
-      error: "add_member_failed",
-      message: "lookup failed",
+      error: { code: "add_member_failed", message: "lookup failed" },
     });
   });
 
@@ -260,10 +269,12 @@ describe("admin member route", () => {
     );
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "add_member_failed",
-      message: 'Edge API failed (500): {"message":"","error":""}',
+      error: {
+        code: "add_member_failed",
+        message: 'Edge API failed (500): {"message":"","error":""}',
+      },
     });
   });
 });

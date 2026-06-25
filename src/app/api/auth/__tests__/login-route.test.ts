@@ -55,9 +55,9 @@ describe("auth login route", () => {
     const response = await POST(jsonRequest({ username: "a", password: "" }));
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "invalid_credentials",
+      error: { code: "invalid_credentials", message: "Invalid credentials" },
     });
     expect(loginAdminAccountMock).not.toHaveBeenCalled();
   });
@@ -66,9 +66,9 @@ describe("auth login route", () => {
     const response = await POST(jsonRequest({ username: "admin" }));
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: false,
-      error: "invalid_credentials",
+      error: { code: "invalid_credentials", message: "Invalid credentials" },
     });
     expect(loginAdminAccountMock).not.toHaveBeenCalled();
   });
@@ -98,7 +98,7 @@ describe("auth login route", () => {
       60 * 60 * 24 * 30,
     );
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       ok: true,
       data: { next: "/en/app/team?tab=members" },
     });
@@ -182,9 +182,9 @@ describe("auth login route", () => {
     );
 
     expect(unauthorized.status).toBe(401);
-    expect(await unauthorized.json()).toEqual({
+    expect(await unauthorized.json()).toMatchObject({
       ok: false,
-      error: "invalid_credentials",
+      error: { code: "invalid_credentials", message: "Invalid credentials" },
     });
 
     const consoleError = vi
@@ -197,10 +197,9 @@ describe("auth login route", () => {
     );
 
     expect(failed.status).toBe(502);
-    expect(await failed.json()).toEqual({
+    expect(await failed.json()).toMatchObject({
       ok: false,
-      error: "login_upstream_failed",
-      message: "network down",
+      error: { code: "login_upstream_failed", message: "network down" },
     });
     expect(consoleError).toHaveBeenCalledWith("login_upstream_failed", {
       message: "network down",
@@ -220,10 +219,12 @@ describe("auth login route", () => {
     );
 
     expect(upstreamFailed.status).toBe(503);
-    expect(await upstreamFailed.json()).toEqual({
+    expect(await upstreamFailed.json()).toMatchObject({
       ok: false,
-      error: "login_upstream_failed",
-      message: "Edge API failed (503 POST /login): unavailable",
+      error: {
+        code: "login_upstream_failed",
+        message: "Edge API failed (503 POST /login): unavailable",
+      },
     });
 
     loginAdminAccountMock.mockRejectedValueOnce("plain failure");
@@ -233,10 +234,9 @@ describe("auth login route", () => {
     );
 
     expect(stringFailed.status).toBe(502);
-    expect(await stringFailed.json()).toEqual({
+    expect(await stringFailed.json()).toMatchObject({
       ok: false,
-      error: "login_upstream_failed",
-      message: "plain failure",
+      error: { code: "login_upstream_failed", message: "plain failure" },
     });
     expect(consoleError).toHaveBeenCalledWith("login_upstream_failed", {
       message: "plain failure",

@@ -1,30 +1,9 @@
-import { NextResponse } from "next/server";
-
 import { updateMyProfile } from "@/lib/edge-client";
+import { jsonResponseFor } from "@/lib/edge/admin-response";
 import { bodyStr, parseRequestBody } from "@/lib/form-helpers";
+import { errorResponse, normalizeErrorMessage } from "@/lib/response";
 
-function normalizeErrorMessage(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error);
-  const jsonStart = raw.lastIndexOf("{");
-  if (jsonStart >= 0) {
-    const maybeJson = raw.slice(jsonStart).trim();
-    try {
-      const parsed = JSON.parse(maybeJson) as {
-        message?: unknown;
-        error?: unknown;
-      };
-      if (typeof parsed.message === "string" && parsed.message.trim())
-        return parsed.message.trim();
-      if (typeof parsed.error === "string" && parsed.error.trim())
-        return parsed.error.trim();
-    } catch {
-      // fall through to raw
-    }
-  }
-  return raw;
-}
-
-export async function POST(request: Request): Promise<NextResponse> {
+export async function POST(request: Request): Promise<Response> {
   const body = await parseRequestBody(request);
 
   try {
@@ -38,12 +17,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       password: bodyStr(body, "password") || undefined,
       ...(hasTimeZone ? { timeZone: bodyStr(body, "timeZone") } : {}),
     });
-    return NextResponse.json({ ok: true, data: result });
+    return jsonResponseFor(request, { ok: true, data: result });
   } catch (error) {
     const msg = normalizeErrorMessage(error);
-    return NextResponse.json(
-      { ok: false, error: "profile_update_failed", message: msg },
-      { status: 500 },
-    );
+    return errorResponse(request, 500, "profile_update_failed", msg);
   }
 }

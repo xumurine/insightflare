@@ -8,11 +8,12 @@ import {
   buildVisitFilterSql,
   buildVisitSourceCte,
   eventSourceBindings,
-  jsonResponse,
+  jsonResponseWith,
   notAllowed,
   notFound,
   parseFilters,
   parseWindow,
+  type ResponseContext,
   queryD1All,
   visitSourceBindings,
 } from "./core";
@@ -372,8 +373,12 @@ async function queryFunnelAnalysis(
   return analyzeFunnelEvents(steps, [...pageviews, ...events]);
 }
 
-async function handleFunnelList(env: Env, siteId: string): Promise<Response> {
-  return jsonResponse({
+async function handleFunnelList(
+  env: Env,
+  siteId: string,
+  ctx?: ResponseContext,
+): Promise<Response> {
+  return jsonResponseWith(ctx!, {
     ok: true,
     funnels: await queryFunnelDefinitions(env, siteId),
   });
@@ -383,9 +388,10 @@ async function handleFunnelDetail(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const funnelId = url.searchParams.get("id")?.trim();
-  if (!funnelId) return handleFunnelList(env, siteId);
+  if (!funnelId) return handleFunnelList(env, siteId, ctx);
 
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");
@@ -404,13 +410,14 @@ async function handleFunnelDetail(
     funnel.steps,
   );
 
-  return jsonResponse({ ok: true, funnel, analysis });
+  return jsonResponseWith(ctx!, { ok: true, funnel, analysis });
 }
 
 async function handleFunnelCreate(
   env: Env,
   siteId: string,
   request: Request,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   let body: { name?: string; steps?: unknown };
   try {
@@ -441,7 +448,8 @@ async function handleFunnelCreate(
     )
     .run();
 
-  return jsonResponse(
+  return jsonResponseWith(
+    ctx!,
     {
       ok: true,
       funnel: { id, siteId, name, steps, createdAt: now, updatedAt: now },
@@ -454,6 +462,7 @@ async function handleFunnelDelete(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
 ): Promise<Response> {
   const funnelId = url.searchParams.get("id")?.trim();
   if (!funnelId) return badRequest("Funnel id is required");
@@ -465,20 +474,21 @@ async function handleFunnelDelete(
     .bind(now, now, funnelId, siteId, FUNNEL_ANALYSIS_KIND)
     .run();
 
-  return jsonResponse({ ok: true });
+  return jsonResponseWith(ctx!, { ok: true });
 }
 
 export async function handleFunnel(
   env: Env,
   siteId: string,
   url: URL,
+  ctx?: ResponseContext,
   request?: Request,
 ): Promise<Response> {
   const method = request?.method ?? "GET";
-  if (method === "GET") return handleFunnelDetail(env, siteId, url);
+  if (method === "GET") return handleFunnelDetail(env, siteId, url, ctx);
   if (method === "POST" && request) {
-    return handleFunnelCreate(env, siteId, request);
+    return handleFunnelCreate(env, siteId, request, ctx);
   }
-  if (method === "DELETE") return handleFunnelDelete(env, siteId, url);
+  if (method === "DELETE") return handleFunnelDelete(env, siteId, url, ctx);
   return notAllowed();
 }

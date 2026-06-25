@@ -3,11 +3,7 @@ import type { Env } from "@/lib/edge/types";
 
 import { normalizeFilterValue } from "./core-parsers";
 import { badRequest, notFound, unauthorized } from "./core-responses";
-import {
-  PRIVATE_CACHE_HEADERS,
-  PUBLIC_CACHE_HEADERS,
-  type SiteRow,
-} from "./core-types";
+import { type SiteRow } from "./core-types";
 
 export async function resolvePrivateSite(
   request: Request,
@@ -15,10 +11,10 @@ export async function resolvePrivateSite(
   url: URL,
 ): Promise<SiteRow | Response> {
   const session = await requireSession(request, env);
-  if (!session) return unauthorized("Unauthorized", PRIVATE_CACHE_HEADERS);
+  if (!session) return unauthorized("Unauthorized", undefined, request);
 
   const siteId = normalizeFilterValue(url.searchParams.get("siteId"));
-  if (!siteId) return badRequest("siteId is required", PRIVATE_CACHE_HEADERS);
+  if (!siteId) return badRequest("siteId is required", undefined, request);
 
   if (session.systemRole === "admin") {
     const site = await env.DB.prepare(
@@ -26,7 +22,7 @@ export async function resolvePrivateSite(
     )
       .bind(siteId)
       .first<SiteRow>();
-    return site ?? notFound("Site not found", PRIVATE_CACHE_HEADERS);
+    return site ?? notFound("Site not found", undefined, request);
   }
 
   const site = await env.DB.prepare(
@@ -41,7 +37,7 @@ export async function resolvePrivateSite(
   )
     .bind(session.userId, siteId, session.userId)
     .first<SiteRow>();
-  return site ?? notFound("Site not found", PRIVATE_CACHE_HEADERS);
+  return site ?? notFound("Site not found", undefined, request);
 }
 
 export async function resolvePrivateTeam(
@@ -50,16 +46,16 @@ export async function resolvePrivateTeam(
   url: URL,
 ): Promise<{ id: string } | Response> {
   const session = await requireSession(request, env);
-  if (!session) return unauthorized("Unauthorized", PRIVATE_CACHE_HEADERS);
+  if (!session) return unauthorized("Unauthorized", undefined, request);
 
   const teamId = normalizeFilterValue(url.searchParams.get("teamId"));
-  if (!teamId) return badRequest("teamId is required", PRIVATE_CACHE_HEADERS);
+  if (!teamId) return badRequest("teamId is required", undefined, request);
 
   if (session.systemRole === "admin") {
     const team = await env.DB.prepare("SELECT id FROM teams WHERE id=? LIMIT 1")
       .bind(teamId)
       .first<{ id: string }>();
-    return team ?? notFound("Team not found", PRIVATE_CACHE_HEADERS);
+    return team ?? notFound("Team not found", undefined, request);
   }
 
   const team = await env.DB.prepare(
@@ -73,7 +69,7 @@ export async function resolvePrivateTeam(
   )
     .bind(session.userId, teamId, session.userId)
     .first<{ id: string }>();
-  return team ?? notFound("Team not found", PRIVATE_CACHE_HEADERS);
+  return team ?? notFound("Team not found", undefined, request);
 }
 
 export async function fetchPublicSite(
@@ -85,14 +81,14 @@ export async function fetchPublicSite(
   try {
     slug = decodeURIComponent(segments[2] || "").trim();
   } catch {
-    return notFound("Public site not found", PUBLIC_CACHE_HEADERS);
+    return notFound("Public site not found");
   }
-  if (!slug) return notFound("Public site not found", PUBLIC_CACHE_HEADERS);
+  if (!slug) return notFound("Public site not found");
 
   const site = await env.DB.prepare(
     "SELECT id,name,domain FROM sites WHERE public_enabled=1 AND public_slug=? LIMIT 1",
   )
     .bind(slug)
     .first<SiteRow>();
-  return site ?? notFound("Public site not found", PUBLIC_CACHE_HEADERS);
+  return site ?? notFound("Public site not found");
 }

@@ -1419,9 +1419,9 @@ describe("edge overview D1 queries and handlers", () => {
     );
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       ok: false,
-      error: "Invalid time window",
+      error: { message: "Invalid time window" },
     });
     expect(prepare).not.toHaveBeenCalled();
   });

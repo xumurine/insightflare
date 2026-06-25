@@ -1,34 +1,13 @@
-import { NextResponse } from "next/server";
-
 import {
   createAdminSite,
   removeAdminSite,
   updateAdminSite,
 } from "@/lib/edge-client";
+import { bad, jsonResponseFor } from "@/lib/edge/admin-response";
 import { bodyStr, parseFormBool, parseRequestBody } from "@/lib/form-helpers";
+import { errorResponse, normalizeErrorMessage } from "@/lib/response";
 
-function normalizeErrorMessage(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error);
-  const jsonStart = raw.lastIndexOf("{");
-  if (jsonStart >= 0) {
-    const maybeJson = raw.slice(jsonStart).trim();
-    try {
-      const parsed = JSON.parse(maybeJson) as {
-        message?: unknown;
-        error?: unknown;
-      };
-      if (typeof parsed.message === "string" && parsed.message.trim())
-        return parsed.message.trim();
-      if (typeof parsed.error === "string" && parsed.error.trim())
-        return parsed.error.trim();
-    } catch {
-      // fall through to raw
-    }
-  }
-  return raw;
-}
-
-export async function POST(request: Request): Promise<NextResponse> {
+export async function POST(request: Request): Promise<Response> {
   const body = await parseRequestBody(request);
   const intent = bodyStr(body, "intent") || "create";
 
@@ -42,19 +21,13 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     if (intent === "remove") {
       if (siteId.length === 0) {
-        return NextResponse.json(
-          { ok: false, error: "missing_site_id" },
-          { status: 400 },
-        );
+        return bad("Missing site ID", "missing_site_id", request);
       }
       const removed = await removeAdminSite({ siteId });
-      return NextResponse.json({ ok: true, data: removed });
+      return jsonResponseFor(request, { ok: true, data: removed });
     } else if (intent === "update") {
       if (siteId.length === 0) {
-        return NextResponse.json(
-          { ok: false, error: "missing_site_id" },
-          { status: 400 },
-        );
+        return bad("Missing site ID", "missing_site_id", request);
       }
       const updated = await updateAdminSite({
         siteId,
@@ -64,13 +37,10 @@ export async function POST(request: Request): Promise<NextResponse> {
         publicEnabled,
         publicSlug: publicSlug || undefined,
       });
-      return NextResponse.json({ ok: true, data: updated });
+      return jsonResponseFor(request, { ok: true, data: updated });
     } else {
       if (teamId.length === 0 || name.length === 0 || domain.length === 0) {
-        return NextResponse.json(
-          { ok: false, error: "invalid_site_input" },
-          { status: 400 },
-        );
+        return bad("Invalid site input", "invalid_site_input", request);
       }
       const created = await createAdminSite({
         teamId,
@@ -79,13 +49,10 @@ export async function POST(request: Request): Promise<NextResponse> {
         publicEnabled,
         publicSlug: publicSlug || undefined,
       });
-      return NextResponse.json({ ok: true, data: created });
+      return jsonResponseFor(request, { ok: true, data: created });
     }
   } catch (error) {
     const msg = normalizeErrorMessage(error);
-    return NextResponse.json(
-      { ok: false, error: "site_mutation_failed", message: msg },
-      { status: 500 },
-    );
+    return errorResponse(request, 500, "site_mutation_failed", msg);
   }
 }

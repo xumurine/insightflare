@@ -284,7 +284,7 @@ describe("admin handler low branches", () => {
       request("/admin/teams", { method: "GET" }),
       createEnv().env,
     );
-    await expect(jsonOf(teamsResponse)).resolves.toEqual({
+    await expect(jsonOf(teamsResponse)).resolves.toMatchObject({
       ok: true,
       data: [{ id: "team-1", membershipRole: "admin" }],
     });
@@ -402,9 +402,9 @@ describe("admin handler low branches", () => {
     );
 
     expect(response.status).toBe(400);
-    await expect(jsonOf(response)).resolves.toEqual({
+    await expect(jsonOf(response)).resolves.toMatchObject({
       ok: false,
-      error: "Password must be at least 8 characters",
+      error: { message: "Password must be at least 8 characters" },
     });
     expect(env.prepare).not.toHaveBeenCalled();
     expect(hashPasswordMock).not.toHaveBeenCalled();
@@ -461,7 +461,7 @@ describe("admin handler low branches", () => {
     );
     expect(transfer.status).toBe(403);
     expect(await jsonOf(transfer)).toMatchObject({
-      error: "Only the team owner can transfer ownership",
+      error: { message: "Only the team owner can transfer ownership" },
     });
 
     const siteList = statement({ all: [] });
@@ -626,7 +626,7 @@ describe("admin handler low branches", () => {
       new URL("https://edge.test/admin/site-config?siteId=site-1"),
     );
     expect(config.status).toBe(200);
-    await expect(jsonOf(config)).resolves.toEqual({
+    await expect(jsonOf(config)).resolves.toMatchObject({
       ok: true,
       data: DEFAULT_SITE_SCRIPT_SETTINGS,
     });
@@ -637,7 +637,7 @@ describe("admin handler low branches", () => {
       new URL("https://edge.test/admin/script-snippet?siteId=site%201"),
     );
     expect(snippet.status).toBe(200);
-    await expect(jsonOf(snippet)).resolves.toEqual({
+    await expect(jsonOf(snippet)).resolves.toMatchObject({
       ok: true,
       data: {
         siteId: "site 1",
@@ -665,7 +665,7 @@ describe("admin handler low branches", () => {
     );
     expect(performanceForbidden.status).toBe(403);
     await expect(jsonOf(performanceForbidden)).resolves.toMatchObject({
-      error: "Only system admin can view system performance",
+      error: { message: "Only system admin can view system performance" },
     });
 
     const performanceMethod = await handleSystemPerformanceAdmin(
@@ -684,7 +684,7 @@ describe("admin handler low branches", () => {
     );
     expect(diagnosticForbidden.status).toBe(403);
     await expect(jsonOf(diagnosticForbidden)).resolves.toMatchObject({
-      error: "Only system admin can view DO diagnostics",
+      error: { message: "Only system admin can view DO diagnostics" },
     });
 
     const diagnosticMethod = await handleDoDiagnosticAdmin(
