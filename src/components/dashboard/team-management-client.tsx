@@ -63,6 +63,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import {
@@ -367,6 +368,63 @@ async function postJson<T>(
     throw new Error(payload.message || payload.error || "request_failed");
   }
   return payload.data;
+}
+
+function AggregateCardSkeleton() {
+  return (
+    <Card className="overflow-visible">
+      <CardHeader>
+        <Skeleton className="h-5 w-40" />
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Skeleton className="h-[320px] w-full" />
+        <div className="border-t border-border/40 pt-4">
+          <div className="flex items-center justify-between text-xs">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-4 w-20" />
+          </div>
+          <div className="mt-4 grid gap-x-6 gap-y-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 8 }, (_, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <Skeleton className="h-2 w-2 shrink-0" />
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-3 w-16 ml-auto" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SiteDashboardCardSkeleton() {
+  return (
+    <Card className="h-full">
+      <CardHeader className="space-y-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <Skeleton className="size-8 shrink-0" />
+            <div className="min-w-0 space-y-1">
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="h-3 w-48" />
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Skeleton className="h-[180px] w-full" />
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-3">
+          {Array.from({ length: 6 }, (_, index) => (
+            <div key={index} className="space-y-1">
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-5 w-20" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function TeamManagementClient({
@@ -1365,198 +1423,202 @@ export function TeamManagementClient({
       <div className="space-y-4">
         {activeTab === "sites" ? (
           <div className="space-y-4">
-            <Card className="overflow-visible">
-              <CardHeader>
-                <CardTitle>{copy.sites.aggregateTitle}</CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-3">
-                <div className="relative">
-                  <SiteTrafficStackChart
-                    data={aggregateChartRenderData}
-                    sites={aggregateChartSites}
-                    locale={locale}
-                    timeZone={chartWindow.timeZone}
-                    interval={chartWindow.interval}
-                    viewsLabel={messages.common.views}
-                    visitorsLabel={messages.common.visitors}
-                    loading={isSitesChartsLoading}
-                    className={isSitesChartsLoading ? "opacity-40" : undefined}
-                  />
-                  <AutoTransition
-                    type="fade"
-                    duration={0.22}
-                    className="pointer-events-none absolute inset-0"
-                  >
-                    {isSitesChartsLoading ? (
-                      <div
-                        key="aggregate-overlay-loading"
-                        className="flex h-full w-full items-center justify-center bg-background/50 text-sm text-muted-foreground"
-                      >
-                        <span className="inline-flex items-center gap-2">
-                          <Spinner className="size-4" />
-                          {messages.common.loading}
-                        </span>
-                      </div>
-                    ) : (
-                      <div
-                        key="aggregate-overlay-idle"
-                        className="h-full w-full bg-transparent"
-                      />
-                    )}
-                  </AutoTransition>
+            {loading || analyticsLoading ? (
+              <>
+                <AggregateCardSkeleton />
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {Array.from({ length: 4 }, (_, index) => (
+                    <SiteDashboardCardSkeleton key={`site-skeleton-${index}`} />
+                  ))}
                 </div>
+              </>
+            ) : (
+              <>
+                <Card className="overflow-visible">
+                  <CardHeader>
+                    <CardTitle>{copy.sites.aggregateTitle}</CardTitle>
+                  </CardHeader>
 
-                {!loading && !analyticsLoading && sites.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    {copy.sites.noSites}
-                  </p>
-                ) : null}
-              </CardContent>
-            </Card>
+                  <CardContent className="space-y-3">
+                    <div className="relative">
+                      <SiteTrafficStackChart
+                        data={aggregateChartRenderData}
+                        sites={aggregateChartSites}
+                        locale={locale}
+                        timeZone={chartWindow.timeZone}
+                        interval={chartWindow.interval}
+                        viewsLabel={messages.common.views}
+                        visitorsLabel={messages.common.visitors}
+                      />
+                    </div>
 
-            {sites.length > 0 ? (
-              <div className="grid gap-4 lg:grid-cols-2">
-                {siteDashboardCards.map(
-                  ({ site, overview, pagesPerSession, changeRates, trend }) => (
-                    <Link
-                      key={site.id}
-                      href={buildSitePath(locale, activeTeam.slug, site.slug)}
-                      className="group block h-full outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
-                      aria-label={`${copy.sites.openAnalytics}: ${site.name}`}
-                      title={copy.sites.openAnalytics}
-                    >
-                      <motion.div
-                        className="h-full"
-                        whileHover={{ scale: 1.01 }}
-                        whileTap={{ scale: 0.994 }}
-                        transition={{ duration: 0.16, ease: "easeOut" }}
-                      >
-                        <Card className="h-full transition-colors group-hover:bg-accent/20">
-                          <CardHeader className="space-y-2">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex min-w-0 items-start gap-2.5">
-                                <div className="min-w-0 space-y-1">
-                                  <CardTitle className="truncate text-base flex items-center gap-2">
-                                    <SiteBrandIcon
-                                      siteId={site.id}
-                                      siteName={site.name}
-                                      domain={site.domain}
-                                      iconSrc={site.iconPath}
-                                      size="md"
-                                    />
-                                    {site.name}
-                                  </CardTitle>
-                                  <CardDescription className="truncate font-mono text-xs">
-                                    {site.domain}
-                                  </CardDescription>
+                    {sites.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        {copy.sites.noSites}
+                      </p>
+                    ) : null}
+                  </CardContent>
+                </Card>
+
+                {sites.length > 0 ? (
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {siteDashboardCards.map(
+                      ({
+                        site,
+                        overview,
+                        pagesPerSession,
+                        changeRates,
+                        trend,
+                      }) => (
+                        <Link
+                          key={site.id}
+                          href={buildSitePath(
+                            locale,
+                            activeTeam.slug,
+                            site.slug,
+                          )}
+                          className="group block h-full outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
+                          aria-label={`${copy.sites.openAnalytics}: ${site.name}`}
+                          title={copy.sites.openAnalytics}
+                        >
+                          <motion.div
+                            className="h-full"
+                            whileHover={{ scale: 1.01 }}
+                            whileTap={{ scale: 0.994 }}
+                            transition={{ duration: 0.16, ease: "easeOut" }}
+                          >
+                            <Card className="h-full transition-colors group-hover:bg-accent/20">
+                              <CardHeader className="space-y-2">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex min-w-0 items-start gap-2.5">
+                                    <div className="min-w-0 space-y-1">
+                                      <CardTitle className="truncate text-base flex items-center gap-2">
+                                        <SiteBrandIcon
+                                          siteId={site.id}
+                                          siteName={site.name}
+                                          domain={site.domain}
+                                          iconSrc={site.iconPath}
+                                          size="md"
+                                        />
+                                        {site.name}
+                                      </CardTitle>
+                                      <CardDescription className="truncate font-mono text-xs">
+                                        {site.domain}
+                                      </CardDescription>
+                                    </div>
+                                  </div>
+                                  <span className="inline-flex size-6 shrink-0 items-center justify-center text-muted-foreground">
+                                    <RiArrowRightSLine className="size-4" />
+                                  </span>
                                 </div>
-                              </div>
-                              <span className="inline-flex size-6 shrink-0 items-center justify-center text-muted-foreground">
-                                <RiArrowRightSLine className="size-4" />
-                              </span>
-                            </div>
-                          </CardHeader>
+                              </CardHeader>
 
-                          <CardContent className="space-y-4">
-                            <AutoTransition
-                              type="fade"
-                              duration={0.24}
-                              className="w-full"
-                            >
-                              <div key={`site-chart-${site.id}`}>
-                                <TrafficPairBarChart
-                                  data={trend}
-                                  locale={locale}
-                                  timeZone={chartWindow.timeZone}
-                                  interval={chartWindow.interval}
-                                  viewsLabel={messages.common.views}
-                                  visitorsLabel={messages.common.visitors}
-                                  maxPoints={SITE_CARD_MAX_TREND_POINTS}
-                                />
-                              </div>
-                            </AutoTransition>
+                              <CardContent className="space-y-4">
+                                <AutoTransition
+                                  type="fade"
+                                  duration={0.24}
+                                  className="w-full"
+                                >
+                                  <div key={`site-chart-${site.id}`}>
+                                    <TrafficPairBarChart
+                                      data={trend}
+                                      locale={locale}
+                                      timeZone={chartWindow.timeZone}
+                                      interval={chartWindow.interval}
+                                      viewsLabel={messages.common.views}
+                                      visitorsLabel={messages.common.visitors}
+                                      maxPoints={SITE_CARD_MAX_TREND_POINTS}
+                                    />
+                                  </div>
+                                </AutoTransition>
 
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-4 text-[11px] sm:grid-cols-3">
-                              <div className="space-y-1">
-                                <p className="text-muted-foreground">
-                                  {messages.common.views}
-                                </p>
-                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                  {numberFormat(locale, overview.views)}
-                                  <ChangeRateInline value={changeRates.views} />
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-muted-foreground">
-                                  {messages.common.visitors}
-                                </p>
-                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                  {numberFormat(locale, overview.visitors)}
-                                  <ChangeRateInline
-                                    value={changeRates.visitors}
-                                  />
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-muted-foreground">
-                                  {messages.common.sessions}
-                                </p>
-                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                  {numberFormat(locale, overview.sessions)}
-                                  <ChangeRateInline
-                                    value={changeRates.sessions}
-                                  />
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-muted-foreground">
-                                  {messages.common.bounceRate}
-                                </p>
-                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                  {percentFormat(locale, overview.bounceRate)}
-                                  <ChangeRateInline
-                                    value={changeRates.bounceRate}
-                                    lowerIsBetter
-                                  />
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-muted-foreground">
-                                  {copy.sites.pagesPerSession}
-                                </p>
-                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                  {pagesPerSessionFormatter.format(
-                                    pagesPerSession,
-                                  )}
-                                  <ChangeRateInline
-                                    value={changeRates.pagesPerSession}
-                                  />
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-muted-foreground">
-                                  {messages.common.avgDuration}
-                                </p>
-                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                  {durationFormat(
-                                    locale,
-                                    overview.avgDurationMs,
-                                  )}
-                                  <ChangeRateInline
-                                    value={changeRates.avgDurationMs}
-                                  />
-                                </p>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    </Link>
-                  ),
-                )}
-              </div>
-            ) : null}
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-4 text-[11px] sm:grid-cols-3">
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground">
+                                      {messages.common.views}
+                                    </p>
+                                    <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                      {numberFormat(locale, overview.views)}
+                                      <ChangeRateInline
+                                        value={changeRates.views}
+                                      />
+                                    </p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground">
+                                      {messages.common.visitors}
+                                    </p>
+                                    <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                      {numberFormat(locale, overview.visitors)}
+                                      <ChangeRateInline
+                                        value={changeRates.visitors}
+                                      />
+                                    </p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground">
+                                      {messages.common.sessions}
+                                    </p>
+                                    <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                      {numberFormat(locale, overview.sessions)}
+                                      <ChangeRateInline
+                                        value={changeRates.sessions}
+                                      />
+                                    </p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground">
+                                      {messages.common.bounceRate}
+                                    </p>
+                                    <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                      {percentFormat(
+                                        locale,
+                                        overview.bounceRate,
+                                      )}
+                                      <ChangeRateInline
+                                        value={changeRates.bounceRate}
+                                        lowerIsBetter
+                                      />
+                                    </p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground">
+                                      {copy.sites.pagesPerSession}
+                                    </p>
+                                    <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                      {pagesPerSessionFormatter.format(
+                                        pagesPerSession,
+                                      )}
+                                      <ChangeRateInline
+                                        value={changeRates.pagesPerSession}
+                                      />
+                                    </p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground">
+                                      {messages.common.avgDuration}
+                                    </p>
+                                    <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                      {durationFormat(
+                                        locale,
+                                        overview.avgDurationMs,
+                                      )}
+                                      <ChangeRateInline
+                                        value={changeRates.avgDurationMs}
+                                      />
+                                    </p>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          </motion.div>
+                        </Link>
+                      ),
+                    )}
+                  </div>
+                ) : null}
+              </>
+            )}
           </div>
         ) : null}
 
@@ -1655,7 +1717,10 @@ export function TeamManagementClient({
                             onValueChange={setTransferTargetId}
                             disabled={transferring}
                           >
-                            <SelectTrigger id="transfer-target">
+                            <SelectTrigger
+                              id="transfer-target"
+                              className="w-full"
+                            >
                               <SelectValue
                                 placeholder={
                                   copy.settings.transferTargetPlaceholder
