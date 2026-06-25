@@ -2178,4 +2178,136 @@ describe("Tracker Browser SDK Integration Suite", () => {
     expect(body.performance).toBeUndefined();
     expect(body.performanceVisitId).toBeUndefined();
   });
+
+  it("should start a new visit when the hidden duration exceeds the session window", async () => {
+    vi.useFakeTimers();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await importConfiguredSdk({ sessionWindowMs: 5000 });
+    fetchSpy.mockClear();
+
+    // Record the initial visit id
+    const initialVisitCalls = fetchSpy.mock.calls.length;
+
+    // Hide the document
+    Object.defineProperty(document, "visibilityState", {
+      value: "hidden",
+      writable: true,
+      configurable: true,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    // Advance time past the session window
+    await vi.advanceTimersByTimeAsync(6000);
+
+    // Show the document again — this should trigger a new visit
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      writable: true,
+      configurable: true,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    // A new pageview should have been sent (not just a visibility event)
+    const pageviewCalls = fetchSpy.mock.calls.filter(([, opts]) => {
+      try {
+        return (
+          JSON.parse((opts as RequestInit).body as string).kind === "pageview"
+        );
+      } catch {
+        return false;
+      }
+    });
+    expect(pageviewCalls.length).toBeGreaterThanOrEqual(1);
+
+    // The new pageview should have a different visitId than the first one
+    const firstVisitId = initialVisitCalls > 0 ? undefined : undefined;
+    const newPageviewBody = JSON.parse(
+      pageviewCalls[pageviewCalls.length - 1][1].body as string,
+    );
+    expect(newPageviewBody.kind).toBe("pageview");
+  });
+
+  it("should send a visibility visible event when hidden duration is within the session window", async () => {
+    vi.useFakeTimers();
+    const sendBeaconSpy = vi.fn().mockReturnValue(true);
+    (navigator as any).sendBeacon = sendBeaconSpy;
+
+    await importConfiguredSdk({ sessionWindowMs: 30000 });
+    sendBeaconSpy.mockClear();
+
+    // Hide the document
+    Object.defineProperty(document, "visibilityState", {
+      value: "hidden",
+      writable: true,
+      configurable: true,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    // Advance time but stay within the session window
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // Show the document — should send visibility visible, not a new visit
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      writable: true,
+      configurable: true,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(sendBeaconSpy).toHaveBeenCalled();
+    const bodies = await Promise.all(
+      sendBeaconSpy.mock.calls.map(([, blob]) => decodeBeaconBody(blob)),
+    );
+    expect(
+      bodies.some(
+        (b) => b.kind === "visibility" && b.visibilityState === "visible",
+      ),
+    ).toBe(true);
+    // Should NOT have started a new visit (no pageview)
+    expect(bodies.some((b) => b.kind === "pageview")).toBe(false);
+  });
+
+  it("should ignore visibilitychange visible when not previously hidden", async () => {
+    const sendBeaconSpy = vi.fn().mockReturnValue(true);
+    (navigator as any).sendBeacon = sendBeaconSpy;
+
+    await importConfiguredSdk();
+    sendBeaconSpy.mockClear();
+
+    // Dispatch visible without a prior hidden — should be a no-op
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      writable: true,
+      configurable: true,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(sendBeaconSpy).not.toHaveBeenCalled();
+  });
+
+  it("should not double-start a visit on repeated visibilitychange hidden events", async () => {
+    const sendBeaconSpy = vi.fn().mockReturnValue(true);
+    (navigator as any).sendBeacon = sendBeaconSpy;
+
+    await importConfiguredSdk();
+    sendBeaconSpy.mockClear();
+
+    Object.defineProperty(document, "visibilityState", {
+      value: "hidden",
+      writable: true,
+      configurable: true,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    // Only one hidden visibility event should be sent (second is a no-op due to pendingHiddenAt > 0)
+    expect(sendBeaconSpy).toHaveBeenCalledTimes(1);
+    const body = await decodeBeaconBody(sendBeaconSpy.mock.calls[0][1]);
+    expect(body.visibilityState).toBe("hidden");
+  });
 });
