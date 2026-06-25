@@ -184,23 +184,27 @@ function HealthCell({
 }) {
   return (
     <div className="min-w-0 bg-card p-4">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Icon
-          className={cn(
-            "size-4",
-            tone === "good" && "text-emerald-500",
-            tone === "warning" && "text-amber-500",
-            tone === "danger" && "text-destructive",
-          )}
-        />
-        <span className="truncate">{label}</span>
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="inline-flex shrink-0 items-center justify-center text-muted-foreground">
+          <Icon className="size-[11px]" />
+        </span>
+        <p className="min-w-0 truncate text-[11px] uppercase text-muted-foreground">
+          {label}
+        </p>
       </div>
-      <div className="mt-3 font-mono text-2xl font-semibold tabular-nums">
+      <p
+        className={cn(
+          "mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground tabular-nums",
+          tone === "good" && "text-primary",
+          tone === "warning" && "text-amber-500",
+          tone === "danger" && "text-destructive",
+        )}
+      >
         {value}
-      </div>
-      <div className="mt-1 truncate text-xs text-muted-foreground">
+      </p>
+      <p className="mt-3 min-w-0 truncate text-[11px] leading-[14px] text-muted-foreground">
         {detail}
-      </div>
+      </p>
     </div>
   );
 }

@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getDashboardTeamContext } from "@/lib/dashboard/server";
+import { cn } from "@/lib/utils";
 import { fetchGithubReleases, type GithubRelease } from "@/lib/github-releases";
 import { type Locale, resolveLocale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -54,7 +55,7 @@ function isCommitMatch(
 
 function currentCommitHash(): string | null {
   return (
-    process.env.VERCEL_GIT_COMMIT_SHA ||
+    process.env.CF_PAGES_COMMIT_SHA ||
     process.env.GITHUB_SHA ||
     process.env.COMMIT_SHA ||
     null
@@ -179,6 +180,10 @@ export default async function VersionUpdatesPage({
   const stableReleaseTags = releases
     .filter((release) => !release.draft && !release.prerelease)
     .map((release) => release.tagName);
+  const hasUpdate =
+    latestStableRelease !== null &&
+    normalizeVersion(latestStableRelease.tagName) !==
+      normalizeVersion(CURRENT_VERSION);
 
   return (
     <div className="space-y-4">
@@ -195,52 +200,69 @@ export default async function VersionUpdatesPage({
         }
       />
 
-      <div className="grid gap-3 md:grid-cols-4">
-        <Card>
-          <CardContent className="space-y-2 p-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <RiPriceTag3Line className="size-4" />
-              {labels.currentVersion}
+      <Card className="py-0">
+        <CardContent className="p-0">
+          <div className="grid gap-px overflow-hidden bg-border/70 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="min-w-0 bg-card p-4">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="inline-flex shrink-0 items-center justify-center text-muted-foreground">
+                  <RiPriceTag3Line className="size-[11px]" />
+                </span>
+                <p className="min-w-0 truncate text-[11px] uppercase text-muted-foreground">
+                  {labels.currentVersion}
+                </p>
+              </div>
+              <p className="mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground tabular-nums">
+                v{CURRENT_VERSION}
+              </p>
             </div>
-            <div className="font-mono text-2xl font-semibold">
-              v{CURRENT_VERSION}
+            <div className="min-w-0 bg-card p-4">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="inline-flex shrink-0 items-center justify-center text-muted-foreground">
+                  <RiRocketLine className="size-[11px]" />
+                </span>
+                <p className="min-w-0 truncate text-[11px] uppercase text-muted-foreground">
+                  {labels.latestVersion}
+                </p>
+              </div>
+              <p
+                className={cn(
+                  "mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold tabular-nums",
+                  hasUpdate ? "text-primary" : "text-foreground",
+                )}
+              >
+                {latestStableRelease?.tagName ?? "-"}
+              </p>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="space-y-2 p-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <RiRocketLine className="size-4" />
-              {labels.latestVersion}
+            <div className="min-w-0 bg-card p-4">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="inline-flex shrink-0 items-center justify-center text-muted-foreground">
+                  <RiGitCommitLine className="size-[11px]" />
+                </span>
+                <p className="min-w-0 truncate text-[11px] uppercase text-muted-foreground">
+                  {labels.currentCommit}
+                </p>
+              </div>
+              <p className="mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground tabular-nums">
+                {formatCommit(runtimeCommit)}
+              </p>
             </div>
-            <div className="font-mono text-2xl font-semibold">
-              {latestStableRelease?.tagName ?? "-"}
+            <div className="min-w-0 bg-card p-4">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="inline-flex shrink-0 items-center justify-center text-muted-foreground">
+                  <RiGitBranchLine className="size-[11px]" />
+                </span>
+                <p className="min-w-0 truncate text-[11px] uppercase text-muted-foreground">
+                  {labels.releaseCount}
+                </p>
+              </div>
+              <p className="mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground tabular-nums">
+                {releases.length}
+              </p>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="space-y-2 p-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <RiGitCommitLine className="size-4" />
-              {labels.currentCommit}
-            </div>
-            <div className="font-mono text-2xl font-semibold">
-              {formatCommit(runtimeCommit)}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="space-y-2 p-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <RiGitBranchLine className="size-4" />
-              {labels.releaseCount}
-            </div>
-            <div className="font-mono text-2xl font-semibold">
-              {releases.length}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {error ? (
         <Card>

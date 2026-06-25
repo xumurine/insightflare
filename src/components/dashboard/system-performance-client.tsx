@@ -209,13 +209,7 @@ function SystemMetricCell({
   return (
     <div className="min-w-0 bg-card p-4">
       <div className="flex min-w-0 items-center gap-2">
-        <span
-          className={cn(
-            "inline-flex shrink-0 items-center justify-center text-muted-foreground",
-            tone === "warning" && "text-destructive",
-            tone === "good" && "text-primary",
-          )}
-        >
+        <span className="inline-flex shrink-0 items-center justify-center text-muted-foreground">
           <Icon className="size-[11px]" />
         </span>
         <p className="min-w-0 truncate text-[11px] uppercase text-muted-foreground">
