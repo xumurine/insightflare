@@ -345,7 +345,7 @@ export default async function VersionUpdatesPage({
                   <div className="mb-2 text-xs font-medium text-muted-foreground">
                     {labels.releaseNotes}
                   </div>
-                  <div className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words pr-2 text-sm leading-6 text-foreground/90">
+                  <div className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground/90">
                     {summary || labels.empty}
                   </div>
                 </div>
