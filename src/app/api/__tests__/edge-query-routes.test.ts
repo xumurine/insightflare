@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  DELETE as privateDELETE,
   GET as privateGET,
   PATCH as privatePATCH,
   POST as privatePOST,
@@ -118,6 +119,46 @@ describe("edge query route wrappers", () => {
       env,
       new URL("https://app.test/api/public/site/overview"),
       ctx,
+    );
+  });
+
+  it("routes DELETE requests to the query handler", async () => {
+    const original = mockRuntime("/api/private/funnels?id=abc", "DELETE");
+
+    const response = await privateDELETE(original);
+
+    expect(await response.text()).toBe("private-query");
+    expect(handlePrivateQueryMock).toHaveBeenCalledWith(
+      expect.any(Request),
+      env,
+      new URL("https://app.test/api/private/funnels?id=abc"),
+      ctx,
+    );
+  });
+
+  it("routes DELETE admin requests to the admin handler", async () => {
+    const original = mockRuntime("/api/private/admin/users/123", "DELETE");
+
+    const response = await privateDELETE(original);
+
+    expect(await response.text()).toBe("admin");
+    expect(handlePrivateAdminMock).toHaveBeenCalledWith(
+      expect.any(Request),
+      env,
+      new URL("https://app.test/api/private/admin/users/123"),
+    );
+  });
+
+  it("routes DELETE archive requests to the archive handler", async () => {
+    const original = mockRuntime("/api/private/archive/data", "DELETE");
+
+    const response = await privateDELETE(original);
+
+    expect(await response.text()).toBe("archive");
+    expect(handlePrivateArchiveMock).toHaveBeenCalledWith(
+      expect.any(Request),
+      env,
+      new URL("https://app.test/api/private/archive/data"),
     );
   });
 });
