@@ -1,5 +1,5 @@
-import { updateMyProfile } from "@/lib/edge-client";
 import { jsonResponseFor } from "@/lib/edge/admin-response";
+import { updateMyProfile } from "@/lib/edge-client";
 import { bodyStr, parseRequestBody } from "@/lib/form-helpers";
 import { errorResponse, normalizeErrorMessage } from "@/lib/response";
 

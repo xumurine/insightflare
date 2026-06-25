@@ -14,11 +14,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getDashboardTeamContext } from "@/lib/dashboard/server";
-import { cn } from "@/lib/utils";
 import { fetchGithubReleases, type GithubRelease } from "@/lib/github-releases";
 import { type Locale, resolveLocale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { getMessages } from "@/lib/i18n/messages";
+import { cn } from "@/lib/utils";
 
 interface VersionUpdatesPageProps {
   params: Promise<{

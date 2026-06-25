@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { RiCheckLine } from "@remixicon/react";
 import { Checkbox as CheckboxPrimitive } from "radix-ui";
 
 import { cn } from "@/lib/utils";
-import { RiCheckLine } from "@remixicon/react";
 
 function Checkbox({
   className,

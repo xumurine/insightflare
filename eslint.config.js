@@ -111,7 +111,7 @@ export default [
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ["*.ts"],
+          allowDefaultProject: ["*.ts", "src/app/.well-known/*/route.ts"],
         },
         tsconfigRootDir: import.meta.dirname,
       },
