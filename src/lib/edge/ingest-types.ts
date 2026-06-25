@@ -11,7 +11,6 @@ export interface VisitRow {
   siteId: string;
   visitorId: string;
   sessionId: string;
-  clientSessionId: string;
   startedAt: number;
   lastActivityAt: number;
   pathname: string;

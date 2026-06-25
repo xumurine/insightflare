@@ -190,7 +190,6 @@ export async function readVisitRow(
         site_id AS siteId,
         visitor_id AS visitorId,
         session_id AS sessionId,
-        client_session_id AS clientSessionId,
         started_at AS startedAt,
         last_activity_at AS lastActivityAt,
         pathname,
@@ -255,7 +254,6 @@ export async function readPersistedVisitRow(
         site_id AS siteId,
         visitor_id AS visitorId,
         session_id AS sessionId,
-        '' AS clientSessionId,
         started_at AS startedAt,
         last_activity_at AS lastActivityAt,
         ended_at AS endedAt,
@@ -332,7 +330,6 @@ export function insertBufferedVisitRow(
     row.siteId,
     row.visitorId,
     row.sessionId,
-    row.clientSessionId,
     row.status,
     row.startedAt,
     row.lastActivityAt,
@@ -391,7 +388,7 @@ export function insertBufferedVisitRow(
   context.sqlRun(
     `
       INSERT OR REPLACE INTO buffered_visits (
-        visit_id, site_id, visitor_id, session_id, client_session_id, status, started_at, last_activity_at,
+        visit_id, site_id, visitor_id, session_id, status, started_at, last_activity_at,
         hidden_at, ended_at, finalized_at, duration_ms, duration_source, exit_reason,
         pathname, query_string, hash_fragment, hostname, title, referrer_url, referrer_host,
         utm_source, utm_medium, utm_campaign, utm_term, utm_content,
@@ -417,7 +414,6 @@ export async function insertVisit(
     record.siteId,
     record.visitorId,
     record.sessionId,
-    record.clientSessionId,
     "open",
     record.startedAt,
     record.startedAt,
@@ -471,7 +467,7 @@ export async function insertVisit(
     const rowsWritten = context.sqlRun(
       `
       INSERT INTO buffered_visits (
-          visit_id, site_id, visitor_id, session_id, client_session_id, status, started_at, last_activity_at,
+          visit_id, site_id, visitor_id, session_id, status, started_at, last_activity_at,
           pathname, query_string, hash_fragment, hostname, title, referrer_url, referrer_host,
           utm_source, utm_medium, utm_campaign, utm_term, utm_content,
           is_eu, country, region, region_code, city, continent, latitude, longitude,

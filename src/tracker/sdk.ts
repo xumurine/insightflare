@@ -4,7 +4,6 @@
 
 import { initAutoTrack } from "./auto-track";
 import { createPerformanceTracker } from "./performance";
-import { createSessionManager } from "./session";
 import {
   readUaClientHints,
   type UaClientHintsResult,
@@ -24,9 +23,6 @@ const SESSION_WINDOW_MS = "__IF_SESSION_WINDOW_MS__";
 // ── Static constants ──
 const INSTALL_KEY = "__insightflare_tracker_v6__";
 const VISITOR_KEY = "__insightflare_visitor_" + SITE_ID + "__";
-const SESSION_KEY = "__insightflare_session_" + SITE_ID + "__";
-const SESSION_ACTIVITY_KEY =
-  "__insightflare_session_activity_" + SITE_ID + "__";
 const ROUTE_SETTLE_DELAY_MS = 300;
 const UA_CLIENT_HINT_TIMEOUT_MS = 200;
 
@@ -80,14 +76,9 @@ if ((window as any)[INSTALL_KEY]) {
 
 const scriptUrl = new URL(scriptEl.src);
 const collectUrl = new URL("/collect", scriptUrl.origin).toString();
-const session = createSessionManager({
-  visitorKey: VISITOR_KEY,
-  sessionKey: SESSION_KEY,
-  sessionActivityKey: SESSION_ACTIVITY_KEY,
-  sessionWindowMs: SESSION_WINDOW_MS as unknown as number,
-  isEuMode: Boolean(IS_EU_MODE as unknown as string),
-  now: Date.now(),
-});
+const visitorId = (IS_EU_MODE as unknown as boolean)
+  ? ""
+  : loadOrCreateVisitorId(VISITOR_KEY);
 const performanceTracker = createPerformanceTracker({
   enabled: BUILD_PERFORMANCE,
   sampleRate: PERFORMANCE_SAMPLE_RATE as unknown as number,
@@ -117,18 +108,26 @@ function routeKey(href: string): string {
   ].join("|");
 }
 
+function loadOrCreateVisitorId(visitorKey: string): string {
+  const existing = window.localStorage.getItem(visitorKey);
+  if (existing) return existing;
+  const next = crypto.randomUUID();
+  window.localStorage.setItem(visitorKey, next);
+  return next;
+}
+
 function pagePayloadBase(
   href: string,
   referrerUrl: string,
   startedAt: number,
   eventAt: number,
+  previousVisitId = "",
 ): any {
   const url = new URL(href, window.location.href);
-  const currentSessionId = session.touch(eventAt);
   return {
     siteId: SITE_ID,
     visitId: currentVisit!.id,
-    sessionId: currentSessionId,
+    ...(previousVisitId ? { previousVisitId } : {}),
     timestamp: eventAt,
     startedAt,
     pathname: url.pathname || "/",
@@ -141,7 +140,7 @@ function pagePayloadBase(
     screenWidth: (window.screen as any)?.width ?? null,
     screenHeight: (window.screen as any)?.height ?? null,
     referrerUrl: String(referrerUrl || ""),
-    visitorId: session.visitorId,
+    visitorId,
     ...(userIdentifiedId
       ? { userId: userIdentifiedId, userName: userIdentifiedName }
       : {}),
@@ -195,6 +194,7 @@ function startVisit(
   href: string,
   referrerUrl: string,
   startedAt: number,
+  previousVisitId = "",
 ): void {
   leaveSent = false;
   pendingHiddenAt = 0;
@@ -225,6 +225,7 @@ function startVisit(
         currentVisit.referrerUrl,
         currentVisit.startedAt,
         currentVisit.startedAt,
+        previousVisitId,
       ),
       kind: "pageview",
     },
@@ -246,7 +247,6 @@ function sendLeave(): void {
       kind: "leave",
       siteId: SITE_ID,
       visitId: currentVisit.id,
-      sessionId: session.getSessionId(),
       timestamp: eventAt,
       durationMs: Math.max(0, eventAt - currentVisit.startedAt),
       pathname: url.pathname || "/",
@@ -270,7 +270,6 @@ function sendVisibility(
       kind: "visibility",
       siteId: SITE_ID,
       visitId: currentVisit.id,
-      sessionId: session.getSessionId(),
       visibilityState,
       timestamp: eventAt,
       pathname: url.pathname || "/",
@@ -310,10 +309,12 @@ function commitRouteChange(routeChange: {
   routeChangeTimer = 0;
   const nextKey = routeKey(routeChange.href);
   if (!currentVisit || nextKey === currentVisit.routeKey) return;
+  const previousVisitId = currentVisit.id;
   startVisit(
     routeChange.href,
     routeChange.referrerUrl,
     routeChange.transitionAt,
+    previousVisitId,
   );
 }
 

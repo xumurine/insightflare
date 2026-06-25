@@ -421,7 +421,7 @@ function compactPayloadForLog(
     kind: payload.kind || "",
     siteId: payload.siteId || "",
     visitId: payload.visitId || "",
-    sessionId: payload.sessionId || "",
+    previousVisitId: payload.previousVisitId || "",
     eventId: payload.eventId || "",
     eventName: payload.eventName || "",
     visibilityState: payload.visibilityState || "",

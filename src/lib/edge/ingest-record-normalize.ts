@@ -171,7 +171,10 @@ export async function normalizeIngestRecord(
     const referrerIsSameHostname = isSameHostname(rawReferrerHost, hostname);
     const referrerUrl = referrerIsSameHostname ? "" : rawReferrerUrl;
     const referrerHost = referrerIsSameHostname ? "" : rawReferrerHost;
-    const clientSessionId = clampString(coerceString(client.sessionId), 128);
+    const previousVisitId = clampString(
+      coerceString(client.previousVisitId),
+      128,
+    );
     const sessionWindowMinutes = resolveSessionWindowMinutes(context.env);
     const recentSession = await context.findRecentVisitorSession({
       siteId,
@@ -199,7 +202,7 @@ export async function normalizeIngestRecord(
         visitId,
         visitorId,
         sessionId,
-        clientSessionId,
+        previousVisitId,
         startedAt,
         pathname,
         queryString,
@@ -223,7 +226,6 @@ export async function normalizeIngestRecord(
 
   if (kind === "leave") {
     if (!visitId) return { record: null, reason: "missing_visit_id" };
-    const sessionId = clampString(coerceString(client.sessionId), 128);
     const performanceVisitId =
       clampString(coerceString(client.performanceVisitId), 128) || visitId;
     return {
@@ -232,7 +234,6 @@ export async function normalizeIngestRecord(
         traceId,
         siteId,
         visitId,
-        sessionId,
         performanceVisitId,
         receivedAt,
         leaveAt: eventAt,
@@ -278,14 +279,12 @@ export async function normalizeIngestRecord(
       coerceString(client.userName || ""),
       255,
     );
-    const identifySessionId = clampString(coerceString(client.sessionId), 128);
     return {
       record: {
         kind: "identify",
         traceId,
         siteId,
         visitId,
-        sessionId: identifySessionId,
         userId: identifyUserId,
         userName: identifyUserName,
         receivedAt,

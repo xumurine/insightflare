@@ -267,7 +267,7 @@ describe("normalizeIngestRecord pageview records", () => {
       throw new Error("Expected a pageview record");
     }
     expect(result.record.sessionId).not.toBe("");
-    expect(result.record.clientSessionId).toBe("");
+    expect(result.record.previousVisitId).toBe("");
   });
 
   it("preserves non-EU visitor fields, parses cross-site referrers, and prefers client timezone", async () => {
@@ -279,7 +279,7 @@ describe("normalizeIngestRecord pageview records", () => {
           kind: "pageview",
           visitId: "visit-1",
           visitorId: "visitor-1",
-          sessionId: "session-1",
+          previousVisitId: "previous-visit-1",
           hostname: "Blog.Example.COM",
           pathname: "/docs",
           query: "",
@@ -319,7 +319,7 @@ describe("normalizeIngestRecord pageview records", () => {
     expect(result.record).toMatchObject({
       kind: "pageview",
       visitorId: "visitor-1",
-      clientSessionId: "session-1",
+      previousVisitId: "previous-visit-1",
       pathname: "/docs",
       hostname: "blog.example.com",
       referrerUrl: "https://search.example/results?q=docs",
@@ -367,7 +367,7 @@ describe("normalizeIngestRecord pageview records", () => {
           kind: "pageview",
           visitId: "visit-2",
           visitorId: "visitor-1",
-          sessionId: "client-tab-session-2",
+          previousVisitId: "visit-1",
           hostname: "example.com",
         }),
         context,
@@ -376,7 +376,7 @@ describe("normalizeIngestRecord pageview records", () => {
       record: {
         kind: "pageview",
         sessionId: "server-session-1",
-        clientSessionId: "client-tab-session-2",
+        previousVisitId: "visit-1",
       },
     });
   });
@@ -390,7 +390,7 @@ describe("normalizeIngestRecord pageview records", () => {
         kind: "pageview",
         siteId: "s".repeat(140),
         visitId: "v".repeat(160),
-        sessionId: "session-1",
+        previousVisitId: "previous-visit-1",
         visitorId: "",
         hostname: `${"h".repeat(260)}.EXAMPLE.COM`,
         pathname: long,
@@ -426,7 +426,7 @@ describe("normalizeIngestRecord pageview records", () => {
       siteId: "s".repeat(120),
       visitId: "v".repeat(128),
       visitorId: expectedVisitorId,
-      clientSessionId: "session-1",
+      previousVisitId: "previous-visit-1",
       referrerUrl: "not a url",
       referrerHost: "",
       utmSource: longUtm.slice(0, 255),
@@ -521,7 +521,6 @@ describe("normalizeIngestRecord leave and identify records", () => {
       makeEnvelope({
         kind: "leave",
         visitId: "visit-1",
-        sessionId: "session-1",
         durationMs: "bad",
         performance: {
           ttfb: 10.1234,
@@ -537,7 +536,6 @@ describe("normalizeIngestRecord leave and identify records", () => {
       traceId: "trace-1",
       siteId: "site-1",
       visitId: "visit-1",
-      sessionId: "session-1",
       performanceVisitId: "visit-1",
       receivedAt,
       leaveAt: receivedAt - 1_000,
@@ -557,7 +555,6 @@ describe("normalizeIngestRecord leave and identify records", () => {
         makeEnvelope({
           kind: "leave",
           visitId: "visit-1",
-          sessionId: "",
           performanceVisitId: "perf-1",
           durationMs: 1234.5,
           performance: {
@@ -573,7 +570,6 @@ describe("normalizeIngestRecord leave and identify records", () => {
         traceId: "trace-1",
         siteId: "site-1",
         visitId: "visit-1",
-        sessionId: "",
         performanceVisitId: "perf-1",
         receivedAt,
         leaveAt: receivedAt - 1_000,
@@ -584,7 +580,7 @@ describe("normalizeIngestRecord leave and identify records", () => {
     });
   });
 
-  it("normalizes identify user and session fields", async () => {
+  it("normalizes identify user fields", async () => {
     const { context } = makeContext();
 
     await expect(
@@ -592,7 +588,6 @@ describe("normalizeIngestRecord leave and identify records", () => {
         makeEnvelope({
           kind: "identify",
           visitId: "visit-1",
-          sessionId: "session-1",
           userId: "user-1",
           userName: "Ada",
         }),
@@ -603,7 +598,6 @@ describe("normalizeIngestRecord leave and identify records", () => {
         kind: "identify",
         siteId: "site-1",
         visitId: "visit-1",
-        sessionId: "session-1",
         userId: "user-1",
         userName: "Ada",
         receivedAt,
@@ -618,7 +612,6 @@ describe("normalizeIngestRecord leave and identify records", () => {
       makeEnvelope({
         kind: "identify",
         visitId: "v".repeat(160),
-        sessionId: "s".repeat(160),
         userId: "u".repeat(300),
         userName: "",
       }),
@@ -628,7 +621,6 @@ describe("normalizeIngestRecord leave and identify records", () => {
     expect(result.record).toMatchObject({
       kind: "identify",
       visitId: "v".repeat(128),
-      sessionId: "s".repeat(128),
       userId: "u".repeat(255),
       userName: "",
     });

@@ -60,7 +60,7 @@ function makePayload(overrides: Record<string, unknown> = {}) {
     siteId: "site-1",
     kind: "pageview",
     visitId: "visit-1",
-    sessionId: "session-1",
+    previousVisitId: "previous-visit-1",
     eventId: "event-1",
     pathname: "/pricing?plan=pro#hero",
     hostname: "Example.COM.",

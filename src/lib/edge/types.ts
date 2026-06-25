@@ -68,7 +68,7 @@ export interface TrackerClientPayload {
   siteId?: string;
   kind?: TrackerPayloadKind;
   visitId?: string;
-  sessionId?: string;
+  previousVisitId?: string;
   performanceVisitId?: string;
   eventId?: string;
   sequence?: number;
@@ -159,7 +159,7 @@ export interface NormalizedVisitContext {
 
 export interface NormalizedPageview extends NormalizedVisitContext {
   kind: "pageview";
-  clientSessionId: string;
+  previousVisitId: string;
   receivedAt: number;
 }
 
@@ -168,7 +168,6 @@ export interface NormalizedLeave {
   traceId?: string;
   siteId: string;
   visitId: string;
-  sessionId: string;
   performanceVisitId: string;
   receivedAt: number;
   leaveAt: number;
@@ -202,7 +201,6 @@ export interface NormalizedIdentify {
   traceId?: string;
   siteId: string;
   visitId: string;
-  sessionId: string;
   userId: string;
   userName: string;
   receivedAt: number;

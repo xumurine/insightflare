@@ -320,7 +320,7 @@ export class IngestDurableObject extends DurableObject {
   private async handlePageview(record: NormalizedPageview): Promise<void> {
     const now = toUnixSeconds(record.receivedAt);
 
-    const prevVisit = record.clientSessionId
+    const prevVisit = record.previousVisitId
       ? this.sqlOne<{
           visitId: string;
           startedAt: number;
@@ -334,15 +334,15 @@ export class IngestDurableObject extends DurableObject {
                    pathname, country, browser
             FROM buffered_visits
             WHERE site_id = ?
-              AND client_session_id = ?
-              AND visit_id != ?
+              AND visitor_id = ?
+              AND visit_id = ?
               AND status IN ('open', 'hidden_pending')
             ORDER BY started_at DESC
             LIMIT 1
           `,
           record.siteId,
-          record.clientSessionId,
-          record.visitId,
+          record.visitorId,
+          record.previousVisitId,
         )
       : null;
     if (prevVisit) {

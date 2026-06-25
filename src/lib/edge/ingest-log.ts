@@ -38,7 +38,7 @@ export function compactClientForLog(
     kind: client.kind || "",
     siteId: client.siteId || "",
     visitId: client.visitId || "",
-    sessionId: client.sessionId || "",
+    previousVisitId: client.previousVisitId || "",
     eventId: client.eventId || "",
     eventName: client.eventName || "",
     pathname: client.pathname || "",

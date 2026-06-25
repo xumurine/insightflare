@@ -1233,17 +1233,17 @@ describe("Tracker Browser SDK Integration Suite", () => {
     expect((window as any).insightflare.siteId).toBe("__IF_SITE_ID__");
   });
 
-  it("should reuse existing visitor and session ids when configured session window allows it", async () => {
+  it("should reuse existing visitor ids without sending SDK session ids", async () => {
     const randomUuidSpy = vi
       .spyOn(globalThis.crypto, "randomUUID")
-      .mockReturnValue("unused-new-id");
+      .mockReturnValue("new-visit");
     window.localStorage.setItem(
       "__insightflare_visitor_configured-site__",
       "existing-visitor",
     );
     window.sessionStorage.setItem(
       "__insightflare_session_configured-site__",
-      "existing-session",
+      "legacy-session",
     );
     window.sessionStorage.setItem(
       "__insightflare_session_activity_configured-site__",
@@ -1260,16 +1260,19 @@ describe("Tracker Browser SDK Integration Suite", () => {
 
     const body = decodeFetchBody(fetchSpy);
     expect(body.visitorId).toBe("existing-visitor");
-    expect(body.sessionId).toBe("existing-session");
-    expect(body.visitId).toBe("unused-new-id");
+    expect(body.sessionId).toBeUndefined();
+    expect(body.visitId).toBe("new-visit");
+    expect(
+      window.sessionStorage.getItem("__insightflare_session_configured-site__"),
+    ).toBe("legacy-session");
     expect(randomUuidSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("should create a new session id when stored activity is expired", async () => {
+  it("should not create or refresh SDK session ids", async () => {
     const randomUuidSpy = vi
       .spyOn(globalThis.crypto, "randomUUID")
-      .mockReturnValueOnce("new-session")
       .mockReturnValueOnce("new-visit");
+    const legacyActivityAt = String(Date.now() - 60_000);
     window.localStorage.setItem(
       "__insightflare_visitor_configured-site__",
       "existing-visitor",
@@ -1280,7 +1283,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     );
     window.sessionStorage.setItem(
       "__insightflare_session_activity_configured-site__",
-      String(Date.now() - 60_000),
+      legacyActivityAt,
     );
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
@@ -1292,18 +1295,23 @@ describe("Tracker Browser SDK Integration Suite", () => {
 
     const body = decodeFetchBody(fetchSpy);
     expect(body.visitorId).toBe("existing-visitor");
-    expect(body.sessionId).toBe("new-session");
+    expect(body.sessionId).toBeUndefined();
     expect(body.visitId).toBe("new-visit");
     expect(
       window.sessionStorage.getItem("__insightflare_session_configured-site__"),
-    ).toBe("new-session");
-    expect(randomUuidSpy).toHaveBeenCalledTimes(2);
+    ).toBe("expired-session");
+    expect(
+      window.sessionStorage.getItem(
+        "__insightflare_session_activity_configured-site__",
+      ),
+    ).toBe(legacyActivityAt);
+    expect(randomUuidSpy).toHaveBeenCalledTimes(1);
   });
 
   it("should suppress visitor ids when configured for EU mode", async () => {
     const randomUuidSpy = vi
       .spyOn(globalThis.crypto, "randomUUID")
-      .mockReturnValueOnce("session-only");
+      .mockReturnValueOnce("visit-only");
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation(() =>
@@ -1314,7 +1322,9 @@ describe("Tracker Browser SDK Integration Suite", () => {
 
     const body = decodeFetchBody(fetchSpy);
     expect(body.visitorId).toBe("");
-    expect(randomUuidSpy).toHaveBeenCalledTimes(2);
+    expect(body.sessionId).toBeUndefined();
+    expect(body.visitId).toBe("visit-only");
+    expect(randomUuidSpy).toHaveBeenCalledTimes(1);
     expect(window.localStorage.length).toBe(0);
   });
 
@@ -1530,6 +1540,8 @@ describe("Tracker Browser SDK Integration Suite", () => {
       );
 
     await import("../sdk.ts");
+    await new Promise((r) => queueMicrotask(r));
+    const initialVisitId = decodeFetchBody(fetchSpy).visitId;
     const api = (window as any).__insightflare_tracker_v6__;
     api.debug();
     fetchSpy.mockClear();
@@ -1546,7 +1558,9 @@ describe("Tracker Browser SDK Integration Suite", () => {
       "custom_event",
     ]);
     expect(bodies[0].pathname).toBe("/flushed-route");
+    expect(bodies[0].previousVisitId).toBe(initialVisitId);
     expect(bodies[1].pathname).toBe("/flushed-route");
+    expect(bodies[1].previousVisitId).toBeUndefined();
     expect(logSpy).toHaveBeenCalledWith(
       "[InsightFlare]",
       "pageview:",

@@ -75,10 +75,7 @@ const VISIT_COLUMNS = [
 ] as const;
 
 const BUFFERED_VISIT_COLUMNS = [
-  ...VISIT_COLUMNS.filter((column) => column !== "ae_synced_at").flatMap(
-    (column) =>
-      column === "session_id" ? [column, "client_session_id"] : [column],
-  ),
+  ...VISIT_COLUMNS.filter((column) => column !== "ae_synced_at"),
   "hidden_at",
   "dirty",
   "flush_attempts",
@@ -477,7 +474,6 @@ function bufferedVisitRecord(
         (column) => [column, base[column]],
       ),
     ),
-    client_session_id: overrides.client_session_id ?? base.session_id,
     hidden_at: null,
     dirty: 1,
     flush_attempts: 0,
@@ -582,7 +578,6 @@ function envelope(
     siteId: "site-1",
     kind: "pageview",
     visitId: "visit-1",
-    sessionId: "session-1",
     visitorId: "visitor-1",
     timestamp: NOW - 1_000,
     startedAt: NOW - 1_000,
@@ -918,6 +913,7 @@ describe("IngestDurableObject", () => {
       ctx.object,
       envelope({
         visitId: "visit-2",
+        previousVisitId: "visit-1",
         startedAt: NOW - 10_000,
         timestamp: NOW - 10_000,
         pathname: "/second",
@@ -992,7 +988,6 @@ describe("IngestDurableObject", () => {
       ctx.object,
       envelope({
         visitId: "tab-a-visit",
-        sessionId: "client-tab-a",
         startedAt: NOW - 20_000,
         timestamp: NOW - 20_000,
         pathname: "/tab-a",
@@ -1002,7 +997,6 @@ describe("IngestDurableObject", () => {
       ctx.object,
       envelope({
         visitId: "tab-b-visit",
-        sessionId: "client-tab-b",
         startedAt: NOW - 10_000,
         timestamp: NOW - 10_000,
         pathname: "/tab-b",
@@ -1012,12 +1006,11 @@ describe("IngestDurableObject", () => {
     const rows = localRows<{
       visit_id: string;
       session_id: string;
-      client_session_id: string;
       status: string;
     }>(
       ctx.sql,
       `
-        SELECT visit_id, session_id, client_session_id, status
+        SELECT visit_id, session_id, status
         FROM buffered_visits
         ORDER BY visit_id
       `,
@@ -1028,12 +1021,10 @@ describe("IngestDurableObject", () => {
     expect(rows).toMatchObject([
       {
         visit_id: "tab-a-visit",
-        client_session_id: "client-tab-a",
         status: "open",
       },
       {
         visit_id: "tab-b-visit",
-        client_session_id: "client-tab-b",
         status: "open",
       },
     ]);
@@ -1047,7 +1038,6 @@ describe("IngestDurableObject", () => {
       envelope(
         {
           visitId: "old-visit",
-          sessionId: "old-client-tab",
           startedAt: NOW - 120_000,
           timestamp: NOW - 120_000,
           pathname: "/old",
@@ -1059,7 +1049,6 @@ describe("IngestDurableObject", () => {
       ctx.object,
       envelope({
         visitId: "new-visit",
-        sessionId: "new-client-tab",
         startedAt: NOW,
         timestamp: NOW,
         pathname: "/new",
@@ -1640,7 +1629,6 @@ describe("IngestDurableObject", () => {
     const response = await postIngest(
       ctx.object,
       envelope({
-        sessionId: "",
         timestamp: NOW + 10_000,
         startedAt: NOW - 60_000,
         query: "",
@@ -1843,7 +1831,6 @@ describe("IngestDurableObject", () => {
       ctx.object,
       envelope({
         visitId: "socket-visit",
-        sessionId: "socket-session",
         visitorId: "socket-visitor",
         pathname: "/socket",
         timestamp: NOW - 2_000,
@@ -1855,7 +1842,6 @@ describe("IngestDurableObject", () => {
       envelope({
         kind: "custom_event",
         visitId: "socket-visit",
-        sessionId: "socket-session",
         eventId: "socket-event",
         eventName: "Socket Event",
         eventData: { ok: true },
@@ -1867,7 +1853,6 @@ describe("IngestDurableObject", () => {
       envelope({
         kind: "leave",
         visitId: "socket-visit",
-        sessionId: "socket-session",
         timestamp: NOW,
       }),
     );
@@ -1887,7 +1872,6 @@ describe("IngestDurableObject", () => {
       ctx.object,
       envelope({
         visitId: "after-close",
-        sessionId: "after-close-session",
       }),
     );
     expect(healthyServer.sent).toHaveLength(4);
@@ -2369,7 +2353,6 @@ describe("IngestDurableObject", () => {
       ctx.object,
       envelope({
         visitId: "race-visit",
-        sessionId: "race-session",
         startedAt: NOW - 10_000,
         timestamp: NOW - 10_000,
       }),
@@ -2401,7 +2384,6 @@ describe("IngestDurableObject", () => {
       envelope({
         kind: "leave",
         visitId: "race-visit",
-        sessionId: "race-session",
         timestamp: NOW,
       }),
     );
@@ -2465,7 +2447,6 @@ describe("IngestDurableObject", () => {
       envelope({
         kind: "identify",
         visitId: "persisted-no-name",
-        sessionId: "",
         userId: "user-without-name",
         userName: "",
       }),
@@ -2492,7 +2473,6 @@ describe("IngestDurableObject", () => {
       envelope({
         kind: "identify",
         visitId: "persisted-failing-identify",
-        sessionId: "",
         userId: "lost-user",
         userName: "",
       }),
