@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   hasDashboardFilters,
@@ -28,8 +28,8 @@ describe("hasDashboardFilters", () => {
       hasDashboardFilters({
         country: undefined,
         browser: null as unknown as undefined,
-        deviceType: "",
-        page: [],
+        device: "",
+        path: undefined,
       }),
     ).toBe(false);
   });
@@ -38,12 +38,12 @@ describe("hasDashboardFilters", () => {
     expect(hasDashboardFilters({ country: "US" })).toBe(true);
   });
 
-  it("returns true when an array filter has items", () => {
-    expect(hasDashboardFilters({ page: ["/home"] })).toBe(true);
+  it("returns true when a path filter is set", () => {
+    expect(hasDashboardFilters({ path: "/home" })).toBe(true);
   });
 
-  it("returns true when a number filter is set", () => {
-    expect(hasDashboardFilters({ limit: 10 })).toBe(true);
+  it("returns true when a device filter is set", () => {
+    expect(hasDashboardFilters({ device: "desktop" })).toBe(true);
   });
 });
 

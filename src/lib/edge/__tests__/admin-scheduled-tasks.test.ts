@@ -224,7 +224,7 @@ describe("handleScheduledTasksAdmin", () => {
       resolveAdmin,
     );
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.ok).toBe(true);
     expect(body.tasks).toHaveLength(2);
     expect(body.tasks[0].key).toBe("hourly-rollup");
@@ -283,7 +283,7 @@ describe("handleScheduledTasksAdmin", () => {
       url,
       resolveAdmin,
     );
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.runs).toHaveLength(50);
     expect(body.runsMeta.hasMore).toBe(true);
     expect(body.runsMeta.nextPage).toBe(2);
@@ -348,7 +348,7 @@ describe("handleScheduledTasksAdmin", () => {
       url,
       resolveAdmin,
     );
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.selectedRun.id).toBe("specific-run");
   });
 
@@ -379,7 +379,7 @@ describe("handleScheduledTasksAdmin", () => {
       url,
       resolveAdmin,
     );
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.selectedRun).toBeNull();
   });
 
@@ -414,7 +414,7 @@ describe("handleScheduledTasksAdmin", () => {
       resolveAdmin,
     );
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.ok).toBe(true);
   });
 });

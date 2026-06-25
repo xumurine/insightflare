@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  fetchVisitors,
-  fetchSessions,
-  fetchVisitorDetail,
-  fetchSessionDetail,
-  fetchFunnelDetail,
-  fetchEventTypeDetail,
-  fetchEventTypeFieldValues,
   fetchEventRecordDetail,
-  fetchEventsTrend,
   fetchEventsRecords,
   fetchEventsSummary,
+  fetchEventsTrend,
+  fetchEventTypeDetail,
+  fetchEventTypeFieldValues,
+  fetchFunnelDetail,
   fetchPerformance,
+  fetchSessionDetail,
+  fetchSessions,
+  fetchVisitorDetail,
+  fetchVisitors,
 } from "@/lib/dashboard/client-core-data";
 import {
   emptyEventFieldValues,
@@ -46,6 +46,7 @@ const fetchPrivateJsonMock = vi.mocked(fetchPrivateJson);
 const fetchPrivateJsonMutateMock = vi.mocked(fetchPrivateJsonMutate);
 
 const window = {
+  preset: "custom" as const,
   from: 1000,
   to: 2000,
   timeZone: "UTC",
@@ -68,7 +69,7 @@ describe("fetchVisitors", () => {
     await fetchVisitors("site-1", window, undefined, {
       page: 2,
       pageSize: 25,
-      sortBy: "lastSeen",
+      sortBy: "lastSeenAt",
       sortDir: "desc",
       search: "test",
     });
@@ -78,7 +79,7 @@ describe("fetchVisitors", () => {
       expect.objectContaining({
         page: 2,
         pageSize: 25,
-        sortBy: "lastSeen",
+        sortBy: "lastSeenAt",
         sortDir: "desc",
         search: "test",
       }),

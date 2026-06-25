@@ -1,7 +1,7 @@
+import { resolveEdgeRuntime } from "@/lib/edge/runtime";
+import { requireSession } from "@/lib/edge/session-auth";
 import { fetchGithubCompare } from "@/lib/github-releases";
 import { bad, errorResponse, jsonResponseFor } from "@/lib/response";
-import { requireSession } from "@/lib/edge/session-auth";
-import { resolveEdgeRuntime } from "@/lib/edge/runtime";
 
 const REPO_OWNER = "RavelloH";
 const REPO_NAME = "InsightFlare";

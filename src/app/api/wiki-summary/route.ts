@@ -1,6 +1,6 @@
+import { requireSameOrigin } from "@/lib/edge/utils";
 import { resolveLocale } from "@/lib/i18n/config";
 import { jsonResponse } from "@/lib/response";
-import { requireSameOrigin } from "@/lib/edge/utils";
 
 const WIKIDATA_API_ENDPOINT = "https://www.wikidata.org/w/api.php";
 const DEFAULT_WIKI_LANGUAGE = "en";

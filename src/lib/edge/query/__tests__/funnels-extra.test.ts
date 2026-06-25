@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { FunnelEvent, FunnelStepConfig } from "@/lib/edge/query/funnels";
 import {
   analyzeFunnelEvents,
-  normalizeFunnelSteps,
   handleFunnel,
+  normalizeFunnelSteps,
 } from "@/lib/edge/query/funnels";
-import type { FunnelEvent, FunnelStepConfig } from "@/lib/edge/query/funnels";
 import type { Env } from "@/lib/edge/types";
 
 vi.mock("@/lib/edge/query/core", () => ({
@@ -45,7 +45,7 @@ vi.mock("@/lib/edge/query/core-time", () => ({
   timeBucketTimestamp: vi.fn(),
 }));
 
-import { queryD1All, parseWindow } from "@/lib/edge/query/core";
+import { parseWindow, queryD1All } from "@/lib/edge/query/core";
 
 const queryD1AllMock = vi.mocked(queryD1All);
 const parseWindowMock = vi.mocked(parseWindow);
@@ -347,7 +347,7 @@ describe("handleFunnel", () => {
 
     const response = await handleFunnel(env, "site-1", url, undefined, request);
     expect(response.status).toBe(400);
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.error).toContain("Invalid JSON");
   });
 
@@ -361,7 +361,7 @@ describe("handleFunnel", () => {
 
     const response = await handleFunnel(env, "site-1", url, undefined, request);
     expect(response.status).toBe(400);
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.error).toContain("Name");
   });
 
@@ -378,7 +378,7 @@ describe("handleFunnel", () => {
 
     const response = await handleFunnel(env, "site-1", url, undefined, request);
     expect(response.status).toBe(400);
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.error).toContain("2 steps");
   });
 
@@ -391,7 +391,7 @@ describe("handleFunnel", () => {
 
     const response = await handleFunnel(env, "site-1", url, undefined, request);
     expect(response.status).toBe(400);
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.error).toContain("id");
   });
 });

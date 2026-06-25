@@ -47,21 +47,21 @@ vi.mock("@/lib/edge/query/core", () => ({
 }));
 
 import {
-  handleTeamDashboard,
-  handleTeamDashboardForTeam,
-  queryTeamOverviewFromD1,
-  queryTeamTrendFromD1,
-  listTeamSites,
-} from "@/lib/edge/query/team";
-import {
   queryOverviewForSitesFromHourlyRollups,
   queryTrendForSitesFromHourlyRollups,
 } from "@/lib/edge/hourly-rollup";
 import {
   parseWindow,
-  resolvePrivateTeam,
   queryD1All,
+  resolvePrivateTeam,
 } from "@/lib/edge/query/core";
+import {
+  handleTeamDashboard,
+  handleTeamDashboardForTeam,
+  listTeamSites,
+  queryTeamOverviewFromD1,
+  queryTeamTrendFromD1,
+} from "@/lib/edge/query/team";
 
 const queryOverviewMock = vi.mocked(queryOverviewForSitesFromHourlyRollups);
 const queryTrendMock = vi.mocked(queryTrendForSitesFromHourlyRollups);
@@ -206,7 +206,7 @@ describe("handleTeamDashboardForTeam", () => {
       "team-1",
       window,
     );
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.ok).toBe(true);
     expect(body.data.sites).toEqual([]);
     expect(body.data.trend).toEqual([]);
@@ -251,7 +251,7 @@ describe("handleTeamDashboardForTeam", () => {
       window,
       ["s1"],
     );
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.data.sites).toHaveLength(1);
     expect(body.data.sites[0].id).toBe("s1");
   });

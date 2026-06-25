@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET } from "@/app/api/private/releases/compare/route";
-import { fetchGithubCompare } from "@/lib/github-releases";
-import { requireSession } from "@/lib/edge/session-auth";
 import { resolveEdgeRuntime } from "@/lib/edge/runtime";
+import { requireSession } from "@/lib/edge/session-auth";
+import { fetchGithubCompare } from "@/lib/github-releases";
 
 vi.mock("@/lib/github-releases", () => ({
   fetchGithubCompare: vi.fn(),
@@ -59,7 +59,7 @@ describe("GET /api/private/releases/compare", () => {
 
     const response = await GET(request);
     expect(response.status).toBe(400);
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.error.code).toBe("invalid_head_ref");
   });
 
@@ -81,7 +81,7 @@ describe("GET /api/private/releases/compare", () => {
 
     const response = await GET(request);
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.ok).toBe(true);
     expect(body.data.status).toBe("initial");
     expect(body.data.totalCommits).toBe(0);
@@ -97,7 +97,7 @@ describe("GET /api/private/releases/compare", () => {
 
     const response = await GET(request);
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.data.status).toBe("initial");
     expect(fetchGithubCompareMock).not.toHaveBeenCalled();
   });
@@ -129,7 +129,7 @@ describe("GET /api/private/releases/compare", () => {
 
     const response = await GET(request);
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.ok).toBe(true);
     expect(body.data.status).toBe("ahead");
     expect(body.data.totalCommits).toBe(5);
@@ -153,7 +153,7 @@ describe("GET /api/private/releases/compare", () => {
 
     const response = await GET(request);
     expect(response.status).toBe(502);
-    const body = await response.json();
+    const body = (await response.json()) as any;
     expect(body.error.code).toBe("compare_failed");
   });
 
