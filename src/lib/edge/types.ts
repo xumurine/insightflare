@@ -8,6 +8,7 @@ export interface Env {
   ADMIN_WS_TOKEN?: string;
   DASHBOARD_SESSION_SECRET?: string;
   SESSION_SECRET?: string;
+  API_KEY_HASH_SECRET?: string;
   EDGE_PUBLIC_BASE_URL?: string;
   PARQUET_WASM_URL?: string;
   BOOTSTRAP_ADMIN_USERNAME?: string;

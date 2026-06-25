@@ -212,8 +212,25 @@ export async function handleTeamDashboard(
   const team = await resolvePrivateTeam(request, env, url);
   if (team instanceof Response) return team;
 
+  return handleTeamDashboardForTeam(env, url, team.id, window);
+}
+
+export async function handleTeamDashboardForTeam(
+  env: Env,
+  url: URL,
+  teamId: string,
+  window: QueryWindow,
+  allowedSiteIds?: string[],
+): Promise<Response> {
   const interval = parseInterval(url);
-  const sites = await listTeamSites(env, team.id);
+  const allSites = await listTeamSites(env, teamId);
+  const allowed =
+    allowedSiteIds && allowedSiteIds.length > 0
+      ? new Set(allowedSiteIds)
+      : null;
+  const sites = allowed
+    ? allSites.filter((site) => allowed.has(site.id))
+    : allSites;
   if (sites.length === 0) {
     return jsonResponse(
       {

@@ -846,6 +846,57 @@ teamManagement:
     title: API 密钥
     subtitle: 管理当前团队用于接口访问的密钥。
     empty: 当前团队还没有 API 密钥。
+    create: 创建密钥
+    creating: 创建中...
+    createTitle: 创建 API 密钥
+    createSubtitle: 只授予这个集成真正需要的最小权限。
+    nameLabel: 密钥名称
+    namePlaceholder: 生产同步任务
+    scopesTitle: 权限
+    scopesDescription: API 密钥永远不能管理成员、用户、所有权或其他密钥。
+    siteScopeTitle: 站点范围
+    siteScopeDescription: 不选择站点表示当前团队所有现有和未来站点。
+    allSites: 全部站点
+    expirationLabel: 过期时间
+    expiration30: 30 天
+    expiration90: 90 天
+    expiration180: 180 天
+    expiration365: 365 天
+    expirationNever: 永不过期
+    oneTimeSecretTitle: 立即复制这个密钥
+    oneTimeSecretDescription: 完整密钥只显示一次，关闭弹窗后无法再次查看。
+    copySecret: 复制密钥
+    revoke: 撤销
+    rotate: 轮换
+    revokeConfirm: 确认立即撤销这个 API 密钥吗？
+    rotateConfirm: 确认轮换这个 API 密钥吗？旧密钥会被立即撤销。
+    neverExpires: 永不过期
+    notUsed: 未使用
+    loading: 正在加载 API 密钥...
+    loadFailed: API 密钥加载失败。
+    invalidInput: 请输入名称并至少选择一个权限。
+    createFailed: API 密钥创建失败。
+    revokeFailed: API 密钥撤销失败。
+    rotateFailed: API 密钥轮换失败。
+    copied: 已复制
+    status:
+      active: 有效
+      expired: 已过期
+      revoked: 已撤销
+    scopes:
+      analyticsRead: 读取分析
+      siteRead: 读取站点
+      siteWrite: 写入站点
+      siteConfigRead: 读取配置
+      siteConfigWrite: 写入配置
+    columns:
+      name: 名称
+      scopes: 权限
+      sites: 站点
+      expires: 过期
+      lastUsed: 最近使用
+      status: 状态
+      action: 操作
   settings:
     title: 团队设置
     subtitle: 更新团队显示名和 slug。

@@ -877,6 +877,57 @@ teamManagement:
     title: API Keys
     subtitle: Manage API access keys for this team.
     empty: No API key exists for this team.
+    create: Create key
+    creating: Creating...
+    createTitle: Create API key
+    createSubtitle: Choose the least privileges this integration needs.
+    nameLabel: Key name
+    namePlaceholder: Production sync
+    scopesTitle: Permissions
+    scopesDescription: API keys can never manage members, users, ownership, or other keys.
+    siteScopeTitle: Site access
+    siteScopeDescription: No selection means every current and future site in this team.
+    allSites: All sites
+    expirationLabel: Expires
+    expiration30: 30 days
+    expiration90: 90 days
+    expiration180: 180 days
+    expiration365: 365 days
+    expirationNever: Never
+    oneTimeSecretTitle: Copy this key now
+    oneTimeSecretDescription: This full key is shown once. Store it before closing this dialog.
+    copySecret: Copy key
+    revoke: Revoke
+    rotate: Rotate
+    revokeConfirm: Revoke this API key immediately?
+    rotateConfirm: Rotate this API key? The old key will be revoked immediately.
+    neverExpires: Never expires
+    notUsed: Not used
+    loading: Loading API keys...
+    loadFailed: Failed to load API keys.
+    invalidInput: Enter a name and choose at least one permission.
+    createFailed: Failed to create API key.
+    revokeFailed: Failed to revoke API key.
+    rotateFailed: Failed to rotate API key.
+    copied: Copied
+    status:
+      active: Active
+      expired: Expired
+      revoked: Revoked
+    scopes:
+      analyticsRead: Analytics read
+      siteRead: Site read
+      siteWrite: Site write
+      siteConfigRead: Config read
+      siteConfigWrite: Config write
+    columns:
+      name: Name
+      scopes: Permissions
+      sites: Sites
+      expires: Expires
+      lastUsed: Last used
+      status: Status
+      action: Action
   settings:
     title: Settings
     subtitle: Update this team's display name and slug.

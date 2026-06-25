@@ -46,3 +46,28 @@ export interface AccountUserData {
   teamCount?: number;
   ownedTeamCount?: number;
 }
+
+export type ApiKeyScope =
+  | "analytics:read"
+  | "site:read"
+  | "site:write"
+  | "site_config:read"
+  | "site_config:write";
+
+export interface ApiKeyData {
+  id: string;
+  teamId: string;
+  name: string;
+  prefix: string;
+  scopes: ApiKeyScope[];
+  siteIds: string[];
+  createdByUserId: string;
+  expiresAt: number | null;
+  revokedAt: number | null;
+  revokedByUserId: string;
+  rotatedFromKeyId: string;
+  lastUsedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+  status: "active" | "expired" | "revoked";
+}

@@ -26,6 +26,47 @@ import {
 import type { Env } from "./types";
 import { clampString } from "./utils";
 
+export async function deleteSiteData(env: Env, siteId: string): Promise<void> {
+  await env.DB.prepare("DELETE FROM configs WHERE config_key=?")
+    .bind(`site:${siteId}`)
+    .run();
+  await env.DB.prepare("DELETE FROM custom_event_json_values WHERE site_id=?")
+    .bind(siteId)
+    .run();
+  await env.DB.prepare(
+    "DELETE FROM custom_event_json_nodes WHERE event_pk IN (SELECT event_pk FROM custom_events WHERE site_id=?)",
+  )
+    .bind(siteId)
+    .run();
+  await env.DB.prepare("DELETE FROM custom_events WHERE site_id=?")
+    .bind(siteId)
+    .run();
+  await env.DB.prepare("DELETE FROM custom_event_names WHERE site_id=?")
+    .bind(siteId)
+    .run();
+  await env.DB.prepare("DELETE FROM custom_event_json_keys WHERE site_id=?")
+    .bind(siteId)
+    .run();
+  await env.DB.prepare("DELETE FROM custom_event_json_paths WHERE site_id=?")
+    .bind(siteId)
+    .run();
+  await env.DB.prepare("DELETE FROM visits WHERE site_id=?").bind(siteId).run();
+  await env.DB.prepare("DELETE FROM visit_hourly_rollups WHERE site_id=?")
+    .bind(siteId)
+    .run();
+  await env.DB.prepare(
+    "DELETE FROM visit_hourly_aggregation_state WHERE site_id=?",
+  )
+    .bind(siteId)
+    .run();
+  await env.DB.prepare("DELETE FROM sites WHERE id=?").bind(siteId).run();
+  try {
+    await deleteSiteScriptSettings(env, siteId);
+  } catch {
+    // Best effort cleanup for KV-backed settings.
+  }
+}
+
 export async function handleSitesAdmin(
   req: Request,
   env: Env,
@@ -106,50 +147,7 @@ export async function handleSitesAdmin(
     if (!(await canManageTeam(env, a, e.teamId)))
       return forb("Only team owner can update sites");
     if (intent === "remove") {
-      await env.DB.prepare("DELETE FROM configs WHERE config_key=?")
-        .bind(`site:${siteId}`)
-        .run();
-      await env.DB.prepare(
-        "DELETE FROM custom_event_json_values WHERE site_id=?",
-      )
-        .bind(siteId)
-        .run();
-      await env.DB.prepare(
-        "DELETE FROM custom_event_json_nodes WHERE event_pk IN (SELECT event_pk FROM custom_events WHERE site_id=?)",
-      )
-        .bind(siteId)
-        .run();
-      await env.DB.prepare("DELETE FROM custom_events WHERE site_id=?")
-        .bind(siteId)
-        .run();
-      await env.DB.prepare("DELETE FROM custom_event_names WHERE site_id=?")
-        .bind(siteId)
-        .run();
-      await env.DB.prepare("DELETE FROM custom_event_json_keys WHERE site_id=?")
-        .bind(siteId)
-        .run();
-      await env.DB.prepare(
-        "DELETE FROM custom_event_json_paths WHERE site_id=?",
-      )
-        .bind(siteId)
-        .run();
-      await env.DB.prepare("DELETE FROM visits WHERE site_id=?")
-        .bind(siteId)
-        .run();
-      await env.DB.prepare("DELETE FROM visit_hourly_rollups WHERE site_id=?")
-        .bind(siteId)
-        .run();
-      await env.DB.prepare(
-        "DELETE FROM visit_hourly_aggregation_state WHERE site_id=?",
-      )
-        .bind(siteId)
-        .run();
-      await env.DB.prepare("DELETE FROM sites WHERE id=?").bind(siteId).run();
-      try {
-        await deleteSiteScriptSettings(env, siteId);
-      } catch {
-        // Best effort cleanup for KV-backed settings.
-      }
+      await deleteSiteData(env, siteId);
       return j({ ok: true, data: { siteId, teamId: e.teamId, removed: true } });
     }
     const nextTeamId = clampString(String(body.teamId ?? e.teamId), 120);

@@ -1,3 +1,4 @@
+import { handleApiKeysAdmin } from "./admin-api-keys";
 import { requireActor } from "./admin-auth";
 import { nf } from "./admin-response";
 import { handleScheduledTasksAdmin } from "./admin-scheduled-tasks";
@@ -41,6 +42,8 @@ export async function handlePrivateAdmin(
     return handleSiteConfigAdmin(request, env, url);
   if (p === "/api/private/admin/script-snippet")
     return handleScriptSnippetAdmin(request, env, url);
+  if (p === "/api/private/admin/api-keys")
+    return handleApiKeysAdmin(request, env, url);
   if (p === "/api/private/admin/system-performance")
     return handleSystemPerformanceAdmin(request, env, url, requireActor);
   if (p === "/api/private/admin/scheduled-tasks")
