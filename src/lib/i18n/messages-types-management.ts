@@ -266,6 +266,32 @@ export interface AppManagementMessages {
     versionUpdates: {
       subtitle: string;
       empty: string;
+      currentVersion: string;
+      latestVersion: string;
+      currentCommit: string;
+      releaseCount: string;
+      publishedAt: string;
+      author: string;
+      commit: string;
+      statusStable: string;
+      statusPrerelease: string;
+      statusDraft: string;
+      currentVersionBadge: string;
+      releaseNotes: string;
+      openRelease: string;
+      viewDetails: string;
+      detailsTitle: string;
+      detailsDescription: string;
+      detailsLoading: string;
+      detailsEmpty: string;
+      detailsFailed: string;
+      currentCommitBadge: string;
+      openCompare: string;
+      openCommit: string;
+      commitCount: string;
+      source: string;
+      loadFailed: string;
+      unknown: string;
     };
     scheduledTasks: {
       subtitle: string;

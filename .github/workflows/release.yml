@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect new changelog
+        id: changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BEFORE_SHA="${{ github.event.before }}"
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE_SHA="HEAD^"
+          fi
+
+          NEW_FILE="$(git diff --name-status "$BEFORE_SHA" "${{ github.sha }}" | awk '$1 == "A" {print $2}' | grep -E '^changelog/v[0-9]+\.[0-9]+\.[0-9]+.*\.md$' | head -n 1 || true)"
+
+          if [ -z "$NEW_FILE" ]; then
+            echo "has_release=false" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "file_path=" >> "$GITHUB_OUTPUT"
+            echo "No new changelog file found."
+            exit 0
+          fi
+
+          VERSION="$(basename "$NEW_FILE" .md)"
+          echo "has_release=true" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "file_path=$NEW_FILE" >> "$GITHUB_OUTPUT"
+          echo "Detected release changelog: $NEW_FILE"
+
+      - name: Sync package versions
+        if: steps.changelog.outputs.has_release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TARGET_VERSION="${{ steps.changelog.outputs.version }}"
+          TARGET_VERSION="${TARGET_VERSION#v}"
+
+          node - <<'NODE' "$TARGET_VERSION"
+          const fs = require("node:fs");
+          const version = process.argv[2];
+
+          function updatePackageJson(filePath) {
+            const raw = fs.readFileSync(filePath, "utf8");
+            const json = JSON.parse(raw);
+            json.version = version;
+            fs.writeFileSync(filePath, JSON.stringify(json, null, 2) + "\n");
+          }
+
+          function updatePackageLock(filePath) {
+            if (!fs.existsSync(filePath)) return;
+
+            const raw = fs.readFileSync(filePath, "utf8");
+            const json = JSON.parse(raw);
+            json.version = version;
+            if (json.packages && json.packages[""]) {
+              json.packages[""].version = version;
+            }
+            fs.writeFileSync(filePath, JSON.stringify(json, null, 2) + "\n");
+          }
+
+          updatePackageJson("package.json");
+          updatePackageLock("package-lock.json");
+          NODE
+
+          git add package.json package-lock.json
+
+          if git diff --cached --quiet; then
+            echo "Package versions are already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(release): sync package version to ${{ steps.changelog.outputs.version }} [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}
+
+      - name: Finalize release commit
+        id: finalize
+        if: steps.changelog.outputs.has_release == 'true'
+        shell: bash
+        run: |
+          echo "build_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes
+        if: steps.changelog.outputs.has_release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          FILE_PATH="${{ steps.changelog.outputs.file_path }}"
+
+          cat "$FILE_PATH" > release.md
+
+      - name: Create release
+        if: steps.changelog.outputs.has_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.changelog.outputs.version }}
+          name: Release ${{ steps.changelog.outputs.version }}
+          body_path: release.md
+          target_commitish: ${{ steps.finalize.outputs.build_sha }}
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

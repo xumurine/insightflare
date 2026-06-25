@@ -928,8 +928,34 @@ managementNav:
   systemPerformance: System Performance
 managementPages:
   versionUpdates:
-    subtitle: View and manage system version update records.
+    subtitle: Review published InsightFlare releases and the running build.
     empty: No version update record exists yet.
+    currentVersion: Current version
+    latestVersion: Latest release
+    currentCommit: Current commit
+    releaseCount: Releases
+    publishedAt: Published
+    author: Author
+    commit: Commit
+    statusStable: Stable
+    statusPrerelease: Prerelease
+    statusDraft: Draft
+    currentVersionBadge: Current version
+    releaseNotes: Release notes
+    openRelease: Open release
+    viewDetails: View detailed changes
+    detailsTitle: Detailed changes
+    detailsDescription: "Commits included in {range}."
+    detailsLoading: Loading detailed changes...
+    detailsEmpty: No previous release is available for this version yet.
+    detailsFailed: Failed to load detailed changes.
+    currentCommitBadge: Current deployment
+    openCompare: Open compare
+    openCommit: Open commit
+    commitCount: Commits
+    source: Data source
+    loadFailed: Failed to load GitHub Releases.
+    unknown: Unknown
   scheduledTasks:
     subtitle: View and manage system scheduled tasks.
     empty: No scheduled task exists yet.

@@ -893,8 +893,34 @@ managementNav:
   systemPerformance: 系统性能
 managementPages:
   versionUpdates:
-    subtitle: 查看和管理系统版本更新记录。
+    subtitle: 查看 InsightFlare 已发布版本与当前运行构建。
     empty: 暂无版本更新记录。
+    currentVersion: 当前版本
+    latestVersion: 最新版本
+    currentCommit: 当前提交
+    releaseCount: 发布数
+    publishedAt: 发布时间
+    author: 发布者
+    commit: 提交
+    statusStable: 正式版
+    statusPrerelease: 预发布
+    statusDraft: 草稿
+    currentVersionBadge: 当前版本
+    releaseNotes: 更新说明
+    openRelease: 打开 Release
+    viewDetails: 查看详细变更
+    detailsTitle: 详细变更
+    detailsDescription: "{range} 包含的提交。"
+    detailsLoading: 正在加载详细变更...
+    detailsEmpty: 这个版本暂无可对比的上一个发布版本。
+    detailsFailed: 加载详细变更失败。
+    currentCommitBadge: 当前部署
+    openCompare: 打开对比
+    openCommit: 打开提交
+    commitCount: 提交数
+    source: 数据来源
+    loadFailed: 加载 GitHub Releases 失败。
+    unknown: 未知
   scheduledTasks:
     subtitle: 查看和管理系统定时任务。
     empty: 暂无定时任务。
