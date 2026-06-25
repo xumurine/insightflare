@@ -239,7 +239,7 @@ export async function fetchSessionDetail(
 }
 
 export async function fetchFunnels(siteId: string): Promise<FunnelListData> {
-  return fetchPrivateJson<FunnelListData>("/api/private/funnel", {
+  return fetchPrivateJson<FunnelListData>("/api/private/funnels", {
     siteId,
   });
 }
@@ -255,7 +255,7 @@ export async function fetchFunnelDetail(
     throw new Error("Funnel id is required");
   }
   return fetchPrivateJson<FunnelDetailData>(
-    "/api/private/funnel",
+    "/api/private/funnels",
     withFilters(
       {
         siteId,
@@ -276,7 +276,7 @@ export async function createFunnel(
   steps: FunnelStep[],
 ): Promise<FunnelMutationData> {
   return fetchPrivateJsonMutate<FunnelMutationData>(
-    "/api/private/funnel",
+    "/api/private/funnels",
     "POST",
     { siteId },
     { name, steps },
@@ -288,7 +288,7 @@ export async function deleteFunnel(
   funnelId: string,
 ): Promise<FunnelDeleteData> {
   return fetchPrivateJsonMutate<FunnelDeleteData>(
-    "/api/private/funnel",
+    "/api/private/funnels",
     "DELETE",
     { siteId, id: funnelId },
   );

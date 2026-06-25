@@ -71,7 +71,7 @@ export async function routeQuery(
     );
   }
   if (options.publicMode) return notFound();
-  if (pathname === "funnel") {
+  if (pathname === "funnels") {
     return handleFunnel(env, siteId, url, request as Request);
   }
   if (pathname === "pages-dashboard") {

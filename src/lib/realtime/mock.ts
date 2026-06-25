@@ -94,7 +94,7 @@ export function handleDemoRequest(options: {
     method === "PUT" ||
     method === "DELETE"
   ) {
-    if (path.includes("/funnel")) {
+    if (path.includes("/funnels")) {
       if (method === "DELETE") return deleteDemoFunnel(siteId, params);
       return createDemoFunnel(siteId, options.body);
     }
@@ -275,7 +275,7 @@ export function handleDemoRequest(options: {
   if (path.includes("/pages-dashboard")) {
     return generateDemoPagesDashboard(siteId, params);
   }
-  if (path.includes("/funnel")) {
+  if (path.includes("/funnels")) {
     return generateDemoFunnels(siteId, params);
   }
   if (path.includes("/retention")) {

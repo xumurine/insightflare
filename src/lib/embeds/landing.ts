@@ -85,7 +85,7 @@ const LANDING_EMBED_SECTION_BY_VIEW = {
   performance: "performance",
   sessions: "sessions",
   visitors: "visitors",
-  funnels: "funnel",
+  funnels: "funnels",
 } satisfies Record<LandingEmbedView, string>;
 
 export const LANDING_EMBED_VIEW_ALIASES: Partial<

@@ -104,7 +104,7 @@ describe("edge query entry handlers", () => {
   });
 
   it("bypasses dashboard cache for private funnel reads and mutations", async () => {
-    const readRequest = request("/api/private/funnel");
+    const readRequest = request("/api/private/funnels");
     const readUrl = new URL(readRequest.url);
 
     await expect(
@@ -113,7 +113,7 @@ describe("edge query entry handlers", () => {
     expect(routeQueryMock).toHaveBeenCalledWith(
       env,
       "site-private",
-      "funnel",
+      "funnels",
       readUrl,
       { publicMode: false },
       readRequest,
@@ -128,7 +128,7 @@ describe("edge query entry handlers", () => {
     });
     routeQueryMock.mockResolvedValue(new Response("routed"));
 
-    const edgeRequest = request("/api/private/funnel", {
+    const edgeRequest = request("/api/private/funnels", {
       method: "POST",
     });
     const url = new URL(edgeRequest.url);
@@ -139,7 +139,7 @@ describe("edge query entry handlers", () => {
     expect(routeQueryMock).toHaveBeenCalledWith(
       env,
       "site-private",
-      "funnel",
+      "funnels",
       url,
       { publicMode: false },
       edgeRequest,
@@ -154,7 +154,7 @@ describe("edge query entry handlers", () => {
     });
     routeQueryMock.mockResolvedValue(new Response("routed"));
 
-    const deleteRequest = request("/api/private/funnel?id=funnel-1", {
+    const deleteRequest = request("/api/private/funnels?id=funnel-1", {
       method: "DELETE",
     });
     const deleteUrl = new URL(deleteRequest.url);
@@ -165,7 +165,7 @@ describe("edge query entry handlers", () => {
     expect(routeQueryMock).toHaveBeenCalledWith(
       env,
       "site-private",
-      "funnel",
+      "funnels",
       deleteUrl,
       { publicMode: false },
       deleteRequest,

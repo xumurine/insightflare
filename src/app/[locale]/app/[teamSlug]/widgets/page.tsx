@@ -53,7 +53,7 @@ export default async function TeamWidgetsPage({
           {context.sites.map((site) => (
             <Link
               key={site.id}
-              href={`/${resolvedLocale}/app/${context.activeTeam.slug}/${site.slug}/funnel`}
+              href={`/${resolvedLocale}/app/${context.activeTeam.slug}/${site.slug}/funnels`}
               className="group block h-full outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
               aria-label={`${copy.openWidgets}: ${site.name}`}
               title={copy.openWidgets}

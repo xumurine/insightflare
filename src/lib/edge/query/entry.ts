@@ -12,7 +12,7 @@ export async function handlePrivateQuery(
   ctx?: ExecutionContext,
 ): Promise<Response> {
   const pathname = url.pathname.replace(/^\/api\/private\//, "");
-  const isFunnelResource = pathname === "funnel";
+  const isFunnelResource = pathname === "funnels";
   if (request.method !== "GET") {
     if (
       !isFunnelResource ||

@@ -341,7 +341,7 @@ describe("edge query router", () => {
   });
 
   it("routes the private funnel resource to its handler", async () => {
-    await expect(responseText("funnel")).resolves.toBe("funnel");
+    await expect(responseText("funnels")).resolves.toBe("funnel");
 
     expect(handlerMocks.funnels.handleFunnel).toHaveBeenCalledWith(
       env,
