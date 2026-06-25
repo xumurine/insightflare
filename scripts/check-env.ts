@@ -27,22 +27,51 @@ function generateStrongSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
+// 密钥验证器
+function validateSecret(value: string, minLength: number = 32): string | null {
+  if (value.length < minLength) {
+    return `Should be at least ${minLength} characters long for security`;
+  }
+  const entropy = calculateShannonEntropy(value);
+  if (entropy < 3.5) {
+    return `Entropy is too low (${entropy.toFixed(2)}). Please use a more random secret (aim for > 3.5).`;
+  }
+  return null;
+}
+
+// 检查是否有可用的 secret 来源
+function hasUsableSecretSource(): boolean {
+  // 检查 MAIN_SECRET 或 DAILY_SALT_SECRET（root secret）
+  const rootSecret = process.env.MAIN_SECRET || process.env.DAILY_SALT_SECRET;
+  if (rootSecret && rootSecret.length >= 16) return true;
+
+  // 检查显式的 session secret
+  const sessionSecret =
+    process.env.DASHBOARD_SESSION_SECRET || process.env.SESSION_SECRET;
+  if (sessionSecret && sessionSecret.length >= 16) return true;
+
+  return false;
+}
+
 // 必需的环境变量配置
-const REQUIRED_ENV_VARS = [
+const REQUIRED_ENV_VARS: Array<{
+  name: string;
+  description: string;
+  validator: (value: string) => string | null;
+  optional?: boolean;
+}> = [
   {
     name: "MAIN_SECRET",
     description:
-      "Root secret for deriving session keys, API key hashes, and visitor salts",
-    validator: (value: string) => {
-      if (value.length < 32) {
-        return "Should be at least 32 characters long for security";
-      }
-      const entropy = calculateShannonEntropy(value);
-      if (entropy < 3.5) {
-        return `Entropy is too low (${entropy.toFixed(2)}). Please use a more random secret (aim for > 3.5).`;
-      }
-      return null;
-    },
+      "Root secret for deriving session keys, API key hashes, and visitor salts (or use DAILY_SALT_SECRET)",
+    validator: (value: string) => validateSecret(value),
+    optional: true, // 可选，因为可以回退到 DAILY_SALT_SECRET
+  },
+  {
+    name: "DAILY_SALT_SECRET",
+    description: "Alternative root secret (used if MAIN_SECRET not set)",
+    validator: (value: string) => validateSecret(value, 16),
+    optional: true, // 可选，与 MAIN_SECRET 互为回退
   },
 ];
 
@@ -101,32 +130,41 @@ export async function checkEnvironmentVariables(options?: {
 
   rlog.info("> Checking environment variables...");
 
-  // 检查必需的环境变量
+  // 检查可选的 root secret（MAIN_SECRET 或 DAILY_SALT_SECRET）
   for (const envVar of REQUIRED_ENV_VARS) {
     const value = process.env[envVar.name];
 
     if (!value) {
-      if (strict) {
-        rlog.error(`  ✗ ${envVar.name} is MISSING (required in production)`);
-        rlog.error(`    ${envVar.description}`);
-        const generated = generateStrongSecret();
-        rlog.info(`    Suggested value: ${generated}`);
-        hasErrors = true;
-      } else {
-        rlog.warn(`  ⚠ ${envVar.name} is not set (using insecure default)`);
-        rlog.warn(`    ${envVar.description}`);
-        hasWarnings = true;
-      }
+      rlog.info(`  ○ ${envVar.name} is not set (optional)`);
     } else {
       const validationError = envVar.validator(value);
       if (validationError) {
         rlog.error(`  ✗ ${envVar.name} is invalid: ${validationError}`);
-        const generated = generateStrongSecret();
-        rlog.info(`    Suggested value: ${generated}`);
         hasErrors = true;
       } else {
         rlog.success(`  ✓ ${envVar.name} is set and valid`);
       }
+    }
+  }
+
+  // 检查是否有至少一个可用的 secret 来源
+  // 与 src/lib/secrets.ts 中的回退逻辑一致
+  if (!hasUsableSecretSource()) {
+    if (strict) {
+      rlog.error("");
+      rlog.error("  ✗ No usable secret found!");
+      rlog.error("    At least one of the following must be set:");
+      rlog.error("    - MAIN_SECRET (recommended)");
+      rlog.error("    - DAILY_SALT_SECRET");
+      rlog.error("    - DASHBOARD_SESSION_SECRET");
+      rlog.error("    - SESSION_SECRET");
+      rlog.error("");
+      const generated = generateStrongSecret();
+      rlog.info(`    Suggested MAIN_SECRET: ${generated}`);
+      hasErrors = true;
+    } else {
+      rlog.warn("  ⚠ No secret configured, using insecure defaults (dev only)");
+      hasWarnings = true;
     }
   }
 
@@ -153,17 +191,10 @@ export async function checkEnvironmentVariables(options?: {
   if (hasErrors) {
     rlog.error("");
     rlog.error("✗ Environment variables check FAILED!");
-    rlog.error("  Production deployments require MAIN_SECRET to be set.");
+    rlog.error("  Production deployments require at least one secret source.");
     rlog.error("  This prevents session forgery and API key compromise.");
     rlog.error("");
-    rlog.error("  Set MAIN_SECRET in your environment:");
-    rlog.error("    - Cloudflare: wrangler secret put MAIN_SECRET");
-    rlog.error("    - Local .env: MAIN_SECRET=<your-secure-secret>");
-    rlog.error("");
-    throw new Error(
-      "Required environment variables are missing or invalid. " +
-        "MAIN_SECRET must be set for production deployments.",
-    );
+    throw new Error("Required environment variables are missing or invalid.");
   }
 
   if (hasWarnings) {
