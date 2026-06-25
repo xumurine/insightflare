@@ -1,13 +1,28 @@
 import { bad, jsonResponseFor } from "@/lib/edge/admin-response";
+import { requireSameOrigin } from "@/lib/edge/utils";
 import {
   createAdminSite,
   removeAdminSite,
   updateAdminSite,
 } from "@/lib/edge-client";
-import { bodyStr, parseFormBool, parseRequestBody } from "@/lib/form-helpers";
+import {
+  assertContentSize,
+  BODY_SIZE_LIMITS,
+  bodyStr,
+  parseFormBool,
+  parseRequestBody,
+} from "@/lib/form-helpers";
 import { errorResponse, normalizeErrorMessage } from "@/lib/response";
 
 export async function POST(request: Request): Promise<Response> {
+  // Body 大小限制检查
+  const sizeError = assertContentSize(request, BODY_SIZE_LIMITS.ADMIN_API);
+  if (sizeError) return sizeError;
+
+  // CSRF 保护：验证 Origin/Referer
+  const csrfError = requireSameOrigin(request);
+  if (csrfError) return csrfError;
+
   const body = await parseRequestBody(request);
   const intent = bodyStr(body, "intent") || "create";
 

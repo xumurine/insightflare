@@ -4,6 +4,7 @@ import path from "node:path";
 
 import Rlog from "rlog-js";
 
+import { checkEnvironmentVariables } from "./check-env";
 import { applyWranglerEnvOverrides } from "./wrangler-env-overrides";
 
 const startedAt = Date.now();
@@ -118,6 +119,9 @@ async function main(): Promise<void> {
   const wranglerEnv = pickArg("env") ?? process.env.INSIGHTFLARE_ENV;
 
   log("InsightFlare prebuild started");
+
+  // 检查环境变量安全性
+  await checkEnvironmentVariables({ strict: wranglerEnv !== "local" });
 
   if (!fs.existsSync(wranglerConfig)) {
     throw new Error(`Missing wrangler config: ${wranglerConfig}`);

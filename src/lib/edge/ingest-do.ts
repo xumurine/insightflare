@@ -197,17 +197,8 @@ export class IngestDurableObject extends DurableObject {
       return new Response("Expected websocket upgrade", { status: 426 });
     }
 
-    if (this.doEnv.ADMIN_WS_TOKEN) {
-      const tokenFromQuery = url.searchParams.get("token");
-      if (tokenFromQuery !== this.doEnv.ADMIN_WS_TOKEN) {
-        logDoTrace(
-          "do_ws_rejected",
-          { reason: "invalid_token", sockets: this.sockets.size },
-          "warn",
-        );
-        return new Response("Unauthorized", { status: 401 });
-      }
-    }
+    // Worker 层已验证 Session，此处不再需要额外的 token 验证
+    // 如果需要额外的安全层，可以在这里添加站点权限检查
 
     const pair = new WebSocketPair();
     const client = pair[0];

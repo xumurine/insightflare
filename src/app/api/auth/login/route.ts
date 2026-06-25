@@ -1,10 +1,19 @@
 import { SESSION_COOKIE, SESSION_DURATION_SECONDS } from "@/lib/constants";
 import { loginAdminAccount } from "@/lib/edge-client";
-import { bodyStr, parseRequestBody } from "@/lib/form-helpers";
+import {
+  assertContentSize,
+  BODY_SIZE_LIMITS,
+  bodyStr,
+  parseRequestBody,
+} from "@/lib/form-helpers";
 import { bad, errorResponse, jsonResponseFor, una } from "@/lib/response";
 import { createSessionToken } from "@/lib/session";
 
 export async function POST(request: Request): Promise<Response> {
+  // Body 大小限制检查
+  const sizeError = assertContentSize(request, BODY_SIZE_LIMITS.LOGIN);
+  if (sizeError) return sizeError;
+
   const body = await parseRequestBody(request);
   const username = bodyStr(body, "username");
   const password = String(body.password ?? "");

@@ -15,12 +15,13 @@ import type {
 } from "@/lib/edge/types";
 import type { TrackerPayloadKind } from "@/lib/edge/types";
 import { jsonCloneRecord } from "@/lib/edge/utils";
+import { assertContentSize, BODY_SIZE_LIMITS } from "@/lib/form-helpers";
 import { jsonResponse } from "@/lib/response";
 import type { SiteTrackingConfig } from "@/lib/site-settings";
 
 const CORS_BASE_HEADERS = {
   "access-control-allow-methods": "GET, POST, PATCH, OPTIONS",
-  "access-control-allow-headers": "content-type, authorization",
+  "access-control-allow-headers": "content-type",
   "access-control-max-age": "86400",
 };
 
@@ -103,10 +104,27 @@ function matchesBlockedPath(pathname: string, blockedPaths: string[]): boolean {
   return false;
 }
 
+// 允许转发到 Durable Object 的请求头白名单
+const ALLOWED_INGEST_HEADERS = new Set([
+  "user-agent",
+  "accept-language",
+  "sec-ch-ua",
+  "sec-ch-ua-mobile",
+  "sec-ch-ua-platform",
+  "sec-ch-ua-platform-version",
+  "sec-ch-ua-model",
+  "sec-ch-ua-full-version-list",
+  "sec-ch-ua-arch",
+  "sec-ch-ua-bitness",
+  "sec-ch-ua-wow64",
+]);
+
 function serializeHeaders(request: Request): Record<string, string> {
   const headers: Record<string, string> = {};
   request.headers.forEach((value, key) => {
-    headers[key] = value;
+    if (ALLOWED_INGEST_HEADERS.has(key.toLowerCase())) {
+      headers[key] = value;
+    }
   });
   return headers;
 }
@@ -154,7 +172,6 @@ function toCorsHeaders(origin: string | null): Record<string, string> {
   return {
     ...CORS_BASE_HEADERS,
     "access-control-allow-origin": origin,
-    "access-control-allow-credentials": "true",
     vary: "Origin",
   };
 }
@@ -453,6 +470,10 @@ export async function OPTIONS(request: Request): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  // Body 大小限制检查
+  const sizeError = assertContentSize(request, BODY_SIZE_LIMITS.COLLECT);
+  if (sizeError) return sizeError;
+
   const {
     env,
     ctx,

@@ -255,6 +255,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     : null;
 
   if (pathname === "/admin/ws") {
+    // WebSocket 认证在 Worker 层 (cf-worker.js) 处理，此处直接放行
     return NextResponse.next();
   }
 

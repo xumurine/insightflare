@@ -89,12 +89,34 @@ export function errorResponse(
   extraHeaders?: Record<string, string>,
 ): Response {
   const requestId = getRequestId(req);
+  const isProduction = process.env.NODE_ENV === "production";
+
+  // 生产环境下，服务端错误不返回详细信息
+  const clientMessage =
+    isProduction && status >= 500 ? "An internal error occurred" : message;
+
+  // 服务端日志记录详细错误
+  if (status >= 500) {
+    console.error(
+      JSON.stringify({
+        event: "api_error",
+        requestId,
+        status,
+        code,
+        message,
+        url: req?.url,
+        method: req?.method,
+        timestamp: new Date().toISOString(),
+      }),
+    );
+  }
+
   return new Response(
     JSON.stringify({
       ok: false,
       requestId,
       timestamp: new Date().toISOString(),
-      error: { code, message },
+      error: { code, message: clientMessage },
     }),
     {
       status,

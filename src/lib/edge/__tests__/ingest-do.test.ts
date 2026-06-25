@@ -686,15 +686,32 @@ describe("IngestDurableObject", () => {
     );
     expect(badWsUpgrade.status).toBe(426);
 
-    const badWsToken = await ctx.object.fetch({
-      url: "https://ingest.internal/ws?token=wrong",
-      method: "GET",
-      headers: {
-        get: (name: string) =>
-          name.toLowerCase() === "upgrade" ? "websocket" : null,
-      },
-    } as unknown as Request);
-    expect(badWsToken.status).toBe(401);
+    // WebSocket upgrade requires WebSocketPair to be defined
+    const client = new FakeWebSocket();
+    const server = new FakeWebSocket();
+    class TestWebSocketPair {
+      constructor() {
+        return [client, server];
+      }
+    }
+    const RealResponse = globalThis.Response;
+    vi.stubGlobal("WebSocketPair", TestWebSocketPair);
+    vi.stubGlobal("Response", FakeUpgradeResponse);
+
+    try {
+      const wsUpgrade = await ctx.object.fetch({
+        url: "https://ingest.internal/ws?token=wrong",
+        method: "GET",
+        headers: {
+          get: (name: string) =>
+            name.toLowerCase() === "upgrade" ? "websocket" : null,
+        },
+      } as unknown as Request);
+      // Token is no longer validated, so this should succeed with 101
+      expect(wsUpgrade.status).toBe(101);
+    } finally {
+      vi.stubGlobal("Response", RealResponse);
+    }
   });
 
   it("uses snapshot defaults and accepts authenticated websocket upgrades", async () => {
