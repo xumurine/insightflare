@@ -1,6 +1,7 @@
 import { DEFAULT_SITE_SCRIPT_SETTINGS } from "@/lib/site-settings";
 
-import { parseWindow } from "./query/core";
+import { parseFilters, parseWindow } from "./query/core";
+import { normalizeFunnelSteps, queryFunnelAnalysis } from "./query/funnels";
 import { routeQuery } from "./query/router";
 import { handleTeamDashboardForTeam } from "./query/team";
 import {
@@ -340,6 +341,169 @@ async function handleTeamDashboard(
   );
 }
 
+async function handleAnalyzeFunnel(
+  request: Request,
+  env: Env,
+  url: URL,
+  principal: ApiKeyPrincipal,
+  siteId: string,
+): Promise<Response> {
+  if (request.method !== "POST") return na(request);
+  const denied = requireApiScope(principal, "analytics:read");
+  if (denied) return denied;
+  const site = await siteById(env, principal, siteId);
+  if (site instanceof Response) return site;
+
+  const body = await parseJson(request);
+  const steps = normalizeFunnelSteps(body.steps);
+  if (steps.length < 2)
+    return bad("At least 2 steps are required", undefined, request);
+
+  const window = parseWindow(url);
+  if (!window) return bad("Invalid time window", undefined, request);
+  const filters = parseFilters(url);
+  const analysis = await queryFunnelAnalysis(
+    env,
+    siteId,
+    window,
+    filters,
+    steps,
+  );
+  return jsonResponseFor(request, { ok: true, data: analysis });
+}
+
+async function handleBatchAnalytics(
+  request: Request,
+  env: Env,
+  url: URL,
+  principal: ApiKeyPrincipal,
+  siteId: string,
+): Promise<Response> {
+  if (request.method !== "POST") return na(request);
+  const denied = requireApiScope(principal, "analytics:read");
+  if (denied) return denied;
+  const site = await siteById(env, principal, siteId);
+  if (site instanceof Response) return site;
+
+  const body = await parseJson(request);
+  const queries = Array.isArray(body.queries) ? body.queries : [];
+  if (queries.length === 0)
+    return bad("queries array is required", undefined, request);
+  if (queries.length > 10)
+    return bad("Maximum 10 queries per batch", undefined, request);
+
+  const buildQueryUrl = (
+    queryName: string,
+    overrides: Record<string, unknown>,
+  ): URL => {
+    const queryUrl = new URL(
+      `${url.protocol}//${url.host}/api/v1/sites/${encodeURIComponent(siteId)}/analytics/${encodeURIComponent(queryName)}`,
+    );
+    const baseKeys = ["from", "to", "interval", "timeZone", "tz"];
+    for (const key of baseKeys) {
+      const val = url.searchParams.get(key);
+      if (val !== null) queryUrl.searchParams.set(key, val);
+    }
+    for (const [k, v] of Object.entries(overrides)) {
+      if (k === "queryName") continue;
+      if (v !== undefined && v !== null)
+        queryUrl.searchParams.set(k, String(v));
+    }
+    return queryUrl;
+  };
+
+  const results = await Promise.all(
+    queries.map(async (q: Record<string, unknown>) => {
+      const queryName = String(q.queryName ?? "");
+      if (!queryName)
+        return {
+          queryName,
+          ok: false,
+          error: {
+            code: "missing_query_name",
+            message: "queryName is required",
+          },
+        };
+      try {
+        const queryUrl = buildQueryUrl(queryName, q);
+        const resp = await routeQuery(env, siteId, queryName, queryUrl, {
+          publicMode: false,
+        });
+        const payload = (await resp.json()) as Record<string, unknown>;
+        const { requestId: _rid, timestamp: _ts, ...rest } = payload;
+        return rest;
+      } catch (e) {
+        return {
+          queryName,
+          ok: false,
+          error: {
+            code: "query_error",
+            message: e instanceof Error ? e.message : "Unknown error",
+          },
+        };
+      }
+    }),
+  );
+
+  return jsonResponseFor(request, { ok: true, data: { results } });
+}
+
+async function handleRealtimeSnapshot(
+  request: Request,
+  env: Env,
+  url: URL,
+  principal: ApiKeyPrincipal,
+  siteId: string,
+): Promise<Response> {
+  if (request.method !== "GET") return na(request);
+  const denied = requireApiScope(principal, "analytics:read");
+  if (denied) return denied;
+  const site = await siteById(env, principal, siteId);
+  if (site instanceof Response) return site;
+
+  const stubId = env.INGEST_DO.idFromName(siteId);
+  const stub = env.INGEST_DO.get(stubId);
+  const doUrl = `https://ingest.internal/snapshot?${url.searchParams.toString()}`;
+  const doResp = await stub.fetch(doUrl, { method: "GET" });
+  const doData = (await doResp.json()) as {
+    activeNow?: number;
+    data?: unknown[];
+  };
+
+  return jsonResponseFor(request, {
+    ok: true,
+    data: {
+      activeNow: doData.activeNow ?? 0,
+      events: doData.data ?? [],
+    },
+  });
+}
+
+async function handleRealtimeActive(
+  request: Request,
+  env: Env,
+  principal: ApiKeyPrincipal,
+  siteId: string,
+): Promise<Response> {
+  if (request.method !== "GET") return na(request);
+  const denied = requireApiScope(principal, "analytics:read");
+  if (denied) return denied;
+  const site = await siteById(env, principal, siteId);
+  if (site instanceof Response) return site;
+
+  const stubId = env.INGEST_DO.idFromName(siteId);
+  const stub = env.INGEST_DO.get(stubId);
+  const doResp = await stub.fetch("https://ingest.internal/active", {
+    method: "GET",
+  });
+  const doData = (await doResp.json()) as { activeNow?: number };
+
+  return jsonResponseFor(request, {
+    ok: true,
+    data: { activeNow: doData.activeNow ?? 0 },
+  });
+}
+
 export async function handleApiV1(
   request: Request,
   env: Env,
@@ -373,6 +537,23 @@ export async function handleApiV1(
   }
   if (path.length === 4 && path[2] === "analytics") {
     return handleAnalytics(request, env, url, principal, siteId, path[3]);
+  }
+  if (
+    path.length === 5 &&
+    path[2] === "analytics" &&
+    path[3] === "funnels" &&
+    path[4] === "analyze"
+  ) {
+    return handleAnalyzeFunnel(request, env, url, principal, siteId);
+  }
+  if (path.length === 4 && path[2] === "analytics" && path[3] === "batch") {
+    return handleBatchAnalytics(request, env, url, principal, siteId);
+  }
+  if (path.length === 4 && path[2] === "realtime" && path[3] === "snapshot") {
+    return handleRealtimeSnapshot(request, env, url, principal, siteId);
+  }
+  if (path.length === 4 && path[2] === "realtime" && path[3] === "active") {
+    return handleRealtimeActive(request, env, principal, siteId);
   }
 
   return nf(undefined, undefined, request);

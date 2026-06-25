@@ -359,7 +359,7 @@ export function analyzeFunnelEvents(
   };
 }
 
-async function queryFunnelAnalysis(
+export async function queryFunnelAnalysis(
   env: Env,
   siteId: string,
   window: QueryWindow,

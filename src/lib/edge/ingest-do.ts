@@ -12,6 +12,7 @@ import {
   updateOpenVisitActivity as updateOpenVisitActivityInBufferStore,
 } from "./ingest-buffer-store";
 import {
+  ACTIVE_NOW_WINDOW_MS,
   D1_FLUSH_INTERVAL_MS,
   HIDDEN_LEAVE_GRACE_MS,
   WS_PRESENCE_LEAVE_EVENT,
@@ -90,6 +91,10 @@ export class IngestDurableObject extends DurableObject {
 
     if (url.pathname === "/snapshot" && request.method === "GET") {
       return this.handleSnapshot(url);
+    }
+
+    if (url.pathname === "/active" && request.method === "GET") {
+      return this.handleActive();
     }
 
     if (url.pathname === "/diagnostic" && request.method === "GET") {
@@ -245,10 +250,22 @@ export class IngestDurableObject extends DurableObject {
 
   private async handleSnapshot(url: URL): Promise<Response> {
     const { fromMs, toMs, limit } = snapshotQueryParams(url);
+    const cutoffMs = Date.now() - ACTIVE_NOW_WINDOW_MS;
+    const activeNow =
+      this.sqlOne<{ count: number }>(
+        `
+        SELECT count(DISTINCT visitor_id) AS count
+        FROM buffered_visits
+        WHERE status = 'open'
+          AND last_activity_at >= ?
+      `,
+        cutoffMs,
+      )?.count ?? 0;
 
     return jsonResponse({
       ok: true,
       buffered: 0,
+      activeNow,
       data: readRecentRealtimeEvents(
         { sqlAll: this.sqlAll.bind(this) },
         fromMs,
@@ -256,6 +273,22 @@ export class IngestDurableObject extends DurableObject {
         limit,
       ),
     });
+  }
+
+  private async handleActive(): Promise<Response> {
+    const cutoffMs = Date.now() - ACTIVE_NOW_WINDOW_MS;
+    const activeNow =
+      this.sqlOne<{ count: number }>(
+        `
+        SELECT count(DISTINCT visitor_id) AS count
+        FROM buffered_visits
+        WHERE status = 'open'
+          AND last_activity_at >= ?
+      `,
+        cutoffMs,
+      )?.count ?? 0;
+
+    return jsonResponse({ ok: true, activeNow });
   }
 
   private async handleDiagnostic(): Promise<Response> {

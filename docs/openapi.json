@@ -40,6 +40,10 @@
     {
       "name": "Analytics",
       "description": "Query analytics data and team dashboards"
+    },
+    {
+      "name": "Realtime",
+      "description": "Real-time visitor activity and active visitor counts"
     }
   ],
   "paths": {
@@ -1898,6 +1902,523 @@
         }
       }
     },
+    "/api/v1/sites/{siteId}/analytics/funnels/analyze": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/siteId"
+        }
+      ],
+      "post": {
+        "operationId": "analyzeFunnel",
+        "summary": "Analyze funnel (ad-hoc)",
+        "description": "Runs a funnel analysis without saving the funnel definition.\nAccepts inline steps in the request body and returns step-by-step\nconversion rates immediately. Unlike the `funnels` queryName endpoint,\nno funnel ID or prior save is required.\n\nThis is useful for exploratory analysis and ad-hoc reporting.\n",
+        "tags": ["Analytics"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["steps"],
+                "properties": {
+                  "steps": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 10,
+                    "items": {
+                      "$ref": "#/components/schemas/FunnelStep"
+                    }
+                  }
+                }
+              },
+              "example": {
+                "steps": [
+                  {
+                    "type": "pageview",
+                    "value": "/pricing"
+                  },
+                  {
+                    "type": "pageview",
+                    "value": "/signup"
+                  },
+                  {
+                    "type": "event",
+                    "value": "signup_complete"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Funnel analysis result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "steps": {
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/components/schemas/FunnelAnalysisStep"
+                              }
+                            },
+                            "summary": {
+                              "$ref": "#/components/schemas/FunnelAnalysisSummary"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "ok": true,
+                  "requestId": "a1111697fbf911e8",
+                  "timestamp": "2026-06-25T12:00:00.000Z",
+                  "data": {
+                    "steps": [
+                      {
+                        "index": 0,
+                        "label": "/pricing",
+                        "type": "pageview",
+                        "sessions": 500,
+                        "visitors": 450,
+                        "conversionRate": 100,
+                        "stepConversionRate": 100,
+                        "dropOffSessions": 0,
+                        "dropOffRate": 0
+                      },
+                      {
+                        "index": 1,
+                        "label": "/signup",
+                        "type": "pageview",
+                        "sessions": 200,
+                        "visitors": 180,
+                        "conversionRate": 40,
+                        "stepConversionRate": 40,
+                        "dropOffSessions": 300,
+                        "dropOffRate": 60
+                      },
+                      {
+                        "index": 2,
+                        "label": "signup_complete",
+                        "type": "event",
+                        "sessions": 80,
+                        "visitors": 75,
+                        "conversionRate": 16,
+                        "stepConversionRate": 40,
+                        "dropOffSessions": 120,
+                        "dropOffRate": 60
+                      }
+                    ],
+                    "summary": {
+                      "totalSessions": 500,
+                      "convertedSessions": 80,
+                      "totalVisitors": 450,
+                      "convertedVisitors": 75,
+                      "overallConversionRate": 16,
+                      "largestDropOffStepIndex": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/sites/{siteId}/analytics/batch": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/siteId"
+        }
+      ],
+      "post": {
+        "operationId": "batchAnalytics",
+        "summary": "Batch analytics queries",
+        "description": "Executes multiple analytics queries in a single request.\nEach query in the batch is independent and runs with the same\ntime window and filters (merged with per-query overrides).\n\nThis reduces round-trips when a client needs multiple query\ntypes for the same site (e.g., overview + trend + pages + referrers\nfor a dashboard).\n\nEach item in the `queries` array specifies a `queryName` and\noptional parameter overrides. The response contains a `results`\narray in the same order.\n",
+        "tags": ["Analytics"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["queries"],
+                "properties": {
+                  "from": {
+                    "type": "integer",
+                    "description": "Default start timestamp (Unix ms) for all queries"
+                  },
+                  "to": {
+                    "type": "integer",
+                    "description": "Default end timestamp (Unix ms) for all queries"
+                  },
+                  "interval": {
+                    "type": "string",
+                    "enum": ["minute", "hour", "day", "week", "month"],
+                    "description": "Default interval for all queries"
+                  },
+                  "timeZone": {
+                    "type": "string",
+                    "description": "Default timezone for all queries"
+                  },
+                  "queries": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 10,
+                    "items": {
+                      "type": "object",
+                      "required": ["queryName"],
+                      "properties": {
+                        "queryName": {
+                          "type": "string",
+                          "description": "Analytics query name"
+                        },
+                        "from": {
+                          "type": "integer",
+                          "description": "Override start timestamp"
+                        },
+                        "to": {
+                          "type": "integer",
+                          "description": "Override end timestamp"
+                        },
+                        "interval": {
+                          "type": "string",
+                          "enum": ["minute", "hour", "day", "week", "month"]
+                        },
+                        "limit": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "example": {
+                "from": 1719273600000,
+                "to": 1719360000000,
+                "interval": "day",
+                "queries": [
+                  {
+                    "queryName": "overview"
+                  },
+                  {
+                    "queryName": "trend"
+                  },
+                  {
+                    "queryName": "pages",
+                    "limit": 10
+                  },
+                  {
+                    "queryName": "referrers",
+                    "limit": 10
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Batch results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "results": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "queryName": {
+                                    "type": "string"
+                                  },
+                                  "ok": {
+                                    "type": "boolean"
+                                  },
+                                  "data": {
+                                    "description": "Query result data (shape varies by queryName)"
+                                  },
+                                  "error": {
+                                    "type": "object",
+                                    "properties": {
+                                      "code": {
+                                        "type": "string"
+                                      },
+                                      "message": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "description": "Present only if this individual query failed"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "ok": true,
+                  "requestId": "a1111697fbf911e8",
+                  "timestamp": "2026-06-25T12:00:00.000Z",
+                  "data": {
+                    "results": [
+                      {
+                        "queryName": "overview",
+                        "ok": true,
+                        "data": {
+                          "views": 1234,
+                          "sessions": 567,
+                          "visitors": 456
+                        }
+                      },
+                      {
+                        "queryName": "trend",
+                        "ok": true,
+                        "data": [
+                          {
+                            "bucket": 1719273600000,
+                            "timestampMs": 1719273600000,
+                            "views": 120,
+                            "visitors": 45
+                          }
+                        ]
+                      },
+                      {
+                        "queryName": "pages",
+                        "ok": true,
+                        "data": [
+                          {
+                            "pathname": "/blog/hello-world",
+                            "views": 320,
+                            "sessions": 280
+                          }
+                        ]
+                      },
+                      {
+                        "queryName": "referrers",
+                        "ok": true,
+                        "data": [
+                          {
+                            "referrer": "google.com",
+                            "views": 450,
+                            "sessions": 380
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/sites/{siteId}/realtime/snapshot": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/siteId"
+        }
+      ],
+      "get": {
+        "operationId": "getRealtimeSnapshot",
+        "summary": "Realtime snapshot",
+        "description": "Returns a snapshot of recent real-time activity for a site.\nIncludes the count of currently active visitors (active in the last 5 minutes)\nand a list of recent events (pageviews, custom events, leave events) from\nthe ingestion buffer.\n\nThis endpoint queries the Durable Object's local SQLite buffer directly,\nso data is available within milliseconds of ingestion — no D1 flush lag.\n\nUse this for polling dashboards. For streaming updates, consider the\nWebSocket endpoint (session auth only).\n",
+        "tags": ["Realtime"],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Start timestamp in Unix milliseconds (default: 30 minutes ago)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "End timestamp in Unix milliseconds (default: now)"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20000
+            },
+            "description": "Maximum number of events to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Realtime snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/RealtimeSnapshotData"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "ok": true,
+                  "requestId": "a1111697fbf911e8",
+                  "timestamp": "2026-06-25T12:00:00.000Z",
+                  "data": {
+                    "activeNow": 42,
+                    "events": [
+                      {
+                        "id": "evt_001",
+                        "eventType": "pageview",
+                        "eventAt": 1719312000000,
+                        "visitId": "v_abc",
+                        "sessionId": "s_def",
+                        "visitorId": "u_xyz",
+                        "pathname": "/blog/hello-world",
+                        "title": "Hello World",
+                        "hostname": "example.com",
+                        "referrerHost": "google.com",
+                        "country": "US",
+                        "region": "California",
+                        "city": "San Francisco",
+                        "browser": "Chrome",
+                        "os": "Windows",
+                        "deviceType": "desktop"
+                      },
+                      {
+                        "id": "evt_002",
+                        "eventType": "custom_event",
+                        "eventAt": 1719312060000,
+                        "visitId": "v_abc",
+                        "visitorId": "u_xyz",
+                        "pathname": "/pricing",
+                        "eventName": "cta_click",
+                        "country": "US",
+                        "browser": "Chrome",
+                        "os": "Windows",
+                        "deviceType": "desktop"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/sites/{siteId}/realtime/active": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/siteId"
+        }
+      ],
+      "get": {
+        "operationId": "getRealtimeActiveVisitors",
+        "summary": "Active visitor count",
+        "description": "Returns the number of visitors currently active on the site\n(active within the last 5 minutes). This is a lightweight endpoint\nsuitable for frequent polling or embedding in status dashboards.\n\nThe count is sourced from the Durable Object's ingestion buffer\nfor maximum freshness.\n",
+        "tags": ["Realtime"],
+        "responses": {
+          "200": {
+            "description": "Active visitor count",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "required": ["activeNow"],
+                          "properties": {
+                            "activeNow": {
+                              "type": "integer",
+                              "description": "Number of distinct visitors active in the last 5 minutes"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "ok": true,
+                  "requestId": "a1111697fbf911e8",
+                  "timestamp": "2026-06-25T12:00:00.000Z",
+                  "data": {
+                    "activeNow": 42
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/api/v1/team/dashboard": {
       "get": {
         "operationId": "getTeamDashboard",
@@ -2448,6 +2969,115 @@
                 }
               }
             }
+          }
+        }
+      },
+      "RealtimeSnapshotData": {
+        "type": "object",
+        "description": "Realtime snapshot containing active visitor count and recent events",
+        "properties": {
+          "activeNow": {
+            "type": "integer",
+            "description": "Number of distinct visitors active in the last 5 minutes"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RealtimeEvent"
+            }
+          }
+        }
+      },
+      "RealtimeEvent": {
+        "type": "object",
+        "description": "A single real-time event from the ingestion buffer",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "eventType": {
+            "type": "string",
+            "enum": ["pageview", "custom_event", "leave"]
+          },
+          "eventAt": {
+            "type": "integer",
+            "description": "Event timestamp (Unix ms)"
+          },
+          "visitId": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "visitorId": {
+            "type": "string"
+          },
+          "pathname": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "referrerUrl": {
+            "type": "string"
+          },
+          "referrerHost": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "regionCode": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "continent": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "organization": {
+            "type": "string"
+          },
+          "browser": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string"
+          },
+          "osVersion": {
+            "type": "string"
+          },
+          "deviceType": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "screenSize": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "eventName": {
+            "type": "string",
+            "description": "Present only for custom_event type"
           }
         }
       },
