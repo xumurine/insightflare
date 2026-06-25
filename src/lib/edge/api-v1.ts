@@ -1,19 +1,18 @@
 import { DEFAULT_SITE_SCRIPT_SETTINGS } from "@/lib/site-settings";
+import { parseAndValidateBody, validateBody } from "@/lib/validate";
+import { BatchInputSchema } from "@/schemas/analytics";
+import {
+  FunnelAnalyzeInputSchema,
+  FunnelCreateInputSchema,
+} from "@/schemas/funnel";
+import { SiteCreateInputSchema, SiteUpdateInputSchema } from "@/schemas/site";
+import { SiteConfigUpdateInputSchema } from "@/schemas/site-config";
 
 import { parseFilters, parseWindow } from "./query/core";
-import { normalizeFunnelSteps, queryFunnelAnalysis } from "./query/funnels";
+import { queryFunnelAnalysis } from "./query/funnels";
 import { routeQuery } from "./query/router";
 import { handleTeamDashboardForTeam } from "./query/team";
-import {
-  bad,
-  bool,
-  forb,
-  j,
-  jsonResponseFor,
-  na,
-  nf,
-  parseJson,
-} from "./admin-response";
+import { bad, forb, j, jsonResponseFor, na, nf } from "./admin-response";
 import { deleteSiteData } from "./admin-sites";
 import {
   type ApiKeyPrincipal,
@@ -27,7 +26,6 @@ import {
   upsertSiteScriptSettings,
 } from "./site-settings-store";
 import type { Env } from "./types";
-import { clampString } from "./utils";
 
 interface ApiV1SiteRow {
   id: string;
@@ -146,13 +144,9 @@ async function handleSitesCollection(
         request,
       );
     }
-    const body = await parseJson(request);
-    const name = clampString(String(body.name || ""), 120);
-    const domain = clampString(String(body.domain || ""), 255);
-    const publicEnabled = bool(body.publicEnabled, false);
-    const publicSlug = clampString(String(body.publicSlug || ""), 120);
-    if (!name || !domain)
-      return bad("name and domain are required", undefined, request);
+    const parsed = await parseAndValidateBody(request, SiteCreateInputSchema);
+    if (!parsed.ok) return parsed.response;
+    const { name, domain, publicEnabled, publicSlug } = parsed.data;
     const siteId = crypto.randomUUID();
     await env.DB.prepare(
       "INSERT INTO sites (id,team_id,name,domain,public_enabled,public_slug,created_at,updated_at) VALUES (?,?,?,?,?,?,unixepoch(),unixepoch())",
@@ -199,19 +193,13 @@ async function handleSiteResource(
     if (denied) return denied;
     const existing = await siteById(env, principal, siteId);
     if (existing instanceof Response) return existing;
-    const body = await parseJson(request);
-    const name = clampString(String(body.name ?? existing.name), 120);
-    const domain = clampString(String(body.domain ?? existing.domain), 255);
-    const publicEnabled = bool(
-      body.publicEnabled,
-      existing.publicEnabled === 1,
-    );
-    const publicSlug = clampString(
-      String(body.publicSlug ?? existing.publicSlug ?? ""),
-      120,
-    );
-    if (!name || !domain)
-      return bad("name and domain are required", undefined, request);
+    const parsed = await parseAndValidateBody(request, SiteUpdateInputSchema);
+    if (!parsed.ok) return parsed.response;
+    const name = parsed.data.name ?? existing.name;
+    const domain = parsed.data.domain ?? existing.domain;
+    const publicEnabled =
+      parsed.data.publicEnabled ?? existing.publicEnabled === 1;
+    const publicSlug = parsed.data.publicSlug ?? existing.publicSlug ?? "";
     await env.DB.prepare(
       "UPDATE sites SET name=?,domain=?,public_enabled=?,public_slug=?,updated_at=unixepoch() WHERE id=? AND team_id=?",
     )
@@ -268,11 +256,23 @@ async function handleSiteConfig(
   if (request.method === "PATCH") {
     const denied = requireApiScope(principal, "site_config:write");
     if (denied) return denied;
-    const body = await parseJson(request);
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      return bad("Invalid JSON body");
+    }
+    const rawConfig =
+      rawBody &&
+      typeof rawBody === "object" &&
+      "config" in (rawBody as Record<string, unknown>)
+        ? (rawBody as Record<string, unknown>).config
+        : rawBody;
+    const parsed = validateBody(rawConfig, SiteConfigUpdateInputSchema);
+    if (!parsed.ok) return parsed.response;
     const config = await upsertSiteScriptSettings(env, siteId, {
       siteDomain: existing.domain,
-      settings:
-        body.config && typeof body.config === "object" ? body.config : body,
+      settings: parsed.data,
     });
     return jsonResponseFor(request, { ok: true, data: config });
   }
@@ -354,10 +354,9 @@ async function handleAnalyzeFunnel(
   const site = await siteById(env, principal, siteId);
   if (site instanceof Response) return site;
 
-  const body = await parseJson(request);
-  const steps = normalizeFunnelSteps(body.steps);
-  if (steps.length < 2)
-    return bad("At least 2 steps are required", undefined, request);
+  const parsed = await parseAndValidateBody(request, FunnelAnalyzeInputSchema);
+  if (!parsed.ok) return parsed.response;
+  const steps = parsed.data.steps;
 
   const window = parseWindow(url);
   if (!window) return bad("Invalid time window", undefined, request);
@@ -385,12 +384,9 @@ async function handleBatchAnalytics(
   const site = await siteById(env, principal, siteId);
   if (site instanceof Response) return site;
 
-  const body = await parseJson(request);
-  const queries = Array.isArray(body.queries) ? body.queries : [];
-  if (queries.length === 0)
-    return bad("queries array is required", undefined, request);
-  if (queries.length > 10)
-    return bad("Maximum 10 queries per batch", undefined, request);
+  const parsed = await parseAndValidateBody(request, BatchInputSchema);
+  if (!parsed.ok) return parsed.response;
+  const queries = parsed.data.queries;
 
   const buildQueryUrl = (
     queryName: string,
@@ -413,17 +409,8 @@ async function handleBatchAnalytics(
   };
 
   const results = await Promise.all(
-    queries.map(async (q: Record<string, unknown>) => {
-      const queryName = String(q.queryName ?? "");
-      if (!queryName)
-        return {
-          queryName,
-          ok: false,
-          error: {
-            code: "missing_query_name",
-            message: "queryName is required",
-          },
-        };
+    queries.map(async (q) => {
+      const queryName = q.queryName;
       try {
         const queryUrl = buildQueryUrl(queryName, q);
         const resp = await routeQuery(env, siteId, queryName, queryUrl, {
