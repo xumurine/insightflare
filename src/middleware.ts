@@ -9,7 +9,8 @@ import {
   SUPPORTED_LOCALES,
 } from "@/lib/i18n/config";
 import { isValidLocale } from "@/lib/i18n/config";
-import { configuredSessionSecret, verifySessionToken } from "@/lib/session";
+import { dashboardSessionSecret } from "@/lib/secrets";
+import { hasConfiguredSessionSecret, verifySessionToken } from "@/lib/session";
 
 type AuthState = "authenticated" | "unauthenticated" | "unknown";
 
@@ -22,19 +23,21 @@ interface RedirectProfile {
 }
 
 async function resolveSessionSecretForMiddleware(): Promise<string | null> {
-  const fromProcess = configuredSessionSecret();
-  if (fromProcess) return fromProcess;
+  if (hasConfiguredSessionSecret()) {
+    const fromProcess = await dashboardSessionSecret({
+      MAIN_SECRET: process.env.MAIN_SECRET,
+      DAILY_SALT_SECRET: process.env.DAILY_SALT_SECRET,
+      DASHBOARD_SESSION_SECRET: process.env.DASHBOARD_SESSION_SECRET,
+      SESSION_SECRET: process.env.SESSION_SECRET,
+    });
+    if (fromProcess) return fromProcess;
+  }
 
   try {
     const { getCloudflareContext } = await import("@opennextjs/cloudflare");
     const context = await getCloudflareContext({ async: true });
     const env = context.env as Record<string, unknown>;
-    const fromCloudflare = String(
-      env.DASHBOARD_SESSION_SECRET || env.SESSION_SECRET || "",
-    );
-    if (fromCloudflare.length > 0) {
-      return fromCloudflare;
-    }
+    return dashboardSessionSecret(env);
   } catch {
     // No Cloudflare runtime context available.
   }

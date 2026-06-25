@@ -1,5 +1,7 @@
 import { UAParser } from "ua-parser-js";
 
+import { visitorDailySaltSecret } from "@/lib/secrets";
+
 import { mergeUaClientHintsIntoHeaders } from "./client-hints";
 import { expandCustomEventData } from "./custom-event-json";
 import { logDoTrace } from "./ingest-log";
@@ -37,7 +39,10 @@ import {
 } from "./utils";
 
 interface NormalizeRecordContext {
-  env: Pick<Env, "DAILY_SALT_SECRET" | "SESSION_WINDOW_MINUTES">;
+  env: Pick<
+    Env,
+    "MAIN_SECRET" | "DAILY_SALT_SECRET" | "SESSION_WINDOW_MINUTES"
+  >;
   getVisitContext(
     siteId: string,
     visitId: string,
@@ -92,6 +97,10 @@ export async function normalizeIngestRecord(
   const nowMs = Date.now();
   const receivedAt = clampTimestamp(envelope.request.receivedAt, nowMs);
   const eventAt = resolveTrustedClientTimestamp(client.timestamp, receivedAt);
+  const visitorSecret =
+    (await visitorDailySaltSecret(context.env)) ||
+    context.env.DAILY_SALT_SECRET ||
+    "insightflare-visitor-secret-change-me";
   const startedAt = Math.min(
     resolveTrustedClientTimestamp(client.startedAt, receivedAt, eventAt),
     eventAt,
@@ -125,7 +134,7 @@ export async function normalizeIngestRecord(
       ip,
       ua: uaRaw,
       eventAtMs: eventAt,
-      secret: context.env.DAILY_SALT_SECRET,
+      secret: visitorSecret,
     });
   }
 
@@ -190,7 +199,7 @@ export async function normalizeIngestRecord(
         visitorId,
         visitId,
         startedAt,
-        secret: context.env.DAILY_SALT_SECRET,
+        secret: visitorSecret,
       }));
     const queryString = clampString(coerceString(client.query || ""), 2048);
     return {

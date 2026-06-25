@@ -33,6 +33,8 @@ describe("Session Authentication (Web Crypto HMAC)", () => {
 
   afterEach(() => {
     delete process.env.SESSION_SECRET;
+    delete process.env.MAIN_SECRET;
+    delete process.env.DAILY_SALT_SECRET;
   });
 
   it("should successfully create and verify a valid session token", async () => {
@@ -160,6 +162,8 @@ describe("Session Authentication (Web Crypto HMAC)", () => {
     // Delete session secret environment variables
     delete process.env.SESSION_SECRET;
     delete process.env.DASHBOARD_SESSION_SECRET;
+    delete process.env.MAIN_SECRET;
+    delete process.env.DAILY_SALT_SECRET;
 
     // Secret should fallback to "insightflare-session-secret-change-me"
     const userClaims = { ...mockClaims, systemRole: "user" as const };

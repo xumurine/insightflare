@@ -28,15 +28,14 @@ Just click the button below:
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2FRavelloH%2FInsightFlare)
 
-Cloudflare will automatically clone this repository and create and bind the required resources. You need to fill in the following three variables:
+Cloudflare will automatically clone this repository and create and bind the required resources. You need to fill in the following two secrets:
 
-| Name                       | Purpose                                |
-| -------------------------- | -------------------------------------- |
-| `DAILY_SALT_SECRET`        | Daily visitor identifier salt          |
-| `DASHBOARD_SESSION_SECRET` | Dashboard login session signing secret |
-| `BOOTSTRAP_ADMIN_PASSWORD` | Initial administrator password         |
+| Name                       | Purpose                                                                       |
+| -------------------------- | -----------------------------------------------------------------------       |
+| `MAIN_SECRET`              | Root secret used to derive visitor salts, session keys, and API key hash keys |
+| `BOOTSTRAP_ADMIN_PASSWORD` | Initial administrator password                                                |
 
-The first two secrets are used for security-related features and must be random strings longer than 16 characters. You can generate one at [https://random.ravelloh.com/str/32](https://random.ravelloh.com/str/32). Refresh the page to get a new random string.
+`MAIN_SECRET` is used for security-related features and must be a random string longer than 16 characters. You can generate one at [https://random.ravelloh.com/str/32](https://random.ravelloh.com/str/32). Refresh the page to get a new random string.
 
 `BOOTSTRAP_ADMIN_PASSWORD` is the default administrator password. Sign in to the dashboard with the `admin` account and this password. You can change the username and password later on the personal settings page.
 
@@ -316,9 +315,10 @@ Set `NEXT_PUBLIC_DEMO_MODE=1` to make the development server automatically enabl
 | `SCRIPT_CACHE_TTL_SECONDS`          | CDN cache TTL for `/script.js`           |
 | `PARQUET_WASM_URL`                  | Parquet wasm download URL                |
 | `INSIGHTFLARE_EDGE_URL`             | InsightFlare service base URL            |
-| `DAILY_SALT_SECRET` (Secret)        | Daily visitor identifier salt            |
-| `DASHBOARD_SESSION_SECRET` (Secret) | Dashboard session signing secret         |
+| `MAIN_SECRET` (Secret)              | Root secret for derived security keys    |
 | `BOOTSTRAP_ADMIN_PASSWORD` (Secret) | Initial administrator password           |
+| `DAILY_SALT_SECRET` (Secret)        | Legacy fallback for `MAIN_SECRET`        |
+| `DASHBOARD_SESSION_SECRET` (Secret) | Optional session signing override        |
 
 ---
 

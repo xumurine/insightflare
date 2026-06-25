@@ -25,7 +25,7 @@ describe("api key store utilities", () => {
   });
 
   it("hashes API keys with HMAC and compares strings safely", async () => {
-    const env = { API_KEY_HASH_SECRET: "api-key-secret" } as Env;
+    const env = { MAIN_SECRET: "api-key-secret" } as Env;
     const left = await hashApiKeySecret(env, "ifk_live_prefix.secret");
     const right = await hashApiKeySecret(env, "ifk_live_prefix.secret");
     const other = await hashApiKeySecret(env, "ifk_live_prefix.other");

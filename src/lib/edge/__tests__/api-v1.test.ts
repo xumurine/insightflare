@@ -25,7 +25,7 @@ interface Match {
 
 function createEnv(matches: Match[]) {
   const env = {
-    API_KEY_HASH_SECRET: "api-secret",
+    MAIN_SECRET: "api-secret",
     DB: {
       prepare(sql: string) {
         const statement: MockStatement = {
@@ -72,7 +72,7 @@ async function keyRow(
   overrides: Partial<ApiKeyRow> = {},
 ): Promise<{ apiKey: string; row: ApiKeyRow }> {
   const generated = generateApiKeySecret();
-  const env = { API_KEY_HASH_SECRET: "api-secret" } as Env;
+  const env = { MAIN_SECRET: "api-secret" } as Env;
   return {
     apiKey: generated.apiKey,
     row: {

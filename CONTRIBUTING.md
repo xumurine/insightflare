@@ -19,6 +19,8 @@ For local Cloudflare-related development, copy the example environment file and 
 cp .dev.vars.example .dev.vars
 ```
 
+At minimum, local secret-backed flows need `MAIN_SECRET` and `BOOTSTRAP_ADMIN_PASSWORD`. Legacy `DAILY_SALT_SECRET` and `DASHBOARD_SESSION_SECRET` are still supported for migration tests, but new development should prefer `MAIN_SECRET`.
+
 ## Quality Checks
 
 Before opening a pull request, run:

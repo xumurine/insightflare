@@ -1,3 +1,5 @@
+import { apiKeyHashSecret as resolveApiKeyHashSecret } from "@/lib/secrets";
+
 import type { Env } from "./types";
 import { clampString, nowEpochSeconds } from "./utils";
 
@@ -60,12 +62,10 @@ const API_KEY_SECRET_BYTES = 32;
 const API_KEY_PREFIX_BYTES = 9;
 const DEFAULT_SCOPE_SET = new Set<ApiKeyScope>(API_KEY_SCOPES);
 
-function apiKeyHashSecret(env: Env): string {
-  return String(
-    env.API_KEY_HASH_SECRET ||
-      env.DASHBOARD_SESSION_SECRET ||
-      env.SESSION_SECRET ||
-      "insightflare-api-key-secret-change-me",
+async function apiKeyHashSecret(env: Env): Promise<string> {
+  return (
+    (await resolveApiKeyHashSecret(env)) ||
+    "insightflare-api-key-secret-change-me"
   );
 }
 
@@ -134,7 +134,7 @@ export async function hashApiKeySecret(
   env: Env,
   apiKey: string,
 ): Promise<string> {
-  return hmacSha256Hex(apiKey, apiKeyHashSecret(env));
+  return hmacSha256Hex(apiKey, await apiKeyHashSecret(env));
 }
 
 export function generateApiKeySecret(): {

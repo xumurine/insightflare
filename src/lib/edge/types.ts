@@ -2,13 +2,13 @@ export interface Env {
   DB: D1Database;
   INGEST_DO: DurableObjectNamespace;
   ARCHIVE_BUCKET?: R2Bucket;
-  DAILY_SALT_SECRET: string;
+  MAIN_SECRET?: string;
+  DAILY_SALT_SECRET?: string;
   NEXT_PUBLIC_DEMO_MODE?: string;
   DISABLE_CRON_TASKS?: string;
   ADMIN_WS_TOKEN?: string;
   DASHBOARD_SESSION_SECRET?: string;
   SESSION_SECRET?: string;
-  API_KEY_HASH_SECRET?: string;
   EDGE_PUBLIC_BASE_URL?: string;
   PARQUET_WASM_URL?: string;
   BOOTSTRAP_ADMIN_USERNAME?: string;

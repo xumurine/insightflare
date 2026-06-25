@@ -1,3 +1,5 @@
+import { dashboardSessionSecret } from "@/lib/secrets";
+
 import type { Env } from "./types";
 
 export type EdgeSystemRole = "admin" | "user";
@@ -10,11 +12,10 @@ export interface EdgeSessionClaims {
   exp: number;
 }
 
-function sessionSecret(env: Env): string {
-  return String(
-    env.DASHBOARD_SESSION_SECRET ||
-      env.SESSION_SECRET ||
-      "insightflare-session-secret-change-me",
+async function sessionSecret(env: Env): Promise<string> {
+  return (
+    (await dashboardSessionSecret(env)) ||
+    "insightflare-session-secret-change-me"
   );
 }
 
@@ -97,7 +98,7 @@ export async function verifySessionToken(
   const [payloadPart, signaturePart] = token.split(".");
   if (!payloadPart || !signaturePart) return null;
 
-  const expectedSig = await hmacSha256(payloadPart, sessionSecret(env));
+  const expectedSig = await hmacSha256(payloadPart, await sessionSecret(env));
   let actualSig: Uint8Array;
   try {
     actualSig = base64UrlDecode(signaturePart);

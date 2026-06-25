@@ -10,6 +10,7 @@ import type {
   TrackerClientPayload,
 } from "@/lib/edge/types";
 import { deriveEuVisitorId } from "@/lib/edge/utils";
+import { visitorDailySaltSecret } from "@/lib/secrets";
 
 const receivedAt = 1_700_000_000_000;
 
@@ -134,6 +135,10 @@ function makeContext(
   };
 }
 
+async function expectedVisitorSecret(): Promise<string> {
+  return (await visitorDailySaltSecret({ DAILY_SALT_SECRET: "test-secret" }))!;
+}
+
 describe("normalizeIngestRecord rejection reasons", () => {
   it("rejects records missing required site, visit, hostname, user, or event fields", async () => {
     const { context } = makeContext();
@@ -228,7 +233,7 @@ describe("normalizeIngestRecord pageview records", () => {
       ip: "203.0.113.10",
       ua: envelope.request.headers["user-agent"]!,
       eventAtMs: receivedAt - 1_000,
-      secret: "test-secret",
+      secret: await expectedVisitorSecret(),
     });
 
     const result = await normalizeIngestRecord(envelope, context);
@@ -415,7 +420,7 @@ describe("normalizeIngestRecord pageview records", () => {
       ip: "198.51.100.42",
       ua: "TestAgent/1.0",
       eventAtMs: receivedAt - 1_000,
-      secret: "test-secret",
+      secret: await expectedVisitorSecret(),
     });
 
     const result = await normalizeIngestRecord(envelope, context);
