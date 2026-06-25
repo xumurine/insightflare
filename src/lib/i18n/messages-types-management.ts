@@ -255,6 +255,18 @@ export interface AppManagementMessages {
         siteConfigRead: string;
         siteConfigWrite: string;
       };
+      scopeDescriptions: {
+        analyticsRead: string;
+        siteRead: string;
+        siteWrite: string;
+        siteConfigRead: string;
+        siteConfigWrite: string;
+      };
+      scopeGroups: {
+        analytics: string;
+        site: string;
+        siteConfig: string;
+      };
       columns: {
         name: string;
         scopes: string;

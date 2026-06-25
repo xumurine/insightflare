@@ -31,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -66,13 +67,11 @@ interface ApiKeyCreateResponse {
 
 type ExpirationChoice = "30" | "90" | "180" | "365" | "never";
 
-const API_SCOPES: ApiKeyScope[] = [
-  "analytics:read",
-  "site:read",
-  "site:write",
-  "site_config:read",
-  "site_config:write",
-];
+interface ScopeGroup {
+  key: string;
+  label: string;
+  scopes: ApiKeyScope[];
+}
 
 function scopeLabel(
   copy: AppMessages["teamManagement"]["apiKeys"],
@@ -83,6 +82,40 @@ function scopeLabel(
   if (scope === "site:write") return copy.scopes.siteWrite;
   if (scope === "site_config:read") return copy.scopes.siteConfigRead;
   return copy.scopes.siteConfigWrite;
+}
+
+function scopeDescription(
+  copy: AppMessages["teamManagement"]["apiKeys"],
+  scope: ApiKeyScope,
+) {
+  if (scope === "analytics:read") return copy.scopeDescriptions.analyticsRead;
+  if (scope === "site:read") return copy.scopeDescriptions.siteRead;
+  if (scope === "site:write") return copy.scopeDescriptions.siteWrite;
+  if (scope === "site_config:read")
+    return copy.scopeDescriptions.siteConfigRead;
+  return copy.scopeDescriptions.siteConfigWrite;
+}
+
+function getScopeGroups(
+  copy: AppMessages["teamManagement"]["apiKeys"],
+): ScopeGroup[] {
+  return [
+    {
+      key: "analytics",
+      label: copy.scopeGroups.analytics,
+      scopes: ["analytics:read"],
+    },
+    {
+      key: "site",
+      label: copy.scopeGroups.site,
+      scopes: ["site:read", "site:write"],
+    },
+    {
+      key: "siteConfig",
+      label: copy.scopeGroups.siteConfig,
+      scopes: ["site_config:read", "site_config:write"],
+    },
+  ];
 }
 
 function dateTime(locale: Locale, value: number | null): string {
@@ -452,17 +485,35 @@ export function ApiKeysClient({
             <Field>
               <FieldLabel>{copy.scopesTitle}</FieldLabel>
               <FieldDescription>{copy.scopesDescription}</FieldDescription>
-              <div className="flex flex-wrap gap-2">
-                {API_SCOPES.map((scope) => (
-                  <Button
-                    key={scope}
-                    type="button"
-                    variant={scopes.includes(scope) ? "secondary" : "outline"}
-                    size="sm"
-                    onClick={() => toggleScope(scope)}
-                  >
-                    {scopeLabel(copy, scope)}
-                  </Button>
+              <div className="grid gap-3">
+                {getScopeGroups(copy).map((group) => (
+                  <div key={group.key}>
+                    <div className="mb-1 text-xs font-medium text-muted-foreground">
+                      {group.label}
+                    </div>
+                    <div className="grid gap-1 pl-5">
+                      {group.scopes.map((scope) => (
+                        <label
+                          key={scope}
+                          className="flex items-start gap-2 cursor-pointer py-0.5"
+                        >
+                          <Checkbox
+                            checked={scopes.includes(scope)}
+                            onCheckedChange={() => toggleScope(scope)}
+                            className="mt-0.5"
+                          />
+                          <div className="grid gap-0">
+                            <span className="text-xs">
+                              {scopeLabel(copy, scope)}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {scopeDescription(copy, scope)}
+                            </span>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </Field>
@@ -472,7 +523,7 @@ export function ApiKeysClient({
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
-                  variant={siteIds.length === 0 ? "secondary" : "outline"}
+                  variant={siteIds.length === 0 ? "default" : "outline"}
                   size="sm"
                   onClick={() => setSiteIds([])}
                 >
@@ -482,9 +533,7 @@ export function ApiKeysClient({
                   <Button
                     key={site.id}
                     type="button"
-                    variant={
-                      siteIds.includes(site.id) ? "secondary" : "outline"
-                    }
+                    variant={siteIds.includes(site.id) ? "default" : "outline"}
                     size="sm"
                     onClick={() => toggleSite(site.id)}
                   >

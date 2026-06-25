@@ -920,6 +920,16 @@ teamManagement:
       siteWrite: Site write
       siteConfigRead: Config read
       siteConfigWrite: Config write
+    scopeDescriptions:
+      analyticsRead: View visits, visitors, page views, and other analytics data
+      siteRead: View site list and site details
+      siteWrite: Create, update, or delete sites
+      siteConfigRead: View site settings like tracking code and domain whitelist
+      siteConfigWrite: Modify site settings like tracking strength and path blacklist
+    scopeGroups:
+      analytics: Analytics
+      site: Site
+      siteConfig: Site Configuration
     columns:
       name: Name
       scopes: Permissions
