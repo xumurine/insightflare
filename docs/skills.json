@@ -79,6 +79,44 @@
       "description": "Unique site identifier. Obtain from the list sites endpoint or the dashboard."
     }
   },
+  "common_query_parameters": {
+    "description": "These parameters are available on all analytics query endpoints (queryName-based). They are not repeated per-endpoint for brevity.",
+    "time_window": {
+      "from": "Start timestamp in Unix milliseconds (required).",
+      "to": "End timestamp in Unix milliseconds (required).",
+      "timeZone": "IANA timezone identifier (e.g. America/New_York). Defaults to UTC.",
+      "tz": "Alias for timeZone."
+    },
+    "filter_parameters": {
+      "description": "All analytics queries support these filters. Pass them as query parameters to narrow results.",
+      "filters": {
+        "country": "Filter by country code (ISO 3166-1 alpha-2).",
+        "device": "Filter by device type.",
+        "browser": "Filter by browser name.",
+        "path": "Filter by page path.",
+        "title": "Filter by page title.",
+        "hostname": "Filter by hostname.",
+        "entry": "Filter by entry page.",
+        "exit": "Filter by exit page.",
+        "sourceDomain": "Filter by referrer domain.",
+        "sourceLink": "Filter by full referrer URL.",
+        "query": "Filter by page query string.",
+        "clientBrowser": "Filter by client browser.",
+        "clientOsVersion": "Filter by client OS version.",
+        "clientDeviceType": "Filter by client device type.",
+        "clientLanguage": "Filter by client language.",
+        "clientScreenSize": "Filter by client screen size.",
+        "geo": "Filter by geo dimension (country/region/city code).",
+        "geoCountry": "Alias for geo (country level).",
+        "geoRegion": "Filter by region.",
+        "geoCity": "Filter by city.",
+        "geoContinent": "Filter by continent code.",
+        "geoTimezone": "Filter by IANA timezone.",
+        "geoOrganization": "Filter by organization/ISP.",
+        "eventPayloadFilters": "JSON-encoded array of event payload filter rules. Applied to event data at query time."
+      }
+    }
+  },
   "typical_workflow": [
     "1. Obtain an API key from the user (ask them, or direct them to dashboard → Settings → API Keys).",
     "2. Call GET /api/v1/sites to list available sites and get siteId values.",
@@ -179,6 +217,11 @@
         "parameters": {
           "from": "Unix ms (required)",
           "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "includeChange": "boolean — include previous period comparison and change rates",
+          "includeDetail": "boolean — include time-series trend breakdown",
           "interval": "minute|hour|day|week|month"
         }
       },
@@ -190,6 +233,9 @@
         "parameters": {
           "from": "Unix ms (required)",
           "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
           "interval": "minute|hour|day|week|month"
         }
       }
@@ -201,28 +247,58 @@
         "description": "Get top pages ranked by views.",
         "scope": "analytics:read",
         "parameters": {
-          "from": "Unix ms",
-          "to": "Unix ms",
-          "limit": "integer"
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer",
+          "details": "boolean — include detailed page metrics"
         }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/pages-dashboard",
         "description": "Get pages dashboard data with aggregated page metrics.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "interval": "minute|hour|day|week|month",
+          "page": "integer (1-indexed)",
+          "pageSize": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/page-hash",
         "description": "Get page URL hash fragment distribution.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/page-query",
         "description": "Get page query string distribution.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       }
     ],
     "analytics_sources": [
@@ -232,46 +308,98 @@
         "description": "Get top referrer sources.",
         "scope": "analytics:read",
         "parameters": {
-          "from": "Unix ms",
-          "to": "Unix ms",
-          "limit": "integer"
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer",
+          "fullUrl": "boolean — show full referrer URL instead of just domain"
         }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/utm-source",
         "description": "Get UTM source breakdown.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/utm-medium",
         "description": "Get UTM medium breakdown.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/utm-campaign",
         "description": "Get UTM campaign breakdown.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/utm-term",
         "description": "Get UTM term breakdown.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/utm-content",
         "description": "Get UTM content breakdown.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/countries",
         "description": "Get visitor distribution by country.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       }
     ],
     "analytics_visitors": [
@@ -281,10 +409,16 @@
         "description": "List sessions with pagination.",
         "scope": "analytics:read",
         "parameters": {
-          "from": "Unix ms",
-          "to": "Unix ms",
-          "page": "integer",
-          "pageSize": "integer"
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "page": "integer (1-indexed)",
+          "pageSize": "integer",
+          "sortBy": "string — field to sort by",
+          "sortDir": "asc|desc",
+          "search": "string — search sessions by identifier (alias: q)"
         }
       },
       {
@@ -293,10 +427,7 @@
         "description": "Get detailed information for a single session.",
         "scope": "analytics:read",
         "parameters": {
-          "from": "Unix ms",
-          "to": "Unix ms",
-          "page": "integer",
-          "pageSize": "integer"
+          "sessionId": "UUID (required) — session identifier"
         }
       },
       {
@@ -305,10 +436,16 @@
         "description": "List visitors with pagination.",
         "scope": "analytics:read",
         "parameters": {
-          "from": "Unix ms",
-          "to": "Unix ms",
-          "page": "integer",
-          "pageSize": "integer"
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "page": "integer (1-indexed)",
+          "pageSize": "integer",
+          "sortBy": "string — field to sort by",
+          "sortDir": "asc|desc",
+          "search": "string — search visitors by identifier (alias: q)"
         }
       },
       {
@@ -317,10 +454,9 @@
         "description": "Get detailed information for a single visitor.",
         "scope": "analytics:read",
         "parameters": {
-          "from": "Unix ms",
-          "to": "Unix ms",
-          "page": "integer",
-          "pageSize": "integer"
+          "visitorId": "UUID (required) — visitor identifier",
+          "timeZone": "IANA timezone",
+          "tz": "Alias for timeZone"
         }
       }
     ],
@@ -329,19 +465,44 @@
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/event-types",
         "description": "List all custom event types for a site.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/events-summary",
         "description": "Get custom event summary statistics.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/events-trend",
         "description": "Get custom event time-series trend.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "interval": "minute|hour|day|week|month",
+          "limit": "integer",
+          "eventName": "string — filter by event name"
+        }
       },
       {
         "method": "GET",
@@ -349,29 +510,59 @@
         "description": "List custom event records with pagination.",
         "scope": "analytics:read",
         "parameters": {
-          "from": "Unix ms",
-          "to": "Unix ms",
-          "page": "integer",
-          "pageSize": "integer"
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "page": "integer (1-indexed)",
+          "pageSize": "integer",
+          "sortBy": "string — field to sort by",
+          "sortDir": "asc|desc",
+          "search": "string — search event records (alias: q)",
+          "eventName": "string — filter by event name"
         }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/event-type-field-values",
         "description": "Get distinct field values for a specific event type.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "eventName": "string (required) — event type name",
+          "fieldPath": "string (required) — dot-notation path to the field",
+          "fieldValueType": "string|number|boolean|null|object|array — filter by value type",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/event-type-detail",
         "description": "Get detailed statistics for a specific event type.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "eventName": "string (required) — event type name",
+          "interval": "minute|hour|day|week|month"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/event-record-detail",
         "description": "Get detailed information for a single event record.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "eventId": "UUID (required) — event record identifier"
+        }
       }
     ],
     "analytics_funnels": [
@@ -379,7 +570,15 @@
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/funnels",
         "description": "List saved conversion funnels for a site.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "id": "UUID — funnel ID. If omitted, lists all saved funnels for the site."
+        }
       },
       {
         "method": "POST",
@@ -389,7 +588,10 @@
         "parameters": {
           "from": "Unix ms (required, query param)",
           "to": "Unix ms (required, query param)",
-          "steps": "array of step objects (required, body)"
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "steps": "array of step objects (required, body)",
+          "_filters": "All common filter parameters are supported"
         }
       }
     ],
@@ -398,19 +600,46 @@
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/retention",
         "description": "Get user retention cohort analysis.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "granularity": "minute|hour|day|week|month — cohort granularity (falls back to interval)",
+          "interval": "minute|hour|day|week|month — alias for granularity"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/performance",
         "description": "Get Core Web Vitals metrics (TTFB, FCP, LCP, CLS, INP).",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "interval": "minute|hour|day|week|month",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/filter-options",
         "description": "Get available filter dimension values for a site (used to populate filter UIs).",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "filterKey": "string (required) — which filter dimension to list values for",
+          "limit": "integer"
+        }
       }
     ],
     "analytics_technology": [
@@ -418,61 +647,153 @@
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/browser-trend",
         "description": "Get browser usage trends over time.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "interval": "minute|hour|day|week|month",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/browser-engine-trend",
         "description": "Get browser engine trends.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "interval": "minute|hour|day|week|month",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/browser-version-breakdown",
         "description": "Get browser version distribution.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "browserLimit": "integer — max browsers to return",
+          "versionLimit": "integer — max versions per browser"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/browser-cross-breakdown",
         "description": "Get browser × OS cross-tabulation.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "browserLimit": "integer",
+          "osLimit": "integer",
+          "deviceTypeLimit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/browser-radar",
         "description": "Get browser radar chart data (multi-axis browser comparison).",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/referrer-radar",
         "description": "Get referrer radar chart data (multi-axis referrer comparison).",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/referrer-dimension-trend",
         "description": "Get referrer dimension trends over time.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "interval": "minute|hour|day|week|month",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/client-dimension-trend",
         "description": "Get client dimension (browser/OS/device) trends.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "dimension": "string (required) — which client dimension (e.g. browser, osVersion, deviceType, language, screenSize)",
+          "interval": "minute|hour|day|week|month",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/utm-dimension-trend",
         "description": "Get UTM dimension trends over time.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "dimension": "string (required) — which UTM dimension (e.g. source, medium, campaign, term, content)",
+          "interval": "minute|hour|day|week|month",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/client-cross-breakdown",
         "description": "Get client dimension cross-tabulation breakdown.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "primaryDimension": "string (required) — primary dimension for rows",
+          "secondaryDimension": "string (required) — secondary dimension for columns",
+          "primaryLimit": "integer — max rows",
+          "secondaryLimit": "integer — max columns"
+        }
       }
     ],
     "overview_tabs": [
@@ -480,115 +801,268 @@
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-page-path",
         "description": "Overview tab: top page paths.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-page-title",
         "description": "Overview tab: top page titles.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-page-hostname",
         "description": "Overview tab: top hostnames.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-page-entry",
         "description": "Overview tab: top entry pages.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-page-exit",
         "description": "Overview tab: top exit pages.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-source-domain",
         "description": "Overview tab: top referrer domains.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-source-link",
         "description": "Overview tab: top referrer links.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-client-browser",
         "description": "Overview tab: browser distribution.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-client-os-version",
         "description": "Overview tab: OS version distribution.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-client-device-type",
         "description": "Overview tab: device type distribution.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-client-language",
         "description": "Overview tab: language distribution.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-client-screen-size",
         "description": "Overview tab: screen size distribution.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-geo-country",
         "description": "Overview tab: country distribution.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-geo-region",
         "description": "Overview tab: region distribution.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-geo-city",
         "description": "Overview tab: city distribution.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-geo-continent",
         "description": "Overview tab: continent distribution.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-geo-timezone",
         "description": "Overview tab: timezone distribution.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-geo-organization",
         "description": "Overview tab: organization/ISP distribution.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer"
+        }
       },
       {
         "method": "GET",
         "path": "/api/v1/sites/{siteId}/analytics/overview-geo-points",
         "description": "Overview tab: geographic coordinate points for map rendering.",
-        "scope": "analytics:read"
+        "scope": "analytics:read",
+        "parameters": {
+          "from": "Unix ms (required)",
+          "to": "Unix ms (required)",
+          "timeZone": "IANA timezone (optional)",
+          "tz": "Alias for timeZone",
+          "_filters": "All common filter parameters are supported (see common_query_parameters.filter_parameters)",
+          "limit": "integer",
+          "applyGeoFilter": "boolean — whether to apply geo filters to points"
+        }
       }
     ],
     "realtime": [
@@ -619,9 +1093,9 @@
         "description": "Executes multiple analytics queries in a single request.",
         "scope": "analytics:read",
         "parameters": {
-          "queries": "array of objects, each with a queryName field and optional overrides (from, to, interval, etc.)"
+          "queries": "array of objects, each with a queryName field and optional overrides (from, to, interval, timeZone, and any filter parameter)"
         },
-        "example": "POST /api/v1/sites/{siteId}/analytics/batch {\"queries\": [{\"queryName\": \"overview\", \"from\": 0, \"to\": 1}, {\"queryName\": \"trend\", \"interval\": \"day\"}]}"
+        "example": "POST /api/v1/sites/{siteId}/analytics/batch {\"queries\": [{\"queryName\": \"overview\", \"from\": 0, \"to\": 1, \"includeChange\": true}, {\"queryName\": \"trend\", \"interval\": \"day\"}, {\"queryName\": \"pages\", \"limit\": 5}]}"
       }
     ],
     "team": [

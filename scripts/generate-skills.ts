@@ -89,6 +89,246 @@ const GROUP_ORDER = [
   "team",
 ];
 
+// ── Per-queryName specific parameters ───────────────────────────────────
+
+interface QueryParamSpec {
+  noCommonWindow?: boolean;
+  noCommonFilters?: boolean;
+  params: Record<string, string>;
+}
+
+const QUERY_NAME_PARAMS: Record<string, QueryParamSpec> = {
+  // ── analytics_overview ──
+  overview: {
+    params: {
+      includeChange:
+        "boolean — include previous period comparison and change rates",
+      includeDetail: "boolean — include time-series trend breakdown",
+      interval: "minute|hour|day|week|month",
+    },
+  },
+  trend: {
+    params: {
+      interval: "minute|hour|day|week|month",
+    },
+  },
+
+  // ── analytics_pages ──
+  pages: {
+    params: {
+      limit: "integer",
+      details: "boolean — include detailed page metrics",
+    },
+  },
+  "pages-dashboard": {
+    params: {
+      interval: "minute|hour|day|week|month",
+      page: "integer (1-indexed)",
+      pageSize: "integer",
+    },
+  },
+  "page-hash": { params: { limit: "integer" } },
+  "page-query": { params: { limit: "integer" } },
+
+  // ── analytics_sources ──
+  referrers: {
+    params: {
+      limit: "integer",
+      fullUrl: "boolean — show full referrer URL instead of just domain",
+    },
+  },
+  countries: { params: { limit: "integer" } },
+  "utm-source": { params: { limit: "integer" } },
+  "utm-medium": { params: { limit: "integer" } },
+  "utm-campaign": { params: { limit: "integer" } },
+  "utm-term": { params: { limit: "integer" } },
+  "utm-content": { params: { limit: "integer" } },
+
+  // ── analytics_visitors ──
+  visitors: {
+    params: {
+      page: "integer (1-indexed)",
+      pageSize: "integer",
+      sortBy: "string — field to sort by",
+      sortDir: "asc|desc",
+      search: "string — search visitors by identifier (alias: q)",
+    },
+  },
+  sessions: {
+    params: {
+      page: "integer (1-indexed)",
+      pageSize: "integer",
+      sortBy: "string — field to sort by",
+      sortDir: "asc|desc",
+      search: "string — search sessions by identifier (alias: q)",
+    },
+  },
+  "visitor-detail": {
+    noCommonWindow: true,
+    noCommonFilters: true,
+    params: {
+      visitorId: "UUID (required) — visitor identifier",
+      timeZone: "IANA timezone",
+      tz: "Alias for timeZone",
+    },
+  },
+  "session-detail": {
+    noCommonWindow: true,
+    noCommonFilters: true,
+    params: {
+      sessionId: "UUID (required) — session identifier",
+    },
+  },
+
+  // ── analytics_events ──
+  "event-types": { params: { limit: "integer" } },
+  "events-summary": { params: {} },
+  "events-trend": {
+    params: {
+      interval: "minute|hour|day|week|month",
+      limit: "integer",
+      eventName: "string — filter by event name",
+    },
+  },
+  "events-records": {
+    params: {
+      page: "integer (1-indexed)",
+      pageSize: "integer",
+      sortBy: "string — field to sort by",
+      sortDir: "asc|desc",
+      search: "string — search event records (alias: q)",
+      eventName: "string — filter by event name",
+    },
+  },
+  "event-type-detail": {
+    params: {
+      eventName: "string (required) — event type name",
+      interval: "minute|hour|day|week|month",
+    },
+  },
+  "event-type-field-values": {
+    params: {
+      eventName: "string (required) — event type name",
+      fieldPath: "string (required) — dot-notation path to the field",
+      fieldValueType:
+        "string|number|boolean|null|object|array — filter by value type",
+      limit: "integer",
+    },
+  },
+  "event-record-detail": {
+    noCommonWindow: true,
+    noCommonFilters: true,
+    params: {
+      eventId: "UUID (required) — event record identifier",
+    },
+  },
+
+  // ── analytics_funnels ──
+  funnels: {
+    params: {
+      id: "UUID — funnel ID. If omitted, lists all saved funnels for the site.",
+    },
+  },
+
+  // ── analytics_advanced ──
+  retention: {
+    params: {
+      granularity:
+        "minute|hour|day|week|month — cohort granularity (falls back to interval)",
+      interval: "minute|hour|day|week|month — alias for granularity",
+    },
+  },
+  performance: {
+    params: {
+      interval: "minute|hour|day|week|month",
+      limit: "integer",
+    },
+  },
+  "filter-options": {
+    params: {
+      filterKey:
+        "string (required) — which filter dimension to list values for",
+      limit: "integer",
+    },
+  },
+
+  // ── analytics_technology ──
+  "browser-trend": {
+    params: { interval: "minute|hour|day|week|month", limit: "integer" },
+  },
+  "browser-engine-trend": {
+    params: { interval: "minute|hour|day|week|month", limit: "integer" },
+  },
+  "browser-version-breakdown": {
+    params: {
+      browserLimit: "integer — max browsers to return",
+      versionLimit: "integer — max versions per browser",
+    },
+  },
+  "browser-cross-breakdown": {
+    params: {
+      browserLimit: "integer",
+      osLimit: "integer",
+      deviceTypeLimit: "integer",
+    },
+  },
+  "browser-radar": { params: {} },
+  "referrer-radar": { params: { limit: "integer" } },
+  "referrer-dimension-trend": {
+    params: { interval: "minute|hour|day|week|month", limit: "integer" },
+  },
+  "client-dimension-trend": {
+    params: {
+      dimension:
+        "string (required) — which client dimension (e.g. browser, osVersion, deviceType, language, screenSize)",
+      interval: "minute|hour|day|week|month",
+      limit: "integer",
+    },
+  },
+  "utm-dimension-trend": {
+    params: {
+      dimension:
+        "string (required) — which UTM dimension (e.g. source, medium, campaign, term, content)",
+      interval: "minute|hour|day|week|month",
+      limit: "integer",
+    },
+  },
+  "client-cross-breakdown": {
+    params: {
+      primaryDimension: "string (required) — primary dimension for rows",
+      secondaryDimension: "string (required) — secondary dimension for columns",
+      primaryLimit: "integer — max rows",
+      secondaryLimit: "integer — max columns",
+    },
+  },
+
+  // ── overview_tabs ──
+  "overview-page-path": { params: { limit: "integer" } },
+  "overview-page-title": { params: { limit: "integer" } },
+  "overview-page-hostname": { params: { limit: "integer" } },
+  "overview-page-entry": { params: { limit: "integer" } },
+  "overview-page-exit": { params: { limit: "integer" } },
+  "overview-source-domain": { params: { limit: "integer" } },
+  "overview-source-link": { params: { limit: "integer" } },
+  "overview-client-browser": { params: { limit: "integer" } },
+  "overview-client-os-version": { params: { limit: "integer" } },
+  "overview-client-device-type": { params: { limit: "integer" } },
+  "overview-client-language": { params: { limit: "integer" } },
+  "overview-client-screen-size": { params: { limit: "integer" } },
+  "overview-geo-country": { params: { limit: "integer" } },
+  "overview-geo-region": { params: { limit: "integer" } },
+  "overview-geo-city": { params: { limit: "integer" } },
+  "overview-geo-continent": { params: { limit: "integer" } },
+  "overview-geo-timezone": { params: { limit: "integer" } },
+  "overview-geo-organization": { params: { limit: "integer" } },
+  "overview-geo-points": {
+    params: {
+      limit: "integer",
+      applyGeoFilter: "boolean — whether to apply geo filters to points",
+    },
+  },
+};
+
 // ── Types ───────────────────────────────────────────────────────────────
 
 interface OpenAPISpec {
@@ -145,6 +385,7 @@ interface SkillsTemplate {
     scopes: Record<string, string>;
     error_responses: Record<string, unknown>;
   };
+  common_query_parameters: Record<string, unknown>;
   typical_workflow: string[];
   implementation_notes: string[];
 }
@@ -291,19 +532,12 @@ function generate() {
     );
   if (sitesPath?.post) {
     const op = sitesPath.post;
-    const params: Record<string, string> = {};
-    const body = (
-      op as unknown as {
-        requestBody?: {
-          content?: { "application/json"?: { schema?: { $ref?: string } } };
-        };
-      }
-    ).requestBody;
-    // Inline the parameters description
-    params.name = "string (required) — site display name";
-    params.domain = "string (required) — site domain";
-    params.publicEnabled = "boolean (optional) — enable public stats page";
-    params.publicSlug = "string (optional) — URL slug for public page";
+    const params: Record<string, string> = {
+      name: "string (required) — site display name",
+      domain: "string (required) — site domain",
+      publicEnabled: "boolean (optional) — enable public stats page",
+      publicSlug: "string (optional) — URL slug for public page",
+    };
     sitesEps.push(
       buildEndpoint("POST", "/api/v1/sites", op, {
         scope: "site:write",
@@ -357,7 +591,9 @@ function generate() {
         "PATCH",
         "/api/v1/sites/{siteId}/config",
         configPath.patch,
-        { scope: "site_config:write" },
+        {
+          scope: "site_config:write",
+        },
       ),
     );
   if (snippetPath?.get) {
@@ -379,47 +615,48 @@ function generate() {
   }
   if (configEps.length) endpoints.site_config = configEps;
 
-  // -- analytics queryName groups
-  const queryAnalyticsOp =
-    spec.paths["/api/v1/sites/{siteId}/analytics/{queryName}"]?.get;
-  if (queryAnalyticsOp) {
+  // -- analytics queryName groups (with per-queryName parameters)
+  if (queryNames.length > 0) {
     for (const group of GROUP_ORDER) {
       const qns = queryNameGroups[group];
       if (!qns) continue;
       const eps: SkillsEndpoint[] = [];
       for (const qn of qns) {
         const path = `/api/v1/sites/{siteId}/analytics/${qn}`;
+        const paramSpec = QUERY_NAME_PARAMS[qn];
         const ep: SkillsEndpoint = {
           method: "GET",
           path,
           description: descForQueryName(qn),
           scope: "analytics:read",
         };
-        // Add common parameters for paginated endpoints
-        if (
-          [
-            "visitors",
-            "visitor-detail",
-            "sessions",
-            "session-detail",
-            "events-records",
-          ].includes(qn)
-        ) {
-          ep.parameters = {
-            from: "Unix ms",
-            to: "Unix ms",
-            page: "integer",
-            pageSize: "integer",
-          };
-        } else if (["overview", "trend"].includes(qn)) {
-          ep.parameters = {
-            from: "Unix ms (required)",
-            to: "Unix ms (required)",
-            interval: "minute|hour|day|week|month",
-          };
-        } else if (["pages", "referrers"].includes(qn)) {
-          ep.parameters = { from: "Unix ms", to: "Unix ms", limit: "integer" };
+
+        // Build endpoint-specific parameters
+        const epParams: Record<string, string> = {};
+
+        // Common window params unless the endpoint opts out
+        if (!paramSpec?.noCommonWindow) {
+          epParams.from = "Unix ms (required)";
+          epParams.to = "Unix ms (required)";
+          epParams.timeZone = "IANA timezone (optional)";
+          epParams.tz = "Alias for timeZone";
         }
+
+        // Filter availability note unless the endpoint opts out
+        if (!paramSpec?.noCommonFilters) {
+          epParams._filters =
+            "All common filter parameters are supported (see common_query_parameters.filter_parameters)";
+        }
+
+        // Query-specific params
+        if (paramSpec?.params) {
+          Object.assign(epParams, paramSpec.params);
+        }
+
+        if (Object.keys(epParams).length > 0) {
+          ep.parameters = epParams;
+        }
+
         eps.push(ep);
       }
       endpoints[group] = eps;
@@ -441,7 +678,10 @@ function generate() {
           parameters: {
             from: "Unix ms (required, query param)",
             to: "Unix ms (required, query param)",
+            timeZone: "IANA timezone (optional)",
+            tz: "Alias for timeZone",
             steps: "array of step objects (required, body)",
+            _filters: "All common filter parameters are supported",
           },
         },
       ),
@@ -461,10 +701,10 @@ function generate() {
           scope: "analytics:read",
           parameters: {
             queries:
-              "array of objects, each with a queryName field and optional overrides (from, to, interval, etc.)",
+              "array of objects, each with a queryName field and optional overrides (from, to, interval, timeZone, and any filter parameter)",
           },
           example:
-            'POST /api/v1/sites/{siteId}/analytics/batch {"queries": [{"queryName": "overview", "from": 0, "to": 1}, {"queryName": "trend", "interval": "day"}]}',
+            'POST /api/v1/sites/{siteId}/analytics/batch {"queries": [{"queryName": "overview", "from": 0, "to": 1, "includeChange": true}, {"queryName": "trend", "interval": "day"}, {"queryName": "pages", "limit": 5}]}',
         },
       ),
     ];
@@ -527,12 +767,11 @@ function generate() {
   for (const group of GROUP_ORDER) {
     if (endpoints[group]) orderedEndpoints[group] = endpoints[group];
   }
-  // Append any remaining groups not in GROUP_ORDER
   for (const [group, eps] of Object.entries(endpoints)) {
     if (!orderedEndpoints[group]) orderedEndpoints[group] = eps;
   }
 
-  // Extract standard_response_format from the Unauthorized response schema
+  // Standard response format
   const standardResponseFormat = {
     success: {
       ok: true,
@@ -552,7 +791,7 @@ function generate() {
     },
   };
 
-  // Build global_parameters from the queryAnalytics endpoint
+  // Build global_parameters
   const PARAM_DESCRIPTIONS: Record<string, string> = {
     from: "Start timestamp in Unix milliseconds.",
     to: "End timestamp in Unix milliseconds.",
@@ -561,6 +800,8 @@ function generate() {
     limit: "Maximum number of results to return.",
   };
   const globalParams: Record<string, Record<string, unknown>> = {};
+  const queryAnalyticsOp =
+    spec.paths["/api/v1/sites/{siteId}/analytics/{queryName}"]?.get;
   const analyticsParams = queryAnalyticsOp?.parameters ?? [];
   for (const p of analyticsParams) {
     if (
@@ -585,7 +826,7 @@ function generate() {
   const skills = {
     api: spec.info.title.replace("API", "Analytics API"),
     version: spec.info.version,
-    base_url: "${baseUrl}", // placeholder, replaced at runtime
+    base_url: "${baseUrl}",
     github: {
       repository:
         spec.info.contact.url?.replace("https://github.com/", "") ??
@@ -611,12 +852,12 @@ function generate() {
 
     standard_response_format: standardResponseFormat,
     global_parameters: globalParams,
+    common_query_parameters: template.common_query_parameters,
     typical_workflow: template.typical_workflow,
     endpoints: orderedEndpoints,
     implementation_notes: template.implementation_notes,
   };
 
-  // Write output with baseUrl placeholder for runtime substitution
   const output = JSON.stringify(skills, null, 2);
   writeFileSync(OUTPUT_PATH, output + "\n", "utf-8");
   console.log(`Generated ${OUTPUT_PATH}`);

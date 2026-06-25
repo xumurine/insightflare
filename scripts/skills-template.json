@@ -23,6 +23,44 @@
       }
     }
   },
+  "common_query_parameters": {
+    "description": "These parameters are available on all analytics query endpoints (queryName-based). They are not repeated per-endpoint for brevity.",
+    "time_window": {
+      "from": "Start timestamp in Unix milliseconds (required).",
+      "to": "End timestamp in Unix milliseconds (required).",
+      "timeZone": "IANA timezone identifier (e.g. America/New_York). Defaults to UTC.",
+      "tz": "Alias for timeZone."
+    },
+    "filter_parameters": {
+      "description": "All analytics queries support these filters. Pass them as query parameters to narrow results.",
+      "filters": {
+        "country": "Filter by country code (ISO 3166-1 alpha-2).",
+        "device": "Filter by device type.",
+        "browser": "Filter by browser name.",
+        "path": "Filter by page path.",
+        "title": "Filter by page title.",
+        "hostname": "Filter by hostname.",
+        "entry": "Filter by entry page.",
+        "exit": "Filter by exit page.",
+        "sourceDomain": "Filter by referrer domain.",
+        "sourceLink": "Filter by full referrer URL.",
+        "query": "Filter by page query string.",
+        "clientBrowser": "Filter by client browser.",
+        "clientOsVersion": "Filter by client OS version.",
+        "clientDeviceType": "Filter by client device type.",
+        "clientLanguage": "Filter by client language.",
+        "clientScreenSize": "Filter by client screen size.",
+        "geo": "Filter by geo dimension (country/region/city code).",
+        "geoCountry": "Alias for geo (country level).",
+        "geoRegion": "Filter by region.",
+        "geoCity": "Filter by city.",
+        "geoContinent": "Filter by continent code.",
+        "geoTimezone": "Filter by IANA timezone.",
+        "geoOrganization": "Filter by organization/ISP.",
+        "eventPayloadFilters": "JSON-encoded array of event payload filter rules. Applied to event data at query time."
+      }
+    }
+  },
   "typical_workflow": [
     "1. Obtain an API key from the user (ask them, or direct them to dashboard → Settings → API Keys).",
     "2. Call GET /api/v1/sites to list available sites and get siteId values.",
