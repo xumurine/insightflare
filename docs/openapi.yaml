@@ -85,7 +85,8 @@ paths:
     post:
       operationId: collectEvent
       summary: Collect tracking event
-      description: Ingests a tracking event from the InsightFlare client SDK. Always
+      description:
+        Ingests a tracking event from the InsightFlare client SDK. Always
         returns 204.
       tags:
         - Ingestion
@@ -103,7 +104,8 @@ paths:
     get:
       operationId: listSites
       summary: List sites
-      description: Returns all sites accessible by the authenticated API key within
+      description:
+        Returns all sites accessible by the authenticated API key within
         its team.
       tags:
         - Sites
@@ -230,7 +232,8 @@ paths:
     patch:
       operationId: updateSiteConfig
       summary: Update site config
-      description: Updates the tracking script configuration for a site. Only provided
+      description:
+        Updates the tracking script configuration for a site. Only provided
         fields are changed.
       tags:
         - Site Config
@@ -6004,7 +6007,8 @@ components:
       properties:
         trackingStrength:
           default: smart
-          description: Controls EU privacy mode. strong = never use EU mode, weak = always
+          description:
+            Controls EU privacy mode. strong = never use EU mode, weak = always
             EU mode, smart = auto-detect
           $ref: "#/components/schemas/SiteConfig___schema0"
         trackQueryParams:
@@ -6134,7 +6138,8 @@ components:
           properties:
             trackingStrength:
               default: smart
-              description: Controls EU privacy mode. strong = never use EU mode, weak = always
+              description:
+                Controls EU privacy mode. strong = never use EU mode, weak = always
                 EU mode, smart = auto-detect
               $ref: "#/components/schemas/SiteConfigResponse___schema0"
             trackQueryParams:

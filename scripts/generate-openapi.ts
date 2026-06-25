@@ -2,6 +2,7 @@
 
 import { writeFileSync } from "fs";
 import { resolve } from "path";
+import { execSync } from "child_process";
 import YAML from "yaml";
 import type { z } from "zod";
 import { createSchema } from "zod-openapi";
@@ -858,6 +859,15 @@ async function main() {
 
   writeFileSync(yamlPath, YAML.stringify(spec, { indent: 2 }), "utf8");
   writeFileSync(jsonPath, JSON.stringify(spec, null, 2), "utf8");
+
+  // format with prettier to match project style
+  try {
+    execSync(`npx prettier --write "${yamlPath}" "${jsonPath}"`, {
+      stdio: "pipe",
+    });
+  } catch {
+    // prettier not available or failed — files are still valid, just unformatted
+  }
 
   console.log(`\nGenerated:`);
   console.log(`  YAML: ${yamlPath}`);
