@@ -21,7 +21,9 @@ describe("world countries route", () => {
       .mockResolvedValueOnce(new Response("server error", { status: 500 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(payload)));
 
-    const response = await GET();
+    const response = await GET(
+      new Request("https://app.test/api/world-countries"),
+    );
 
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(response.status).toBe(200);
@@ -37,7 +39,9 @@ describe("world countries route", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ type: "Feature" })))
       .mockResolvedValueOnce(new Response("not found", { status: 404 }));
 
-    const response = await GET();
+    const response = await GET(
+      new Request("https://app.test/api/world-countries"),
+    );
 
     expect(response.status).toBe(404);
     expect(await response.text()).toBe(
@@ -50,7 +54,9 @@ describe("world countries route", () => {
       .mockResolvedValueOnce(new Response("null"))
       .mockRejectedValueOnce(new Error("network unavailable"));
 
-    const response = await GET();
+    const response = await GET(
+      new Request("https://app.test/api/world-countries"),
+    );
 
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(response.status).toBe(502);

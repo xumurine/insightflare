@@ -1,3 +1,5 @@
+import { requireSameOrigin } from "@/lib/edge/utils";
+
 const LIGHT_TILE_UPSTREAMS = [
   "https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
   "https://basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png",
@@ -63,6 +65,9 @@ export async function GET(
     params: Promise<{ z: string; x: string; y: string }>;
   },
 ): Promise<Response> {
+  const sameOriginError = requireSameOrigin(request);
+  if (sameOriginError) return sameOriginError;
+
   const { z: rawZ, x: rawX, y: rawY } = await context.params;
   const z = parseIntStrict(rawZ);
   const x = parseIntStrict(rawX);

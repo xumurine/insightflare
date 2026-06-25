@@ -1,3 +1,5 @@
+import { requireSameOrigin } from "@/lib/edge/utils";
+
 const COUNTRIES_GEOJSON_UPSTREAMS = [
   "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson",
   "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson",
@@ -50,6 +52,9 @@ async function proxyCountriesGeoJson(): Promise<Response> {
   });
 }
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
+  const sameOriginError = requireSameOrigin(request);
+  if (sameOriginError) return sameOriginError;
+
   return proxyCountriesGeoJson();
 }

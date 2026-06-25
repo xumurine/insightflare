@@ -1,5 +1,7 @@
 import { fetchGithubCompare } from "@/lib/github-releases";
 import { bad, errorResponse, jsonResponseFor } from "@/lib/response";
+import { requireSession } from "@/lib/edge/session-auth";
+import { resolveEdgeRuntime } from "@/lib/edge/runtime";
 
 const REPO_OWNER = "RavelloH";
 const REPO_NAME = "InsightFlare";
@@ -10,6 +12,12 @@ function readRef(url: URL, key: string): string {
 }
 
 export async function GET(request: Request): Promise<Response> {
+  const { env } = await resolveEdgeRuntime(request);
+  const session = await requireSession(request, env);
+  if (!session) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
   const url = new URL(request.url);
   const base = readRef(url, "base");
   const head = readRef(url, "head");

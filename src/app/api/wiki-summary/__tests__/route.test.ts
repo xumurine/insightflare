@@ -14,7 +14,9 @@ describe("wiki summary route", () => {
 
   it("rejects invalid or missing wikidata ids", async () => {
     const response = await GET(
-      new Request("https://app.test/api/wiki-summary?wikidataId=bad"),
+      new Request("https://app.test/api/wiki-summary?wikidataId=bad", {
+        headers: { origin: "https://app.test" },
+      }),
     );
 
     expect(response.status).toBe(400);
@@ -34,7 +36,9 @@ describe("wiki summary route", () => {
     );
 
     const response = await GET(
-      new Request("https://app.test/api/wiki-summary?wikidataId=q42"),
+      new Request("https://app.test/api/wiki-summary?wikidataId=q42", {
+        headers: { origin: "https://app.test" },
+      }),
     );
 
     expect(response.status).toBe(404);
@@ -59,7 +63,12 @@ describe("wiki summary route", () => {
     );
 
     const response = await GET(
-      new Request("https://app.test/api/wiki-summary?wikidataId=Q99&locale=zh"),
+      new Request(
+        "https://app.test/api/wiki-summary?wikidataId=Q99&locale=zh",
+        {
+          headers: { origin: "https://app.test" },
+        },
+      ),
     );
 
     expect(response.status).toBe(200);
@@ -120,7 +129,9 @@ describe("wiki summary route", () => {
       );
 
     const response = await GET(
-      new Request("https://app.test/api/wiki-summary?wikidataId=Q5&lang=1"),
+      new Request("https://app.test/api/wiki-summary?wikidataId=Q5&lang=1", {
+        headers: { origin: "https://app.test" },
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -172,6 +183,9 @@ describe("wiki summary route", () => {
     const response = await GET(
       new Request(
         "https://app.test/api/wiki-summary?wikidataId=Q42&lang=zh-CN",
+        {
+          headers: { origin: "https://app.test" },
+        },
       ),
     );
 
@@ -237,7 +251,9 @@ describe("wiki summary route", () => {
       );
 
     const response = await GET(
-      new Request("https://app.test/api/wiki-summary?wikidataId=Q123&lang=fr"),
+      new Request("https://app.test/api/wiki-summary?wikidataId=Q123&lang=fr", {
+        headers: { origin: "https://app.test" },
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -302,7 +318,12 @@ describe("wiki summary route", () => {
       );
 
     const response = await GET(
-      new Request("https://app.test/api/wiki-summary?wikidataId=Q88&locale=zh"),
+      new Request(
+        "https://app.test/api/wiki-summary?wikidataId=Q88&locale=zh",
+        {
+          headers: { origin: "https://app.test" },
+        },
+      ),
     );
 
     expect(response.status).toBe(200);
@@ -378,6 +399,9 @@ describe("wiki summary route", () => {
     const response = await GET(
       new Request(
         "https://app.test/api/wiki-summary?wikidataId=q42&lang=zh-TW",
+        {
+          headers: { origin: "https://app.test" },
+        },
       ),
     );
 
@@ -449,7 +473,9 @@ describe("wiki summary route", () => {
       .mockResolvedValueOnce(new Response("not found", { status: 404 }));
 
     const response = await GET(
-      new Request("https://app.test/api/wiki-summary?wikidataId=Q7"),
+      new Request("https://app.test/api/wiki-summary?wikidataId=Q7", {
+        headers: { origin: "https://app.test" },
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -484,7 +510,9 @@ describe("wiki summary route", () => {
     );
 
     const response = await GET(
-      new Request("https://app.test/api/wiki-summary?wikidataId=Q42"),
+      new Request("https://app.test/api/wiki-summary?wikidataId=Q42", {
+        headers: { origin: "https://app.test" },
+      }),
     );
 
     expect(response.status).toBe(502);
@@ -518,7 +546,9 @@ describe("wiki summary route", () => {
       .mockResolvedValueOnce(new Response("upstream error", { status: 500 }));
 
     const response = await GET(
-      new Request("https://app.test/api/wiki-summary?wikidataId=Q42"),
+      new Request("https://app.test/api/wiki-summary?wikidataId=Q42", {
+        headers: { origin: "https://app.test" },
+      }),
     );
 
     expect(response.status).toBe(502);

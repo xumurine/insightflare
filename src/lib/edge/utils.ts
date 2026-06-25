@@ -59,6 +59,21 @@ export function isSameHostname(left: string, right: string): boolean {
   return normalizedLeft.length > 0 && normalizedLeft === normalizedRight;
 }
 
+export function requireSameOrigin(request: Request): Response | null {
+  const origin = request.headers.get("origin") || "";
+  const referer = request.headers.get("referer") || "";
+
+  if (!origin && !referer) return null;
+
+  const requestHost = new URL(request.url).hostname;
+  const sourceHost = origin ? safeHostname(origin) : safeHostname(referer);
+
+  if (!sourceHost || !isSameHostname(requestHost, sourceHost)) {
+    return new Response("Forbidden", { status: 403 });
+  }
+  return null;
+}
+
 export function clampString(input: string, maxLen: number): string {
   if (input.length <= maxLen) {
     return input;

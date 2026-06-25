@@ -117,7 +117,7 @@ export function VersionUpdateDetailsButton({
         params.set("base", baseTag);
       }
 
-      const response = await fetch(`/api/releases/compare?${params}`, {
+      const response = await fetch(`/api/private/releases/compare?${params}`, {
         method: "GET",
       });
       const payload = (await response.json()) as CompareResponse;
