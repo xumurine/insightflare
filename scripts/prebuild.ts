@@ -4,6 +4,8 @@ import path from "node:path";
 
 import Rlog from "rlog-js";
 
+import { applyWranglerEnvOverrides } from "./wrangler-env-overrides";
+
 const startedAt = Date.now();
 
 const logsDir = path.join(process.cwd(), "logs");
@@ -119,6 +121,19 @@ async function main(): Promise<void> {
 
   if (!fs.existsSync(wranglerConfig)) {
     throw new Error(`Missing wrangler config: ${wranglerConfig}`);
+  }
+
+  const overrideResult = applyWranglerEnvOverrides(
+    fs.readFileSync(wranglerConfig, "utf8"),
+    process.env,
+    wranglerEnv,
+  );
+  if (overrideResult.applied.length > 0) {
+    fs.writeFileSync(wranglerConfig, overrideResult.content);
+    log(
+      `Applied Wrangler config overrides from environment: ${overrideResult.applied.join(", ")}`,
+      "success",
+    );
   }
 
   if (autoMigrate) {

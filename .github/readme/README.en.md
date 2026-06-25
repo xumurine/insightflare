@@ -143,6 +143,27 @@ After filling in the variables, wait about 3 minutes for the deployment to finis
 
 ## Advanced Configuration
 
+### Override Wrangler Configuration with Cloudflare Variables
+
+In Cloudflare build environments, you can use project variables and secrets to override deployment-specific values from `wrangler.toml`. `build:pre` reads these values before deployment, writes them into the active Wrangler config, and the following `wrangler deploy` uses the resolved config.
+
+Common variables:
+
+| Name                                       | Overrides                             |
+| -------------------------------------      | ------------------------------------- |
+| `INSIGHTFLARE_WORKER_NAME`                 | Worker name                           |
+| `INSIGHTFLARE_D1_DATABASE`                 | D1 database name                      |
+| `INSIGHTFLARE_D1_DATABASE_ID`              | D1 database ID for the `DB` binding   |
+| `INSIGHTFLARE_SITE_SETTINGS_KV_ID`         | KV namespace ID for `SITE_SETTINGS_KV`|
+| `INSIGHTFLARE_ARCHIVE_BUCKET_NAME`         | R2 bucket for `ARCHIVE_BUCKET`        |
+| `INSIGHTFLARE_ARCHIVE_PREVIEW_BUCKET_NAME` | R2 preview bucket                     |
+| `SESSION_WINDOW_MINUTES`                   | Session window in minutes             |
+| `SCRIPT_CACHE_TTL_SECONDS`                 | `/script.js` CDN cache TTL            |
+| `PARQUET_WASM_URL`                         | Parquet wasm URL                      |
+| `INSIGHTFLARE_EDGE_URL`                    | InsightFlare service base URL         |
+
+You can also write arbitrary `[vars]` entries with `INSIGHTFLARE_VAR_<NAME>`. For example, `INSIGHTFLARE_VAR_FEATURE_FLAG=1` becomes `FEATURE_FLAG = "1"`. When deploying with `--env production`, environment-specific names such as `INSIGHTFLARE_PRODUCTION_D1_DATABASE_ID` and `INSIGHTFLARE_PRODUCTION_VAR_INSIGHTFLARE_EDGE_URL` target `[env.production]`.
+
 ### Configure an R2 Bucket for Cold Archive
 
 You only need to manually create an R2 bucket if you want to enable cold archive to R2. By default, traffic data is retained for 1 year. Expired data is compressed and retained so trends and data can still be viewed, but it cannot be filtered. R2 is optional, and the Deploy Button does not require an R2 binding by default. After R2 is enabled, you can run detailed queries on data older than 1 year.
