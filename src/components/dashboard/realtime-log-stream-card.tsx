@@ -18,10 +18,10 @@ import { OverlayScrollbars } from "overlayscrollbars";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import {
-  GeoPointsMapIsland,
+  GeoPointsMap,
   type GeoPointsMapCountryCount,
   type GeoPointsMapPoint,
-} from "@/components/dashboard/geo-points-map-island";
+} from "@/components/dashboard/geo-points-map";
 import {
   formatPathWithHash,
   resolveDeviceTypeMeta,
@@ -1056,7 +1056,7 @@ function RealtimeVisitorLocationMapSection({
           {messages.realtime.visitorMapSubtitle}
         </p>
       </div>
-      <GeoPointsMapIsland
+      <GeoPointsMap
         locale={locale}
         messages={messages}
         points={points}

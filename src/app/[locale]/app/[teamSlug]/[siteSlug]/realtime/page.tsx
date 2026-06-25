@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { RealtimeClientPageIsland } from "@/components/dashboard/site-pages/realtime-client-page-island";
+import { RealtimeClientPage } from "@/components/dashboard/site-pages/realtime-client-page";
 import { getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
@@ -32,7 +32,7 @@ export default async function RealtimePage({ params }: RealtimePageProps) {
   if (!context) notFound();
 
   return (
-    <RealtimeClientPageIsland
+    <RealtimeClientPage
       locale={resolvedLocale}
       messages={messages}
       siteId={context.activeSite.id}
