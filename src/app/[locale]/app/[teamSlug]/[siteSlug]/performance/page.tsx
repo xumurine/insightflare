@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { PerformanceClientPage } from "@/components/dashboard/site-pages/performance-client-page";
+import { PerformanceClientPageIsland } from "@/components/dashboard/site-pages/performance-client-page-island";
 import { getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
@@ -34,7 +34,7 @@ export default async function PerformancePage({
   if (!context) notFound();
 
   return (
-    <PerformanceClientPage
+    <PerformanceClientPageIsland
       locale={resolvedLocale}
       messages={messages}
       siteId={context.activeSite.id}

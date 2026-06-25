@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { GeoClientPage } from "@/components/dashboard/site-pages/geo-client-page";
+import { GeoClientPageIsland } from "@/components/dashboard/site-pages/geo-client-page-island";
 import { getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
@@ -32,7 +32,7 @@ export default async function GeoPage({ params }: GeoPageProps) {
   if (!context) notFound();
 
   return (
-    <GeoClientPage
+    <GeoClientPageIsland
       locale={resolvedLocale}
       messages={messages}
       siteId={context.activeSite.id}

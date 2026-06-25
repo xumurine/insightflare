@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { RiCopyrightLine } from "@remixicon/react";
 
 import {
-  GeoPointsMap,
+  GeoPointsMapIsland,
   type GeoPointsMapCountryCount,
   type GeoPointsMapPoint,
-} from "@/components/dashboard/geo-points-map";
+} from "@/components/dashboard/geo-points-map-island";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   emptyOverviewGeoPointsData,
@@ -122,7 +122,7 @@ export function OverviewGeoPointsMapCard({
         </div>
       </CardHeader>
       <CardContent className="pt-0">
-        <GeoPointsMap
+        <GeoPointsMapIsland
           locale={locale}
           messages={messages}
           loading={loading}

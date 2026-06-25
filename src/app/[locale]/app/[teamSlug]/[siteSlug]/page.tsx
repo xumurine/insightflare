@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { OverviewClientPage } from "@/components/dashboard/site-pages/overview-client-page";
+import { OverviewClientPageIsland } from "@/components/dashboard/site-pages/overview-client-page-island";
 import { buildSitePath, getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
@@ -38,7 +38,7 @@ export default async function OverviewPage({ params }: OverviewPageProps) {
   );
 
   return (
-    <OverviewClientPage
+    <OverviewClientPageIsland
       locale={resolvedLocale}
       messages={messages}
       siteId={context.activeSite.id}
