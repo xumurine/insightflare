@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 
+import { execSync } from "child_process";
 import { writeFileSync } from "fs";
 import { resolve } from "path";
-import { execSync } from "child_process";
 import YAML from "yaml";
 import type { z } from "zod";
 import { createSchema } from "zod-openapi";
