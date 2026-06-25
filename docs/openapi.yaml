@@ -1,0 +1,643 @@
+openapi: 3.1.0
+info:
+  title: InsightFlare API
+  description: |
+    InsightFlare is a privacy-focused web analytics platform. This API allows
+    programmatic management of sites and retrieval of analytics data.
+
+    ## Authentication
+
+    All endpoints require an API key passed via the `Authorization` header:
+
+    ```
+    Authorization: Bearer ifk_live_<prefix>.<secret>
+    ```
+
+    API keys are scoped with granular permissions:
+    - `site:read` / `site:write` — manage sites
+    - `site_config:read` / `site_config:write` — manage site tracking config
+    - `analytics:read` — query analytics data
+
+    Keys can also be restricted to specific site IDs within a team.
+
+    ## Response Envelope
+
+    All responses follow a standard envelope:
+
+    **Success:**
+    ```json
+    {
+      "ok": true,
+      "requestId": "a1111697fbf911e8",
+      "timestamp": "2026-06-25T12:00:00.000Z",
+      "data": { ... }
+    }
+    ```
+
+    **Error:**
+    ```json
+    {
+      "ok": false,
+      "requestId": "a1111697fbf911e8",
+      "timestamp": "2026-06-25T12:00:00.000Z",
+      "error": {
+        "code": "invalid_api_key",
+        "message": "The provided API key is invalid or has been revoked."
+      }
+    }
+    ```
+
+    `requestId` is derived from the Cloudflare Ray ID and can be used for
+    debugging by referencing server-side logs.
+  version: 1.0.0
+  contact:
+    name: InsightFlare
+    url: https://github.com/ravelloh/InsightFlare
+
+servers:
+  - url: https://insightflare.example.com
+    description: Production
+
+security:
+  - BearerAuth: []
+
+paths:
+  /api/v1/sites:
+    get:
+      operationId: listSites
+      summary: List sites
+      description: Returns all sites accessible by the authenticated API key within its team.
+      tags: [Sites]
+      responses:
+        "200":
+          description: List of sites
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Site"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+    post:
+      operationId: createSite
+      summary: Create site
+      description: |
+        Creates a new site within the API key's team.
+        Requires full site access (key must not be restricted to specific sites).
+      tags: [Sites]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteCreateInput"
+      responses:
+        "200":
+          description: Site created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Site"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/sites/{siteId}:
+    parameters:
+      - $ref: "#/components/parameters/siteId"
+
+    get:
+      operationId: getSite
+      summary: Get site
+      description: Returns a single site by ID. The API key must have access to this site.
+      tags: [Sites]
+      responses:
+        "200":
+          description: Site details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Site"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      operationId: updateSite
+      summary: Update site
+      description: Updates site fields. Only provided fields are changed; omitted fields retain their current value.
+      tags: [Sites]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteUpdateInput"
+      responses:
+        "200":
+          description: Site updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Site"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      operationId: deleteSite
+      summary: Delete site
+      description: Permanently deletes a site and all associated data.
+      tags: [Sites]
+      responses:
+        "200":
+          description: Site deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      siteId:
+                        type: string
+                      teamId:
+                        type: string
+                      removed:
+                        type: boolean
+                        const: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/sites/{siteId}/config:
+    parameters:
+      - $ref: "#/components/parameters/siteId"
+
+    get:
+      operationId: getSiteConfig
+      summary: Get site config
+      description: Returns the tracking script configuration for a site.
+      tags: [Site Config]
+      responses:
+        "200":
+          description: Site configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+                properties:
+                  data:
+                    $ref: "#/components/schemas/SiteConfig"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      operationId: updateSiteConfig
+      summary: Update site config
+      description: Updates the tracking script configuration for a site.
+      tags: [Site Config]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                config:
+                  $ref: "#/components/schemas/SiteConfig"
+              additionalProperties: true
+      responses:
+        "200":
+          description: Config updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+                properties:
+                  data:
+                    $ref: "#/components/schemas/SiteConfig"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/sites/{siteId}/script-snippet:
+    parameters:
+      - $ref: "#/components/parameters/siteId"
+
+    get:
+      operationId: getScriptSnippet
+      summary: Get script snippet
+      description: Returns the HTML snippet to embed the tracking script on a website.
+      tags: [Site Config]
+      responses:
+        "200":
+          description: Script snippet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      siteId:
+                        type: string
+                      src:
+                        type: string
+                        description: Full URL to the tracking script
+                        example: "https://insightflare.example.com/script.js?siteId=abc123"
+                      snippet:
+                        type: string
+                        description: HTML script tag
+                        example: '<script defer src="https://insightflare.example.com/script.js?siteId=abc123"></script>'
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/sites/{siteId}/analytics/{queryName}:
+    parameters:
+      - $ref: "#/components/parameters/siteId"
+      - name: queryName
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+            - overview
+            - trend
+            - pages
+            - referrers
+            - funnels
+            - pages-dashboard
+            - page-hash
+            - page-query
+            - event-types
+            - events-summary
+            - events-trend
+            - events-records
+            - event-type-field-values
+            - event-type-detail
+            - event-record-detail
+            - sessions
+            - session-detail
+            - visitors
+            - visitor-detail
+            - retention
+            - performance
+            - browser-trend
+            - browser-engine-trend
+            - browser-version-breakdown
+            - browser-cross-breakdown
+            - browser-radar
+            - referrer-radar
+            - referrer-dimension-trend
+            - client-dimension-trend
+            - utm-dimension-trend
+            - client-cross-breakdown
+            - utm-source
+            - utm-medium
+            - utm-campaign
+            - utm-term
+            - utm-content
+            - countries
+            - filter-options
+            - overview-page-path
+            - overview-page-title
+            - overview-page-hostname
+            - overview-page-entry
+            - overview-page-exit
+            - overview-source-domain
+            - overview-source-link
+            - overview-client-browser
+            - overview-client-os-version
+            - overview-client-device-type
+            - overview-client-language
+            - overview-client-screen-size
+            - overview-geo-country
+            - overview-geo-region
+            - overview-geo-city
+            - overview-geo-continent
+            - overview-geo-timezone
+            - overview-geo-organization
+            - overview-geo-points
+
+    get:
+      operationId: queryAnalytics
+      summary: Query analytics
+      description: |
+        Executes an analytics query for the specified site. Query parameters
+        vary by query name but commonly include `from`, `to`, and `interval`.
+
+        Common query parameters:
+        - `from` — start timestamp (Unix ms)
+        - `to` — end timestamp (Unix ms)
+        - `interval` — granularity: `minute`, `hour`, `day`, `week`, `month`
+        - `limit` — max results to return
+      tags: [Analytics]
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: integer
+          description: Start timestamp in Unix milliseconds
+        - name: to
+          in: query
+          schema:
+            type: integer
+          description: End timestamp in Unix milliseconds
+        - name: interval
+          in: query
+          schema:
+            type: string
+            enum: [minute, hour, day, week, month]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Analytics query result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/team/dashboard:
+    get:
+      operationId: getTeamDashboard
+      summary: Team dashboard
+      description: |
+        Returns an aggregated dashboard for the API key's team, including
+        per-site summaries and trend data.
+      tags: [Analytics]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Start timestamp in Unix milliseconds
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: End timestamp in Unix milliseconds
+        - name: interval
+          in: query
+          schema:
+            type: string
+            enum: [minute, hour, day, week, month]
+      responses:
+        "200":
+          description: Team dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        API key in the format `ifk_live_<prefix>.<secret>`.
+        Generate keys from the InsightFlare dashboard under Settings > API Keys.
+
+  parameters:
+    siteId:
+      name: siteId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique site identifier
+
+  schemas:
+    Envelope:
+      type: object
+      required: [ok, requestId, timestamp]
+      properties:
+        ok:
+          type: boolean
+        requestId:
+          type: string
+          description: Cloudflare Ray ID for request tracing
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 response generation time
+
+    ErrorEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/Envelope"
+        - type: object
+          required: [ok, error]
+          properties:
+            ok:
+              const: false
+            error:
+              type: object
+              required: [code, message]
+              properties:
+                code:
+                  type: string
+                  description: Machine-readable error code
+                  example: invalid_api_key
+                message:
+                  type: string
+                  description: Human-readable error description
+                  example: The provided API key is invalid or has been revoked.
+
+    Site:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        teamId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: My Website
+        domain:
+          type: string
+          example: example.com
+        publicEnabled:
+          type: boolean
+        publicSlug:
+          type: string
+          example: my-website
+        createdAt:
+          type: integer
+          description: Unix timestamp in seconds
+        updatedAt:
+          type: integer
+          description: Unix timestamp in seconds
+
+    SiteCreateInput:
+      type: object
+      required: [name, domain]
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        domain:
+          type: string
+          maxLength: 255
+        publicEnabled:
+          type: boolean
+          default: false
+        publicSlug:
+          type: string
+          maxLength: 120
+
+    SiteUpdateInput:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        domain:
+          type: string
+          maxLength: 255
+        publicEnabled:
+          type: boolean
+        publicSlug:
+          type: string
+          maxLength: 120
+
+    SiteConfig:
+      type: object
+      description: Tracking script configuration (domain allowlists, blocked paths, etc.)
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            ok: false
+            requestId: a1111697fbf911e8
+            timestamp: "2026-06-25T12:00:00.000Z"
+            error:
+              code: bad_request
+              message: name and domain are required
+
+    Unauthorized:
+      description: Authentication failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          examples:
+            invalid_key:
+              summary: Invalid API key
+              value:
+                ok: false
+                requestId: a1111697fbf911e8
+                timestamp: "2026-06-25T12:00:00.000Z"
+                error:
+                  code: invalid_api_key
+                  message: Invalid or missing API key
+            expired:
+              summary: Expired API key
+              value:
+                ok: false
+                requestId: a1111697fbf911e8
+                timestamp: "2026-06-25T12:00:00.000Z"
+                error:
+                  code: api_key_expired
+                  message: API key has expired
+            revoked:
+              summary: Revoked API key
+              value:
+                ok: false
+                requestId: a1111697fbf911e8
+                timestamp: "2026-06-25T12:00:00.000Z"
+                error:
+                  code: api_key_revoked
+                  message: API key has been revoked
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            ok: false
+            requestId: a1111697fbf911e8
+            timestamp: "2026-06-25T12:00:00.000Z"
+            error:
+              code: insufficient_scope
+              message: Insufficient scope for this action
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            ok: false
+            requestId: a1111697fbf911e8
+            timestamp: "2026-06-25T12:00:00.000Z"
+            error:
+              code: not_found
+              message: Site not found
+
+tags:
+  - name: Sites
+    description: Create, read, update, and delete analytics sites
+  - name: Site Config
+    description: Manage site tracking configuration and embed snippets
+  - name: Analytics
+    description: Query analytics data and team dashboards
