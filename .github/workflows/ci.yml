@@ -67,6 +67,27 @@ jobs:
       - name: Run tests
         run: npm run test
 
+  spec:
+    name: OpenAPI Spec
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate and verify OpenAPI spec
+        run: npm run check:openapi
+
   build:
     name: Build
     runs-on: ubuntu-latest
