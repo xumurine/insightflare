@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "InsightFlare API",
-    "description": "InsightFlare is a privacy-focused web analytics platform. This API allows\nprogrammatic management of sites and retrieval of analytics data.\n\n## Authentication\n\nAll endpoints require an API key passed via the `Authorization` header:\n\n```\nAuthorization: Bearer ifk_live_<prefix>.<secret>\n```\n\nAPI keys are scoped with granular permissions:\n- `site:read` / `site:write` — manage sites\n- `site_config:read` / `site_config:write` — manage site tracking config\n- `analytics:read` — query analytics data\n\nKeys can also be restricted to specific site IDs within a team.\n\n## Response Envelope\n\nAll responses follow a standard envelope:\n\n**Success:**\n```json\n{\n  \"ok\": true,\n  \"requestId\": \"a1111697fbf911e8\",\n  \"timestamp\": \"2026-06-25T12:00:00.000Z\",\n  \"data\": { ... }\n}\n```\n\n**Error:**\n```json\n{\n  \"ok\": false,\n  \"requestId\": \"a1111697fbf911e8\",\n  \"timestamp\": \"2026-06-25T12:00:00.000Z\",\n  \"error\": {\n    \"code\": \"invalid_api_key\",\n    \"message\": \"The provided API key is invalid or has been revoked.\"\n  }\n}\n```\n\n`requestId` is derived from the Cloudflare Ray ID and can be used for\ndebugging by referencing server-side logs.\n",
+    "description": "InsightFlare is a privacy-focused web analytics platform. This API allows\nprogrammatic management of sites and retrieval of analytics data.\n\n## Authentication\n\nAll `/api/v1/` endpoints require an API key passed via the `Authorization` header:\n\n```\nAuthorization: Bearer ifk_live_<prefix>.<secret>\n```\n\nAPI keys are scoped with granular permissions:\n- `site:read` / `site:write` — manage sites\n- `site_config:read` / `site_config:write` — manage site tracking config\n- `analytics:read` — query analytics data\n\nKeys can also be restricted to specific site IDs within a team.\n\n## Response Envelope\n\nAll responses follow a standard envelope:\n\n**Success:**\n```json\n{\n  \"ok\": true,\n  \"requestId\": \"a1111697fbf911e8\",\n  \"timestamp\": \"2026-06-25T12:00:00.000Z\",\n  \"data\": { ... }\n}\n```\n\n**Error:**\n```json\n{\n  \"ok\": false,\n  \"requestId\": \"a1111697fbf911e8\",\n  \"timestamp\": \"2026-06-25T12:00:00.000Z\",\n  \"error\": {\n    \"code\": \"invalid_api_key\",\n    \"message\": \"The provided API key is invalid or has been revoked.\"\n  }\n}\n```\n\n`requestId` is derived from the Cloudflare Ray ID and can be used for\ndebugging by referencing server-side logs.\n\n## Timestamps\n\nAll timestamps in query parameters (`from`, `to`) are **Unix milliseconds**.\nTimestamps in response objects are **Unix seconds** unless the field name\ncontains `Ms` (e.g. `timestampMs`), in which case they are milliseconds.\n",
     "version": "1.0.0",
     "contact": {
       "name": "InsightFlare",
@@ -20,7 +20,139 @@
       "BearerAuth": []
     }
   ],
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Health check endpoint (no authentication required)"
+    },
+    {
+      "name": "Ingestion",
+      "description": "Tracking data collection (no authentication required)"
+    },
+    {
+      "name": "Sites",
+      "description": "Create, read, update, and delete analytics sites"
+    },
+    {
+      "name": "Site Config",
+      "description": "Manage site tracking configuration and embed snippets"
+    },
+    {
+      "name": "Analytics",
+      "description": "Query analytics data and team dashboards"
+    }
+  ],
   "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Health check",
+        "description": "Returns service health status. No authentication required.\nResponse includes binding status for KV, D1, and Durable Objects.\n",
+        "tags": ["Health"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "type": "string",
+                      "example": "insightflare"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "bindings": {
+                      "type": "object",
+                      "properties": {
+                        "kv": {
+                          "type": "boolean"
+                        },
+                        "d1": {
+                          "type": "boolean"
+                        },
+                        "durableObjects": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/collect": {
+      "post": {
+        "operationId": "collectEvent",
+        "summary": "Collect tracking event",
+        "description": "Ingests a tracking event from the InsightFlare client SDK.\nAlways returns 204 regardless of whether the event was accepted.\nBots are silently dropped. Events are validated against site config\n(domain whitelist, path blacklist) before forwarding to the ingestion pipeline.\n\nCORS: reflects the request origin with `Access-Control-Allow-Credentials: true`.\n",
+        "tags": ["Ingestion"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackerClientPayload"
+              },
+              "examples": {
+                "pageview": {
+                  "summary": "Page view event",
+                  "value": {
+                    "siteId": "abc123",
+                    "kind": "pageview",
+                    "visitId": "v_abc123",
+                    "visitorId": "u_xyz789",
+                    "hostname": "example.com",
+                    "pathname": "/blog/hello-world",
+                    "title": "Hello World",
+                    "referrerUrl": "https://google.com",
+                    "language": "en-US",
+                    "screenWidth": 1920,
+                    "screenHeight": 1080
+                  }
+                },
+                "customEvent": {
+                  "summary": "Custom event",
+                  "value": {
+                    "siteId": "abc123",
+                    "kind": "custom_event",
+                    "visitId": "v_abc123",
+                    "eventName": "signup",
+                    "eventData": {
+                      "plan": "pro",
+                      "method": "github"
+                    }
+                  }
+                },
+                "identify": {
+                  "summary": "Identify visitor",
+                  "value": {
+                    "siteId": "abc123",
+                    "kind": "identify",
+                    "visitId": "v_abc123",
+                    "userId": "user_42",
+                    "userName": "Alice"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Event accepted (always returned, even if dropped)"
+          }
+        }
+      }
+    },
     "/api/v1/sites": {
       "get": {
         "operationId": "listSites",
@@ -33,15 +165,39 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope",
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Site"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Site"
+                          }
+                        }
                       }
                     }
-                  }
+                  ]
+                },
+                "example": {
+                  "ok": true,
+                  "requestId": "a1111697fbf911e8",
+                  "timestamp": "2026-06-25T12:00:00.000Z",
+                  "data": [
+                    {
+                      "id": "550e8400-e29b-41d4-a716-446655440000",
+                      "teamId": "660e8400-e29b-41d4-a716-446655440001",
+                      "name": "My Website",
+                      "domain": "example.com",
+                      "publicEnabled": false,
+                      "publicSlug": "",
+                      "createdAt": 1719312000,
+                      "updatedAt": 1719312000
+                    }
+                  ]
                 }
               }
             }
@@ -65,6 +221,11 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/SiteCreateInput"
+              },
+              "example": {
+                "name": "My Website",
+                "domain": "example.com",
+                "publicEnabled": false
               }
             }
           }
@@ -75,12 +236,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope",
-                  "properties": {
-                    "data": {
-                      "$ref": "#/components/schemas/Site"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/Site"
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -114,12 +282,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope",
-                  "properties": {
-                    "data": {
-                      "$ref": "#/components/schemas/Site"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/Site"
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -156,12 +331,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope",
-                  "properties": {
-                    "data": {
-                      "$ref": "#/components/schemas/Site"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/Site"
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -188,24 +370,31 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope",
-                  "properties": {
-                    "data": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
                       "type": "object",
                       "properties": {
-                        "siteId": {
-                          "type": "string"
-                        },
-                        "teamId": {
-                          "type": "string"
-                        },
-                        "removed": {
-                          "type": "boolean",
-                          "const": true
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "siteId": {
+                              "type": "string"
+                            },
+                            "teamId": {
+                              "type": "string"
+                            },
+                            "removed": {
+                              "type": "boolean",
+                              "const": true
+                            }
+                          }
                         }
                       }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -236,11 +425,33 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope",
-                  "properties": {
-                    "data": {
-                      "$ref": "#/components/schemas/SiteConfig"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/SiteConfig"
+                        }
+                      }
                     }
+                  ]
+                },
+                "example": {
+                  "ok": true,
+                  "requestId": "a1111697fbf911e8",
+                  "timestamp": "2026-06-25T12:00:00.000Z",
+                  "data": {
+                    "trackingStrength": "smart",
+                    "trackQueryParams": true,
+                    "trackHash": true,
+                    "autoTrackOutboundLinks": false,
+                    "domainWhitelist": [],
+                    "pathBlacklist": ["/admin", "/api"],
+                    "ignoreDoNotTrack": true,
+                    "performanceSampleRate": 100
                   }
                 }
               }
@@ -257,20 +468,20 @@
       "patch": {
         "operationId": "updateSiteConfig",
         "summary": "Update site config",
-        "description": "Updates the tracking script configuration for a site.",
+        "description": "Updates the tracking script configuration for a site.\nOnly provided fields are changed; omitted fields retain their current value.\n",
         "tags": ["Site Config"],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "config": {
-                    "$ref": "#/components/schemas/SiteConfig"
-                  }
-                },
-                "additionalProperties": true
+                "$ref": "#/components/schemas/SiteConfigUpdateInput"
+              },
+              "example": {
+                "trackingStrength": "smart",
+                "trackQueryParams": true,
+                "pathBlacklist": ["/admin", "/api", "/healthz"],
+                "performanceSampleRate": 50
               }
             }
           }
@@ -281,12 +492,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope",
-                  "properties": {
-                    "data": {
-                      "$ref": "#/components/schemas/SiteConfig"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/SiteConfig"
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -317,27 +535,35 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope",
-                  "properties": {
-                    "data": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
                       "type": "object",
                       "properties": {
-                        "siteId": {
-                          "type": "string"
-                        },
-                        "src": {
-                          "type": "string",
-                          "description": "Full URL to the tracking script",
-                          "example": "https://insightflare.example.com/script.js?siteId=abc123"
-                        },
-                        "snippet": {
-                          "type": "string",
-                          "description": "HTML script tag",
-                          "example": "<script defer src=\"https://insightflare.example.com/script.js?siteId=abc123\"></script>"
+                        "data": {
+                          "type": "object",
+                          "required": ["siteId", "src", "snippet"],
+                          "properties": {
+                            "siteId": {
+                              "type": "string"
+                            },
+                            "src": {
+                              "type": "string",
+                              "description": "Full URL to the tracking script",
+                              "example": "https://insightflare.example.com/script.js?siteId=abc123"
+                            },
+                            "snippet": {
+                              "type": "string",
+                              "description": "HTML script tag",
+                              "example": "<script defer src=\"https://insightflare.example.com/script.js?siteId=abc123\"></script>"
+                            }
+                          }
                         }
                       }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -421,13 +647,14 @@
               "overview-geo-organization",
               "overview-geo-points"
             ]
-          }
+          },
+          "description": "Analytics query name. Queries are grouped by category:\n\n**Overview** — `overview`, `trend`, `filter-options`,\n`overview-page-path|title|hostname|entry|exit`,\n`overview-source-domain|link`,\n`overview-client-browser|os-version|device-type|language|screen-size`,\n`overview-geo-country|region|city|continent|timezone|organization|points`\n\n**Content** — `pages`, `pages-dashboard`, `referrers`, `page-hash`, `page-query`\n\n**Events** — `event-types`, `events-summary`, `events-trend`, `events-records`,\n`event-type-detail`, `event-type-field-values`, `event-record-detail`\n\n**Visitors & Sessions** — `visitors`, `sessions`, `visitor-detail`, `session-detail`\n\n**Retention** — `retention`\n\n**Performance** — `performance`\n\n**Technology** — `browser-trend`, `browser-engine-trend`, `browser-version-breakdown`,\n`browser-cross-breakdown`, `browser-radar`, `referrer-radar`,\n`referrer-dimension-trend`, `client-dimension-trend`, `utm-dimension-trend`,\n`client-cross-breakdown`\n\n**UTM & Geo** — `utm-source`, `utm-medium`, `utm-campaign`, `utm-term`, `utm-content`,\n`countries`\n\n**Funnels** — `funnels` (also supports POST and DELETE)\n"
         }
       ],
       "get": {
         "operationId": "queryAnalytics",
         "summary": "Query analytics",
-        "description": "Executes an analytics query for the specified site. Query parameters\nvary by query name but commonly include `from`, `to`, and `interval`.\n\nCommon query parameters:\n- `from` — start timestamp (Unix ms)\n- `to` — end timestamp (Unix ms)\n- `interval` — granularity: `minute`, `hour`, `day`, `week`, `month`\n- `limit` — max results to return\n",
+        "description": "Executes an analytics query for the specified site.\n\n### Common parameters (all queries)\n| Parameter | Type | Description |\n|-----------|------|-------------|\n| `from` | integer | Start timestamp (Unix ms) |\n| `to` | integer | End timestamp (Unix ms) |\n| `interval` | enum | `minute`, `hour`, `day`, `week`, `month` |\n| `timeZone` / `tz` | string | IANA timezone (e.g. `America/New_York`) |\n\n### Dashboard filter parameters (most queries)\n| Parameter | Description |\n|-----------|-------------|\n| `country` | Filter by country code |\n| `device` | Filter by device type |\n| `browser` | Filter by browser name |\n| `path` | Filter by page pathname |\n| `query` | Filter by query string |\n| `title` | Filter by page title |\n| `hostname` | Filter by hostname |\n| `entry` | Filter by session entry page |\n| `exit` | Filter by session exit page |\n| `sourceDomain` | Filter by referrer domain |\n| `sourceLink` | Filter by referrer URL |\n| `clientBrowser` | Filter by browser |\n| `clientOsVersion` | Filter by OS version |\n| `clientDeviceType` | Filter by device type |\n| `clientLanguage` | Filter by language |\n| `clientScreenSize` | Filter by screen size |\n| `geo` / `geoCountry` | Filter by country |\n| `geoRegion` | Filter by region |\n| `geoCity` | Filter by city |\n| `geoContinent` | Filter by continent |\n| `geoTimezone` | Filter by timezone |\n| `geoOrganization` | Filter by ISP/organization |\n\n### Query-specific parameters\n| Query | Parameter | Type | Default | Description |\n|-------|-----------|------|---------|-------------|\n| `overview` | `includeChange` | boolean | false | Include previous period data and change rates |\n| `overview` | `includeDetail` | boolean | false | Include trend detail in response |\n| `pages` | `details` | boolean | false | Include query/hash breakdowns |\n| `referrers` | `fullUrl` | boolean | false | Show full referrer URLs |\n| `pages-dashboard` | `page` | integer | 1 | Page number (1-indexed) |\n| `pages-dashboard` | `pageSize` | integer | 12 | Results per page (1-24) |\n| `visitors` | `page` | integer | 1 | Page number |\n| `visitors` | `pageSize` | integer | 50 | Results per page (1-120) |\n| `visitors` | `sortBy` | enum | firstSeenAt | `firstSeenAt`, `lastSeenAt`, `sessions`, `views` |\n| `visitors` | `sortDir` | enum | desc | `asc`, `desc` |\n| `visitors` | `search` / `q` | string | | Search visitor ID |\n| `sessions` | `page` | integer | 1 | Page number |\n| `sessions` | `pageSize` | integer | 50 | Results per page (1-120) |\n| `sessions` | `sortBy` | enum | startedAt | `startedAt`, `durationMs`, `views` |\n| `sessions` | `sortDir` | enum | desc | `asc`, `desc` |\n| `sessions` | `search` / `q` | string | | Search session ID |\n| `visitor-detail` | `visitorId` | string | **required** | Visitor UUID |\n| `session-detail` | `sessionId` | string | **required** | Session UUID |\n| `events-trend` | `eventName` | string | | Filter by event name |\n| `events-trend` | `limit` | integer | 8 | Max series (1-12) |\n| `events-records` | `page` | integer | 1 | Page number |\n| `events-records` | `pageSize` | integer | 50 | Results per page (1-120) |\n| `events-records` | `sortBy` | enum | occurredAt | `occurredAt`, `eventName`, `pathname` |\n| `events-records` | `sortDir` | enum | desc | `asc`, `desc` |\n| `events-records` | `search` / `q` | string | | Search event ID |\n| `events-records` | `eventName` | string | | Filter by event name |\n| `event-type-detail` | `eventName` | string | **required** | Event type name |\n| `event-type-field-values` | `eventName` | string | **required** | Event type name |\n| `event-type-field-values` | `fieldPath` | string | **required** | Dot-notation field path |\n| `event-type-field-values` | `fieldValueType` | enum | **required** | `string`, `number`, `boolean`, `null`, `object`, `array` |\n| `event-type-field-values` | `limit` | integer | 50 | Max results |\n| `event-record-detail` | `eventId` | string | **required** | Event UUID |\n| `funnels` | `id` | string | | Funnel UUID (omit to list all) |\n| `retention` | `granularity` | enum | week | `minute`, `hour`, `day`, `week`, `month` |\n| `browser-trend` | `limit` | integer | 5 | Max series (1-12) |\n| `browser-engine-trend` | `limit` | integer | 5 | Max series (1-8) |\n| `browser-version-breakdown` | `browserLimit` | integer | 5 | Max browsers (1-8) |\n| `browser-version-breakdown` | `versionLimit` | integer | 5 | Max versions per browser (1-8) |\n| `browser-cross-breakdown` | `browserLimit` | integer | 8 | Max browsers (1-12) |\n| `browser-cross-breakdown` | `osLimit` | integer | 6 | Max OS (1-8) |\n| `browser-cross-breakdown` | `deviceTypeLimit` | integer | 5 | Max device types (1-8) |\n| `referrer-radar` | `limit` | integer | 24 | Max referrers (1-48) |\n| `referrer-dimension-trend` | `limit` | integer | 5 | Max series (1-8) |\n| `client-dimension-trend` | `dimension` | enum | **required** | `browser`, `operatingSystem`, `osVersion`, `deviceType`, `language`, `screenSize` |\n| `client-dimension-trend` | `limit` | integer | 5 | Max series (1-8) |\n| `utm-dimension-trend` | `dimension` | enum | **required** | `source`, `medium`, `campaign`, `term`, `content` |\n| `utm-dimension-trend` | `limit` | integer | 5 | Max series (1-8) |\n| `client-cross-breakdown` | `primaryDimension` | enum | **required** | Any client dimension |\n| `client-cross-breakdown` | `secondaryDimension` | enum | **required** | Must differ from primary |\n| `client-cross-breakdown` | `primaryLimit` | integer | 5 | Max primary values (1-12) |\n| `client-cross-breakdown` | `secondaryLimit` | integer | 6 | Max secondary values (1-8) |\n| `filter-options` | `filterKey` | string | **required** | Dashboard filter key |\n| `overview-geo-points` | `applyGeoFilter` | boolean | false | Apply current geo filters |\n| `overview-geo-points` | `limit` | integer | 5000 | Max points (1-20000) |\n",
         "tags": ["Analytics"],
         "parameters": [
           {
@@ -455,11 +682,443 @@
             }
           },
           {
+            "name": "timeZone",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "IANA timezone identifier (e.g. America/New_York)"
+          },
+          {
+            "name": "tz",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Alias for timeZone"
+          },
+          {
             "name": "limit",
             "in": "query",
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "includeChange",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Include previous period comparison (overview only)"
+          },
+          {
+            "name": "includeDetail",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Include trend detail (overview only)"
+          },
+          {
+            "name": "details",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Include query/hash breakdowns (pages only)"
+          },
+          {
+            "name": "fullUrl",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Show full referrer URLs (referrers only)"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Page number (paginated queries)"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Results per page (paginated queries)"
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Sort field (paginated queries)"
+          },
+          {
+            "name": "sortDir",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
+            },
+            "description": "Sort direction"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Search term (paginated queries)"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Alias for search"
+          },
+          {
+            "name": "visitorId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Required for visitor-detail"
+          },
+          {
+            "name": "sessionId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Required for session-detail"
+          },
+          {
+            "name": "eventId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Required for event-record-detail"
+          },
+          {
+            "name": "eventName",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by event name (events-trend, events-records, event-type-detail, event-type-field-values)"
+          },
+          {
+            "name": "fieldPath",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Dot-notation field path (event-type-field-values)"
+          },
+          {
+            "name": "fieldValueType",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["string", "number", "boolean", "null", "object", "array"]
+            },
+            "description": "Field value type (event-type-field-values)"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Funnel UUID (funnels)"
+          },
+          {
+            "name": "granularity",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["minute", "hour", "day", "week", "month"]
+            },
+            "description": "Retention cohort granularity (retention)"
+          },
+          {
+            "name": "dimension",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Dimension key (client-dimension-trend, utm-dimension-trend)"
+          },
+          {
+            "name": "primaryDimension",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Primary dimension (client-cross-breakdown)"
+          },
+          {
+            "name": "secondaryDimension",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Secondary dimension (client-cross-breakdown)"
+          },
+          {
+            "name": "primaryLimit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Primary dimension limit (client-cross-breakdown)"
+          },
+          {
+            "name": "secondaryLimit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Secondary dimension limit (client-cross-breakdown)"
+          },
+          {
+            "name": "browserLimit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Browser limit (browser-version-breakdown, browser-cross-breakdown)"
+          },
+          {
+            "name": "versionLimit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Version limit (browser-version-breakdown)"
+          },
+          {
+            "name": "osLimit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "OS limit (browser-cross-breakdown)"
+          },
+          {
+            "name": "deviceTypeLimit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Device type limit (browser-cross-breakdown)"
+          },
+          {
+            "name": "filterKey",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter key for filter-options query"
+          },
+          {
+            "name": "applyGeoFilter",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Apply geo filter (overview-geo-points)"
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by country code"
+          },
+          {
+            "name": "device",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by device type"
+          },
+          {
+            "name": "browser",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by browser"
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by page pathname"
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by page title"
+          },
+          {
+            "name": "hostname",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by hostname"
+          },
+          {
+            "name": "entry",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by entry page"
+          },
+          {
+            "name": "exit",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by exit page"
+          },
+          {
+            "name": "sourceDomain",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by referrer domain"
+          },
+          {
+            "name": "sourceLink",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by referrer URL"
+          },
+          {
+            "name": "geo",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by geo (country/region/city)"
+          },
+          {
+            "name": "geoCountry",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by country"
+          },
+          {
+            "name": "geoRegion",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by region"
+          },
+          {
+            "name": "geoCity",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by city"
+          },
+          {
+            "name": "geoContinent",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by continent"
+          },
+          {
+            "name": "geoTimezone",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by timezone"
+          },
+          {
+            "name": "geoOrganization",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by organization/ISP"
+          },
+          {
+            "name": "clientBrowser",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by browser"
+          },
+          {
+            "name": "clientOsVersion",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by OS version"
+          },
+          {
+            "name": "clientDeviceType",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by device type"
+          },
+          {
+            "name": "clientLanguage",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by language"
+          },
+          {
+            "name": "clientScreenSize",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by screen size"
           }
         ],
         "responses": {
@@ -468,7 +1127,642 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope"
+                  "$ref": "#/components/schemas/AnalyticsResponse"
+                },
+                "examples": {
+                  "overview": {
+                    "summary": "overview",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "data": {
+                        "views": 1234,
+                        "sessions": 567,
+                        "visitors": 456,
+                        "bounces": 200,
+                        "totalDurationMs": 8420000,
+                        "avgDurationMs": 14850,
+                        "bounceRate": 35.3,
+                        "approximateVisitors": false
+                      }
+                    }
+                  },
+                  "trend": {
+                    "summary": "trend",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "interval": "day",
+                      "data": [
+                        {
+                          "bucket": 1719273600000,
+                          "timestampMs": 1719273600000,
+                          "views": 120,
+                          "visitors": 45,
+                          "sessions": 50,
+                          "bounces": 15,
+                          "totalDurationMs": 720000,
+                          "avgDurationMs": 14400
+                        }
+                      ]
+                    }
+                  },
+                  "pages": {
+                    "summary": "pages",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "data": [
+                        {
+                          "pathname": "/blog/hello-world",
+                          "query": "",
+                          "hash": "",
+                          "views": 320,
+                          "sessions": 280
+                        }
+                      ]
+                    }
+                  },
+                  "referrers": {
+                    "summary": "referrers",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "data": [
+                        {
+                          "referrer": "google.com",
+                          "views": 450,
+                          "sessions": 380
+                        }
+                      ]
+                    }
+                  },
+                  "pagesDashboard": {
+                    "summary": "pages-dashboard",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "interval": "day",
+                      "data": [
+                        {
+                          "pathname": "/blog/hello-world",
+                          "titles": ["Hello World"],
+                          "trend": [
+                            {
+                              "timestampMs": 1719273600000,
+                              "views": 45,
+                              "visitors": 30
+                            }
+                          ],
+                          "metrics": {
+                            "views": 320,
+                            "visitors": 280,
+                            "sessions": 280,
+                            "bounceRate": 32.1,
+                            "pagesPerSession": 1.5,
+                            "avgDurationMs": 12000
+                          },
+                          "changeRates": {
+                            "views": 12.5,
+                            "visitors": 8.3,
+                            "sessions": 9.1,
+                            "bounceRate": -2.1,
+                            "pagesPerSession": 0.1,
+                            "avgDurationMs": 1500
+                          }
+                        }
+                      ],
+                      "meta": {
+                        "page": 1,
+                        "pageSize": 12,
+                        "returned": 10,
+                        "hasMore": false,
+                        "nextPage": null
+                      }
+                    }
+                  },
+                  "visitors": {
+                    "summary": "visitors",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "data": [
+                        {
+                          "visitorId": "550e8400-e29b-41d4-a716-446655440000",
+                          "firstSeenAt": 1719273600,
+                          "lastSeenAt": 1719360000,
+                          "views": 15,
+                          "sessions": 3,
+                          "events": 20,
+                          "country": "US",
+                          "region": "California",
+                          "city": "San Francisco",
+                          "browser": "Chrome",
+                          "os": "Windows",
+                          "deviceType": "desktop"
+                        }
+                      ],
+                      "meta": {
+                        "page": 1,
+                        "pageSize": 50,
+                        "returned": 1,
+                        "hasMore": false,
+                        "nextPage": null
+                      }
+                    }
+                  },
+                  "sessions": {
+                    "summary": "sessions",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "data": [
+                        {
+                          "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+                          "visitorId": "660e8400-e29b-41d4-a716-446655440001",
+                          "startedAt": 1719273600,
+                          "endedAt": 1719277200,
+                          "durationMs": 3600000,
+                          "active": false,
+                          "views": 8,
+                          "events": 12,
+                          "bounce": false,
+                          "entryPath": "/",
+                          "exitPath": "/blog",
+                          "country": "US",
+                          "browser": "Chrome",
+                          "os": "Windows",
+                          "deviceType": "desktop",
+                          "performance": {
+                            "ttfb": 120,
+                            "fcp": 800,
+                            "lcp": 1200,
+                            "cls": 0.05,
+                            "inp": 50
+                          }
+                        }
+                      ],
+                      "meta": {
+                        "page": 1,
+                        "pageSize": 50,
+                        "returned": 1,
+                        "hasMore": false,
+                        "nextPage": null
+                      }
+                    }
+                  },
+                  "retention": {
+                    "summary": "retention",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "granularity": "week",
+                      "cohorts": [
+                        {
+                          "bucket": 1719273600000,
+                          "size": 100,
+                          "periods": [
+                            {
+                              "index": 0,
+                              "visitors": 100,
+                              "rate": 1
+                            },
+                            {
+                              "index": 1,
+                              "visitors": 45,
+                              "rate": 0.45
+                            },
+                            {
+                              "index": 2,
+                              "visitors": 30,
+                              "rate": 0.3
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "performance": {
+                    "summary": "performance",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "interval": "day",
+                      "summaries": {
+                        "ttfb": {
+                          "avg": 120,
+                          "p50": 100,
+                          "p75": 150,
+                          "p95": 300,
+                          "samples": 500
+                        },
+                        "fcp": {
+                          "avg": 800,
+                          "p50": 700,
+                          "p75": 900,
+                          "p95": 1500,
+                          "samples": 500
+                        },
+                        "lcp": {
+                          "avg": 1200,
+                          "p50": 1000,
+                          "p75": 1400,
+                          "p95": 2500,
+                          "samples": 480
+                        },
+                        "cls": {
+                          "avg": 0.05,
+                          "p50": 0.03,
+                          "p75": 0.07,
+                          "p95": 0.15,
+                          "samples": 500
+                        },
+                        "inp": {
+                          "avg": 50,
+                          "p50": 40,
+                          "p75": 60,
+                          "p95": 120,
+                          "samples": 300
+                        }
+                      },
+                      "trends": {
+                        "ttfb": [
+                          {
+                            "bucket": 1719273600000,
+                            "timestampMs": 1719273600000,
+                            "avg": 120,
+                            "p50": 100,
+                            "p75": 150,
+                            "p95": 300,
+                            "samples": 50
+                          }
+                        ]
+                      },
+                      "routes": [
+                        {
+                          "pathname": "/",
+                          "views": 200,
+                          "metrics": {
+                            "ttfb": {
+                              "avg": 100,
+                              "p50": 80,
+                              "p75": 120,
+                              "p95": 250,
+                              "samples": 200
+                            },
+                            "fcp": {
+                              "avg": 700,
+                              "p50": 600,
+                              "p75": 800,
+                              "p95": 1200,
+                              "samples": 200
+                            },
+                            "lcp": {
+                              "avg": 1000,
+                              "p50": 900,
+                              "p75": 1100,
+                              "p95": 2000,
+                              "samples": 195
+                            },
+                            "cls": {
+                              "avg": 0.03,
+                              "p50": 0.02,
+                              "p75": 0.05,
+                              "p95": 0.1,
+                              "samples": 200
+                            },
+                            "inp": {
+                              "avg": 40,
+                              "p50": 30,
+                              "p75": 50,
+                              "p95": 100,
+                              "samples": 150
+                            }
+                          }
+                        }
+                      ],
+                      "countries": [
+                        {
+                          "country": "US",
+                          "views": 300,
+                          "metrics": {
+                            "ttfb": {
+                              "avg": 110,
+                              "p50": 90,
+                              "p75": 140,
+                              "p95": 280,
+                              "samples": 300
+                            },
+                            "fcp": {
+                              "avg": 750,
+                              "p50": 650,
+                              "p75": 850,
+                              "p95": 1400,
+                              "samples": 300
+                            },
+                            "lcp": {
+                              "avg": 1100,
+                              "p50": 950,
+                              "p75": 1300,
+                              "p95": 2200,
+                              "samples": 290
+                            },
+                            "cls": {
+                              "avg": 0.04,
+                              "p50": 0.03,
+                              "p75": 0.06,
+                              "p95": 0.12,
+                              "samples": 300
+                            },
+                            "inp": {
+                              "avg": 45,
+                              "p50": 35,
+                              "p75": 55,
+                              "p95": 110,
+                              "samples": 200
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "browserTrend": {
+                    "summary": "browser-trend (share trend format)",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "interval": "day",
+                      "series": [
+                        {
+                          "key": "chrome",
+                          "label": "Chrome",
+                          "views": 800,
+                          "visitors": 400,
+                          "sessions": 450
+                        },
+                        {
+                          "key": "firefox",
+                          "label": "Firefox",
+                          "views": 200,
+                          "visitors": 100,
+                          "sessions": 110
+                        },
+                        {
+                          "key": "__other__",
+                          "label": "Other",
+                          "views": 100,
+                          "visitors": 50,
+                          "sessions": 55,
+                          "isOther": true
+                        }
+                      ],
+                      "data": [
+                        {
+                          "bucket": 1719273600000,
+                          "timestampMs": 1719273600000,
+                          "totalVisitors": 550,
+                          "visitorsBySeries": {
+                            "chrome": 400,
+                            "firefox": 100,
+                            "__other__": 50
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "eventTypes": {
+                    "summary": "event-types",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "data": [
+                        {
+                          "label": "signup",
+                          "views": 120,
+                          "sessions": 100,
+                          "visitors": 95
+                        }
+                      ]
+                    }
+                  },
+                  "eventsSummary": {
+                    "summary": "events-summary",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "summary": {
+                        "events": 5000,
+                        "eventTypes": 8,
+                        "sessions": 1200,
+                        "visitors": 900,
+                        "avgEventsPerSession": 4.2
+                      },
+                      "cards": {
+                        "event": {
+                          "name": [
+                            {
+                              "label": "signup",
+                              "views": 120,
+                              "sessions": 100,
+                              "visitors": 95
+                            }
+                          ]
+                        },
+                        "page": {
+                          "path": [
+                            {
+                              "label": "/pricing",
+                              "views": 200,
+                              "sessions": 180,
+                              "visitors": 170
+                            }
+                          ],
+                          "title": [
+                            {
+                              "label": "Pricing",
+                              "views": 200,
+                              "sessions": 180,
+                              "visitors": 170
+                            }
+                          ],
+                          "hostname": [
+                            {
+                              "label": "example.com",
+                              "views": 5000,
+                              "sessions": 1200,
+                              "visitors": 900
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "eventsTrend": {
+                    "summary": "events-trend",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "interval": "day",
+                      "series": [
+                        {
+                          "key": "signup",
+                          "eventName": "signup",
+                          "label": "signup",
+                          "events": 120,
+                          "sessions": 100,
+                          "visitors": 95
+                        }
+                      ],
+                      "data": [
+                        {
+                          "bucket": 1719273600000,
+                          "timestampMs": 1719273600000,
+                          "totalEvents": 50,
+                          "eventsBySeries": {
+                            "signup": 50
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "visitorDetail": {
+                    "summary": "visitor-detail",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "data": {
+                        "visitor": {
+                          "visitorId": "550e8400-e29b-41d4-a716-446655440000",
+                          "firstSeenAt": 1719273600,
+                          "lastSeenAt": 1719360000,
+                          "country": "US",
+                          "browser": "Chrome",
+                          "os": "Windows",
+                          "deviceType": "desktop"
+                        },
+                        "metrics": {
+                          "totalEvents": 45,
+                          "sessions": 5,
+                          "views": 30,
+                          "avgEventsPerSession": 9,
+                          "bounceRate": 20,
+                          "avgDurationMs": 180000,
+                          "p90DurationMs": 300000,
+                          "firstSeenAt": 1719273600,
+                          "lastSeenAt": 1719360000,
+                          "daysActive": 3,
+                          "conversionEvents": 2,
+                          "avgTimeBetweenSessionsMs": 3600000
+                        },
+                        "sessions": [],
+                        "events": [],
+                        "visitedPages": [
+                          {
+                            "pathname": "/",
+                            "views": 10
+                          }
+                        ],
+                        "eventDistribution": [
+                          {
+                            "eventType": "pageview",
+                            "count": 30
+                          }
+                        ],
+                        "activity": [
+                          {
+                            "date": "2026-06-25",
+                            "count": 15
+                          }
+                        ],
+                        "performance": {
+                          "ttfb": {
+                            "avg": 120,
+                            "p75": 150,
+                            "min": 80,
+                            "max": 300,
+                            "samples": 30
+                          },
+                          "fcp": {
+                            "avg": 800,
+                            "p75": 900,
+                            "min": 500,
+                            "max": 1500,
+                            "samples": 30
+                          },
+                          "lcp": {
+                            "avg": 1200,
+                            "p75": 1400,
+                            "min": 800,
+                            "max": 2500,
+                            "samples": 28
+                          },
+                          "cls": {
+                            "avg": 0.05,
+                            "p75": 0.07,
+                            "min": 0.01,
+                            "max": 0.15,
+                            "samples": 30
+                          },
+                          "inp": {
+                            "avg": 50,
+                            "p75": 60,
+                            "min": 20,
+                            "max": 120,
+                            "samples": 20
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "funnels": {
+                    "summary": "funnels (list)",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "funnels": [
+                        {
+                          "id": "550e8400-e29b-41d4-a716-446655440000",
+                          "siteId": "abc123",
+                          "name": "Signup Flow",
+                          "steps": [
+                            {
+                              "type": "pageview",
+                              "value": "/pricing"
+                            },
+                            {
+                              "type": "pageview",
+                              "value": "/signup"
+                            },
+                            {
+                              "type": "event",
+                              "value": "signup_complete"
+                            }
+                          ],
+                          "createdAt": 1719273600,
+                          "updatedAt": 1719273600
+                        }
+                      ]
+                    }
+                  },
+                  "filterOptions": {
+                    "summary": "filter-options",
+                    "value": {
+                      "ok": true,
+                      "siteId": "abc123",
+                      "data": [
+                        {
+                          "value": "US",
+                          "label": "United States",
+                          "group": "country"
+                        },
+                        {
+                          "value": "GB",
+                          "label": "United Kingdom",
+                          "group": "country"
+                        }
+                      ]
+                    }
+                  }
                 }
               }
             }
@@ -483,13 +1777,132 @@
             "$ref": "#/components/responses/NotFound"
           }
         }
+      },
+      "post": {
+        "operationId": "createFunnel",
+        "summary": "Create funnel",
+        "description": "Creates a new funnel definition. Only available for the `funnels` queryName.\nSteps must be ordered and each step has a `type` (pageview or event) and a `value`.\n",
+        "tags": ["Analytics"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "steps"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "steps": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 10,
+                    "items": {
+                      "$ref": "#/components/schemas/FunnelStep"
+                    }
+                  }
+                }
+              },
+              "example": {
+                "name": "Signup Flow",
+                "steps": [
+                  {
+                    "type": "pageview",
+                    "value": "/pricing"
+                  },
+                  {
+                    "type": "pageview",
+                    "value": "/signup"
+                  },
+                  {
+                    "type": "event",
+                    "value": "signup_complete"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Funnel created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "funnel": {
+                              "$ref": "#/components/schemas/FunnelDefinition"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteFunnel",
+        "summary": "Delete funnel",
+        "description": "Deletes a funnel definition. Pass the funnel `id` as a query parameter.\nOnly available for the `funnels` queryName.\n",
+        "tags": ["Analytics"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Funnel UUID to delete"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Funnel deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
       }
     },
     "/api/v1/team/dashboard": {
       "get": {
         "operationId": "getTeamDashboard",
         "summary": "Team dashboard",
-        "description": "Returns an aggregated dashboard for the API key's team, including\nper-site summaries and trend data.\n",
+        "description": "Returns an aggregated dashboard for the API key's team, including\nper-site summaries, change rates, and trend data broken down by site.\n",
         "tags": ["Analytics"],
         "parameters": [
           {
@@ -517,6 +1930,14 @@
               "type": "string",
               "enum": ["minute", "hour", "day", "week", "month"]
             }
+          },
+          {
+            "name": "timeZone",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "IANA timezone identifier"
           }
         ],
         "responses": {
@@ -525,7 +1946,69 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/TeamDashboardData"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "example": {
+                  "ok": true,
+                  "requestId": "a1111697fbf911e8",
+                  "timestamp": "2026-06-25T12:00:00.000Z",
+                  "data": {
+                    "sites": [
+                      {
+                        "id": "550e8400-e29b-41d4-a716-446655440000",
+                        "teamId": "660e8400-e29b-41d4-a716-446655440001",
+                        "name": "My Website",
+                        "domain": "example.com",
+                        "publicEnabled": false,
+                        "publicSlug": "",
+                        "createdAt": 1719312000,
+                        "updatedAt": 1719312000,
+                        "overview": {
+                          "views": 1234,
+                          "sessions": 567,
+                          "visitors": 456,
+                          "bounces": 200,
+                          "totalDurationMs": 8420000,
+                          "avgDurationMs": 14850,
+                          "bounceRate": 35.3,
+                          "approximateVisitors": false
+                        },
+                        "changeRates": {
+                          "views": 12.5,
+                          "visitors": 8.3,
+                          "sessions": 9.1,
+                          "bounceRate": -2.1,
+                          "avgDurationMs": 1500,
+                          "pagesPerSession": 0.1
+                        }
+                      }
+                    ],
+                    "trend": [
+                      {
+                        "bucket": 1719273600000,
+                        "timestampMs": 1719273600000,
+                        "sites": [
+                          {
+                            "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                            "views": 120,
+                            "visitors": 45
+                          }
+                        ]
+                      }
+                    ]
+                  }
                 }
               }
             }
@@ -691,7 +2174,1211 @@
       },
       "SiteConfig": {
         "type": "object",
-        "description": "Tracking script configuration (domain allowlists, blocked paths, etc.)"
+        "description": "Tracking script configuration. All fields are optional on update.",
+        "properties": {
+          "trackingStrength": {
+            "type": "string",
+            "enum": ["strong", "smart", "weak"],
+            "default": "smart",
+            "description": "Controls EU privacy mode. strong = never use EU mode, weak = always EU mode, smart = auto-detect from Cloudflare country header"
+          },
+          "trackQueryParams": {
+            "type": "boolean",
+            "default": true,
+            "description": "Include URL query parameters in tracked page paths"
+          },
+          "trackHash": {
+            "type": "boolean",
+            "default": true,
+            "description": "Include URL hash fragments in tracked page paths"
+          },
+          "autoTrackOutboundLinks": {
+            "type": "boolean",
+            "default": false,
+            "description": "Automatically track outbound link clicks"
+          },
+          "domainWhitelist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "Additional allowed hostnames beyond the site's own domain"
+          },
+          "pathBlacklist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "URL paths to exclude from tracking (prefix match)"
+          },
+          "ignoreDoNotTrack": {
+            "type": "boolean",
+            "default": true,
+            "description": "Track visitors even if their browser sends DNT header"
+          },
+          "performanceSampleRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "default": 100,
+            "description": "Percentage of sessions that collect Core Web Vitals (0 = disabled)"
+          }
+        }
+      },
+      "SiteConfigUpdateInput": {
+        "type": "object",
+        "description": "Partial update for site tracking configuration. Only provided fields are changed.",
+        "properties": {
+          "trackingStrength": {
+            "type": "string",
+            "enum": ["strong", "smart", "weak"]
+          },
+          "trackQueryParams": {
+            "type": "boolean"
+          },
+          "trackHash": {
+            "type": "boolean"
+          },
+          "autoTrackOutboundLinks": {
+            "type": "boolean"
+          },
+          "domainWhitelist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pathBlacklist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ignoreDoNotTrack": {
+            "type": "boolean"
+          },
+          "performanceSampleRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        }
+      },
+      "TrackerClientPayload": {
+        "type": "object",
+        "description": "Tracking event payload sent by the client SDK",
+        "properties": {
+          "siteId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "pageview",
+              "leave",
+              "visibility",
+              "custom_event",
+              "identify"
+            ]
+          },
+          "visitId": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "previousVisitId": {
+            "type": "string"
+          },
+          "performanceVisitId": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer"
+          },
+          "timestamp": {
+            "type": "integer",
+            "description": "Unix milliseconds"
+          },
+          "startedAt": {
+            "type": "integer",
+            "description": "Unix milliseconds"
+          },
+          "pathname": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "screenWidth": {
+            "type": "integer"
+          },
+          "screenHeight": {
+            "type": "integer"
+          },
+          "referrerUrl": {
+            "type": "string"
+          },
+          "visitorId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "userName": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "integer"
+          },
+          "exitReason": {
+            "type": "string"
+          },
+          "visibilityState": {
+            "type": "string",
+            "enum": ["hidden", "visible"]
+          },
+          "eventName": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "eventData": {
+            "description": "Custom event payload (arbitrary JSON)"
+          },
+          "performance": {
+            "type": "object",
+            "properties": {
+              "ttfb": {
+                "type": "number"
+              },
+              "fcp": {
+                "type": "number"
+              },
+              "lcp": {
+                "type": "number"
+              },
+              "cls": {
+                "type": "number"
+              },
+              "inp": {
+                "type": "number"
+              }
+            }
+          },
+          "utmSource": {
+            "type": "string"
+          },
+          "utmMedium": {
+            "type": "string"
+          },
+          "utmCampaign": {
+            "type": "string"
+          },
+          "utmTerm": {
+            "type": "string"
+          },
+          "utmContent": {
+            "type": "string"
+          },
+          "uaClientHints": {
+            "type": "object",
+            "properties": {
+              "brands": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "brand": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "fullVersionList": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "brand": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "mobile": {
+                "type": "boolean"
+              },
+              "platform": {
+                "type": "string"
+              },
+              "platformVersion": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "formFactors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "AnalyticsResponse": {
+        "description": "Analytics query response. The `data` shape varies by queryName.",
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "siteId": {
+            "type": "string"
+          }
+        }
+      },
+      "PaginationMeta": {
+        "type": "object",
+        "description": "Pagination metadata (present on paginated queries)",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "description": "Current page number (1-indexed)"
+          },
+          "pageSize": {
+            "type": "integer",
+            "description": "Results per page"
+          },
+          "returned": {
+            "type": "integer",
+            "description": "Number of results in this page"
+          },
+          "hasMore": {
+            "type": "boolean",
+            "description": "Whether more pages exist"
+          },
+          "nextPage": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Next page number, or null if no more pages"
+          }
+        }
+      },
+      "TrendRow": {
+        "type": "object",
+        "description": "A single time bucket in a trend series",
+        "properties": {
+          "bucket": {
+            "type": "integer",
+            "description": "Bucket timestamp (Unix ms)"
+          },
+          "timestampMs": {
+            "type": "integer",
+            "description": "Bucket timestamp (Unix ms, alias for bucket)"
+          },
+          "views": {
+            "type": "integer"
+          },
+          "visitors": {
+            "type": "integer"
+          },
+          "sessions": {
+            "type": "integer"
+          },
+          "bounces": {
+            "type": "integer"
+          },
+          "totalDurationMs": {
+            "type": "integer"
+          },
+          "avgDurationMs": {
+            "type": "number"
+          }
+        }
+      },
+      "DimensionRow": {
+        "type": "object",
+        "description": "A row in a dimension breakdown (pages, countries, UTM, etc.)",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "views": {
+            "type": "integer"
+          },
+          "sessions": {
+            "type": "integer"
+          },
+          "visitors": {
+            "type": "integer"
+          }
+        }
+      },
+      "SessionRow": {
+        "type": "object",
+        "description": "Session data row",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "visitorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "startedAt": {
+            "type": "integer",
+            "description": "Unix timestamp in seconds"
+          },
+          "endedAt": {
+            "type": "integer",
+            "description": "Unix timestamp in seconds"
+          },
+          "durationMs": {
+            "type": "integer"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "views": {
+            "type": "integer"
+          },
+          "events": {
+            "type": "integer"
+          },
+          "bounce": {
+            "type": "boolean"
+          },
+          "entryPath": {
+            "type": "string"
+          },
+          "exitPath": {
+            "type": "string"
+          },
+          "referrerHost": {
+            "type": "string"
+          },
+          "referrerUrl": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "regionCode": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "browser": {
+            "type": "string"
+          },
+          "browserVersion": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string"
+          },
+          "osVersion": {
+            "type": "string"
+          },
+          "deviceType": {
+            "type": "string"
+          },
+          "screenWidth": {
+            "type": "integer"
+          },
+          "screenHeight": {
+            "type": "integer"
+          },
+          "performance": {
+            "$ref": "#/components/schemas/PerformanceMetrics"
+          }
+        }
+      },
+      "PerformanceMetrics": {
+        "type": "object",
+        "description": "Core Web Vitals metrics",
+        "properties": {
+          "ttfb": {
+            "type": "number",
+            "description": "Time to First Byte (ms)"
+          },
+          "fcp": {
+            "type": "number",
+            "description": "First Contentful Paint (ms)"
+          },
+          "lcp": {
+            "type": "number",
+            "description": "Largest Contentful Paint (ms)"
+          },
+          "cls": {
+            "type": "number",
+            "description": "Cumulative Layout Shift"
+          },
+          "inp": {
+            "type": "number",
+            "description": "Interaction to Next Paint (ms)"
+          }
+        }
+      },
+      "PerformanceSummaryStats": {
+        "type": "object",
+        "description": "Statistical summary for a single Core Web Vital metric",
+        "properties": {
+          "avg": {
+            "type": "number"
+          },
+          "p50": {
+            "type": "number"
+          },
+          "p75": {
+            "type": "number"
+          },
+          "p95": {
+            "type": "number"
+          },
+          "samples": {
+            "type": "integer"
+          }
+        }
+      },
+      "PerformanceSummaryRow": {
+        "type": "object",
+        "description": "Performance summary with all five Core Web Vitals",
+        "properties": {
+          "ttfb": {
+            "$ref": "#/components/schemas/PerformanceSummaryStats"
+          },
+          "fcp": {
+            "$ref": "#/components/schemas/PerformanceSummaryStats"
+          },
+          "lcp": {
+            "$ref": "#/components/schemas/PerformanceSummaryStats"
+          },
+          "cls": {
+            "$ref": "#/components/schemas/PerformanceSummaryStats"
+          },
+          "inp": {
+            "$ref": "#/components/schemas/PerformanceSummaryStats"
+          }
+        }
+      },
+      "PerformanceTrendRow": {
+        "type": "object",
+        "description": "Performance metric value for a single time bucket",
+        "properties": {
+          "bucket": {
+            "type": "integer"
+          },
+          "timestampMs": {
+            "type": "integer"
+          },
+          "avg": {
+            "type": "number"
+          },
+          "p50": {
+            "type": "number"
+          },
+          "p75": {
+            "type": "number"
+          },
+          "p95": {
+            "type": "number"
+          },
+          "samples": {
+            "type": "integer"
+          }
+        }
+      },
+      "PerformanceRouteRow": {
+        "type": "object",
+        "description": "Performance breakdown by route",
+        "properties": {
+          "pathname": {
+            "type": "string"
+          },
+          "views": {
+            "type": "integer"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/PerformanceSummaryRow"
+          }
+        }
+      },
+      "PerformanceCountryRow": {
+        "type": "object",
+        "description": "Performance breakdown by country",
+        "properties": {
+          "country": {
+            "type": "string"
+          },
+          "views": {
+            "type": "integer"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/PerformanceSummaryRow"
+          }
+        }
+      },
+      "ShareTrendSeriesEntry": {
+        "type": "object",
+        "description": "A series in a share trend chart",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "views": {
+            "type": "integer"
+          },
+          "visitors": {
+            "type": "integer"
+          },
+          "sessions": {
+            "type": "integer"
+          },
+          "isOther": {
+            "type": "boolean",
+            "description": "Present and true for the aggregated \"other\" series"
+          }
+        }
+      },
+      "ShareTrendDataPoint": {
+        "type": "object",
+        "description": "A single time bucket in a share trend",
+        "properties": {
+          "bucket": {
+            "type": "integer"
+          },
+          "timestampMs": {
+            "type": "integer"
+          },
+          "totalVisitors": {
+            "type": "integer"
+          },
+          "visitorsBySeries": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Map of series key to visitor count"
+          }
+        }
+      },
+      "CrossBreakdownCell": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "views": {
+            "type": "integer"
+          },
+          "visitors": {
+            "type": "integer"
+          },
+          "sessions": {
+            "type": "integer"
+          },
+          "isOther": {
+            "type": "boolean"
+          },
+          "isUnknown": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CrossBreakdownRow": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "views": {
+            "type": "integer"
+          },
+          "visitors": {
+            "type": "integer"
+          },
+          "sessions": {
+            "type": "integer"
+          },
+          "isOther": {
+            "type": "boolean"
+          },
+          "isUnknown": {
+            "type": "boolean"
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CrossBreakdownCell"
+            }
+          }
+        }
+      },
+      "CrossBreakdownMatrix": {
+        "type": "object",
+        "properties": {
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CrossBreakdownCell"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CrossBreakdownRow"
+            }
+          },
+          "totalVisitors": {
+            "type": "integer"
+          }
+        }
+      },
+      "RadarEntry": {
+        "type": "object",
+        "description": "Browser or referrer radar entry with normalized metrics (0-1)",
+        "properties": {
+          "browser": {
+            "type": "string",
+            "description": "Browser name (browser-radar)"
+          },
+          "referrer": {
+            "type": "string",
+            "description": "Referrer domain (referrer-radar)"
+          },
+          "visitors": {
+            "type": "integer"
+          },
+          "sessions": {
+            "type": "integer"
+          },
+          "metrics": {
+            "type": "object",
+            "properties": {
+              "duration": {
+                "type": "number",
+                "description": "Normalized avg session duration"
+              },
+              "engagement": {
+                "type": "number",
+                "description": "Normalized engagement score"
+              },
+              "depth": {
+                "type": "number",
+                "description": "Normalized pages per session"
+              },
+              "loyalty": {
+                "type": "number",
+                "description": "Normalized return visitor rate"
+              },
+              "frequency": {
+                "type": "number",
+                "description": "Normalized visit frequency"
+              },
+              "traffic": {
+                "type": "number",
+                "description": "Normalized traffic share"
+              }
+            }
+          }
+        }
+      },
+      "BrowserVersionEntry": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "views": {
+            "type": "integer"
+          },
+          "visitors": {
+            "type": "integer"
+          },
+          "sessions": {
+            "type": "integer"
+          },
+          "isOther": {
+            "type": "boolean"
+          },
+          "isUnknown": {
+            "type": "boolean"
+          }
+        }
+      },
+      "BrowserVersionBrowser": {
+        "type": "object",
+        "properties": {
+          "browser": {
+            "type": "string"
+          },
+          "views": {
+            "type": "integer"
+          },
+          "visitors": {
+            "type": "integer"
+          },
+          "sessions": {
+            "type": "integer"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BrowserVersionEntry"
+            }
+          }
+        }
+      },
+      "FunnelStep": {
+        "type": "object",
+        "required": ["type", "value"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["pageview", "event"],
+            "description": "pageview = match pathname, event = match event name"
+          },
+          "value": {
+            "type": "string",
+            "description": "Pathname pattern or event name to match"
+          }
+        }
+      },
+      "FunnelDefinition": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "siteId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FunnelStep"
+            }
+          },
+          "createdAt": {
+            "type": "integer",
+            "description": "Unix timestamp in seconds"
+          },
+          "updatedAt": {
+            "type": "integer",
+            "description": "Unix timestamp in seconds"
+          }
+        }
+      },
+      "FunnelAnalysisStep": {
+        "type": "object",
+        "description": "Analysis result for a single funnel step",
+        "properties": {
+          "index": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["pageview", "event"]
+          },
+          "sessions": {
+            "type": "integer"
+          },
+          "visitors": {
+            "type": "integer"
+          },
+          "conversionRate": {
+            "type": "number",
+            "description": "Conversion rate from first step (0-100)"
+          },
+          "stepConversionRate": {
+            "type": "number",
+            "description": "Conversion rate from previous step (0-100)"
+          },
+          "dropOffSessions": {
+            "type": "integer"
+          },
+          "dropOffRate": {
+            "type": "number",
+            "description": "Drop-off rate from previous step (0-100)"
+          }
+        }
+      },
+      "FunnelAnalysisSummary": {
+        "type": "object",
+        "properties": {
+          "totalSessions": {
+            "type": "integer"
+          },
+          "convertedSessions": {
+            "type": "integer"
+          },
+          "totalVisitors": {
+            "type": "integer"
+          },
+          "convertedVisitors": {
+            "type": "integer"
+          },
+          "overallConversionRate": {
+            "type": "number"
+          },
+          "largestDropOffStepIndex": {
+            "type": "integer"
+          }
+        }
+      },
+      "JourneyEventRow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "eventType": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "integer"
+          },
+          "visitId": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "visitorId": {
+            "type": "string"
+          },
+          "pathname": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "referrerHost": {
+            "type": "string"
+          },
+          "referrerUrl": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "browser": {
+            "type": "string"
+          },
+          "browserVersion": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string"
+          },
+          "osVersion": {
+            "type": "string"
+          },
+          "deviceType": {
+            "type": "string"
+          },
+          "screenWidth": {
+            "type": "integer"
+          },
+          "screenHeight": {
+            "type": "integer"
+          },
+          "durationMs": {
+            "type": "integer"
+          },
+          "performance": {
+            "$ref": "#/components/schemas/PerformanceMetrics"
+          }
+        }
+      },
+      "GeoPointRow": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "timestampMs": {
+            "type": "integer"
+          },
+          "country": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "regionCode": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          }
+        }
+      },
+      "JourneyPerformanceSummary": {
+        "type": "object",
+        "description": "Per-metric statistical summary (avg, p75, min, max, samples)",
+        "additionalProperties": {
+          "type": "object",
+          "properties": {
+            "avg": {
+              "type": "number"
+            },
+            "p75": {
+              "type": "number"
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            },
+            "samples": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "RetentionCohortPeriod": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "Period index (0 = cohort start)"
+          },
+          "visitors": {
+            "type": "integer"
+          },
+          "rate": {
+            "type": "number",
+            "description": "Retention rate (0-1)"
+          }
+        }
+      },
+      "RetentionCohort": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "integer",
+            "description": "Cohort start timestamp (Unix ms)"
+          },
+          "size": {
+            "type": "integer",
+            "description": "Initial visitor count in cohort"
+          },
+          "periods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RetentionCohortPeriod"
+            }
+          }
+        }
+      },
+      "TeamDashboardSiteOverview": {
+        "type": "object",
+        "properties": {
+          "views": {
+            "type": "integer"
+          },
+          "sessions": {
+            "type": "integer"
+          },
+          "visitors": {
+            "type": "integer"
+          },
+          "bounces": {
+            "type": "integer"
+          },
+          "totalDurationMs": {
+            "type": "integer"
+          },
+          "avgDurationMs": {
+            "type": "number"
+          },
+          "bounceRate": {
+            "type": "number"
+          },
+          "approximateVisitors": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TeamDashboardSite": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "teamId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "publicEnabled": {
+            "type": "boolean"
+          },
+          "publicSlug": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer"
+          },
+          "updatedAt": {
+            "type": "integer"
+          },
+          "overview": {
+            "$ref": "#/components/schemas/TeamDashboardSiteOverview"
+          },
+          "changeRates": {
+            "type": "object",
+            "properties": {
+              "views": {
+                "type": "number"
+              },
+              "visitors": {
+                "type": "number"
+              },
+              "sessions": {
+                "type": "number"
+              },
+              "bounceRate": {
+                "type": "number"
+              },
+              "avgDurationMs": {
+                "type": "number"
+              },
+              "pagesPerSession": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "TeamDashboardTrendPoint": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "integer"
+          },
+          "timestampMs": {
+            "type": "integer"
+          },
+          "sites": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "siteId": {
+                  "type": "string"
+                },
+                "views": {
+                  "type": "integer"
+                },
+                "visitors": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "TeamDashboardData": {
+        "type": "object",
+        "properties": {
+          "sites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TeamDashboardSite"
+            }
+          },
+          "trend": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TeamDashboardTrendPoint"
+            }
+          }
+        }
       }
     },
     "responses": {
@@ -799,21 +3486,26 @@
             }
           }
         }
+      },
+      "TooManyRequests": {
+        "description": "Rate limit exceeded (not currently enforced, reserved for future use)",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            },
+            "example": {
+              "ok": false,
+              "requestId": "a1111697fbf911e8",
+              "timestamp": "2026-06-25T12:00:00.000Z",
+              "error": {
+                "code": "rate_limited",
+                "message": "Too many requests, please try again later"
+              }
+            }
+          }
+        }
       }
     }
-  },
-  "tags": [
-    {
-      "name": "Sites",
-      "description": "Create, read, update, and delete analytics sites"
-    },
-    {
-      "name": "Site Config",
-      "description": "Manage site tracking configuration and embed snippets"
-    },
-    {
-      "name": "Analytics",
-      "description": "Query analytics data and team dashboards"
-    }
-  ]
+  }
 }
