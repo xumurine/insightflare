@@ -1174,1320 +1174,6 @@
         "required": ["page", "pageSize", "returned", "hasMore", "nextPage"],
         "additionalProperties": false
       },
-      "Site": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "teamId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "name": {
-            "type": "string"
-          },
-          "domain": {
-            "type": "string"
-          },
-          "publicEnabled": {
-            "type": "boolean"
-          },
-          "publicSlug": {
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991,
-            "description": "Unix timestamp in seconds"
-          },
-          "updatedAt": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991,
-            "description": "Unix timestamp in seconds"
-          }
-        },
-        "required": [
-          "id",
-          "teamId",
-          "name",
-          "domain",
-          "publicEnabled",
-          "publicSlug",
-          "createdAt",
-          "updatedAt"
-        ],
-        "additionalProperties": false
-      },
-      "SiteCreateInput": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120
-          },
-          "domain": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255
-          },
-          "publicEnabled": {
-            "default": false,
-            "type": "boolean"
-          },
-          "publicSlug": {
-            "type": "string",
-            "maxLength": 120
-          }
-        },
-        "required": ["name", "domain", "publicEnabled"],
-        "additionalProperties": false
-      },
-      "SiteUpdateInput": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120
-          },
-          "domain": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255
-          },
-          "publicEnabled": {
-            "type": "boolean"
-          },
-          "publicSlug": {
-            "type": "string",
-            "maxLength": 120
-          }
-        },
-        "additionalProperties": false
-      },
-      "SiteResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "const": true
-          },
-          "requestId": {
-            "type": "string",
-            "description": "Cloudflare Ray ID for request tracing"
-          },
-          "timestamp": {
-            "type": "string",
-            "description": "ISO 8601 response generation time"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-              },
-              "teamId": {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-              },
-              "name": {
-                "type": "string"
-              },
-              "domain": {
-                "type": "string"
-              },
-              "publicEnabled": {
-                "type": "boolean"
-              },
-              "publicSlug": {
-                "type": "string"
-              },
-              "createdAt": {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991,
-                "description": "Unix timestamp in seconds"
-              },
-              "updatedAt": {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991,
-                "description": "Unix timestamp in seconds"
-              }
-            },
-            "required": [
-              "id",
-              "teamId",
-              "name",
-              "domain",
-              "publicEnabled",
-              "publicSlug",
-              "createdAt",
-              "updatedAt"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "required": ["ok", "requestId", "timestamp", "data"],
-        "additionalProperties": false
-      },
-      "SiteListResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "const": true
-          },
-          "requestId": {
-            "type": "string",
-            "description": "Cloudflare Ray ID for request tracing"
-          },
-          "timestamp": {
-            "type": "string",
-            "description": "ISO 8601 response generation time"
-          },
-          "data": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                },
-                "teamId": {
-                  "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "domain": {
-                  "type": "string"
-                },
-                "publicEnabled": {
-                  "type": "boolean"
-                },
-                "publicSlug": {
-                  "type": "string"
-                },
-                "createdAt": {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991,
-                  "description": "Unix timestamp in seconds"
-                },
-                "updatedAt": {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991,
-                  "description": "Unix timestamp in seconds"
-                }
-              },
-              "required": [
-                "id",
-                "teamId",
-                "name",
-                "domain",
-                "publicEnabled",
-                "publicSlug",
-                "createdAt",
-                "updatedAt"
-              ],
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": ["ok", "requestId", "timestamp", "data"],
-        "additionalProperties": false
-      },
-      "SiteDeleteResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "const": true
-          },
-          "requestId": {
-            "type": "string",
-            "description": "Cloudflare Ray ID for request tracing"
-          },
-          "timestamp": {
-            "type": "string",
-            "description": "ISO 8601 response generation time"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "siteId": {
-                "type": "string"
-              },
-              "teamId": {
-                "type": "string"
-              },
-              "removed": {
-                "type": "boolean",
-                "const": true
-              }
-            },
-            "required": ["siteId", "teamId", "removed"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["ok", "requestId", "timestamp", "data"],
-        "additionalProperties": false
-      },
-      "SiteConfig___schema0": {
-        "type": "string",
-        "enum": ["strong", "smart", "weak"]
-      },
-      "SiteConfig___schema1": {
-        "type": "boolean"
-      },
-      "SiteConfig___schema2": {
-        "type": "boolean"
-      },
-      "SiteConfig___schema3": {
-        "type": "boolean"
-      },
-      "SiteConfig___schema4": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      },
-      "SiteConfig___schema5": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      },
-      "SiteConfig___schema6": {
-        "type": "boolean"
-      },
-      "SiteConfig___schema7": {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 100
-      },
-      "SiteConfig": {
-        "type": "object",
-        "properties": {
-          "trackingStrength": {
-            "default": "smart",
-            "description": "Controls EU privacy mode. strong = never use EU mode, weak = always EU mode, smart = auto-detect",
-            "$ref": "#/components/schemas/SiteConfig___schema0"
-          },
-          "trackQueryParams": {
-            "default": true,
-            "description": "Include URL query parameters in tracked page paths",
-            "$ref": "#/components/schemas/SiteConfig___schema1"
-          },
-          "trackHash": {
-            "default": true,
-            "description": "Include URL hash fragments in tracked page paths",
-            "$ref": "#/components/schemas/SiteConfig___schema2"
-          },
-          "autoTrackOutboundLinks": {
-            "default": false,
-            "description": "Automatically track outbound link clicks",
-            "$ref": "#/components/schemas/SiteConfig___schema3"
-          },
-          "domainWhitelist": {
-            "default": [],
-            "description": "Additional allowed hostnames beyond the site's own domain",
-            "$ref": "#/components/schemas/SiteConfig___schema4"
-          },
-          "pathBlacklist": {
-            "default": [],
-            "description": "URL paths to exclude from tracking (prefix match)",
-            "$ref": "#/components/schemas/SiteConfig___schema5"
-          },
-          "ignoreDoNotTrack": {
-            "default": true,
-            "description": "Track visitors even if their browser sends DNT header",
-            "$ref": "#/components/schemas/SiteConfig___schema6"
-          },
-          "performanceSampleRate": {
-            "default": 100,
-            "description": "Percentage of sessions that collect Core Web Vitals (0 = disabled)",
-            "$ref": "#/components/schemas/SiteConfig___schema7"
-          }
-        },
-        "required": [
-          "trackingStrength",
-          "trackQueryParams",
-          "trackHash",
-          "autoTrackOutboundLinks",
-          "domainWhitelist",
-          "pathBlacklist",
-          "ignoreDoNotTrack",
-          "performanceSampleRate"
-        ],
-        "additionalProperties": false
-      },
-      "SiteConfigUpdateInput": {
-        "type": "object",
-        "properties": {
-          "trackingStrength": {
-            "type": "string",
-            "enum": ["strong", "smart", "weak"]
-          },
-          "trackQueryParams": {
-            "type": "boolean"
-          },
-          "trackHash": {
-            "type": "boolean"
-          },
-          "autoTrackOutboundLinks": {
-            "type": "boolean"
-          },
-          "domainWhitelist": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "pathBlacklist": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "ignoreDoNotTrack": {
-            "type": "boolean"
-          },
-          "performanceSampleRate": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 100
-          }
-        },
-        "additionalProperties": false
-      },
-      "ScriptSnippet": {
-        "type": "object",
-        "properties": {
-          "siteId": {
-            "type": "string"
-          },
-          "src": {
-            "type": "string",
-            "description": "Full URL to the tracking script"
-          },
-          "snippet": {
-            "type": "string",
-            "description": "HTML script tag"
-          }
-        },
-        "required": ["siteId", "src", "snippet"],
-        "additionalProperties": false
-      },
-      "SiteConfigResponse___schema0": {
-        "type": "string",
-        "enum": ["strong", "smart", "weak"]
-      },
-      "SiteConfigResponse___schema1": {
-        "type": "boolean"
-      },
-      "SiteConfigResponse___schema2": {
-        "type": "boolean"
-      },
-      "SiteConfigResponse___schema3": {
-        "type": "boolean"
-      },
-      "SiteConfigResponse___schema4": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      },
-      "SiteConfigResponse___schema5": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      },
-      "SiteConfigResponse___schema6": {
-        "type": "boolean"
-      },
-      "SiteConfigResponse___schema7": {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 100
-      },
-      "SiteConfigResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "const": true
-          },
-          "requestId": {
-            "type": "string",
-            "description": "Cloudflare Ray ID for request tracing"
-          },
-          "timestamp": {
-            "type": "string",
-            "description": "ISO 8601 response generation time"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "trackingStrength": {
-                "default": "smart",
-                "description": "Controls EU privacy mode. strong = never use EU mode, weak = always EU mode, smart = auto-detect",
-                "$ref": "#/components/schemas/SiteConfigResponse___schema0"
-              },
-              "trackQueryParams": {
-                "default": true,
-                "description": "Include URL query parameters in tracked page paths",
-                "$ref": "#/components/schemas/SiteConfigResponse___schema1"
-              },
-              "trackHash": {
-                "default": true,
-                "description": "Include URL hash fragments in tracked page paths",
-                "$ref": "#/components/schemas/SiteConfigResponse___schema2"
-              },
-              "autoTrackOutboundLinks": {
-                "default": false,
-                "description": "Automatically track outbound link clicks",
-                "$ref": "#/components/schemas/SiteConfigResponse___schema3"
-              },
-              "domainWhitelist": {
-                "default": [],
-                "description": "Additional allowed hostnames beyond the site's own domain",
-                "$ref": "#/components/schemas/SiteConfigResponse___schema4"
-              },
-              "pathBlacklist": {
-                "default": [],
-                "description": "URL paths to exclude from tracking (prefix match)",
-                "$ref": "#/components/schemas/SiteConfigResponse___schema5"
-              },
-              "ignoreDoNotTrack": {
-                "default": true,
-                "description": "Track visitors even if their browser sends DNT header",
-                "$ref": "#/components/schemas/SiteConfigResponse___schema6"
-              },
-              "performanceSampleRate": {
-                "default": 100,
-                "description": "Percentage of sessions that collect Core Web Vitals (0 = disabled)",
-                "$ref": "#/components/schemas/SiteConfigResponse___schema7"
-              }
-            },
-            "required": [
-              "trackingStrength",
-              "trackQueryParams",
-              "trackHash",
-              "autoTrackOutboundLinks",
-              "domainWhitelist",
-              "pathBlacklist",
-              "ignoreDoNotTrack",
-              "performanceSampleRate"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "required": ["ok", "requestId", "timestamp", "data"],
-        "additionalProperties": false
-      },
-      "ScriptSnippetResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "const": true
-          },
-          "requestId": {
-            "type": "string",
-            "description": "Cloudflare Ray ID for request tracing"
-          },
-          "timestamp": {
-            "type": "string",
-            "description": "ISO 8601 response generation time"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "siteId": {
-                "type": "string"
-              },
-              "src": {
-                "type": "string",
-                "description": "Full URL to the tracking script"
-              },
-              "snippet": {
-                "type": "string",
-                "description": "HTML script tag"
-              }
-            },
-            "required": ["siteId", "src", "snippet"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["ok", "requestId", "timestamp", "data"],
-        "additionalProperties": false
-      },
-      "TrackerClientPayload": {
-        "type": "object",
-        "properties": {
-          "siteId": {
-            "type": "string"
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "pageview",
-              "leave",
-              "visibility",
-              "custom_event",
-              "identify"
-            ]
-          },
-          "visitId": {
-            "type": "string",
-            "maxLength": 128
-          },
-          "previousVisitId": {
-            "type": "string"
-          },
-          "performanceVisitId": {
-            "type": "string"
-          },
-          "eventId": {
-            "type": "string"
-          },
-          "sequence": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "timestamp": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991,
-            "description": "Unix milliseconds"
-          },
-          "startedAt": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991,
-            "description": "Unix milliseconds"
-          },
-          "pathname": {
-            "type": "string"
-          },
-          "query": {
-            "type": "string"
-          },
-          "hash": {
-            "type": "string"
-          },
-          "hostname": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "language": {
-            "type": "string"
-          },
-          "timezone": {
-            "type": "string"
-          },
-          "screenWidth": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "screenHeight": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "referrerUrl": {
-            "type": "string"
-          },
-          "visitorId": {
-            "type": "string"
-          },
-          "userId": {
-            "type": "string"
-          },
-          "userName": {
-            "type": "string"
-          },
-          "durationMs": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "exitReason": {
-            "type": "string"
-          },
-          "visibilityState": {
-            "type": "string",
-            "enum": ["hidden", "visible"]
-          },
-          "eventName": {
-            "type": "string",
-            "maxLength": 120
-          },
-          "eventData": {
-            "description": "Custom event payload (arbitrary JSON)"
-          },
-          "performance": {
-            "type": "object",
-            "properties": {
-              "ttfb": {
-                "type": "number"
-              },
-              "fcp": {
-                "type": "number"
-              },
-              "lcp": {
-                "type": "number"
-              },
-              "cls": {
-                "type": "number"
-              },
-              "inp": {
-                "type": "number"
-              }
-            },
-            "additionalProperties": false
-          },
-          "utmSource": {
-            "type": "string"
-          },
-          "utmMedium": {
-            "type": "string"
-          },
-          "utmCampaign": {
-            "type": "string"
-          },
-          "utmTerm": {
-            "type": "string"
-          },
-          "utmContent": {
-            "type": "string"
-          },
-          "uaClientHints": {
-            "type": "object",
-            "properties": {
-              "brands": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "brand": {
-                      "type": "string"
-                    },
-                    "version": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["brand", "version"],
-                  "additionalProperties": false
-                }
-              },
-              "fullVersionList": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "brand": {
-                      "type": "string"
-                    },
-                    "version": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["brand", "version"],
-                  "additionalProperties": false
-                }
-              },
-              "mobile": {
-                "type": "boolean"
-              },
-              "platform": {
-                "type": "string"
-              },
-              "platformVersion": {
-                "type": "string"
-              },
-              "model": {
-                "type": "string"
-              },
-              "formFactors": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "required": ["siteId", "kind", "visitId"],
-        "additionalProperties": false
-      },
-      "FunnelStep": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": ["pageview", "event"],
-            "description": "pageview = match pathname, event = match event name"
-          },
-          "value": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Pathname pattern or event name to match"
-          }
-        },
-        "required": ["type", "value"],
-        "additionalProperties": false
-      },
-      "FunnelDefinition": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "siteId": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "steps": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "enum": ["pageview", "event"],
-                  "description": "pageview = match pathname, event = match event name"
-                },
-                "value": {
-                  "type": "string",
-                  "minLength": 1,
-                  "description": "Pathname pattern or event name to match"
-                }
-              },
-              "required": ["type", "value"],
-              "additionalProperties": false
-            }
-          },
-          "createdAt": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991,
-            "description": "Unix timestamp in seconds"
-          },
-          "updatedAt": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991,
-            "description": "Unix timestamp in seconds"
-          }
-        },
-        "required": ["id", "siteId", "name", "steps", "createdAt", "updatedAt"],
-        "additionalProperties": false
-      },
-      "FunnelAnalysisStep": {
-        "type": "object",
-        "properties": {
-          "index": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "label": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string",
-            "enum": ["pageview", "event"]
-          },
-          "sessions": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "visitors": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "conversionRate": {
-            "type": "number",
-            "description": "Conversion rate from first step (0-100)"
-          },
-          "stepConversionRate": {
-            "type": "number",
-            "description": "Conversion rate from previous step (0-100)"
-          },
-          "dropOffSessions": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "dropOffRate": {
-            "type": "number",
-            "description": "Drop-off rate from previous step (0-100)"
-          }
-        },
-        "required": [
-          "index",
-          "label",
-          "type",
-          "sessions",
-          "visitors",
-          "conversionRate",
-          "stepConversionRate",
-          "dropOffSessions",
-          "dropOffRate"
-        ],
-        "additionalProperties": false
-      },
-      "FunnelAnalysisSummary": {
-        "type": "object",
-        "properties": {
-          "totalSessions": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "convertedSessions": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "totalVisitors": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "convertedVisitors": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "overallConversionRate": {
-            "type": "number"
-          },
-          "largestDropOffStepIndex": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "totalSessions",
-          "convertedSessions",
-          "totalVisitors",
-          "convertedVisitors",
-          "overallConversionRate",
-          "largestDropOffStepIndex"
-        ],
-        "additionalProperties": false
-      },
-      "FunnelCreateInput___schema0": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": ["pageview", "event"],
-            "description": "pageview = match pathname, event = match event name"
-          },
-          "value": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Pathname pattern or event name to match"
-          }
-        },
-        "required": ["type", "value"],
-        "additionalProperties": false
-      },
-      "FunnelCreateInput": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200
-          },
-          "steps": {
-            "minItems": 2,
-            "maxItems": 10,
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FunnelCreateInput___schema0"
-            }
-          }
-        },
-        "required": ["name", "steps"],
-        "additionalProperties": false
-      },
-      "FunnelAnalyzeInput___schema0": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": ["pageview", "event"],
-            "description": "pageview = match pathname, event = match event name"
-          },
-          "value": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Pathname pattern or event name to match"
-          }
-        },
-        "required": ["type", "value"],
-        "additionalProperties": false
-      },
-      "FunnelAnalyzeInput": {
-        "type": "object",
-        "properties": {
-          "steps": {
-            "minItems": 2,
-            "maxItems": 10,
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FunnelAnalyzeInput___schema0"
-            }
-          }
-        },
-        "required": ["steps"],
-        "additionalProperties": false
-      },
-      "FunnelListResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "const": true
-          },
-          "requestId": {
-            "type": "string",
-            "description": "Cloudflare Ray ID for request tracing"
-          },
-          "timestamp": {
-            "type": "string",
-            "description": "ISO 8601 response generation time"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "funnels": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "format": "uuid",
-                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                    },
-                    "siteId": {
-                      "type": "string"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "steps": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "enum": ["pageview", "event"],
-                            "description": "pageview = match pathname, event = match event name"
-                          },
-                          "value": {
-                            "type": "string",
-                            "minLength": 1,
-                            "description": "Pathname pattern or event name to match"
-                          }
-                        },
-                        "required": ["type", "value"],
-                        "additionalProperties": false
-                      }
-                    },
-                    "createdAt": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991,
-                      "description": "Unix timestamp in seconds"
-                    },
-                    "updatedAt": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991,
-                      "description": "Unix timestamp in seconds"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "siteId",
-                    "name",
-                    "steps",
-                    "createdAt",
-                    "updatedAt"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            },
-            "required": ["funnels"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["ok", "requestId", "timestamp", "data"],
-        "additionalProperties": false
-      },
-      "FunnelCreateResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "const": true
-          },
-          "requestId": {
-            "type": "string",
-            "description": "Cloudflare Ray ID for request tracing"
-          },
-          "timestamp": {
-            "type": "string",
-            "description": "ISO 8601 response generation time"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "funnel": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                  },
-                  "siteId": {
-                    "type": "string"
-                  },
-                  "name": {
-                    "type": "string"
-                  },
-                  "steps": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "enum": ["pageview", "event"],
-                          "description": "pageview = match pathname, event = match event name"
-                        },
-                        "value": {
-                          "type": "string",
-                          "minLength": 1,
-                          "description": "Pathname pattern or event name to match"
-                        }
-                      },
-                      "required": ["type", "value"],
-                      "additionalProperties": false
-                    }
-                  },
-                  "createdAt": {
-                    "type": "integer",
-                    "minimum": -9007199254740991,
-                    "maximum": 9007199254740991,
-                    "description": "Unix timestamp in seconds"
-                  },
-                  "updatedAt": {
-                    "type": "integer",
-                    "minimum": -9007199254740991,
-                    "maximum": 9007199254740991,
-                    "description": "Unix timestamp in seconds"
-                  }
-                },
-                "required": [
-                  "id",
-                  "siteId",
-                  "name",
-                  "steps",
-                  "createdAt",
-                  "updatedAt"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "required": ["funnel"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["ok", "requestId", "timestamp", "data"],
-        "additionalProperties": false
-      },
-      "FunnelAnalyzeResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "const": true
-          },
-          "requestId": {
-            "type": "string",
-            "description": "Cloudflare Ray ID for request tracing"
-          },
-          "timestamp": {
-            "type": "string",
-            "description": "ISO 8601 response generation time"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "steps": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "index": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    },
-                    "label": {
-                      "type": "string"
-                    },
-                    "type": {
-                      "type": "string",
-                      "enum": ["pageview", "event"]
-                    },
-                    "sessions": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    },
-                    "visitors": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    },
-                    "conversionRate": {
-                      "type": "number",
-                      "description": "Conversion rate from first step (0-100)"
-                    },
-                    "stepConversionRate": {
-                      "type": "number",
-                      "description": "Conversion rate from previous step (0-100)"
-                    },
-                    "dropOffSessions": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    },
-                    "dropOffRate": {
-                      "type": "number",
-                      "description": "Drop-off rate from previous step (0-100)"
-                    }
-                  },
-                  "required": [
-                    "index",
-                    "label",
-                    "type",
-                    "sessions",
-                    "visitors",
-                    "conversionRate",
-                    "stepConversionRate",
-                    "dropOffSessions",
-                    "dropOffRate"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "summary": {
-                "type": "object",
-                "properties": {
-                  "totalSessions": {
-                    "type": "integer",
-                    "minimum": -9007199254740991,
-                    "maximum": 9007199254740991
-                  },
-                  "convertedSessions": {
-                    "type": "integer",
-                    "minimum": -9007199254740991,
-                    "maximum": 9007199254740991
-                  },
-                  "totalVisitors": {
-                    "type": "integer",
-                    "minimum": -9007199254740991,
-                    "maximum": 9007199254740991
-                  },
-                  "convertedVisitors": {
-                    "type": "integer",
-                    "minimum": -9007199254740991,
-                    "maximum": 9007199254740991
-                  },
-                  "overallConversionRate": {
-                    "type": "number"
-                  },
-                  "largestDropOffStepIndex": {
-                    "anyOf": [
-                      {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": [
-                  "totalSessions",
-                  "convertedSessions",
-                  "totalVisitors",
-                  "convertedVisitors",
-                  "overallConversionRate",
-                  "largestDropOffStepIndex"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "required": ["steps", "summary"],
-            "additionalProperties": false
-          }
-        },
-        "required": ["ok", "requestId", "timestamp", "data"],
-        "additionalProperties": false
-      },
       "Interval": {
         "type": "string",
         "enum": ["minute", "hour", "day", "week", "month"]
@@ -7706,6 +6392,550 @@
         "required": ["queries"],
         "additionalProperties": false
       },
+      "FunnelStep": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["pageview", "event"],
+            "description": "pageview = match pathname, event = match event name"
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Pathname pattern or event name to match"
+          }
+        },
+        "required": ["type", "value"],
+        "additionalProperties": false
+      },
+      "FunnelDefinition": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "siteId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["pageview", "event"],
+                  "description": "pageview = match pathname, event = match event name"
+                },
+                "value": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Pathname pattern or event name to match"
+                }
+              },
+              "required": ["type", "value"],
+              "additionalProperties": false
+            }
+          },
+          "createdAt": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Unix timestamp in seconds"
+          },
+          "updatedAt": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Unix timestamp in seconds"
+          }
+        },
+        "required": ["id", "siteId", "name", "steps", "createdAt", "updatedAt"],
+        "additionalProperties": false
+      },
+      "FunnelAnalysisStep": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["pageview", "event"]
+          },
+          "sessions": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "visitors": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "conversionRate": {
+            "type": "number",
+            "description": "Conversion rate from first step (0-100)"
+          },
+          "stepConversionRate": {
+            "type": "number",
+            "description": "Conversion rate from previous step (0-100)"
+          },
+          "dropOffSessions": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "dropOffRate": {
+            "type": "number",
+            "description": "Drop-off rate from previous step (0-100)"
+          }
+        },
+        "required": [
+          "index",
+          "label",
+          "type",
+          "sessions",
+          "visitors",
+          "conversionRate",
+          "stepConversionRate",
+          "dropOffSessions",
+          "dropOffRate"
+        ],
+        "additionalProperties": false
+      },
+      "FunnelAnalysisSummary": {
+        "type": "object",
+        "properties": {
+          "totalSessions": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "convertedSessions": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "totalVisitors": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "convertedVisitors": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "overallConversionRate": {
+            "type": "number"
+          },
+          "largestDropOffStepIndex": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "totalSessions",
+          "convertedSessions",
+          "totalVisitors",
+          "convertedVisitors",
+          "overallConversionRate",
+          "largestDropOffStepIndex"
+        ],
+        "additionalProperties": false
+      },
+      "FunnelCreateInput___schema0": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["pageview", "event"],
+            "description": "pageview = match pathname, event = match event name"
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Pathname pattern or event name to match"
+          }
+        },
+        "required": ["type", "value"],
+        "additionalProperties": false
+      },
+      "FunnelCreateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "steps": {
+            "minItems": 2,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FunnelCreateInput___schema0"
+            }
+          }
+        },
+        "required": ["name", "steps"],
+        "additionalProperties": false
+      },
+      "FunnelAnalyzeInput___schema0": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["pageview", "event"],
+            "description": "pageview = match pathname, event = match event name"
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Pathname pattern or event name to match"
+          }
+        },
+        "required": ["type", "value"],
+        "additionalProperties": false
+      },
+      "FunnelAnalyzeInput": {
+        "type": "object",
+        "properties": {
+          "steps": {
+            "minItems": 2,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FunnelAnalyzeInput___schema0"
+            }
+          }
+        },
+        "required": ["steps"],
+        "additionalProperties": false
+      },
+      "FunnelListResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Cloudflare Ray ID for request tracing"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "ISO 8601 response generation time"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "funnels": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "siteId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "steps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "enum": ["pageview", "event"],
+                            "description": "pageview = match pathname, event = match event name"
+                          },
+                          "value": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Pathname pattern or event name to match"
+                          }
+                        },
+                        "required": ["type", "value"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "createdAt": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "Unix timestamp in seconds"
+                    },
+                    "updatedAt": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "Unix timestamp in seconds"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "siteId",
+                    "name",
+                    "steps",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["funnels"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["ok", "requestId", "timestamp", "data"],
+        "additionalProperties": false
+      },
+      "FunnelCreateResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Cloudflare Ray ID for request tracing"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "ISO 8601 response generation time"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "funnel": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "siteId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": ["pageview", "event"],
+                          "description": "pageview = match pathname, event = match event name"
+                        },
+                        "value": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Pathname pattern or event name to match"
+                        }
+                      },
+                      "required": ["type", "value"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "createdAt": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991,
+                    "description": "Unix timestamp in seconds"
+                  },
+                  "updatedAt": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991,
+                    "description": "Unix timestamp in seconds"
+                  }
+                },
+                "required": [
+                  "id",
+                  "siteId",
+                  "name",
+                  "steps",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": ["funnel"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["ok", "requestId", "timestamp", "data"],
+        "additionalProperties": false
+      },
+      "FunnelAnalyzeResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Cloudflare Ray ID for request tracing"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "ISO 8601 response generation time"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "index": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": ["pageview", "event"]
+                    },
+                    "sessions": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "visitors": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "conversionRate": {
+                      "type": "number",
+                      "description": "Conversion rate from first step (0-100)"
+                    },
+                    "stepConversionRate": {
+                      "type": "number",
+                      "description": "Conversion rate from previous step (0-100)"
+                    },
+                    "dropOffSessions": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "dropOffRate": {
+                      "type": "number",
+                      "description": "Drop-off rate from previous step (0-100)"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "label",
+                    "type",
+                    "sessions",
+                    "visitors",
+                    "conversionRate",
+                    "stepConversionRate",
+                    "dropOffSessions",
+                    "dropOffRate"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "totalSessions": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "convertedSessions": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "totalVisitors": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "convertedVisitors": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "overallConversionRate": {
+                    "type": "number"
+                  },
+                  "largestDropOffStepIndex": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "totalSessions",
+                  "convertedSessions",
+                  "totalVisitors",
+                  "convertedVisitors",
+                  "overallConversionRate",
+                  "largestDropOffStepIndex"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": ["steps", "summary"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["ok", "requestId", "timestamp", "data"],
+        "additionalProperties": false
+      },
       "RealtimeEvent___schema0": {
         "type": "string"
       },
@@ -8105,6 +7335,572 @@
               }
             },
             "required": ["activeNow"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["ok", "requestId", "timestamp", "data"],
+        "additionalProperties": false
+      },
+      "Site": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "teamId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "publicEnabled": {
+            "type": "boolean"
+          },
+          "publicSlug": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Unix timestamp in seconds"
+          },
+          "updatedAt": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Unix timestamp in seconds"
+          }
+        },
+        "required": [
+          "id",
+          "teamId",
+          "name",
+          "domain",
+          "publicEnabled",
+          "publicSlug",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "SiteCreateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "domain": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "publicEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "publicSlug": {
+            "type": "string",
+            "maxLength": 120
+          }
+        },
+        "required": ["name", "domain", "publicEnabled"],
+        "additionalProperties": false
+      },
+      "SiteUpdateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "domain": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "publicEnabled": {
+            "type": "boolean"
+          },
+          "publicSlug": {
+            "type": "string",
+            "maxLength": 120
+          }
+        },
+        "additionalProperties": false
+      },
+      "SiteResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Cloudflare Ray ID for request tracing"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "ISO 8601 response generation time"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "teamId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "domain": {
+                "type": "string"
+              },
+              "publicEnabled": {
+                "type": "boolean"
+              },
+              "publicSlug": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "Unix timestamp in seconds"
+              },
+              "updatedAt": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "Unix timestamp in seconds"
+              }
+            },
+            "required": [
+              "id",
+              "teamId",
+              "name",
+              "domain",
+              "publicEnabled",
+              "publicSlug",
+              "createdAt",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": ["ok", "requestId", "timestamp", "data"],
+        "additionalProperties": false
+      },
+      "SiteListResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Cloudflare Ray ID for request tracing"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "ISO 8601 response generation time"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "teamId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "domain": {
+                  "type": "string"
+                },
+                "publicEnabled": {
+                  "type": "boolean"
+                },
+                "publicSlug": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "Unix timestamp in seconds"
+                },
+                "updatedAt": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "Unix timestamp in seconds"
+                }
+              },
+              "required": [
+                "id",
+                "teamId",
+                "name",
+                "domain",
+                "publicEnabled",
+                "publicSlug",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["ok", "requestId", "timestamp", "data"],
+        "additionalProperties": false
+      },
+      "SiteDeleteResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Cloudflare Ray ID for request tracing"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "ISO 8601 response generation time"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "siteId": {
+                "type": "string"
+              },
+              "teamId": {
+                "type": "string"
+              },
+              "removed": {
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": ["siteId", "teamId", "removed"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["ok", "requestId", "timestamp", "data"],
+        "additionalProperties": false
+      },
+      "SiteConfig___schema0": {
+        "type": "string",
+        "enum": ["strong", "smart", "weak"]
+      },
+      "SiteConfig___schema1": {
+        "type": "boolean"
+      },
+      "SiteConfig___schema2": {
+        "type": "boolean"
+      },
+      "SiteConfig___schema3": {
+        "type": "boolean"
+      },
+      "SiteConfig___schema4": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "SiteConfig___schema5": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "SiteConfig___schema6": {
+        "type": "boolean"
+      },
+      "SiteConfig___schema7": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "SiteConfig": {
+        "type": "object",
+        "properties": {
+          "trackingStrength": {
+            "default": "smart",
+            "description": "Controls EU privacy mode. strong = never use EU mode, weak = always EU mode, smart = auto-detect",
+            "$ref": "#/components/schemas/SiteConfig___schema0"
+          },
+          "trackQueryParams": {
+            "default": true,
+            "description": "Include URL query parameters in tracked page paths",
+            "$ref": "#/components/schemas/SiteConfig___schema1"
+          },
+          "trackHash": {
+            "default": true,
+            "description": "Include URL hash fragments in tracked page paths",
+            "$ref": "#/components/schemas/SiteConfig___schema2"
+          },
+          "autoTrackOutboundLinks": {
+            "default": false,
+            "description": "Automatically track outbound link clicks",
+            "$ref": "#/components/schemas/SiteConfig___schema3"
+          },
+          "domainWhitelist": {
+            "default": [],
+            "description": "Additional allowed hostnames beyond the site's own domain",
+            "$ref": "#/components/schemas/SiteConfig___schema4"
+          },
+          "pathBlacklist": {
+            "default": [],
+            "description": "URL paths to exclude from tracking (prefix match)",
+            "$ref": "#/components/schemas/SiteConfig___schema5"
+          },
+          "ignoreDoNotTrack": {
+            "default": true,
+            "description": "Track visitors even if their browser sends DNT header",
+            "$ref": "#/components/schemas/SiteConfig___schema6"
+          },
+          "performanceSampleRate": {
+            "default": 100,
+            "description": "Percentage of sessions that collect Core Web Vitals (0 = disabled)",
+            "$ref": "#/components/schemas/SiteConfig___schema7"
+          }
+        },
+        "required": [
+          "trackingStrength",
+          "trackQueryParams",
+          "trackHash",
+          "autoTrackOutboundLinks",
+          "domainWhitelist",
+          "pathBlacklist",
+          "ignoreDoNotTrack",
+          "performanceSampleRate"
+        ],
+        "additionalProperties": false
+      },
+      "SiteConfigUpdateInput": {
+        "type": "object",
+        "properties": {
+          "trackingStrength": {
+            "type": "string",
+            "enum": ["strong", "smart", "weak"]
+          },
+          "trackQueryParams": {
+            "type": "boolean"
+          },
+          "trackHash": {
+            "type": "boolean"
+          },
+          "autoTrackOutboundLinks": {
+            "type": "boolean"
+          },
+          "domainWhitelist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pathBlacklist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ignoreDoNotTrack": {
+            "type": "boolean"
+          },
+          "performanceSampleRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScriptSnippet": {
+        "type": "object",
+        "properties": {
+          "siteId": {
+            "type": "string"
+          },
+          "src": {
+            "type": "string",
+            "description": "Full URL to the tracking script"
+          },
+          "snippet": {
+            "type": "string",
+            "description": "HTML script tag"
+          }
+        },
+        "required": ["siteId", "src", "snippet"],
+        "additionalProperties": false
+      },
+      "SiteConfigResponse___schema0": {
+        "type": "string",
+        "enum": ["strong", "smart", "weak"]
+      },
+      "SiteConfigResponse___schema1": {
+        "type": "boolean"
+      },
+      "SiteConfigResponse___schema2": {
+        "type": "boolean"
+      },
+      "SiteConfigResponse___schema3": {
+        "type": "boolean"
+      },
+      "SiteConfigResponse___schema4": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "SiteConfigResponse___schema5": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "SiteConfigResponse___schema6": {
+        "type": "boolean"
+      },
+      "SiteConfigResponse___schema7": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "SiteConfigResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Cloudflare Ray ID for request tracing"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "ISO 8601 response generation time"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "trackingStrength": {
+                "default": "smart",
+                "description": "Controls EU privacy mode. strong = never use EU mode, weak = always EU mode, smart = auto-detect",
+                "$ref": "#/components/schemas/SiteConfigResponse___schema0"
+              },
+              "trackQueryParams": {
+                "default": true,
+                "description": "Include URL query parameters in tracked page paths",
+                "$ref": "#/components/schemas/SiteConfigResponse___schema1"
+              },
+              "trackHash": {
+                "default": true,
+                "description": "Include URL hash fragments in tracked page paths",
+                "$ref": "#/components/schemas/SiteConfigResponse___schema2"
+              },
+              "autoTrackOutboundLinks": {
+                "default": false,
+                "description": "Automatically track outbound link clicks",
+                "$ref": "#/components/schemas/SiteConfigResponse___schema3"
+              },
+              "domainWhitelist": {
+                "default": [],
+                "description": "Additional allowed hostnames beyond the site's own domain",
+                "$ref": "#/components/schemas/SiteConfigResponse___schema4"
+              },
+              "pathBlacklist": {
+                "default": [],
+                "description": "URL paths to exclude from tracking (prefix match)",
+                "$ref": "#/components/schemas/SiteConfigResponse___schema5"
+              },
+              "ignoreDoNotTrack": {
+                "default": true,
+                "description": "Track visitors even if their browser sends DNT header",
+                "$ref": "#/components/schemas/SiteConfigResponse___schema6"
+              },
+              "performanceSampleRate": {
+                "default": 100,
+                "description": "Percentage of sessions that collect Core Web Vitals (0 = disabled)",
+                "$ref": "#/components/schemas/SiteConfigResponse___schema7"
+              }
+            },
+            "required": [
+              "trackingStrength",
+              "trackQueryParams",
+              "trackHash",
+              "autoTrackOutboundLinks",
+              "domainWhitelist",
+              "pathBlacklist",
+              "ignoreDoNotTrack",
+              "performanceSampleRate"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": ["ok", "requestId", "timestamp", "data"],
+        "additionalProperties": false
+      },
+      "ScriptSnippetResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Cloudflare Ray ID for request tracing"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "ISO 8601 response generation time"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "siteId": {
+                "type": "string"
+              },
+              "src": {
+                "type": "string",
+                "description": "Full URL to the tracking script"
+              },
+              "snippet": {
+                "type": "string",
+                "description": "HTML script tag"
+              }
+            },
+            "required": ["siteId", "src", "snippet"],
             "additionalProperties": false
           }
         },
@@ -8670,6 +8466,210 @@
           }
         },
         "required": ["ok", "requestId", "timestamp", "data"],
+        "additionalProperties": false
+      },
+      "TrackerClientPayload": {
+        "type": "object",
+        "properties": {
+          "siteId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "pageview",
+              "leave",
+              "visibility",
+              "custom_event",
+              "identify"
+            ]
+          },
+          "visitId": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "previousVisitId": {
+            "type": "string"
+          },
+          "performanceVisitId": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "timestamp": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Unix milliseconds"
+          },
+          "startedAt": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Unix milliseconds"
+          },
+          "pathname": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "screenWidth": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "screenHeight": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "referrerUrl": {
+            "type": "string"
+          },
+          "visitorId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "userName": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "exitReason": {
+            "type": "string"
+          },
+          "visibilityState": {
+            "type": "string",
+            "enum": ["hidden", "visible"]
+          },
+          "eventName": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "eventData": {
+            "description": "Custom event payload (arbitrary JSON)"
+          },
+          "performance": {
+            "type": "object",
+            "properties": {
+              "ttfb": {
+                "type": "number"
+              },
+              "fcp": {
+                "type": "number"
+              },
+              "lcp": {
+                "type": "number"
+              },
+              "cls": {
+                "type": "number"
+              },
+              "inp": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          },
+          "utmSource": {
+            "type": "string"
+          },
+          "utmMedium": {
+            "type": "string"
+          },
+          "utmCampaign": {
+            "type": "string"
+          },
+          "utmTerm": {
+            "type": "string"
+          },
+          "utmContent": {
+            "type": "string"
+          },
+          "uaClientHints": {
+            "type": "object",
+            "properties": {
+              "brands": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "brand": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["brand", "version"],
+                  "additionalProperties": false
+                }
+              },
+              "fullVersionList": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "brand": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["brand", "version"],
+                  "additionalProperties": false
+                }
+              },
+              "mobile": {
+                "type": "boolean"
+              },
+              "platform": {
+                "type": "string"
+              },
+              "platformVersion": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "formFactors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": ["siteId", "kind", "visitId"],
         "additionalProperties": false
       }
     },
