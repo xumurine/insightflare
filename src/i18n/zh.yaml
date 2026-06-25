@@ -84,6 +84,8 @@ common:
   time: 时间
   cycle: 周期
   close: 关闭
+  sitesFiltered: "已筛选 {active} / {total} 个站点"
+  cumulativeTraffic: 全部周期累计流量
 ranges:
   last30m: 30分钟
   last1h: 1小时

@@ -184,6 +184,7 @@ function PageTrafficCard({
               range={range}
               viewsLabel={messages.common.views}
               visitorsLabel={messages.common.visitors}
+              messages={messages}
               maxPoints={PAGE_CARD_CHART_MAX_POINTS}
               className="h-[116px]"
             />

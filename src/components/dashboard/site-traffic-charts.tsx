@@ -26,6 +26,8 @@ import {
   startOfZonedInterval,
 } from "@/lib/dashboard/time-zone";
 import type { Locale } from "@/lib/i18n/config";
+import type { AppMessages } from "@/lib/i18n/messages";
+import { formatI18nTemplate } from "@/lib/i18n/template";
 import { cn } from "@/lib/utils";
 
 interface SiteTrafficStackChartProps {
@@ -46,6 +48,7 @@ interface SiteTrafficStackChartProps {
   interval: DashboardInterval;
   viewsLabel: string;
   visitorsLabel: string;
+  messages: AppMessages;
   loading?: boolean;
   className?: string;
 }
@@ -61,6 +64,7 @@ interface TrafficPairBarChartProps {
   interval: DashboardInterval;
   viewsLabel: string;
   visitorsLabel: string;
+  messages: AppMessages;
   compact?: boolean;
   maxPoints?: number;
   className?: string;
@@ -543,6 +547,7 @@ function SiteTrafficStackTooltip({
   visitorsLabel,
   activeSiteIds,
   locale,
+  messages,
 }: {
   active?: boolean;
   payload?: Array<{ payload?: Record<string, unknown> }>;
@@ -552,6 +557,7 @@ function SiteTrafficStackTooltip({
   visitorsLabel: string;
   activeSiteIds: string[];
   locale: Locale;
+  messages: AppMessages;
 }) {
   if (!active || !payload?.length) return null;
 
@@ -601,9 +607,10 @@ function SiteTrafficStackTooltip({
       </div>
       {hasActiveSites ? (
         <div className="border-t border-border/30 pt-1 text-[10px] text-muted-foreground">
-          {locale === "zh"
-            ? `已筛选 ${activeSiteIdSet.size} / ${series.length} 个站点`
-            : `${activeSiteIdSet.size} / ${series.length} sites filtered`}
+          {formatI18nTemplate(messages.common.sitesFiltered, {
+            active: activeSiteIdSet.size,
+            total: series.length,
+          })}
         </div>
       ) : null}
     </div>
@@ -621,6 +628,7 @@ const SiteTrafficStackPlot = memo(function SiteTrafficStackPlot({
   viewsLabel,
   visitorsLabel,
   locale,
+  messages,
   stackChartDataKey,
   onHoverPoint,
 }: {
@@ -634,6 +642,7 @@ const SiteTrafficStackPlot = memo(function SiteTrafficStackPlot({
   viewsLabel: string;
   visitorsLabel: string;
   locale: Locale;
+  messages: AppMessages;
   stackChartDataKey: string;
   onHoverPoint: (point: SiteTrafficChartRow | null) => void;
 }) {
@@ -708,6 +717,7 @@ const SiteTrafficStackPlot = memo(function SiteTrafficStackPlot({
                 visitorsLabel={visitorsLabel}
                 activeSiteIds={activeSiteIds}
                 locale={locale}
+                messages={messages}
               />
             }
           />
@@ -753,6 +763,7 @@ export const SiteTrafficStackChart = memo(function SiteTrafficStackChart({
   interval,
   viewsLabel,
   visitorsLabel,
+  messages,
   loading = false,
   className,
 }: SiteTrafficStackChartProps) {
@@ -955,6 +966,7 @@ export const SiteTrafficStackChart = memo(function SiteTrafficStackChart({
         viewsLabel={viewsLabel}
         visitorsLabel={visitorsLabel}
         locale={locale}
+        messages={messages}
         stackChartDataKey={stackChartDataKey}
         onHoverPoint={handleHoverPoint}
       />
@@ -976,10 +988,8 @@ export const SiteTrafficStackChart = memo(function SiteTrafficStackChart({
                       new Date(Number(hoveredPoint.timestampMs)),
                     )}
                   </span>
-                ) : locale === "zh" ? (
-                  "全部周期累计流量"
                 ) : (
-                  "Cumulative period traffic"
+                  messages.common.cumulativeTraffic
                 )}
               </AutoTransition>
             </span>
@@ -1151,6 +1161,7 @@ export const TrafficPairBarChart = memo(function TrafficPairBarChart({
   interval,
   viewsLabel,
   visitorsLabel,
+  messages,
   compact = false,
   maxPoints,
   className,

@@ -280,6 +280,7 @@ export function EventTypeDetailClientPage({
                   }}
                   viewsLabel={labels.triggerCount}
                   visitorsLabel={labels.triggerVisitors}
+                  messages={messages}
                   className="h-[320px]"
                 />
               </CardContent>

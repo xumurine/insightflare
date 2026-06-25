@@ -586,6 +586,7 @@ export function DashboardShell({
                           views: messages.common.views,
                           visitors: messages.common.visitors,
                         }}
+                        messages={messages}
                       />
                     </SidebarGroupContent>
                   </SidebarGroup>

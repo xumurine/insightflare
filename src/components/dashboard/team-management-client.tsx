@@ -1380,6 +1380,7 @@ export function TeamManagementClient({
                     interval={chartWindow.interval}
                     viewsLabel={messages.common.views}
                     visitorsLabel={messages.common.visitors}
+                    messages={messages}
                     loading={isSitesChartsLoading}
                     className={isSitesChartsLoading ? "opacity-40" : undefined}
                   />
@@ -1472,6 +1473,7 @@ export function TeamManagementClient({
                                   interval={chartWindow.interval}
                                   viewsLabel={messages.common.views}
                                   visitorsLabel={messages.common.visitors}
+                                  messages={messages}
                                   maxPoints={SITE_CARD_MAX_TREND_POINTS}
                                 />
                               </div>

@@ -73,6 +73,8 @@ export interface AppCoreMessages {
     time: string;
     cycle: string;
     close: string;
+    sitesFiltered: string;
+    cumulativeTraffic: string;
   };
   ranges: {
     last30m: string;

@@ -21,6 +21,7 @@ import {
   startOfZonedInterval,
 } from "@/lib/dashboard/time-zone";
 import type { Locale } from "@/lib/i18n/config";
+import type { AppMessages } from "@/lib/i18n/messages";
 
 interface SiteOverviewMetrics {
   views: number;
@@ -69,6 +70,7 @@ interface SidebarSiteDetailsProps {
     views: string;
     visitors: string;
   };
+  messages: AppMessages;
 }
 
 interface SiteTrendPoint {
@@ -201,6 +203,7 @@ export function SidebarSiteDetails({
   activeSiteSlug,
   sites,
   labels,
+  messages,
 }: SidebarSiteDetailsProps) {
   const { state: sidebarState, isMobile } = useSidebar();
   const { window } = useDashboardQuery();
@@ -426,6 +429,7 @@ export function SidebarSiteDetails({
                         interval={chartWindow.interval}
                         viewsLabel={labels.views}
                         visitorsLabel={labels.visitors}
+                        messages={messages}
                         compact
                       />
                     ) : (

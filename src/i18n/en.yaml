@@ -84,6 +84,8 @@ common:
   time: Time
   cycle: Cycle
   close: Close
+  sitesFiltered: "{active} / {total} sites filtered"
+  cumulativeTraffic: Cumulative period traffic
 ranges:
   last30m: 30m
   last1h: 1h
