@@ -68,7 +68,7 @@ jobs:
         run: npm run test
 
   spec:
-    name: OpenAPI Spec
+    name: OpenAPI & Skills Spec
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -87,6 +87,9 @@ jobs:
 
       - name: Generate and verify OpenAPI spec
         run: npm run check:openapi
+
+      - name: Generate and verify Skills spec
+        run: npm run check:skills
 
   build:
     name: Build

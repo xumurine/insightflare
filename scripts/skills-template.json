@@ -1,0 +1,42 @@
+{
+  "authentication_extras": {
+    "obtain": {
+      "method": "Ask the user",
+      "instructions": "Before making any API call, ask the user: 'Do you have an InsightFlare API key? If so, please provide it. If not, you can generate one from the InsightFlare dashboard under Settings → API Keys.' The key format is ifk_live_<prefix>.<secret>.",
+      "dashboard_path": "/app/{team-slug}/settings/api-keys"
+    },
+    "scopes": {
+      "site:read": "List and view sites",
+      "site:write": "Create, update, and delete sites",
+      "site_config:read": "View tracking configuration and script snippets",
+      "site_config:write": "Update tracking configuration",
+      "analytics:read": "Query all analytics, realtime, and batch data"
+    },
+    "error_responses": {
+      "401": {
+        "codes": ["invalid_api_key", "api_key_expired", "api_key_revoked"],
+        "action": "Ask the user for a valid key or to generate a new one."
+      },
+      "403": {
+        "codes": ["insufficient_scope"],
+        "action": "The key lacks the required scope. Ask the user to create a key with the needed permissions."
+      }
+    }
+  },
+  "typical_workflow": [
+    "1. Obtain an API key from the user (ask them, or direct them to dashboard → Settings → API Keys).",
+    "2. Call GET /api/v1/sites to list available sites and get siteId values.",
+    "3. Use the siteId to query analytics: GET /api/v1/sites/{siteId}/analytics/overview?from=...&to=...",
+    "4. For time-series data, use the /trend endpoint with an interval parameter.",
+    "5. For multiple queries at once, use POST /api/v1/sites/{siteId}/analytics/batch.",
+    "6. For team-level summary, use GET /api/v1/team/dashboard."
+  ],
+  "implementation_notes": [
+    "All timestamps are in Unix milliseconds (not seconds).",
+    "The siteId parameter is a UUID. Obtain it from GET /api/v1/sites.",
+    "Pagination uses page/pageSize for visitors and sessions endpoints.",
+    "The /analytics/{queryName} path supports all query names listed in the endpoints above.",
+    "Rate limits are not currently enforced but may be added. Design for graceful 429 handling.",
+    "For LLM agents: always ask the user for an API key before making any request. Do not attempt to guess or generate keys."
+  ]
+}
