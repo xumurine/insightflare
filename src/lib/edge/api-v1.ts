@@ -164,7 +164,7 @@ async function handleSitesCollection(
     const row = await siteById(env, principal, siteId);
     return row instanceof Response
       ? row
-      : jsonResponseFor(request, { ok: true, data: sitePayload(row) });
+      : jsonResponseFor(request, { ok: true, data: sitePayload(row) }, 201);
   }
 
   return na(request);
@@ -231,10 +231,7 @@ async function handleSiteResource(
     const existing = await siteById(env, principal, siteId);
     if (existing instanceof Response) return existing;
     await deleteSiteData(env, siteId);
-    return jsonResponseFor(request, {
-      ok: true,
-      data: { siteId, teamId: principal.teamId, removed: true },
-    });
+    return new Response(null, { status: 204 });
   }
 
   return na(request);
@@ -401,7 +398,7 @@ async function handleBatchAnalytics(
     const queryUrl = new URL(
       `${url.protocol}//${url.host}/api/v1/sites/${encodeURIComponent(siteId)}/analytics/${encodeURIComponent(queryName)}`,
     );
-    const baseKeys = ["from", "to", "interval", "timeZone", "tz"];
+    const baseKeys = ["from", "to", "interval", "timeZone"];
     for (const key of baseKeys) {
       const val = url.searchParams.get(key);
       if (val !== null) queryUrl.searchParams.set(key, val);

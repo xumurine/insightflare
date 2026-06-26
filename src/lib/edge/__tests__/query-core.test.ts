@@ -81,7 +81,7 @@ describe("edge query core parsers", () => {
   it("parses valid windows, defaults, and invalid ranges", () => {
     expect(
       parseWindow(
-        url("?from=1700000000123.9&to=1700003600999.5&tz=Asia/Tokyo"),
+        url("?from=1700000000123.9&to=1700003600999.5&timeZone=Asia/Tokyo"),
       ),
     ).toEqual({
       fromMs: 1_700_000_000_123,
@@ -222,7 +222,7 @@ describe("edge query core parsers", () => {
 
   it("parses focused query params and filter option helpers", () => {
     expect(parseListSearch(url("?search=%20checkout%20"))).toBe("checkout");
-    expect(parseListSearch(url("?q=%20%20"))).toBeUndefined();
+    expect(parseListSearch(url("?search=%20%20"))).toBeUndefined();
     expect(parseListSearch(url())).toBeUndefined();
     expect(parseEventName(url("?eventName=%20signup%20"))).toBe("signup");
     expect(parseEventName(url("?eventName=%20%20"))).toBeUndefined();

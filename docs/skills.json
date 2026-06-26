@@ -56,23 +56,6 @@
     }
   },
   "global_parameters": {
-    "from": {
-      "type": "integer",
-      "description": "Start timestamp (Unix ms)"
-    },
-    "to": {
-      "type": "integer",
-      "description": "End timestamp (Unix ms)"
-    },
-    "interval": {
-      "type": "string",
-      "description": "Time granularity for trend aggregation. Default varies by query.",
-      "enum": ["minute", "hour", "day", "week", "month"]
-    },
-    "limit": {
-      "type": "integer",
-      "description": "Maximum number of results to return."
-    },
     "siteId": {
       "type": "string",
       "format": "uuid",

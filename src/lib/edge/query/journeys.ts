@@ -206,9 +206,7 @@ export async function handleVisitorDetail(
 ): Promise<Response> {
   const visitorId = (url.searchParams.get("visitorId") || "").trim();
   if (!visitorId) return badRequest("Missing visitorId");
-  const timeZone = resolveReportingTimeZone(
-    url.searchParams.get("timeZone") || url.searchParams.get("tz"),
-  );
+  const timeZone = resolveReportingTimeZone(url.searchParams.get("timeZone"));
   const detail = await queryVisitorDetailFromD1(
     env,
     siteId,

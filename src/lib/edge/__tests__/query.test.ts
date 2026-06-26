@@ -1256,7 +1256,7 @@ describe("edge query handlers", () => {
     const visitors = await privateQuery(
       privatePath(
         "visitors",
-        "page=1&pageSize=1&sortBy=firstSeenAt&sortDir=asc&q=visitor",
+        "page=1&pageSize=1&sortBy=firstSeenAt&sortDir=asc&search=visitor",
       ),
       env,
     );

@@ -328,7 +328,7 @@ describe("api v1 gateway", () => {
       new URL("https://edge.test/api/v1/sites"),
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(201);
     expect(createSiteWithDefaultSettings).toHaveBeenCalledWith(env, {
       teamId: generated.row.team_id,
       name: "NewSite",
@@ -450,13 +450,11 @@ describe("api v1 gateway", () => {
       new URL("https://edge.test/api/v1/sites/site-1"),
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(204);
     expect(deleteSiteDataMock).toHaveBeenCalledWith(
       expect.anything(),
       "site-1",
     );
-    const payload = (await response.json()) as { data: { removed: boolean } };
-    expect(payload.data.removed).toBe(true);
   });
 
   // ─── Site config ─────────────────────────────────────────────────

@@ -1034,7 +1034,7 @@ describe("edge journey handlers", () => {
       env,
       siteId,
       new URL(
-        "https://edge.test/visitor-detail?visitorId=visitor-1&tz=Bad/Zone",
+        "https://edge.test/visitor-detail?visitorId=visitor-1&timeZone=Bad/Zone",
       ),
     );
     const session = await handleSessionDetail(

@@ -33,9 +33,7 @@ export function parseWindow(url: URL): QueryWindow | null {
   }
   const fromMs = Math.floor(parsedFrom ?? defaultFrom);
   const toMs = Math.floor(parsedTo ?? nowMs);
-  const timeZone = resolveReportingTimeZone(
-    url.searchParams.get("timeZone") || url.searchParams.get("tz"),
-  );
+  const timeZone = resolveReportingTimeZone(url.searchParams.get("timeZone"));
   if (
     !Number.isFinite(fromMs) ||
     !Number.isFinite(toMs) ||
@@ -117,7 +115,7 @@ export function parseEventRecordSort(url: URL): ListSort<EventRecordSortKey> {
 }
 
 export function parseListSearch(url: URL): string | undefined {
-  const raw = url.searchParams.get("search") ?? url.searchParams.get("q");
+  const raw = url.searchParams.get("search");
   if (typeof raw !== "string") return undefined;
   const normalized = raw.trim().slice(0, 160);
   return normalized.length > 0 ? normalized : undefined;

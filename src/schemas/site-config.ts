@@ -4,46 +4,48 @@ import { createEnvelopeSchema, registerSchema } from "./common";
 
 // ─── Output ─────────────────────────────────────────────────────────────
 
-export const SiteConfigSchema = z.object({
-  trackingStrength: z
-    .enum(["strong", "smart", "weak"])
-    .default("smart")
-    .describe(
-      "Controls EU privacy mode. strong = never use EU mode, weak = always EU mode, smart = auto-detect",
-    ),
-  trackQueryParams: z
-    .boolean()
-    .default(true)
-    .describe("Include URL query parameters in tracked page paths"),
-  trackHash: z
-    .boolean()
-    .default(true)
-    .describe("Include URL hash fragments in tracked page paths"),
-  autoTrackOutboundLinks: z
-    .boolean()
-    .default(false)
-    .describe("Automatically track outbound link clicks"),
-  domainWhitelist: z
-    .array(z.string())
-    .default([])
-    .describe("Additional allowed hostnames beyond the site's own domain"),
-  pathBlacklist: z
-    .array(z.string())
-    .default([])
-    .describe("URL paths to exclude from tracking (prefix match)"),
-  ignoreDoNotTrack: z
-    .boolean()
-    .default(true)
-    .describe("Track visitors even if their browser sends DNT header"),
-  performanceSampleRate: z
-    .number()
-    .min(0)
-    .max(100)
-    .default(100)
-    .describe(
-      "Percentage of sessions that collect Core Web Vitals (0 = disabled)",
-    ),
-});
+export const SiteConfigSchema = z
+  .object({
+    trackingStrength: z
+      .enum(["strong", "smart", "weak"])
+      .default("smart")
+      .describe(
+        "Controls EU privacy mode. strong = never use EU mode, weak = always EU mode, smart = auto-detect",
+      ),
+    trackQueryParams: z
+      .boolean()
+      .default(true)
+      .describe("Include URL query parameters in tracked page paths"),
+    trackHash: z
+      .boolean()
+      .default(true)
+      .describe("Include URL hash fragments in tracked page paths"),
+    autoTrackOutboundLinks: z
+      .boolean()
+      .default(false)
+      .describe("Automatically track outbound link clicks"),
+    domainWhitelist: z
+      .array(z.string())
+      .default([])
+      .describe("Additional allowed hostnames beyond the site's own domain"),
+    pathBlacklist: z
+      .array(z.string())
+      .default([])
+      .describe("URL paths to exclude from tracking (prefix match)"),
+    ignoreDoNotTrack: z
+      .boolean()
+      .default(true)
+      .describe("Track visitors even if their browser sends DNT header"),
+    performanceSampleRate: z
+      .number()
+      .min(0)
+      .max(100)
+      .default(100)
+      .describe(
+        "Percentage of sessions that collect Core Web Vitals (0 = disabled)",
+      ),
+  })
+  .describe("Tracking script configuration for a site");
 
 export const ScriptSnippetSchema = z.object({
   siteId: z.string(),

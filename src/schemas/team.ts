@@ -47,10 +47,12 @@ export const TeamDashboardTrendPointSchema = z.object({
   ),
 });
 
-export const TeamDashboardDataSchema = z.object({
-  sites: z.array(TeamDashboardSiteSchema),
-  trend: z.array(TeamDashboardTrendPointSchema),
-});
+export const TeamDashboardDataSchema = z
+  .object({
+    sites: z.array(TeamDashboardSiteSchema),
+    trend: z.array(TeamDashboardTrendPointSchema),
+  })
+  .describe("Aggregated team dashboard with per-site metrics and trend");
 
 // ─── Responses ──────────────────────────────────────────────────────────
 

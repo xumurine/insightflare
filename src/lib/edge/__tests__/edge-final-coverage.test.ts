@@ -418,9 +418,9 @@ describe("edge query parser and mapper edge coverage", () => {
       direction: "desc",
     });
     expect(parseListSearch(url({ search: "  " }))).toBeUndefined();
-    expect(parseListSearch(url({ q: ` ${"x".repeat(200)} ` }))).toHaveLength(
-      160,
-    );
+    expect(
+      parseListSearch(url({ search: ` ${"x".repeat(200)} ` })),
+    ).toHaveLength(160);
     expect(parseFilterOptionKey(url({}))).toBeNull();
     expect(parseFilterOptionKey(url({ filterKey: "bad" }))).toBeNull();
     expect(

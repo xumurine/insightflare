@@ -19,14 +19,16 @@ export const FunnelStepSchema = z
 
 // ─── Output ─────────────────────────────────────────────────────────────
 
-export const FunnelDefinitionSchema = z.object({
-  id: z.string().uuid(),
-  siteId: z.string(),
-  name: z.string(),
-  steps: z.array(FunnelStepSchema),
-  createdAt: z.number().int().describe("Unix timestamp in seconds"),
-  updatedAt: z.number().int().describe("Unix timestamp in seconds"),
-});
+export const FunnelDefinitionSchema = z
+  .object({
+    id: z.string().uuid(),
+    siteId: z.string(),
+    name: z.string(),
+    steps: z.array(FunnelStepSchema),
+    createdAt: z.number().int().describe("Unix timestamp in seconds"),
+    updatedAt: z.number().int().describe("Unix timestamp in seconds"),
+  })
+  .describe("Saved funnel definition with ordered steps");
 
 export const FunnelAnalysisStepSchema = z.object({
   index: z.number().int(),

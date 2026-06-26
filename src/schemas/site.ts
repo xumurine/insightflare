@@ -4,16 +4,18 @@ import { createEnvelopeSchema, registerSchema } from "./common";
 
 // ─── Output ─────────────────────────────────────────────────────────────
 
-export const SiteSchema = z.object({
-  id: z.string().uuid(),
-  teamId: z.string().uuid(),
-  name: z.string(),
-  domain: z.string(),
-  publicEnabled: z.boolean(),
-  publicSlug: z.string(),
-  createdAt: z.number().int().describe("Unix timestamp in seconds"),
-  updatedAt: z.number().int().describe("Unix timestamp in seconds"),
-});
+export const SiteSchema = z
+  .object({
+    id: z.string().uuid(),
+    teamId: z.string().uuid(),
+    name: z.string().max(120),
+    domain: z.string().max(255),
+    publicEnabled: z.boolean(),
+    publicSlug: z.string().max(120),
+    createdAt: z.number().int().describe("Unix timestamp in seconds"),
+    updatedAt: z.number().int().describe("Unix timestamp in seconds"),
+  })
+  .describe("Analytics site registered in a team");
 
 // ─── Input ──────────────────────────────────────────────────────────────
 
