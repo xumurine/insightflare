@@ -23,6 +23,12 @@ export default defineConfig({
       BUILD_PERFORMANCE: true,
     },
     coverage: {
+      thresholds: {
+        statements: 95,
+        branches: 88,
+        functions: 98,
+        lines: 96,
+      },
       include: [
         "src/app/**/route.ts",
         "src/components/dashboard/**/*.ts",
