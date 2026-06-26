@@ -26,6 +26,15 @@ function url(path: string): URL {
   return new URL(`https://edge.test${path}`);
 }
 
+interface TestEnvelope {
+  links?: Record<string, string>;
+  error?: {
+    code?: string;
+    message?: string;
+    details?: Record<string, unknown>;
+  };
+}
+
 describe("api v1 helpers", () => {
   it("wraps success and error responses without ok", async () => {
     const success = await jsonSuccess(
@@ -188,7 +197,7 @@ describe("api v1 helpers", () => {
       meta: { extra: true },
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as TestEnvelope;
     expect(body).toMatchObject({
       data: [{ id: 1 }],
       meta: { generatedAt: expect.any(String), extra: true },
@@ -202,7 +211,7 @@ describe("api v1 helpers", () => {
       { request: new Request("https://edge.test") },
     );
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as TestEnvelope;
     expect(body).toMatchObject({
       data: [{ id: 1 }],
       pagination: { limit: 50, nextCursor: "abc", hasMore: true },
@@ -227,7 +236,7 @@ describe("api v1 helpers", () => {
       { limit: 10, nextCursor: null, hasMore: false },
       { links: { self: "/api/v1/items" } },
     );
-    const body = await res.json();
+    const body = (await res.json()) as TestEnvelope;
     expect(body.links).toEqual({ self: "/api/v1/items" });
   });
 
@@ -238,13 +247,13 @@ describe("api v1 helpers", () => {
         links: { self: "/api/v1/items/1" },
       },
     );
-    const body = await res.json();
+    const body = (await res.json()) as TestEnvelope;
     expect(body.links).toEqual({ self: "/api/v1/items/1" });
   });
 
   it("jsonError omits details when not provided", async () => {
     const res = jsonError("not_found", "Not Found", 404);
-    const body = await res.json();
+    const body = (await res.json()) as TestEnvelope;
     expect(body.error).toEqual({ code: "not_found", message: "Not Found" });
     expect(body.error).not.toHaveProperty("details");
   });
@@ -416,8 +425,8 @@ describe("api v1 helpers", () => {
     expect(res).toBeInstanceOf(Response);
     if (res instanceof Response) {
       expect(res.status).toBe(400);
-      const body = await res.json();
-      expect(body.error.details.field).toBe("filters");
+      const body = (await res.json()) as TestEnvelope;
+      expect(body.error?.details?.field).toBe("filters");
     }
   });
 
@@ -432,8 +441,8 @@ describe("api v1 helpers", () => {
     ]);
     expect(res).toBeInstanceOf(Response);
     if (res instanceof Response) {
-      const body = await res.json();
-      expect(body.error.details.field).toBe("unknown.field");
+      const body = (await res.json()) as TestEnvelope;
+      expect(body.error?.details?.field).toBe("unknown.field");
     }
   });
 

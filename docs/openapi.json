@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "InsightFlare API",
-    "description": "Privacy-focused web analytics API. Authenticated endpoints require an API key passed as a Bearer token in the Authorization header. All API times are ISO 8601 strings and analytics ranges use [from, to) semantics.",
+    "description": "Privacy-focused web analytics API. Authenticated endpoints require an API key passed as a Bearer token in the Authorization header. All API times are ISO 8601 strings and analytics ranges use [from, to) semantics. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time. The default timeZone is UTC.",
     "version": "1.0.0",
     "contact": {
       "name": "InsightFlare",
@@ -104,6 +104,12 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         }
       }
@@ -155,6 +161,12 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         }
       }
@@ -276,7 +288,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/TeamUsageResponse"
                 }
               }
             }
@@ -301,7 +313,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -310,7 +322,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -318,7 +330,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -328,7 +340,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "filter",
@@ -401,7 +413,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -410,7 +422,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -418,7 +430,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -428,7 +440,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "interval",
@@ -511,7 +523,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -520,7 +532,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -528,7 +540,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -538,7 +550,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "metrics",
@@ -562,26 +574,6 @@
               }
             },
             "description": "Comma-separated metrics to include."
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 1000,
-              "default": 100
-            },
-            "description": "Maximum number of results."
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "maxLength": 512
-            },
-            "description": "Opaque pagination cursor from the previous response."
           }
         ],
         "responses": {
@@ -626,7 +618,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -635,7 +627,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -643,7 +635,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -653,7 +645,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "filter",
@@ -1208,7 +1200,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -1217,7 +1209,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -1225,7 +1217,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -1235,7 +1227,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "filter",
@@ -1316,7 +1308,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -1325,7 +1317,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -1333,7 +1325,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -1343,7 +1335,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "interval",
@@ -1437,7 +1429,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -1446,7 +1438,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -1454,7 +1446,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -1464,7 +1456,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "filter",
@@ -1556,7 +1548,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -1565,7 +1557,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -1573,7 +1565,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -1583,7 +1575,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "filter",
@@ -1668,7 +1660,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -1677,7 +1669,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -1685,7 +1677,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -1695,7 +1687,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "filter",
@@ -1724,7 +1716,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/AnalyticsCompareResponse"
                 }
               }
             }
@@ -1771,7 +1763,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/AnalyticsExploreResponse"
                 }
               }
             }
@@ -1810,7 +1802,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -1819,7 +1811,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -1827,7 +1819,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -1837,7 +1829,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "interval",
@@ -1866,7 +1858,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/RetentionCohortsResponse"
                 }
               }
             }
@@ -1905,7 +1897,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -1914,7 +1906,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -1922,7 +1914,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -1932,7 +1924,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "limit",
@@ -1993,7 +1985,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -2002,7 +1994,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -2010,7 +2002,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -2020,7 +2012,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "interval",
@@ -2039,7 +2031,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/EventsSummaryResponse"
                 }
               }
             }
@@ -2078,7 +2070,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -2087,7 +2079,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -2095,7 +2087,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -2105,7 +2097,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "filter",
@@ -2201,7 +2193,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -2210,7 +2202,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -2218,7 +2210,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -2228,7 +2220,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "filter",
@@ -2286,7 +2278,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -2295,7 +2287,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -2303,7 +2295,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -2313,7 +2305,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "interval",
@@ -2387,7 +2379,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GenericObjectResponse"
+                "$ref": "#/components/schemas/EventSearchRequest"
               }
             }
           }
@@ -2438,7 +2430,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/EventResponse"
                 }
               }
             }
@@ -2474,7 +2466,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -2483,7 +2475,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -2491,7 +2483,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -2501,7 +2493,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "eventName",
@@ -2576,7 +2568,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -2585,7 +2577,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -2593,7 +2585,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -2603,7 +2595,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "filter",
@@ -2700,7 +2692,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/VisitorResponse"
                 }
               }
             }
@@ -2739,7 +2731,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -2748,7 +2740,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -2756,7 +2748,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -2766,7 +2758,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "limit",
@@ -2837,7 +2829,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -2846,7 +2838,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -2854,7 +2846,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -2864,7 +2856,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "limit",
@@ -2932,7 +2924,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -2941,7 +2933,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -2949,7 +2941,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -2959,7 +2951,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "filter",
@@ -3056,7 +3048,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/SessionResponse"
                 }
               }
             }
@@ -3095,7 +3087,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -3104,7 +3096,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -3112,7 +3104,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -3122,7 +3114,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "limit",
@@ -3190,7 +3182,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -3199,7 +3191,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -3207,7 +3199,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -3217,27 +3209,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 1000,
-              "default": 100
-            },
-            "description": "Maximum number of results."
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "maxLength": 512
-            },
-            "description": "Opaque pagination cursor from the previous response."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           }
         ],
         "responses": {
@@ -3246,7 +3218,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/FunnelListResponse"
                 }
               }
             }
@@ -3270,23 +3242,34 @@
         "summary": "Create funnel",
         "description": "Creates a saved funnel.",
         "tags": ["Funnels"],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Client-generated idempotency key."
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GenericObjectResponse"
+                "$ref": "#/components/schemas/FunnelCreateInput"
               }
             }
           }
         },
         "responses": {
-          "200": {
-            "description": "Successful response",
+          "201": {
+            "description": "Created funnel",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/FunnelResponse"
                 }
               }
             }
@@ -3322,7 +3305,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GenericObjectResponse"
+                "$ref": "#/components/schemas/FunnelAnalysisRequest"
               }
             }
           }
@@ -3333,7 +3316,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/FunnelAnalysisResponse"
                 }
               }
             }
@@ -3373,7 +3356,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/FunnelResponse"
                 }
               }
             }
@@ -3399,7 +3382,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GenericObjectResponse"
+                "$ref": "#/components/schemas/FunnelUpdateInput"
               }
             }
           }
@@ -3410,7 +3393,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/FunnelResponse"
                 }
               }
             }
@@ -3472,7 +3455,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -3481,7 +3464,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -3489,7 +3472,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -3499,7 +3482,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           }
         ],
         "responses": {
@@ -3508,7 +3491,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/SavedFunnelAnalysisResponse"
                 }
               }
             }
@@ -3547,7 +3530,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -3556,7 +3539,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -3564,7 +3547,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -3574,7 +3557,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "filter",
@@ -3632,7 +3615,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -3641,7 +3624,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -3649,7 +3632,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -3659,7 +3642,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "interval",
@@ -3688,7 +3671,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/PerformanceTimeseriesResponse"
                 }
               }
             }
@@ -3730,7 +3713,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Inclusive ISO 8601 start time."
+            "description": "Inclusive ISO 8601 start time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "to",
@@ -3739,7 +3722,7 @@
               "type": "string",
               "format": "date-time"
             },
-            "description": "Exclusive ISO 8601 end time."
+            "description": "Exclusive ISO 8601 end time. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "preset",
@@ -3747,7 +3730,7 @@
             "schema": {
               "$ref": "#/components/schemas/Preset"
             },
-            "description": "Named time range preset. Mutually exclusive with from and to."
+            "description": "Named time range preset. Mutually exclusive with from and to. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time."
           },
           {
             "name": "timeZone",
@@ -3757,7 +3740,7 @@
               "maxLength": 80,
               "default": "UTC"
             },
-            "description": "IANA time zone used to resolve presets."
+            "description": "IANA time zone used to resolve presets. Defaults to UTC."
           },
           {
             "name": "filter",
@@ -3785,7 +3768,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/PerformanceBreakdownResponse"
                 }
               }
             }
@@ -3822,7 +3805,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/ActiveVisitorsResponse"
                 }
               }
             }
@@ -3868,7 +3851,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EventListResponse"
+                  "$ref": "#/components/schemas/RealtimeEventListResponse"
                 }
               }
             }
@@ -3917,7 +3900,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionListResponse"
+                  "$ref": "#/components/schemas/RealtimeSessionListResponse"
                 }
               }
             }
@@ -4214,6 +4197,31 @@
           }
         }
       },
+      "TimeRangeInput": {
+        "type": "object",
+        "description": "Optional time range input. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time. The default timeZone is UTC.",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Inclusive ISO 8601 start time."
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Exclusive ISO 8601 end time."
+          },
+          "preset": {
+            "$ref": "#/components/schemas/Preset"
+          },
+          "timeZone": {
+            "type": "string",
+            "maxLength": 80,
+            "default": "UTC",
+            "description": "IANA time zone used to resolve presets."
+          }
+        }
+      },
       "FilterObject": {
         "type": "object",
         "description": "Simple equality filters keyed by stable dimension name.",
@@ -4454,6 +4462,121 @@
           }
         ]
       },
+      "CapabilitiesFeatures": {
+        "type": "object",
+        "description": "Feature availability flags for the current token.",
+        "required": [
+          "sites",
+          "tracking",
+          "privacy",
+          "sharing",
+          "analytics",
+          "events",
+          "visitors",
+          "sessions",
+          "funnels",
+          "performance",
+          "realtime",
+          "exports",
+          "batch"
+        ],
+        "properties": {
+          "sites": {
+            "type": "boolean"
+          },
+          "tracking": {
+            "type": "boolean"
+          },
+          "privacy": {
+            "type": "boolean"
+          },
+          "sharing": {
+            "type": "boolean"
+          },
+          "analytics": {
+            "type": "boolean"
+          },
+          "events": {
+            "type": "boolean"
+          },
+          "visitors": {
+            "type": "boolean"
+          },
+          "sessions": {
+            "type": "boolean"
+          },
+          "funnels": {
+            "type": "boolean"
+          },
+          "performance": {
+            "type": "boolean"
+          },
+          "realtime": {
+            "type": "boolean"
+          },
+          "exports": {
+            "type": "boolean"
+          },
+          "batch": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CapabilitiesLimits": {
+        "type": "object",
+        "description": "Runtime limits exposed to clients.",
+        "required": [
+          "batchMaxRequests",
+          "defaultTimeRangeDays",
+          "maxTimeRangeDays",
+          "defaultPageLimit",
+          "maxPageLimit"
+        ],
+        "properties": {
+          "batchMaxRequests": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "defaultTimeRangeDays": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxTimeRangeDays": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "defaultPageLimit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxPageLimit": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "Capabilities": {
+        "type": "object",
+        "description": "Runtime capabilities available to the current token.",
+        "required": ["apiVersion", "features", "limits", "links"],
+        "properties": {
+          "apiVersion": {
+            "type": "string"
+          },
+          "features": {
+            "$ref": "#/components/schemas/CapabilitiesFeatures"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/CapabilitiesLimits"
+          },
+          "links": {
+            "$ref": "#/components/schemas/LinkMap"
+          }
+        },
+        "additionalProperties": false
+      },
       "CapabilitiesResponse": {
         "allOf": [
           {
@@ -4464,27 +4587,7 @@
             "description": "Successful response",
             "properties": {
               "data": {
-                "type": "object",
-                "properties": {
-                  "apiVersion": {
-                    "type": "string"
-                  },
-                  "features": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "boolean"
-                    }
-                  },
-                  "limits": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "integer"
-                    }
-                  },
-                  "links": {
-                    "$ref": "#/components/schemas/LinkMap"
-                  }
-                }
+                "$ref": "#/components/schemas/Capabilities"
               }
             }
           }
@@ -5025,9 +5128,10 @@
       },
       "AnalyticsExploreRequest": {
         "type": "object",
+        "description": "Advanced analytics query input.",
         "properties": {
           "timeRange": {
-            "$ref": "#/components/schemas/TimeRange"
+            "$ref": "#/components/schemas/TimeRangeInput"
           },
           "metrics": {
             "type": "array",
@@ -5070,6 +5174,146 @@
           }
         }
       },
+      "AnalyticsCompareResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SuccessEnvelope"
+          },
+          {
+            "type": "object",
+            "description": "Successful response",
+            "properties": {
+              "data": {
+                "type": "object",
+                "description": "Period-over-period analytics comparison.",
+                "properties": {
+                  "current": {
+                    "$ref": "#/components/schemas/OverviewMetrics"
+                  },
+                  "previous": {
+                    "$ref": "#/components/schemas/OverviewMetrics"
+                  },
+                  "change": {
+                    "type": "object",
+                    "description": "Relative changes as 0-based rates. Example: 0.12 means +12%.",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "AnalyticsExploreRow": {
+        "type": "object",
+        "description": "One row returned by an analytics explore query.",
+        "additionalProperties": true
+      },
+      "AnalyticsExploreResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SuccessEnvelope"
+          },
+          {
+            "type": "object",
+            "description": "Successful response",
+            "properties": {
+              "data": {
+                "type": "object",
+                "description": "Advanced analytics query result.",
+                "properties": {
+                  "rows": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/AnalyticsExploreRow"
+                    }
+                  },
+                  "metrics": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "dimensions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "filters": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ComplexFilter"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "RetentionCohortsResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SuccessEnvelope"
+          },
+          {
+            "type": "object",
+            "description": "Successful response",
+            "properties": {
+              "data": {
+                "type": "object",
+                "description": "Visitor retention cohort response.",
+                "properties": {
+                  "interval": {
+                    "type": "string",
+                    "enum": ["minute", "hour", "day", "week", "month"]
+                  },
+                  "cohorts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "start": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "periods": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "index": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "visitors": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "rate": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
       "GenericObjectResponse": {
         "allOf": [
           {
@@ -5082,6 +5326,45 @@
               "data": {
                 "type": "object",
                 "additionalProperties": true
+              }
+            }
+          }
+        ]
+      },
+      "EventsSummaryResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SuccessEnvelope"
+          },
+          {
+            "type": "object",
+            "description": "Successful response",
+            "properties": {
+              "data": {
+                "type": "object",
+                "description": "Event summary response.",
+                "properties": {
+                  "events": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "eventTypes": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "sessions": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "visitors": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "avgEventsPerSession": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                }
               }
             }
           }
@@ -5123,9 +5406,126 @@
           }
         ]
       },
+      "EventResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SuccessEnvelope"
+          },
+          {
+            "type": "object",
+            "description": "Successful response",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/EventRecord"
+              }
+            }
+          }
+        ]
+      },
+      "EventPayloadFilter": {
+        "type": "object",
+        "description": "Filter applied to custom event payload fields.",
+        "required": ["path", "op"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "maxLength": 240,
+            "description": "Dot-notation path inside the event payload."
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "eq",
+              "neq",
+              "in",
+              "notIn",
+              "contains",
+              "startsWith",
+              "endsWith",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "exists",
+              "notExists"
+            ]
+          },
+          "value": {
+            "description": "Comparison value. Required unless op is exists or notExists."
+          }
+        },
+        "additionalProperties": false
+      },
+      "EventSearchRequest": {
+        "type": "object",
+        "description": "Request for searching event records with complex filters.",
+        "properties": {
+          "timeRange": {
+            "$ref": "#/components/schemas/TimeRangeInput"
+          },
+          "eventName": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Optional event name filter."
+          },
+          "payloadFilters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventPayloadFilter"
+            }
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplexFilter"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 100
+          },
+          "cursor": {
+            "type": "string",
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
       "Visitor": {
         "type": "object",
-        "additionalProperties": true
+        "description": "Visitor resource.",
+        "additionalProperties": true,
+        "properties": {
+          "visitorId": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "firstSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "views": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sessions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "events": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "links": {
+            "$ref": "#/components/schemas/LinkMap"
+          }
+        }
       },
       "VisitorListResponse": {
         "allOf": [
@@ -5145,9 +5545,55 @@
           }
         ]
       },
+      "VisitorResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SuccessEnvelope"
+          },
+          {
+            "type": "object",
+            "description": "Successful response",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/Visitor"
+              }
+            }
+          }
+        ]
+      },
       "Session": {
         "type": "object",
-        "additionalProperties": true
+        "description": "Session resource.",
+        "additionalProperties": true,
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "visitorId": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "views": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "events": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "links": {
+            "$ref": "#/components/schemas/LinkMap"
+          }
+        }
       },
       "SessionListResponse": {
         "allOf": [
@@ -5167,6 +5613,46 @@
           }
         ]
       },
+      "SessionResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SuccessEnvelope"
+          },
+          {
+            "type": "object",
+            "description": "Successful response",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/Session"
+              }
+            }
+          }
+        ]
+      },
+      "TeamUsageResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SuccessEnvelope"
+          },
+          {
+            "type": "object",
+            "description": "Successful response",
+            "properties": {
+              "data": {
+                "type": "object",
+                "description": "Usage information for the current team.",
+                "required": ["sites"],
+                "properties": {
+                  "sites": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
       "PerformanceSummaryResponse": {
         "allOf": [
           {
@@ -5179,6 +5665,473 @@
               "data": {
                 "type": "object",
                 "additionalProperties": true
+              }
+            }
+          }
+        ]
+      },
+      "PerformanceMetricPoint": {
+        "type": "object",
+        "description": "Performance metric point.",
+        "additionalProperties": true,
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ttfb": {
+            "type": "number"
+          },
+          "fcp": {
+            "type": "number"
+          },
+          "lcp": {
+            "type": "number"
+          },
+          "cls": {
+            "type": "number"
+          },
+          "inp": {
+            "type": "number"
+          }
+        }
+      },
+      "PerformanceTimeseriesResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ListEnvelope"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerformanceMetricPoint"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "PerformanceBreakdownRow": {
+        "type": "object",
+        "description": "Performance breakdown row.",
+        "additionalProperties": true,
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "ttfb": {
+            "type": "number"
+          },
+          "fcp": {
+            "type": "number"
+          },
+          "lcp": {
+            "type": "number"
+          },
+          "cls": {
+            "type": "number"
+          },
+          "inp": {
+            "type": "number"
+          }
+        }
+      },
+      "PerformanceBreakdownResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ListEnvelope"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerformanceBreakdownRow"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "FunnelStepInput": {
+        "type": "object",
+        "description": "One step in a funnel definition.",
+        "required": ["type", "value"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["pageview", "event"],
+            "description": "Step matching type."
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Page path or event name to match."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Optional display label."
+          }
+        },
+        "additionalProperties": false
+      },
+      "FunnelCreateInput": {
+        "type": "object",
+        "description": "Input for creating a saved funnel.",
+        "required": ["name", "steps"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Human-readable funnel name."
+          },
+          "description": {
+            "type": ["string", "null"],
+            "maxLength": 500,
+            "description": "Optional funnel description."
+          },
+          "steps": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 10,
+            "items": {
+              "$ref": "#/components/schemas/FunnelStepInput"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "FunnelUpdateInput": {
+        "type": "object",
+        "description": "Partial update for a saved funnel.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": ["string", "null"],
+            "maxLength": 500
+          },
+          "steps": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 10,
+            "items": {
+              "$ref": "#/components/schemas/FunnelStepInput"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "FunnelAnalysisRequest": {
+        "type": "object",
+        "description": "Request for ad-hoc funnel analysis.",
+        "required": ["steps"],
+        "properties": {
+          "timeRange": {
+            "$ref": "#/components/schemas/TimeRangeInput"
+          },
+          "steps": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 10,
+            "items": {
+              "$ref": "#/components/schemas/FunnelStepInput"
+            }
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComplexFilter"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "FunnelStep": {
+        "type": "object",
+        "description": "One saved funnel step.",
+        "required": ["type", "value"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["pageview", "event"]
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 120
+          }
+        }
+      },
+      "Funnel": {
+        "type": "object",
+        "description": "Saved funnel definition.",
+        "required": ["id", "siteId", "name", "steps", "createdAt", "updatedAt"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "siteId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "description": {
+            "type": ["string", "null"],
+            "maxLength": 500
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FunnelStep"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "links": {
+            "$ref": "#/components/schemas/LinkMap"
+          }
+        }
+      },
+      "FunnelResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SuccessEnvelope"
+          },
+          {
+            "type": "object",
+            "description": "Successful response",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/Funnel"
+              }
+            }
+          }
+        ]
+      },
+      "FunnelListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ListEnvelope"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Funnel"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "FunnelAnalysisStep": {
+        "type": "object",
+        "description": "Funnel analysis metrics for one step.",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["pageview", "event"]
+          },
+          "sessions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "visitors": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "conversionRate": {
+            "type": "number"
+          },
+          "stepConversionRate": {
+            "type": "number"
+          },
+          "dropOffSessions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dropOffRate": {
+            "type": "number"
+          }
+        }
+      },
+      "FunnelAnalysisSummary": {
+        "type": "object",
+        "properties": {
+          "totalSessions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "convertedSessions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totalVisitors": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "convertedVisitors": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "overallConversionRate": {
+            "type": "number"
+          },
+          "largestDropOffStepIndex": {
+            "type": ["integer", "null"]
+          }
+        }
+      },
+      "FunnelAnalysis": {
+        "type": "object",
+        "description": "Funnel analysis result.",
+        "properties": {
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FunnelAnalysisStep"
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/FunnelAnalysisSummary"
+          }
+        }
+      },
+      "FunnelAnalysisResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SuccessEnvelope"
+          },
+          {
+            "type": "object",
+            "description": "Successful response",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/FunnelAnalysis"
+              }
+            }
+          }
+        ]
+      },
+      "SavedFunnelAnalysisResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SuccessEnvelope"
+          },
+          {
+            "type": "object",
+            "description": "Successful response",
+            "properties": {
+              "data": {
+                "type": "object",
+                "description": "Saved funnel with current analysis result.",
+                "properties": {
+                  "funnel": {
+                    "$ref": "#/components/schemas/Funnel"
+                  },
+                  "analysis": {
+                    "$ref": "#/components/schemas/FunnelAnalysis"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "RealtimeEventListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ListEnvelope"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/EventRecord"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "RealtimeSessionListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ListEnvelope"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ActiveVisitorsResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SuccessEnvelope"
+          },
+          {
+            "type": "object",
+            "description": "Successful response",
+            "properties": {
+              "data": {
+                "type": "object",
+                "required": ["activeVisitors"],
+                "properties": {
+                  "activeVisitors": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
               }
             }
           }

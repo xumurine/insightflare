@@ -54,6 +54,14 @@ function response(description: string, schema: string, example?: unknown) {
   };
 }
 
+function requestBody(schema: string, description?: string) {
+  return {
+    required: true,
+    ...(description ? { description } : {}),
+    content: { [json]: { schema: ref(schema) } },
+  };
+}
+
 function envelope(dataSchema: unknown, description = "Successful response") {
   return {
     allOf: [
@@ -138,26 +146,28 @@ function queryParam(name: string, schema: unknown, description: string) {
 }
 
 function timeParams(includeInterval = false) {
+  const defaultHint =
+    " If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time.";
   return [
     queryParam(
       "from",
       { type: "string", format: "date-time" },
-      "Inclusive ISO 8601 start time.",
+      `Inclusive ISO 8601 start time.${defaultHint}`,
     ),
     queryParam(
       "to",
       { type: "string", format: "date-time" },
-      "Exclusive ISO 8601 end time.",
+      `Exclusive ISO 8601 end time.${defaultHint}`,
     ),
     queryParam(
       "preset",
       ref("Preset"),
-      "Named time range preset. Mutually exclusive with from and to.",
+      `Named time range preset. Mutually exclusive with from and to.${defaultHint}`,
     ),
     queryParam(
       "timeZone",
       { type: "string", maxLength: 80, default: "UTC" },
-      "IANA time zone used to resolve presets.",
+      "IANA time zone used to resolve presets. Defaults to UTC.",
     ),
     ...(includeInterval
       ? [
@@ -374,6 +384,28 @@ function buildSchemas(): Record<string, unknown> {
         timeZone: { type: "string", maxLength: 80 },
       },
     },
+    TimeRangeInput: {
+      type: "object",
+      description:
+        "Optional time range input. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time. The default timeZone is UTC.",
+      properties: {
+        from: {
+          ...iso,
+          description: "Inclusive ISO 8601 start time.",
+        },
+        to: {
+          ...iso,
+          description: "Exclusive ISO 8601 end time.",
+        },
+        preset: ref("Preset"),
+        timeZone: {
+          type: "string",
+          maxLength: 80,
+          default: "UTC",
+          description: "IANA time zone used to resolve presets.",
+        },
+      },
+    },
     FilterObject: {
       type: "object",
       description: "Simple equality filters keyed by stable dimension name.",
@@ -511,15 +543,73 @@ function buildSchemas(): Record<string, unknown> {
         },
       },
     }),
-    CapabilitiesResponse: envelope({
+    CapabilitiesFeatures: {
       type: "object",
+      description: "Feature availability flags for the current token.",
+      required: [
+        "sites",
+        "tracking",
+        "privacy",
+        "sharing",
+        "analytics",
+        "events",
+        "visitors",
+        "sessions",
+        "funnels",
+        "performance",
+        "realtime",
+        "exports",
+        "batch",
+      ],
+      properties: {
+        sites: { type: "boolean" },
+        tracking: { type: "boolean" },
+        privacy: { type: "boolean" },
+        sharing: { type: "boolean" },
+        analytics: { type: "boolean" },
+        events: { type: "boolean" },
+        visitors: { type: "boolean" },
+        sessions: { type: "boolean" },
+        funnels: { type: "boolean" },
+        performance: { type: "boolean" },
+        realtime: { type: "boolean" },
+        exports: { type: "boolean" },
+        batch: { type: "boolean" },
+      },
+      additionalProperties: false,
+    },
+    CapabilitiesLimits: {
+      type: "object",
+      description: "Runtime limits exposed to clients.",
+      required: [
+        "batchMaxRequests",
+        "defaultTimeRangeDays",
+        "maxTimeRangeDays",
+        "defaultPageLimit",
+        "maxPageLimit",
+      ],
+      properties: {
+        batchMaxRequests: { type: "integer", minimum: 1 },
+        defaultTimeRangeDays: { type: "integer", minimum: 1 },
+        maxTimeRangeDays: { type: "integer", minimum: 1 },
+        defaultPageLimit: { type: "integer", minimum: 1 },
+        maxPageLimit: { type: "integer", minimum: 1 },
+      },
+      additionalProperties: false,
+    },
+    Capabilities: {
+      type: "object",
+      description: "Runtime capabilities available to the current token.",
+      required: ["apiVersion", "features", "limits", "links"],
       properties: {
         apiVersion: { type: "string" },
-        features: { type: "object", additionalProperties: { type: "boolean" } },
-        limits: { type: "object", additionalProperties: { type: "integer" } },
+        features: ref("CapabilitiesFeatures"),
+        limits: ref("CapabilitiesLimits"),
         links: ref("LinkMap"),
       },
-    }),
+      additionalProperties: false,
+    },
+    CapabilitiesResponse: envelope(ref("Capabilities")),
     RootDiscoveryResponse: envelope({
       type: "object",
       properties: {
@@ -695,8 +785,9 @@ function buildSchemas(): Record<string, unknown> {
     AnalyticsBreakdownResponse: listEnvelope(ref("BreakdownRow")),
     AnalyticsExploreRequest: {
       type: "object",
+      description: "Advanced analytics query input.",
       properties: {
-        timeRange: ref("TimeRange"),
+        timeRange: ref("TimeRangeInput"),
         metrics: { type: "array", items: { type: "string" } },
         dimensions: { type: "array", items: { type: "string" } },
         filters: { type: "array", items: ref("ComplexFilter") },
@@ -713,9 +804,80 @@ function buildSchemas(): Record<string, unknown> {
         limit: { type: "integer", minimum: 1, maximum: 1000 },
       },
     },
+    AnalyticsCompareResponse: envelope({
+      type: "object",
+      description: "Period-over-period analytics comparison.",
+      properties: {
+        current: ref("OverviewMetrics"),
+        previous: ref("OverviewMetrics"),
+        change: {
+          type: "object",
+          description:
+            "Relative changes as 0-based rates. Example: 0.12 means +12%.",
+          additionalProperties: { type: "number" },
+        },
+      },
+    }),
+    AnalyticsExploreRow: {
+      type: "object",
+      description: "One row returned by an analytics explore query.",
+      additionalProperties: true,
+    },
+    AnalyticsExploreResponse: envelope({
+      type: "object",
+      description: "Advanced analytics query result.",
+      properties: {
+        rows: { type: "array", items: ref("AnalyticsExploreRow") },
+        metrics: { type: "array", items: { type: "string" } },
+        dimensions: { type: "array", items: { type: "string" } },
+        filters: { type: "array", items: ref("ComplexFilter") },
+      },
+    }),
+    RetentionCohortsResponse: envelope({
+      type: "object",
+      description: "Visitor retention cohort response.",
+      properties: {
+        interval: {
+          type: "string",
+          enum: ["minute", "hour", "day", "week", "month"],
+        },
+        cohorts: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              start: iso,
+              size: { type: "integer", minimum: 0 },
+              periods: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    index: { type: "integer", minimum: 0 },
+                    visitors: { type: "integer", minimum: 0 },
+                    rate: { type: "number", minimum: 0, maximum: 1 },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
     GenericObjectResponse: envelope({
       type: "object",
       additionalProperties: true,
+    }),
+    EventsSummaryResponse: envelope({
+      type: "object",
+      description: "Event summary response.",
+      properties: {
+        events: { type: "integer", minimum: 0 },
+        eventTypes: { type: "integer", minimum: 0 },
+        sessions: { type: "integer", minimum: 0 },
+        visitors: { type: "integer", minimum: 0 },
+        avgEventsPerSession: { type: "number", minimum: 0 },
+      },
     }),
     EventRecord: {
       type: "object",
@@ -727,13 +889,297 @@ function buildSchemas(): Record<string, unknown> {
       },
     },
     EventListResponse: paginatedEnvelope(ref("EventRecord")),
-    Visitor: { type: "object", additionalProperties: true },
+    EventResponse: envelope(ref("EventRecord")),
+    EventPayloadFilter: {
+      type: "object",
+      description: "Filter applied to custom event payload fields.",
+      required: ["path", "op"],
+      properties: {
+        path: {
+          type: "string",
+          maxLength: 240,
+          description: "Dot-notation path inside the event payload.",
+        },
+        op: {
+          type: "string",
+          enum: [
+            "eq",
+            "neq",
+            "in",
+            "notIn",
+            "contains",
+            "startsWith",
+            "endsWith",
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+            "exists",
+            "notExists",
+          ],
+        },
+        value: {
+          description:
+            "Comparison value. Required unless op is exists or notExists.",
+        },
+      },
+      additionalProperties: false,
+    },
+    EventSearchRequest: {
+      type: "object",
+      description: "Request for searching event records with complex filters.",
+      properties: {
+        timeRange: ref("TimeRangeInput"),
+        eventName: {
+          type: "string",
+          maxLength: 120,
+          description: "Optional event name filter.",
+        },
+        payloadFilters: {
+          type: "array",
+          items: ref("EventPayloadFilter"),
+        },
+        filters: {
+          type: "array",
+          items: ref("ComplexFilter"),
+        },
+        limit: { type: "integer", minimum: 1, maximum: 1000, default: 100 },
+        cursor: { type: "string", maxLength: 512 },
+      },
+      additionalProperties: false,
+    },
+    Visitor: {
+      type: "object",
+      description: "Visitor resource.",
+      additionalProperties: true,
+      properties: {
+        visitorId: { type: "string", maxLength: 160 },
+        firstSeenAt: iso,
+        lastSeenAt: iso,
+        views: { type: "integer", minimum: 0 },
+        sessions: { type: "integer", minimum: 0 },
+        events: { type: "integer", minimum: 0 },
+        links: ref("LinkMap"),
+      },
+    },
     VisitorListResponse: paginatedEnvelope(ref("Visitor")),
-    Session: { type: "object", additionalProperties: true },
+    VisitorResponse: envelope(ref("Visitor")),
+    Session: {
+      type: "object",
+      description: "Session resource.",
+      additionalProperties: true,
+      properties: {
+        sessionId: { type: "string", maxLength: 160 },
+        visitorId: { type: "string", maxLength: 160 },
+        startedAt: iso,
+        endedAt: { type: ["string", "null"], format: "date-time" },
+        views: { type: "integer", minimum: 0 },
+        events: { type: "integer", minimum: 0 },
+        links: ref("LinkMap"),
+      },
+    },
     SessionListResponse: paginatedEnvelope(ref("Session")),
+    SessionResponse: envelope(ref("Session")),
+    TeamUsageResponse: envelope({
+      type: "object",
+      description: "Usage information for the current team.",
+      required: ["sites"],
+      properties: {
+        sites: { type: "integer", minimum: 0 },
+      },
+    }),
     PerformanceSummaryResponse: envelope({
       type: "object",
       additionalProperties: true,
+    }),
+    PerformanceMetricPoint: {
+      type: "object",
+      description: "Performance metric point.",
+      additionalProperties: true,
+      properties: {
+        start: iso,
+        end: iso,
+        ttfb: { type: "number" },
+        fcp: { type: "number" },
+        lcp: { type: "number" },
+        cls: { type: "number" },
+        inp: { type: "number" },
+      },
+    },
+    PerformanceTimeseriesResponse: listEnvelope(ref("PerformanceMetricPoint")),
+    PerformanceBreakdownRow: {
+      type: "object",
+      description: "Performance breakdown row.",
+      additionalProperties: true,
+      properties: {
+        key: { type: "string" },
+        label: { type: "string" },
+        ttfb: { type: "number" },
+        fcp: { type: "number" },
+        lcp: { type: "number" },
+        cls: { type: "number" },
+        inp: { type: "number" },
+      },
+    },
+    PerformanceBreakdownResponse: listEnvelope(ref("PerformanceBreakdownRow")),
+    FunnelStepInput: {
+      type: "object",
+      description: "One step in a funnel definition.",
+      required: ["type", "value"],
+      properties: {
+        type: {
+          type: "string",
+          enum: ["pageview", "event"],
+          description: "Step matching type.",
+        },
+        value: {
+          type: "string",
+          minLength: 1,
+          maxLength: 500,
+          description: "Page path or event name to match.",
+        },
+        label: {
+          type: "string",
+          maxLength: 120,
+          description: "Optional display label.",
+        },
+      },
+      additionalProperties: false,
+    },
+    FunnelCreateInput: {
+      type: "object",
+      description: "Input for creating a saved funnel.",
+      required: ["name", "steps"],
+      properties: {
+        name: {
+          type: "string",
+          minLength: 1,
+          maxLength: 200,
+          description: "Human-readable funnel name.",
+        },
+        description: {
+          type: ["string", "null"],
+          maxLength: 500,
+          description: "Optional funnel description.",
+        },
+        steps: {
+          type: "array",
+          minItems: 2,
+          maxItems: 10,
+          items: ref("FunnelStepInput"),
+        },
+      },
+      additionalProperties: false,
+    },
+    FunnelUpdateInput: {
+      type: "object",
+      description: "Partial update for a saved funnel.",
+      properties: {
+        name: { type: "string", minLength: 1, maxLength: 200 },
+        description: { type: ["string", "null"], maxLength: 500 },
+        steps: {
+          type: "array",
+          minItems: 2,
+          maxItems: 10,
+          items: ref("FunnelStepInput"),
+        },
+      },
+      additionalProperties: false,
+    },
+    FunnelAnalysisRequest: {
+      type: "object",
+      description: "Request for ad-hoc funnel analysis.",
+      required: ["steps"],
+      properties: {
+        timeRange: ref("TimeRangeInput"),
+        steps: {
+          type: "array",
+          minItems: 2,
+          maxItems: 10,
+          items: ref("FunnelStepInput"),
+        },
+        filters: { type: "array", items: ref("ComplexFilter") },
+      },
+      additionalProperties: false,
+    },
+    FunnelStep: {
+      type: "object",
+      description: "One saved funnel step.",
+      required: ["type", "value"],
+      properties: {
+        type: { type: "string", enum: ["pageview", "event"] },
+        value: { type: "string", maxLength: 500 },
+        label: { type: "string", maxLength: 120 },
+      },
+    },
+    Funnel: {
+      type: "object",
+      description: "Saved funnel definition.",
+      required: ["id", "siteId", "name", "steps", "createdAt", "updatedAt"],
+      properties: {
+        id: uuid,
+        siteId: uuid,
+        name: { type: "string", maxLength: 200 },
+        description: { type: ["string", "null"], maxLength: 500 },
+        steps: { type: "array", items: ref("FunnelStep") },
+        createdAt: iso,
+        updatedAt: iso,
+        links: ref("LinkMap"),
+      },
+    },
+    FunnelResponse: envelope(ref("Funnel")),
+    FunnelListResponse: listEnvelope(ref("Funnel")),
+    FunnelAnalysisStep: {
+      type: "object",
+      description: "Funnel analysis metrics for one step.",
+      properties: {
+        index: { type: "integer", minimum: 0 },
+        label: { type: "string" },
+        type: { type: "string", enum: ["pageview", "event"] },
+        sessions: { type: "integer", minimum: 0 },
+        visitors: { type: "integer", minimum: 0 },
+        conversionRate: { type: "number" },
+        stepConversionRate: { type: "number" },
+        dropOffSessions: { type: "integer", minimum: 0 },
+        dropOffRate: { type: "number" },
+      },
+    },
+    FunnelAnalysisSummary: {
+      type: "object",
+      properties: {
+        totalSessions: { type: "integer", minimum: 0 },
+        convertedSessions: { type: "integer", minimum: 0 },
+        totalVisitors: { type: "integer", minimum: 0 },
+        convertedVisitors: { type: "integer", minimum: 0 },
+        overallConversionRate: { type: "number" },
+        largestDropOffStepIndex: { type: ["integer", "null"] },
+      },
+    },
+    FunnelAnalysis: {
+      type: "object",
+      description: "Funnel analysis result.",
+      properties: {
+        steps: { type: "array", items: ref("FunnelAnalysisStep") },
+        summary: ref("FunnelAnalysisSummary"),
+      },
+    },
+    FunnelAnalysisResponse: envelope(ref("FunnelAnalysis")),
+    SavedFunnelAnalysisResponse: envelope({
+      type: "object",
+      description: "Saved funnel with current analysis result.",
+      properties: {
+        funnel: ref("Funnel"),
+        analysis: ref("FunnelAnalysis"),
+      },
+    }),
+    RealtimeEventListResponse: listEnvelope(ref("EventRecord")),
+    RealtimeSessionListResponse: listEnvelope(ref("Session")),
+    ActiveVisitorsResponse: envelope({
+      type: "object",
+      required: ["activeVisitors"],
+      properties: {
+        activeVisitors: { type: "integer", minimum: 0 },
+      },
     }),
     RealtimeSnapshotResponse: envelope({
       type: "object",
@@ -810,6 +1256,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         security: [],
         responses: {
           "200": response("Service is healthy", "GenericObjectResponse"),
+          ...errorResponses("400", "500"),
         },
       }),
     },
@@ -821,10 +1268,7 @@ function buildPaths(): OpenAPISpec["paths"] {
           "/collect is the unauthenticated client SDK ingestion endpoint. Successful receipt or silent drop returns 204.",
         tags: ["Ingestion"],
         security: [],
-        requestBody: {
-          required: true,
-          content: { [json]: { schema: ref("CollectPayload") } },
-        },
+        requestBody: requestBody("CollectPayload"),
         responses: {
           "204": { description: "No Content" },
           ...errorResponses("400", "413"),
@@ -839,7 +1283,10 @@ function buildPaths(): OpenAPISpec["paths"] {
           "Returns stable machine-readable discovery links. No authentication required.",
         tags: ["Discovery"],
         security: [],
-        responses: { "200": ok("RootDiscoveryResponse") },
+        responses: {
+          "200": ok("RootDiscoveryResponse"),
+          ...errorResponses("400", "500"),
+        },
       }),
     },
     "/api/v1/token": {
@@ -859,10 +1306,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         description:
           "Checks whether the current token has requested scope and optional site permissions.",
         tags: ["Token"],
-        requestBody: {
-          required: true,
-          content: { [json]: { schema: ref("TokenCheckRequest") } },
-        },
+        requestBody: requestBody("TokenCheckRequest"),
         responses: {
           "200": ok("TokenCheckResponse"),
           ...errorResponses("400", "401"),
@@ -898,7 +1342,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         description: "Returns usage information for the current team.",
         tags: ["Team"],
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("TeamUsageResponse"),
           ...errorResponses("401"),
         },
       }),
@@ -936,7 +1380,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         summary: "Get team analytics by site",
         description: "Breaks down team analytics by accessible site.",
         tags: ["Analytics"],
-        parameters: [...timeParams(), metricParam(), ...cursorParams()],
+        parameters: [...timeParams(), metricParam()],
         responses: {
           "200": ok("AnalyticsBreakdownResponse"),
           ...errorResponses("400", "401", "403"),
@@ -991,10 +1435,7 @@ function buildPaths(): OpenAPISpec["paths"] {
             description: "Client-generated idempotency key.",
           },
         ],
-        requestBody: {
-          required: true,
-          content: { [json]: { schema: ref("SiteCreateInput") } },
-        },
+        requestBody: requestBody("SiteCreateInput"),
         responses: {
           "201": ok("SiteResponse", "Created site"),
           ...errorResponses("400", "401", "403", "409"),
@@ -1018,10 +1459,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         summary: "Update site",
         description: "Updates site metadata.",
         tags: ["Sites"],
-        requestBody: {
-          required: true,
-          content: { [json]: { schema: ref("SiteUpdateInput") } },
-        },
+        requestBody: requestBody("SiteUpdateInput"),
         responses: {
           "200": ok("SiteResponse"),
           ...errorResponses("400", "401", "403", "404", "409"),
@@ -1055,10 +1493,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         summary: "Update tracking settings",
         description: "Updates tracking settings.",
         tags: ["Settings"],
-        requestBody: {
-          required: true,
-          content: { [json]: { schema: ref("TrackingSettings") } },
-        },
+        requestBody: requestBody("TrackingSettings"),
         responses: {
           "200": ok("TrackingSettingsResponse"),
           ...errorResponses("400", "401", "403", "404"),
@@ -1095,10 +1530,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         summary: "Update privacy settings",
         description: "Updates privacy settings.",
         tags: ["Settings"],
-        requestBody: {
-          required: true,
-          content: { [json]: { schema: ref("PrivacySettings") } },
-        },
+        requestBody: requestBody("PrivacySettings"),
         responses: {
           "200": ok("PrivacySettingsResponse"),
           ...errorResponses("400", "401", "403", "404"),
@@ -1122,10 +1554,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         summary: "Update sharing settings",
         description: "Updates sharing settings.",
         tags: ["Settings"],
-        requestBody: {
-          required: true,
-          content: { [json]: { schema: ref("SharingSettings") } },
-        },
+        requestBody: requestBody("SharingSettings"),
         responses: {
           "200": ok("SharingSettingsResponse"),
           ...errorResponses("400", "401", "403", "404", "409"),
@@ -1246,7 +1675,7 @@ function buildPaths(): OpenAPISpec["paths"] {
           ),
         ],
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("AnalyticsCompareResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -1259,12 +1688,9 @@ function buildPaths(): OpenAPISpec["paths"] {
         description:
           "Runs an advanced multidimensional query with complex filters.",
         tags: ["Analytics"],
-        requestBody: {
-          required: true,
-          content: { [json]: { schema: ref("AnalyticsExploreRequest") } },
-        },
+        requestBody: requestBody("AnalyticsExploreRequest"),
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("AnalyticsExploreResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -1278,7 +1704,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         tags: ["Analytics"],
         parameters: [...timeParams(true), filterParam()],
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("RetentionCohortsResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -1313,7 +1739,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         tags: ["Events"],
         parameters: timeParams(true),
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("EventsSummaryResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -1385,10 +1811,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         summary: "Search events",
         description: "Searches events using complex payload filters.",
         tags: ["Events"],
-        requestBody: {
-          required: true,
-          content: { [json]: { schema: ref("GenericObjectResponse") } },
-        },
+        requestBody: requestBody("EventSearchRequest"),
         responses: {
           "200": ok("EventListResponse"),
           ...errorResponses("400", "401", "403", "404"),
@@ -1403,7 +1826,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         description: "Returns one event record.",
         tags: ["Events"],
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("EventResponse"),
           ...errorResponses("401", "403", "404"),
         },
       }),
@@ -1471,7 +1894,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         description: "Returns one visitor.",
         tags: ["Visitors"],
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("VisitorResponse"),
           ...errorResponses("401", "403", "404"),
         },
       }),
@@ -1536,7 +1959,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         description: "Returns one session.",
         tags: ["Sessions"],
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("SessionResponse"),
           ...errorResponses("401", "403", "404"),
         },
       }),
@@ -1562,9 +1985,9 @@ function buildPaths(): OpenAPISpec["paths"] {
         summary: "List funnels",
         description: "Lists saved funnels.",
         tags: ["Funnels"],
-        parameters: [...timeParams(), ...cursorParams()],
+        parameters: timeParams(),
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("FunnelListResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -1573,12 +1996,17 @@ function buildPaths(): OpenAPISpec["paths"] {
         summary: "Create funnel",
         description: "Creates a saved funnel.",
         tags: ["Funnels"],
-        requestBody: {
-          required: true,
-          content: { [json]: { schema: ref("GenericObjectResponse") } },
-        },
+        parameters: [
+          {
+            name: "Idempotency-Key",
+            in: "header",
+            schema: { type: "string", maxLength: 200 },
+            description: "Client-generated idempotency key.",
+          },
+        ],
+        requestBody: requestBody("FunnelCreateInput"),
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "201": ok("FunnelResponse", "Created funnel"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -1590,12 +2018,9 @@ function buildPaths(): OpenAPISpec["paths"] {
         summary: "Analyze funnel",
         description: "Runs ad-hoc funnel analysis.",
         tags: ["Funnels"],
-        requestBody: {
-          required: true,
-          content: { [json]: { schema: ref("GenericObjectResponse") } },
-        },
+        requestBody: requestBody("FunnelAnalysisRequest"),
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("FunnelAnalysisResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -1608,7 +2033,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         description: "Returns one saved funnel.",
         tags: ["Funnels"],
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("FunnelResponse"),
           ...errorResponses("401", "403", "404"),
         },
       }),
@@ -1617,12 +2042,9 @@ function buildPaths(): OpenAPISpec["paths"] {
         summary: "Update funnel",
         description: "Updates one saved funnel.",
         tags: ["Funnels"],
-        requestBody: {
-          required: true,
-          content: { [json]: { schema: ref("GenericObjectResponse") } },
-        },
+        requestBody: requestBody("FunnelUpdateInput"),
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("FunnelResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -1646,7 +2068,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         tags: ["Funnels"],
         parameters: timeParams(),
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("SavedFunnelAnalysisResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -1675,7 +2097,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         tags: ["Performance"],
         parameters: [...timeParams(true), filterParam()],
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("PerformanceTimeseriesResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -1697,7 +2119,7 @@ function buildPaths(): OpenAPISpec["paths"] {
           ),
         ],
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("PerformanceBreakdownResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -1710,7 +2132,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         description: "Returns the current active visitor count.",
         tags: ["Realtime"],
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("ActiveVisitorsResponse"),
           ...errorResponses("401", "403", "404"),
         },
       }),
@@ -1730,7 +2152,7 @@ function buildPaths(): OpenAPISpec["paths"] {
           ),
         ],
         responses: {
-          "200": ok("EventListResponse"),
+          "200": ok("RealtimeEventListResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -1750,7 +2172,7 @@ function buildPaths(): OpenAPISpec["paths"] {
           ),
         ],
         responses: {
-          "200": ok("SessionListResponse"),
+          "200": ok("RealtimeSessionListResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -1783,10 +2205,7 @@ function buildPaths(): OpenAPISpec["paths"] {
             description: "Client-generated idempotency key.",
           },
         ],
-        requestBody: {
-          required: true,
-          content: { [json]: { schema: ref("BatchRequest") } },
-        },
+        requestBody: requestBody("BatchRequest"),
         responses: {
           "200": ok("BatchResponse"),
           ...errorResponses("400", "401"),
@@ -1809,7 +2228,7 @@ function buildSpec(): OpenAPISpec {
     info: {
       title: "InsightFlare API",
       description:
-        "Privacy-focused web analytics API. Authenticated endpoints require an API key passed as a Bearer token in the Authorization header. All API times are ISO 8601 strings and analytics ranges use [from, to) semantics.",
+        "Privacy-focused web analytics API. Authenticated endpoints require an API key passed as a Bearer token in the Authorization header. All API times are ISO 8601 strings and analytics ranges use [from, to) semantics. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time. The default timeZone is UTC.",
       version: "1.0.0",
       contact: {
         name: "InsightFlare",

@@ -19,6 +19,15 @@ function walk(value: unknown, visit: (value: unknown) => void) {
   }
 }
 
+function pathMatchesTemplate(template: string, path: string): boolean {
+  const regex = new RegExp(
+    `^${template
+      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      .replace(/\\\{[^/]+\\\}/g, "[^/]+")}$`,
+  );
+  return regex.test(path);
+}
+
 describe("api v1 public docs", () => {
   it("generates an OpenAPI contract without deprecated public API shapes", () => {
     const spec = readJson<{
@@ -101,5 +110,127 @@ describe("api v1 public docs", () => {
     expect(raw).not.toContain("queryName");
     expect(raw).not.toContain("Unix milliseconds");
     expect(raw).not.toContain('"ok"');
+    expect(raw).not.toContain("overview?compare=previous_period");
+  });
+
+  it("keeps OpenAPI request bodies and key responses concrete", () => {
+    const spec = readJson<{
+      paths: Record<string, Record<string, any>>;
+      components: { schemas: Record<string, unknown> };
+    }>("docs/openapi.json");
+
+    const bodySchema = (method: string, path: string) =>
+      spec.paths[path]?.[method]?.requestBody?.content?.["application/json"]
+        ?.schema?.$ref;
+    const responseSchema = (method: string, path: string, status = "200") =>
+      spec.paths[path]?.[method]?.responses?.[status]?.content?.[
+        "application/json"
+      ]?.schema?.$ref;
+
+    expect(bodySchema("post", "/api/v1/sites/{siteId}/funnels")).toBe(
+      "#/components/schemas/FunnelCreateInput",
+    );
+    expect(bodySchema("post", "/api/v1/sites/{siteId}/funnels/analysis")).toBe(
+      "#/components/schemas/FunnelAnalysisRequest",
+    );
+    expect(
+      bodySchema("patch", "/api/v1/sites/{siteId}/funnels/{funnelId}"),
+    ).toBe("#/components/schemas/FunnelUpdateInput");
+    expect(bodySchema("post", "/api/v1/sites/{siteId}/events/search")).toBe(
+      "#/components/schemas/EventSearchRequest",
+    );
+
+    walk(spec.paths, (value) => {
+      if (!value || typeof value !== "object" || !("requestBody" in value)) {
+        return;
+      }
+      expect(
+        (
+          value as {
+            requestBody?: {
+              content?: { "application/json"?: { schema?: { $ref?: string } } };
+            };
+          }
+        ).requestBody?.content?.["application/json"]?.schema?.$ref,
+      ).not.toBe("#/components/schemas/GenericObjectResponse");
+    });
+
+    expect(
+      responseSchema("post", "/api/v1/sites/{siteId}/funnels", "201"),
+    ).toBe("#/components/schemas/FunnelResponse");
+    expect(
+      spec.paths["/api/v1/sites/{siteId}/funnels"]?.post?.parameters,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Idempotency-Key",
+          in: "header",
+        }),
+      ]),
+    );
+    expect(responseSchema("get", "/api/v1/team/usage")).toBe(
+      "#/components/schemas/TeamUsageResponse",
+    );
+    expect(
+      responseSchema("get", "/api/v1/sites/{siteId}/analytics/compare"),
+    ).toBe("#/components/schemas/AnalyticsCompareResponse");
+    expect(
+      responseSchema("post", "/api/v1/sites/{siteId}/analytics/explore"),
+    ).toBe("#/components/schemas/AnalyticsExploreResponse");
+    expect(
+      responseSchema("get", "/api/v1/sites/{siteId}/funnels/{funnelId}"),
+    ).toBe("#/components/schemas/FunnelResponse");
+
+    expect(spec.components.schemas.CapabilitiesFeatures).toBeDefined();
+    expect(spec.components.schemas.CapabilitiesLimits).toBeDefined();
+    expect(
+      JSON.stringify(spec.components.schemas.CapabilitiesResponse),
+    ).toContain("Capabilities");
+    expect(JSON.stringify(spec.components.schemas.TimeRangeInput)).toContain(
+      "last 7 days",
+    );
+  });
+
+  it("keeps skills calls aligned with OpenAPI path templates", () => {
+    const spec = readJson<{
+      paths: Record<string, Record<string, unknown>>;
+    }>("docs/openapi.json");
+    const manifest = readJson<{
+      discovery?: Record<string, string>;
+      taskRecipes?: Array<{ calls?: string[] }>;
+      endpoints?: unknown;
+    }>("docs/skills.json");
+
+    const operations = Object.entries(spec.paths).flatMap(([path, item]) =>
+      Object.keys(item)
+        .filter((method) =>
+          ["get", "post", "patch", "delete", "put"].includes(method),
+        )
+        .map((method) => ({ method: method.toUpperCase(), path })),
+    );
+    const hasOperation = (method: string, path: string) =>
+      operations.some(
+        (operation) =>
+          operation.method === method &&
+          pathMatchesTemplate(operation.path, path),
+      );
+
+    expect(hasOperation("GET", manifest.discovery?.root ?? "")).toBe(true);
+    expect(hasOperation("GET", manifest.discovery?.token ?? "")).toBe(true);
+    expect(hasOperation("GET", manifest.discovery?.capabilities ?? "")).toBe(
+      true,
+    );
+    expect(hasOperation("GET", manifest.discovery?.analyticsSchema ?? "")).toBe(
+      true,
+    );
+
+    for (const recipe of manifest.taskRecipes ?? []) {
+      for (const call of recipe.calls ?? []) {
+        const [method, rawPath] = call.split(/\s+/, 2);
+        const path = rawPath.split("?")[0];
+        expect(hasOperation(method, path)).toBe(true);
+      }
+    }
+    expect(manifest.endpoints).toBeUndefined();
   });
 });
