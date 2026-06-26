@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import {
-  RealtimeRollingTrendChart,
+  RealtimeRollingTrendChartIsland,
   type RealtimeRollingTrendPoint,
-} from "@/components/dashboard/realtime-rolling-trend-chart";
+} from "@/components/dashboard/realtime-rolling-trend-chart-island";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
@@ -107,7 +107,7 @@ export function RealtimeTrafficTrendCard({
       </CardHeader>
       <CardContent>
         <div className="relative">
-          <RealtimeRollingTrendChart
+          <RealtimeRollingTrendChartIsland
             locale={locale}
             data={trendData}
             viewsLabel={messages.common.views}
