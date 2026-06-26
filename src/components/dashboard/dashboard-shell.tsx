@@ -397,7 +397,7 @@ export function DashboardShell({
     mainSiteSubSection === "detail",
   );
   const contentContainerClassName = isGeoRoute
-    ? "flex min-h-0 flex-1 min-w-0 w-full flex-col overflow-hidden [&>[data-page-transition]]:flex [&>[data-page-transition]]:h-full [&>[data-page-transition]]:min-h-0 [&>[data-page-transition]]:flex-1 [&>[data-page-transition]]:flex-col"
+    ? "flex min-h-0 flex-1 min-w-0 w-full flex-col md:overflow-hidden [&>[data-page-transition]]:flex [&>[data-page-transition]]:h-full [&>[data-page-transition]]:min-h-0 [&>[data-page-transition]]:flex-1 [&>[data-page-transition]]:flex-col"
     : isRealtimeRoute || isSessionDetailRoute || isVisitorDetailRoute
       ? "min-w-0 w-full"
       : "mx-auto min-w-0 w-full max-w-[1400px] p-4 md:p-6";
