@@ -26,6 +26,60 @@ import {
 import type { Env } from "./types";
 import { clampString } from "./utils";
 
+export async function ensurePublicSlugAvailable(
+  env: Env,
+  slug: string,
+  excludeSiteId?: string,
+): Promise<boolean> {
+  const row = excludeSiteId
+    ? await env.DB.prepare(
+        "SELECT 1 AS ok FROM sites WHERE public_slug=? AND id<>? LIMIT 1",
+      )
+        .bind(slug, excludeSiteId)
+        .first<{ ok: number }>()
+    : await env.DB.prepare(
+        "SELECT 1 AS ok FROM sites WHERE public_slug=? LIMIT 1",
+      )
+        .bind(slug)
+        .first<{ ok: number }>();
+  return !row?.ok;
+}
+
+export async function createSiteWithDefaultSettings(
+  env: Env,
+  input: {
+    teamId: string;
+    name: string;
+    domain: string;
+    publicEnabled: boolean;
+    publicSlug: string | null;
+  },
+): Promise<string> {
+  const siteId = crypto.randomUUID();
+  await env.DB.prepare(
+    "INSERT INTO sites (id,team_id,name,domain,public_enabled,public_slug,created_at,updated_at) VALUES (?,?,?,?,?,?,unixepoch(),unixepoch())",
+  )
+    .bind(
+      siteId,
+      input.teamId,
+      input.name,
+      input.domain,
+      input.publicEnabled ? 1 : 0,
+      input.publicEnabled ? input.publicSlug : null,
+    )
+    .run();
+  try {
+    await upsertSiteScriptSettings(env, siteId, {
+      siteDomain: input.domain,
+      settings: DEFAULT_SITE_SCRIPT_SETTINGS,
+    });
+  } catch (error) {
+    await env.DB.prepare("DELETE FROM sites WHERE id=?").bind(siteId).run();
+    throw error;
+  }
+  return siteId;
+}
+
 export async function deleteSiteData(env: Env, siteId: string): Promise<void> {
   await env.DB.prepare("DELETE FROM configs WHERE config_key=?")
     .bind(`site:${siteId}`)
@@ -100,21 +154,16 @@ export async function handleSitesAdmin(
       return bad("teamId, name and domain are required", undefined, req);
     if (!(await canManageTeam(env, a, teamId)))
       return forb("Only team owner can create sites", undefined, req);
-    const siteId = crypto.randomUUID();
-    await env.DB.prepare(
-      "INSERT INTO sites (id,team_id,name,domain,public_enabled,public_slug,created_at,updated_at) VALUES (?,?,?,?,?,?,unixepoch(),unixepoch())",
-    )
-      .bind(siteId, teamId, name, domain, pub ? 1 : 0, pub ? pubSlug : null)
-      .run();
-    try {
-      await upsertSiteScriptSettings(env, siteId, {
-        siteDomain: domain,
-        settings: DEFAULT_SITE_SCRIPT_SETTINGS,
-      });
-    } catch (error) {
-      await env.DB.prepare("DELETE FROM sites WHERE id=?").bind(siteId).run();
-      throw error;
+    if (pub && pubSlug && !(await ensurePublicSlugAvailable(env, pubSlug))) {
+      return bad("Public slug already exists", undefined, req);
     }
+    const siteId = await createSiteWithDefaultSettings(env, {
+      teamId,
+      name,
+      domain,
+      publicEnabled: pub,
+      publicSlug: pub ? pubSlug : null,
+    });
     return jsonResponseFor(req, {
       ok: true,
       data: {
@@ -166,6 +215,10 @@ export async function handleSitesAdmin(
       String(body.publicSlug ?? e.publicSlug ?? toSlug(name || domain)),
       120,
     );
+    if (pub && pubSlug) {
+      const available = await ensurePublicSlugAvailable(env, pubSlug, siteId);
+      if (!available) return bad("Public slug already exists", undefined, req);
+    }
     await env.DB.prepare(
       "UPDATE sites SET team_id=?,name=?,domain=?,public_enabled=?,public_slug=?,updated_at=unixepoch() WHERE id=?",
     )

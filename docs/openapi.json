@@ -3487,7 +3487,8 @@
         "required": ["value", "label"],
         "additionalProperties": false
       },
-      "BatchResultItem___schema0": {
+      "BatchResultItem___schema0": {},
+      "BatchResultItem___schema1": {
         "type": "object",
         "properties": {
           "code": {
@@ -3509,15 +3510,20 @@
           "ok": {
             "type": "boolean"
           },
+          "status": {
+            "type": "number",
+            "description": "HTTP status code of the sub-query response"
+          },
           "data": {
-            "description": "Query result data (shape varies by queryName)"
+            "description": "Query result data (shape varies by queryName)",
+            "$ref": "#/components/schemas/BatchResultItem___schema0"
           },
           "error": {
             "description": "Present only if this individual query failed",
-            "$ref": "#/components/schemas/BatchResultItem___schema0"
+            "$ref": "#/components/schemas/BatchResultItem___schema1"
           }
         },
-        "required": ["queryName", "ok", "data"],
+        "required": ["queryName", "ok", "status"],
         "additionalProperties": false
       },
       "OverviewResponse": {
@@ -6258,7 +6264,8 @@
         "required": ["ok", "requestId", "timestamp", "data"],
         "additionalProperties": false
       },
-      "BatchResponse___schema0": {
+      "BatchResponse___schema0": {},
+      "BatchResponse___schema1": {
         "type": "object",
         "properties": {
           "code": {
@@ -6289,6 +6296,10 @@
           "data": {
             "type": "object",
             "properties": {
+              "partialFailure": {
+                "type": "boolean",
+                "description": "True if any sub-query returned a non-200 status"
+              },
               "results": {
                 "type": "array",
                 "items": {
@@ -6300,20 +6311,25 @@
                     "ok": {
                       "type": "boolean"
                     },
+                    "status": {
+                      "type": "number",
+                      "description": "HTTP status code of the sub-query response"
+                    },
                     "data": {
-                      "description": "Query result data (shape varies by queryName)"
+                      "description": "Query result data (shape varies by queryName)",
+                      "$ref": "#/components/schemas/BatchResponse___schema0"
                     },
                     "error": {
                       "description": "Present only if this individual query failed",
-                      "$ref": "#/components/schemas/BatchResponse___schema0"
+                      "$ref": "#/components/schemas/BatchResponse___schema1"
                     }
                   },
-                  "required": ["queryName", "ok", "data"],
+                  "required": ["queryName", "ok", "status"],
                   "additionalProperties": false
                 }
               }
             },
-            "required": ["results"],
+            "required": ["partialFailure", "results"],
             "additionalProperties": false
           }
         },

@@ -496,12 +496,13 @@ describe("BatchResponseSchema", () => {
         requestId: "r",
         timestamp: "t",
         data: {
+          partialFailure: true,
           results: [
-            { queryName: "overview", ok: true, data: {} },
+            { queryName: "overview", ok: true, status: 200, data: {} },
             {
               queryName: "trend",
               ok: false,
-              data: null,
+              status: 400,
               error: { code: "bad_request", message: "Missing from" },
             },
           ],

@@ -31,9 +31,15 @@ vi.mock("@/lib/edge/site-settings-store", async () => {
 
 vi.mock("@/lib/edge/admin-sites", () => ({
   deleteSiteData: vi.fn(),
+  createSiteWithDefaultSettings: vi.fn(),
+  ensurePublicSlugAvailable: vi.fn(),
 }));
 
-import { deleteSiteData } from "@/lib/edge/admin-sites";
+import {
+  createSiteWithDefaultSettings,
+  deleteSiteData,
+  ensurePublicSlugAvailable,
+} from "@/lib/edge/admin-sites";
 import { queryFunnelAnalysis } from "@/lib/edge/query/funnels";
 import { routeQuery } from "@/lib/edge/query/router";
 import { handleTeamDashboardForTeam } from "@/lib/edge/query/team";
@@ -304,6 +310,7 @@ describe("api v1 gateway", () => {
 
   it("creates a site via POST", async () => {
     const generated = await keyRow();
+    vi.mocked(createSiteWithDefaultSettings).mockResolvedValue("new-site");
     const env = createEnv([
       {
         includes: ["FROM api_keys", "key_prefix"],
@@ -322,7 +329,13 @@ describe("api v1 gateway", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(upsertSiteScriptSettingsMock).toHaveBeenCalled();
+    expect(createSiteWithDefaultSettings).toHaveBeenCalledWith(env, {
+      teamId: generated.row.team_id,
+      name: "NewSite",
+      domain: "newsite.test",
+      publicEnabled: false,
+      publicSlug: null,
+    });
   });
 
   it("rejects POST with invalid body", async () => {
@@ -719,11 +732,27 @@ describe("api v1 gateway", () => {
   // Note: The general analytics handler (path[2]==="analytics") catches
   // batch requests before the batch-specific handler, so POST returns 405.
 
-  it("returns 405 for POST on batch (caught by general analytics handler)", async () => {
+  it("executes batch analytics queries with per-query status", async () => {
     const generated = await keyRow();
+    routeQueryMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true, data: { visitors: 10 } }), {
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: false, error: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      );
     const response = await handleApiV1(
       request("/api/v1/sites/site-1/analytics/batch", generated.apiKey, {
         method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          queries: [{ queryName: "visitors" }, { queryName: "missing-query" }],
+        }),
       }),
       createEnv([
         {
@@ -735,7 +764,16 @@ describe("api v1 gateway", () => {
       new URL("https://edge.test/api/v1/sites/site-1/analytics/batch"),
     );
 
-    expect(response.status).toBe(405);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      ok: boolean;
+      data: { partialFailure: boolean; results: Array<{ ok: boolean }> };
+    };
+    expect(body.ok).toBe(true);
+    expect(body.data.partialFailure).toBe(true);
+    expect(body.data.results).toHaveLength(2);
+    expect(body.data.results[0].ok).toBe(true);
+    expect(body.data.results[1].ok).toBe(false);
   });
 
   // ─── Realtime ────────────────────────────────────────────────────

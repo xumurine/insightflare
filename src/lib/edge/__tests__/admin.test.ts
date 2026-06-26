@@ -2179,10 +2179,12 @@ describe("private admin edge handler", () => {
       upsertSiteScriptSettingsMock.mockResolvedValue(
         DEFAULT_SITE_SCRIPT_SETTINGS,
       );
+      const slugCheck = statement({ first: null });
       const insertSite = statement();
       const { env } = createEnv([
         statement({ first: userRow({ id: "user-1", system_role: "user" }) }),
         statement({ first: { id: "team-1", ownerUserId: "user-1" } }),
+        slugCheck,
         insertSite,
       ]);
 
@@ -2364,6 +2366,7 @@ describe("private admin edge handler", () => {
       upsertSiteScriptSettingsMock.mockResolvedValue(
         DEFAULT_SITE_SCRIPT_SETTINGS,
       );
+      const slugCheck = statement({ first: null });
       const update = statement();
       const { env } = createEnv([
         statement({ first: userRow() }),
@@ -2377,6 +2380,7 @@ describe("private admin edge handler", () => {
             publicSlug: null,
           },
         }),
+        slugCheck,
         update,
       ]);
 

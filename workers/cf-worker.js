@@ -119,6 +119,28 @@ function extractSessionToken(request) {
   return "";
 }
 
+async function canSessionReadSite(env, session, siteId) {
+  if (session.systemRole === "admin") {
+    const site = await env.DB.prepare("SELECT id FROM sites WHERE id=? LIMIT 1")
+      .bind(siteId)
+      .first();
+    return Boolean(site?.id);
+  }
+
+  const site = await env.DB.prepare(
+    `SELECT s.id
+     FROM sites s
+     INNER JOIN teams t ON t.id = s.team_id
+     LEFT JOIN team_members tm ON tm.team_id = s.team_id AND tm.user_id = ?
+     WHERE s.id = ? AND (t.owner_user_id = ? OR tm.user_id IS NOT NULL)
+     LIMIT 1`,
+  )
+    .bind(session.userId, siteId, session.userId)
+    .first();
+
+  return Boolean(site?.id);
+}
+
 async function handleAdminWs(request, env) {
   // 验证 Session token
   const secret = await deriveSessionSecret(env);
@@ -132,9 +154,17 @@ async function handleAdminWs(request, env) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  // Session 验证通过，转发请求
   const incomingUrl = new URL(request.url);
-  const siteId = incomingUrl.searchParams.get("siteId") || "default";
+  const siteId = incomingUrl.searchParams.get("siteId");
+  if (!siteId) {
+    return new Response("siteId is required", { status: 400 });
+  }
+
+  const allowed = await canSessionReadSite(env, session, siteId);
+  if (!allowed) {
+    return new Response("Forbidden", { status: 403 });
+  }
+
   const doId = env.INGEST_DO.idFromName(siteId);
   const stub = env.INGEST_DO.get(doId);
   const forwardUrl = "https://ingest.internal/ws" + incomingUrl.search;

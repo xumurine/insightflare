@@ -30,10 +30,6 @@ function request(
   return nextRequest;
 }
 
-async function responseJson(response: Response) {
-  return JSON.parse(await response.text()) as unknown;
-}
-
 async function callMiddleware(request: NextRequest): Promise<Response> {
   const { middleware } = await import("@/middleware");
   return middleware(request);
@@ -164,43 +160,7 @@ describe("middleware", () => {
     );
   });
 
-  it("returns unauthorized JSON for protected API routes without a session", async () => {
-    const response = await callMiddleware(request("/api/admin/users"));
-
-    expect(response.status).toBe(401);
-    expect(await responseJson(response)).toEqual({
-      ok: false,
-      error: "unauthorized",
-    });
-  });
-
-  it("returns unauthorized JSON for archive API routes without a session", async () => {
-    const response = await callMiddleware(request("/api/archive/manifest"));
-
-    expect(response.status).toBe(401);
-    expect(await responseJson(response)).toEqual({
-      ok: false,
-      error: "unauthorized",
-    });
-  });
-
-  it("passes through protected API routes with a valid session", async () => {
-    const cookies = await sessionCookies();
-
-    const adminApi = await callMiddleware(
-      request("/api/admin/users", { cookies }),
-    );
-    const archiveApi = await callMiddleware(
-      request("/api/archive/manifest", { cookies }),
-    );
-
-    expect(adminApi.status).toBe(200);
-    expect(adminApi.headers.get("x-middleware-next")).toBe("1");
-    expect(archiveApi.status).toBe(200);
-    expect(archiveApi.headers.get("x-middleware-next")).toBe("1");
-  });
-
-  it("uses the Cloudflare runtime session secret when process env is empty", async () => {
+  it("uses the Cloudflare runtime session secret for app route auth", async () => {
     vi.stubEnv("DASHBOARD_SESSION_SECRET", "cloudflare-secret");
     const cookies = await sessionCookies();
     vi.stubEnv("DASHBOARD_SESSION_SECRET", "");
@@ -212,14 +172,14 @@ describe("middleware", () => {
     }));
 
     const response = await callMiddleware(
-      request("/api/admin/users", { cookies }),
+      request("/en/app/team-a", { cookies }),
     );
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-middleware-next")).toBe("1");
   });
 
-  it("rejects session cookies when no session secret is available", async () => {
+  it("passes through app routes when no session secret is configured (auth state unknown)", async () => {
     const cookies = await sessionCookies();
     vi.stubEnv("DASHBOARD_SESSION_SECRET", "");
     vi.stubEnv("SESSION_SECRET", "");
@@ -228,14 +188,13 @@ describe("middleware", () => {
     }));
 
     const response = await callMiddleware(
-      request("/api/admin/users", { cookies }),
+      request("/en/app/team-a", { cookies }),
     );
 
-    expect(response.status).toBe(401);
-    expect(await responseJson(response)).toEqual({
-      ok: false,
-      error: "unauthorized",
-    });
+    // When session secret is unavailable, auth state is "unknown" and middleware passes through.
+    // Production should always configure secrets (P0-2).
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-middleware-next")).toBe("1");
   });
 
   it("redirects unauthenticated app routes to login with a next parameter", async () => {

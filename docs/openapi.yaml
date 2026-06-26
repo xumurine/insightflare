@@ -2607,7 +2607,8 @@ components:
         - value
         - label
       additionalProperties: false
-    BatchResultItem___schema0:
+    BatchResultItem___schema0: {}
+    BatchResultItem___schema1:
       type: object
       properties:
         code:
@@ -2625,15 +2626,19 @@ components:
           type: string
         ok:
           type: boolean
+        status:
+          type: number
+          description: HTTP status code of the sub-query response
         data:
           description: Query result data (shape varies by queryName)
+          $ref: "#/components/schemas/BatchResultItem___schema0"
         error:
           description: Present only if this individual query failed
-          $ref: "#/components/schemas/BatchResultItem___schema0"
+          $ref: "#/components/schemas/BatchResultItem___schema1"
       required:
         - queryName
         - ok
-        - data
+        - status
       additionalProperties: false
     OverviewResponse:
       type: object
@@ -4816,7 +4821,8 @@ components:
         - timestamp
         - data
       additionalProperties: false
-    BatchResponse___schema0:
+    BatchResponse___schema0: {}
+    BatchResponse___schema1:
       type: object
       properties:
         code:
@@ -4842,6 +4848,9 @@ components:
         data:
           type: object
           properties:
+            partialFailure:
+              type: boolean
+              description: True if any sub-query returned a non-200 status
             results:
               type: array
               items:
@@ -4851,17 +4860,22 @@ components:
                     type: string
                   ok:
                     type: boolean
+                  status:
+                    type: number
+                    description: HTTP status code of the sub-query response
                   data:
                     description: Query result data (shape varies by queryName)
+                    $ref: "#/components/schemas/BatchResponse___schema0"
                   error:
                     description: Present only if this individual query failed
-                    $ref: "#/components/schemas/BatchResponse___schema0"
+                    $ref: "#/components/schemas/BatchResponse___schema1"
                 required:
                   - queryName
                   - ok
-                  - data
+                  - status
                 additionalProperties: false
           required:
+            - partialFailure
             - results
           additionalProperties: false
       required:

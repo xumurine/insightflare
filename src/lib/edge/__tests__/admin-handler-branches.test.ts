@@ -544,6 +544,7 @@ describe("admin handler low branches", () => {
     const siteUuid = vi
       .spyOn(crypto, "randomUUID")
       .mockReturnValue("00000000-0000-4000-8000-000000000456");
+    const slugCheck = statement({ first: null });
     const insertSite = statement();
 
     const created = await handleSitesAdmin(
@@ -556,7 +557,7 @@ describe("admin handler low branches", () => {
           publicEnabled: "on",
         }),
       ),
-      createEnv([insertSite]).env,
+      createEnv([slugCheck, insertSite]).env,
       new URL("https://edge.test/admin/sites"),
     );
     expect(created.status).toBe(200);
@@ -588,13 +589,14 @@ describe("admin handler low branches", () => {
         publicSlug: null,
       },
     });
+    const slugCheckUpdate = statement({ first: null });
     const updateSite = statement();
     const published = await handleSitesAdmin(
       request(
         "/admin/sites",
         jsonInit({ siteId: "site-1", publicEnabled: true }, "PATCH"),
       ),
-      createEnv([existingSite, updateSite]).env,
+      createEnv([existingSite, slugCheckUpdate, updateSite]).env,
       new URL("https://edge.test/admin/sites"),
     );
     expect(published.status).toBe(200);

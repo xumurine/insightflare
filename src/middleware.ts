@@ -254,29 +254,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     ? pathname.split("/")[1]
     : null;
 
+  // API 鉴权必须在各自 route handler 内完成（matcher 排除了 /api 路径，此处不会命中）。
+  // WebSocket 认证在 Worker 层 (cf-worker.js) 处理，此处直接放行。
   if (pathname === "/admin/ws") {
-    // WebSocket 认证在 Worker 层 (cf-worker.js) 处理，此处直接放行
-    return NextResponse.next();
-  }
-
-  // API routes — no locale handling, just auth checks
-  if (pathname.startsWith("/api/admin")) {
-    if ((await ensureAuthState()) !== "authenticated") {
-      return NextResponse.json(
-        { ok: false, error: "unauthorized" },
-        { status: 401 },
-      );
-    }
-    return NextResponse.next();
-  }
-
-  if (pathname.startsWith("/api/archive")) {
-    if ((await ensureAuthState()) !== "authenticated") {
-      return NextResponse.json(
-        { ok: false, error: "unauthorized" },
-        { status: 401 },
-      );
-    }
     return NextResponse.next();
   }
 

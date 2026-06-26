@@ -10,7 +10,11 @@ import { queryFunnelAnalysis } from "./query/funnels";
 import { routeQuery } from "./query/router";
 import { handleTeamDashboardForTeam } from "./query/team";
 import { bad, forb, j, jsonResponseFor, na, nf } from "./admin-response";
-import { deleteSiteData } from "./admin-sites";
+import {
+  createSiteWithDefaultSettings,
+  deleteSiteData,
+  ensurePublicSlugAvailable,
+} from "./admin-sites";
 import {
   type ApiKeyPrincipal,
   authenticateApiKey,
@@ -144,22 +148,18 @@ async function handleSitesCollection(
     const parsed = await parseAndValidateBody(request, SiteCreateInputSchema);
     if (!parsed.ok) return parsed.response;
     const { name, domain, publicEnabled, publicSlug } = parsed.data;
-    const siteId = crypto.randomUUID();
-    await env.DB.prepare(
-      "INSERT INTO sites (id,team_id,name,domain,public_enabled,public_slug,created_at,updated_at) VALUES (?,?,?,?,?,?,unixepoch(),unixepoch())",
-    )
-      .bind(
-        siteId,
-        principal.teamId,
-        name,
-        domain,
-        publicEnabled ? 1 : 0,
-        publicEnabled ? publicSlug || null : null,
-      )
-      .run();
-    await upsertSiteScriptSettings(env, siteId, {
-      siteDomain: domain,
-      settings: DEFAULT_SITE_SCRIPT_SETTINGS,
+    const resolvedSlug = publicEnabled ? publicSlug || null : null;
+    if (resolvedSlug) {
+      const available = await ensurePublicSlugAvailable(env, resolvedSlug);
+      if (!available)
+        return bad("Public slug already exists", undefined, request);
+    }
+    const siteId = await createSiteWithDefaultSettings(env, {
+      teamId: principal.teamId,
+      name,
+      domain,
+      publicEnabled,
+      publicSlug: resolvedSlug,
     });
     const row = await siteById(env, principal, siteId);
     return row instanceof Response
@@ -197,6 +197,15 @@ async function handleSiteResource(
     const publicEnabled =
       parsed.data.publicEnabled ?? existing.publicEnabled === 1;
     const publicSlug = parsed.data.publicSlug ?? existing.publicSlug ?? "";
+    if (publicEnabled && publicSlug) {
+      const available = await ensurePublicSlugAvailable(
+        env,
+        publicSlug,
+        siteId,
+      );
+      if (!available)
+        return bad("Public slug already exists", undefined, request);
+    }
     await env.DB.prepare(
       "UPDATE sites SET name=?,domain=?,public_enabled=?,public_slug=?,updated_at=unixepoch() WHERE id=? AND team_id=?",
     )
@@ -415,11 +424,12 @@ async function handleBatchAnalytics(
         });
         const payload = (await resp.json()) as Record<string, unknown>;
         const { requestId: _rid, timestamp: _ts, ...rest } = payload;
-        return rest;
+        return { queryName, ok: resp.ok, status: resp.status, ...rest };
       } catch (e) {
         return {
           queryName,
           ok: false,
+          status: 500,
           error: {
             code: "query_error",
             message: e instanceof Error ? e.message : "Unknown error",
@@ -429,7 +439,11 @@ async function handleBatchAnalytics(
     }),
   );
 
-  return jsonResponseFor(request, { ok: true, data: { results } });
+  const partialFailure = results.some((r) => r.ok === false);
+  return jsonResponseFor(request, {
+    ok: true,
+    data: { partialFailure, results },
+  });
 }
 
 async function handleRealtimeSnapshot(
@@ -519,8 +533,8 @@ export async function handleApiV1(
     if (request.method !== "GET") return na(request);
     return handleScriptSnippet(env, url, principal, siteId);
   }
-  if (path.length === 4 && path[2] === "analytics") {
-    return handleAnalytics(request, env, url, principal, siteId, path[3]);
+  if (path.length === 4 && path[2] === "analytics" && path[3] === "batch") {
+    return handleBatchAnalytics(request, env, url, principal, siteId);
   }
   if (
     path.length === 5 &&
@@ -530,8 +544,8 @@ export async function handleApiV1(
   ) {
     return handleAnalyzeFunnel(request, env, url, principal, siteId);
   }
-  if (path.length === 4 && path[2] === "analytics" && path[3] === "batch") {
-    return handleBatchAnalytics(request, env, url, principal, siteId);
+  if (path.length === 4 && path[2] === "analytics") {
+    return handleAnalytics(request, env, url, principal, siteId, path[3]);
   }
   if (path.length === 4 && path[2] === "realtime" && path[3] === "snapshot") {
     return handleRealtimeSnapshot(request, env, url, principal, siteId);

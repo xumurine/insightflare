@@ -742,7 +742,11 @@ export const GeoPointsResponseSchema = createEnvelopeSchema(
 export const BatchResultItemSchema = z.object({
   queryName: z.string(),
   ok: z.boolean(),
-  data: z.unknown().describe("Query result data (shape varies by queryName)"),
+  status: z.number().describe("HTTP status code of the sub-query response"),
+  data: z
+    .unknown()
+    .optional()
+    .describe("Query result data (shape varies by queryName)"),
   error: z
     .object({
       code: z.string(),
@@ -754,6 +758,9 @@ export const BatchResultItemSchema = z.object({
 
 export const BatchResponseSchema = createEnvelopeSchema(
   z.object({
+    partialFailure: z
+      .boolean()
+      .describe("True if any sub-query returned a non-200 status"),
     results: z.array(BatchResultItemSchema),
   }),
 );
