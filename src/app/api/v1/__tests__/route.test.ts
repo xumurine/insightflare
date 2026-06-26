@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DELETE, GET, PATCH, POST } from "@/app/api/v1/[...path]/route";
+import { DELETE, GET, PATCH, POST } from "@/app/api/v1/[[...path]]/route";
 import { handleApiV1 } from "@/lib/edge/api-v1";
 import { resolveEdgeRuntime } from "@/lib/edge/runtime";
 
