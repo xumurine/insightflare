@@ -104,7 +104,7 @@ describe("api key admin handler", () => {
       name: "CI",
       key_prefix: "prefix",
       key_hash: "hash",
-      scopes_json: "[]",
+      scopes_json: '["site:read"]',
       site_ids_json: "[]",
       created_by_user_id: "user-1",
       expires_at: null,
@@ -116,6 +116,20 @@ describe("api key admin handler", () => {
       updated_at: 1,
     });
   });
+
+  // ─── Auth ────────────────────────────────────────────────────────
+
+  it("returns 401 when actor is not authenticated", async () => {
+    requireActorMock.mockResolvedValue(new Response(null, { status: 401 }));
+    const response = await handleApiKeysAdmin(
+      request("/api/private/admin/api-keys?teamId=team-1"),
+      env,
+      new URL("https://edge.test/api/private/admin/api-keys?teamId=team-1"),
+    );
+    expect(response.status).toBe(401);
+  });
+
+  // ─── GET ─────────────────────────────────────────────────────────
 
   it("requires team management permission", async () => {
     canManageTeamMock.mockResolvedValue(false);
@@ -138,6 +152,18 @@ describe("api key admin handler", () => {
     expect(response.status).toBe(200);
     expect(listApiKeysMock).toHaveBeenCalledWith(env, "team-1");
   });
+
+  it("returns 400 for GET without teamId", async () => {
+    const response = await handleApiKeysAdmin(
+      request("/api/private/admin/api-keys"),
+      env,
+      new URL("https://edge.test/api/private/admin/api-keys"),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  // ─── POST ────────────────────────────────────────────────────────
 
   it("creates a key and returns the one-time secret", async () => {
     const response = await handleApiKeysAdmin(
@@ -170,6 +196,73 @@ describe("api key admin handler", () => {
     );
   });
 
+  it("returns 400 for POST without teamId", async () => {
+    const response = await handleApiKeysAdmin(
+      request("/api/private/admin/api-keys", {
+        method: "POST",
+        body: JSON.stringify({ name: "CI", scopes: ["site:read"] }),
+      }),
+      env,
+      new URL("https://edge.test/api/private/admin/api-keys"),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 for POST with short name", async () => {
+    const response = await handleApiKeysAdmin(
+      request("/api/private/admin/api-keys", {
+        method: "POST",
+        body: JSON.stringify({
+          teamId: "team-1",
+          name: "A",
+          scopes: ["site:read"],
+        }),
+      }),
+      env,
+      new URL("https://edge.test/api/private/admin/api-keys"),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 for POST with no scopes", async () => {
+    const response = await handleApiKeysAdmin(
+      request("/api/private/admin/api-keys", {
+        method: "POST",
+        body: JSON.stringify({
+          teamId: "team-1",
+          name: "CI",
+          scopes: [],
+        }),
+      }),
+      env,
+      new URL("https://edge.test/api/private/admin/api-keys"),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 403 when team is not manageable on POST", async () => {
+    canManageTeamMock.mockResolvedValue(false);
+    const response = await handleApiKeysAdmin(
+      request("/api/private/admin/api-keys", {
+        method: "POST",
+        body: JSON.stringify({
+          teamId: "team-1",
+          name: "CI",
+          scopes: ["site:read"],
+        }),
+      }),
+      env,
+      new URL("https://edge.test/api/private/admin/api-keys"),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  // ─── PATCH ───────────────────────────────────────────────────────
+
   it("revokes keys by intent", async () => {
     revokeApiKeyRecordMock.mockResolvedValue(null);
     const response = await handleApiKeysAdmin(
@@ -191,5 +284,137 @@ describe("api key admin handler", () => {
       keyId: "key-1",
       revokedByUserId: "user-1",
     });
+  });
+
+  it("rotates keys by intent", async () => {
+    revokeApiKeyRecordMock.mockResolvedValue(null);
+    const response = await handleApiKeysAdmin(
+      request("/api/private/admin/api-keys", {
+        method: "PATCH",
+        body: JSON.stringify({
+          teamId: "team-1",
+          keyId: "key-1",
+          intent: "rotate",
+        }),
+      }),
+      env,
+      new URL("https://edge.test/api/private/admin/api-keys"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(createApiKeyRecordMock).toHaveBeenCalled();
+    expect(revokeApiKeyRecordMock).toHaveBeenCalled();
+  });
+
+  it("returns 400 for unsupported PATCH intent", async () => {
+    const response = await handleApiKeysAdmin(
+      request("/api/private/admin/api-keys", {
+        method: "PATCH",
+        body: JSON.stringify({
+          teamId: "team-1",
+          keyId: "key-1",
+          intent: "invalid",
+        }),
+      }),
+      env,
+      new URL("https://edge.test/api/private/admin/api-keys"),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 for PATCH without teamId or keyId", async () => {
+    const response = await handleApiKeysAdmin(
+      request("/api/private/admin/api-keys", {
+        method: "PATCH",
+        body: JSON.stringify({ intent: "revoke" }),
+      }),
+      env,
+      new URL("https://edge.test/api/private/admin/api-keys"),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 404 when key not found on PATCH", async () => {
+    getApiKeyByIdMock.mockResolvedValue(null);
+    const response = await handleApiKeysAdmin(
+      request("/api/private/admin/api-keys", {
+        method: "PATCH",
+        body: JSON.stringify({
+          teamId: "team-1",
+          keyId: "missing",
+          intent: "revoke",
+        }),
+      }),
+      env,
+      new URL("https://edge.test/api/private/admin/api-keys"),
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 404 when key belongs to different team", async () => {
+    getApiKeyByIdMock.mockResolvedValue({
+      id: "key-1",
+      team_id: "other-team",
+      name: "CI",
+      key_prefix: "prefix",
+      key_hash: "hash",
+      scopes_json: "[]",
+      site_ids_json: "[]",
+      created_by_user_id: "user-1",
+      expires_at: null,
+      revoked_at: null,
+      revoked_by_user_id: null,
+      rotated_from_key_id: null,
+      last_used_at: null,
+      created_at: 1,
+      updated_at: 1,
+    });
+    const response = await handleApiKeysAdmin(
+      request("/api/private/admin/api-keys", {
+        method: "PATCH",
+        body: JSON.stringify({
+          teamId: "team-1",
+          keyId: "key-1",
+          intent: "revoke",
+        }),
+      }),
+      env,
+      new URL("https://edge.test/api/private/admin/api-keys"),
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 403 when team is not manageable on PATCH", async () => {
+    canManageTeamMock.mockResolvedValue(false);
+    const response = await handleApiKeysAdmin(
+      request("/api/private/admin/api-keys", {
+        method: "PATCH",
+        body: JSON.stringify({
+          teamId: "team-1",
+          keyId: "key-1",
+          intent: "revoke",
+        }),
+      }),
+      env,
+      new URL("https://edge.test/api/private/admin/api-keys"),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  // ─── Unsupported method ──────────────────────────────────────────
+
+  it("returns 405 for unsupported methods", async () => {
+    const response = await handleApiKeysAdmin(
+      request("/api/private/admin/api-keys", { method: "DELETE" }),
+      env,
+      new URL("https://edge.test/api/private/admin/api-keys"),
+    );
+
+    expect(response.status).toBe(405);
   });
 });
