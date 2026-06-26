@@ -606,7 +606,7 @@ function SiteTrafficStackTooltip({
       </div>
       {hasActiveSites ? (
         <div className="border-t border-border/30 pt-1 text-[10px] text-muted-foreground">
-          {formatI18nTemplate(messages.common.sitesFiltered, {
+          {formatI18nTemplate(_messages.common.sitesFiltered, {
             active: activeSiteIdSet.size,
             total: series.length,
           })}

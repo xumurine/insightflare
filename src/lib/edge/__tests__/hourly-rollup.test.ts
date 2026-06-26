@@ -590,6 +590,8 @@ describe("hourly visit rollups", () => {
     const logger = {
       info: vi.fn(),
       error: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
     };
     const result = await runHourlyAggregation(env, scheduledTime, { logger });
 
@@ -609,7 +611,12 @@ describe("hourly visit rollups", () => {
 
   it("skips when cutoff is before epoch", async () => {
     const { env, d1 } = createEnv();
-    const logger = { info: vi.fn(), error: vi.fn() };
+    const logger = {
+      info: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+    };
     // scheduledTime = 0 means cutoff is negative
     const result = await runHourlyAggregation(env, 0, { logger });
 
@@ -652,7 +659,12 @@ describe("hourly visit rollups", () => {
       return originalBatch(statements);
     };
 
-    const logger = { info: vi.fn(), error: vi.fn() };
+    const logger = {
+      info: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+    };
     await runHourlyAggregation(env, scheduledTime, { logger });
 
     expect(logger.error).toHaveBeenCalledWith(

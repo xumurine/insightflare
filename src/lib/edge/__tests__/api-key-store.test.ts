@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   type ApiKeyRow,
@@ -23,8 +23,8 @@ import {
 import type { Env } from "@/lib/edge/types";
 
 function createMockEnv(
-  matchFirst?: Record<string, unknown> | null,
-  matchAll?: Record<string, unknown>[],
+  matchFirst?: ApiKeyRow | Record<string, unknown> | null,
+  matchAll?: Array<ApiKeyRow | Record<string, unknown>>,
 ) {
   return {
     MAIN_SECRET: "api-key-secret",
