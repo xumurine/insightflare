@@ -17,19 +17,23 @@ export const SiteSchema = z.object({
 
 // ─── Input ──────────────────────────────────────────────────────────────
 
-export const SiteCreateInputSchema = z.object({
-  name: z.string().trim().min(1).max(120),
-  domain: z.string().trim().min(1).max(255),
-  publicEnabled: z.boolean().default(false),
-  publicSlug: z.string().trim().max(120).optional(),
-});
+export const SiteCreateInputSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    domain: z.string().trim().min(1).max(255),
+    publicEnabled: z.boolean().default(false),
+    publicSlug: z.string().trim().max(120).optional(),
+  })
+  .strict();
 
-export const SiteUpdateInputSchema = z.object({
-  name: z.string().trim().min(1).max(120).optional(),
-  domain: z.string().trim().min(1).max(255).optional(),
-  publicEnabled: z.boolean().optional(),
-  publicSlug: z.string().trim().max(120).optional(),
-});
+export const SiteUpdateInputSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    domain: z.string().trim().min(1).max(255).optional(),
+    publicEnabled: z.boolean().optional(),
+    publicSlug: z.string().trim().max(120).optional(),
+  })
+  .strict();
 
 // ─── Responses ──────────────────────────────────────────────────────────
 

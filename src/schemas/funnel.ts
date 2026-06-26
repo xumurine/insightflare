@@ -4,16 +4,18 @@ import { createEnvelopeSchema, registerSchema } from "./common";
 
 // ─── Shared ─────────────────────────────────────────────────────────────
 
-export const FunnelStepSchema = z.object({
-  type: z
-    .enum(["pageview", "event"])
-    .describe("pageview = match pathname, event = match event name"),
-  value: z
-    .string()
-    .trim()
-    .min(1)
-    .describe("Pathname pattern or event name to match"),
-});
+export const FunnelStepSchema = z
+  .object({
+    type: z
+      .enum(["pageview", "event"])
+      .describe("pageview = match pathname, event = match event name"),
+    value: z
+      .string()
+      .trim()
+      .min(1)
+      .describe("Pathname pattern or event name to match"),
+  })
+  .strict();
 
 // ─── Output ─────────────────────────────────────────────────────────────
 
@@ -53,14 +55,18 @@ export const FunnelAnalysisSummarySchema = z.object({
 
 // ─── Input ──────────────────────────────────────────────────────────────
 
-export const FunnelCreateInputSchema = z.object({
-  name: z.string().min(1).max(200),
-  steps: z.array(FunnelStepSchema).min(2).max(10),
-});
+export const FunnelCreateInputSchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    steps: z.array(FunnelStepSchema).min(2).max(10),
+  })
+  .strict();
 
-export const FunnelAnalyzeInputSchema = z.object({
-  steps: z.array(FunnelStepSchema).min(2).max(10),
-});
+export const FunnelAnalyzeInputSchema = z
+  .object({
+    steps: z.array(FunnelStepSchema).min(2).max(10),
+  })
+  .strict();
 
 // ─── Responses ──────────────────────────────────────────────────────────
 

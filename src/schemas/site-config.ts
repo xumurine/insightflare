@@ -53,16 +53,18 @@ export const ScriptSnippetSchema = z.object({
 
 // ─── Input ──────────────────────────────────────────────────────────────
 
-export const SiteConfigUpdateInputSchema = z.object({
-  trackingStrength: z.enum(["strong", "smart", "weak"]).optional(),
-  trackQueryParams: z.boolean().optional(),
-  trackHash: z.boolean().optional(),
-  autoTrackOutboundLinks: z.boolean().optional(),
-  domainWhitelist: z.array(z.string()).optional(),
-  pathBlacklist: z.array(z.string()).optional(),
-  ignoreDoNotTrack: z.boolean().optional(),
-  performanceSampleRate: z.number().min(0).max(100).optional(),
-});
+export const SiteConfigUpdateInputSchema = z
+  .object({
+    trackingStrength: z.enum(["strong", "smart", "weak"]).optional(),
+    trackQueryParams: z.boolean().optional(),
+    trackHash: z.boolean().optional(),
+    autoTrackOutboundLinks: z.boolean().optional(),
+    domainWhitelist: z.array(z.string()).optional(),
+    pathBlacklist: z.array(z.string()).optional(),
+    ignoreDoNotTrack: z.boolean().optional(),
+    performanceSampleRate: z.number().min(0).max(100).optional(),
+  })
+  .strict();
 
 // ─── Responses ──────────────────────────────────────────────────────────
 

@@ -111,7 +111,7 @@ export const AnalyticsQueryParamsSchema = z.object({
     .optional()
     .describe("Start timestamp (Unix ms)"),
   to: z.coerce.number().int().optional().describe("End timestamp (Unix ms)"),
-  interval: IntervalSchema.default("day"),
+  interval: IntervalSchema,
   timeZone: z.string().optional().describe("IANA timezone identifier"),
   tz: z.string().optional().describe("Alias for timeZone"),
   limit: z.coerce.number().int().optional(),
@@ -570,16 +570,11 @@ export const FilterOptionSchema = z.object({
 // ─── Unified Response Schemas ───────────────────────────────────────────
 
 // Overview response
-export const OverviewResponseSchema = createEnvelopeSchema(
-  OverviewDataSchema.extend({
-    siteId: z.string(),
-  }),
-);
+export const OverviewResponseSchema = createEnvelopeSchema(OverviewDataSchema);
 
 // Trend response
 export const TrendResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     interval: IntervalSchema,
     data: z.array(TrendRowSchema),
   }),
@@ -588,7 +583,6 @@ export const TrendResponseSchema = createEnvelopeSchema(
 // Pages response
 export const PagesResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     data: z.array(PageRowSchema),
   }),
 );
@@ -596,7 +590,6 @@ export const PagesResponseSchema = createEnvelopeSchema(
 // Referrers response
 export const ReferrersResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     data: z.array(ReferrerRowSchema),
   }),
 );
@@ -604,7 +597,6 @@ export const ReferrersResponseSchema = createEnvelopeSchema(
 // Pages dashboard response (paginated)
 export const PagesDashboardResponseSchema = createPaginatedEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     interval: IntervalSchema,
     data: z.array(PageDashboardRowSchema),
   }),
@@ -613,7 +605,6 @@ export const PagesDashboardResponseSchema = createPaginatedEnvelopeSchema(
 // Visitors response (paginated)
 export const VisitorsResponseSchema = createPaginatedEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     data: z.array(VisitorRowSchema),
   }),
 );
@@ -621,7 +612,6 @@ export const VisitorsResponseSchema = createPaginatedEnvelopeSchema(
 // Sessions response (paginated)
 export const SessionsResponseSchema = createPaginatedEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     data: z.array(SessionRowSchema),
   }),
 );
@@ -629,24 +619,17 @@ export const SessionsResponseSchema = createPaginatedEnvelopeSchema(
 // Visitor detail response
 export const VisitorDetailResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     data: VisitorDetailDataSchema,
   }),
 );
 
 // Retention response
-export const RetentionResponseSchema = createEnvelopeSchema(
-  z
-    .object({
-      siteId: z.string(),
-    })
-    .merge(RetentionDataSchema),
-);
+export const RetentionResponseSchema =
+  createEnvelopeSchema(RetentionDataSchema);
 
 // Performance response
 export const PerformanceResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     interval: IntervalSchema,
     summaries: PerformanceSummaryRowSchema,
     trends: z.record(z.string(), z.array(PerformanceTrendPointSchema)),
@@ -658,7 +641,6 @@ export const PerformanceResponseSchema = createEnvelopeSchema(
 // Share trend response (browser-trend, etc.)
 export const ShareTrendResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     interval: IntervalSchema,
     series: z.array(ShareTrendSeriesEntrySchema),
     data: z.array(ShareTrendDataPointSchema),
@@ -668,24 +650,18 @@ export const ShareTrendResponseSchema = createEnvelopeSchema(
 // Event types response
 export const EventTypesResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     data: z.array(EventTypeRowSchema),
   }),
 );
 
 // Events summary response
 export const EventsSummaryResponseSchema = createEnvelopeSchema(
-  z
-    .object({
-      siteId: z.string(),
-    })
-    .merge(EventsSummaryDataSchema),
+  EventsSummaryDataSchema,
 );
 
 // Events trend response
 export const EventsTrendResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     interval: IntervalSchema,
     series: z.array(EventTrendSeriesRowSchema),
     data: z.array(EventTrendDataPointSchema),
@@ -695,7 +671,6 @@ export const EventsTrendResponseSchema = createEnvelopeSchema(
 // Funnel list response (reuses funnel.ts schema, but wrapped differently for analytics endpoint)
 export const FunnelAnalyticsResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     funnels: z.array(
       z.object({
         id: z.string().uuid(),
@@ -717,7 +692,6 @@ export const FunnelAnalyticsResponseSchema = createEnvelopeSchema(
 // Filter options response
 export const FilterOptionsResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     data: z.array(FilterOptionSchema),
   }),
 );
@@ -725,7 +699,6 @@ export const FilterOptionsResponseSchema = createEnvelopeSchema(
 // Browser version breakdown response
 export const BrowserVersionBreakdownResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     data: z.array(BrowserVersionBrowserSchema),
   }),
 );
@@ -733,7 +706,6 @@ export const BrowserVersionBreakdownResponseSchema = createEnvelopeSchema(
 // Cross breakdown response
 export const CrossBreakdownResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     data: CrossBreakdownMatrixSchema,
   }),
 );
@@ -741,7 +713,6 @@ export const CrossBreakdownResponseSchema = createEnvelopeSchema(
 // Radar response
 export const RadarResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     data: z.array(RadarEntrySchema),
   }),
 );
@@ -749,7 +720,6 @@ export const RadarResponseSchema = createEnvelopeSchema(
 // Dimension response (generic, used by many overview-* queries)
 export const DimensionResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     data: z.array(DimensionRowSchema),
   }),
 );
@@ -757,7 +727,6 @@ export const DimensionResponseSchema = createEnvelopeSchema(
 // Geo tab response
 export const GeoTabResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     data: z.array(GeoTabRowSchema),
   }),
 );
@@ -765,7 +734,6 @@ export const GeoTabResponseSchema = createEnvelopeSchema(
 // Geo points response
 export const GeoPointsResponseSchema = createEnvelopeSchema(
   z.object({
-    siteId: z.string(),
     data: z.array(GeoPointRowSchema),
   }),
 );
@@ -790,24 +758,28 @@ export const BatchResponseSchema = createEnvelopeSchema(
   }),
 );
 
-export const BatchInputSchema = z.object({
-  from: z.number().int().optional(),
-  to: z.number().int().optional(),
-  interval: IntervalSchema.optional(),
-  timeZone: z.string().optional(),
-  queries: z
-    .array(
-      z.object({
-        queryName: z.string(),
-        from: z.number().int().optional(),
-        to: z.number().int().optional(),
-        interval: IntervalSchema.optional(),
-        limit: z.number().int().optional(),
-      }),
-    )
-    .min(1)
-    .max(10),
-});
+export const BatchInputSchema = z
+  .object({
+    from: z.number().int().optional(),
+    to: z.number().int().optional(),
+    interval: IntervalSchema.optional(),
+    timeZone: z.string().optional(),
+    queries: z
+      .array(
+        z
+          .object({
+            queryName: z.string(),
+            from: z.number().int().optional(),
+            to: z.number().int().optional(),
+            interval: IntervalSchema.optional(),
+            limit: z.number().int().optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(10),
+  })
+  .strict();
 
 // ─── Register ───────────────────────────────────────────────────────────
 

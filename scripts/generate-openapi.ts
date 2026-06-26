@@ -524,13 +524,35 @@ function buildPaths(): Record<string, unknown> {
         ],
         responses: {
           "200": {
-            description: "Analytics query result",
+            description: "Analytics query result (shape varies by queryName)",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/AnalyticsQueryParams" },
-                // Note: actual response shape varies by queryName.
-                // Individual response schemas are registered (OverviewResponse, TrendResponse, etc.)
-                // but cannot be statically referenced here since queryName is a path parameter.
+                schema: {
+                  oneOf: [
+                    { $ref: "#/components/schemas/OverviewResponse" },
+                    { $ref: "#/components/schemas/TrendResponse" },
+                    { $ref: "#/components/schemas/PagesResponse" },
+                    { $ref: "#/components/schemas/ReferrersResponse" },
+                    { $ref: "#/components/schemas/SessionsResponse" },
+                    { $ref: "#/components/schemas/VisitorsResponse" },
+                    { $ref: "#/components/schemas/RetentionResponse" },
+                    { $ref: "#/components/schemas/PerformanceResponse" },
+                    { $ref: "#/components/schemas/ShareTrendResponse" },
+                    { $ref: "#/components/schemas/EventTypesResponse" },
+                    { $ref: "#/components/schemas/EventsSummaryResponse" },
+                    { $ref: "#/components/schemas/EventsTrendResponse" },
+                    { $ref: "#/components/schemas/FunnelAnalyticsResponse" },
+                    { $ref: "#/components/schemas/FilterOptionsResponse" },
+                    {
+                      $ref: "#/components/schemas/BrowserVersionBreakdownResponse",
+                    },
+                    { $ref: "#/components/schemas/CrossBreakdownResponse" },
+                    { $ref: "#/components/schemas/RadarResponse" },
+                    { $ref: "#/components/schemas/DimensionResponse" },
+                    { $ref: "#/components/schemas/GeoTabResponse" },
+                    { $ref: "#/components/schemas/GeoPointsResponse" },
+                  ],
+                },
               },
             },
           },

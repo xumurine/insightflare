@@ -53,14 +53,13 @@ describe("QueryNameSchema", () => {
 
 describe("AnalyticsQueryParamsSchema", () => {
   it("accepts empty params (all optional)", () => {
-    const result = AnalyticsQueryParamsSchema.safeParse({});
+    const result = AnalyticsQueryParamsSchema.safeParse({ interval: "day" });
     expect(result.success).toBe(true);
   });
 
-  it("applies default interval", () => {
+  it("requires interval field", () => {
     const result = AnalyticsQueryParamsSchema.safeParse({});
-    expect(result.success).toBe(true);
-    if (result.success) expect(result.data.interval).toBe("day");
+    expect(result.success).toBe(false);
   });
 
   it("accepts valid params", () => {
@@ -78,6 +77,7 @@ describe("AnalyticsQueryParamsSchema", () => {
     const result = AnalyticsQueryParamsSchema.safeParse({
       from: "1700000000000",
       to: "1700086400000",
+      interval: "day",
     });
     expect(result.success).toBe(true);
     if (result.success) {
@@ -89,7 +89,7 @@ describe("AnalyticsQueryParamsSchema", () => {
 
 describe("PaginatedQueryParamsSchema", () => {
   it("applies defaults", () => {
-    const result = PaginatedQueryParamsSchema.safeParse({});
+    const result = PaginatedQueryParamsSchema.safeParse({ interval: "day" });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.page).toBe(1);
@@ -519,7 +519,6 @@ describe("OverviewResponseSchema", () => {
         requestId: "r",
         timestamp: "t",
         data: {
-          siteId: "s1",
           views: 100,
           sessions: 50,
           visitors: 30,

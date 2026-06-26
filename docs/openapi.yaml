@@ -562,11 +562,31 @@ paths:
             type: boolean
       responses:
         "200":
-          description: Analytics query result
+          description: Analytics query result (shape varies by queryName)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AnalyticsQueryParams"
+                oneOf:
+                  - $ref: "#/components/schemas/OverviewResponse"
+                  - $ref: "#/components/schemas/TrendResponse"
+                  - $ref: "#/components/schemas/PagesResponse"
+                  - $ref: "#/components/schemas/ReferrersResponse"
+                  - $ref: "#/components/schemas/SessionsResponse"
+                  - $ref: "#/components/schemas/VisitorsResponse"
+                  - $ref: "#/components/schemas/RetentionResponse"
+                  - $ref: "#/components/schemas/PerformanceResponse"
+                  - $ref: "#/components/schemas/ShareTrendResponse"
+                  - $ref: "#/components/schemas/EventTypesResponse"
+                  - $ref: "#/components/schemas/EventsSummaryResponse"
+                  - $ref: "#/components/schemas/EventsTrendResponse"
+                  - $ref: "#/components/schemas/FunnelAnalyticsResponse"
+                  - $ref: "#/components/schemas/FilterOptionsResponse"
+                  - $ref: "#/components/schemas/BrowserVersionBreakdownResponse"
+                  - $ref: "#/components/schemas/CrossBreakdownResponse"
+                  - $ref: "#/components/schemas/RadarResponse"
+                  - $ref: "#/components/schemas/DimensionResponse"
+                  - $ref: "#/components/schemas/GeoTabResponse"
+                  - $ref: "#/components/schemas/GeoPointsResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -951,7 +971,6 @@ components:
           description: End timestamp (Unix ms)
           $ref: "#/components/schemas/AnalyticsQueryParams___schema1"
         interval:
-          default: day
           type: string
           enum:
             - minute
@@ -996,7 +1015,6 @@ components:
           description: End timestamp (Unix ms)
           $ref: "#/components/schemas/PaginatedQueryParams___schema1"
         interval:
-          default: day
           type: string
           enum:
             - minute
@@ -2658,8 +2676,6 @@ components:
               type: number
             approximateVisitors:
               type: boolean
-            siteId:
-              type: string
           required:
             - views
             - sessions
@@ -2669,7 +2685,6 @@ components:
             - avgDurationMs
             - bounceRate
             - approximateVisitors
-            - siteId
           additionalProperties: false
       required:
         - ok
@@ -2692,8 +2707,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             interval:
               type: string
               enum:
@@ -2747,7 +2760,6 @@ components:
                   - sessions
                 additionalProperties: false
           required:
-            - siteId
             - interval
             - data
           additionalProperties: false
@@ -2772,8 +2784,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             data:
               type: array
               items:
@@ -2799,7 +2809,6 @@ components:
                   - sessions
                 additionalProperties: false
           required:
-            - siteId
             - data
           additionalProperties: false
       required:
@@ -2823,8 +2832,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             data:
               type: array
               items:
@@ -2850,7 +2857,6 @@ components:
                   - sessions
                 additionalProperties: false
           required:
-            - siteId
             - data
           additionalProperties: false
       required:
@@ -2878,8 +2884,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             interval:
               type: string
               enum:
@@ -2980,7 +2984,6 @@ components:
                   - metrics
                 additionalProperties: false
           required:
-            - siteId
             - interval
             - data
           additionalProperties: false
@@ -3043,8 +3046,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             data:
               type: array
               items:
@@ -3122,7 +3123,6 @@ components:
                   - sessions
                 additionalProperties: false
           required:
-            - siteId
             - data
           additionalProperties: false
         meta:
@@ -3184,8 +3184,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             data:
               type: array
               items:
@@ -3313,7 +3311,6 @@ components:
                   - deviceType
                 additionalProperties: false
           required:
-            - siteId
             - data
           additionalProperties: false
         meta:
@@ -3401,8 +3398,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             data:
               type: object
               properties:
@@ -3694,7 +3689,6 @@ components:
                 - performance
               additionalProperties: false
           required:
-            - siteId
             - data
           additionalProperties: false
       required:
@@ -3718,8 +3712,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             granularity:
               type: string
               enum:
@@ -3771,7 +3763,6 @@ components:
                   - periods
                 additionalProperties: false
           required:
-            - siteId
             - granularity
             - cohorts
           additionalProperties: false
@@ -3846,8 +3837,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             interval:
               type: string
               enum:
@@ -3941,7 +3930,6 @@ components:
                   - metrics
                 additionalProperties: false
           required:
-            - siteId
             - interval
             - summaries
             - trends
@@ -3969,8 +3957,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             interval:
               type: string
               enum:
@@ -4041,7 +4027,6 @@ components:
                   - visitorsBySeries
                 additionalProperties: false
           required:
-            - siteId
             - interval
             - series
             - data
@@ -4067,8 +4052,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             data:
               type: array
               items:
@@ -4095,7 +4078,6 @@ components:
                   - visitors
                 additionalProperties: false
           required:
-            - siteId
             - data
           additionalProperties: false
       required:
@@ -4142,8 +4124,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             summary:
               type: object
               properties:
@@ -4210,7 +4190,6 @@ components:
                 - page
               additionalProperties: false
           required:
-            - siteId
             - summary
             - cards
           additionalProperties: false
@@ -4235,8 +4214,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             interval:
               type: string
               enum:
@@ -4308,7 +4285,6 @@ components:
                   - eventsBySeries
                 additionalProperties: false
           required:
-            - siteId
             - interval
             - series
             - data
@@ -4334,8 +4310,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             funnels:
               type: array
               items:
@@ -4382,7 +4356,6 @@ components:
                   - updatedAt
                 additionalProperties: false
           required:
-            - siteId
             - funnels
           additionalProperties: false
       required:
@@ -4406,8 +4379,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             data:
               type: array
               items:
@@ -4424,7 +4395,6 @@ components:
                   - label
                 additionalProperties: false
           required:
-            - siteId
             - data
           additionalProperties: false
       required:
@@ -4448,8 +4418,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             data:
               type: array
               items:
@@ -4509,7 +4477,6 @@ components:
                   - versions
                 additionalProperties: false
           required:
-            - siteId
             - data
           additionalProperties: false
       required:
@@ -4563,8 +4530,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             data:
               type: object
               properties:
@@ -4619,7 +4584,6 @@ components:
                 - totalVisitors
               additionalProperties: false
           required:
-            - siteId
             - data
           additionalProperties: false
       required:
@@ -4643,8 +4607,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             data:
               type: array
               items:
@@ -4691,7 +4653,6 @@ components:
                   - metrics
                 additionalProperties: false
           required:
-            - siteId
             - data
           additionalProperties: false
       required:
@@ -4715,8 +4676,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             data:
               type: array
               items:
@@ -4743,7 +4702,6 @@ components:
                   - visitors
                 additionalProperties: false
           required:
-            - siteId
             - data
           additionalProperties: false
       required:
@@ -4767,8 +4725,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             data:
               type: array
               items:
@@ -4798,7 +4754,6 @@ components:
                   - visitors
                 additionalProperties: false
           required:
-            - siteId
             - data
           additionalProperties: false
       required:
@@ -4822,8 +4777,6 @@ components:
         data:
           type: object
           properties:
-            siteId:
-              type: string
             data:
               type: array
               items:
@@ -4855,7 +4808,6 @@ components:
                   - city
                 additionalProperties: false
           required:
-            - siteId
             - data
           additionalProperties: false
       required:
