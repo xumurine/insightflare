@@ -868,16 +868,18 @@
                     "value": {
                       "data": [
                         {
-                          "key": "__direct__",
-                          "label": "Direct",
+                          "key": "550e8400-e29b-41d4-a716-446655440000",
+                          "label": "Example Blog",
                           "views": 5200,
-                          "sessions": 3200
+                          "sessions": 3200,
+                          "visitors": 2600
                         },
                         {
-                          "key": "__unknown__",
-                          "label": "Unknown",
-                          "views": 120,
-                          "sessions": 88
+                          "key": "550e8400-e29b-41d4-a716-446655440010",
+                          "label": "Docs Site",
+                          "views": 3100,
+                          "sessions": 1900,
+                          "visitors": 1500
                         }
                       ],
                       "meta": {
@@ -2907,16 +2909,18 @@
                     "value": {
                       "data": [
                         {
-                          "key": "__direct__",
-                          "label": "Direct",
-                          "views": 5200,
-                          "sessions": 3200
+                          "key": "signup",
+                          "label": "Signup",
+                          "events": 450,
+                          "sessions": 210,
+                          "visitors": 190
                         },
                         {
-                          "key": "__unknown__",
-                          "label": "Unknown",
-                          "views": 120,
-                          "sessions": 88
+                          "key": "purchase",
+                          "label": "Purchase",
+                          "events": 80,
+                          "sessions": 70,
+                          "visitors": 65
                         }
                       ],
                       "meta": {
@@ -3017,18 +3021,37 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EventsSummaryResponse"
+                  "$ref": "#/components/schemas/EventTypeResponse"
                 },
                 "examples": {
                   "default": {
                     "summary": "getEventType",
                     "value": {
                       "data": {
+                        "name": "signup",
+                        "label": "Signup",
                         "events": 450,
-                        "eventTypes": 8,
                         "sessions": 210,
                         "visitors": 190,
-                        "avgEventsPerSession": 2.14
+                        "avgEventsPerSession": 2.14,
+                        "firstSeenAt": "2026-01-01T00:00:00Z",
+                        "lastSeenAt": "2026-06-26T12:00:00Z",
+                        "fields": [
+                          {
+                            "path": "plan",
+                            "valueTypes": ["string"],
+                            "examples": ["free", "pro"]
+                          },
+                          {
+                            "path": "source",
+                            "valueTypes": ["string"],
+                            "examples": ["pricing_page", "header_cta"]
+                          }
+                        ],
+                        "links": {
+                          "events": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/events?eventName=signup",
+                          "fieldValues": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/event-fields/values?eventName=signup"
+                        }
                       },
                       "meta": {
                         "requestId": "req_abc123",
@@ -6364,13 +6387,14 @@
         }
       },
       "TokenResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "$ref": "#/components/schemas/Token"
@@ -6405,13 +6429,14 @@
         }
       },
       "TokenCheckResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "type": "object",
@@ -6564,13 +6589,14 @@
         "additionalProperties": false
       },
       "CapabilitiesResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "$ref": "#/components/schemas/Capabilities"
@@ -6580,13 +6606,14 @@
         ]
       },
       "RootDiscoveryResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "type": "object",
@@ -6628,13 +6655,14 @@
         }
       },
       "TeamResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "$ref": "#/components/schemas/Team"
@@ -6724,13 +6752,14 @@
         }
       },
       "SiteResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "$ref": "#/components/schemas/Site"
@@ -6740,12 +6769,14 @@
         ]
       },
       "SiteListResponse": {
+        "description": "Response envelope for list results.",
         "allOf": [
           {
             "$ref": "#/components/schemas/ListEnvelope"
           },
           {
             "type": "object",
+            "description": "Response envelope for list results.",
             "properties": {
               "data": {
                 "type": "array",
@@ -6804,13 +6835,14 @@
         }
       },
       "TrackingSettingsResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "$ref": "#/components/schemas/TrackingSettings"
@@ -6820,13 +6852,14 @@
         ]
       },
       "TrackingScriptResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "type": "object",
@@ -6872,13 +6905,14 @@
         }
       },
       "PrivacySettingsResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "$ref": "#/components/schemas/PrivacySettings"
@@ -6901,13 +6935,14 @@
         }
       },
       "SharingSettingsResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "$ref": "#/components/schemas/SharingSettings"
@@ -6917,13 +6952,14 @@
         ]
       },
       "AnalyticsSchemaResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "type": "object",
@@ -7021,13 +7057,14 @@
         }
       },
       "AnalyticsOverviewResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "$ref": "#/components/schemas/OverviewMetrics"
@@ -7063,12 +7100,14 @@
         }
       },
       "AnalyticsTimeseriesResponse": {
+        "description": "Response envelope for list results.",
         "allOf": [
           {
             "$ref": "#/components/schemas/ListEnvelope"
           },
           {
             "type": "object",
+            "description": "Response envelope for list results.",
             "properties": {
               "data": {
                 "type": "array",
@@ -7105,12 +7144,14 @@
         }
       },
       "AnalyticsBreakdownResponse": {
+        "description": "Response envelope for list results.",
         "allOf": [
           {
             "$ref": "#/components/schemas/ListEnvelope"
           },
           {
             "type": "object",
+            "description": "Response envelope for list results.",
             "properties": {
               "data": {
                 "type": "array",
@@ -7205,21 +7246,28 @@
       },
       "AnalyticsExploreRequest": {
         "type": "object",
-        "description": "Advanced analytics query input.",
+        "description": "Advanced multidimensional analytics query.",
         "properties": {
           "timeRange": {
             "$ref": "#/components/schemas/TimeRangeInput"
           },
           "metrics": {
             "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "description": "Metrics to aggregate. Use analytics/schema to discover supported metrics.",
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 80
             }
           },
           "dimensions": {
             "type": "array",
+            "maxItems": 5,
+            "description": "Dimensions to group by. Use analytics/schema to discover supported dimensions.",
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 120
             }
           },
           "filters": {
@@ -7252,13 +7300,14 @@
         }
       },
       "AnalyticsCompareResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "type": "object",
@@ -7289,13 +7338,14 @@
         "additionalProperties": true
       },
       "AnalyticsExploreResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "type": "object",
@@ -7332,13 +7382,14 @@
         ]
       },
       "RetentionCohortsResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "type": "object",
@@ -7392,13 +7443,14 @@
         ]
       },
       "EventsSummaryResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "type": "object",
@@ -7455,12 +7507,14 @@
         }
       },
       "EventListResponse": {
+        "description": "Response envelope for paginated list results.",
         "allOf": [
           {
             "$ref": "#/components/schemas/PaginatedEnvelope"
           },
           {
             "type": "object",
+            "description": "Response envelope for paginated list results.",
             "properties": {
               "data": {
                 "type": "array",
@@ -7473,16 +7527,116 @@
         ]
       },
       "EventResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "$ref": "#/components/schemas/EventRecord"
+              }
+            }
+          }
+        ]
+      },
+      "EventFieldDefinition": {
+        "type": "object",
+        "description": "Observed custom event payload field.",
+        "required": ["path", "valueTypes"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "maxLength": 240,
+            "description": "Dot-notation path inside the event payload."
+          },
+          "valueTypes": {
+            "type": "array",
+            "description": "Observed JSON value types for this field.",
+            "items": {
+              "type": "string",
+              "enum": ["string", "number", "boolean", "null", "object", "array"]
+            }
+          },
+          "examples": {
+            "type": "array",
+            "description": "Example observed values.",
+            "items": {}
+          }
+        }
+      },
+      "EventType": {
+        "type": "object",
+        "description": "Details and aggregate metrics for one custom event type.",
+        "required": ["name", "events", "sessions", "visitors"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Event name."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Human-readable event label."
+          },
+          "events": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total event count."
+          },
+          "sessions": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of sessions containing this event."
+          },
+          "visitors": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of visitors triggering this event."
+          },
+          "avgEventsPerSession": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Average event count per session."
+          },
+          "firstSeenAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "First observed time for this event type."
+          },
+          "lastSeenAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Last observed time for this event type."
+          },
+          "fields": {
+            "type": "array",
+            "description": "Observed payload fields for this event type.",
+            "items": {
+              "$ref": "#/components/schemas/EventFieldDefinition"
+            }
+          },
+          "links": {
+            "$ref": "#/components/schemas/LinkMap"
+          }
+        }
+      },
+      "EventTypeResponse": {
+        "description": "Response envelope for one custom event type.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SuccessEnvelope"
+          },
+          {
+            "type": "object",
+            "description": "Response envelope for one custom event type.",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/EventType"
               }
             }
           }
@@ -7595,12 +7749,14 @@
         }
       },
       "VisitorListResponse": {
+        "description": "Response envelope for paginated list results.",
         "allOf": [
           {
             "$ref": "#/components/schemas/PaginatedEnvelope"
           },
           {
             "type": "object",
+            "description": "Response envelope for paginated list results.",
             "properties": {
               "data": {
                 "type": "array",
@@ -7613,13 +7769,14 @@
         ]
       },
       "VisitorResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "$ref": "#/components/schemas/Visitor"
@@ -7663,12 +7820,14 @@
         }
       },
       "SessionListResponse": {
+        "description": "Response envelope for paginated list results.",
         "allOf": [
           {
             "$ref": "#/components/schemas/PaginatedEnvelope"
           },
           {
             "type": "object",
+            "description": "Response envelope for paginated list results.",
             "properties": {
               "data": {
                 "type": "array",
@@ -7681,13 +7840,14 @@
         ]
       },
       "SessionResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "$ref": "#/components/schemas/Session"
@@ -7697,13 +7857,14 @@
         ]
       },
       "TeamUsageResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "type": "object",
@@ -7721,13 +7882,14 @@
         ]
       },
       "PerformanceSummaryResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "type": "object",
@@ -7774,12 +7936,14 @@
         }
       },
       "PerformanceTimeseriesResponse": {
+        "description": "Response envelope for list results.",
         "allOf": [
           {
             "$ref": "#/components/schemas/ListEnvelope"
           },
           {
             "type": "object",
+            "description": "Response envelope for list results.",
             "properties": {
               "data": {
                 "type": "array",
@@ -7820,12 +7984,14 @@
         }
       },
       "PerformanceBreakdownResponse": {
+        "description": "Response envelope for list results.",
         "allOf": [
           {
             "$ref": "#/components/schemas/ListEnvelope"
           },
           {
             "type": "object",
+            "description": "Response envelope for list results.",
             "properties": {
               "data": {
                 "type": "array",
@@ -7997,13 +8163,14 @@
         }
       },
       "FunnelResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "$ref": "#/components/schemas/Funnel"
@@ -8013,12 +8180,14 @@
         ]
       },
       "FunnelListResponse": {
+        "description": "Response envelope for list results.",
         "allOf": [
           {
             "$ref": "#/components/schemas/ListEnvelope"
           },
           {
             "type": "object",
+            "description": "Response envelope for list results.",
             "properties": {
               "data": {
                 "type": "array",
@@ -8111,13 +8280,14 @@
         }
       },
       "FunnelAnalysisResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "$ref": "#/components/schemas/FunnelAnalysis"
@@ -8127,13 +8297,14 @@
         ]
       },
       "SavedFunnelAnalysisResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "type": "object",
@@ -8152,12 +8323,14 @@
         ]
       },
       "RealtimeEventListResponse": {
+        "description": "Response envelope for list results.",
         "allOf": [
           {
             "$ref": "#/components/schemas/ListEnvelope"
           },
           {
             "type": "object",
+            "description": "Response envelope for list results.",
             "properties": {
               "data": {
                 "type": "array",
@@ -8170,12 +8343,14 @@
         ]
       },
       "RealtimeSessionListResponse": {
+        "description": "Response envelope for list results.",
         "allOf": [
           {
             "$ref": "#/components/schemas/ListEnvelope"
           },
           {
             "type": "object",
+            "description": "Response envelope for list results.",
             "properties": {
               "data": {
                 "type": "array",
@@ -8188,13 +8363,14 @@
         ]
       },
       "ActiveVisitorsResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "type": "object",
@@ -8211,13 +8387,14 @@
         ]
       },
       "RealtimeSnapshotResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "type": "object",
@@ -8280,13 +8457,14 @@
         }
       },
       "BatchResponse": {
+        "description": "Response envelope.",
         "allOf": [
           {
             "$ref": "#/components/schemas/SuccessEnvelope"
           },
           {
             "type": "object",
-            "description": "Successful response",
+            "description": "Response envelope.",
             "properties": {
               "data": {
                 "type": "object",

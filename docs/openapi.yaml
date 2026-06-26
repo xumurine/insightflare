@@ -646,14 +646,16 @@ paths:
                   summary: getTeamAnalyticsSites
                   value:
                     data:
-                      - key: __direct__
-                        label: Direct
+                      - key: 550e8400-e29b-41d4-a716-446655440000
+                        label: Example Blog
                         views: 5200
                         sessions: 3200
-                      - key: __unknown__
-                        label: Unknown
-                        views: 120
-                        sessions: 88
+                        visitors: 2600
+                      - key: 550e8400-e29b-41d4-a716-446655440010
+                        label: Docs Site
+                        views: 3100
+                        sessions: 1900
+                        visitors: 1500
                     meta:
                       requestId: req_abc123
                       generatedAt: 2026-06-26T12:00:00Z
@@ -2053,14 +2055,16 @@ paths:
                   summary: listEventTypes
                   value:
                     data:
-                      - key: __direct__
-                        label: Direct
-                        views: 5200
-                        sessions: 3200
-                      - key: __unknown__
-                        label: Unknown
-                        views: 120
-                        sessions: 88
+                      - key: signup
+                        label: Signup
+                        events: 450
+                        sessions: 210
+                        visitors: 190
+                      - key: purchase
+                        label: Purchase
+                        events: 80
+                        sessions: 70
+                        visitors: 65
                     meta:
                       requestId: req_abc123
                       generatedAt: 2026-06-26T12:00:00Z
@@ -2135,17 +2139,36 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EventsSummaryResponse"
+                $ref: "#/components/schemas/EventTypeResponse"
               examples:
                 default:
                   summary: getEventType
                   value:
                     data:
+                      name: signup
+                      label: Signup
                       events: 450
-                      eventTypes: 8
                       sessions: 210
                       visitors: 190
                       avgEventsPerSession: 2.14
+                      firstSeenAt: 2026-01-01T00:00:00Z
+                      lastSeenAt: 2026-06-26T12:00:00Z
+                      fields:
+                        - path: plan
+                          valueTypes:
+                            - string
+                          examples:
+                            - free
+                            - pro
+                        - path: source
+                          valueTypes:
+                            - string
+                          examples:
+                            - pricing_page
+                            - header_cta
+                      links:
+                        events: /api/v1/sites/550e8400-e29b-41d4-a716-446655440000/events?eventName=signup
+                        fieldValues: /api/v1/sites/550e8400-e29b-41d4-a716-446655440000/event-fields/values?eventName=signup
                     meta:
                       requestId: req_abc123
                       generatedAt: 2026-06-26T12:00:00Z
@@ -4387,10 +4410,11 @@ components:
         siteAccess:
           $ref: "#/components/schemas/SiteAccess"
     TokenResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               $ref: "#/components/schemas/Token"
@@ -4413,10 +4437,11 @@ components:
                 maxLength: 80
               siteId: *a14
     TokenCheckResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               type: object
@@ -4527,18 +4552,20 @@ components:
           $ref: "#/components/schemas/LinkMap"
       additionalProperties: false
     CapabilitiesResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               $ref: "#/components/schemas/Capabilities"
     RootDiscoveryResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               type: object
@@ -4561,10 +4588,11 @@ components:
         links:
           $ref: "#/components/schemas/LinkMap"
     TeamResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               $ref: "#/components/schemas/Team"
@@ -4625,17 +4653,20 @@ components:
         sharing:
           $ref: "#/components/schemas/SharingSettings"
     SiteResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               $ref: "#/components/schemas/Site"
     SiteListResponse:
+      description: Response envelope for list results.
       allOf:
         - $ref: "#/components/schemas/ListEnvelope"
         - type: object
+          description: Response envelope for list results.
           properties:
             data:
               type: array
@@ -4680,18 +4711,20 @@ components:
             type: string
             maxLength: 2048
     TrackingSettingsResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               $ref: "#/components/schemas/TrackingSettings"
     TrackingScriptResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               type: object
@@ -4720,10 +4753,11 @@ components:
           type: integer
           minimum: 1
     PrivacySettingsResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               $ref: "#/components/schemas/PrivacySettings"
@@ -4739,18 +4773,20 @@ components:
             - "null"
           maxLength: 80
     SharingSettingsResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               $ref: "#/components/schemas/SharingSettings"
     AnalyticsSchemaResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               type: object
@@ -4817,10 +4853,11 @@ components:
         approximateVisitors:
           type: boolean
     AnalyticsOverviewResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               $ref: "#/components/schemas/OverviewMetrics"
@@ -4839,9 +4876,11 @@ components:
         events:
           type: integer
     AnalyticsTimeseriesResponse:
+      description: Response envelope for list results.
       allOf:
         - $ref: "#/components/schemas/ListEnvelope"
         - type: object
+          description: Response envelope for list results.
           properties:
             data:
               type: array
@@ -4864,9 +4903,11 @@ components:
         events:
           type: integer
     AnalyticsBreakdownResponse:
+      description: Response envelope for list results.
       allOf:
         - $ref: "#/components/schemas/ListEnvelope"
         - type: object
+          description: Response envelope for list results.
           properties:
             data:
               type: array
@@ -4925,18 +4966,29 @@ components:
                       description: Aggregated metric.
     AnalyticsExploreRequest:
       type: object
-      description: Advanced analytics query input.
+      description: Advanced multidimensional analytics query.
       properties:
         timeRange:
           $ref: "#/components/schemas/TimeRangeInput"
         metrics:
           type: array
+          minItems: 1
+          maxItems: 20
+          description:
+            Metrics to aggregate. Use analytics/schema to discover supported
+            metrics.
           items:
             type: string
+            maxLength: 80
         dimensions:
           type: array
+          maxItems: 5
+          description:
+            Dimensions to group by. Use analytics/schema to discover supported
+            dimensions.
           items:
             type: string
+            maxLength: 120
         filters:
           type: array
           items:
@@ -4959,10 +5011,11 @@ components:
           minimum: 1
           maximum: 1000
     AnalyticsCompareResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               type: object
@@ -4982,10 +5035,11 @@ components:
       description: One row returned by an analytics explore query.
       additionalProperties: true
     AnalyticsExploreResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               type: object
@@ -5008,10 +5062,11 @@ components:
                   items:
                     $ref: "#/components/schemas/ComplexFilter"
     RetentionCohortsResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               type: object
@@ -5050,10 +5105,11 @@ components:
                               minimum: 0
                               maximum: 1
     EventsSummaryResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               type: object
@@ -5094,22 +5150,113 @@ components:
           maxLength: 120
         occurredAt: *a15
     EventListResponse:
+      description: Response envelope for paginated list results.
       allOf:
         - $ref: "#/components/schemas/PaginatedEnvelope"
         - type: object
+          description: Response envelope for paginated list results.
           properties:
             data:
               type: array
               items:
                 $ref: "#/components/schemas/EventRecord"
     EventResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               $ref: "#/components/schemas/EventRecord"
+    EventFieldDefinition:
+      type: object
+      description: Observed custom event payload field.
+      required:
+        - path
+        - valueTypes
+      properties:
+        path:
+          type: string
+          maxLength: 240
+          description: Dot-notation path inside the event payload.
+        valueTypes:
+          type: array
+          description: Observed JSON value types for this field.
+          items:
+            type: string
+            enum:
+              - string
+              - number
+              - boolean
+              - "null"
+              - object
+              - array
+        examples:
+          type: array
+          description: Example observed values.
+          items: {}
+    EventType:
+      type: object
+      description: Details and aggregate metrics for one custom event type.
+      required:
+        - name
+        - events
+        - sessions
+        - visitors
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          description: Event name.
+        label:
+          type: string
+          maxLength: 120
+          description: Human-readable event label.
+        events:
+          type: integer
+          minimum: 0
+          description: Total event count.
+        sessions:
+          type: integer
+          minimum: 0
+          description: Number of sessions containing this event.
+        visitors:
+          type: integer
+          minimum: 0
+          description: Number of visitors triggering this event.
+        avgEventsPerSession:
+          type: number
+          minimum: 0
+          description: Average event count per session.
+        firstSeenAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: First observed time for this event type.
+        lastSeenAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Last observed time for this event type.
+        fields:
+          type: array
+          description: Observed payload fields for this event type.
+          items:
+            $ref: "#/components/schemas/EventFieldDefinition"
+        links:
+          $ref: "#/components/schemas/LinkMap"
+    EventTypeResponse:
+      description: Response envelope for one custom event type.
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          description: Response envelope for one custom event type.
+          properties:
+            data:
+              $ref: "#/components/schemas/EventType"
     EventPayloadFilter:
       type: object
       description: Filter applied to custom event payload fields.
@@ -5193,19 +5340,22 @@ components:
         links:
           $ref: "#/components/schemas/LinkMap"
     VisitorListResponse:
+      description: Response envelope for paginated list results.
       allOf:
         - $ref: "#/components/schemas/PaginatedEnvelope"
         - type: object
+          description: Response envelope for paginated list results.
           properties:
             data:
               type: array
               items:
                 $ref: "#/components/schemas/Visitor"
     VisitorResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               $ref: "#/components/schemas/Visitor"
@@ -5235,27 +5385,31 @@ components:
         links:
           $ref: "#/components/schemas/LinkMap"
     SessionListResponse:
+      description: Response envelope for paginated list results.
       allOf:
         - $ref: "#/components/schemas/PaginatedEnvelope"
         - type: object
+          description: Response envelope for paginated list results.
           properties:
             data:
               type: array
               items:
                 $ref: "#/components/schemas/Session"
     SessionResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               $ref: "#/components/schemas/Session"
     TeamUsageResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               type: object
@@ -5267,10 +5421,11 @@ components:
                   type: integer
                   minimum: 0
     PerformanceSummaryResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               type: object
@@ -5301,9 +5456,11 @@ components:
           type: number
           description: Interaction to next paint in milliseconds.
     PerformanceTimeseriesResponse:
+      description: Response envelope for list results.
       allOf:
         - $ref: "#/components/schemas/ListEnvelope"
         - type: object
+          description: Response envelope for list results.
           properties:
             data:
               type: array
@@ -5329,9 +5486,11 @@ components:
         inp:
           type: number
     PerformanceBreakdownResponse:
+      description: Response envelope for list results.
       allOf:
         - $ref: "#/components/schemas/ListEnvelope"
         - type: object
+          description: Response envelope for list results.
           properties:
             data:
               type: array
@@ -5474,17 +5633,20 @@ components:
         links:
           $ref: "#/components/schemas/LinkMap"
     FunnelResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               $ref: "#/components/schemas/Funnel"
     FunnelListResponse:
+      description: Response envelope for list results.
       allOf:
         - $ref: "#/components/schemas/ListEnvelope"
         - type: object
+          description: Response envelope for list results.
           properties:
             data:
               type: array
@@ -5551,18 +5713,20 @@ components:
         summary:
           $ref: "#/components/schemas/FunnelAnalysisSummary"
     FunnelAnalysisResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               $ref: "#/components/schemas/FunnelAnalysis"
     SavedFunnelAnalysisResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               type: object
@@ -5573,28 +5737,33 @@ components:
                 analysis:
                   $ref: "#/components/schemas/FunnelAnalysis"
     RealtimeEventListResponse:
+      description: Response envelope for list results.
       allOf:
         - $ref: "#/components/schemas/ListEnvelope"
         - type: object
+          description: Response envelope for list results.
           properties:
             data:
               type: array
               items:
                 $ref: "#/components/schemas/EventRecord"
     RealtimeSessionListResponse:
+      description: Response envelope for list results.
       allOf:
         - $ref: "#/components/schemas/ListEnvelope"
         - type: object
+          description: Response envelope for list results.
           properties:
             data:
               type: array
               items:
                 $ref: "#/components/schemas/Session"
     ActiveVisitorsResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               type: object
@@ -5605,10 +5774,11 @@ components:
                   type: integer
                   minimum: 0
     RealtimeSnapshotResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               type: object
@@ -5655,10 +5825,11 @@ components:
                   type: string
                   maxLength: 500
     BatchResponse:
+      description: Response envelope.
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: object
-          description: Successful response
+          description: Response envelope.
           properties:
             data:
               type: object

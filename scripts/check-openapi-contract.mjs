@@ -79,9 +79,28 @@ function jsonContent(container) {
 function hasExample(content) {
   return Boolean(
     content &&
-      (Object.prototype.hasOwnProperty.call(content, "example") ||
-        (content.examples && Object.keys(content.examples).length > 0)),
+    (Object.prototype.hasOwnProperty.call(content, "example") ||
+      (content.examples && Object.keys(content.examples).length > 0)),
   );
+}
+
+function exampleValue(content) {
+  if (!content || typeof content !== "object") return undefined;
+  if (Object.prototype.hasOwnProperty.call(content, "example")) {
+    return content.example;
+  }
+  const examples = Object.values(content.examples ?? {});
+  const first = examples[0];
+  if (first && typeof first === "object" && "value" in first) {
+    return first.value;
+  }
+  return first;
+}
+
+function successJsonContent(path, method = "get", status = "200") {
+  const operation = openapi.paths?.[path]?.[method];
+  const response = dereference(operation?.responses?.[status]);
+  return jsonContent(response);
 }
 
 function schemaContainsPagination(schema, seen = new Set()) {
@@ -164,8 +183,8 @@ for (const [path, pathItem] of Object.entries(openapi.paths ?? {})) {
       }
     }
 
-    const bodySchema = operation.requestBody?.content?.["application/json"]
-      ?.schema;
+    const bodySchema =
+      operation.requestBody?.content?.["application/json"]?.schema;
     if (refName(bodySchema) === "GenericObjectResponse") {
       issues.push(`${key} requestBody must not use GenericObjectResponse`);
     }
@@ -178,7 +197,8 @@ for (const [path, pathItem] of Object.entries(openapi.paths ?? {})) {
       issues.push(`${key} requestBody must include at least one example`);
     }
 
-    const successResponse = operation.responses?.["200"] ?? operation.responses?.["201"];
+    const successResponse =
+      operation.responses?.["200"] ?? operation.responses?.["201"];
     const successContent = jsonContent(dereference(successResponse));
     if (
       method === "get" &&
@@ -195,12 +215,16 @@ for (const [path, pathItem] of Object.entries(openapi.paths ?? {})) {
       ["200", "201"].some((status) => operation.responses?.[status]) &&
       successSchemaName === "GenericObjectResponse"
     ) {
-      issues.push(`${key} /api/v1 success response must not use GenericObjectResponse`);
+      issues.push(
+        `${key} /api/v1 success response must not use GenericObjectResponse`,
+      );
     }
   }
 }
 
-for (const [name, schema] of Object.entries(openapi.components?.schemas ?? {})) {
+for (const [name, schema] of Object.entries(
+  openapi.components?.schemas ?? {},
+)) {
   if (name.includes("___")) {
     issues.push(`Schema name must not contain ___: ${name}`);
   }
@@ -255,6 +279,63 @@ if (
   issues.push("CollectPayload must define explicit siteId/type properties");
 }
 
+const eventTypesExample = exampleValue(
+  successJsonContent("/api/v1/sites/{siteId}/event-types"),
+);
+const eventTypesExampleText = JSON.stringify(eventTypesExample);
+if (
+  eventTypesExampleText.includes("__direct__") ||
+  eventTypesExampleText.includes("__unknown__")
+) {
+  issues.push(
+    "/event-types example must use event names, not direct/unknown breakdown values",
+  );
+}
+
+const teamAnalyticsSitesExample = exampleValue(
+  successJsonContent("/api/v1/team/analytics/sites"),
+);
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+for (const row of teamAnalyticsSitesExample?.data ?? []) {
+  if (!uuidPattern.test(String(row.key))) {
+    issues.push("/team/analytics/sites example keys must be site UUIDs");
+    break;
+  }
+}
+
+const exploreRequest = openapi.components?.schemas?.AnalyticsExploreRequest;
+if (exploreRequest?.properties?.metrics?.items?.maxLength !== 80) {
+  issues.push("AnalyticsExploreRequest.metrics.items must set maxLength 80");
+}
+if (exploreRequest?.properties?.dimensions?.items?.maxLength !== 120) {
+  issues.push(
+    "AnalyticsExploreRequest.dimensions.items must set maxLength 120",
+  );
+}
+if (
+  exploreRequest?.properties?.metrics?.minItems !== 1 ||
+  exploreRequest?.properties?.metrics?.maxItems !== 20
+) {
+  issues.push(
+    "AnalyticsExploreRequest.metrics must set minItems 1 and maxItems 20",
+  );
+}
+if (exploreRequest?.properties?.dimensions?.maxItems !== 5) {
+  issues.push("AnalyticsExploreRequest.dimensions must set maxItems 5");
+}
+
+const eventTypeResponseRef = successJsonContent(
+  "/api/v1/sites/{siteId}/event-types/{eventName}",
+)?.schema;
+if (refName(eventTypeResponseRef) === "EventTypeResponse") {
+  if (!openapi.components?.schemas?.EventType) {
+    issues.push("EventTypeResponse requires EventType schema");
+  }
+} else {
+  issues.push("/event-types/{eventName} must use EventTypeResponse");
+}
+
 const openapiOperations = operations.map(({ method, path }) => ({
   method,
   path,
@@ -280,7 +361,9 @@ for (const recipe of skills.taskRecipes ?? []) {
 }
 
 if (skills.endpoints !== undefined) {
-  issues.push("skills.json must remain an agent manifest, not an endpoint catalog");
+  issues.push(
+    "skills.json must remain an agent manifest, not an endpoint catalog",
+  );
 }
 
 if (issues.length > 0) {
@@ -292,7 +375,7 @@ if (issues.length > 0) {
 }
 
 console.log(
-  `OpenAPI contract check passed (${operations.length} operations, ${Object.keys(
-    openapi.components?.schemas ?? {},
-  ).length} schemas).`,
+  `OpenAPI contract check passed (${operations.length} operations, ${
+    Object.keys(openapi.components?.schemas ?? {}).length
+  } schemas).`,
 );

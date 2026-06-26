@@ -62,8 +62,9 @@ function requestBody(schema: string, description?: string) {
   };
 }
 
-function envelope(dataSchema: unknown, description = "Successful response") {
+function envelope(dataSchema: unknown, description = "Response envelope.") {
   return {
+    description,
     allOf: [
       ref("SuccessEnvelope"),
       {
@@ -77,12 +78,17 @@ function envelope(dataSchema: unknown, description = "Successful response") {
   };
 }
 
-function listEnvelope(itemSchema: unknown) {
+function listEnvelope(
+  itemSchema: unknown,
+  description = "Response envelope for list results.",
+) {
   return {
+    description,
     allOf: [
       ref("ListEnvelope"),
       {
         type: "object",
+        description,
         properties: {
           data: {
             type: "array",
@@ -94,12 +100,17 @@ function listEnvelope(itemSchema: unknown) {
   };
 }
 
-function paginatedEnvelope(itemSchema: unknown) {
+function paginatedEnvelope(
+  itemSchema: unknown,
+  description = "Response envelope for paginated list results.",
+) {
   return {
+    description,
     allOf: [
       ref("PaginatedEnvelope"),
       {
         type: "object",
+        description,
         properties: {
           data: {
             type: "array",
@@ -1085,11 +1096,24 @@ function buildSchemas(): Record<string, unknown> {
     },
     AnalyticsExploreRequest: {
       type: "object",
-      description: "Advanced analytics query input.",
+      description: "Advanced multidimensional analytics query.",
       properties: {
         timeRange: ref("TimeRangeInput"),
-        metrics: { type: "array", items: { type: "string" } },
-        dimensions: { type: "array", items: { type: "string" } },
+        metrics: {
+          type: "array",
+          minItems: 1,
+          maxItems: 20,
+          description:
+            "Metrics to aggregate. Use analytics/schema to discover supported metrics.",
+          items: { type: "string", maxLength: 80 },
+        },
+        dimensions: {
+          type: "array",
+          maxItems: 5,
+          description:
+            "Dimensions to group by. Use analytics/schema to discover supported dimensions.",
+          items: { type: "string", maxLength: 120 },
+        },
         filters: { type: "array", items: ref("ComplexFilter") },
         orderBy: {
           type: "array",
@@ -1207,6 +1231,88 @@ function buildSchemas(): Record<string, unknown> {
     },
     EventListResponse: paginatedEnvelope(ref("EventRecord")),
     EventResponse: envelope(ref("EventRecord")),
+    EventFieldDefinition: {
+      type: "object",
+      description: "Observed custom event payload field.",
+      required: ["path", "valueTypes"],
+      properties: {
+        path: {
+          type: "string",
+          maxLength: 240,
+          description: "Dot-notation path inside the event payload.",
+        },
+        valueTypes: {
+          type: "array",
+          description: "Observed JSON value types for this field.",
+          items: {
+            type: "string",
+            enum: ["string", "number", "boolean", "null", "object", "array"],
+          },
+        },
+        examples: {
+          type: "array",
+          description: "Example observed values.",
+          items: {},
+        },
+      },
+    },
+    EventType: {
+      type: "object",
+      description: "Details and aggregate metrics for one custom event type.",
+      required: ["name", "events", "sessions", "visitors"],
+      properties: {
+        name: {
+          type: "string",
+          maxLength: 120,
+          description: "Event name.",
+        },
+        label: {
+          type: "string",
+          maxLength: 120,
+          description: "Human-readable event label.",
+        },
+        events: {
+          type: "integer",
+          minimum: 0,
+          description: "Total event count.",
+        },
+        sessions: {
+          type: "integer",
+          minimum: 0,
+          description: "Number of sessions containing this event.",
+        },
+        visitors: {
+          type: "integer",
+          minimum: 0,
+          description: "Number of visitors triggering this event.",
+        },
+        avgEventsPerSession: {
+          type: "number",
+          minimum: 0,
+          description: "Average event count per session.",
+        },
+        firstSeenAt: {
+          type: ["string", "null"],
+          format: "date-time",
+          description: "First observed time for this event type.",
+        },
+        lastSeenAt: {
+          type: ["string", "null"],
+          format: "date-time",
+          description: "Last observed time for this event type.",
+        },
+        fields: {
+          type: "array",
+          description: "Observed payload fields for this event type.",
+          items: ref("EventFieldDefinition"),
+        },
+        links: ref("LinkMap"),
+      },
+    },
+    EventTypeResponse: envelope(
+      ref("EventType"),
+      "Response envelope for one custom event type.",
+    ),
     EventPayloadFilter: {
       type: "object",
       description: "Filter applied to custom event payload fields.",
@@ -2245,7 +2351,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         tags: ["Events"],
         parameters: timeParams(true),
         responses: {
-          "200": ok("EventsSummaryResponse"),
+          "200": ok("EventTypeResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -2722,6 +2828,68 @@ function buildPaths(): OpenAPISpec["paths"] {
 }
 
 function responseExampleFor(schemaName: string | null, operationId: string) {
+  const operationExamples: Record<string, unknown> = {
+    getTeamAnalyticsSites: list(
+      [
+        {
+          key: sampleSiteId,
+          label: "Example Blog",
+          views: 5200,
+          sessions: 3200,
+          visitors: 2600,
+        },
+        {
+          key: "550e8400-e29b-41d4-a716-446655440010",
+          label: "Docs Site",
+          views: 3100,
+          sessions: 1900,
+          visitors: 1500,
+        },
+      ],
+      { timeRange: sampleTimeRange },
+    ),
+    listEventTypes: list(
+      [
+        {
+          key: "signup",
+          label: "Signup",
+          events: 450,
+          sessions: 210,
+          visitors: 190,
+        },
+        {
+          key: "purchase",
+          label: "Purchase",
+          events: 80,
+          sessions: 70,
+          visitors: 65,
+        },
+      ],
+      { timeRange: sampleTimeRange },
+    ),
+    getEventType: success({
+      name: "signup",
+      label: "Signup",
+      events: 450,
+      sessions: 210,
+      visitors: 190,
+      avgEventsPerSession: 2.14,
+      firstSeenAt: "2026-01-01T00:00:00Z",
+      lastSeenAt: sampleGeneratedAt,
+      fields: [
+        { path: "plan", valueTypes: ["string"], examples: ["free", "pro"] },
+        {
+          path: "source",
+          valueTypes: ["string"],
+          examples: ["pricing_page", "header_cta"],
+        },
+      ],
+      links: {
+        events: `/api/v1/sites/${sampleSiteId}/events?eventName=signup`,
+        fieldValues: `/api/v1/sites/${sampleSiteId}/event-fields/values?eventName=signup`,
+      },
+    }),
+  };
   const examples: Record<string, unknown> = {
     HealthResponse: { status: "healthy", timestamp: sampleGeneratedAt },
     RootDiscoveryResponse: success({
@@ -2988,6 +3156,7 @@ function responseExampleFor(schemaName: string | null, operationId: string) {
   return {
     summary: operationId,
     value:
+      operationExamples[operationId] ||
       (schemaName && examples[schemaName]) ||
       success({ message: "Successful response" }),
   };

@@ -28,12 +28,26 @@ type OpenApiSpec = {
 type JsonSchemaObject = {
   type?: string | string[];
   format?: string;
+  description?: string;
+  enum?: unknown[];
+  maxLength?: number;
+  minItems?: number;
+  maxItems?: number;
   required?: string[];
   properties?: Record<string, JsonSchemaObject>;
   items?: JsonSchemaObject;
   $ref?: string;
   additionalProperties?: boolean | JsonSchemaObject;
 };
+
+function defaultExampleValue(operation?: OperationObject): unknown {
+  const content = operation?.responses?.["200"]?.content?.["application/json"];
+  const examples = Object.values(content?.examples ?? {});
+  const first = examples[0];
+  return first && typeof first === "object" && "value" in first
+    ? (first as { value: unknown }).value
+    : content?.example;
+}
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(resolve(root, path), "utf8")) as T;
@@ -199,9 +213,14 @@ describe("api v1 public docs", () => {
     expect(
       responseSchema("get", "/api/v1/sites/{siteId}/funnels/{funnelId}"),
     ).toBe("#/components/schemas/FunnelResponse");
+    expect(
+      responseSchema("get", "/api/v1/sites/{siteId}/event-types/{eventName}"),
+    ).toBe("#/components/schemas/EventTypeResponse");
 
     expect(spec.components.schemas.CapabilitiesFeatures).toBeDefined();
     expect(spec.components.schemas.CapabilitiesLimits).toBeDefined();
+    expect(spec.components.schemas.EventType).toBeDefined();
+    expect(spec.components.schemas.EventFieldDefinition).toBeDefined();
     expect(
       JSON.stringify(spec.components.schemas.CapabilitiesResponse),
     ).toContain("Capabilities");
@@ -303,6 +322,76 @@ describe("api v1 public docs", () => {
     );
     expect(JSON.stringify(spec.paths)).not.toContain(
       "#/components/schemas/GenericObjectResponse",
+    );
+  });
+
+  it("keeps final API examples semantically aligned with endpoints", () => {
+    const spec = readJson<OpenApiSpec>("docs/openapi.json");
+    const eventTypesExample = defaultExampleValue(
+      spec.paths["/api/v1/sites/{siteId}/event-types"].get,
+    ) as { data?: Array<{ key?: string; events?: number }> };
+    const teamSitesExample = defaultExampleValue(
+      spec.paths["/api/v1/team/analytics/sites"].get,
+    ) as { data?: Array<{ key?: string; label?: string; views?: number }> };
+    const eventTypeExample = defaultExampleValue(
+      spec.paths["/api/v1/sites/{siteId}/event-types/{eventName}"].get,
+    ) as { data?: { name?: string; fields?: unknown[]; links?: unknown } };
+
+    expect(eventTypesExample.data?.map((row) => row.key)).toEqual([
+      "signup",
+      "purchase",
+    ]);
+    expect(JSON.stringify(eventTypesExample)).not.toContain("__direct__");
+    expect(JSON.stringify(eventTypesExample)).not.toContain("__unknown__");
+    expect(eventTypesExample.data?.[0]).toEqual(
+      expect.objectContaining({ events: 450, sessions: 210, visitors: 190 }),
+    );
+
+    expect(teamSitesExample.data?.[0]).toEqual(
+      expect.objectContaining({
+        key: "550e8400-e29b-41d4-a716-446655440000",
+        label: "Example Blog",
+        views: 5200,
+      }),
+    );
+    expect(JSON.stringify(teamSitesExample)).not.toContain("__direct__");
+    expect(JSON.stringify(teamSitesExample)).not.toContain("__unknown__");
+
+    expect(eventTypeExample.data).toEqual(
+      expect.objectContaining({
+        name: "signup",
+        events: 450,
+        fields: expect.arrayContaining([
+          expect.objectContaining({ path: "plan", valueTypes: ["string"] }),
+        ]),
+        links: expect.any(Object),
+      }),
+    );
+  });
+
+  it("constrains analytics explore metrics and dimensions", () => {
+    const spec = readJson<OpenApiSpec>("docs/openapi.json");
+    const explore = spec.components.schemas.AnalyticsExploreRequest;
+
+    expect(explore.description).toContain("multidimensional");
+    expect(explore.properties?.metrics).toEqual(
+      expect.objectContaining({
+        minItems: 1,
+        maxItems: 20,
+        description: expect.stringContaining("analytics/schema"),
+      }),
+    );
+    expect(explore.properties?.metrics?.items).toEqual(
+      expect.objectContaining({ type: "string", maxLength: 80 }),
+    );
+    expect(explore.properties?.dimensions).toEqual(
+      expect.objectContaining({
+        maxItems: 5,
+        description: expect.stringContaining("analytics/schema"),
+      }),
+    );
+    expect(explore.properties?.dimensions?.items).toEqual(
+      expect.objectContaining({ type: "string", maxLength: 120 }),
     );
   });
 
