@@ -264,7 +264,7 @@ export async function handleTeamDashboardForTeam(
     queryTeamTrendAggregate(env, siteIds, window, interval),
   ]);
 
-  const sitePayload = sites.map((site, index) => {
+  const sitePayload = sites.map((site, _index) => {
     const overview = mapOverviewAggregate(
       currentOverview.get(site.id) ?? {
         views: 0,

@@ -25,21 +25,6 @@ interface OpenAPISpec {
   };
 }
 
-function replaceRefs(obj: unknown, oldRef: string, newRef: string): unknown {
-  if (!obj || typeof obj !== "object") return obj;
-  if (Array.isArray(obj))
-    return obj.map((item) => replaceRefs(item, oldRef, newRef));
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-    if (key === "$ref" && value === oldRef) {
-      result[key] = newRef;
-    } else {
-      result[key] = replaceRefs(value, oldRef, newRef);
-    }
-  }
-  return result;
-}
-
 function convertSchema(spec: OpenAPISpec, name: string, schema: z.ZodTypeAny) {
   try {
     if (!schema || !("_def" in (schema as object))) {

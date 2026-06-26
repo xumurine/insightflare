@@ -3,7 +3,6 @@ import { z } from "zod";
 import {
   createEnvelopeSchema,
   createPaginatedEnvelopeSchema,
-  PaginationMetaSchema,
   registerSchema,
 } from "./common";
 

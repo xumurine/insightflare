@@ -18,8 +18,6 @@ export const ROLLUP_SCHEMA_VERSION = 1;
 
 const ROLLUP_MAX_HOURS_PER_SITE = 24 * 7;
 
-type SqlValue = string | number | null;
-
 interface HourlyAggregationOptions {
   logger?: ScheduledTaskLogger;
 }

@@ -41,7 +41,6 @@ import {
   type GeoStateTranslationPayload,
   type GeoTranslationCityRecord,
   type GeoTranslationCountryRecord,
-  type GeoTranslationStateRecord,
   matchesGeoLabelRecord,
   pickLocaleGeoLabel,
   resolveGeoStateTranslation,
@@ -144,7 +143,6 @@ type GeoMessages = AppMessages["geo"];
 type GeoInvestigationMessages = GeoMessages["investigation"];
 
 type LocaleCountryRecord = GeoTranslationCountryRecord;
-type LocaleStateRecord = GeoTranslationStateRecord;
 type LocaleCityRecord = GeoTranslationCityRecord;
 type LocaleCountryPayload = GeoCountryTranslationPayload;
 type LocaleStatePayload = GeoStateTranslationPayload;

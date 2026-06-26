@@ -471,8 +471,7 @@ function omitFilterKey(
   filters: DashboardFilters,
   key: FilterQueryKey,
 ): DashboardFilters {
-  const next = { ...filters };
-  delete next[key];
+  const { [key]: _, ...next } = filters;
   return next;
 }
 

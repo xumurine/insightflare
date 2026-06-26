@@ -10,7 +10,6 @@ import type {
   PageRow,
   QueryWindow,
   ReferrerRow,
-  TrendAggregateRow,
 } from "./core";
 import {
   appendSqlConditions,

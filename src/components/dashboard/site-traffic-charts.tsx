@@ -16,7 +16,6 @@ import {
   type ChartConfig,
   ChartContainer,
   ChartTooltip,
-  ChartTooltipContent,
 } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { intlLocale, numberFormat } from "@/lib/dashboard/format";
@@ -546,8 +545,8 @@ function SiteTrafficStackTooltip({
   viewsLabel,
   visitorsLabel,
   activeSiteIds,
-  locale,
-  messages,
+  locale: _locale,
+  messages: _messages,
 }: {
   active?: boolean;
   payload?: Array<{ payload?: Record<string, unknown> }>;
@@ -1161,7 +1160,7 @@ export const TrafficPairBarChart = memo(function TrafficPairBarChart({
   interval,
   viewsLabel,
   visitorsLabel,
-  messages,
+  messages: _messages,
   compact = false,
   maxPoints,
   className,

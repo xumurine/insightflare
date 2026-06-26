@@ -305,8 +305,7 @@ export function withoutFilterKey(
   filters: DashboardFilters,
   key: FilterOptionKey,
 ): DashboardFilters {
-  const next = { ...filters };
-  delete next[key];
+  const { [key]: _, ...next } = filters;
   return next;
 }
 

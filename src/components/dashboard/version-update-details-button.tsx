@@ -67,11 +67,6 @@ interface VersionUpdateDetailsButtonProps {
   labels: VersionUpdateDetailsLabels;
 }
 
-function shortCommit(hash: string | null): string {
-  if (!hash) return "";
-  return hash.length > 12 ? hash.slice(0, 12) : hash;
-}
-
 function isCommitMatch(left: string, right: string | null): boolean {
   const normalizedLeft = left.trim().toLowerCase();
   const normalizedRight = right?.trim().toLowerCase() || "";
@@ -100,8 +95,6 @@ export function VersionUpdateDetailsButton({
     if (baseTag) return `${baseTag} -> ${releaseTag}`;
     return releaseTag;
   }, [baseTag, releaseTag]);
-
-  const currentShortCommit = shortCommit(currentCommit);
 
   async function loadDetails(): Promise<void> {
     if (details || loading) return;

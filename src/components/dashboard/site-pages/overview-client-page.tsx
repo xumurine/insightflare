@@ -20,7 +20,7 @@ import {
   RiArrowUpSLine,
   RiSearchLine,
 } from "@remixicon/react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, useReducedMotion } from "motion/react";
 import type { PartialOptions } from "overlayscrollbars";
 import { OverlayScrollbars } from "overlayscrollbars";
 import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";

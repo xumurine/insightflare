@@ -221,8 +221,7 @@ function withoutDemoFilterKey(
   filters: DemoQueryFilters,
   key: keyof DemoQueryFilters,
 ): DemoQueryFilters {
-  const next = { ...filters };
-  delete next[key];
+  const { [key]: _, ...next } = filters;
   return next;
 }
 

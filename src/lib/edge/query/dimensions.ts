@@ -16,7 +16,6 @@ import {
   buildVisitFilterSql,
   buildVisitSourceCte,
   cityValueExpr,
-  clientDimensionDefinition,
   finalizeDimensionBuckets,
   finalizeGeoDimensionBuckets,
   geoTabLabel,

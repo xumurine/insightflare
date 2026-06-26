@@ -108,7 +108,6 @@ const INTERVAL_ORDER: readonly DashboardInterval[] = [
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
-const WEEK_MS = 7 * DAY_MS;
 const YEAR_MS = 366 * DAY_MS;
 const NINETY_DAYS_MS = 90 * DAY_MS;
 

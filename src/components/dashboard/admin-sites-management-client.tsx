@@ -120,12 +120,6 @@ export function AdminSitesManagementClient({
     };
   }, [activeTeam.id, t.loadFailed]);
 
-  async function refreshSites() {
-    if (!activeTeam.id) return;
-    const data = await fetchSites(activeTeam.id);
-    setSites(data);
-  }
-
   async function handleCreateSite() {
     const team = activeTeam;
     if (!team?.id) return;

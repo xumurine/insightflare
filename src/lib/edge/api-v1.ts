@@ -1,10 +1,7 @@
 import { DEFAULT_SITE_SCRIPT_SETTINGS } from "@/lib/site-settings";
 import { parseAndValidateBody, validateBody } from "@/lib/validate";
 import { BatchInputSchema } from "@/schemas/analytics";
-import {
-  FunnelAnalyzeInputSchema,
-  FunnelCreateInputSchema,
-} from "@/schemas/funnel";
+import { FunnelAnalyzeInputSchema } from "@/schemas/funnel";
 import { SiteCreateInputSchema, SiteUpdateInputSchema } from "@/schemas/site";
 import { SiteConfigUpdateInputSchema } from "@/schemas/site-config";
 

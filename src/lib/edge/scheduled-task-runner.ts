@@ -177,7 +177,7 @@ export async function runScheduledTask(
   scheduledTime: number | undefined,
   handler: (
     context: ScheduledTaskContext,
-  ) => Promise<ScheduledTaskOutcome | void>,
+  ) => Promise<ScheduledTaskOutcome | undefined>,
 ): Promise<void> {
   const startedAt = Date.now();
   const scheduledAt =

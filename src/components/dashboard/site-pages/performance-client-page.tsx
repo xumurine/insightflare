@@ -199,12 +199,11 @@ const PERFORMANCE_SERIES_COLORS = {
   p75: "var(--color-chart-4)",
   p95: "var(--color-chart-5)",
 } as const;
-const PERFORMANCE_SERIES_KEYS = ["p50", "p75", "p95"] as const;
 const PERFORMANCE_TREND_ANIMATION_DURATION_MS = 1200;
 const PERFORMANCE_TREND_CONNECTOR_DELAY_MS =
   PERFORMANCE_TREND_ANIMATION_DURATION_MS + 120;
 
-type PerformanceSeriesKey = (typeof PERFORMANCE_SERIES_KEYS)[number];
+type PerformanceSeriesKey = "p50" | "p75" | "p95";
 
 const ZONE_COLORS = {
   great: "var(--color-chart-2)",

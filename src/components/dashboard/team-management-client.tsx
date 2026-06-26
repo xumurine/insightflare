@@ -6,10 +6,8 @@ import { useRouter } from "next/navigation";
 import {
   RiAddLine,
   RiArrowDownLine,
-  RiArrowDownSLine,
   RiArrowRightSLine,
   RiArrowUpLine,
-  RiArrowUpSLine,
   RiDeleteBinLine,
   RiLockLine,
 } from "@remixicon/react";
@@ -72,11 +70,7 @@ import {
   percentFormat,
   shortDateTime,
 } from "@/lib/dashboard/format";
-import {
-  canAdministerTeam,
-  canManageTeam,
-  type TeamRole,
-} from "@/lib/dashboard/permissions";
+import { canAdministerTeam, canManageTeam } from "@/lib/dashboard/permissions";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
 import {
   addZonedInterval,

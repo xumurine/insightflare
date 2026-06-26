@@ -9,7 +9,6 @@ import type {
   ClientDimensionKey,
   DashboardFilterOption,
   DashboardFilters,
-  GeoDimensionTabs,
   Interval,
   OverviewAggregateRow,
   PreferredSourceResult,

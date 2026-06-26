@@ -3,7 +3,6 @@ import nextPlugin from "@next/eslint-plugin-next";
 import eslintConfigPrettier from "eslint-config-prettier";
 import noRelativeImportPaths from "eslint-plugin-no-relative-import-paths";
 import react from "eslint-plugin-react";
-import reactCompiler from "eslint-plugin-react-compiler";
 import reactHooks from "eslint-plugin-react-hooks";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
 import globals from "globals";
@@ -25,16 +24,16 @@ export default [
       "next-env.d.ts",
       "src/tracker/**",
       "*.tsbuildinfo",
+      "coverage/**",
     ],
   },
   js.configs.recommended,
   eslintConfigPrettier,
-  ...tseslint.configs.recommended,
+  ...tseslint.configs.strict,
   {
     plugins: {
       "@next/next": nextPlugin,
       "no-relative-import-paths": noRelativeImportPaths,
-      "react-compiler": reactCompiler,
       "react-hooks": reactHooks,
       "simple-import-sort": simpleImportSort,
     },
@@ -56,8 +55,8 @@ export default [
       ...nextPlugin.configs.recommended.rules,
       ...nextPlugin.configs["core-web-vitals"].rules,
       ...reactHooks.configs.recommended.rules,
-      "react-compiler/react-compiler": "off",
       "react-hooks/exhaustive-deps": "off",
+      "@typescript-eslint/no-non-null-assertion": "off",
       "@next/next/no-img-element": "off",
       "no-empty": ["error", { allowEmptyCatch: true }],
       "no-relative-import-paths/no-relative-import-paths": [
@@ -134,13 +133,29 @@ export default [
           },
         },
       ],
-      "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
     },
   },
   {
     files: ["**/*.test.{ts,tsx,mts}", "**/__tests__/**/*.{ts,tsx,mts}"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/no-extraneous-class": "off",
+    },
+  },
+  {
+    files: ["src/lib/realtime/mock/**"],
+    rules: {
+      "@typescript-eslint/no-unused-vars": "off",
     },
   },
 ];
