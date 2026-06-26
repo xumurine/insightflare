@@ -363,17 +363,15 @@ function paginationParams() {
 }
 
 function analyticsEndpoint(
-  pathSuffix: string,
+  queryName: string,
   operationId: string,
   summary: string,
   description: string,
-  queryEnum: string[],
   params: unknown[],
   responseSchema: string,
   responseExample: unknown,
-  extraResponses: Record<string, unknown> = {},
 ) {
-  const base = `/api/v1/sites/{siteId}/analytics/${pathSuffix}`;
+  const base = `/api/v1/sites/{siteId}/analytics/${queryName}`;
   return {
     [base]: {
       parameters: [{ $ref: "#/components/parameters/siteId" }],
@@ -382,16 +380,7 @@ function analyticsEndpoint(
         summary,
         description,
         tags: ["Analytics"],
-        parameters: [
-          {
-            name: "queryName",
-            in: "query",
-            required: true,
-            schema: { type: "string", enum: queryEnum },
-            description: "Analytics query name",
-          },
-          ...params,
-        ],
+        parameters: params,
         responses: {
           "200": {
             description: "Analytics query result",
@@ -405,7 +394,6 @@ function analyticsEndpoint(
           "400": { $ref: "#/components/responses/BadRequest" },
           "401": { $ref: "#/components/responses/Unauthorized" },
           "404": { $ref: "#/components/responses/NotFound" },
-          ...extraResponses,
         },
       },
     },
@@ -432,22 +420,24 @@ function buildPaths(): Record<string, unknown> {
                 schema: {
                   type: "object",
                   properties: {
+                    ok: { type: "boolean", const: true },
                     service: { type: "string", example: "insightflare" },
-                    timestamp: { type: "string", format: "date-time" },
+                    now: { type: "string", format: "date-time" },
                     bindings: {
                       type: "object",
                       properties: {
-                        kv: { type: "boolean" },
                         d1: { type: "boolean" },
-                        durableObjects: { type: "boolean" },
+                        durableObject: { type: "boolean" },
+                        r2Archive: { type: "boolean" },
                       },
                     },
                   },
                 },
                 example: {
+                  ok: true,
                   service: "insightflare",
-                  timestamp: "2026-06-26T12:00:00Z",
-                  bindings: { kv: true, d1: true, durableObjects: true },
+                  now: "2026-06-26T12:00:00Z",
+                  bindings: { d1: true, durableObject: true, r2Archive: false },
                 },
               },
             },
@@ -479,6 +469,17 @@ function buildPaths(): Record<string, unknown> {
             description: "Event accepted (always returned, even if dropped)",
           },
           "400": { $ref: "#/components/responses/BadRequest" },
+          "413": {
+            description: "Request body too large (max 48 KB)",
+          },
+          "422": {
+            description: "Event data validation failed",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorEnvelope" },
+              },
+            },
+          },
         },
       },
     },
@@ -766,8 +767,10 @@ function buildPaths(): Record<string, unknown> {
                   requestId: "abc123def456",
                   timestamp: "2026-06-26T12:00:00Z",
                   data: {
+                    siteId: "550e8400-e29b-41d4-a716-446655440000",
+                    src: "https://insight.ravelloh.com/script.js?siteId=550e8400-e29b-41d4-a716-446655440000",
                     snippet:
-                      '<script defer src="https://insight.ravelloh.com/script.js" data-site-id="550e8400-e29b-41d4-a716-446655440000"></script>',
+                      '<script defer src="https://insight.ravelloh.com/script.js?siteId=550e8400-e29b-41d4-a716-446655440000"></script>',
                   },
                 },
               },
@@ -780,30 +783,11 @@ function buildPaths(): Record<string, unknown> {
     },
   };
 
-  // ── Split Analytics Endpoints ──────────────────────────────────────────
-
-  const overviewQueries = [
-    "overview",
-    "overview-page-path",
-    "overview-page-title",
-    "overview-page-hostname",
-    "overview-page-entry",
-    "overview-page-exit",
-    "overview-source-domain",
-    "overview-source-link",
-    "overview-client-browser",
-    "overview-client-os-version",
-    "overview-client-device-type",
-    "overview-client-language",
-    "overview-client-screen-size",
-    "overview-geo-country",
-    "overview-geo-region",
-    "overview-geo-city",
-    "overview-geo-continent",
-    "overview-geo-timezone",
-    "overview-geo-organization",
-    "overview-geo-points",
-  ];
+  // ── Analytics Endpoints (one per queryName) ────────────────────────────
+  //
+  // The code uses a catch-all route where the LAST path segment is the
+  // queryName (e.g. /analytics/overview → queryName="overview").
+  // Each endpoint below uses a real queryName as its path segment.
 
   const envelopeExample = {
     ok: true,
@@ -811,564 +795,762 @@ function buildPaths(): Record<string, unknown> {
     timestamp: "2026-06-26T12:00:00Z",
   };
 
-  const analyticsOverview = analyticsEndpoint(
-    "overview",
-    "queryOverview",
-    "Query overview metrics",
-    "Returns overview metrics and dimension breakdowns (page, source, client, geo).",
-    overviewQueries,
-    [
-      ...windowParams(),
-      intervalParam(),
-      limitParam("Max results per dimension group", 10),
-      ...allFilters(),
-      {
-        name: "includeChange",
-        in: "query",
-        schema: { type: "boolean" },
-        description: "Include period-over-period change rates",
-      },
-      {
-        name: "includeDetail",
-        in: "query",
-        schema: { type: "boolean" },
-        description: "Include detailed breakdown data",
-      },
-      {
-        name: "applyGeoFilter",
-        in: "query",
-        schema: { type: "boolean" },
-        description: "Apply geo filters to geo-points query",
-      },
-    ],
-    "OverviewResponse",
-    {
-      ...envelopeExample,
-      data: {
-        views: 12500,
-        sessions: 8300,
-        visitors: 6100,
-        bounces: 3200,
-        totalDurationMs: 4200000,
-        avgDurationMs: 506,
-        bounceRate: 0.386,
-        approximateVisitors: false,
-      },
-    },
-  );
+  // Common parameter sets by category
+  const win = windowParams;
+  const filt = allFilters;
+  const int = intervalParam;
+  const lim = limitParam;
+  const pag = paginationParams;
 
-  const analyticsTrend = analyticsEndpoint(
-    "trend",
-    "queryTrend",
-    "Query time-series trend",
-    "Returns time-bucketed views, visitors, and sessions over time.",
-    ["trend"],
-    [...windowParams(), intervalParam(), ...allFilters()],
-    "TrendResponse",
+  // Per-queryName endpoint config: [queryName, operationId, summary, description, params, responseSchema]
+  const analyticsConfigs: Array<{
+    q: string;
+    op: string;
+    sum: string;
+    desc: string;
+    params: unknown[];
+    schema: string;
+  }> = [
+    // overview & dimension tabs
     {
-      ...envelopeExample,
-      data: {
-        interval: "day",
-        data: [
-          {
-            bucket: 1719403200000,
-            timestampMs: 1719403200000,
-            views: 420,
-            visitors: 310,
-            sessions: 350,
-          },
-        ],
-      },
-    },
-  );
-
-  const analyticsPages = analyticsEndpoint(
-    "pages",
-    "queryPages",
-    "Query page analytics",
-    "Returns page-level analytics including views, sessions, and optional trend data.",
-    ["pages", "pages-dashboard", "page-hash", "page-query"],
-    [
-      ...windowParams(),
-      intervalParam(),
-      limitParam("Max results", 20),
-      ...allFilters(),
-      ...paginationParams(),
-      {
-        name: "details",
-        in: "query",
-        schema: { type: "boolean" },
-        description: "Include per-page trend breakdown",
-      },
-    ],
-    "PagesResponse",
-    {
-      ...envelopeExample,
-      data: {
-        data: [{ pathname: "/blog/hello-world", views: 850, sessions: 720 }],
-      },
-    },
-  );
-
-  const analyticsReferrers = analyticsEndpoint(
-    "referrers",
-    "queryReferrers",
-    "Query referrer analytics",
-    "Returns referrer sources with views, sessions, and visitor counts.",
-    ["referrers"],
-    [
-      ...windowParams(),
-      limitParam("Max results", 20),
-      ...allFilters(),
-      {
-        name: "fullUrl",
-        in: "query",
-        schema: { type: "boolean" },
-        description: "Show full referrer URLs instead of domains only",
-      },
-    ],
-    "ReferrersResponse",
-    {
-      ...envelopeExample,
-      data: {
-        data: [
-          { referrer: "google.com", views: 1200, sessions: 980, visitors: 850 },
-        ],
-      },
-    },
-  );
-
-  const analyticsEvents = analyticsEndpoint(
-    "events",
-    "queryEvents",
-    "Query event analytics",
-    "Returns event-related data: types, summary, trend, records, and field values.",
-    [
-      "event-types",
-      "events-summary",
-      "events-trend",
-      "events-records",
-      "event-type-field-values",
-      "event-type-detail",
-      "event-record-detail",
-    ],
-    [
-      ...windowParams(),
-      intervalParam(),
-      limitParam("Max results", 20),
-      ...allFilters(),
-      ...paginationParams(),
-      {
-        name: "eventName",
-        in: "query",
-        schema: { type: "string" },
-        description: "Filter by event name",
-      },
-      {
-        name: "eventId",
-        in: "query",
-        schema: { type: "string", format: "uuid" },
-        description: "Specific event record ID",
-      },
-      {
-        name: "fieldPath",
-        in: "query",
-        schema: { type: "string" },
-        description: "Event payload field path (e.g. /payload/plan)",
-      },
-      {
-        name: "fieldValueType",
-        in: "query",
-        schema: {
-          type: "string",
-          enum: ["string", "number", "boolean", "null", "object", "array"],
+      q: "overview",
+      op: "queryOverview",
+      sum: "Query overview metrics",
+      desc: "Aggregate metrics: views, sessions, visitors, bounces, bounce rate, average duration.",
+      params: [
+        ...win(),
+        int(),
+        lim("Max results per dimension group", 10),
+        ...filt(),
+        {
+          name: "includeChange",
+          in: "query",
+          schema: { type: "boolean" },
+          description: "Include period-over-period change rates",
         },
-        description: "Expected value type for field filtering",
-      },
-    ],
-    "EventsSummaryResponse",
-    {
-      ...envelopeExample,
-      data: {
-        summary: {
-          events: 5200,
-          eventTypes: 12,
-          sessions: 3100,
-          visitors: 2400,
-          avgEventsPerSession: 1.68,
+        {
+          name: "includeDetail",
+          in: "query",
+          schema: { type: "boolean" },
+          description: "Include detailed breakdown data",
         },
-        cards: {
-          event: {
-            name: [
-              { label: "signup", views: 320, sessions: 310, visitors: 300 },
-            ],
-          },
-          page: { path: [], title: [], hostname: [] },
+      ],
+      schema: "OverviewResponse",
+    },
+    {
+      q: "overview-page-path",
+      op: "queryOverviewPagePath",
+      sum: "Overview: top page paths",
+      desc: "Top page paths by views.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "DimensionResponse",
+    },
+    {
+      q: "overview-page-title",
+      op: "queryOverviewPageTitle",
+      sum: "Overview: top page titles",
+      desc: "Top page titles by views.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "DimensionResponse",
+    },
+    {
+      q: "overview-page-hostname",
+      op: "queryOverviewPageHostname",
+      sum: "Overview: top hostnames",
+      desc: "Top hostnames by views.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "DimensionResponse",
+    },
+    {
+      q: "overview-page-entry",
+      op: "queryOverviewPageEntry",
+      sum: "Overview: top entry pages",
+      desc: "Top session entry pages.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "DimensionResponse",
+    },
+    {
+      q: "overview-page-exit",
+      op: "queryOverviewPageExit",
+      sum: "Overview: top exit pages",
+      desc: "Top session exit pages.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "DimensionResponse",
+    },
+    {
+      q: "overview-source-domain",
+      op: "queryOverviewSourceDomain",
+      sum: "Overview: top referrer domains",
+      desc: "Top referrer domains.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "DimensionResponse",
+    },
+    {
+      q: "overview-source-link",
+      op: "queryOverviewSourceLink",
+      sum: "Overview: top referrer links",
+      desc: "Top referrer URLs.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "DimensionResponse",
+    },
+    {
+      q: "overview-client-browser",
+      op: "queryOverviewClientBrowser",
+      sum: "Overview: browser distribution",
+      desc: "Browser distribution.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "DimensionResponse",
+    },
+    {
+      q: "overview-client-os-version",
+      op: "queryOverviewClientOsVersion",
+      sum: "Overview: OS version distribution",
+      desc: "OS version distribution.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "DimensionResponse",
+    },
+    {
+      q: "overview-client-device-type",
+      op: "queryOverviewClientDeviceType",
+      sum: "Overview: device type distribution",
+      desc: "Device type distribution.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "DimensionResponse",
+    },
+    {
+      q: "overview-client-language",
+      op: "queryOverviewClientLanguage",
+      sum: "Overview: language distribution",
+      desc: "Language distribution.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "DimensionResponse",
+    },
+    {
+      q: "overview-client-screen-size",
+      op: "queryOverviewClientScreenSize",
+      sum: "Overview: screen size distribution",
+      desc: "Screen size distribution.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "DimensionResponse",
+    },
+    {
+      q: "overview-geo-country",
+      op: "queryOverviewGeoCountry",
+      sum: "Overview: country distribution",
+      desc: "Country distribution.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "GeoTabResponse",
+    },
+    {
+      q: "overview-geo-region",
+      op: "queryOverviewGeoRegion",
+      sum: "Overview: region distribution",
+      desc: "Region distribution.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "GeoTabResponse",
+    },
+    {
+      q: "overview-geo-city",
+      op: "queryOverviewGeoCity",
+      sum: "Overview: city distribution",
+      desc: "City distribution.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "GeoTabResponse",
+    },
+    {
+      q: "overview-geo-continent",
+      op: "queryOverviewGeoContinent",
+      sum: "Overview: continent distribution",
+      desc: "Continent distribution.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "GeoTabResponse",
+    },
+    {
+      q: "overview-geo-timezone",
+      op: "queryOverviewGeoTimezone",
+      sum: "Overview: timezone distribution",
+      desc: "Timezone distribution.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "GeoTabResponse",
+    },
+    {
+      q: "overview-geo-organization",
+      op: "queryOverviewGeoOrganization",
+      sum: "Overview: ISP/organization distribution",
+      desc: "ISP/organization distribution.",
+      params: [...win(), lim("Max results", 10), ...filt()],
+      schema: "GeoTabResponse",
+    },
+    {
+      q: "overview-geo-points",
+      op: "queryOverviewGeoPoints",
+      sum: "Overview: geo coordinate points",
+      desc: "Geographic coordinate points for map rendering.",
+      params: [
+        ...win(),
+        lim("Max results", 100),
+        ...filt(),
+        {
+          name: "applyGeoFilter",
+          in: "query",
+          schema: { type: "boolean" },
+          description: "Apply geo filters",
         },
-      },
+      ],
+      schema: "GeoPointsResponse",
     },
-  );
 
-  const analyticsVisitors = analyticsEndpoint(
-    "visitors",
-    "queryVisitors",
-    "Query visitor analytics",
-    "Returns visitor list with pagination, or individual visitor detail.",
-    ["visitors", "visitor-detail"],
-    [
-      ...windowParams(),
-      ...allFilters(),
-      ...paginationParams(),
-      {
-        name: "visitorId",
-        in: "query",
-        schema: { type: "string", format: "uuid" },
-        description: "Specific visitor ID for detail view",
-      },
-    ],
-    "VisitorsResponse",
+    // trend
     {
-      ...envelopeExample,
-      data: {
-        data: [
-          {
-            visitorId: "550e8400-e29b-41d4-a716-446655440000",
-            firstSeenAt: 1719403200,
-            lastSeenAt: 1719489600,
-            views: 12,
-            sessions: 3,
-            country: "US",
-          },
-        ],
-      },
-      meta: {
-        page: 1,
-        pageSize: 80,
-        returned: 1,
-        hasMore: false,
-        nextPage: null,
-      },
+      q: "trend",
+      op: "queryTrend",
+      sum: "Query time-series trend",
+      desc: "Time-bucketed views, visitors, and sessions over time.",
+      params: [...win(), int(), ...filt()],
+      schema: "TrendResponse",
     },
-  );
 
-  const analyticsSessions = analyticsEndpoint(
-    "sessions",
-    "querySessions",
-    "Query session analytics",
-    "Returns session list with pagination, or individual session detail.",
-    ["sessions", "session-detail"],
-    [
-      ...windowParams(),
-      ...allFilters(),
-      ...paginationParams(),
-      {
-        name: "sessionId",
-        in: "query",
-        schema: { type: "string", format: "uuid" },
-        description: "Specific session ID for detail view",
-      },
-    ],
-    "SessionsResponse",
+    // pages
     {
-      ...envelopeExample,
-      data: {
-        data: [
-          {
-            sessionId: "660e8400-e29b-41d4-a716-446655440000",
-            visitorId: "550e8400-e29b-41d4-a716-446655440000",
-            startedAt: 1719403200,
-            endedAt: 1719406800,
-            durationMs: 3600000,
-            active: false,
-            views: 8,
-            events: 2,
-            bounce: false,
-            entryPath: "/",
-            exitPath: "/pricing",
-            country: "US",
-            browser: "Chrome",
-            os: "Windows",
-            deviceType: "desktop",
-          },
-        ],
-      },
-      meta: {
-        page: 1,
-        pageSize: 80,
-        returned: 1,
-        hasMore: false,
-        nextPage: null,
-      },
-    },
-  );
-
-  const analyticsRetention = analyticsEndpoint(
-    "retention",
-    "queryRetention",
-    "Query retention analysis",
-    "Returns cohort-based retention analysis over time.",
-    ["retention"],
-    [
-      ...windowParams(),
-      ...allFilters(),
-      {
-        name: "granularity",
-        in: "query",
-        schema: {
-          type: "string",
-          enum: ["minute", "hour", "day", "week", "month"],
+      q: "pages",
+      op: "queryPages",
+      sum: "Query top pages",
+      desc: "Top pages ranked by views.",
+      params: [
+        ...win(),
+        lim("Max results", 20),
+        ...filt(),
+        {
+          name: "details",
+          in: "query",
+          schema: { type: "boolean" },
+          description: "Include per-page trend breakdown",
         },
-        description: "Cohort period granularity (default: week)",
-      },
-    ],
-    "RetentionResponse",
-    {
-      ...envelopeExample,
-      data: {
-        granularity: "week",
-        cohorts: [
-          {
-            bucket: 1718400000000,
-            size: 150,
-            periods: [
-              { index: 0, visitors: 150, rate: 1.0 },
-              { index: 1, visitors: 68, rate: 0.453 },
-            ],
-          },
-        ],
-      },
+      ],
+      schema: "PagesResponse",
     },
-  );
-
-  const analyticsPerformance = analyticsEndpoint(
-    "performance",
-    "queryPerformance",
-    "Query Web Vitals performance",
-    "Returns Core Web Vitals metrics (TTFB, FCP, LCP, CLS, INP) with trends and breakdowns.",
-    ["performance"],
-    [
-      ...windowParams(),
-      intervalParam(),
-      limitParam("Max results per group", 10),
-      ...allFilters(),
-    ],
-    "PerformanceResponse",
     {
-      ...envelopeExample,
-      data: {
-        interval: "day",
-        summaries: {
-          ttfb: { avg: 120, p50: 95, p75: 180, p95: 350, samples: 5000 },
-          fcp: { avg: 800, p50: 650, p75: 1100, p95: 2200, samples: 5000 },
-          lcp: { avg: 1200, p50: 950, p75: 1800, p95: 3500, samples: 5000 },
-          cls: { avg: 0.05, p50: 0.03, p75: 0.08, p95: 0.18, samples: 5000 },
-          inp: { avg: 85, p50: 60, p75: 120, p95: 280, samples: 5000 },
+      q: "pages-dashboard",
+      op: "queryPagesDashboard",
+      sum: "Query pages dashboard",
+      desc: "Pages dashboard with aggregated metrics and trend.",
+      params: [...win(), int(), lim("Max results", 20), ...filt(), ...pag()],
+      schema: "PagesDashboardResponse",
+    },
+    {
+      q: "page-hash",
+      op: "queryPageHash",
+      sum: "Query page hash fragments",
+      desc: "URL hash fragment distribution.",
+      params: [...win(), lim("Max results", 20), ...filt()],
+      schema: "DimensionResponse",
+    },
+    {
+      q: "page-query",
+      op: "queryPageQuery",
+      sum: "Query page query strings",
+      desc: "URL query string distribution.",
+      params: [...win(), lim("Max results", 20), ...filt()],
+      schema: "DimensionResponse",
+    },
+
+    // referrers & sources
+    {
+      q: "referrers",
+      op: "queryReferrers",
+      sum: "Query referrer sources",
+      desc: "Top referrer sources.",
+      params: [
+        ...win(),
+        lim("Max results", 20),
+        ...filt(),
+        {
+          name: "fullUrl",
+          in: "query",
+          schema: { type: "boolean" },
+          description: "Show full referrer URL instead of domain",
         },
-        trends: {},
-        routes: [],
-        countries: [],
-      },
+      ],
+      schema: "ReferrersResponse",
     },
-  );
-
-  const analyticsTechnology = analyticsEndpoint(
-    "technology",
-    "queryTechnology",
-    "Query technology breakdowns",
-    "Returns browser, OS, referrer, and UTM technology breakdowns and cross-analysis.",
-    [
-      "browser-trend",
-      "browser-engine-trend",
-      "browser-version-breakdown",
-      "browser-cross-breakdown",
-      "browser-radar",
-      "referrer-radar",
-      "referrer-dimension-trend",
-      "client-dimension-trend",
-      "utm-dimension-trend",
-      "client-cross-breakdown",
-      "utm-source",
-      "utm-medium",
-      "utm-campaign",
-      "utm-term",
-      "utm-content",
-    ],
-    [
-      ...windowParams(),
-      intervalParam(),
-      limitParam("Max results per group", 8),
-      ...allFilters(),
-      {
-        name: "dimension",
-        in: "query",
-        schema: { type: "string" },
-        description: "Dimension key for trend queries",
-      },
-      {
-        name: "primaryDimension",
-        in: "query",
-        schema: { type: "string" },
-        description: "Primary dimension for cross-breakdown",
-      },
-      {
-        name: "secondaryDimension",
-        in: "query",
-        schema: { type: "string" },
-        description: "Secondary dimension for cross-breakdown",
-      },
-      {
-        name: "primaryLimit",
-        in: "query",
-        schema: { type: "integer" },
-        description: "Max primary dimension groups (1-12)",
-      },
-      {
-        name: "secondaryLimit",
-        in: "query",
-        schema: { type: "integer" },
-        description: "Max secondary dimension groups (1-8)",
-      },
-      {
-        name: "browserLimit",
-        in: "query",
-        schema: { type: "integer" },
-        description: "Max browser groups (0 = no limit)",
-      },
-      {
-        name: "versionLimit",
-        in: "query",
-        schema: { type: "integer" },
-        description: "Max version groups per browser (1-8)",
-      },
-      {
-        name: "osLimit",
-        in: "query",
-        schema: { type: "integer" },
-        description: "Max OS groups (1-8)",
-      },
-      {
-        name: "deviceTypeLimit",
-        in: "query",
-        schema: { type: "integer" },
-        description: "Max device type groups (1-8)",
-      },
-    ],
-    "ShareTrendResponse",
     {
-      ...envelopeExample,
-      data: {
-        interval: "day",
-        series: [
-          {
-            key: "chrome",
-            label: "Chrome",
-            views: 5200,
-            visitors: 3800,
-            sessions: 4100,
-          },
-        ],
-        data: [
-          {
-            bucket: 1719403200000,
-            timestampMs: 1719403200000,
-            totalVisitors: 6100,
-            visitorsBySeries: { chrome: 3800 },
-          },
-        ],
-      },
+      q: "countries",
+      op: "queryCountries",
+      sum: "Query visitor countries",
+      desc: "Visitor distribution by country.",
+      params: [...win(), lim("Max results", 20), ...filt()],
+      schema: "GeoTabResponse",
     },
-  );
-
-  const analyticsFunnels = analyticsEndpoint(
-    "funnels",
-    "queryFunnels",
-    "Query funnel analytics",
-    "Returns saved funnel definitions and analysis results.",
-    ["funnels"],
-    [
-      ...windowParams(),
-      ...allFilters(),
-      {
-        name: "id",
-        in: "query",
-        schema: { type: "string", format: "uuid" },
-        description: "Specific funnel ID for detail view",
-      },
-    ],
-    "FunnelAnalyticsResponse",
     {
-      ...envelopeExample,
-      data: {
-        funnels: [
-          {
-            id: "770e8400-e29b-41d4-a716-446655440000",
-            siteId: "site-123",
-            name: "Signup Flow",
-            steps: [
-              { type: "pageview", value: "/signup" },
-              { type: "pageview", value: "/welcome" },
-            ],
-            createdAt: 1719403200,
-            updatedAt: 1719403200,
-          },
-        ],
-      },
+      q: "utm-source",
+      op: "queryUtmSource",
+      sum: "Query UTM sources",
+      desc: "UTM source breakdown.",
+      params: [...win(), lim("Max results", 20), ...filt()],
+      schema: "DimensionResponse",
     },
-  );
-
-  const analyticsFilterOptions = analyticsEndpoint(
-    "filter-options",
-    "queryFilterOptions",
-    "Query filter options",
-    "Returns available filter values for a given filter dimension.",
-    ["filter-options"],
-    [
-      ...windowParams(),
-      ...allFilters(),
-      {
-        name: "filterKey",
-        in: "query",
-        schema: { type: "string" },
-        required: true,
-        description: "Filter dimension key (e.g. country, browser, path)",
-      },
-      limitParam("Max filter options returned", 200),
-    ],
-    "FilterOptionsResponse",
     {
-      ...envelopeExample,
-      data: {
-        data: [
-          { value: "US", label: "United States" },
-          { value: "GB", label: "United Kingdom" },
-        ],
-      },
+      q: "utm-medium",
+      op: "queryUtmMedium",
+      sum: "Query UTM mediums",
+      desc: "UTM medium breakdown.",
+      params: [...win(), lim("Max results", 20), ...filt()],
+      schema: "DimensionResponse",
     },
-  );
-
-  const analyticsGeo = analyticsEndpoint(
-    "geo",
-    "queryGeo",
-    "Query geo analytics",
-    "Returns geographic breakdowns: country/region/city tabs and map points.",
-    ["countries", "filter-options"],
-    [...windowParams(), limitParam("Max results", 20), ...allFilters()],
-    "GeoTabResponse",
     {
-      ...envelopeExample,
-      data: {
-        data: [
-          {
-            value: "US",
-            label: "United States",
-            views: 5200,
-            sessions: 3800,
-            visitors: 3100,
-          },
-        ],
-      },
+      q: "utm-campaign",
+      op: "queryUtmCampaign",
+      sum: "Query UTM campaigns",
+      desc: "UTM campaign breakdown.",
+      params: [...win(), lim("Max results", 20), ...filt()],
+      schema: "DimensionResponse",
     },
-  );
+    {
+      q: "utm-term",
+      op: "queryUtmTerm",
+      sum: "Query UTM terms",
+      desc: "UTM term breakdown.",
+      params: [...win(), lim("Max results", 20), ...filt()],
+      schema: "DimensionResponse",
+    },
+    {
+      q: "utm-content",
+      op: "queryUtmContent",
+      sum: "Query UTM content",
+      desc: "UTM content breakdown.",
+      params: [...win(), lim("Max results", 20), ...filt()],
+      schema: "DimensionResponse",
+    },
+
+    // visitors & sessions
+    {
+      q: "visitors",
+      op: "queryVisitors",
+      sum: "Query visitors",
+      desc: "Visitor list with pagination.",
+      params: [...win(), ...filt(), ...pag()],
+      schema: "VisitorsResponse",
+    },
+    {
+      q: "visitor-detail",
+      op: "queryVisitorDetail",
+      sum: "Query visitor detail",
+      desc: "Detailed information for a single visitor.",
+      params: [
+        {
+          name: "visitorId",
+          in: "query",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+          description: "Visitor ID",
+        },
+        {
+          name: "timeZone",
+          in: "query",
+          schema: { type: "string" },
+          description: "IANA timezone",
+        },
+      ],
+      schema: "VisitorDetailResponse",
+    },
+    {
+      q: "sessions",
+      op: "querySessions",
+      sum: "Query sessions",
+      desc: "Session list with pagination.",
+      params: [...win(), ...filt(), ...pag()],
+      schema: "SessionsResponse",
+    },
+    {
+      q: "session-detail",
+      op: "querySessionDetail",
+      sum: "Query session detail",
+      desc: "Detailed information for a single session.",
+      params: [
+        {
+          name: "sessionId",
+          in: "query",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+          description: "Session ID",
+        },
+      ],
+      schema: "SessionsResponse",
+    },
+
+    // events
+    {
+      q: "event-types",
+      op: "queryEventTypes",
+      sum: "Query event types",
+      desc: "List all custom event types.",
+      params: [...win(), lim("Max results", 20), ...filt()],
+      schema: "EventTypesResponse",
+    },
+    {
+      q: "events-summary",
+      op: "queryEventsSummary",
+      sum: "Query events summary",
+      desc: "Custom event summary statistics.",
+      params: [...win(), ...filt()],
+      schema: "EventsSummaryResponse",
+    },
+    {
+      q: "events-trend",
+      op: "queryEventsTrend",
+      sum: "Query events trend",
+      desc: "Custom event time-series trend.",
+      params: [
+        ...win(),
+        int(),
+        lim("Max results", 12),
+        ...filt(),
+        {
+          name: "eventName",
+          in: "query",
+          schema: { type: "string" },
+          description: "Filter by event name",
+        },
+      ],
+      schema: "EventsTrendResponse",
+    },
+    {
+      q: "events-records",
+      op: "queryEventsRecords",
+      sum: "Query event records",
+      desc: "Custom event records with pagination.",
+      params: [
+        ...win(),
+        ...filt(),
+        ...pag(),
+        {
+          name: "eventName",
+          in: "query",
+          schema: { type: "string" },
+          description: "Filter by event name",
+        },
+      ],
+      schema: "EventsSummaryResponse",
+    },
+    {
+      q: "event-type-field-values",
+      op: "queryEventTypeFieldValues",
+      sum: "Query event type field values",
+      desc: "Distinct field values for a specific event type.",
+      params: [
+        ...win(),
+        lim("Max results", 25),
+        ...filt(),
+        {
+          name: "eventName",
+          in: "query",
+          required: true,
+          schema: { type: "string" },
+          description: "Event type name",
+        },
+        {
+          name: "fieldPath",
+          in: "query",
+          required: true,
+          schema: { type: "string" },
+          description: "Dot-notation field path",
+        },
+        {
+          name: "fieldValueType",
+          in: "query",
+          required: true,
+          schema: {
+            type: "string",
+            enum: ["string", "number", "boolean", "null", "object", "array"],
+          },
+          description: "Expected value type",
+        },
+      ],
+      schema: "EventsSummaryResponse",
+    },
+    {
+      q: "event-type-detail",
+      op: "queryEventTypeDetail",
+      sum: "Query event type detail",
+      desc: "Detailed statistics for a specific event type.",
+      params: [
+        ...win(),
+        int(),
+        ...filt(),
+        {
+          name: "eventName",
+          in: "query",
+          required: true,
+          schema: { type: "string" },
+          description: "Event type name",
+        },
+      ],
+      schema: "EventsSummaryResponse",
+    },
+    {
+      q: "event-record-detail",
+      op: "queryEventRecordDetail",
+      sum: "Query event record detail",
+      desc: "Detailed information for a single event record.",
+      params: [
+        {
+          name: "eventId",
+          in: "query",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+          description: "Event record ID",
+        },
+      ],
+      schema: "EventsSummaryResponse",
+    },
+
+    // funnels
+    {
+      q: "funnels",
+      op: "queryFunnels",
+      sum: "Query funnels",
+      desc: "Saved funnel definitions and analysis results.",
+      params: [
+        ...win(),
+        ...filt(),
+        {
+          name: "id",
+          in: "query",
+          schema: { type: "string", format: "uuid" },
+          description: "Funnel ID (omit to list all)",
+        },
+      ],
+      schema: "FunnelAnalyticsResponse",
+    },
+
+    // retention & performance
+    {
+      q: "retention",
+      op: "queryRetention",
+      sum: "Query retention",
+      desc: "Cohort-based retention analysis.",
+      params: [
+        ...win(),
+        ...filt(),
+        {
+          name: "granularity",
+          in: "query",
+          schema: {
+            type: "string",
+            enum: ["minute", "hour", "day", "week", "month"],
+          },
+          description: "Cohort period granularity (default: week)",
+        },
+      ],
+      schema: "RetentionResponse",
+    },
+    {
+      q: "performance",
+      op: "queryPerformance",
+      sum: "Query Web Vitals",
+      desc: "Core Web Vitals metrics (TTFB, FCP, LCP, CLS, INP).",
+      params: [...win(), int(), lim("Max results per group", 10), ...filt()],
+      schema: "PerformanceResponse",
+    },
+    {
+      q: "filter-options",
+      op: "queryFilterOptions",
+      sum: "Query filter options",
+      desc: "Available filter values for a given dimension.",
+      params: [
+        ...win(),
+        ...filt(),
+        {
+          name: "filterKey",
+          in: "query",
+          required: true,
+          schema: { type: "string" },
+          description: "Filter dimension key (e.g. country, browser, path)",
+        },
+        lim("Max results", 200),
+      ],
+      schema: "FilterOptionsResponse",
+    },
+
+    // technology
+    {
+      q: "browser-trend",
+      op: "queryBrowserTrend",
+      sum: "Query browser trend",
+      desc: "Browser usage trends over time.",
+      params: [...win(), int(), lim("Max results", 8), ...filt()],
+      schema: "ShareTrendResponse",
+    },
+    {
+      q: "browser-engine-trend",
+      op: "queryBrowserEngineTrend",
+      sum: "Query browser engine trend",
+      desc: "Browser engine trends.",
+      params: [...win(), int(), lim("Max results", 8), ...filt()],
+      schema: "ShareTrendResponse",
+    },
+    {
+      q: "browser-version-breakdown",
+      op: "queryBrowserVersionBreakdown",
+      sum: "Query browser version breakdown",
+      desc: "Browser version distribution.",
+      params: [
+        ...win(),
+        ...filt(),
+        {
+          name: "browserLimit",
+          in: "query",
+          schema: { type: "integer" },
+          description: "Max browsers (0 = no limit)",
+        },
+        {
+          name: "versionLimit",
+          in: "query",
+          schema: { type: "integer" },
+          description: "Max versions per browser (1-8)",
+        },
+      ],
+      schema: "BrowserVersionBreakdownResponse",
+    },
+    {
+      q: "browser-cross-breakdown",
+      op: "queryBrowserCrossBreakdown",
+      sum: "Query browser cross-breakdown",
+      desc: "Browser × OS cross-tabulation.",
+      params: [
+        ...win(),
+        ...filt(),
+        {
+          name: "browserLimit",
+          in: "query",
+          schema: { type: "integer" },
+          description: "Max browsers (1-12)",
+        },
+        {
+          name: "osLimit",
+          in: "query",
+          schema: { type: "integer" },
+          description: "Max OS groups (1-8)",
+        },
+        {
+          name: "deviceTypeLimit",
+          in: "query",
+          schema: { type: "integer" },
+          description: "Max device types (1-8)",
+        },
+      ],
+      schema: "CrossBreakdownResponse",
+    },
+    {
+      q: "browser-radar",
+      op: "queryBrowserRadar",
+      sum: "Query browser radar",
+      desc: "Multi-axis browser comparison radar chart.",
+      params: [...win(), ...filt()],
+      schema: "RadarResponse",
+    },
+    {
+      q: "referrer-radar",
+      op: "queryReferrerRadar",
+      sum: "Query referrer radar",
+      desc: "Multi-axis referrer comparison radar chart.",
+      params: [...win(), lim("Max results", 8), ...filt()],
+      schema: "RadarResponse",
+    },
+    {
+      q: "referrer-dimension-trend",
+      op: "queryReferrerDimensionTrend",
+      sum: "Query referrer dimension trend",
+      desc: "Referrer dimension trends over time.",
+      params: [...win(), int(), lim("Max results", 8), ...filt()],
+      schema: "ShareTrendResponse",
+    },
+    {
+      q: "client-dimension-trend",
+      op: "queryClientDimensionTrend",
+      sum: "Query client dimension trend",
+      desc: "Client dimension (browser/OS/device) trends.",
+      params: [
+        ...win(),
+        int(),
+        lim("Max results", 8),
+        ...filt(),
+        {
+          name: "dimension",
+          in: "query",
+          schema: { type: "string" },
+          description: "Dimension key (e.g. browser, osVersion, deviceType)",
+        },
+      ],
+      schema: "ShareTrendResponse",
+    },
+    {
+      q: "utm-dimension-trend",
+      op: "queryUtmDimensionTrend",
+      sum: "Query UTM dimension trend",
+      desc: "UTM dimension trends over time.",
+      params: [
+        ...win(),
+        int(),
+        lim("Max results", 8),
+        ...filt(),
+        {
+          name: "dimension",
+          in: "query",
+          schema: { type: "string" },
+          description: "UTM dimension (e.g. source, medium, campaign)",
+        },
+      ],
+      schema: "ShareTrendResponse",
+    },
+    {
+      q: "client-cross-breakdown",
+      op: "queryClientCrossBreakdown",
+      sum: "Query client cross-breakdown",
+      desc: "Client dimension cross-tabulation.",
+      params: [
+        ...win(),
+        ...filt(),
+        {
+          name: "primaryDimension",
+          in: "query",
+          required: true,
+          schema: { type: "string" },
+          description: "Primary dimension for rows",
+        },
+        {
+          name: "secondaryDimension",
+          in: "query",
+          required: true,
+          schema: { type: "string" },
+          description: "Secondary dimension for columns",
+        },
+        {
+          name: "primaryLimit",
+          in: "query",
+          schema: { type: "integer" },
+          description: "Max rows (1-12)",
+        },
+        {
+          name: "secondaryLimit",
+          in: "query",
+          schema: { type: "integer" },
+          description: "Max columns (1-8)",
+        },
+      ],
+      schema: "CrossBreakdownResponse",
+    },
+  ];
+
+  // Generate all analytics endpoints
+  const analyticsEndpoints: Record<string, unknown> = {};
+  for (const c of analyticsConfigs) {
+    const ep = analyticsEndpoint(c.q, c.op, c.sum, c.desc, c.params, c.schema, {
+      ...envelopeExample,
+      data: "(response shape varies by query — see schema)",
+    });
+    Object.assign(analyticsEndpoints, ep);
+  }
 
   // ── Other analytics endpoints (non-query) ─────────────────────────────
 
@@ -1444,6 +1626,7 @@ function buildPaths(): Record<string, unknown> {
                   requestId: "abc123def456",
                   timestamp: "2026-06-26T12:00:00Z",
                   data: {
+                    partialFailure: false,
                     results: [
                       {
                         queryName: "overview",
@@ -1575,16 +1758,14 @@ function buildPaths(): Record<string, unknown> {
           {
             name: "from",
             in: "query",
-            required: true,
             schema: { type: "integer" },
-            description: "Start timestamp (Unix ms)",
+            description: "Start timestamp (Unix ms, defaults to 24h ago)",
           },
           {
             name: "to",
             in: "query",
-            required: true,
             schema: { type: "integer" },
-            description: "End timestamp (Unix ms)",
+            description: "End timestamp (Unix ms, defaults to now)",
           },
           {
             name: "interval",
@@ -1642,19 +1823,7 @@ function buildPaths(): Record<string, unknown> {
     ...collect,
     ...sites,
     ...siteConfig,
-    ...analyticsOverview,
-    ...analyticsTrend,
-    ...analyticsPages,
-    ...analyticsReferrers,
-    ...analyticsEvents,
-    ...analyticsVisitors,
-    ...analyticsSessions,
-    ...analyticsRetention,
-    ...analyticsPerformance,
-    ...analyticsTechnology,
-    ...analyticsFunnels,
-    ...analyticsFilterOptions,
-    ...analyticsGeo,
+    ...analyticsEndpoints,
     ...analyticsFunnelsAnalyze,
     ...analyticsBatch,
     ...realtime,
