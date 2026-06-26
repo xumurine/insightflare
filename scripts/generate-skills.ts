@@ -1,5 +1,6 @@
 #!/usr/bin/env tsx
 
+import { execSync } from "child_process";
 import { readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 
@@ -860,6 +861,14 @@ function generate() {
 
   const output = JSON.stringify(skills, null, 2);
   writeFileSync(OUTPUT_PATH, output + "\n", "utf-8");
+
+  // format with prettier to match project style
+  try {
+    execSync(`npx prettier --write "${OUTPUT_PATH}"`, { stdio: "pipe" });
+  } catch {
+    // prettier not available or failed — file is still valid, just unformatted
+  }
+
   console.log(`Generated ${OUTPUT_PATH}`);
 }
 
