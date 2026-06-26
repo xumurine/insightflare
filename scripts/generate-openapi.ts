@@ -115,6 +115,30 @@ function ok(schema: string, description = "Successful response") {
   return response(description, schema);
 }
 
+function schemaRefName(schema: unknown): string | null {
+  if (!schema || typeof schema !== "object" || !("$ref" in schema)) {
+    return null;
+  }
+  return (
+    String((schema as { $ref: string }).$ref)
+      .split("/")
+      .at(-1) ?? null
+  );
+}
+
+function jsonContent(container: unknown) {
+  if (!container || typeof container !== "object") return null;
+  return (container as { content?: Record<string, unknown> }).content?.[
+    json
+  ] as
+    | {
+        schema?: unknown;
+        example?: unknown;
+        examples?: Record<string, unknown>;
+      }
+    | undefined;
+}
+
 function errorResponses(...codes: string[]) {
   const map: Record<string, unknown> = {};
   for (const code of codes) {
@@ -245,6 +269,169 @@ function sortParam() {
   );
 }
 
+const sampleSiteId = "550e8400-e29b-41d4-a716-446655440000";
+const sampleTeamId = "550e8400-e29b-41d4-a716-446655440001";
+const sampleTokenId = "550e8400-e29b-41d4-a716-446655440002";
+const sampleEventId = "6f5d9b2c-b1d5-4d75-89aa-0b71ec1f9c00";
+const sampleVisitorId = "0a1c1f5b-f529-44be-9f29-9b0b358c0001";
+const sampleSessionId = "de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001";
+const sampleFunnelId = "7c10f7f2-0f8a-4788-b59d-289e69e95000";
+const sampleGeneratedAt = "2026-06-26T12:00:00Z";
+const sampleTimeRange = {
+  from: "2026-05-27T00:00:00Z",
+  to: "2026-06-26T00:00:00Z",
+  timeZone: "Asia/Shanghai",
+};
+
+function meta(extra: Record<string, unknown> = {}) {
+  return {
+    requestId: "req_abc123",
+    generatedAt: sampleGeneratedAt,
+    ...extra,
+  };
+}
+
+function success(data: unknown, extraMeta: Record<string, unknown> = {}) {
+  return { data, meta: meta(extraMeta) };
+}
+
+function list(data: unknown[], extraMeta: Record<string, unknown> = {}) {
+  return { data, meta: meta(extraMeta) };
+}
+
+function paginated(data: unknown[]) {
+  return {
+    data,
+    pagination: {
+      limit: 100,
+      nextCursor: "cur_next_abc",
+      hasMore: true,
+    },
+    meta: meta(),
+  };
+}
+
+const siteExample = {
+  id: sampleSiteId,
+  name: "Example Blog",
+  domain: "example.com",
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: sampleGeneratedAt,
+  sharing: { publicEnabled: true, publicSlug: "example-blog" },
+  links: {
+    self: `/api/v1/sites/${sampleSiteId}`,
+    tracking: `/api/v1/sites/${sampleSiteId}/tracking`,
+    privacy: `/api/v1/sites/${sampleSiteId}/privacy`,
+    sharing: `/api/v1/sites/${sampleSiteId}/sharing`,
+    analyticsSchema: `/api/v1/sites/${sampleSiteId}/analytics/schema`,
+    analyticsOverview: `/api/v1/sites/${sampleSiteId}/analytics/overview`,
+    events: `/api/v1/sites/${sampleSiteId}/events`,
+    visitors: `/api/v1/sites/${sampleSiteId}/visitors`,
+    sessions: `/api/v1/sites/${sampleSiteId}/sessions`,
+    realtimeSnapshot: `/api/v1/sites/${sampleSiteId}/realtime/snapshot`,
+  },
+};
+
+const overviewMetricsExample = {
+  views: 12500,
+  sessions: 8300,
+  visitors: 6100,
+  bounces: 3200,
+  bounceRate: 0.386,
+  avgDurationMs: 506000,
+  viewsPerSession: 1.51,
+  approximateVisitors: false,
+};
+
+const eventExample = {
+  id: sampleEventId,
+  siteId: sampleSiteId,
+  eventName: "signup",
+  occurredAt: sampleGeneratedAt,
+  sessionId: sampleSessionId,
+  visitorId: sampleVisitorId,
+  data: { plan: "pro" },
+};
+
+const visitorExample = {
+  visitorId: sampleVisitorId,
+  firstSeenAt: "2026-06-26T11:00:00Z",
+  lastSeenAt: sampleGeneratedAt,
+  views: 4,
+  sessions: 1,
+  events: 2,
+  links: {
+    self: `/api/v1/sites/${sampleSiteId}/visitors/${sampleVisitorId}`,
+    sessions: `/api/v1/sites/${sampleSiteId}/visitors/${sampleVisitorId}/sessions`,
+    events: `/api/v1/sites/${sampleSiteId}/visitors/${sampleVisitorId}/events`,
+  },
+};
+
+const sessionExample = {
+  sessionId: sampleSessionId,
+  visitorId: sampleVisitorId,
+  startedAt: "2026-06-26T11:45:00Z",
+  endedAt: null,
+  views: 3,
+  events: 1,
+  links: {
+    self: `/api/v1/sites/${sampleSiteId}/sessions/${sampleSessionId}`,
+    events: `/api/v1/sites/${sampleSiteId}/sessions/${sampleSessionId}/events`,
+  },
+};
+
+const funnelExample = {
+  id: sampleFunnelId,
+  siteId: sampleSiteId,
+  name: "Signup funnel",
+  description: "Pricing page to signup conversion.",
+  steps: [
+    { type: "pageview", value: "/pricing", label: "Pricing" },
+    { type: "event", value: "signup", label: "Signup" },
+  ],
+  createdAt: "2026-06-01T00:00:00Z",
+  updatedAt: sampleGeneratedAt,
+  links: {
+    self: `/api/v1/sites/${sampleSiteId}/funnels/${sampleFunnelId}`,
+    analysis: `/api/v1/sites/${sampleSiteId}/funnels/${sampleFunnelId}/analysis`,
+  },
+};
+
+const funnelAnalysisExample = {
+  steps: [
+    {
+      index: 0,
+      label: "Pricing",
+      type: "pageview",
+      sessions: 1000,
+      visitors: 920,
+      conversionRate: 1,
+      stepConversionRate: 1,
+      dropOffSessions: 350,
+      dropOffRate: 0.35,
+    },
+    {
+      index: 1,
+      label: "Signup",
+      type: "event",
+      sessions: 650,
+      visitors: 610,
+      conversionRate: 0.65,
+      stepConversionRate: 0.65,
+      dropOffSessions: 0,
+      dropOffRate: 0,
+    },
+  ],
+  summary: {
+    totalSessions: 1000,
+    convertedSessions: 650,
+    totalVisitors: 920,
+    convertedVisitors: 610,
+    overallConversionRate: 0.65,
+    largestDropOffStepIndex: 1,
+  },
+};
+
 function buildSchemas(): Record<string, unknown> {
   const iso = { type: "string", format: "date-time" };
   const uuid = { type: "string", format: "uuid" };
@@ -323,6 +510,18 @@ function buildSchemas(): Record<string, unknown> {
     ErrorResponse: {
       type: "object",
       description: "Standard error response envelope.",
+      example: {
+        error: {
+          code: "validation_failed",
+          message: "Invalid request body.",
+          details: { field: "steps" },
+          help: {
+            token: "/api/v1/token",
+            documentation: "/.well-known/openapi.json",
+          },
+        },
+        meta: meta(),
+      },
       required: ["error", "meta"],
       properties: {
         error: {
@@ -362,7 +561,8 @@ function buildSchemas(): Record<string, unknown> {
     },
     Preset: {
       type: "string",
-      description: "Named time range preset.",
+      description:
+        "Named time range preset. today: current calendar day in timeZone. yesterday: previous calendar day. last_7_days and last_30_days end at request time. this_week/last_week and this_month/last_month use calendar boundaries in timeZone.",
       enum: [
         "today",
         "yesterday",
@@ -413,7 +613,8 @@ function buildSchemas(): Record<string, unknown> {
     },
     ComplexFilter: {
       type: "object",
-      description: "Advanced filter rule for explore and search endpoints.",
+      description:
+        "Advanced filter rule for explore and search endpoints. Operators: eq equals; neq does not equal; in is one of; notIn is not one of; contains includes substring; startsWith/endsWith match string edges; gt/gte/lt/lte compare ordered values; exists/notExists ignore value.",
       required: ["field", "op"],
       properties: {
         field: {
@@ -423,6 +624,8 @@ function buildSchemas(): Record<string, unknown> {
         },
         op: {
           type: "string",
+          description:
+            "Filter operator. exists and notExists ignore value; in and notIn expect an array-compatible value.",
           enum: [
             "eq",
             "neq",
@@ -469,17 +672,28 @@ function buildSchemas(): Record<string, unknown> {
       description: "Sites this token may access.",
       required: ["mode", "siteIds"],
       properties: {
-        mode: { type: "string", enum: ["all", "restricted"] },
+        mode: {
+          type: "string",
+          enum: ["all", "restricted"],
+          description:
+            "all means the token can access all current and future team sites; restricted means only listed siteIds.",
+        },
         siteIds: { type: "array", items: uuid },
       },
     },
     Token: {
       type: "object",
+      description: "Non-secret metadata for the current API token.",
       required: ["id", "name", "status", "team", "scopes", "siteAccess"],
       properties: {
         id: uuid,
         name: { type: "string", maxLength: 120 },
-        status: { type: "string", enum: ["active", "expired", "revoked"] },
+        status: {
+          type: "string",
+          enum: ["active", "expired", "revoked"],
+          description:
+            "active can be used; expired passed expiresAt; revoked was disabled.",
+        },
         createdAt: iso,
         expiresAt: { type: ["string", "null"], format: "date-time" },
         lastUsedAt: { type: ["string", "null"], format: "date-time" },
@@ -507,6 +721,8 @@ function buildSchemas(): Record<string, unknown> {
     TokenResponse: envelope(ref("Token")),
     TokenCheckRequest: {
       type: "object",
+      description:
+        "Bulk permission check request for scopes and optional site access.",
       required: ["checks"],
       properties: {
         checks: {
@@ -612,6 +828,7 @@ function buildSchemas(): Record<string, unknown> {
     CapabilitiesResponse: envelope(ref("Capabilities")),
     RootDiscoveryResponse: envelope({
       type: "object",
+      description: "API root discovery response with stable links.",
       properties: {
         version: { type: "string" },
         service: { type: "string" },
@@ -630,6 +847,7 @@ function buildSchemas(): Record<string, unknown> {
     TeamResponse: envelope(ref("Team")),
     Site: {
       type: "object",
+      description: "Tracked site resource.",
       required: [
         "id",
         "name",
@@ -651,6 +869,7 @@ function buildSchemas(): Record<string, unknown> {
     },
     SiteCreateInput: {
       type: "object",
+      description: "Input for creating a site in the current team.",
       required: ["name", "domain"],
       properties: {
         name: { type: "string", minLength: 1, maxLength: 120 },
@@ -660,6 +879,7 @@ function buildSchemas(): Record<string, unknown> {
     },
     SiteUpdateInput: {
       type: "object",
+      description: "Partial update for site metadata and sharing settings.",
       properties: {
         name: { type: "string", minLength: 1, maxLength: 120 },
         domain: { type: "string", minLength: 1, maxLength: 255 },
@@ -682,7 +902,8 @@ function buildSchemas(): Record<string, unknown> {
         trackingStrength: {
           type: "string",
           enum: ["strong", "smart", "weak"],
-          description: "Privacy-aware tracking mode.",
+          description:
+            "Privacy-aware tracking mode. strong collects the richest allowed context; smart balances analytics and privacy; weak minimizes collection for stricter privacy needs.",
         },
         allowedDomains: {
           type: "array",
@@ -717,14 +938,17 @@ function buildSchemas(): Record<string, unknown> {
     PrivacySettingsResponse: envelope(ref("PrivacySettings")),
     SharingSettings: {
       type: "object",
+      description: "Public sharing settings for a site.",
       properties: {
         publicEnabled: { type: "boolean" },
-        publicSlug: { type: ["string", "null"], maxLength: 120 },
+        publicSlug: { type: ["string", "null"], maxLength: 80 },
       },
     },
     SharingSettingsResponse: envelope(ref("SharingSettings")),
     AnalyticsSchemaResponse: envelope({
       type: "object",
+      description:
+        "Schema discovery response listing supported metrics, dimensions, filters, operators, intervals, and presets.",
       properties: {
         metrics: { type: "array", items: ref("MetricDefinition") },
         dimensions: { type: "array", items: ref("DimensionDefinition") },
@@ -747,13 +971,17 @@ function buildSchemas(): Record<string, unknown> {
     }),
     OverviewMetrics: {
       type: "object",
+      description: "Aggregate analytics metrics for a time range.",
       properties: {
         views: { type: "integer" },
         sessions: { type: "integer" },
         visitors: { type: "integer" },
         bounces: { type: "integer" },
         bounceRate: { type: "number", minimum: 0, maximum: 1 },
-        avgDurationMs: { type: "number" },
+        avgDurationMs: {
+          type: "number",
+          description: "Average session duration in milliseconds.",
+        },
         viewsPerSession: { type: "number" },
         approximateVisitors: { type: "boolean" },
       },
@@ -761,6 +989,7 @@ function buildSchemas(): Record<string, unknown> {
     AnalyticsOverviewResponse: envelope(ref("OverviewMetrics")),
     TimeseriesPoint: {
       type: "object",
+      description: "One time bucket of analytics metrics.",
       properties: {
         start: iso,
         end: iso,
@@ -773,6 +1002,7 @@ function buildSchemas(): Record<string, unknown> {
     AnalyticsTimeseriesResponse: listEnvelope(ref("TimeseriesPoint")),
     BreakdownRow: {
       type: "object",
+      description: "One analytics breakdown row.",
       properties: {
         key: { type: "string" },
         label: { type: "string" },
@@ -783,6 +1013,76 @@ function buildSchemas(): Record<string, unknown> {
       },
     },
     AnalyticsBreakdownResponse: listEnvelope(ref("BreakdownRow")),
+    AnalyticsCrossBreakdownCell: {
+      type: "object",
+      description: "One cell in a two-dimensional analytics breakdown.",
+      properties: {
+        secondaryKey: {
+          type: "string",
+          description: "Machine-readable secondary dimension value.",
+        },
+        secondaryLabel: {
+          type: "string",
+          description: "Human-readable secondary dimension label.",
+        },
+        value: { type: "number", description: "Aggregated metric value." },
+      },
+    },
+    AnalyticsCrossBreakdownRow: {
+      type: "object",
+      description: "One row in a two-dimensional analytics breakdown.",
+      properties: {
+        primaryKey: {
+          type: "string",
+          description: "Machine-readable primary dimension value.",
+        },
+        primaryLabel: {
+          type: "string",
+          description: "Human-readable primary dimension label.",
+        },
+        values: {
+          type: "array",
+          items: ref("AnalyticsCrossBreakdownCell"),
+        },
+      },
+    },
+    AnalyticsCrossBreakdownResponse: {
+      allOf: [
+        ref("SuccessEnvelope"),
+        {
+          type: "object",
+          description: "Two-dimensional analytics breakdown.",
+          properties: {
+            data: {
+              type: "array",
+              items: ref("AnalyticsCrossBreakdownRow"),
+            },
+            meta: {
+              allOf: [
+                ref("Meta"),
+                {
+                  type: "object",
+                  properties: {
+                    primary: {
+                      type: "string",
+                      description: "Primary dimension.",
+                    },
+                    secondary: {
+                      type: "string",
+                      description: "Secondary dimension.",
+                    },
+                    metric: {
+                      type: "string",
+                      description: "Aggregated metric.",
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
     AnalyticsExploreRequest: {
       type: "object",
       description: "Advanced analytics query input.",
@@ -864,19 +1164,36 @@ function buildSchemas(): Record<string, unknown> {
         },
       },
     }),
-    GenericObjectResponse: envelope({
-      type: "object",
-      additionalProperties: true,
-    }),
     EventsSummaryResponse: envelope({
       type: "object",
-      description: "Event summary response.",
+      description: "Summary of custom event activity.",
+      required: ["events", "eventTypes", "sessions", "visitors"],
       properties: {
-        events: { type: "integer", minimum: 0 },
-        eventTypes: { type: "integer", minimum: 0 },
-        sessions: { type: "integer", minimum: 0 },
-        visitors: { type: "integer", minimum: 0 },
-        avgEventsPerSession: { type: "number", minimum: 0 },
+        events: {
+          type: "integer",
+          minimum: 0,
+          description: "Total custom events.",
+        },
+        eventTypes: {
+          type: "integer",
+          minimum: 0,
+          description: "Number of distinct event names.",
+        },
+        sessions: {
+          type: "integer",
+          minimum: 0,
+          description: "Number of sessions with custom events.",
+        },
+        visitors: {
+          type: "integer",
+          minimum: 0,
+          description: "Number of visitors with custom events.",
+        },
+        avgEventsPerSession: {
+          type: "number",
+          minimum: 0,
+          description: "Average custom event count per session.",
+        },
       },
     }),
     EventRecord: {
@@ -902,6 +1219,8 @@ function buildSchemas(): Record<string, unknown> {
         },
         op: {
           type: "string",
+          description:
+            "Payload filter operator. eq/neq compare equality, in/notIn compare sets, contains/startsWith/endsWith compare strings, gt/gte/lt/lte compare ordered values, exists/notExists ignore value.",
           enum: [
             "eq",
             "neq",
@@ -990,6 +1309,8 @@ function buildSchemas(): Record<string, unknown> {
     }),
     PerformanceSummaryResponse: envelope({
       type: "object",
+      description:
+        "Core Web Vitals summary in milliseconds for TTFB/FCP/LCP/INP and unitless CLS.",
       additionalProperties: true,
     }),
     PerformanceMetricPoint: {
@@ -999,11 +1320,23 @@ function buildSchemas(): Record<string, unknown> {
       properties: {
         start: iso,
         end: iso,
-        ttfb: { type: "number" },
-        fcp: { type: "number" },
-        lcp: { type: "number" },
-        cls: { type: "number" },
-        inp: { type: "number" },
+        ttfb: {
+          type: "number",
+          description: "Time to first byte in milliseconds.",
+        },
+        fcp: {
+          type: "number",
+          description: "First contentful paint in milliseconds.",
+        },
+        lcp: {
+          type: "number",
+          description: "Largest contentful paint in milliseconds.",
+        },
+        cls: { type: "number", description: "Cumulative layout shift." },
+        inp: {
+          type: "number",
+          description: "Interaction to next paint in milliseconds.",
+        },
       },
     },
     PerformanceTimeseriesResponse: listEnvelope(ref("PerformanceMetricPoint")),
@@ -1030,7 +1363,8 @@ function buildSchemas(): Record<string, unknown> {
         type: {
           type: "string",
           enum: ["pageview", "event"],
-          description: "Step matching type.",
+          description:
+            "Step matching type. pageview matches a page path; event matches a custom event name.",
         },
         value: {
           type: "string",
@@ -1229,10 +1563,182 @@ function buildSchemas(): Record<string, unknown> {
         },
       },
     }),
+    HealthResponse: {
+      type: "object",
+      description: "Service health response.",
+      properties: {
+        status: { type: "string", enum: ["healthy"] },
+        timestamp: iso,
+      },
+    },
+    CollectPage: {
+      type: "object",
+      description: "Page context for a collect payload.",
+      properties: {
+        url: {
+          type: "string",
+          maxLength: 2048,
+          description: "Full page URL.",
+        },
+        path: { type: "string", maxLength: 2048, description: "Page path." },
+        title: { type: "string", maxLength: 300, description: "Page title." },
+        referrer: {
+          type: ["string", "null"],
+          maxLength: 2048,
+          description: "Full referrer URL, if available.",
+        },
+        hostname: {
+          type: "string",
+          maxLength: 255,
+          description: "Page hostname.",
+        },
+        query: {
+          type: "string",
+          maxLength: 2048,
+          description: "URL query string.",
+        },
+        hash: {
+          type: "string",
+          maxLength: 512,
+          description: "URL hash fragment.",
+        },
+      },
+    },
+    CollectClient: {
+      type: "object",
+      description: "Browser and device context reported by the client SDK.",
+      properties: {
+        language: {
+          type: "string",
+          maxLength: 40,
+          description: "Browser language.",
+        },
+        userAgent: {
+          type: "string",
+          maxLength: 1024,
+          description: "Browser user agent string.",
+        },
+        screen: {
+          type: "object",
+          properties: {
+            width: { type: "integer", minimum: 0 },
+            height: { type: "integer", minimum: 0 },
+          },
+        },
+        viewport: {
+          type: "object",
+          properties: {
+            width: { type: "integer", minimum: 0 },
+            height: { type: "integer", minimum: 0 },
+          },
+        },
+      },
+    },
+    CollectEvent: {
+      type: "object",
+      description: "Custom event data.",
+      required: ["name"],
+      properties: {
+        name: {
+          type: "string",
+          maxLength: 120,
+          description: "Event name.",
+        },
+        data: {
+          type: "object",
+          additionalProperties: true,
+          description: "Custom JSON-serializable event payload.",
+        },
+      },
+    },
+    CollectEngagement: {
+      type: "object",
+      description: "Engagement metrics reported by the client SDK.",
+      properties: {
+        durationMs: {
+          type: "integer",
+          minimum: 0,
+          description: "Engagement duration in milliseconds.",
+        },
+        scrollDepth: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+          description: "Maximum scroll depth as a 0-1 ratio.",
+        },
+      },
+    },
+    CollectPerformance: {
+      type: "object",
+      description: "Core Web Vitals and navigation timing data.",
+      properties: {
+        ttfb: {
+          type: "number",
+          minimum: 0,
+          description: "Time to first byte in milliseconds.",
+        },
+        fcp: {
+          type: "number",
+          minimum: 0,
+          description: "First contentful paint in milliseconds.",
+        },
+        lcp: {
+          type: "number",
+          minimum: 0,
+          description: "Largest contentful paint in milliseconds.",
+        },
+        cls: {
+          type: "number",
+          minimum: 0,
+          description: "Cumulative layout shift.",
+        },
+        inp: {
+          type: "number",
+          minimum: 0,
+          description: "Interaction to next paint in milliseconds.",
+        },
+      },
+    },
     CollectPayload: {
       type: "object",
-      description: "Client SDK collection payload.",
-      additionalProperties: true,
+      description:
+        "Payload sent by the InsightFlare client SDK to ingest pageviews, events, engagement, and performance metrics.",
+      required: ["siteId", "type"],
+      properties: {
+        siteId: {
+          type: "string",
+          format: "uuid",
+          description: "Site identifier.",
+        },
+        type: {
+          type: "string",
+          enum: ["pageview", "event", "engagement", "performance"],
+          description:
+            "Tracking payload type. pageview records a page view; event records a custom user-defined event; engagement records duration or scroll; performance records Core Web Vitals.",
+        },
+        timestamp: {
+          ...iso,
+          description:
+            "Client-side event time. If omitted, the server receive time may be used.",
+        },
+        anonymousId: {
+          type: "string",
+          maxLength: 120,
+          description:
+            "Anonymous visitor identifier generated by the client SDK.",
+        },
+        sessionId: {
+          type: "string",
+          maxLength: 120,
+          description: "Client session identifier.",
+        },
+        page: ref("CollectPage"),
+        client: ref("CollectClient"),
+        event: ref("CollectEvent"),
+        engagement: ref("CollectEngagement"),
+        performance: ref("CollectPerformance"),
+      },
+      additionalProperties: false,
     },
   };
 }
@@ -1255,7 +1761,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         tags: ["Health"],
         security: [],
         responses: {
-          "200": response("Service is healthy", "GenericObjectResponse"),
+          "200": response("Service is healthy", "HealthResponse"),
           ...errorResponses("400", "500"),
         },
       }),
@@ -1653,7 +2159,7 @@ function buildPaths(): OpenAPISpec["paths"] {
           ),
         ],
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("AnalyticsCrossBreakdownResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -1777,7 +2283,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         tags: ["Events"],
         parameters: [...timeParams(), filterParam()],
         responses: {
-          "200": ok("GenericObjectResponse"),
+          "200": ok("EventsSummaryResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -2215,6 +2721,481 @@ function buildPaths(): OpenAPISpec["paths"] {
   };
 }
 
+function responseExampleFor(schemaName: string | null, operationId: string) {
+  const examples: Record<string, unknown> = {
+    HealthResponse: { status: "healthy", timestamp: sampleGeneratedAt },
+    RootDiscoveryResponse: success({
+      version: "1.0.0",
+      service: "InsightFlare Analytics API",
+      links: {
+        self: "/api/v1",
+        openapi: "/.well-known/openapi.json",
+        skills: "/.well-known/skills.json",
+        token: "/api/v1/token",
+        capabilities: "/api/v1/capabilities",
+        sites: "/api/v1/sites",
+      },
+    }),
+    TokenResponse: success({
+      id: sampleTokenId,
+      name: "Production API key",
+      status: "active",
+      createdAt: "2026-01-01T00:00:00Z",
+      expiresAt: null,
+      lastUsedAt: sampleGeneratedAt,
+      team: { id: sampleTeamId, name: "Example Team" },
+      scopes: ["site:read", "site_config:read", "analytics:read"],
+      siteAccess: { mode: "all", siteIds: [] },
+    }),
+    TokenCheckResponse: success({
+      checks: [
+        { scope: "analytics:read", siteId: sampleSiteId, allowed: true },
+      ],
+    }),
+    CapabilitiesResponse: success({
+      apiVersion: "1.0.0",
+      features: {
+        sites: true,
+        tracking: true,
+        privacy: true,
+        sharing: true,
+        analytics: true,
+        events: true,
+        visitors: true,
+        sessions: true,
+        funnels: true,
+        performance: true,
+        realtime: true,
+        exports: false,
+        batch: true,
+      },
+      limits: {
+        batchMaxRequests: 20,
+        defaultTimeRangeDays: 7,
+        maxTimeRangeDays: 365,
+        defaultPageLimit: 100,
+        maxPageLimit: 1000,
+      },
+      links: {
+        token: "/api/v1/token",
+        sites: "/api/v1/sites",
+        batch: "/api/v1/batch",
+      },
+    }),
+    TeamResponse: success({
+      id: sampleTeamId,
+      name: "Example Team",
+      createdAt: "2026-01-01T00:00:00Z",
+      links: {
+        usage: "/api/v1/team/usage",
+        sites: "/api/v1/sites",
+        analyticsOverview: "/api/v1/team/analytics/overview",
+      },
+    }),
+    TeamUsageResponse: success({ sites: 3 }),
+    SiteResponse: success(siteExample),
+    SiteListResponse: list([siteExample]),
+    TrackingSettingsResponse: success({
+      trackPageviews: true,
+      trackQuery: false,
+      trackHash: true,
+      trackCustomEvents: true,
+      trackEngagement: true,
+      trackWebVitals: true,
+      autoTrackOutboundLinks: true,
+      trackingStrength: "smart",
+      allowedDomains: ["example.com"],
+      excludedPaths: ["/admin"],
+    }),
+    TrackingScriptResponse: success({
+      siteId: sampleSiteId,
+      src: "https://insight.ravelloh.com/script.js?siteId=550e8400-e29b-41d4-a716-446655440000",
+      snippet:
+        '<script async src="https://insight.ravelloh.com/script.js?siteId=550e8400-e29b-41d4-a716-446655440000"></script>',
+    }),
+    PrivacySettingsResponse: success({
+      respectDoNotTrack: true,
+      anonymizeIp: true,
+      euMode: false,
+      visitorTokenMode: "daily",
+      dataRetentionDays: 180,
+    }),
+    SharingSettingsResponse: success({
+      publicEnabled: true,
+      publicSlug: "example-blog",
+    }),
+    AnalyticsSchemaResponse: success({
+      metrics: [
+        {
+          key: "views",
+          label: "Views",
+          type: "integer",
+          description: "Total page views.",
+        },
+        {
+          key: "bounceRate",
+          label: "Bounce rate",
+          type: "rate",
+          description: "Single-page session rate as a 0-1 ratio.",
+        },
+      ],
+      dimensions: [
+        { key: "page.path", label: "Page path", type: "string" },
+        { key: "geo.country", label: "Country", type: "string" },
+      ],
+      filters: ["page.path", "geo.country"],
+      operators: ["eq", "in", "startsWith"],
+      intervals: ["hour", "day", "week"],
+      presets: ["last_7_days", "last_30_days"],
+      timeRange: {
+        earliestAvailableAt: "2026-01-01T00:00:00Z",
+        latestAvailableAt: sampleGeneratedAt,
+      },
+      links: {
+        overview: `/api/v1/sites/${sampleSiteId}/analytics/overview`,
+        timeseries: `/api/v1/sites/${sampleSiteId}/analytics/timeseries`,
+      },
+    }),
+    AnalyticsOverviewResponse: success(overviewMetricsExample, {
+      timeRange: sampleTimeRange,
+    }),
+    AnalyticsTimeseriesResponse: list(
+      [
+        {
+          start: "2026-06-26T00:00:00Z",
+          end: "2026-06-27T00:00:00Z",
+          views: 420,
+          sessions: 260,
+          visitors: 210,
+          events: 38,
+        },
+      ],
+      { timeRange: sampleTimeRange, interval: "day" },
+    ),
+    AnalyticsBreakdownResponse: list(
+      [
+        { key: "__direct__", label: "Direct", views: 5200, sessions: 3200 },
+        { key: "__unknown__", label: "Unknown", views: 120, sessions: 88 },
+      ],
+      { timeRange: sampleTimeRange },
+    ),
+    AnalyticsCrossBreakdownResponse: {
+      data: [
+        {
+          primaryKey: "US",
+          primaryLabel: "United States",
+          values: [
+            { secondaryKey: "Chrome", secondaryLabel: "Chrome", value: 4200 },
+          ],
+        },
+      ],
+      meta: meta({
+        timeRange: sampleTimeRange,
+        primary: "geo.country",
+        secondary: "client.browser",
+        metric: "views",
+      }),
+    },
+    AnalyticsCompareResponse: success({
+      current: overviewMetricsExample,
+      previous: { ...overviewMetricsExample, views: 11000, sessions: 7600 },
+      change: { views: 0.136, sessions: 0.092 },
+    }),
+    AnalyticsExploreResponse: success(
+      {
+        rows: [{ "page.path": "/pricing", "geo.country": "US", views: 850 }],
+        metrics: ["views"],
+        dimensions: ["page.path", "geo.country"],
+        filters: [{ field: "page.path", op: "startsWith", value: "/pricing" }],
+      },
+      { timeRange: sampleTimeRange },
+    ),
+    RetentionCohortsResponse: success({
+      interval: "day",
+      cohorts: [
+        {
+          start: "2026-06-01T00:00:00Z",
+          size: 1000,
+          periods: [
+            { index: 0, visitors: 1000, rate: 1 },
+            { index: 1, visitors: 340, rate: 0.34 },
+          ],
+        },
+      ],
+    }),
+    EventsSummaryResponse: success({
+      events: 450,
+      eventTypes: 8,
+      sessions: 210,
+      visitors: 190,
+      avgEventsPerSession: 2.14,
+    }),
+    EventListResponse: paginated([eventExample]),
+    EventResponse: success(eventExample),
+    VisitorListResponse: paginated([visitorExample]),
+    VisitorResponse: success(visitorExample),
+    SessionListResponse: paginated([sessionExample]),
+    SessionResponse: success(sessionExample),
+    FunnelListResponse: list([funnelExample]),
+    FunnelResponse: success(funnelExample),
+    FunnelAnalysisResponse: success(funnelAnalysisExample, {
+      timeRange: sampleTimeRange,
+    }),
+    SavedFunnelAnalysisResponse: success(
+      { funnel: funnelExample, analysis: funnelAnalysisExample },
+      { timeRange: sampleTimeRange },
+    ),
+    PerformanceSummaryResponse: success({
+      ttfb: 120,
+      fcp: 820,
+      lcp: 1800,
+      cls: 0.04,
+      inp: 140,
+    }),
+    PerformanceTimeseriesResponse: list(
+      [
+        {
+          start: "2026-06-26T00:00:00Z",
+          end: "2026-06-27T00:00:00Z",
+          ttfb: 120,
+          fcp: 820,
+          lcp: 1800,
+          cls: 0.04,
+          inp: 140,
+        },
+      ],
+      { timeRange: sampleTimeRange, interval: "day" },
+    ),
+    PerformanceBreakdownResponse: list([
+      { key: "/pricing", label: "/pricing", lcp: 1800, cls: 0.04 },
+    ]),
+    ActiveVisitorsResponse: success({ activeVisitors: 12 }),
+    RealtimeEventListResponse: list([eventExample]),
+    RealtimeSessionListResponse: list([sessionExample]),
+    RealtimeSnapshotResponse: success({
+      activeVisitors: 12,
+      events: [eventExample],
+      sessions: [sessionExample],
+    }),
+    BatchResponse: success({
+      responses: [
+        { id: "overview", status: 200, body: success(overviewMetricsExample) },
+        { id: "countries", status: 200, body: list([]) },
+      ],
+    }),
+  };
+
+  return {
+    summary: operationId,
+    value:
+      (schemaName && examples[schemaName]) ||
+      success({ message: "Successful response" }),
+  };
+}
+
+function requestExamplesFor(schemaName: string | null) {
+  const examples: Record<string, Record<string, unknown>> = {
+    TokenCheckRequest: {
+      default: {
+        summary: "Check analytics permission",
+        value: {
+          checks: [{ scope: "analytics:read", siteId: sampleSiteId }],
+        },
+      },
+    },
+    SiteCreateInput: {
+      default: {
+        summary: "Create a site",
+        value: {
+          name: "Example Blog",
+          domain: "example.com",
+          sharing: { publicEnabled: true, publicSlug: "example-blog" },
+        },
+      },
+    },
+    SiteUpdateInput: {
+      default: {
+        summary: "Update a site",
+        value: {
+          name: "Example Blog",
+          sharing: { publicEnabled: false, publicSlug: null },
+        },
+      },
+    },
+    TrackingSettings: {
+      default: {
+        summary: "Update tracking settings",
+        value: {
+          trackQuery: false,
+          trackHash: true,
+          trackWebVitals: true,
+          trackingStrength: "smart",
+          allowedDomains: ["example.com"],
+          excludedPaths: ["/admin"],
+        },
+      },
+    },
+    PrivacySettings: {
+      default: {
+        summary: "Update privacy settings",
+        value: { respectDoNotTrack: true, euMode: false },
+      },
+    },
+    SharingSettings: {
+      default: {
+        summary: "Update sharing settings",
+        value: { publicEnabled: true, publicSlug: "example-blog" },
+      },
+    },
+    AnalyticsExploreRequest: {
+      default: {
+        summary: "Explore pages by country",
+        value: {
+          timeRange: sampleTimeRange,
+          metrics: ["views"],
+          dimensions: ["page.path", "geo.country"],
+          filters: [
+            { field: "page.path", op: "startsWith", value: "/pricing" },
+            { field: "geo.country", op: "in", value: ["US", "CA"] },
+          ],
+          limit: 100,
+        },
+      },
+    },
+    EventSearchRequest: {
+      default: {
+        summary: "Search signup events",
+        value: {
+          timeRange: sampleTimeRange,
+          eventName: "signup",
+          payloadFilters: [{ path: "plan", op: "eq", value: "pro" }],
+          filters: [{ field: "page.path", op: "startsWith", value: "/signup" }],
+          limit: 100,
+        },
+      },
+    },
+    FunnelCreateInput: {
+      default: {
+        summary: "Create signup funnel",
+        value: {
+          name: "Signup funnel",
+          description: "Pricing page to signup conversion.",
+          steps: funnelExample.steps,
+        },
+      },
+    },
+    FunnelUpdateInput: {
+      default: {
+        summary: "Update signup funnel",
+        value: {
+          name: "Updated signup funnel",
+          steps: funnelExample.steps,
+        },
+      },
+    },
+    FunnelAnalysisRequest: {
+      default: {
+        summary: "Analyze an ad-hoc funnel",
+        value: {
+          timeRange: sampleTimeRange,
+          steps: funnelExample.steps,
+          filters: [{ field: "geo.country", op: "in", value: ["US", "CA"] }],
+        },
+      },
+    },
+    BatchRequest: {
+      default: {
+        summary: "Batch overview and country breakdown",
+        value: {
+          requests: [
+            {
+              id: "overview",
+              method: "GET",
+              path: `/api/v1/sites/${sampleSiteId}/analytics/overview`,
+              query: { preset: "last_30_days" },
+            },
+            {
+              id: "countries",
+              method: "GET",
+              path: `/api/v1/sites/${sampleSiteId}/analytics/breakdowns/geo.country`,
+              query: { preset: "last_30_days", metrics: "views,sessions" },
+            },
+          ],
+        },
+      },
+    },
+    CollectPayload: {
+      pageview: {
+        summary: "Pageview payload",
+        value: {
+          siteId: sampleSiteId,
+          type: "pageview",
+          timestamp: sampleGeneratedAt,
+          anonymousId: "anon_abc123",
+          sessionId: "sess_abc123",
+          page: {
+            url: "https://example.com/posts/hello",
+            path: "/posts/hello",
+            title: "Hello",
+            referrer: "https://google.com",
+            hostname: "example.com",
+          },
+          client: {
+            language: "zh-CN",
+            screen: { width: 1920, height: 1080 },
+            viewport: { width: 1280, height: 720 },
+          },
+        },
+      },
+      event: {
+        summary: "Custom event payload",
+        value: {
+          siteId: sampleSiteId,
+          type: "event",
+          timestamp: "2026-06-26T12:01:00Z",
+          anonymousId: "anon_abc123",
+          sessionId: "sess_abc123",
+          page: {
+            url: "https://example.com/signup",
+            path: "/signup",
+            title: "Signup",
+          },
+          event: {
+            name: "signup",
+            data: { plan: "pro", source: "pricing_page" },
+          },
+        },
+      },
+    },
+  };
+  return schemaName ? examples[schemaName] : undefined;
+}
+
+function enrichSpecWithExamples(spec: OpenAPISpec) {
+  for (const pathItem of Object.values(spec.paths)) {
+    for (const method of ["get", "post", "patch", "delete"] as const) {
+      const operation = pathItem[method];
+      if (!operation) continue;
+      const bodyContent = jsonContent(operation.requestBody);
+      if (bodyContent?.schema && !bodyContent.examples) {
+        const examples = requestExamplesFor(schemaRefName(bodyContent.schema));
+        if (examples) bodyContent.examples = examples;
+      }
+      for (const [status, responseObject] of Object.entries(
+        operation.responses,
+      )) {
+        const content = jsonContent(responseObject);
+        if (!content?.schema || content.examples || content.example) continue;
+        if (!["200", "201"].includes(status)) continue;
+        const schemaName = schemaRefName(content.schema);
+        content.examples = {
+          default: responseExampleFor(schemaName, operation.operationId),
+        };
+      }
+    }
+  }
+}
+
 function buildSpec(): OpenAPISpec {
   const errorContent = {
     content: {
@@ -2340,6 +3321,7 @@ function buildSpec(): OpenAPISpec {
 
 function main() {
   const spec = buildSpec();
+  enrichSpecWithExamples(spec);
   const root = resolve(import.meta.dirname, "..");
   const yamlPath = resolve(root, "docs", "openapi.yaml");
   const jsonPath = resolve(root, "docs", "openapi.json");

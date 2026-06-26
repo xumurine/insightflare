@@ -71,6 +71,19 @@ function responseSchemas(operation) {
   return schemas;
 }
 
+function jsonContent(container) {
+  if (!container || typeof container !== "object") return undefined;
+  return container.content?.["application/json"];
+}
+
+function hasExample(content) {
+  return Boolean(
+    content &&
+      (Object.prototype.hasOwnProperty.call(content, "example") ||
+        (content.examples && Object.keys(content.examples).length > 0)),
+  );
+}
+
 function schemaContainsPagination(schema, seen = new Set()) {
   if (!schema || typeof schema !== "object") return false;
   if (schema.$ref) {
@@ -156,6 +169,34 @@ for (const [path, pathItem] of Object.entries(openapi.paths ?? {})) {
     if (refName(bodySchema) === "GenericObjectResponse") {
       issues.push(`${key} requestBody must not use GenericObjectResponse`);
     }
+
+    if (
+      ["post", "patch"].includes(method) &&
+      operation.requestBody &&
+      !hasExample(jsonContent(operation.requestBody))
+    ) {
+      issues.push(`${key} requestBody must include at least one example`);
+    }
+
+    const successResponse = operation.responses?.["200"] ?? operation.responses?.["201"];
+    const successContent = jsonContent(dereference(successResponse));
+    if (
+      method === "get" &&
+      path.startsWith("/api/v1") &&
+      successContent?.schema &&
+      !hasExample(successContent)
+    ) {
+      issues.push(`${key} success response must include an example`);
+    }
+
+    const successSchemaName = refName(successContent?.schema);
+    if (
+      path.startsWith("/api/v1") &&
+      ["200", "201"].some((status) => operation.responses?.[status]) &&
+      successSchemaName === "GenericObjectResponse"
+    ) {
+      issues.push(`${key} /api/v1 success response must not use GenericObjectResponse`);
+    }
   }
 }
 
@@ -182,6 +223,7 @@ const publicContract = JSON.stringify({
 });
 for (const forbidden of [
   "queryName",
+  '"ok"',
   "Unix milliseconds",
   "Unix ms",
   "pageSize",
@@ -191,6 +233,26 @@ for (const forbidden of [
   if (publicContract.includes(forbidden)) {
     issues.push(`Public contract contains forbidden text: ${forbidden}`);
   }
+}
+
+const collect = openapi.paths?.["/collect"]?.post;
+if (collect?.responses?.["429"]) {
+  issues.push("/collect must not declare a 429 response");
+}
+const collectBodyName = refName(
+  collect?.requestBody?.content?.["application/json"]?.schema,
+);
+if (collectBodyName === "GenericObjectResponse") {
+  issues.push("/collect requestBody must not use GenericObjectResponse");
+}
+const collectPayload = openapi.components?.schemas?.CollectPayload;
+if (
+  !collectPayload ||
+  collectPayload.additionalProperties === true ||
+  !collectPayload.properties?.siteId ||
+  !collectPayload.properties?.type
+) {
+  issues.push("CollectPayload must define explicit siteId/type properties");
 }
 
 const openapiOperations = operations.map(({ method, path }) => ({

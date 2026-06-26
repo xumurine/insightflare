@@ -4,6 +4,37 @@ import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
 
+type JsonContent = {
+  schema?: { $ref?: string };
+  example?: unknown;
+  examples?: Record<string, unknown>;
+};
+
+type OperationObject = {
+  operationId?: string;
+  requestBody?: { content?: { "application/json"?: JsonContent } };
+  responses?: Record<
+    string,
+    { content?: { "application/json"?: JsonContent } }
+  >;
+  parameters?: unknown[];
+};
+
+type OpenApiSpec = {
+  paths: Record<string, Record<string, OperationObject>>;
+  components: { schemas: Record<string, JsonSchemaObject> };
+};
+
+type JsonSchemaObject = {
+  type?: string | string[];
+  format?: string;
+  required?: string[];
+  properties?: Record<string, JsonSchemaObject>;
+  items?: JsonSchemaObject;
+  $ref?: string;
+  additionalProperties?: boolean | JsonSchemaObject;
+};
+
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(resolve(root, path), "utf8")) as T;
 }
@@ -30,16 +61,7 @@ function pathMatchesTemplate(template: string, path: string): boolean {
 
 describe("api v1 public docs", () => {
   it("generates an OpenAPI contract without deprecated public API shapes", () => {
-    const spec = readJson<{
-      paths: Record<
-        string,
-        Record<
-          string,
-          { operationId?: string; responses?: Record<string, unknown> }
-        >
-      >;
-      components: { schemas: Record<string, unknown> };
-    }>("docs/openapi.json");
+    const spec = readJson<OpenApiSpec>("docs/openapi.json");
     const raw = JSON.stringify(spec);
 
     expect(raw).not.toContain("queryName");
@@ -114,10 +136,7 @@ describe("api v1 public docs", () => {
   });
 
   it("keeps OpenAPI request bodies and key responses concrete", () => {
-    const spec = readJson<{
-      paths: Record<string, Record<string, any>>;
-      components: { schemas: Record<string, unknown> };
-    }>("docs/openapi.json");
+    const spec = readJson<OpenApiSpec>("docs/openapi.json");
 
     const bodySchema = (method: string, path: string) =>
       spec.paths[path]?.[method]?.requestBody?.content?.["application/json"]
@@ -188,6 +207,102 @@ describe("api v1 public docs", () => {
     ).toContain("Capabilities");
     expect(JSON.stringify(spec.components.schemas.TimeRangeInput)).toContain(
       "last 7 days",
+    );
+  });
+
+  it("documents collect payloads with concrete schemas and examples", () => {
+    const spec = readJson<OpenApiSpec>("docs/openapi.json");
+    const collect = spec.paths["/collect"]?.post;
+    const collectPayload = spec.components.schemas.CollectPayload;
+
+    expect(collect?.responses).toBeDefined();
+    expect(Object.keys(collect?.responses ?? {}).sort()).toEqual([
+      "204",
+      "400",
+      "413",
+    ]);
+    expect(collect?.responses?.["429"]).toBeUndefined();
+    expect(
+      collect?.requestBody?.content?.["application/json"]?.schema?.$ref,
+    ).toBe("#/components/schemas/CollectPayload");
+
+    expect(collectPayload.required).toEqual(["siteId", "type"]);
+    expect(collectPayload.additionalProperties).toBe(false);
+    expect(collectPayload.properties).toEqual(
+      expect.objectContaining({
+        siteId: expect.objectContaining({ format: "uuid" }),
+        type: expect.objectContaining({
+          enum: ["pageview", "event", "engagement", "performance"],
+        }),
+        timestamp: expect.objectContaining({ format: "date-time" }),
+        anonymousId: expect.objectContaining({ maxLength: 120 }),
+        sessionId: expect.objectContaining({ maxLength: 120 }),
+        page: { $ref: "#/components/schemas/CollectPage" },
+        client: { $ref: "#/components/schemas/CollectClient" },
+        event: { $ref: "#/components/schemas/CollectEvent" },
+        engagement: { $ref: "#/components/schemas/CollectEngagement" },
+        performance: { $ref: "#/components/schemas/CollectPerformance" },
+      }),
+    );
+    expect(
+      spec.components.schemas.CollectEvent.properties?.data
+        ?.additionalProperties,
+    ).toBe(true);
+
+    const examples =
+      collect?.requestBody?.content?.["application/json"]?.examples ?? {};
+    expect(Object.keys(examples).sort()).toEqual(["event", "pageview"]);
+    const rawExamples = JSON.stringify(examples);
+    expect(rawExamples).not.toContain('"ok"');
+    expect(/\b\d{13}\b/.test(rawExamples)).toBe(false);
+  });
+
+  it("adds examples for core responses and mutating request bodies", () => {
+    const spec = readJson<OpenApiSpec>("docs/openapi.json");
+    const methods = ["get", "post", "patch", "delete", "put"];
+
+    for (const [path, item] of Object.entries(spec.paths)) {
+      for (const method of methods) {
+        const operation = item[method];
+        if (!operation) continue;
+
+        if (
+          ["post", "patch"].includes(method) &&
+          operation.requestBody?.content?.["application/json"]
+        ) {
+          const content = operation.requestBody.content["application/json"];
+          expect(
+            content.example ?? Object.keys(content.examples ?? {}).length,
+            `${method.toUpperCase()} ${path} request example`,
+          ).toBeTruthy();
+        }
+
+        if (method === "get" && path.startsWith("/api/v1")) {
+          const success =
+            operation.responses?.["200"]?.content?.["application/json"];
+          expect(
+            success?.example ?? Object.keys(success?.examples ?? {}).length,
+            `GET ${path} response example`,
+          ).toBeTruthy();
+        }
+      }
+    }
+  });
+
+  it("uses concrete schemas for cross-breakdowns and events summary", () => {
+    const spec = readJson<OpenApiSpec>("docs/openapi.json");
+    const responseSchema = (path: string) =>
+      spec.paths[path]?.get?.responses?.["200"]?.content?.["application/json"]
+        ?.schema?.$ref;
+
+    expect(
+      responseSchema("/api/v1/sites/{siteId}/analytics/cross-breakdowns"),
+    ).toBe("#/components/schemas/AnalyticsCrossBreakdownResponse");
+    expect(responseSchema("/api/v1/sites/{siteId}/events/summary")).toBe(
+      "#/components/schemas/EventsSummaryResponse",
+    );
+    expect(JSON.stringify(spec.paths)).not.toContain(
+      "#/components/schemas/GenericObjectResponse",
     );
   });
 

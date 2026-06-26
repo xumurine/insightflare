@@ -100,7 +100,16 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getHealth",
+                    "value": {
+                      "status": "healthy",
+                      "timestamp": "2026-06-26T12:00:00Z"
+                    }
+                  }
                 }
               }
             }
@@ -127,6 +136,58 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CollectPayload"
+              },
+              "examples": {
+                "pageview": {
+                  "summary": "Pageview payload",
+                  "value": {
+                    "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                    "type": "pageview",
+                    "timestamp": "2026-06-26T12:00:00Z",
+                    "anonymousId": "anon_abc123",
+                    "sessionId": "sess_abc123",
+                    "page": {
+                      "url": "https://example.com/posts/hello",
+                      "path": "/posts/hello",
+                      "title": "Hello",
+                      "referrer": "https://google.com",
+                      "hostname": "example.com"
+                    },
+                    "client": {
+                      "language": "zh-CN",
+                      "screen": {
+                        "width": 1920,
+                        "height": 1080
+                      },
+                      "viewport": {
+                        "width": 1280,
+                        "height": 720
+                      }
+                    }
+                  }
+                },
+                "event": {
+                  "summary": "Custom event payload",
+                  "value": {
+                    "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                    "type": "event",
+                    "timestamp": "2026-06-26T12:01:00Z",
+                    "anonymousId": "anon_abc123",
+                    "sessionId": "sess_abc123",
+                    "page": {
+                      "url": "https://example.com/signup",
+                      "path": "/signup",
+                      "title": "Signup"
+                    },
+                    "event": {
+                      "name": "signup",
+                      "data": {
+                        "plan": "pro",
+                        "source": "pricing_page"
+                      }
+                    }
+                  }
+                }
               }
             }
           }
@@ -158,6 +219,29 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RootDiscoveryResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getApiRoot",
+                    "value": {
+                      "data": {
+                        "version": "1.0.0",
+                        "service": "InsightFlare Analytics API",
+                        "links": {
+                          "self": "/api/v1",
+                          "openapi": "/.well-known/openapi.json",
+                          "skills": "/.well-known/skills.json",
+                          "token": "/api/v1/token",
+                          "capabilities": "/api/v1/capabilities",
+                          "sites": "/api/v1/sites"
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -184,6 +268,38 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TokenResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getToken",
+                    "value": {
+                      "data": {
+                        "id": "550e8400-e29b-41d4-a716-446655440002",
+                        "name": "Production API key",
+                        "status": "active",
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "expiresAt": null,
+                        "lastUsedAt": "2026-06-26T12:00:00Z",
+                        "team": {
+                          "id": "550e8400-e29b-41d4-a716-446655440001",
+                          "name": "Example Team"
+                        },
+                        "scopes": [
+                          "site:read",
+                          "site_config:read",
+                          "analytics:read"
+                        ],
+                        "siteAccess": {
+                          "mode": "all",
+                          "siteIds": []
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -206,6 +322,19 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/TokenCheckRequest"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Check analytics permission",
+                  "value": {
+                    "checks": [
+                      {
+                        "scope": "analytics:read",
+                        "siteId": "550e8400-e29b-41d4-a716-446655440000"
+                      }
+                    ]
+                  }
+                }
               }
             }
           }
@@ -217,6 +346,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TokenCheckResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "checkToken",
+                    "value": {
+                      "data": {
+                        "checks": [
+                          {
+                            "scope": "analytics:read",
+                            "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                            "allowed": true
+                          }
+                        ]
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -243,6 +392,47 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CapabilitiesResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getCapabilities",
+                    "value": {
+                      "data": {
+                        "apiVersion": "1.0.0",
+                        "features": {
+                          "sites": true,
+                          "tracking": true,
+                          "privacy": true,
+                          "sharing": true,
+                          "analytics": true,
+                          "events": true,
+                          "visitors": true,
+                          "sessions": true,
+                          "funnels": true,
+                          "performance": true,
+                          "realtime": true,
+                          "exports": false,
+                          "batch": true
+                        },
+                        "limits": {
+                          "batchMaxRequests": 20,
+                          "defaultTimeRangeDays": 7,
+                          "maxTimeRangeDays": 365,
+                          "defaultPageLimit": 100,
+                          "maxPageLimit": 1000
+                        },
+                        "links": {
+                          "token": "/api/v1/token",
+                          "sites": "/api/v1/sites",
+                          "batch": "/api/v1/batch"
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -266,6 +456,27 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TeamResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getTeam",
+                    "value": {
+                      "data": {
+                        "id": "550e8400-e29b-41d4-a716-446655440001",
+                        "name": "Example Team",
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "links": {
+                          "usage": "/api/v1/team/usage",
+                          "sites": "/api/v1/sites",
+                          "analyticsOverview": "/api/v1/team/analytics/overview"
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -289,6 +500,20 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TeamUsageResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getTeamUsage",
+                    "value": {
+                      "data": {
+                        "sites": 3
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -383,6 +608,32 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalyticsOverviewResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getTeamAnalyticsOverview",
+                    "value": {
+                      "data": {
+                        "views": 12500,
+                        "sessions": 8300,
+                        "visitors": 6100,
+                        "bounces": 3200,
+                        "bounceRate": 0.386,
+                        "avgDurationMs": 506000,
+                        "viewsPerSession": 1.51,
+                        "approximateVisitors": false
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z",
+                        "timeRange": {
+                          "from": "2026-05-27T00:00:00Z",
+                          "to": "2026-06-26T00:00:00Z",
+                          "timeZone": "Asia/Shanghai"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -493,6 +744,33 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalyticsTimeseriesResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getTeamAnalyticsTimeseries",
+                    "value": {
+                      "data": [
+                        {
+                          "start": "2026-06-26T00:00:00Z",
+                          "end": "2026-06-27T00:00:00Z",
+                          "views": 420,
+                          "sessions": 260,
+                          "visitors": 210,
+                          "events": 38
+                        }
+                      ],
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z",
+                        "timeRange": {
+                          "from": "2026-05-27T00:00:00Z",
+                          "to": "2026-06-26T00:00:00Z",
+                          "timeZone": "Asia/Shanghai"
+                        },
+                        "interval": "day"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -583,6 +861,36 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalyticsBreakdownResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getTeamAnalyticsSites",
+                    "value": {
+                      "data": [
+                        {
+                          "key": "__direct__",
+                          "label": "Direct",
+                          "views": 5200,
+                          "sessions": 3200
+                        },
+                        {
+                          "key": "__unknown__",
+                          "label": "Unknown",
+                          "views": 120,
+                          "sessions": 88
+                        }
+                      ],
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z",
+                        "timeRange": {
+                          "from": "2026-05-27T00:00:00Z",
+                          "to": "2026-06-26T00:00:00Z",
+                          "timeZone": "Asia/Shanghai"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -698,6 +1006,36 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalyticsBreakdownResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getTeamAnalyticsBreakdown",
+                    "value": {
+                      "data": [
+                        {
+                          "key": "__direct__",
+                          "label": "Direct",
+                          "views": 5200,
+                          "sessions": 3200
+                        },
+                        {
+                          "key": "__unknown__",
+                          "label": "Unknown",
+                          "views": 120,
+                          "sessions": 88
+                        }
+                      ],
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z",
+                        "timeRange": {
+                          "from": "2026-05-27T00:00:00Z",
+                          "to": "2026-06-26T00:00:00Z",
+                          "timeZone": "Asia/Shanghai"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -727,6 +1065,42 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SiteListResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "listSites",
+                    "value": {
+                      "data": [
+                        {
+                          "id": "550e8400-e29b-41d4-a716-446655440000",
+                          "name": "Example Blog",
+                          "domain": "example.com",
+                          "createdAt": "2026-01-01T00:00:00Z",
+                          "updatedAt": "2026-06-26T12:00:00Z",
+                          "sharing": {
+                            "publicEnabled": true,
+                            "publicSlug": "example-blog"
+                          },
+                          "links": {
+                            "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000",
+                            "tracking": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/tracking",
+                            "privacy": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/privacy",
+                            "sharing": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sharing",
+                            "analyticsSchema": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/analytics/schema",
+                            "analyticsOverview": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/analytics/overview",
+                            "events": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/events",
+                            "visitors": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/visitors",
+                            "sessions": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sessions",
+                            "realtimeSnapshot": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/realtime/snapshot"
+                          }
+                        }
+                      ],
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -761,6 +1135,19 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/SiteCreateInput"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Create a site",
+                  "value": {
+                    "name": "Example Blog",
+                    "domain": "example.com",
+                    "sharing": {
+                      "publicEnabled": true,
+                      "publicSlug": "example-blog"
+                    }
+                  }
+                }
               }
             }
           }
@@ -772,6 +1159,40 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SiteResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "createSite",
+                    "value": {
+                      "data": {
+                        "id": "550e8400-e29b-41d4-a716-446655440000",
+                        "name": "Example Blog",
+                        "domain": "example.com",
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "updatedAt": "2026-06-26T12:00:00Z",
+                        "sharing": {
+                          "publicEnabled": true,
+                          "publicSlug": "example-blog"
+                        },
+                        "links": {
+                          "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000",
+                          "tracking": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/tracking",
+                          "privacy": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/privacy",
+                          "sharing": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sharing",
+                          "analyticsSchema": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/analytics/schema",
+                          "analyticsOverview": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/analytics/overview",
+                          "events": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/events",
+                          "visitors": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/visitors",
+                          "sessions": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sessions",
+                          "realtimeSnapshot": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/realtime/snapshot"
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -809,6 +1230,40 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SiteResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getSite",
+                    "value": {
+                      "data": {
+                        "id": "550e8400-e29b-41d4-a716-446655440000",
+                        "name": "Example Blog",
+                        "domain": "example.com",
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "updatedAt": "2026-06-26T12:00:00Z",
+                        "sharing": {
+                          "publicEnabled": true,
+                          "publicSlug": "example-blog"
+                        },
+                        "links": {
+                          "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000",
+                          "tracking": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/tracking",
+                          "privacy": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/privacy",
+                          "sharing": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sharing",
+                          "analyticsSchema": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/analytics/schema",
+                          "analyticsOverview": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/analytics/overview",
+                          "events": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/events",
+                          "visitors": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/visitors",
+                          "sessions": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sessions",
+                          "realtimeSnapshot": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/realtime/snapshot"
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -835,6 +1290,18 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/SiteUpdateInput"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Update a site",
+                  "value": {
+                    "name": "Example Blog",
+                    "sharing": {
+                      "publicEnabled": false,
+                      "publicSlug": null
+                    }
+                  }
+                }
               }
             }
           }
@@ -846,6 +1313,40 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SiteResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "updateSite",
+                    "value": {
+                      "data": {
+                        "id": "550e8400-e29b-41d4-a716-446655440000",
+                        "name": "Example Blog",
+                        "domain": "example.com",
+                        "createdAt": "2026-01-01T00:00:00Z",
+                        "updatedAt": "2026-06-26T12:00:00Z",
+                        "sharing": {
+                          "publicEnabled": true,
+                          "publicSlug": "example-blog"
+                        },
+                        "links": {
+                          "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000",
+                          "tracking": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/tracking",
+                          "privacy": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/privacy",
+                          "sharing": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sharing",
+                          "analyticsSchema": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/analytics/schema",
+                          "analyticsOverview": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/analytics/overview",
+                          "events": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/events",
+                          "visitors": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/visitors",
+                          "sessions": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sessions",
+                          "realtimeSnapshot": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/realtime/snapshot"
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -906,6 +1407,29 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TrackingSettingsResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getTrackingSettings",
+                    "value": {
+                      "data": {
+                        "trackPageviews": true,
+                        "trackQuery": false,
+                        "trackHash": true,
+                        "trackCustomEvents": true,
+                        "trackEngagement": true,
+                        "trackWebVitals": true,
+                        "autoTrackOutboundLinks": true,
+                        "trackingStrength": "smart",
+                        "allowedDomains": ["example.com"],
+                        "excludedPaths": ["/admin"]
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -932,6 +1456,19 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/TrackingSettings"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Update tracking settings",
+                  "value": {
+                    "trackQuery": false,
+                    "trackHash": true,
+                    "trackWebVitals": true,
+                    "trackingStrength": "smart",
+                    "allowedDomains": ["example.com"],
+                    "excludedPaths": ["/admin"]
+                  }
+                }
               }
             }
           }
@@ -943,6 +1480,29 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TrackingSettingsResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "updateTrackingSettings",
+                    "value": {
+                      "data": {
+                        "trackPageviews": true,
+                        "trackQuery": false,
+                        "trackHash": true,
+                        "trackCustomEvents": true,
+                        "trackEngagement": true,
+                        "trackWebVitals": true,
+                        "autoTrackOutboundLinks": true,
+                        "trackingStrength": "smart",
+                        "allowedDomains": ["example.com"],
+                        "excludedPaths": ["/admin"]
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -980,6 +1540,22 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TrackingScriptResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getTrackingScript",
+                    "value": {
+                      "data": {
+                        "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                        "src": "https://insight.ravelloh.com/script.js?siteId=550e8400-e29b-41d4-a716-446655440000",
+                        "snippet": "<script async src=\"https://insight.ravelloh.com/script.js?siteId=550e8400-e29b-41d4-a716-446655440000\"></script>"
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1014,6 +1590,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PrivacySettingsResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getPrivacySettings",
+                    "value": {
+                      "data": {
+                        "respectDoNotTrack": true,
+                        "anonymizeIp": true,
+                        "euMode": false,
+                        "visitorTokenMode": "daily",
+                        "dataRetentionDays": 180
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1040,6 +1634,15 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PrivacySettings"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Update privacy settings",
+                  "value": {
+                    "respectDoNotTrack": true,
+                    "euMode": false
+                  }
+                }
               }
             }
           }
@@ -1051,6 +1654,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PrivacySettingsResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "updatePrivacySettings",
+                    "value": {
+                      "data": {
+                        "respectDoNotTrack": true,
+                        "anonymizeIp": true,
+                        "euMode": false,
+                        "visitorTokenMode": "daily",
+                        "dataRetentionDays": 180
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1088,6 +1709,21 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SharingSettingsResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getSharingSettings",
+                    "value": {
+                      "data": {
+                        "publicEnabled": true,
+                        "publicSlug": "example-blog"
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1114,6 +1750,15 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/SharingSettings"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Update sharing settings",
+                  "value": {
+                    "publicEnabled": true,
+                    "publicSlug": "example-blog"
+                  }
+                }
               }
             }
           }
@@ -1125,6 +1770,21 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SharingSettingsResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "updateSharingSettings",
+                    "value": {
+                      "data": {
+                        "publicEnabled": true,
+                        "publicSlug": "example-blog"
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1165,6 +1825,57 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalyticsSchemaResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getAnalyticsSchema",
+                    "value": {
+                      "data": {
+                        "metrics": [
+                          {
+                            "key": "views",
+                            "label": "Views",
+                            "type": "integer",
+                            "description": "Total page views."
+                          },
+                          {
+                            "key": "bounceRate",
+                            "label": "Bounce rate",
+                            "type": "rate",
+                            "description": "Single-page session rate as a 0-1 ratio."
+                          }
+                        ],
+                        "dimensions": [
+                          {
+                            "key": "page.path",
+                            "label": "Page path",
+                            "type": "string"
+                          },
+                          {
+                            "key": "geo.country",
+                            "label": "Country",
+                            "type": "string"
+                          }
+                        ],
+                        "filters": ["page.path", "geo.country"],
+                        "operators": ["eq", "in", "startsWith"],
+                        "intervals": ["hour", "day", "week"],
+                        "presets": ["last_7_days", "last_30_days"],
+                        "timeRange": {
+                          "earliestAvailableAt": "2026-01-01T00:00:00Z",
+                          "latestAvailableAt": "2026-06-26T12:00:00Z"
+                        },
+                        "links": {
+                          "overview": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/analytics/overview",
+                          "timeseries": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/analytics/timeseries"
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1270,6 +1981,32 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalyticsOverviewResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getAnalyticsOverview",
+                    "value": {
+                      "data": {
+                        "views": 12500,
+                        "sessions": 8300,
+                        "visitors": 6100,
+                        "bounces": 3200,
+                        "bounceRate": 0.386,
+                        "avgDurationMs": 506000,
+                        "viewsPerSession": 1.51,
+                        "approximateVisitors": false
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z",
+                        "timeRange": {
+                          "from": "2026-05-27T00:00:00Z",
+                          "to": "2026-06-26T00:00:00Z",
+                          "timeZone": "Asia/Shanghai"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1388,6 +2125,33 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalyticsTimeseriesResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getAnalyticsTimeseries",
+                    "value": {
+                      "data": [
+                        {
+                          "start": "2026-06-26T00:00:00Z",
+                          "end": "2026-06-27T00:00:00Z",
+                          "views": 420,
+                          "sessions": 260,
+                          "visitors": 210,
+                          "events": 38
+                        }
+                      ],
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z",
+                        "timeRange": {
+                          "from": "2026-05-27T00:00:00Z",
+                          "to": "2026-06-26T00:00:00Z",
+                          "timeZone": "Asia/Shanghai"
+                        },
+                        "interval": "day"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1510,6 +2274,36 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalyticsBreakdownResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getAnalyticsBreakdown",
+                    "value": {
+                      "data": [
+                        {
+                          "key": "__direct__",
+                          "label": "Direct",
+                          "views": 5200,
+                          "sessions": 3200
+                        },
+                        {
+                          "key": "__unknown__",
+                          "label": "Unknown",
+                          "views": 120,
+                          "sessions": 88
+                        }
+                      ],
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z",
+                        "timeRange": {
+                          "from": "2026-05-27T00:00:00Z",
+                          "to": "2026-06-26T00:00:00Z",
+                          "timeZone": "Asia/Shanghai"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1621,7 +2415,39 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/AnalyticsCrossBreakdownResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getAnalyticsCrossBreakdown",
+                    "value": {
+                      "data": [
+                        {
+                          "primaryKey": "US",
+                          "primaryLabel": "United States",
+                          "values": [
+                            {
+                              "secondaryKey": "Chrome",
+                              "secondaryLabel": "Chrome",
+                              "value": 4200
+                            }
+                          ]
+                        }
+                      ],
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z",
+                        "timeRange": {
+                          "from": "2026-05-27T00:00:00Z",
+                          "to": "2026-06-26T00:00:00Z",
+                          "timeZone": "Asia/Shanghai"
+                        },
+                        "primary": "geo.country",
+                        "secondary": "client.browser",
+                        "metric": "views"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1717,6 +2543,43 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalyticsCompareResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "compareAnalytics",
+                    "value": {
+                      "data": {
+                        "current": {
+                          "views": 12500,
+                          "sessions": 8300,
+                          "visitors": 6100,
+                          "bounces": 3200,
+                          "bounceRate": 0.386,
+                          "avgDurationMs": 506000,
+                          "viewsPerSession": 1.51,
+                          "approximateVisitors": false
+                        },
+                        "previous": {
+                          "views": 11000,
+                          "sessions": 7600,
+                          "visitors": 6100,
+                          "bounces": 3200,
+                          "bounceRate": 0.386,
+                          "avgDurationMs": 506000,
+                          "viewsPerSession": 1.51,
+                          "approximateVisitors": false
+                        },
+                        "change": {
+                          "views": 0.136,
+                          "sessions": 0.092
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1753,6 +2616,33 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AnalyticsExploreRequest"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Explore pages by country",
+                  "value": {
+                    "timeRange": {
+                      "from": "2026-05-27T00:00:00Z",
+                      "to": "2026-06-26T00:00:00Z",
+                      "timeZone": "Asia/Shanghai"
+                    },
+                    "metrics": ["views"],
+                    "dimensions": ["page.path", "geo.country"],
+                    "filters": [
+                      {
+                        "field": "page.path",
+                        "op": "startsWith",
+                        "value": "/pricing"
+                      },
+                      {
+                        "field": "geo.country",
+                        "op": "in",
+                        "value": ["US", "CA"]
+                      }
+                    ],
+                    "limit": 100
+                  }
+                }
               }
             }
           }
@@ -1764,6 +2654,40 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalyticsExploreResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "exploreAnalytics",
+                    "value": {
+                      "data": {
+                        "rows": [
+                          {
+                            "page.path": "/pricing",
+                            "geo.country": "US",
+                            "views": 850
+                          }
+                        ],
+                        "metrics": ["views"],
+                        "dimensions": ["page.path", "geo.country"],
+                        "filters": [
+                          {
+                            "field": "page.path",
+                            "op": "startsWith",
+                            "value": "/pricing"
+                          }
+                        ]
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z",
+                        "timeRange": {
+                          "from": "2026-05-27T00:00:00Z",
+                          "to": "2026-06-26T00:00:00Z",
+                          "timeZone": "Asia/Shanghai"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1859,6 +2783,38 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RetentionCohortsResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getRetentionCohorts",
+                    "value": {
+                      "data": {
+                        "interval": "day",
+                        "cohorts": [
+                          {
+                            "start": "2026-06-01T00:00:00Z",
+                            "size": 1000,
+                            "periods": [
+                              {
+                                "index": 0,
+                                "visitors": 1000,
+                                "rate": 1
+                              },
+                              {
+                                "index": 1,
+                                "visitors": 340,
+                                "rate": 0.34
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1944,6 +2900,36 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalyticsBreakdownResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "listEventTypes",
+                    "value": {
+                      "data": [
+                        {
+                          "key": "__direct__",
+                          "label": "Direct",
+                          "views": 5200,
+                          "sessions": 3200
+                        },
+                        {
+                          "key": "__unknown__",
+                          "label": "Unknown",
+                          "views": 120,
+                          "sessions": 88
+                        }
+                      ],
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z",
+                        "timeRange": {
+                          "from": "2026-05-27T00:00:00Z",
+                          "to": "2026-06-26T00:00:00Z",
+                          "timeZone": "Asia/Shanghai"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2032,6 +3018,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EventsSummaryResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getEventType",
+                    "value": {
+                      "data": {
+                        "events": 450,
+                        "eventTypes": 8,
+                        "sessions": 210,
+                        "visitors": 190,
+                        "avgEventsPerSession": 2.14
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2155,6 +3159,35 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EventListResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "listEvents",
+                    "value": {
+                      "data": [
+                        {
+                          "id": "6f5d9b2c-b1d5-4d75-89aa-0b71ec1f9c00",
+                          "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                          "eventName": "signup",
+                          "occurredAt": "2026-06-26T12:00:00Z",
+                          "sessionId": "de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                          "visitorId": "0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                          "data": {
+                            "plan": "pro"
+                          }
+                        }
+                      ],
+                      "pagination": {
+                        "limit": 100,
+                        "nextCursor": "cur_next_abc",
+                        "hasMore": true
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2239,7 +3272,25 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GenericObjectResponse"
+                  "$ref": "#/components/schemas/EventsSummaryResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getEventsSummary",
+                    "value": {
+                      "data": {
+                        "events": 450,
+                        "eventTypes": 8,
+                        "sessions": 210,
+                        "visitors": 190,
+                        "avgEventsPerSession": 2.14
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2344,6 +3395,33 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalyticsTimeseriesResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getEventsTimeseries",
+                    "value": {
+                      "data": [
+                        {
+                          "start": "2026-06-26T00:00:00Z",
+                          "end": "2026-06-27T00:00:00Z",
+                          "views": 420,
+                          "sessions": 260,
+                          "visitors": 210,
+                          "events": 38
+                        }
+                      ],
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z",
+                        "timeRange": {
+                          "from": "2026-05-27T00:00:00Z",
+                          "to": "2026-06-26T00:00:00Z",
+                          "timeZone": "Asia/Shanghai"
+                        },
+                        "interval": "day"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2380,6 +3458,34 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/EventSearchRequest"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Search signup events",
+                  "value": {
+                    "timeRange": {
+                      "from": "2026-05-27T00:00:00Z",
+                      "to": "2026-06-26T00:00:00Z",
+                      "timeZone": "Asia/Shanghai"
+                    },
+                    "eventName": "signup",
+                    "payloadFilters": [
+                      {
+                        "path": "plan",
+                        "op": "eq",
+                        "value": "pro"
+                      }
+                    ],
+                    "filters": [
+                      {
+                        "field": "page.path",
+                        "op": "startsWith",
+                        "value": "/signup"
+                      }
+                    ],
+                    "limit": 100
+                  }
+                }
               }
             }
           }
@@ -2391,6 +3497,35 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EventListResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "searchEvents",
+                    "value": {
+                      "data": [
+                        {
+                          "id": "6f5d9b2c-b1d5-4d75-89aa-0b71ec1f9c00",
+                          "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                          "eventName": "signup",
+                          "occurredAt": "2026-06-26T12:00:00Z",
+                          "sessionId": "de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                          "visitorId": "0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                          "data": {
+                            "plan": "pro"
+                          }
+                        }
+                      ],
+                      "pagination": {
+                        "limit": 100,
+                        "nextCursor": "cur_next_abc",
+                        "hasMore": true
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2431,6 +3566,28 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EventResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getEvent",
+                    "value": {
+                      "data": {
+                        "id": "6f5d9b2c-b1d5-4d75-89aa-0b71ec1f9c00",
+                        "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                        "eventName": "signup",
+                        "occurredAt": "2026-06-26T12:00:00Z",
+                        "sessionId": "de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                        "visitorId": "0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                        "data": {
+                          "plan": "pro"
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2530,6 +3687,36 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalyticsBreakdownResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getEventFieldValues",
+                    "value": {
+                      "data": [
+                        {
+                          "key": "__direct__",
+                          "label": "Direct",
+                          "views": 5200,
+                          "sessions": 3200
+                        },
+                        {
+                          "key": "__unknown__",
+                          "label": "Unknown",
+                          "views": 120,
+                          "sessions": 88
+                        }
+                      ],
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z",
+                        "timeRange": {
+                          "from": "2026-05-27T00:00:00Z",
+                          "to": "2026-06-26T00:00:00Z",
+                          "timeZone": "Asia/Shanghai"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2653,6 +3840,37 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/VisitorListResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "listVisitors",
+                    "value": {
+                      "data": [
+                        {
+                          "visitorId": "0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                          "firstSeenAt": "2026-06-26T11:00:00Z",
+                          "lastSeenAt": "2026-06-26T12:00:00Z",
+                          "views": 4,
+                          "sessions": 1,
+                          "events": 2,
+                          "links": {
+                            "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/visitors/0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                            "sessions": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/visitors/0a1c1f5b-f529-44be-9f29-9b0b358c0001/sessions",
+                            "events": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/visitors/0a1c1f5b-f529-44be-9f29-9b0b358c0001/events"
+                          }
+                        }
+                      ],
+                      "pagination": {
+                        "limit": 100,
+                        "nextCursor": "cur_next_abc",
+                        "hasMore": true
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2693,6 +3911,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/VisitorResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getVisitor",
+                    "value": {
+                      "data": {
+                        "visitorId": "0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                        "firstSeenAt": "2026-06-26T11:00:00Z",
+                        "lastSeenAt": "2026-06-26T12:00:00Z",
+                        "views": 4,
+                        "sessions": 1,
+                        "events": 2,
+                        "links": {
+                          "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/visitors/0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                          "sessions": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/visitors/0a1c1f5b-f529-44be-9f29-9b0b358c0001/sessions",
+                          "events": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/visitors/0a1c1f5b-f529-44be-9f29-9b0b358c0001/events"
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2788,6 +4030,36 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SessionListResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "listVisitorSessions",
+                    "value": {
+                      "data": [
+                        {
+                          "sessionId": "de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                          "visitorId": "0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                          "startedAt": "2026-06-26T11:45:00Z",
+                          "endedAt": null,
+                          "views": 3,
+                          "events": 1,
+                          "links": {
+                            "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sessions/de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                            "events": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sessions/de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001/events"
+                          }
+                        }
+                      ],
+                      "pagination": {
+                        "limit": 100,
+                        "nextCursor": "cur_next_abc",
+                        "hasMore": true
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2886,6 +4158,35 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EventListResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "listVisitorEvents",
+                    "value": {
+                      "data": [
+                        {
+                          "id": "6f5d9b2c-b1d5-4d75-89aa-0b71ec1f9c00",
+                          "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                          "eventName": "signup",
+                          "occurredAt": "2026-06-26T12:00:00Z",
+                          "sessionId": "de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                          "visitorId": "0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                          "data": {
+                            "plan": "pro"
+                          }
+                        }
+                      ],
+                      "pagination": {
+                        "limit": 100,
+                        "nextCursor": "cur_next_abc",
+                        "hasMore": true
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3009,6 +4310,36 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SessionListResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "listSessions",
+                    "value": {
+                      "data": [
+                        {
+                          "sessionId": "de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                          "visitorId": "0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                          "startedAt": "2026-06-26T11:45:00Z",
+                          "endedAt": null,
+                          "views": 3,
+                          "events": 1,
+                          "links": {
+                            "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sessions/de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                            "events": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sessions/de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001/events"
+                          }
+                        }
+                      ],
+                      "pagination": {
+                        "limit": 100,
+                        "nextCursor": "cur_next_abc",
+                        "hasMore": true
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3049,6 +4380,29 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SessionResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getSession",
+                    "value": {
+                      "data": {
+                        "sessionId": "de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                        "visitorId": "0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                        "startedAt": "2026-06-26T11:45:00Z",
+                        "endedAt": null,
+                        "views": 3,
+                        "events": 1,
+                        "links": {
+                          "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sessions/de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                          "events": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sessions/de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001/events"
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3144,6 +4498,35 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EventListResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "listSessionEvents",
+                    "value": {
+                      "data": [
+                        {
+                          "id": "6f5d9b2c-b1d5-4d75-89aa-0b71ec1f9c00",
+                          "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                          "eventName": "signup",
+                          "occurredAt": "2026-06-26T12:00:00Z",
+                          "sessionId": "de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                          "visitorId": "0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                          "data": {
+                            "plan": "pro"
+                          }
+                        }
+                      ],
+                      "pagination": {
+                        "limit": 100,
+                        "nextCursor": "cur_next_abc",
+                        "hasMore": true
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3219,6 +4602,43 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FunnelListResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "listFunnels",
+                    "value": {
+                      "data": [
+                        {
+                          "id": "7c10f7f2-0f8a-4788-b59d-289e69e95000",
+                          "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                          "name": "Signup funnel",
+                          "description": "Pricing page to signup conversion.",
+                          "steps": [
+                            {
+                              "type": "pageview",
+                              "value": "/pricing",
+                              "label": "Pricing"
+                            },
+                            {
+                              "type": "event",
+                              "value": "signup",
+                              "label": "Signup"
+                            }
+                          ],
+                          "createdAt": "2026-06-01T00:00:00Z",
+                          "updatedAt": "2026-06-26T12:00:00Z",
+                          "links": {
+                            "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/funnels/7c10f7f2-0f8a-4788-b59d-289e69e95000",
+                            "analysis": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/funnels/7c10f7f2-0f8a-4788-b59d-289e69e95000/analysis"
+                          }
+                        }
+                      ],
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3259,6 +4679,27 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/FunnelCreateInput"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Create signup funnel",
+                  "value": {
+                    "name": "Signup funnel",
+                    "description": "Pricing page to signup conversion.",
+                    "steps": [
+                      {
+                        "type": "pageview",
+                        "value": "/pricing",
+                        "label": "Pricing"
+                      },
+                      {
+                        "type": "event",
+                        "value": "signup",
+                        "label": "Signup"
+                      }
+                    ]
+                  }
+                }
               }
             }
           }
@@ -3270,6 +4711,41 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FunnelResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "createFunnel",
+                    "value": {
+                      "data": {
+                        "id": "7c10f7f2-0f8a-4788-b59d-289e69e95000",
+                        "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                        "name": "Signup funnel",
+                        "description": "Pricing page to signup conversion.",
+                        "steps": [
+                          {
+                            "type": "pageview",
+                            "value": "/pricing",
+                            "label": "Pricing"
+                          },
+                          {
+                            "type": "event",
+                            "value": "signup",
+                            "label": "Signup"
+                          }
+                        ],
+                        "createdAt": "2026-06-01T00:00:00Z",
+                        "updatedAt": "2026-06-26T12:00:00Z",
+                        "links": {
+                          "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/funnels/7c10f7f2-0f8a-4788-b59d-289e69e95000",
+                          "analysis": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/funnels/7c10f7f2-0f8a-4788-b59d-289e69e95000/analysis"
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3306,6 +4782,37 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/FunnelAnalysisRequest"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Analyze an ad-hoc funnel",
+                  "value": {
+                    "timeRange": {
+                      "from": "2026-05-27T00:00:00Z",
+                      "to": "2026-06-26T00:00:00Z",
+                      "timeZone": "Asia/Shanghai"
+                    },
+                    "steps": [
+                      {
+                        "type": "pageview",
+                        "value": "/pricing",
+                        "label": "Pricing"
+                      },
+                      {
+                        "type": "event",
+                        "value": "signup",
+                        "label": "Signup"
+                      }
+                    ],
+                    "filters": [
+                      {
+                        "field": "geo.country",
+                        "op": "in",
+                        "value": ["US", "CA"]
+                      }
+                    ]
+                  }
+                }
               }
             }
           }
@@ -3317,6 +4824,56 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FunnelAnalysisResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "analyzeFunnel",
+                    "value": {
+                      "data": {
+                        "steps": [
+                          {
+                            "index": 0,
+                            "label": "Pricing",
+                            "type": "pageview",
+                            "sessions": 1000,
+                            "visitors": 920,
+                            "conversionRate": 1,
+                            "stepConversionRate": 1,
+                            "dropOffSessions": 350,
+                            "dropOffRate": 0.35
+                          },
+                          {
+                            "index": 1,
+                            "label": "Signup",
+                            "type": "event",
+                            "sessions": 650,
+                            "visitors": 610,
+                            "conversionRate": 0.65,
+                            "stepConversionRate": 0.65,
+                            "dropOffSessions": 0,
+                            "dropOffRate": 0
+                          }
+                        ],
+                        "summary": {
+                          "totalSessions": 1000,
+                          "convertedSessions": 650,
+                          "totalVisitors": 920,
+                          "convertedVisitors": 610,
+                          "overallConversionRate": 0.65,
+                          "largestDropOffStepIndex": 1
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z",
+                        "timeRange": {
+                          "from": "2026-05-27T00:00:00Z",
+                          "to": "2026-06-26T00:00:00Z",
+                          "timeZone": "Asia/Shanghai"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3357,6 +4914,41 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FunnelResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getFunnel",
+                    "value": {
+                      "data": {
+                        "id": "7c10f7f2-0f8a-4788-b59d-289e69e95000",
+                        "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                        "name": "Signup funnel",
+                        "description": "Pricing page to signup conversion.",
+                        "steps": [
+                          {
+                            "type": "pageview",
+                            "value": "/pricing",
+                            "label": "Pricing"
+                          },
+                          {
+                            "type": "event",
+                            "value": "signup",
+                            "label": "Signup"
+                          }
+                        ],
+                        "createdAt": "2026-06-01T00:00:00Z",
+                        "updatedAt": "2026-06-26T12:00:00Z",
+                        "links": {
+                          "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/funnels/7c10f7f2-0f8a-4788-b59d-289e69e95000",
+                          "analysis": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/funnels/7c10f7f2-0f8a-4788-b59d-289e69e95000/analysis"
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3383,6 +4975,26 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/FunnelUpdateInput"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Update signup funnel",
+                  "value": {
+                    "name": "Updated signup funnel",
+                    "steps": [
+                      {
+                        "type": "pageview",
+                        "value": "/pricing",
+                        "label": "Pricing"
+                      },
+                      {
+                        "type": "event",
+                        "value": "signup",
+                        "label": "Signup"
+                      }
+                    ]
+                  }
+                }
               }
             }
           }
@@ -3394,6 +5006,41 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FunnelResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "updateFunnel",
+                    "value": {
+                      "data": {
+                        "id": "7c10f7f2-0f8a-4788-b59d-289e69e95000",
+                        "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                        "name": "Signup funnel",
+                        "description": "Pricing page to signup conversion.",
+                        "steps": [
+                          {
+                            "type": "pageview",
+                            "value": "/pricing",
+                            "label": "Pricing"
+                          },
+                          {
+                            "type": "event",
+                            "value": "signup",
+                            "label": "Signup"
+                          }
+                        ],
+                        "createdAt": "2026-06-01T00:00:00Z",
+                        "updatedAt": "2026-06-26T12:00:00Z",
+                        "links": {
+                          "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/funnels/7c10f7f2-0f8a-4788-b59d-289e69e95000",
+                          "analysis": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/funnels/7c10f7f2-0f8a-4788-b59d-289e69e95000/analysis"
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3492,6 +5139,82 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SavedFunnelAnalysisResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getFunnelAnalysis",
+                    "value": {
+                      "data": {
+                        "funnel": {
+                          "id": "7c10f7f2-0f8a-4788-b59d-289e69e95000",
+                          "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                          "name": "Signup funnel",
+                          "description": "Pricing page to signup conversion.",
+                          "steps": [
+                            {
+                              "type": "pageview",
+                              "value": "/pricing",
+                              "label": "Pricing"
+                            },
+                            {
+                              "type": "event",
+                              "value": "signup",
+                              "label": "Signup"
+                            }
+                          ],
+                          "createdAt": "2026-06-01T00:00:00Z",
+                          "updatedAt": "2026-06-26T12:00:00Z",
+                          "links": {
+                            "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/funnels/7c10f7f2-0f8a-4788-b59d-289e69e95000",
+                            "analysis": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/funnels/7c10f7f2-0f8a-4788-b59d-289e69e95000/analysis"
+                          }
+                        },
+                        "analysis": {
+                          "steps": [
+                            {
+                              "index": 0,
+                              "label": "Pricing",
+                              "type": "pageview",
+                              "sessions": 1000,
+                              "visitors": 920,
+                              "conversionRate": 1,
+                              "stepConversionRate": 1,
+                              "dropOffSessions": 350,
+                              "dropOffRate": 0.35
+                            },
+                            {
+                              "index": 1,
+                              "label": "Signup",
+                              "type": "event",
+                              "sessions": 650,
+                              "visitors": 610,
+                              "conversionRate": 0.65,
+                              "stepConversionRate": 0.65,
+                              "dropOffSessions": 0,
+                              "dropOffRate": 0
+                            }
+                          ],
+                          "summary": {
+                            "totalSessions": 1000,
+                            "convertedSessions": 650,
+                            "totalVisitors": 920,
+                            "convertedVisitors": 610,
+                            "overallConversionRate": 0.65,
+                            "largestDropOffStepIndex": 1
+                          }
+                        }
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z",
+                        "timeRange": {
+                          "from": "2026-05-27T00:00:00Z",
+                          "to": "2026-06-26T00:00:00Z",
+                          "timeZone": "Asia/Shanghai"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3577,6 +5300,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PerformanceSummaryResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getPerformanceSummary",
+                    "value": {
+                      "data": {
+                        "ttfb": 120,
+                        "fcp": 820,
+                        "lcp": 1800,
+                        "cls": 0.04,
+                        "inp": 140
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3672,6 +5413,34 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PerformanceTimeseriesResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getPerformanceTimeseries",
+                    "value": {
+                      "data": [
+                        {
+                          "start": "2026-06-26T00:00:00Z",
+                          "end": "2026-06-27T00:00:00Z",
+                          "ttfb": 120,
+                          "fcp": 820,
+                          "lcp": 1800,
+                          "cls": 0.04,
+                          "inp": 140
+                        }
+                      ],
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z",
+                        "timeRange": {
+                          "from": "2026-05-27T00:00:00Z",
+                          "to": "2026-06-26T00:00:00Z",
+                          "timeZone": "Asia/Shanghai"
+                        },
+                        "interval": "day"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3769,6 +5538,25 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PerformanceBreakdownResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getPerformanceBreakdown",
+                    "value": {
+                      "data": [
+                        {
+                          "key": "/pricing",
+                          "label": "/pricing",
+                          "lcp": 1800,
+                          "cls": 0.04
+                        }
+                      ],
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3806,6 +5594,20 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ActiveVisitorsResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getRealtimeActiveVisitors",
+                    "value": {
+                      "data": {
+                        "activeVisitors": 12
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3852,6 +5654,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RealtimeEventListResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getRealtimeEvents",
+                    "value": {
+                      "data": [
+                        {
+                          "id": "6f5d9b2c-b1d5-4d75-89aa-0b71ec1f9c00",
+                          "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                          "eventName": "signup",
+                          "occurredAt": "2026-06-26T12:00:00Z",
+                          "sessionId": "de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                          "visitorId": "0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                          "data": {
+                            "plan": "pro"
+                          }
+                        }
+                      ],
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3901,6 +5727,31 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RealtimeSessionListResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getRealtimeSessions",
+                    "value": {
+                      "data": [
+                        {
+                          "sessionId": "de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                          "visitorId": "0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                          "startedAt": "2026-06-26T11:45:00Z",
+                          "endedAt": null,
+                          "views": 3,
+                          "events": 1,
+                          "links": {
+                            "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sessions/de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                            "events": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sessions/de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001/events"
+                          }
+                        }
+                      ],
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3938,6 +5789,47 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RealtimeSnapshotResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "getRealtimeSnapshot",
+                    "value": {
+                      "data": {
+                        "activeVisitors": 12,
+                        "events": [
+                          {
+                            "id": "6f5d9b2c-b1d5-4d75-89aa-0b71ec1f9c00",
+                            "siteId": "550e8400-e29b-41d4-a716-446655440000",
+                            "eventName": "signup",
+                            "occurredAt": "2026-06-26T12:00:00Z",
+                            "sessionId": "de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                            "visitorId": "0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                            "data": {
+                              "plan": "pro"
+                            }
+                          }
+                        ],
+                        "sessions": [
+                          {
+                            "sessionId": "de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                            "visitorId": "0a1c1f5b-f529-44be-9f29-9b0b358c0001",
+                            "startedAt": "2026-06-26T11:45:00Z",
+                            "endedAt": null,
+                            "views": 3,
+                            "events": 1,
+                            "links": {
+                              "self": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sessions/de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001",
+                              "events": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/sessions/de0b8cf1-7fc6-40bd-8127-4c8e9f1c0001/events"
+                            }
+                          }
+                        ]
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3977,6 +5869,32 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/BatchRequest"
+              },
+              "examples": {
+                "default": {
+                  "summary": "Batch overview and country breakdown",
+                  "value": {
+                    "requests": [
+                      {
+                        "id": "overview",
+                        "method": "GET",
+                        "path": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/analytics/overview",
+                        "query": {
+                          "preset": "last_30_days"
+                        }
+                      },
+                      {
+                        "id": "countries",
+                        "method": "GET",
+                        "path": "/api/v1/sites/550e8400-e29b-41d4-a716-446655440000/analytics/breakdowns/geo.country",
+                        "query": {
+                          "preset": "last_30_days",
+                          "metrics": "views,sessions"
+                        }
+                      }
+                    ]
+                  }
+                }
               }
             }
           }
@@ -3988,6 +5906,52 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BatchResponse"
+                },
+                "examples": {
+                  "default": {
+                    "summary": "batch",
+                    "value": {
+                      "data": {
+                        "responses": [
+                          {
+                            "id": "overview",
+                            "status": 200,
+                            "body": {
+                              "data": {
+                                "views": 12500,
+                                "sessions": 8300,
+                                "visitors": 6100,
+                                "bounces": 3200,
+                                "bounceRate": 0.386,
+                                "avgDurationMs": 506000,
+                                "viewsPerSession": 1.51,
+                                "approximateVisitors": false
+                              },
+                              "meta": {
+                                "requestId": "req_abc123",
+                                "generatedAt": "2026-06-26T12:00:00Z"
+                              }
+                            }
+                          },
+                          {
+                            "id": "countries",
+                            "status": 200,
+                            "body": {
+                              "data": [],
+                              "meta": {
+                                "requestId": "req_abc123",
+                                "generatedAt": "2026-06-26T12:00:00Z"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "meta": {
+                        "requestId": "req_abc123",
+                        "generatedAt": "2026-06-26T12:00:00Z"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -4114,6 +6078,23 @@
       "ErrorResponse": {
         "type": "object",
         "description": "Standard error response envelope.",
+        "example": {
+          "error": {
+            "code": "validation_failed",
+            "message": "Invalid request body.",
+            "details": {
+              "field": "steps"
+            },
+            "help": {
+              "token": "/api/v1/token",
+              "documentation": "/.well-known/openapi.json"
+            }
+          },
+          "meta": {
+            "requestId": "req_abc123",
+            "generatedAt": "2026-06-26T12:00:00Z"
+          }
+        },
         "required": ["error", "meta"],
         "properties": {
           "error": {
@@ -4164,7 +6145,7 @@
       },
       "Preset": {
         "type": "string",
-        "description": "Named time range preset.",
+        "description": "Named time range preset. today: current calendar day in timeZone. yesterday: previous calendar day. last_7_days and last_30_days end at request time. this_week/last_week and this_month/last_month use calendar boundaries in timeZone.",
         "enum": [
           "today",
           "yesterday",
@@ -4232,7 +6213,7 @@
       },
       "ComplexFilter": {
         "type": "object",
-        "description": "Advanced filter rule for explore and search endpoints.",
+        "description": "Advanced filter rule for explore and search endpoints. Operators: eq equals; neq does not equal; in is one of; notIn is not one of; contains includes substring; startsWith/endsWith match string edges; gt/gte/lt/lte compare ordered values; exists/notExists ignore value.",
         "required": ["field", "op"],
         "properties": {
           "field": {
@@ -4242,6 +6223,7 @@
           },
           "op": {
             "type": "string",
+            "description": "Filter operator. exists and notExists ignore value; in and notIn expect an array-compatible value.",
             "enum": [
               "eq",
               "neq",
@@ -4307,7 +6289,8 @@
         "properties": {
           "mode": {
             "type": "string",
-            "enum": ["all", "restricted"]
+            "enum": ["all", "restricted"],
+            "description": "all means the token can access all current and future team sites; restricted means only listed siteIds."
           },
           "siteIds": {
             "type": "array",
@@ -4320,6 +6303,7 @@
       },
       "Token": {
         "type": "object",
+        "description": "Non-secret metadata for the current API token.",
         "required": ["id", "name", "status", "team", "scopes", "siteAccess"],
         "properties": {
           "id": {
@@ -4332,7 +6316,8 @@
           },
           "status": {
             "type": "string",
-            "enum": ["active", "expired", "revoked"]
+            "enum": ["active", "expired", "revoked"],
+            "description": "active can be used; expired passed expiresAt; revoked was disabled."
           },
           "createdAt": {
             "type": "string",
@@ -4396,6 +6381,7 @@
       },
       "TokenCheckRequest": {
         "type": "object",
+        "description": "Bulk permission check request for scopes and optional site access.",
         "required": ["checks"],
         "properties": {
           "checks": {
@@ -4604,6 +6590,7 @@
             "properties": {
               "data": {
                 "type": "object",
+                "description": "API root discovery response with stable links.",
                 "properties": {
                   "version": {
                     "type": "string"
@@ -4658,6 +6645,7 @@
       },
       "Site": {
         "type": "object",
+        "description": "Tracked site resource.",
         "required": [
           "id",
           "name",
@@ -4698,6 +6686,7 @@
       },
       "SiteCreateInput": {
         "type": "object",
+        "description": "Input for creating a site in the current team.",
         "required": ["name", "domain"],
         "properties": {
           "name": {
@@ -4717,6 +6706,7 @@
       },
       "SiteUpdateInput": {
         "type": "object",
+        "description": "Partial update for site metadata and sharing settings.",
         "properties": {
           "name": {
             "type": "string",
@@ -4795,7 +6785,7 @@
           "trackingStrength": {
             "type": "string",
             "enum": ["strong", "smart", "weak"],
-            "description": "Privacy-aware tracking mode."
+            "description": "Privacy-aware tracking mode. strong collects the richest allowed context; smart balances analytics and privacy; weak minimizes collection for stricter privacy needs."
           },
           "allowedDomains": {
             "type": "array",
@@ -4899,13 +6889,14 @@
       },
       "SharingSettings": {
         "type": "object",
+        "description": "Public sharing settings for a site.",
         "properties": {
           "publicEnabled": {
             "type": "boolean"
           },
           "publicSlug": {
             "type": ["string", "null"],
-            "maxLength": 120
+            "maxLength": 80
           }
         }
       },
@@ -4936,6 +6927,7 @@
             "properties": {
               "data": {
                 "type": "object",
+                "description": "Schema discovery response listing supported metrics, dimensions, filters, operators, intervals, and presets.",
                 "properties": {
                   "metrics": {
                     "type": "array",
@@ -4997,6 +6989,7 @@
       },
       "OverviewMetrics": {
         "type": "object",
+        "description": "Aggregate analytics metrics for a time range.",
         "properties": {
           "views": {
             "type": "integer"
@@ -5016,7 +7009,8 @@
             "maximum": 1
           },
           "avgDurationMs": {
-            "type": "number"
+            "type": "number",
+            "description": "Average session duration in milliseconds."
           },
           "viewsPerSession": {
             "type": "number"
@@ -5044,6 +7038,7 @@
       },
       "TimeseriesPoint": {
         "type": "object",
+        "description": "One time bucket of analytics metrics.",
         "properties": {
           "start": {
             "type": "string",
@@ -5087,6 +7082,7 @@
       },
       "BreakdownRow": {
         "type": "object",
+        "description": "One analytics breakdown row.",
         "properties": {
           "key": {
             "type": "string"
@@ -5121,6 +7117,87 @@
                 "items": {
                   "$ref": "#/components/schemas/BreakdownRow"
                 }
+              }
+            }
+          }
+        ]
+      },
+      "AnalyticsCrossBreakdownCell": {
+        "type": "object",
+        "description": "One cell in a two-dimensional analytics breakdown.",
+        "properties": {
+          "secondaryKey": {
+            "type": "string",
+            "description": "Machine-readable secondary dimension value."
+          },
+          "secondaryLabel": {
+            "type": "string",
+            "description": "Human-readable secondary dimension label."
+          },
+          "value": {
+            "type": "number",
+            "description": "Aggregated metric value."
+          }
+        }
+      },
+      "AnalyticsCrossBreakdownRow": {
+        "type": "object",
+        "description": "One row in a two-dimensional analytics breakdown.",
+        "properties": {
+          "primaryKey": {
+            "type": "string",
+            "description": "Machine-readable primary dimension value."
+          },
+          "primaryLabel": {
+            "type": "string",
+            "description": "Human-readable primary dimension label."
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsCrossBreakdownCell"
+            }
+          }
+        }
+      },
+      "AnalyticsCrossBreakdownResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SuccessEnvelope"
+          },
+          {
+            "type": "object",
+            "description": "Two-dimensional analytics breakdown.",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AnalyticsCrossBreakdownRow"
+                }
+              },
+              "meta": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Meta"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "primary": {
+                        "type": "string",
+                        "description": "Primary dimension."
+                      },
+                      "secondary": {
+                        "type": "string",
+                        "description": "Secondary dimension."
+                      },
+                      "metric": {
+                        "type": "string",
+                        "description": "Aggregated metric."
+                      }
+                    }
+                  }
+                ]
               }
             }
           }
@@ -5314,23 +7391,6 @@
           }
         ]
       },
-      "GenericObjectResponse": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/SuccessEnvelope"
-          },
-          {
-            "type": "object",
-            "description": "Successful response",
-            "properties": {
-              "data": {
-                "type": "object",
-                "additionalProperties": true
-              }
-            }
-          }
-        ]
-      },
       "EventsSummaryResponse": {
         "allOf": [
           {
@@ -5342,27 +7402,33 @@
             "properties": {
               "data": {
                 "type": "object",
-                "description": "Event summary response.",
+                "description": "Summary of custom event activity.",
+                "required": ["events", "eventTypes", "sessions", "visitors"],
                 "properties": {
                   "events": {
                     "type": "integer",
-                    "minimum": 0
+                    "minimum": 0,
+                    "description": "Total custom events."
                   },
                   "eventTypes": {
                     "type": "integer",
-                    "minimum": 0
+                    "minimum": 0,
+                    "description": "Number of distinct event names."
                   },
                   "sessions": {
                     "type": "integer",
-                    "minimum": 0
+                    "minimum": 0,
+                    "description": "Number of sessions with custom events."
                   },
                   "visitors": {
                     "type": "integer",
-                    "minimum": 0
+                    "minimum": 0,
+                    "description": "Number of visitors with custom events."
                   },
                   "avgEventsPerSession": {
                     "type": "number",
-                    "minimum": 0
+                    "minimum": 0,
+                    "description": "Average custom event count per session."
                   }
                 }
               }
@@ -5434,6 +7500,7 @@
           },
           "op": {
             "type": "string",
+            "description": "Payload filter operator. eq/neq compare equality, in/notIn compare sets, contains/startsWith/endsWith compare strings, gt/gte/lt/lte compare ordered values, exists/notExists ignore value.",
             "enum": [
               "eq",
               "neq",
@@ -5664,6 +7731,7 @@
             "properties": {
               "data": {
                 "type": "object",
+                "description": "Core Web Vitals summary in milliseconds for TTFB/FCP/LCP/INP and unitless CLS.",
                 "additionalProperties": true
               }
             }
@@ -5684,19 +7752,24 @@
             "format": "date-time"
           },
           "ttfb": {
-            "type": "number"
+            "type": "number",
+            "description": "Time to first byte in milliseconds."
           },
           "fcp": {
-            "type": "number"
+            "type": "number",
+            "description": "First contentful paint in milliseconds."
           },
           "lcp": {
-            "type": "number"
+            "type": "number",
+            "description": "Largest contentful paint in milliseconds."
           },
           "cls": {
-            "type": "number"
+            "type": "number",
+            "description": "Cumulative layout shift."
           },
           "inp": {
-            "type": "number"
+            "type": "number",
+            "description": "Interaction to next paint in milliseconds."
           }
         }
       },
@@ -5772,7 +7845,7 @@
           "type": {
             "type": "string",
             "enum": ["pageview", "event"],
-            "description": "Step matching type."
+            "description": "Step matching type. pageview matches a page path; event matches a custom event name."
           },
           "value": {
             "type": "string",
@@ -6239,10 +8312,215 @@
           }
         ]
       },
+      "HealthResponse": {
+        "type": "object",
+        "description": "Service health response.",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["healthy"]
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CollectPage": {
+        "type": "object",
+        "description": "Page context for a collect payload.",
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "Full page URL."
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "Page path."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "Page title."
+          },
+          "referrer": {
+            "type": ["string", "null"],
+            "maxLength": 2048,
+            "description": "Full referrer URL, if available."
+          },
+          "hostname": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "Page hostname."
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "URL query string."
+          },
+          "hash": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "URL hash fragment."
+          }
+        }
+      },
+      "CollectClient": {
+        "type": "object",
+        "description": "Browser and device context reported by the client SDK.",
+        "properties": {
+          "language": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Browser language."
+          },
+          "userAgent": {
+            "type": "string",
+            "maxLength": 1024,
+            "description": "Browser user agent string."
+          },
+          "screen": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "viewport": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "CollectEvent": {
+        "type": "object",
+        "description": "Custom event data.",
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Event name."
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Custom JSON-serializable event payload."
+          }
+        }
+      },
+      "CollectEngagement": {
+        "type": "object",
+        "description": "Engagement metrics reported by the client SDK.",
+        "properties": {
+          "durationMs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Engagement duration in milliseconds."
+          },
+          "scrollDepth": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Maximum scroll depth as a 0-1 ratio."
+          }
+        }
+      },
+      "CollectPerformance": {
+        "type": "object",
+        "description": "Core Web Vitals and navigation timing data.",
+        "properties": {
+          "ttfb": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Time to first byte in milliseconds."
+          },
+          "fcp": {
+            "type": "number",
+            "minimum": 0,
+            "description": "First contentful paint in milliseconds."
+          },
+          "lcp": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Largest contentful paint in milliseconds."
+          },
+          "cls": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Cumulative layout shift."
+          },
+          "inp": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Interaction to next paint in milliseconds."
+          }
+        }
+      },
       "CollectPayload": {
         "type": "object",
-        "description": "Client SDK collection payload.",
-        "additionalProperties": true
+        "description": "Payload sent by the InsightFlare client SDK to ingest pageviews, events, engagement, and performance metrics.",
+        "required": ["siteId", "type"],
+        "properties": {
+          "siteId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Site identifier."
+          },
+          "type": {
+            "type": "string",
+            "enum": ["pageview", "event", "engagement", "performance"],
+            "description": "Tracking payload type. pageview records a page view; event records a custom user-defined event; engagement records duration or scroll; performance records Core Web Vitals."
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Client-side event time. If omitted, the server receive time may be used."
+          },
+          "anonymousId": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Anonymous visitor identifier generated by the client SDK."
+          },
+          "sessionId": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Client session identifier."
+          },
+          "page": {
+            "$ref": "#/components/schemas/CollectPage"
+          },
+          "client": {
+            "$ref": "#/components/schemas/CollectClient"
+          },
+          "event": {
+            "$ref": "#/components/schemas/CollectEvent"
+          },
+          "engagement": {
+            "$ref": "#/components/schemas/CollectEngagement"
+          },
+          "performance": {
+            "$ref": "#/components/schemas/CollectPerformance"
+          }
+        },
+        "additionalProperties": false
       }
     },
     "securitySchemes": {
