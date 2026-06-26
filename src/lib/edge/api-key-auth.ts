@@ -1,5 +1,3 @@
-import { forb, una } from "@/lib/response";
-
 import {
   type ApiKeyScope,
   apiKeyStatus,
@@ -11,14 +9,20 @@ import {
   parseApiKey,
   timingSafeEqualString,
 } from "./api-key-store";
+import { jsonError } from "./api-v1-helpers";
 import type { Env } from "./types";
 
 export interface ApiKeyPrincipal {
   keyId: string;
   teamId: string;
+  name?: string;
   prefix: string;
   scopes: ApiKeyScope[];
   siteIds: string[];
+  createdAt?: number;
+  expiresAt?: number | null;
+  lastUsedAt?: number | null;
+  status?: "active" | "expired" | "revoked";
 }
 
 export function extractApiKeyToken(request: Request): string {
@@ -44,25 +48,55 @@ export async function authenticateApiKey(
   const token = extractApiKeyToken(request);
   const parsed = parseApiKey(token);
   if (!parsed) {
-    return una("Invalid or missing API key", "invalid_api_key", request);
+    return jsonError(
+      "invalid_api_key",
+      "Invalid or missing API key",
+      401,
+      undefined,
+      request,
+    );
   }
 
   const row = await getApiKeyByPrefix(env, parsed.prefix);
   if (!row) {
-    return una("Invalid or missing API key", "invalid_api_key", request);
+    return jsonError(
+      "invalid_api_key",
+      "Invalid or missing API key",
+      401,
+      undefined,
+      request,
+    );
   }
 
   const actualHash = await hashApiKeySecret(env, token);
   if (!timingSafeEqualString(actualHash, row.key_hash)) {
-    return una("Invalid or missing API key", "invalid_api_key", request);
+    return jsonError(
+      "invalid_api_key",
+      "Invalid or missing API key",
+      401,
+      undefined,
+      request,
+    );
   }
 
   const status = apiKeyStatus(row);
   if (status === "revoked") {
-    return una("API key has been revoked", "api_key_revoked", request);
+    return jsonError(
+      "api_key_revoked",
+      "API key has been revoked",
+      401,
+      undefined,
+      request,
+    );
   }
   if (status === "expired") {
-    return una("API key has expired", "api_key_expired", request);
+    return jsonError(
+      "api_key_expired",
+      "API key has expired",
+      401,
+      undefined,
+      request,
+    );
   }
 
   const update = markApiKeyUsed(env, row.id);
@@ -75,9 +109,14 @@ export async function authenticateApiKey(
   return {
     keyId: row.id,
     teamId: row.team_id,
+    name: row.name,
     prefix: row.key_prefix,
     scopes: normalizeApiKeyScopes(safeJsonArray(row.scopes_json)),
     siteIds: normalizeApiKeySiteIds(safeJsonArray(row.site_ids_json)),
+    createdAt: row.created_at,
+    expiresAt: row.expires_at ?? null,
+    lastUsedAt: row.last_used_at ?? null,
+    status,
   };
 }
 
@@ -104,5 +143,9 @@ export function requireApiScope(
   scope: ApiKeyScope,
 ): Response | null {
   if (hasApiScope(principal, scope)) return null;
-  return forb("Insufficient scope for this action", "insufficient_scope");
+  return jsonError(
+    "insufficient_scope",
+    "Insufficient scope for this action",
+    403,
+  );
 }

@@ -4,11 +4,19 @@ import { execSync } from "child_process";
 import { writeFileSync } from "fs";
 import { resolve } from "path";
 import YAML from "yaml";
-import type { z } from "zod";
-import { createSchema } from "zod-openapi";
 
-// Import all schemas to trigger registerSchema() calls
-import { getAllRegisteredSchemas } from "../src/schemas/index.js";
+type HttpMethod = "get" | "post" | "patch" | "delete";
+
+interface Operation {
+  operationId: string;
+  summary: string;
+  description: string;
+  tags: string[];
+  security?: Array<Record<string, unknown>>;
+  parameters?: unknown[];
+  requestBody?: unknown;
+  responses: Record<string, unknown>;
+}
 
 interface OpenAPISpec {
   openapi: string;
@@ -16,7 +24,10 @@ interface OpenAPISpec {
   servers: Array<{ url: string; description: string }>;
   security: Array<Record<string, unknown>>;
   tags: Array<{ name: string; description: string }>;
-  paths: Record<string, unknown>;
+  paths: Record<
+    string,
+    Partial<Record<HttpMethod, Operation>> & { parameters?: unknown[] }
+  >;
   components: {
     schemas: Record<string, unknown>;
     securitySchemes: Record<string, unknown>;
@@ -25,387 +36,772 @@ interface OpenAPISpec {
   };
 }
 
-function convertSchema(spec: OpenAPISpec, name: string, schema: z.ZodTypeAny) {
-  try {
-    if (!schema || !("_def" in (schema as object))) {
-      console.error(`  SKIP ${name}: not a valid Zod schema`);
-      return;
-    }
+const json = "application/json";
 
-    const { schema: openapiSchema, components } = createSchema(schema, {
-      io: "output",
-      openapiVersion: "3.1.0",
-      opts: {
-        reused: "ref",
-        override: ({ jsonSchema }) => {
-          const fixExclusiveBounds = (s: unknown): void => {
-            if (!s || typeof s !== "object") return;
-            const obj = s as Record<string, unknown>;
-            if (typeof obj.exclusiveMinimum === "number") {
-              obj.minimum = obj.exclusiveMinimum;
-              obj.exclusiveMinimum = true;
-            }
-            if (typeof obj.exclusiveMaximum === "number") {
-              obj.maximum = obj.exclusiveMaximum;
-              obj.exclusiveMaximum = true;
-            }
-            if (obj.properties) {
-              Object.values(obj.properties as Record<string, unknown>).forEach(
-                fixExclusiveBounds,
-              );
-            }
-            if (obj.items) {
-              if (Array.isArray(obj.items))
-                obj.items.forEach(fixExclusiveBounds);
-              else fixExclusiveBounds(obj.items);
-            }
-            for (const key of ["allOf", "anyOf", "oneOf"]) {
-              if (Array.isArray(obj[key]))
-                (obj[key] as unknown[]).forEach(fixExclusiveBounds);
-            }
-          };
-          fixExclusiveBounds(jsonSchema);
+function ref(name: string) {
+  return { $ref: `#/components/schemas/${name}` };
+}
+
+function response(description: string, schema: string, example?: unknown) {
+  return {
+    description,
+    content: {
+      [json]: {
+        schema: ref(schema),
+        ...(example ? { example } : {}),
+      },
+    },
+  };
+}
+
+function envelope(dataSchema: unknown, description = "Successful response") {
+  return {
+    allOf: [
+      ref("SuccessEnvelope"),
+      {
+        type: "object",
+        description,
+        properties: {
+          data: dataSchema,
         },
       },
-    });
+    ],
+  };
+}
 
-    let finalSchema: unknown = openapiSchema;
+function listEnvelope(itemSchema: unknown) {
+  return {
+    allOf: [
+      ref("ListEnvelope"),
+      {
+        type: "object",
+        properties: {
+          data: {
+            type: "array",
+            items: itemSchema,
+          },
+        },
+      },
+    ],
+  };
+}
 
-    // collect __schema* entries from components (zod-openapi puts them here directly)
-    const componentEntries: Record<string, unknown> = {};
-    if (components) {
-      for (const [key, value] of Object.entries(
-        components as Record<string, unknown>,
-      )) {
-        if (key.startsWith("__schema")) {
-          componentEntries[key] = value;
-        }
-      }
-    }
+function paginatedEnvelope(itemSchema: unknown) {
+  return {
+    allOf: [
+      ref("PaginatedEnvelope"),
+      {
+        type: "object",
+        properties: {
+          data: {
+            type: "array",
+            items: itemSchema,
+          },
+        },
+      },
+    ],
+  };
+}
 
-    // rewrite __schema refs → named component refs
-    // createSchema returns refs as "#/components/schemas/__schemaX"
-    // We need to replace ALL __schema refs in ALL component schemas, not just matching ones
-    const rewriteAllSchemaRefs = (obj: unknown): unknown => {
-      if (!obj || typeof obj !== "object") return obj;
-      if (Array.isArray(obj)) return obj.map(rewriteAllSchemaRefs);
-      const result: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-        if (
-          k === "$ref" &&
-          typeof v === "string" &&
-          v.startsWith("#/components/schemas/__schema")
-        ) {
-          const refName = v.replace("#/components/schemas/", "");
-          result[k] = `#/components/schemas/${name}_${refName}`;
-        } else {
-          result[k] = rewriteAllSchemaRefs(v);
-        }
-      }
-      return result;
-    };
-    for (const [defName, defSchema] of Object.entries(componentEntries)) {
-      const uniqueName = `${name}_${defName}`;
-      spec.components.schemas[uniqueName] = rewriteAllSchemaRefs(defSchema);
-      finalSchema = rewriteAllSchemaRefs(finalSchema);
-    }
+function ok(schema: string, description = "Successful response") {
+  return response(description, schema);
+}
 
-    spec.components.schemas[name] = finalSchema;
-    console.log(`  OK  ${name}`);
-  } catch (err) {
-    console.error(`  ERR ${name}: ${err}`);
+function errorResponses(...codes: string[]) {
+  const map: Record<string, unknown> = {};
+  for (const code of codes) {
+    const name =
+      code === "400"
+        ? "BadRequest"
+        : code === "401"
+          ? "Unauthorized"
+          : code === "403"
+            ? "Forbidden"
+            : code === "404"
+              ? "NotFound"
+              : code === "409"
+                ? "Conflict"
+                : code === "413"
+                  ? "PayloadTooLarge"
+                  : "InternalError";
+    map[code] = { $ref: `#/components/responses/${name}` };
   }
+  return map;
 }
 
-// ─── Reusable parameter builders for split analytics endpoints ──────────
+function op(input: Operation): Operation {
+  return input;
+}
 
-function windowParams() {
+function queryParam(name: string, schema: unknown, description: string) {
+  return { name, in: "query", schema, description };
+}
+
+function timeParams(includeInterval = false) {
   return [
-    {
-      name: "from",
-      in: "query",
-      schema: { type: "integer" },
-      description: "Start timestamp (Unix ms)",
-    },
-    {
-      name: "to",
-      in: "query",
-      schema: { type: "integer" },
-      description: "End timestamp (Unix ms)",
-    },
-    {
-      name: "timeZone",
-      in: "query",
-      schema: { type: "string" },
-      description: "IANA timezone identifier (e.g. America/New_York)",
-    },
+    queryParam(
+      "from",
+      { type: "string", format: "date-time" },
+      "Inclusive ISO 8601 start time.",
+    ),
+    queryParam(
+      "to",
+      { type: "string", format: "date-time" },
+      "Exclusive ISO 8601 end time.",
+    ),
+    queryParam(
+      "preset",
+      ref("Preset"),
+      "Named time range preset. Mutually exclusive with from and to.",
+    ),
+    queryParam(
+      "timeZone",
+      { type: "string", maxLength: 80, default: "UTC" },
+      "IANA time zone used to resolve presets.",
+    ),
+    ...(includeInterval
+      ? [
+          queryParam(
+            "interval",
+            {
+              type: "string",
+              enum: ["minute", "hour", "day", "week", "month"],
+              default: "day",
+            },
+            "Time bucket granularity.",
+          ),
+        ]
+      : []),
   ];
 }
 
-function intervalParam() {
+function filterParam() {
   return {
-    name: "interval",
+    name: "filter",
     in: "query",
-    schema: {
-      type: "string",
-      enum: ["minute", "hour", "day", "week", "month"],
-    },
-    description: "Time bucket granularity for aggregation",
+    style: "deepObject",
+    explode: true,
+    schema: ref("FilterObject"),
+    description: "Simple equality filters as filter[field]=value.",
   };
 }
 
-function limitParam(desc: string, defaultVal?: number) {
+function metricParam() {
   return {
-    name: "limit",
+    name: "metrics",
     in: "query",
+    style: "form",
+    explode: false,
     schema: {
-      type: "integer",
-      ...(defaultVal !== undefined ? { default: defaultVal } : {}),
+      type: "array",
+      items: {
+        type: "string",
+        enum: [
+          "views",
+          "sessions",
+          "visitors",
+          "bounces",
+          "bounceRate",
+          "avgDurationMs",
+          "viewsPerSession",
+          "events",
+        ],
+      },
     },
-    description: desc,
+    description: "Comma-separated metrics to include.",
   };
 }
 
-function dashboardFilterParams() {
+function cursorParams() {
   return [
-    {
-      name: "country",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by country code",
-    },
-    {
-      name: "device",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by device type",
-    },
-    {
-      name: "browser",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by browser name",
-    },
-    {
-      name: "path",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by page pathname",
-    },
-    {
-      name: "query",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by page query string",
-    },
-    {
-      name: "title",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by page title",
-    },
-    {
-      name: "hostname",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by page hostname",
-    },
-    {
-      name: "entry",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by session entry path",
-    },
-    {
-      name: "exit",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by session exit path",
-    },
-    {
-      name: "sourceDomain",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by referrer domain",
-    },
-    {
-      name: "sourceLink",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by referrer URL",
-    },
+    queryParam(
+      "limit",
+      { type: "integer", minimum: 1, maximum: 1000, default: 100 },
+      "Maximum number of results.",
+    ),
+    queryParam(
+      "cursor",
+      { type: "string", maxLength: 512 },
+      "Opaque pagination cursor from the previous response.",
+    ),
   ];
 }
 
-function clientFilterParams() {
-  return [
-    {
-      name: "clientBrowser",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by client-reported browser",
-    },
-    {
-      name: "clientOsVersion",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by client OS version",
-    },
-    {
-      name: "clientDeviceType",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by client device type",
-    },
-    {
-      name: "clientLanguage",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by client language",
-    },
-    {
-      name: "clientScreenSize",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by screen size (e.g. 1920x1080)",
-    },
-  ];
+function sortParam() {
+  return queryParam(
+    "sort",
+    { type: "string", maxLength: 120 },
+    "Sort field. Prefix with '-' for descending order.",
+  );
 }
 
-function geoFilterParams() {
-  return [
-    {
-      name: "geoCountry",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by geo country",
-    },
-    {
-      name: "geoRegion",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by geo region",
-    },
-    {
-      name: "geoCity",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by geo city",
-    },
-    {
-      name: "geoContinent",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by geo continent",
-    },
-    {
-      name: "geoTimezone",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by geo timezone",
-    },
-    {
-      name: "geoOrganization",
-      in: "query",
-      schema: { type: "string" },
-      description: "Filter by geo organization",
-    },
-  ];
-}
-
-function allFilters() {
-  return [
-    ...dashboardFilterParams(),
-    ...clientFilterParams(),
-    ...geoFilterParams(),
-    {
-      name: "eventPayloadFilters",
-      in: "query",
-      schema: { type: "string" },
-      description: "JSON-encoded array of event payload filter rules",
-    },
-  ];
-}
-
-function paginationParams() {
-  return [
-    {
-      name: "page",
-      in: "query",
-      schema: { type: "integer", minimum: 1 },
-      description: "Page number (1-indexed)",
-    },
-    {
-      name: "pageSize",
-      in: "query",
-      schema: { type: "integer" },
-      description: "Results per page",
-    },
-    {
-      name: "sortBy",
-      in: "query",
-      schema: { type: "string" },
-      description: "Sort field name",
-    },
-    {
-      name: "sortDir",
-      in: "query",
-      schema: { type: "string", enum: ["asc", "desc"] },
-      description: "Sort direction",
-    },
-    {
-      name: "search",
-      in: "query",
-      schema: { type: "string" },
-      description: "Search/filter text",
-    },
-  ];
-}
-
-function analyticsEndpoint(
-  queryName: string,
-  operationId: string,
-  summary: string,
-  description: string,
-  params: unknown[],
-  responseSchema: string,
-  responseExample: unknown,
-) {
-  const base = `/api/v1/sites/{siteId}/analytics/${queryName}`;
+function buildSchemas(): Record<string, unknown> {
+  const iso = { type: "string", format: "date-time" };
+  const uuid = { type: "string", format: "uuid" };
   return {
-    [base]: {
-      parameters: [{ $ref: "#/components/parameters/siteId" }],
-      get: {
-        operationId,
-        summary,
-        description,
-        tags: ["Analytics"],
-        parameters: params,
-        responses: {
-          "200": {
-            description: "Analytics query result",
-            content: {
-              "application/json": {
-                schema: { $ref: `#/components/schemas/${responseSchema}` },
-                example: responseExample,
+    Meta: {
+      type: "object",
+      description: "Response metadata.",
+      required: ["generatedAt"],
+      properties: {
+        requestId: {
+          type: "string",
+          description: "Request correlation identifier.",
+        },
+        generatedAt: {
+          ...iso,
+          description: "Response generation time in UTC.",
+        },
+        timeRange: ref("TimeRange"),
+        interval: {
+          type: "string",
+          enum: ["minute", "hour", "day", "week", "month"],
+        },
+        partialFailure: { type: "boolean" },
+      },
+      additionalProperties: true,
+    },
+    LinkMap: {
+      type: "object",
+      description: "Machine-readable links for resource discovery.",
+      additionalProperties: { type: "string" },
+    },
+    SuccessEnvelope: {
+      type: "object",
+      description: "Standard successful response envelope.",
+      required: ["data", "meta"],
+      properties: {
+        data: {},
+        links: ref("LinkMap"),
+        meta: ref("Meta"),
+      },
+      additionalProperties: false,
+    },
+    ListEnvelope: {
+      type: "object",
+      description: "Standard list response envelope.",
+      required: ["data", "meta"],
+      properties: {
+        data: { type: "array", items: {} },
+        links: ref("LinkMap"),
+        meta: ref("Meta"),
+      },
+      additionalProperties: false,
+    },
+    Pagination: {
+      type: "object",
+      description: "Cursor pagination state.",
+      required: ["limit", "nextCursor", "hasMore"],
+      properties: {
+        limit: { type: "integer", minimum: 1, maximum: 1000 },
+        nextCursor: { type: ["string", "null"], maxLength: 512 },
+        hasMore: { type: "boolean" },
+      },
+    },
+    PaginatedEnvelope: {
+      type: "object",
+      description: "Standard cursor-paginated list response envelope.",
+      required: ["data", "pagination", "meta"],
+      properties: {
+        data: { type: "array", items: {} },
+        pagination: ref("Pagination"),
+        links: ref("LinkMap"),
+        meta: ref("Meta"),
+      },
+      additionalProperties: false,
+    },
+    ErrorResponse: {
+      type: "object",
+      description: "Standard error response envelope.",
+      required: ["error", "meta"],
+      properties: {
+        error: {
+          type: "object",
+          required: ["code", "message"],
+          properties: {
+            code: {
+              type: "string",
+              enum: [
+                "invalid_request",
+                "invalid_json",
+                "validation_failed",
+                "invalid_api_key",
+                "api_key_expired",
+                "api_key_revoked",
+                "insufficient_scope",
+                "site_not_found",
+                "resource_not_found",
+                "conflict",
+                "payload_too_large",
+                "internal_error",
+              ],
+            },
+            message: { type: "string" },
+            details: { type: "object", additionalProperties: true },
+            help: {
+              type: "object",
+              properties: {
+                token: { type: "string" },
+                documentation: { type: "string" },
               },
             },
           },
-          "400": { $ref: "#/components/responses/BadRequest" },
-          "401": { $ref: "#/components/responses/Unauthorized" },
-          "404": { $ref: "#/components/responses/NotFound" },
+        },
+        meta: ref("Meta"),
+      },
+    },
+    Preset: {
+      type: "string",
+      description: "Named time range preset.",
+      enum: [
+        "today",
+        "yesterday",
+        "last_7_days",
+        "last_30_days",
+        "this_week",
+        "last_week",
+        "this_month",
+        "last_month",
+      ],
+    },
+    TimeRange: {
+      type: "object",
+      description: "Resolved inclusive/exclusive time range.",
+      required: ["from", "to", "timeZone"],
+      properties: {
+        from: { ...iso, description: "Inclusive start time." },
+        to: { ...iso, description: "Exclusive end time." },
+        timeZone: { type: "string", maxLength: 80 },
+      },
+    },
+    FilterObject: {
+      type: "object",
+      description: "Simple equality filters keyed by stable dimension name.",
+      additionalProperties: { type: "string", maxLength: 500 },
+    },
+    ComplexFilter: {
+      type: "object",
+      description: "Advanced filter rule for explore and search endpoints.",
+      required: ["field", "op"],
+      properties: {
+        field: {
+          type: "string",
+          maxLength: 120,
+          description: "Stable filter field path.",
+        },
+        op: {
+          type: "string",
+          enum: [
+            "eq",
+            "neq",
+            "in",
+            "notIn",
+            "contains",
+            "startsWith",
+            "endsWith",
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+            "exists",
+            "notExists",
+          ],
+        },
+        value: {},
+      },
+    },
+    MetricDefinition: {
+      type: "object",
+      description: "Metric available for analytics queries.",
+      required: ["key", "label", "type", "description"],
+      properties: {
+        key: { type: "string" },
+        label: { type: "string" },
+        type: { type: "string", enum: ["integer", "rate", "duration_ms"] },
+        description: { type: "string" },
+      },
+    },
+    DimensionDefinition: {
+      type: "object",
+      description: "Dimension available for analytics breakdowns and filters.",
+      required: ["key", "label", "type"],
+      properties: {
+        key: { type: "string" },
+        label: { type: "string" },
+        type: { type: "string" },
+        description: { type: "string" },
+      },
+    },
+    SiteAccess: {
+      type: "object",
+      description: "Sites this token may access.",
+      required: ["mode", "siteIds"],
+      properties: {
+        mode: { type: "string", enum: ["all", "restricted"] },
+        siteIds: { type: "array", items: uuid },
+      },
+    },
+    Token: {
+      type: "object",
+      required: ["id", "name", "status", "team", "scopes", "siteAccess"],
+      properties: {
+        id: uuid,
+        name: { type: "string", maxLength: 120 },
+        status: { type: "string", enum: ["active", "expired", "revoked"] },
+        createdAt: iso,
+        expiresAt: { type: ["string", "null"], format: "date-time" },
+        lastUsedAt: { type: ["string", "null"], format: "date-time" },
+        team: {
+          type: "object",
+          required: ["id", "name"],
+          properties: { id: uuid, name: { type: "string", maxLength: 120 } },
+        },
+        scopes: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: [
+              "site:read",
+              "site:write",
+              "site_config:read",
+              "site_config:write",
+              "analytics:read",
+            ],
+          },
+        },
+        siteAccess: ref("SiteAccess"),
+      },
+    },
+    TokenResponse: envelope(ref("Token")),
+    TokenCheckRequest: {
+      type: "object",
+      required: ["checks"],
+      properties: {
+        checks: {
+          type: "array",
+          maxItems: 50,
+          items: {
+            type: "object",
+            required: ["scope"],
+            properties: {
+              scope: { type: "string", maxLength: 80 },
+              siteId: uuid,
+            },
+          },
         },
       },
+    },
+    TokenCheckResponse: envelope({
+      type: "object",
+      properties: {
+        checks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              scope: { type: "string" },
+              siteId: uuid,
+              allowed: { type: "boolean" },
+              reason: {
+                type: "string",
+                enum: ["missing_scope", "site_not_allowed", "token_inactive"],
+              },
+            },
+          },
+        },
+      },
+    }),
+    CapabilitiesResponse: envelope({
+      type: "object",
+      properties: {
+        apiVersion: { type: "string" },
+        features: { type: "object", additionalProperties: { type: "boolean" } },
+        limits: { type: "object", additionalProperties: { type: "integer" } },
+        links: ref("LinkMap"),
+      },
+    }),
+    RootDiscoveryResponse: envelope({
+      type: "object",
+      properties: {
+        version: { type: "string" },
+        service: { type: "string" },
+        links: ref("LinkMap"),
+      },
+    }),
+    Team: {
+      type: "object",
+      properties: {
+        id: uuid,
+        name: { type: "string", maxLength: 120 },
+        createdAt: iso,
+        links: ref("LinkMap"),
+      },
+    },
+    TeamResponse: envelope(ref("Team")),
+    Site: {
+      type: "object",
+      required: [
+        "id",
+        "name",
+        "domain",
+        "createdAt",
+        "updatedAt",
+        "sharing",
+        "links",
+      ],
+      properties: {
+        id: uuid,
+        name: { type: "string", maxLength: 120 },
+        domain: { type: "string", maxLength: 255 },
+        createdAt: iso,
+        updatedAt: iso,
+        sharing: ref("SharingSettings"),
+        links: ref("LinkMap"),
+      },
+    },
+    SiteCreateInput: {
+      type: "object",
+      required: ["name", "domain"],
+      properties: {
+        name: { type: "string", minLength: 1, maxLength: 120 },
+        domain: { type: "string", minLength: 1, maxLength: 255 },
+        sharing: ref("SharingSettings"),
+      },
+    },
+    SiteUpdateInput: {
+      type: "object",
+      properties: {
+        name: { type: "string", minLength: 1, maxLength: 120 },
+        domain: { type: "string", minLength: 1, maxLength: 255 },
+        sharing: ref("SharingSettings"),
+      },
+    },
+    SiteResponse: envelope(ref("Site")),
+    SiteListResponse: listEnvelope(ref("Site")),
+    TrackingSettings: {
+      type: "object",
+      description: "Tracking settings for the client script.",
+      properties: {
+        trackPageviews: { type: "boolean" },
+        trackQuery: { type: "boolean" },
+        trackHash: { type: "boolean" },
+        trackCustomEvents: { type: "boolean" },
+        trackEngagement: { type: "boolean" },
+        trackWebVitals: { type: "boolean" },
+        autoTrackOutboundLinks: { type: "boolean" },
+        trackingStrength: {
+          type: "string",
+          enum: ["strong", "smart", "weak"],
+          description: "Privacy-aware tracking mode.",
+        },
+        allowedDomains: {
+          type: "array",
+          items: { type: "string", maxLength: 255 },
+        },
+        excludedPaths: {
+          type: "array",
+          items: { type: "string", maxLength: 2048 },
+        },
+      },
+    },
+    TrackingSettingsResponse: envelope(ref("TrackingSettings")),
+    TrackingScriptResponse: envelope({
+      type: "object",
+      properties: {
+        siteId: uuid,
+        src: { type: "string", format: "uri" },
+        snippet: { type: "string" },
+      },
+    }),
+    PrivacySettings: {
+      type: "object",
+      description: "Privacy settings for visitor data handling.",
+      properties: {
+        respectDoNotTrack: { type: "boolean" },
+        anonymizeIp: { type: "boolean" },
+        euMode: { type: "boolean" },
+        visitorTokenMode: { type: "string", enum: ["daily"] },
+        dataRetentionDays: { type: "integer", minimum: 1 },
+      },
+    },
+    PrivacySettingsResponse: envelope(ref("PrivacySettings")),
+    SharingSettings: {
+      type: "object",
+      properties: {
+        publicEnabled: { type: "boolean" },
+        publicSlug: { type: ["string", "null"], maxLength: 120 },
+      },
+    },
+    SharingSettingsResponse: envelope(ref("SharingSettings")),
+    AnalyticsSchemaResponse: envelope({
+      type: "object",
+      properties: {
+        metrics: { type: "array", items: ref("MetricDefinition") },
+        dimensions: { type: "array", items: ref("DimensionDefinition") },
+        filters: { type: "array", items: { type: "string" } },
+        operators: { type: "array", items: { type: "string" } },
+        intervals: { type: "array", items: { type: "string" } },
+        presets: { type: "array", items: ref("Preset") },
+        timeRange: {
+          type: "object",
+          properties: {
+            earliestAvailableAt: {
+              type: ["string", "null"],
+              format: "date-time",
+            },
+            latestAvailableAt: iso,
+          },
+        },
+        links: ref("LinkMap"),
+      },
+    }),
+    OverviewMetrics: {
+      type: "object",
+      properties: {
+        views: { type: "integer" },
+        sessions: { type: "integer" },
+        visitors: { type: "integer" },
+        bounces: { type: "integer" },
+        bounceRate: { type: "number", minimum: 0, maximum: 1 },
+        avgDurationMs: { type: "number" },
+        viewsPerSession: { type: "number" },
+        approximateVisitors: { type: "boolean" },
+      },
+    },
+    AnalyticsOverviewResponse: envelope(ref("OverviewMetrics")),
+    TimeseriesPoint: {
+      type: "object",
+      properties: {
+        start: iso,
+        end: iso,
+        views: { type: "integer" },
+        sessions: { type: "integer" },
+        visitors: { type: "integer" },
+        events: { type: "integer" },
+      },
+    },
+    AnalyticsTimeseriesResponse: listEnvelope(ref("TimeseriesPoint")),
+    BreakdownRow: {
+      type: "object",
+      properties: {
+        key: { type: "string" },
+        label: { type: "string" },
+        views: { type: "integer" },
+        sessions: { type: "integer" },
+        visitors: { type: "integer" },
+        events: { type: "integer" },
+      },
+    },
+    AnalyticsBreakdownResponse: listEnvelope(ref("BreakdownRow")),
+    AnalyticsExploreRequest: {
+      type: "object",
+      properties: {
+        timeRange: ref("TimeRange"),
+        metrics: { type: "array", items: { type: "string" } },
+        dimensions: { type: "array", items: { type: "string" } },
+        filters: { type: "array", items: ref("ComplexFilter") },
+        orderBy: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              field: { type: "string", maxLength: 120 },
+              direction: { type: "string", enum: ["asc", "desc"] },
+            },
+          },
+        },
+        limit: { type: "integer", minimum: 1, maximum: 1000 },
+      },
+    },
+    GenericObjectResponse: envelope({
+      type: "object",
+      additionalProperties: true,
+    }),
+    EventRecord: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        id: uuid,
+        eventName: { type: "string", maxLength: 120 },
+        occurredAt: iso,
+      },
+    },
+    EventListResponse: paginatedEnvelope(ref("EventRecord")),
+    Visitor: { type: "object", additionalProperties: true },
+    VisitorListResponse: paginatedEnvelope(ref("Visitor")),
+    Session: { type: "object", additionalProperties: true },
+    SessionListResponse: paginatedEnvelope(ref("Session")),
+    PerformanceSummaryResponse: envelope({
+      type: "object",
+      additionalProperties: true,
+    }),
+    RealtimeSnapshotResponse: envelope({
+      type: "object",
+      properties: {
+        activeVisitors: { type: "integer" },
+        events: { type: "array", items: ref("EventRecord") },
+        sessions: { type: "array", items: ref("Session") },
+      },
+    }),
+    BatchRequest: {
+      type: "object",
+      required: ["requests"],
+      properties: {
+        requests: {
+          type: "array",
+          minItems: 1,
+          maxItems: 20,
+          items: {
+            type: "object",
+            required: ["id", "method", "path"],
+            properties: {
+              id: { type: "string", maxLength: 80 },
+              method: { type: "string", enum: ["GET"] },
+              path: { type: "string", maxLength: 2048 },
+              query: {
+                type: "object",
+                additionalProperties: { type: "string", maxLength: 500 },
+              },
+            },
+          },
+        },
+      },
+    },
+    BatchResponse: envelope({
+      type: "object",
+      properties: {
+        responses: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              status: { type: "integer" },
+              body: {},
+            },
+          },
+        },
+      },
+    }),
+    CollectPayload: {
+      type: "object",
+      description: "Client SDK collection payload.",
+      additionalProperties: true,
     },
   };
 }
 
-function buildPaths(): Record<string, unknown> {
-  // ── Health & Ingestion ─────────────────────────────────────────────────
+function buildPaths(): OpenAPISpec["paths"] {
+  const siteParam = { $ref: "#/components/parameters/siteId" };
+  const dimensionParam = { $ref: "#/components/parameters/dimension" };
+  const eventNameParam = { $ref: "#/components/parameters/eventName" };
+  const eventIdParam = { $ref: "#/components/parameters/eventId" };
+  const visitorIdParam = { $ref: "#/components/parameters/visitorId" };
+  const sessionIdParam = { $ref: "#/components/parameters/sessionId" };
 
-  const healthz = {
+  return {
     "/healthz": {
-      get: {
+      get: op({
         operationId: "getHealth",
         summary: "Health check",
         description:
@@ -413,1431 +809,1007 @@ function buildPaths(): Record<string, unknown> {
         tags: ["Health"],
         security: [],
         responses: {
-          "200": {
-            description: "Service is healthy",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    ok: { type: "boolean", const: true },
-                    service: { type: "string", example: "insightflare" },
-                    now: { type: "string", format: "date-time" },
-                    bindings: {
-                      type: "object",
-                      properties: {
-                        d1: { type: "boolean" },
-                        durableObject: { type: "boolean" },
-                        r2Archive: { type: "boolean" },
-                      },
-                    },
-                  },
-                },
-                example: {
-                  ok: true,
-                  service: "insightflare",
-                  now: "2026-06-26T12:00:00Z",
-                  bindings: { d1: true, durableObject: true, r2Archive: false },
-                },
-              },
-            },
-          },
+          "200": response("Service is healthy", "GenericObjectResponse"),
         },
-      },
+      }),
     },
-  };
-
-  const collect = {
     "/collect": {
-      post: {
+      post: op({
         operationId: "collectEvent",
         summary: "Collect tracking event",
         description:
-          "Ingests a tracking event from the InsightFlare client SDK. Always returns 204.",
+          "/collect is the unauthenticated client SDK ingestion endpoint. Successful receipt or silent drop returns 204.",
         tags: ["Ingestion"],
         security: [],
         requestBody: {
           required: true,
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/TrackerClientPayload" },
-            },
-          },
+          content: { [json]: { schema: ref("CollectPayload") } },
         },
         responses: {
-          "204": {
-            description: "Event accepted (always returned, even if dropped)",
-          },
-          "400": { $ref: "#/components/responses/BadRequest" },
-          "413": {
-            description: "Request body too large (max 48 KB)",
-          },
-          "422": {
-            description: "Event data validation failed",
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/ErrorEnvelope" },
-              },
-            },
-          },
+          "204": { description: "No Content" },
+          ...errorResponses("400", "413"),
         },
-      },
+      }),
     },
-  };
-
-  // ── Sites ──────────────────────────────────────────────────────────────
-
-  const sites = {
+    "/api/v1": {
+      get: op({
+        operationId: "getApiRoot",
+        summary: "API root discovery",
+        description:
+          "Returns stable machine-readable discovery links. No authentication required.",
+        tags: ["Discovery"],
+        security: [],
+        responses: { "200": ok("RootDiscoveryResponse") },
+      }),
+    },
+    "/api/v1/token": {
+      get: op({
+        operationId: "getToken",
+        summary: "Inspect current token",
+        description:
+          "Returns non-secret metadata, scopes, team, and site access for the current bearer token.",
+        tags: ["Token"],
+        responses: { "200": ok("TokenResponse"), ...errorResponses("401") },
+      }),
+    },
+    "/api/v1/token/check": {
+      post: op({
+        operationId: "checkToken",
+        summary: "Check token permissions",
+        description:
+          "Checks whether the current token has requested scope and optional site permissions.",
+        tags: ["Token"],
+        requestBody: {
+          required: true,
+          content: { [json]: { schema: ref("TokenCheckRequest") } },
+        },
+        responses: {
+          "200": ok("TokenCheckResponse"),
+          ...errorResponses("400", "401"),
+        },
+      }),
+    },
+    "/api/v1/capabilities": {
+      get: op({
+        operationId: "getCapabilities",
+        summary: "Get runtime capabilities",
+        description:
+          "Returns features and limits available to the current token.",
+        tags: ["Discovery"],
+        responses: {
+          "200": ok("CapabilitiesResponse"),
+          ...errorResponses("401"),
+        },
+      }),
+    },
+    "/api/v1/team": {
+      get: op({
+        operationId: "getTeam",
+        summary: "Get current team",
+        description: "Returns the team associated with the current token.",
+        tags: ["Team"],
+        responses: { "200": ok("TeamResponse"), ...errorResponses("401") },
+      }),
+    },
+    "/api/v1/team/usage": {
+      get: op({
+        operationId: "getTeamUsage",
+        summary: "Get team usage",
+        description: "Returns usage information for the current team.",
+        tags: ["Team"],
+        responses: {
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("401"),
+        },
+      }),
+    },
+    "/api/v1/team/analytics/overview": {
+      get: op({
+        operationId: "getTeamAnalyticsOverview",
+        summary: "Get team analytics overview",
+        description:
+          "Aggregates analytics over sites accessible to the current token.",
+        tags: ["Analytics"],
+        parameters: [...timeParams(), filterParam(), metricParam()],
+        responses: {
+          "200": ok("AnalyticsOverviewResponse"),
+          ...errorResponses("400", "401", "403"),
+        },
+      }),
+    },
+    "/api/v1/team/analytics/timeseries": {
+      get: op({
+        operationId: "getTeamAnalyticsTimeseries",
+        summary: "Get team analytics time series",
+        description: "Returns time-bucketed analytics over accessible sites.",
+        tags: ["Analytics"],
+        parameters: [...timeParams(true), filterParam(), metricParam()],
+        responses: {
+          "200": ok("AnalyticsTimeseriesResponse"),
+          ...errorResponses("400", "401", "403"),
+        },
+      }),
+    },
+    "/api/v1/team/analytics/sites": {
+      get: op({
+        operationId: "getTeamAnalyticsSites",
+        summary: "Get team analytics by site",
+        description: "Breaks down team analytics by accessible site.",
+        tags: ["Analytics"],
+        parameters: [...timeParams(), metricParam(), ...cursorParams()],
+        responses: {
+          "200": ok("AnalyticsBreakdownResponse"),
+          ...errorResponses("400", "401", "403"),
+        },
+      }),
+    },
+    "/api/v1/team/analytics/breakdowns/{dimension}": {
+      parameters: [dimensionParam],
+      get: op({
+        operationId: "getTeamAnalyticsBreakdown",
+        summary: "Get team analytics breakdown",
+        description: "Breaks down team analytics by a stable dimension.",
+        tags: ["Analytics"],
+        parameters: [
+          ...timeParams(),
+          filterParam(),
+          metricParam(),
+          queryParam(
+            "limit",
+            { type: "integer", minimum: 1, maximum: 1000 },
+            "Maximum rows.",
+          ),
+        ],
+        responses: {
+          "200": ok("AnalyticsBreakdownResponse"),
+          ...errorResponses("400", "401", "403"),
+        },
+      }),
+    },
     "/api/v1/sites": {
-      get: {
+      get: op({
         operationId: "listSites",
         summary: "List sites",
-        description:
-          "Returns all sites accessible by the authenticated API key within its team.",
+        description: "Returns sites accessible to the current token.",
         tags: ["Sites"],
         responses: {
-          "200": {
-            description: "List of sites",
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/SiteListResponse" },
-                example: {
-                  ok: true,
-                  requestId: "abc123def456",
-                  timestamp: "2026-06-26T12:00:00Z",
-                  data: [
-                    {
-                      id: "550e8400-e29b-41d4-a716-446655440000",
-                      teamId: "team-1",
-                      name: "My Site",
-                      domain: "example.com",
-                      publicEnabled: false,
-                      publicSlug: "",
-                      createdAt: 1719403200,
-                      updatedAt: 1719403200,
-                    },
-                  ],
-                },
-              },
-            },
-          },
-          "401": { $ref: "#/components/responses/Unauthorized" },
-          "403": { $ref: "#/components/responses/Forbidden" },
+          "200": ok("SiteListResponse"),
+          ...errorResponses("401", "403"),
         },
-      },
-      post: {
+      }),
+      post: op({
         operationId: "createSite",
         summary: "Create site",
-        description: "Creates a new site within the API key's team.",
+        description:
+          "Creates a site in the token's team. Supports Idempotency-Key.",
         tags: ["Sites"],
+        parameters: [
+          {
+            name: "Idempotency-Key",
+            in: "header",
+            schema: { type: "string", maxLength: 200 },
+            description: "Client-generated idempotency key.",
+          },
+        ],
         requestBody: {
           required: true,
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/SiteCreateInput" },
-            },
-          },
+          content: { [json]: { schema: ref("SiteCreateInput") } },
         },
         responses: {
-          "201": {
-            description: "Site created",
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/SiteResponse" },
-                example: {
-                  ok: true,
-                  requestId: "abc123def456",
-                  timestamp: "2026-06-26T12:00:00Z",
-                  data: {
-                    id: "550e8400-e29b-41d4-a716-446655440000",
-                    teamId: "team-1",
-                    name: "My Site",
-                    domain: "example.com",
-                    publicEnabled: false,
-                    publicSlug: "",
-                    createdAt: 1719403200,
-                    updatedAt: 1719403200,
-                  },
-                },
-              },
-            },
-          },
-          "400": { $ref: "#/components/responses/BadRequest" },
-          "401": { $ref: "#/components/responses/Unauthorized" },
-          "403": { $ref: "#/components/responses/Forbidden" },
+          "201": ok("SiteResponse", "Created site"),
+          ...errorResponses("400", "401", "403", "409"),
         },
-      },
+      }),
     },
     "/api/v1/sites/{siteId}": {
-      parameters: [{ $ref: "#/components/parameters/siteId" }],
-      get: {
+      parameters: [siteParam],
+      get: op({
         operationId: "getSite",
         summary: "Get site",
-        description: "Returns a single site by ID.",
+        description: "Returns a site by ID.",
         tags: ["Sites"],
         responses: {
-          "200": {
-            description: "Site details",
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/SiteResponse" },
-                example: {
-                  ok: true,
-                  requestId: "abc123def456",
-                  timestamp: "2026-06-26T12:00:00Z",
-                  data: {
-                    id: "550e8400-e29b-41d4-a716-446655440000",
-                    teamId: "team-1",
-                    name: "My Site",
-                    domain: "example.com",
-                    publicEnabled: false,
-                    publicSlug: "",
-                    createdAt: 1719403200,
-                    updatedAt: 1719403200,
-                  },
-                },
-              },
-            },
-          },
-          "401": { $ref: "#/components/responses/Unauthorized" },
-          "403": { $ref: "#/components/responses/Forbidden" },
-          "404": { $ref: "#/components/responses/NotFound" },
+          "200": ok("SiteResponse"),
+          ...errorResponses("401", "403", "404"),
         },
-      },
-      patch: {
+      }),
+      patch: op({
         operationId: "updateSite",
         summary: "Update site",
-        description: "Updates site fields. Only provided fields are changed.",
+        description: "Updates site metadata.",
         tags: ["Sites"],
         requestBody: {
           required: true,
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/SiteUpdateInput" },
-            },
-          },
+          content: { [json]: { schema: ref("SiteUpdateInput") } },
         },
         responses: {
-          "200": {
-            description: "Site updated",
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/SiteResponse" },
-                example: {
-                  ok: true,
-                  requestId: "abc123def456",
-                  timestamp: "2026-06-26T12:00:00Z",
-                  data: {
-                    id: "550e8400-e29b-41d4-a716-446655440000",
-                    teamId: "team-1",
-                    name: "Updated Site",
-                    domain: "example.com",
-                    publicEnabled: false,
-                    publicSlug: "",
-                    createdAt: 1719403200,
-                    updatedAt: 1719490000,
-                  },
-                },
-              },
-            },
-          },
-          "400": { $ref: "#/components/responses/BadRequest" },
-          "401": { $ref: "#/components/responses/Unauthorized" },
-          "404": { $ref: "#/components/responses/NotFound" },
+          "200": ok("SiteResponse"),
+          ...errorResponses("400", "401", "403", "404", "409"),
         },
-      },
-      delete: {
+      }),
+      delete: op({
         operationId: "deleteSite",
         summary: "Delete site",
-        description: "Permanently deletes a site and all associated data.",
+        description: "Deletes a site and associated analytics data.",
         tags: ["Sites"],
         responses: {
-          "204": {
-            description: "Site deleted",
-          },
-          "401": { $ref: "#/components/responses/Unauthorized" },
-          "404": { $ref: "#/components/responses/NotFound" },
+          "204": { description: "No Content" },
+          ...errorResponses("401", "403", "404"),
         },
-      },
+      }),
     },
-  };
-
-  // ── Site Config ────────────────────────────────────────────────────────
-
-  const siteConfig = {
-    "/api/v1/sites/{siteId}/config": {
-      parameters: [{ $ref: "#/components/parameters/siteId" }],
-      get: {
-        operationId: "getSiteConfig",
-        summary: "Get site config",
-        description: "Returns the tracking script configuration for a site.",
-        tags: ["Site Config"],
+    "/api/v1/sites/{siteId}/tracking": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getTrackingSettings",
+        summary: "Get tracking settings",
+        description: "Returns tracking settings.",
+        tags: ["Settings"],
         responses: {
-          "200": {
-            description: "Site configuration",
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/SiteConfigResponse" },
-                example: {
-                  ok: true,
-                  requestId: "abc123def456",
-                  timestamp: "2026-06-26T12:00:00Z",
-                  data: {
-                    siteDomain: "example.com",
-                    trackPaths: true,
-                    trackQuery: true,
-                    trackHash: false,
-                    trackEvents: true,
-                    trackEngagement: true,
-                    trackWebVitals: true,
-                    trackingStrength: "smart",
-                    domains: ["example.com"],
-                    outboundLinks: true,
-                  },
-                },
-              },
-            },
-          },
-          "401": { $ref: "#/components/responses/Unauthorized" },
-          "404": { $ref: "#/components/responses/NotFound" },
+          "200": ok("TrackingSettingsResponse"),
+          ...errorResponses("401", "403", "404"),
         },
-      },
-      patch: {
-        operationId: "updateSiteConfig",
-        summary: "Update site config",
-        description:
-          "Updates the tracking script configuration for a site. Only provided fields are changed.",
-        tags: ["Site Config"],
+      }),
+      patch: op({
+        operationId: "updateTrackingSettings",
+        summary: "Update tracking settings",
+        description: "Updates tracking settings.",
+        tags: ["Settings"],
         requestBody: {
           required: true,
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/SiteConfigUpdateInput" },
-            },
-          },
+          content: { [json]: { schema: ref("TrackingSettings") } },
         },
         responses: {
-          "200": {
-            description: "Config updated",
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/SiteConfigResponse" },
-                example: {
-                  ok: true,
-                  requestId: "abc123def456",
-                  timestamp: "2026-06-26T12:00:00Z",
-                  data: {
-                    siteDomain: "example.com",
-                    trackPaths: true,
-                    trackQuery: true,
-                    trackHash: false,
-                    trackEvents: true,
-                    trackEngagement: true,
-                    trackWebVitals: true,
-                    trackingStrength: "smart",
-                    domains: ["example.com"],
-                    outboundLinks: true,
-                  },
-                },
-              },
-            },
-          },
-          "400": { $ref: "#/components/responses/BadRequest" },
-          "401": { $ref: "#/components/responses/Unauthorized" },
-          "404": { $ref: "#/components/responses/NotFound" },
+          "200": ok("TrackingSettingsResponse"),
+          ...errorResponses("400", "401", "403", "404"),
         },
-      },
+      }),
     },
-    "/api/v1/sites/{siteId}/script-snippet": {
-      parameters: [{ $ref: "#/components/parameters/siteId" }],
-      get: {
-        operationId: "getScriptSnippet",
-        summary: "Get script snippet",
+    "/api/v1/sites/{siteId}/tracking/script": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getTrackingScript",
+        summary: "Get tracking script",
+        description: "Returns the script URL and HTML snippet.",
+        tags: ["Settings"],
+        responses: {
+          "200": ok("TrackingScriptResponse"),
+          ...errorResponses("401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/privacy": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getPrivacySettings",
+        summary: "Get privacy settings",
+        description: "Returns privacy settings.",
+        tags: ["Settings"],
+        responses: {
+          "200": ok("PrivacySettingsResponse"),
+          ...errorResponses("401", "403", "404"),
+        },
+      }),
+      patch: op({
+        operationId: "updatePrivacySettings",
+        summary: "Update privacy settings",
+        description: "Updates privacy settings.",
+        tags: ["Settings"],
+        requestBody: {
+          required: true,
+          content: { [json]: { schema: ref("PrivacySettings") } },
+        },
+        responses: {
+          "200": ok("PrivacySettingsResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/sharing": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getSharingSettings",
+        summary: "Get sharing settings",
+        description: "Returns sharing settings.",
+        tags: ["Settings"],
+        responses: {
+          "200": ok("SharingSettingsResponse"),
+          ...errorResponses("401", "403", "404"),
+        },
+      }),
+      patch: op({
+        operationId: "updateSharingSettings",
+        summary: "Update sharing settings",
+        description: "Updates sharing settings.",
+        tags: ["Settings"],
+        requestBody: {
+          required: true,
+          content: { [json]: { schema: ref("SharingSettings") } },
+        },
+        responses: {
+          "200": ok("SharingSettingsResponse"),
+          ...errorResponses("400", "401", "403", "404", "409"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/analytics/schema": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getAnalyticsSchema",
+        summary: "Get analytics schema",
         description:
-          "Returns the HTML snippet to embed the tracking script on a website.",
-        tags: ["Site Config"],
+          "Returns metrics, dimensions, filters, operators, intervals, and presets.",
+        tags: ["Analytics"],
         responses: {
-          "200": {
-            description: "Script snippet",
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/ScriptSnippetResponse" },
-                example: {
-                  ok: true,
-                  requestId: "abc123def456",
-                  timestamp: "2026-06-26T12:00:00Z",
-                  data: {
-                    siteId: "550e8400-e29b-41d4-a716-446655440000",
-                    src: "https://insight.ravelloh.com/script.js?siteId=550e8400-e29b-41d4-a716-446655440000",
-                    snippet:
-                      '<script defer src="https://insight.ravelloh.com/script.js?siteId=550e8400-e29b-41d4-a716-446655440000"></script>',
-                  },
-                },
-              },
-            },
-          },
-          "401": { $ref: "#/components/responses/Unauthorized" },
-          "404": { $ref: "#/components/responses/NotFound" },
+          "200": ok("AnalyticsSchemaResponse"),
+          ...errorResponses("401", "403", "404"),
         },
-      },
+      }),
     },
-  };
-
-  // ── Analytics Endpoints (one per queryName) ────────────────────────────
-  //
-  // The code uses a catch-all route where the LAST path segment is the
-  // queryName (e.g. /analytics/overview → queryName="overview").
-  // Each endpoint below uses a real queryName as its path segment.
-
-  const envelopeExample = {
-    ok: true,
-    requestId: "abc123def456",
-    timestamp: "2026-06-26T12:00:00Z",
-  };
-
-  // Common parameter sets by category
-  const win = windowParams;
-  const filt = allFilters;
-  const int = intervalParam;
-  const lim = limitParam;
-  const pag = paginationParams;
-
-  // Per-queryName endpoint config: [queryName, operationId, summary, description, params, responseSchema]
-  const analyticsConfigs: Array<{
-    q: string;
-    op: string;
-    sum: string;
-    desc: string;
-    params: unknown[];
-    schema: string;
-  }> = [
-    // overview & dimension tabs
-    {
-      q: "overview",
-      op: "queryOverview",
-      sum: "Query overview metrics",
-      desc: "Aggregate metrics: views, sessions, visitors, bounces, bounce rate, average duration.",
-      params: [
-        ...win(),
-        int(),
-        lim("Max results per dimension group", 10),
-        ...filt(),
-        {
-          name: "includeChange",
-          in: "query",
-          schema: { type: "boolean" },
-          description: "Include period-over-period change rates",
+    "/api/v1/sites/{siteId}/analytics/overview": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getAnalyticsOverview",
+        summary: "Get analytics overview",
+        description: "Returns aggregate analytics metrics.",
+        tags: ["Analytics"],
+        parameters: [...timeParams(), filterParam(), metricParam()],
+        responses: {
+          "200": ok("AnalyticsOverviewResponse"),
+          ...errorResponses("400", "401", "403", "404"),
         },
-        {
-          name: "includeDetail",
-          in: "query",
-          schema: { type: "boolean" },
-          description: "Include detailed breakdown data",
+      }),
+    },
+    "/api/v1/sites/{siteId}/analytics/timeseries": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getAnalyticsTimeseries",
+        summary: "Get analytics time series",
+        description: "Returns time-bucketed analytics metrics.",
+        tags: ["Analytics"],
+        parameters: [...timeParams(true), filterParam(), metricParam()],
+        responses: {
+          "200": ok("AnalyticsTimeseriesResponse"),
+          ...errorResponses("400", "401", "403", "404"),
         },
-      ],
-      schema: "OverviewResponse",
+      }),
     },
-    {
-      q: "overview-page-path",
-      op: "queryOverviewPagePath",
-      sum: "Overview: top page paths",
-      desc: "Top page paths by views.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "overview-page-title",
-      op: "queryOverviewPageTitle",
-      sum: "Overview: top page titles",
-      desc: "Top page titles by views.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "overview-page-hostname",
-      op: "queryOverviewPageHostname",
-      sum: "Overview: top hostnames",
-      desc: "Top hostnames by views.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "overview-page-entry",
-      op: "queryOverviewPageEntry",
-      sum: "Overview: top entry pages",
-      desc: "Top session entry pages.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "overview-page-exit",
-      op: "queryOverviewPageExit",
-      sum: "Overview: top exit pages",
-      desc: "Top session exit pages.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "overview-source-domain",
-      op: "queryOverviewSourceDomain",
-      sum: "Overview: top referrer domains",
-      desc: "Top referrer domains.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "overview-source-link",
-      op: "queryOverviewSourceLink",
-      sum: "Overview: top referrer links",
-      desc: "Top referrer URLs.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "overview-client-browser",
-      op: "queryOverviewClientBrowser",
-      sum: "Overview: browser distribution",
-      desc: "Browser distribution.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "overview-client-os-version",
-      op: "queryOverviewClientOsVersion",
-      sum: "Overview: OS version distribution",
-      desc: "OS version distribution.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "overview-client-device-type",
-      op: "queryOverviewClientDeviceType",
-      sum: "Overview: device type distribution",
-      desc: "Device type distribution.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "overview-client-language",
-      op: "queryOverviewClientLanguage",
-      sum: "Overview: language distribution",
-      desc: "Language distribution.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "overview-client-screen-size",
-      op: "queryOverviewClientScreenSize",
-      sum: "Overview: screen size distribution",
-      desc: "Screen size distribution.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "overview-geo-country",
-      op: "queryOverviewGeoCountry",
-      sum: "Overview: country distribution",
-      desc: "Country distribution.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "GeoTabResponse",
-    },
-    {
-      q: "overview-geo-region",
-      op: "queryOverviewGeoRegion",
-      sum: "Overview: region distribution",
-      desc: "Region distribution.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "GeoTabResponse",
-    },
-    {
-      q: "overview-geo-city",
-      op: "queryOverviewGeoCity",
-      sum: "Overview: city distribution",
-      desc: "City distribution.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "GeoTabResponse",
-    },
-    {
-      q: "overview-geo-continent",
-      op: "queryOverviewGeoContinent",
-      sum: "Overview: continent distribution",
-      desc: "Continent distribution.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "GeoTabResponse",
-    },
-    {
-      q: "overview-geo-timezone",
-      op: "queryOverviewGeoTimezone",
-      sum: "Overview: timezone distribution",
-      desc: "Timezone distribution.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "GeoTabResponse",
-    },
-    {
-      q: "overview-geo-organization",
-      op: "queryOverviewGeoOrganization",
-      sum: "Overview: ISP/organization distribution",
-      desc: "ISP/organization distribution.",
-      params: [...win(), lim("Max results", 10), ...filt()],
-      schema: "GeoTabResponse",
-    },
-    {
-      q: "overview-geo-points",
-      op: "queryOverviewGeoPoints",
-      sum: "Overview: geo coordinate points",
-      desc: "Geographic coordinate points for map rendering.",
-      params: [
-        ...win(),
-        lim("Max results", 100),
-        ...filt(),
-        {
-          name: "applyGeoFilter",
-          in: "query",
-          schema: { type: "boolean" },
-          description: "Apply geo filters",
+    "/api/v1/sites/{siteId}/analytics/breakdowns/{dimension}": {
+      parameters: [siteParam, dimensionParam],
+      get: op({
+        operationId: "getAnalyticsBreakdown",
+        summary: "Get analytics breakdown",
+        description: "Returns a metric breakdown by dimension.",
+        tags: ["Analytics"],
+        parameters: [
+          ...timeParams(),
+          filterParam(),
+          metricParam(),
+          queryParam(
+            "limit",
+            { type: "integer", minimum: 1, maximum: 1000, default: 20 },
+            "Maximum rows.",
+          ),
+        ],
+        responses: {
+          "200": ok("AnalyticsBreakdownResponse"),
+          ...errorResponses("400", "401", "403", "404"),
         },
-      ],
-      schema: "GeoPointsResponse",
+      }),
     },
-
-    // trend
-    {
-      q: "trend",
-      op: "queryTrend",
-      sum: "Query time-series trend",
-      desc: "Time-bucketed views, visitors, and sessions over time.",
-      params: [...win(), int(), ...filt()],
-      schema: "TrendResponse",
-    },
-
-    // pages
-    {
-      q: "pages",
-      op: "queryPages",
-      sum: "Query top pages",
-      desc: "Top pages ranked by views.",
-      params: [
-        ...win(),
-        lim("Max results", 20),
-        ...filt(),
-        {
-          name: "details",
-          in: "query",
-          schema: { type: "boolean" },
-          description: "Include per-page trend breakdown",
+    "/api/v1/sites/{siteId}/analytics/cross-breakdowns": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getAnalyticsCrossBreakdown",
+        summary: "Get analytics cross breakdown",
+        description: "Returns a two-dimensional analytics breakdown.",
+        tags: ["Analytics"],
+        parameters: [
+          ...timeParams(),
+          filterParam(),
+          queryParam(
+            "primary",
+            { type: "string", maxLength: 120 },
+            "Primary dimension.",
+          ),
+          queryParam(
+            "secondary",
+            { type: "string", maxLength: 120 },
+            "Secondary dimension.",
+          ),
+          queryParam(
+            "metric",
+            { type: "string", maxLength: 80 },
+            "Metric to aggregate.",
+          ),
+        ],
+        responses: {
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("400", "401", "403", "404"),
         },
-      ],
-      schema: "PagesResponse",
+      }),
     },
-    {
-      q: "pages-dashboard",
-      op: "queryPagesDashboard",
-      sum: "Query pages dashboard",
-      desc: "Pages dashboard with aggregated metrics and trend.",
-      params: [...win(), int(), lim("Max results", 20), ...filt(), ...pag()],
-      schema: "PagesDashboardResponse",
-    },
-    {
-      q: "page-hash",
-      op: "queryPageHash",
-      sum: "Query page hash fragments",
-      desc: "URL hash fragment distribution.",
-      params: [...win(), lim("Max results", 20), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "page-query",
-      op: "queryPageQuery",
-      sum: "Query page query strings",
-      desc: "URL query string distribution.",
-      params: [...win(), lim("Max results", 20), ...filt()],
-      schema: "DimensionResponse",
-    },
-
-    // referrers & sources
-    {
-      q: "referrers",
-      op: "queryReferrers",
-      sum: "Query referrer sources",
-      desc: "Top referrer sources.",
-      params: [
-        ...win(),
-        lim("Max results", 20),
-        ...filt(),
-        {
-          name: "fullUrl",
-          in: "query",
-          schema: { type: "boolean" },
-          description: "Show full referrer URL instead of domain",
+    "/api/v1/sites/{siteId}/analytics/compare": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "compareAnalytics",
+        summary: "Compare analytics",
+        description: "Compares analytics against another period.",
+        tags: ["Analytics"],
+        parameters: [
+          ...timeParams(),
+          filterParam(),
+          queryParam(
+            "compare",
+            { type: "string", maxLength: 80, default: "previous_period" },
+            "Comparison mode.",
+          ),
+        ],
+        responses: {
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("400", "401", "403", "404"),
         },
-      ],
-      schema: "ReferrersResponse",
+      }),
     },
-    {
-      q: "countries",
-      op: "queryCountries",
-      sum: "Query visitor countries",
-      desc: "Visitor distribution by country.",
-      params: [...win(), lim("Max results", 20), ...filt()],
-      schema: "GeoTabResponse",
-    },
-    {
-      q: "utm-source",
-      op: "queryUtmSource",
-      sum: "Query UTM sources",
-      desc: "UTM source breakdown.",
-      params: [...win(), lim("Max results", 20), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "utm-medium",
-      op: "queryUtmMedium",
-      sum: "Query UTM mediums",
-      desc: "UTM medium breakdown.",
-      params: [...win(), lim("Max results", 20), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "utm-campaign",
-      op: "queryUtmCampaign",
-      sum: "Query UTM campaigns",
-      desc: "UTM campaign breakdown.",
-      params: [...win(), lim("Max results", 20), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "utm-term",
-      op: "queryUtmTerm",
-      sum: "Query UTM terms",
-      desc: "UTM term breakdown.",
-      params: [...win(), lim("Max results", 20), ...filt()],
-      schema: "DimensionResponse",
-    },
-    {
-      q: "utm-content",
-      op: "queryUtmContent",
-      sum: "Query UTM content",
-      desc: "UTM content breakdown.",
-      params: [...win(), lim("Max results", 20), ...filt()],
-      schema: "DimensionResponse",
-    },
-
-    // visitors & sessions
-    {
-      q: "visitors",
-      op: "queryVisitors",
-      sum: "Query visitors",
-      desc: "Visitor list with pagination.",
-      params: [...win(), ...filt(), ...pag()],
-      schema: "VisitorsResponse",
-    },
-    {
-      q: "visitor-detail",
-      op: "queryVisitorDetail",
-      sum: "Query visitor detail",
-      desc: "Detailed information for a single visitor.",
-      params: [
-        {
-          name: "visitorId",
-          in: "query",
+    "/api/v1/sites/{siteId}/analytics/explore": {
+      parameters: [siteParam],
+      post: op({
+        operationId: "exploreAnalytics",
+        summary: "Explore analytics",
+        description:
+          "Runs an advanced multidimensional query with complex filters.",
+        tags: ["Analytics"],
+        requestBody: {
           required: true,
-          schema: { type: "string", format: "uuid" },
-          description: "Visitor ID",
+          content: { [json]: { schema: ref("AnalyticsExploreRequest") } },
         },
-        {
-          name: "timeZone",
-          in: "query",
-          schema: { type: "string" },
-          description: "IANA timezone",
+        responses: {
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("400", "401", "403", "404"),
         },
-      ],
-      schema: "VisitorDetailResponse",
+      }),
     },
-    {
-      q: "sessions",
-      op: "querySessions",
-      sum: "Query sessions",
-      desc: "Session list with pagination.",
-      params: [...win(), ...filt(), ...pag()],
-      schema: "SessionsResponse",
+    "/api/v1/sites/{siteId}/analytics/retention/cohorts": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getRetentionCohorts",
+        summary: "Get retention cohorts",
+        description: "Returns visitor retention cohorts.",
+        tags: ["Analytics"],
+        parameters: [...timeParams(true), filterParam()],
+        responses: {
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
     },
-    {
-      q: "session-detail",
-      op: "querySessionDetail",
-      sum: "Query session detail",
-      desc: "Detailed information for a single session.",
-      params: [
-        {
-          name: "sessionId",
-          in: "query",
+    "/api/v1/sites/{siteId}/event-types": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "listEventTypes",
+        summary: "List event types",
+        description: "Lists custom event types.",
+        tags: ["Events"],
+        parameters: [
+          ...timeParams(),
+          queryParam(
+            "limit",
+            { type: "integer", minimum: 1, maximum: 1000 },
+            "Maximum rows.",
+          ),
+        ],
+        responses: {
+          "200": ok("AnalyticsBreakdownResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/event-types/{eventName}": {
+      parameters: [siteParam, eventNameParam],
+      get: op({
+        operationId: "getEventType",
+        summary: "Get event type",
+        description: "Returns details for one event type.",
+        tags: ["Events"],
+        parameters: timeParams(true),
+        responses: {
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/events": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "listEvents",
+        summary: "List events",
+        description: "Lists event records with cursor pagination.",
+        tags: ["Events"],
+        parameters: [
+          ...timeParams(),
+          filterParam(),
+          ...cursorParams(),
+          sortParam(),
+          queryParam(
+            "eventName",
+            { type: "string", maxLength: 120 },
+            "Event name filter.",
+          ),
+        ],
+        responses: {
+          "200": ok("EventListResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/events/summary": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getEventsSummary",
+        summary: "Get events summary",
+        description: "Returns event summary metrics.",
+        tags: ["Events"],
+        parameters: [...timeParams(), filterParam()],
+        responses: {
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/events/timeseries": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getEventsTimeseries",
+        summary: "Get events time series",
+        description: "Returns event counts over time.",
+        tags: ["Events"],
+        parameters: [
+          ...timeParams(true),
+          filterParam(),
+          queryParam(
+            "eventName",
+            { type: "string", maxLength: 120 },
+            "Event name filter.",
+          ),
+        ],
+        responses: {
+          "200": ok("AnalyticsTimeseriesResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/events/search": {
+      parameters: [siteParam],
+      post: op({
+        operationId: "searchEvents",
+        summary: "Search events",
+        description: "Searches events using complex payload filters.",
+        tags: ["Events"],
+        requestBody: {
           required: true,
-          schema: { type: "string", format: "uuid" },
-          description: "Session ID",
+          content: { [json]: { schema: ref("GenericObjectResponse") } },
         },
-      ],
-      schema: "SessionsResponse",
-    },
-
-    // events
-    {
-      q: "event-types",
-      op: "queryEventTypes",
-      sum: "Query event types",
-      desc: "List all custom event types.",
-      params: [...win(), lim("Max results", 20), ...filt()],
-      schema: "EventTypesResponse",
-    },
-    {
-      q: "events-summary",
-      op: "queryEventsSummary",
-      sum: "Query events summary",
-      desc: "Custom event summary statistics.",
-      params: [...win(), ...filt()],
-      schema: "EventsSummaryResponse",
-    },
-    {
-      q: "events-trend",
-      op: "queryEventsTrend",
-      sum: "Query events trend",
-      desc: "Custom event time-series trend.",
-      params: [
-        ...win(),
-        int(),
-        lim("Max results", 12),
-        ...filt(),
-        {
-          name: "eventName",
-          in: "query",
-          schema: { type: "string" },
-          description: "Filter by event name",
+        responses: {
+          "200": ok("EventListResponse"),
+          ...errorResponses("400", "401", "403", "404"),
         },
-      ],
-      schema: "EventsTrendResponse",
+      }),
     },
-    {
-      q: "events-records",
-      op: "queryEventsRecords",
-      sum: "Query event records",
-      desc: "Custom event records with pagination.",
-      params: [
-        ...win(),
-        ...filt(),
-        ...pag(),
-        {
-          name: "eventName",
-          in: "query",
-          schema: { type: "string" },
-          description: "Filter by event name",
+    "/api/v1/sites/{siteId}/events/{eventId}": {
+      parameters: [siteParam, eventIdParam],
+      get: op({
+        operationId: "getEvent",
+        summary: "Get event",
+        description: "Returns one event record.",
+        tags: ["Events"],
+        responses: {
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("401", "403", "404"),
         },
-      ],
-      schema: "EventsSummaryResponse",
+      }),
     },
-    {
-      q: "event-type-field-values",
-      op: "queryEventTypeFieldValues",
-      sum: "Query event type field values",
-      desc: "Distinct field values for a specific event type.",
-      params: [
-        ...win(),
-        lim("Max results", 25),
-        ...filt(),
-        {
-          name: "eventName",
-          in: "query",
+    "/api/v1/sites/{siteId}/event-fields/values": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getEventFieldValues",
+        summary: "Get event field values",
+        description: "Returns observed values for an event field.",
+        tags: ["Events"],
+        parameters: [
+          ...timeParams(),
+          queryParam(
+            "eventName",
+            { type: "string", maxLength: 120 },
+            "Event name.",
+          ),
+          queryParam(
+            "fieldPath",
+            { type: "string", maxLength: 240 },
+            "Field path.",
+          ),
+          queryParam(
+            "search",
+            { type: "string", maxLength: 160 },
+            "Search text.",
+          ),
+        ],
+        responses: {
+          "200": ok("AnalyticsBreakdownResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/visitors": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "listVisitors",
+        summary: "List visitors",
+        description: "Lists visitors with cursor pagination.",
+        tags: ["Visitors"],
+        parameters: [
+          ...timeParams(),
+          filterParam(),
+          ...cursorParams(),
+          sortParam(),
+          queryParam(
+            "search",
+            { type: "string", maxLength: 160 },
+            "Search text.",
+          ),
+        ],
+        responses: {
+          "200": ok("VisitorListResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/visitors/{visitorId}": {
+      parameters: [siteParam, visitorIdParam],
+      get: op({
+        operationId: "getVisitor",
+        summary: "Get visitor",
+        description: "Returns one visitor.",
+        tags: ["Visitors"],
+        responses: {
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/visitors/{visitorId}/sessions": {
+      parameters: [siteParam, visitorIdParam],
+      get: op({
+        operationId: "listVisitorSessions",
+        summary: "List visitor sessions",
+        description: "Lists sessions for a visitor.",
+        tags: ["Visitors"],
+        parameters: [...timeParams(), ...cursorParams()],
+        responses: {
+          "200": ok("SessionListResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/visitors/{visitorId}/events": {
+      parameters: [siteParam, visitorIdParam],
+      get: op({
+        operationId: "listVisitorEvents",
+        summary: "List visitor events",
+        description: "Lists events for a visitor.",
+        tags: ["Visitors"],
+        parameters: [...timeParams(), ...cursorParams()],
+        responses: {
+          "200": ok("EventListResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/sessions": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "listSessions",
+        summary: "List sessions",
+        description: "Lists sessions with cursor pagination.",
+        tags: ["Sessions"],
+        parameters: [
+          ...timeParams(),
+          filterParam(),
+          ...cursorParams(),
+          sortParam(),
+          queryParam(
+            "search",
+            { type: "string", maxLength: 160 },
+            "Search text.",
+          ),
+        ],
+        responses: {
+          "200": ok("SessionListResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/sessions/{sessionId}": {
+      parameters: [siteParam, sessionIdParam],
+      get: op({
+        operationId: "getSession",
+        summary: "Get session",
+        description: "Returns one session.",
+        tags: ["Sessions"],
+        responses: {
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/sessions/{sessionId}/events": {
+      parameters: [siteParam, sessionIdParam],
+      get: op({
+        operationId: "listSessionEvents",
+        summary: "List session events",
+        description: "Lists events for a session.",
+        tags: ["Sessions"],
+        parameters: [...timeParams(), ...cursorParams()],
+        responses: {
+          "200": ok("EventListResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/funnels": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "listFunnels",
+        summary: "List funnels",
+        description: "Lists saved funnels.",
+        tags: ["Funnels"],
+        parameters: [...timeParams(), ...cursorParams()],
+        responses: {
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+      post: op({
+        operationId: "createFunnel",
+        summary: "Create funnel",
+        description: "Creates a saved funnel.",
+        tags: ["Funnels"],
+        requestBody: {
           required: true,
-          schema: { type: "string" },
-          description: "Event type name",
+          content: { [json]: { schema: ref("GenericObjectResponse") } },
         },
-        {
-          name: "fieldPath",
-          in: "query",
-          required: true,
-          schema: { type: "string" },
-          description: "Dot-notation field path",
+        responses: {
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("400", "401", "403", "404"),
         },
-        {
-          name: "fieldValueType",
-          in: "query",
-          required: true,
-          schema: {
-            type: "string",
-            enum: ["string", "number", "boolean", "null", "object", "array"],
-          },
-          description: "Expected value type",
-        },
-      ],
-      schema: "EventsSummaryResponse",
+      }),
     },
-    {
-      q: "event-type-detail",
-      op: "queryEventTypeDetail",
-      sum: "Query event type detail",
-      desc: "Detailed statistics for a specific event type.",
-      params: [
-        ...win(),
-        int(),
-        ...filt(),
-        {
-          name: "eventName",
-          in: "query",
-          required: true,
-          schema: { type: "string" },
-          description: "Event type name",
-        },
-      ],
-      schema: "EventsSummaryResponse",
-    },
-    {
-      q: "event-record-detail",
-      op: "queryEventRecordDetail",
-      sum: "Query event record detail",
-      desc: "Detailed information for a single event record.",
-      params: [
-        {
-          name: "eventId",
-          in: "query",
-          required: true,
-          schema: { type: "string", format: "uuid" },
-          description: "Event record ID",
-        },
-      ],
-      schema: "EventsSummaryResponse",
-    },
-
-    // funnels
-    {
-      q: "funnels",
-      op: "queryFunnels",
-      sum: "Query funnels",
-      desc: "Saved funnel definitions and analysis results.",
-      params: [
-        ...win(),
-        ...filt(),
-        {
-          name: "id",
-          in: "query",
-          schema: { type: "string", format: "uuid" },
-          description: "Funnel ID (omit to list all)",
-        },
-      ],
-      schema: "FunnelAnalyticsResponse",
-    },
-
-    // retention & performance
-    {
-      q: "retention",
-      op: "queryRetention",
-      sum: "Query retention",
-      desc: "Cohort-based retention analysis.",
-      params: [
-        ...win(),
-        ...filt(),
-        {
-          name: "granularity",
-          in: "query",
-          schema: {
-            type: "string",
-            enum: ["minute", "hour", "day", "week", "month"],
-          },
-          description: "Cohort period granularity (default: week)",
-        },
-      ],
-      schema: "RetentionResponse",
-    },
-    {
-      q: "performance",
-      op: "queryPerformance",
-      sum: "Query Web Vitals",
-      desc: "Core Web Vitals metrics (TTFB, FCP, LCP, CLS, INP).",
-      params: [...win(), int(), lim("Max results per group", 10), ...filt()],
-      schema: "PerformanceResponse",
-    },
-    {
-      q: "filter-options",
-      op: "queryFilterOptions",
-      sum: "Query filter options",
-      desc: "Available filter values for a given dimension.",
-      params: [
-        ...win(),
-        ...filt(),
-        {
-          name: "filterKey",
-          in: "query",
-          required: true,
-          schema: { type: "string" },
-          description: "Filter dimension key (e.g. country, browser, path)",
-        },
-        lim("Max results", 200),
-      ],
-      schema: "FilterOptionsResponse",
-    },
-
-    // technology
-    {
-      q: "browser-trend",
-      op: "queryBrowserTrend",
-      sum: "Query browser trend",
-      desc: "Browser usage trends over time.",
-      params: [...win(), int(), lim("Max results", 8), ...filt()],
-      schema: "ShareTrendResponse",
-    },
-    {
-      q: "browser-engine-trend",
-      op: "queryBrowserEngineTrend",
-      sum: "Query browser engine trend",
-      desc: "Browser engine trends.",
-      params: [...win(), int(), lim("Max results", 8), ...filt()],
-      schema: "ShareTrendResponse",
-    },
-    {
-      q: "browser-version-breakdown",
-      op: "queryBrowserVersionBreakdown",
-      sum: "Query browser version breakdown",
-      desc: "Browser version distribution.",
-      params: [
-        ...win(),
-        ...filt(),
-        {
-          name: "browserLimit",
-          in: "query",
-          schema: { type: "integer" },
-          description: "Max browsers (0 = no limit)",
-        },
-        {
-          name: "versionLimit",
-          in: "query",
-          schema: { type: "integer" },
-          description: "Max versions per browser (1-8)",
-        },
-      ],
-      schema: "BrowserVersionBreakdownResponse",
-    },
-    {
-      q: "browser-cross-breakdown",
-      op: "queryBrowserCrossBreakdown",
-      sum: "Query browser cross-breakdown",
-      desc: "Browser × OS cross-tabulation.",
-      params: [
-        ...win(),
-        ...filt(),
-        {
-          name: "browserLimit",
-          in: "query",
-          schema: { type: "integer" },
-          description: "Max browsers (1-12)",
-        },
-        {
-          name: "osLimit",
-          in: "query",
-          schema: { type: "integer" },
-          description: "Max OS groups (1-8)",
-        },
-        {
-          name: "deviceTypeLimit",
-          in: "query",
-          schema: { type: "integer" },
-          description: "Max device types (1-8)",
-        },
-      ],
-      schema: "CrossBreakdownResponse",
-    },
-    {
-      q: "browser-radar",
-      op: "queryBrowserRadar",
-      sum: "Query browser radar",
-      desc: "Multi-axis browser comparison radar chart.",
-      params: [...win(), ...filt()],
-      schema: "RadarResponse",
-    },
-    {
-      q: "referrer-radar",
-      op: "queryReferrerRadar",
-      sum: "Query referrer radar",
-      desc: "Multi-axis referrer comparison radar chart.",
-      params: [...win(), lim("Max results", 8), ...filt()],
-      schema: "RadarResponse",
-    },
-    {
-      q: "referrer-dimension-trend",
-      op: "queryReferrerDimensionTrend",
-      sum: "Query referrer dimension trend",
-      desc: "Referrer dimension trends over time.",
-      params: [...win(), int(), lim("Max results", 8), ...filt()],
-      schema: "ShareTrendResponse",
-    },
-    {
-      q: "client-dimension-trend",
-      op: "queryClientDimensionTrend",
-      sum: "Query client dimension trend",
-      desc: "Client dimension (browser/OS/device) trends.",
-      params: [
-        ...win(),
-        int(),
-        lim("Max results", 8),
-        ...filt(),
-        {
-          name: "dimension",
-          in: "query",
-          schema: { type: "string" },
-          description: "Dimension key (e.g. browser, osVersion, deviceType)",
-        },
-      ],
-      schema: "ShareTrendResponse",
-    },
-    {
-      q: "utm-dimension-trend",
-      op: "queryUtmDimensionTrend",
-      sum: "Query UTM dimension trend",
-      desc: "UTM dimension trends over time.",
-      params: [
-        ...win(),
-        int(),
-        lim("Max results", 8),
-        ...filt(),
-        {
-          name: "dimension",
-          in: "query",
-          schema: { type: "string" },
-          description: "UTM dimension (e.g. source, medium, campaign)",
-        },
-      ],
-      schema: "ShareTrendResponse",
-    },
-    {
-      q: "client-cross-breakdown",
-      op: "queryClientCrossBreakdown",
-      sum: "Query client cross-breakdown",
-      desc: "Client dimension cross-tabulation.",
-      params: [
-        ...win(),
-        ...filt(),
-        {
-          name: "primaryDimension",
-          in: "query",
-          required: true,
-          schema: { type: "string" },
-          description: "Primary dimension for rows",
-        },
-        {
-          name: "secondaryDimension",
-          in: "query",
-          required: true,
-          schema: { type: "string" },
-          description: "Secondary dimension for columns",
-        },
-        {
-          name: "primaryLimit",
-          in: "query",
-          schema: { type: "integer" },
-          description: "Max rows (1-12)",
-        },
-        {
-          name: "secondaryLimit",
-          in: "query",
-          schema: { type: "integer" },
-          description: "Max columns (1-8)",
-        },
-      ],
-      schema: "CrossBreakdownResponse",
-    },
-  ];
-
-  // Generate all analytics endpoints
-  const analyticsEndpoints: Record<string, unknown> = {};
-  for (const c of analyticsConfigs) {
-    const ep = analyticsEndpoint(c.q, c.op, c.sum, c.desc, c.params, c.schema, {
-      ...envelopeExample,
-      data: "(response shape varies by query — see schema)",
-    });
-    Object.assign(analyticsEndpoints, ep);
-  }
-
-  // ── Other analytics endpoints (non-query) ─────────────────────────────
-
-  const analyticsFunnelsAnalyze = {
-    "/api/v1/sites/{siteId}/analytics/funnels/analyze": {
-      parameters: [{ $ref: "#/components/parameters/siteId" }],
-      post: {
+    "/api/v1/sites/{siteId}/funnels/analysis": {
+      parameters: [siteParam],
+      post: op({
         operationId: "analyzeFunnel",
-        summary: "Analyze funnel (ad-hoc)",
-        description:
-          "Runs a funnel analysis without saving the funnel definition.",
-        tags: ["Analytics"],
+        summary: "Analyze funnel",
+        description: "Runs ad-hoc funnel analysis.",
+        tags: ["Funnels"],
         requestBody: {
           required: true,
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/FunnelAnalyzeInput" },
-            },
-          },
+          content: { [json]: { schema: ref("GenericObjectResponse") } },
         },
         responses: {
-          "200": {
-            description: "Funnel analysis result",
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/FunnelAnalyzeResponse" },
-                example: {
-                  ok: true,
-                  requestId: "abc123def456",
-                  timestamp: "2026-06-26T12:00:00Z",
-                  data: {
-                    totalVisitors: 1000,
-                    steps: [
-                      { visitors: 1000, dropoff: 0 },
-                      { visitors: 450, dropoff: 550 },
-                    ],
-                  },
-                },
-              },
-            },
-          },
-          "400": { $ref: "#/components/responses/BadRequest" },
-          "401": { $ref: "#/components/responses/Unauthorized" },
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("400", "401", "403", "404"),
         },
-      },
+      }),
     },
-  };
-
-  const analyticsBatch = {
-    "/api/v1/sites/{siteId}/analytics/batch": {
-      parameters: [{ $ref: "#/components/parameters/siteId" }],
-      post: {
-        operationId: "batchAnalytics",
-        summary: "Batch analytics queries",
-        description: "Executes multiple analytics queries in a single request.",
-        tags: ["Analytics"],
+    "/api/v1/sites/{siteId}/funnels/{funnelId}": {
+      parameters: [siteParam, { $ref: "#/components/parameters/funnelId" }],
+      get: op({
+        operationId: "getFunnel",
+        summary: "Get funnel",
+        description: "Returns one saved funnel.",
+        tags: ["Funnels"],
+        responses: {
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("401", "403", "404"),
+        },
+      }),
+      patch: op({
+        operationId: "updateFunnel",
+        summary: "Update funnel",
+        description: "Updates one saved funnel.",
+        tags: ["Funnels"],
         requestBody: {
           required: true,
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/BatchInput" },
-            },
-          },
+          content: { [json]: { schema: ref("GenericObjectResponse") } },
         },
         responses: {
-          "200": {
-            description: "Batch results",
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/BatchResponse" },
-                example: {
-                  ok: true,
-                  requestId: "abc123def456",
-                  timestamp: "2026-06-26T12:00:00Z",
-                  data: {
-                    partialFailure: false,
-                    results: [
-                      {
-                        queryName: "overview",
-                        ok: true,
-                        data: { views: 12500, sessions: 8300, visitors: 6100 },
-                      },
-                      {
-                        queryName: "trend",
-                        ok: true,
-                        data: { interval: "day", data: [] },
-                      },
-                    ],
-                  },
-                },
-              },
-            },
-          },
-          "400": { $ref: "#/components/responses/BadRequest" },
-          "401": { $ref: "#/components/responses/Unauthorized" },
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("400", "401", "403", "404"),
         },
-      },
+      }),
+      delete: op({
+        operationId: "deleteFunnel",
+        summary: "Delete funnel",
+        description: "Deletes one saved funnel.",
+        tags: ["Funnels"],
+        responses: {
+          "204": { description: "No Content" },
+          ...errorResponses("401", "403", "404"),
+        },
+      }),
     },
-  };
-
-  // ── Realtime ───────────────────────────────────────────────────────────
-
-  const realtime = {
-    "/api/v1/sites/{siteId}/realtime/snapshot": {
-      parameters: [{ $ref: "#/components/parameters/siteId" }],
-      get: {
-        operationId: "getRealtimeSnapshot",
-        summary: "Realtime snapshot",
+    "/api/v1/sites/{siteId}/funnels/{funnelId}/analysis": {
+      parameters: [siteParam, { $ref: "#/components/parameters/funnelId" }],
+      get: op({
+        operationId: "getFunnelAnalysis",
+        summary: "Get funnel analysis",
+        description: "Runs analysis for a saved funnel.",
+        tags: ["Funnels"],
+        parameters: timeParams(),
+        responses: {
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/performance/summary": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getPerformanceSummary",
+        summary: "Get performance summary",
         description:
-          "Returns a snapshot of recent real-time activity for a site.",
-        tags: ["Realtime"],
+          "Returns Core Web Vitals summary in milliseconds except CLS.",
+        tags: ["Performance"],
+        parameters: [...timeParams(), filterParam()],
+        responses: {
+          "200": ok("PerformanceSummaryResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/performance/timeseries": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getPerformanceTimeseries",
+        summary: "Get performance time series",
+        description: "Returns Core Web Vitals over time.",
+        tags: ["Performance"],
+        parameters: [...timeParams(true), filterParam()],
+        responses: {
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/performance/breakdowns/{dimension}": {
+      parameters: [siteParam, dimensionParam],
+      get: op({
+        operationId: "getPerformanceBreakdown",
+        summary: "Get performance breakdown",
+        description: "Breaks down Core Web Vitals by dimension.",
+        tags: ["Performance"],
         parameters: [
-          {
-            name: "from",
-            in: "query",
-            schema: { type: "integer" },
-            description: "Start timestamp (Unix ms)",
-          },
-          {
-            name: "to",
-            in: "query",
-            schema: { type: "integer" },
-            description: "End timestamp (Unix ms)",
-          },
-          {
-            name: "limit",
-            in: "query",
-            schema: { type: "integer", default: 20000 },
-            description: "Max events to return",
-          },
+          ...timeParams(),
+          filterParam(),
+          queryParam(
+            "metric",
+            { type: "string", enum: ["ttfb", "fcp", "lcp", "cls", "inp"] },
+            "Performance metric.",
+          ),
         ],
         responses: {
-          "200": {
-            description: "Realtime snapshot",
-            content: {
-              "application/json": {
-                schema: {
-                  $ref: "#/components/schemas/RealtimeSnapshotResponse",
-                },
-                example: {
-                  ok: true,
-                  requestId: "abc123def456",
-                  timestamp: "2026-06-26T12:00:00Z",
-                  data: {
-                    activeNow: 42,
-                    events: [
-                      {
-                        visitorId: "v1",
-                        sessionId: "s1",
-                        kind: "pageview",
-                        pathname: "/",
-                        timestamp: 1719403200,
-                      },
-                    ],
-                  },
-                },
-              },
-            },
-          },
-          "401": { $ref: "#/components/responses/Unauthorized" },
-          "404": { $ref: "#/components/responses/NotFound" },
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("400", "401", "403", "404"),
         },
-      },
+      }),
     },
-    "/api/v1/sites/{siteId}/realtime/active": {
-      parameters: [{ $ref: "#/components/parameters/siteId" }],
-      get: {
+    "/api/v1/sites/{siteId}/realtime/active-visitors": {
+      parameters: [siteParam],
+      get: op({
         operationId: "getRealtimeActiveVisitors",
-        summary: "Active visitor count",
-        description:
-          "Returns the number of visitors currently active on the site.",
+        summary: "Get active visitors",
+        description: "Returns the current active visitor count.",
         tags: ["Realtime"],
         responses: {
-          "200": {
-            description: "Active visitor count",
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/ActiveVisitorsResponse" },
-                example: {
-                  ok: true,
-                  requestId: "abc123def456",
-                  timestamp: "2026-06-26T12:00:00Z",
-                  data: { activeNow: 42 },
-                },
-              },
-            },
-          },
-          "401": { $ref: "#/components/responses/Unauthorized" },
-          "404": { $ref: "#/components/responses/NotFound" },
+          "200": ok("GenericObjectResponse"),
+          ...errorResponses("401", "403", "404"),
         },
-      },
+      }),
     },
-  };
-
-  // ── Team ───────────────────────────────────────────────────────────────
-
-  const team = {
-    "/api/v1/team/dashboard": {
-      get: {
-        operationId: "getTeamDashboard",
-        summary: "Team dashboard",
-        description: "Returns an aggregated dashboard for the API key's team.",
-        tags: ["Analytics"],
+    "/api/v1/sites/{siteId}/realtime/events": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getRealtimeEvents",
+        summary: "Get realtime events",
+        description: "Returns recent realtime events.",
+        tags: ["Realtime"],
         parameters: [
-          {
-            name: "from",
-            in: "query",
-            schema: { type: "integer" },
-            description: "Start timestamp (Unix ms, defaults to 24h ago)",
-          },
-          {
-            name: "to",
-            in: "query",
-            schema: { type: "integer" },
-            description: "End timestamp (Unix ms, defaults to now)",
-          },
-          {
-            name: "interval",
-            in: "query",
-            schema: {
-              type: "string",
-              enum: ["minute", "hour", "day", "week", "month"],
-            },
-            description: "Time bucket granularity",
-          },
-          {
-            name: "timeZone",
-            in: "query",
-            schema: { type: "string" },
-            description: "IANA timezone identifier",
-          },
+          queryParam(
+            "limit",
+            { type: "integer", minimum: 1, maximum: 1000 },
+            "Maximum events.",
+          ),
         ],
         responses: {
-          "200": {
-            description: "Team dashboard data",
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/TeamDashboardResponse" },
-                example: {
-                  ok: true,
-                  requestId: "abc123def456",
-                  timestamp: "2026-06-26T12:00:00Z",
-                  data: {
-                    sites: [
-                      {
-                        siteId: "550e8400",
-                        name: "My Site",
-                        domain: "example.com",
-                        views: 12500,
-                        visitors: 6100,
-                        sessions: 8300,
-                      },
-                    ],
-                  },
-                },
-              },
-            },
-          },
-          "400": { $ref: "#/components/responses/BadRequest" },
-          "401": { $ref: "#/components/responses/Unauthorized" },
+          "200": ok("EventListResponse"),
+          ...errorResponses("400", "401", "403", "404"),
         },
-      },
+      }),
     },
-  };
-
-  // ── Merge all paths ────────────────────────────────────────────────────
-
-  return {
-    ...healthz,
-    ...collect,
-    ...sites,
-    ...siteConfig,
-    ...analyticsEndpoints,
-    ...analyticsFunnelsAnalyze,
-    ...analyticsBatch,
-    ...realtime,
-    ...team,
+    "/api/v1/sites/{siteId}/realtime/sessions": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getRealtimeSessions",
+        summary: "Get realtime sessions",
+        description: "Returns recent realtime sessions.",
+        tags: ["Realtime"],
+        parameters: [
+          queryParam(
+            "limit",
+            { type: "integer", minimum: 1, maximum: 1000 },
+            "Maximum sessions.",
+          ),
+        ],
+        responses: {
+          "200": ok("SessionListResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/realtime/snapshot": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getRealtimeSnapshot",
+        summary: "Get realtime snapshot",
+        description:
+          "Returns active visitors, recent events, and recent sessions.",
+        tags: ["Realtime"],
+        responses: {
+          "200": ok("RealtimeSnapshotResponse"),
+          ...errorResponses("401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/batch": {
+      post: op({
+        operationId: "batch",
+        summary: "Execute global batch",
+        description: "Executes up to 20 GET subrequests under /api/v1.",
+        tags: ["Batch"],
+        parameters: [
+          {
+            name: "Idempotency-Key",
+            in: "header",
+            schema: { type: "string", maxLength: 200 },
+            description: "Client-generated idempotency key.",
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: { [json]: { schema: ref("BatchRequest") } },
+        },
+        responses: {
+          "200": ok("BatchResponse"),
+          ...errorResponses("400", "401"),
+        },
+      }),
+    },
   };
 }
 
 function buildSpec(): OpenAPISpec {
+  const errorContent = {
+    content: {
+      [json]: {
+        schema: ref("ErrorResponse"),
+      },
+    },
+  };
   return {
     openapi: "3.1.0",
     info: {
       title: "InsightFlare API",
       description:
-        "InsightFlare is a privacy-focused web analytics platform. This API allows programmatic management of sites and retrieval of analytics data.\n\n## Authentication\n\nAll `/api/v1/` endpoints require an API key passed via the `Authorization` header:\n\n```\nAuthorization: Bearer ifk_live_<prefix>.<secret>\n```\n\n## Timestamps\n\nAll timestamps in query parameters (`from`, `to`) are **Unix milliseconds**.\nTimestamps in response objects are **Unix seconds** unless the field name contains `Ms`.",
+        "Privacy-focused web analytics API. Authenticated endpoints require an API key passed as a Bearer token in the Authorization header. All API times are ISO 8601 strings and analytics ranges use [from, to) semantics.",
       version: "1.0.0",
       contact: {
         name: "InsightFlare",
@@ -1849,43 +1821,38 @@ function buildSpec(): OpenAPISpec {
       },
     },
     servers: [
-      { url: "https://insightflare.example.com", description: "Production" },
+      { url: "https://insight.ravelloh.com", description: "Production" },
     ],
     security: [{ BearerAuth: [] }],
     tags: [
+      { name: "Discovery", description: "API discovery and capabilities" },
+      { name: "Token", description: "Token introspection" },
+      { name: "Team", description: "Current team resources" },
+      { name: "Sites", description: "Site resources" },
       {
-        name: "Health",
-        description: "Health check endpoint (no auth required)",
+        name: "Settings",
+        description: "Tracking, privacy, and sharing settings",
       },
-      {
-        name: "Ingestion",
-        description: "Tracking data collection (no auth required)",
-      },
-      {
-        name: "Sites",
-        description: "Create, read, update, and delete analytics sites",
-      },
-      {
-        name: "Site Config",
-        description: "Manage site tracking configuration and embed snippets",
-      },
-      {
-        name: "Analytics",
-        description: "Query analytics data and team dashboards",
-      },
-      {
-        name: "Realtime",
-        description: "Real-time visitor activity and active visitor counts",
-      },
+      { name: "Analytics", description: "Analytics data primitives" },
+      { name: "Events", description: "Event resources" },
+      { name: "Visitors", description: "Visitor resources" },
+      { name: "Sessions", description: "Session resources" },
+      { name: "Funnels", description: "Funnel resources and analysis" },
+      { name: "Performance", description: "Core Web Vitals performance data" },
+      { name: "Realtime", description: "Realtime activity" },
+      { name: "Batch", description: "Global batch requests" },
+      { name: "Ingestion", description: "Client SDK event collection" },
+      { name: "Health", description: "Health checks" },
     ],
-    paths: {},
+    paths: buildPaths(),
     components: {
-      schemas: {},
+      schemas: buildSchemas(),
       securitySchemes: {
         BearerAuth: {
           type: "http",
           scheme: "bearer",
-          description: "API key in the format `ifk_live_<prefix>.<secret>`.",
+          description:
+            "API key passed as a Bearer token in the Authorization header.",
         },
       },
       parameters: {
@@ -1894,73 +1861,66 @@ function buildSpec(): OpenAPISpec {
           in: "path",
           required: true,
           schema: { type: "string", format: "uuid" },
-          description: "Unique site identifier",
+          description: "Site UUID.",
+        },
+        dimension: {
+          name: "dimension",
+          in: "path",
+          required: true,
+          schema: { type: "string", maxLength: 120 },
+          description: "Stable analytics dimension key.",
+        },
+        eventName: {
+          name: "eventName",
+          in: "path",
+          required: true,
+          schema: { type: "string", maxLength: 120 },
+          description: "Event name.",
+        },
+        eventId: {
+          name: "eventId",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+          description: "Event UUID.",
+        },
+        visitorId: {
+          name: "visitorId",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+          description: "Visitor UUID.",
+        },
+        sessionId: {
+          name: "sessionId",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+          description: "Session UUID.",
+        },
+        funnelId: {
+          name: "funnelId",
+          in: "path",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+          description: "Funnel UUID.",
         },
       },
       responses: {
-        BadRequest: {
-          description: "Bad request",
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" },
-            },
-          },
-        },
-        Unauthorized: {
-          description: "Authentication failed",
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" },
-            },
-          },
-        },
-        Forbidden: {
-          description: "Insufficient permissions",
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" },
-            },
-          },
-        },
-        NotFound: {
-          description: "Resource not found",
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" },
-            },
-          },
-        },
-        TooManyRequests: {
-          description: "Rate limit exceeded",
-          content: {
-            "application/json": {
-              schema: { $ref: "#/components/schemas/ErrorEnvelope" },
-            },
-          },
-        },
+        BadRequest: { description: "Bad request", ...errorContent },
+        Unauthorized: { description: "Authentication failed", ...errorContent },
+        Forbidden: { description: "Insufficient permissions", ...errorContent },
+        NotFound: { description: "Resource not found", ...errorContent },
+        Conflict: { description: "Conflict", ...errorContent },
+        PayloadTooLarge: { description: "Payload too large", ...errorContent },
+        InternalError: { description: "Internal error", ...errorContent },
       },
     },
   };
 }
 
-async function main() {
-  console.log("Generating OpenAPI spec from Zod schemas...\n");
-
+function main() {
   const spec = buildSpec();
-
-  // Convert all registered schemas
-  const schemas = getAllRegisteredSchemas();
-  console.log(`Found ${schemas.length} registered schemas:`);
-
-  for (const { name, schema } of schemas) {
-    convertSchema(spec, name, schema);
-  }
-
-  // Build paths
-  spec.paths = buildPaths();
-  console.log(`\nBuilt ${Object.keys(spec.paths).length} paths`);
-
-  // Output
   const root = resolve(import.meta.dirname, "..");
   const yamlPath = resolve(root, "docs", "openapi.yaml");
   const jsonPath = resolve(root, "docs", "openapi.json");
@@ -1968,21 +1928,16 @@ async function main() {
   writeFileSync(yamlPath, YAML.stringify(spec, { indent: 2 }), "utf8");
   writeFileSync(jsonPath, JSON.stringify(spec, null, 2), "utf8");
 
-  // format with prettier to match project style
   try {
     execSync(`npx prettier --write "${yamlPath}" "${jsonPath}"`, {
       stdio: "pipe",
     });
   } catch {
-    // prettier not available or failed — files are still valid, just unformatted
+    // Files are valid even if formatting fails.
   }
 
-  console.log(`\nGenerated:`);
-  console.log(`  YAML: ${yamlPath}`);
-  console.log(`  JSON: ${jsonPath}`);
+  console.log(`Generated ${yamlPath}`);
+  console.log(`Generated ${jsonPath}`);
 }
 
-main().catch((err) => {
-  console.error("Failed to generate OpenAPI spec:", err);
-  process.exit(1);
-});
+main();
