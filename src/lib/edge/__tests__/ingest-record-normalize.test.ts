@@ -30,7 +30,7 @@ function makeEnvelope(
       headers: {
         "user-agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-        "cf-connection-ip": "203.0.113.10",
+        "cf-connecting-ip": "203.0.113.10",
       },
       cf: {
         country: "US",

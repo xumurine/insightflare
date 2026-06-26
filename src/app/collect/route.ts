@@ -104,27 +104,10 @@ function matchesBlockedPath(pathname: string, blockedPaths: string[]): boolean {
   return false;
 }
 
-// 允许转发到 Durable Object 的请求头白名单
-const ALLOWED_INGEST_HEADERS = new Set([
-  "user-agent",
-  "accept-language",
-  "sec-ch-ua",
-  "sec-ch-ua-mobile",
-  "sec-ch-ua-platform",
-  "sec-ch-ua-platform-version",
-  "sec-ch-ua-model",
-  "sec-ch-ua-full-version-list",
-  "sec-ch-ua-arch",
-  "sec-ch-ua-bitness",
-  "sec-ch-ua-wow64",
-]);
-
 function serializeHeaders(request: Request): Record<string, string> {
   const headers: Record<string, string> = {};
   request.headers.forEach((value, key) => {
-    if (ALLOWED_INGEST_HEADERS.has(key.toLowerCase())) {
-      headers[key] = value;
-    }
+    headers[key] = value;
   });
   return headers;
 }

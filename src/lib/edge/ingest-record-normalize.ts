@@ -124,7 +124,7 @@ export async function normalizeIngestRecord(
   if (isEU || !visitorId) {
     const ip = clampString(
       coerceString(
-        requestHeaders["cf-connection-ip"] ??
+        requestHeaders["cf-connecting-ip"] ??
           requestHeaders["x-forwarded-for"] ??
           "",
       ),
