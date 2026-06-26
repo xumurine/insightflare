@@ -447,4 +447,255 @@ describe("hourly visit rollups", () => {
     ).resolves.toBeNull();
     d1.close();
   });
+
+  it("aggregates all performance metric columns (fcp, lcp, cls, inp)", async () => {
+    const { env, d1 } = createEnv();
+    const scheduledTime = Date.UTC(2026, 4, 25, 12);
+    const oldHour = Math.floor(Date.UTC(2026, 4, 24, 20) / (60 * 60 * 1000));
+    d1.db
+      .prepare(
+        `
+          INSERT INTO visits (
+            visit_id, site_id, visitor_id, session_id, status, started_at,
+            duration_ms, perf_ttfb_ms, perf_fcp_ms, perf_lcp_ms, perf_cls, perf_inp_ms
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .run(
+        "perf-visit",
+        "site-1",
+        "v1",
+        "s1",
+        "closed",
+        oldHour * 60 * 60 * 1000 + 5000,
+        1500,
+        100,
+        200,
+        500,
+        0.05,
+        80,
+      );
+
+    await runHourlyAggregation(env, scheduledTime);
+
+    const rollup = d1.db
+      .prepare("SELECT * FROM visit_hourly_rollups WHERE hour_bucket = ?")
+      .get(oldHour) as Row;
+    expect(rollup).toBeDefined();
+    expect(rollup.views).toBe(1);
+    expect(rollup.perf_ttfb_sum).toBe(100);
+    expect(rollup.perf_ttfb_count).toBe(1);
+    expect(rollup.perf_fcp_sum).toBe(200);
+    expect(rollup.perf_fcp_count).toBe(1);
+    expect(rollup.perf_lcp_sum).toBe(500);
+    expect(rollup.perf_lcp_count).toBe(1);
+    expect(rollup.perf_cls_sum).toBe(0.05);
+    expect(rollup.perf_cls_count).toBe(1);
+    expect(rollup.perf_inp_sum).toBe(80);
+    expect(rollup.perf_inp_count).toBe(1);
+    d1.close();
+  });
+
+  it("handles visits with null performance metrics", async () => {
+    const { env, d1 } = createEnv();
+    const scheduledTime = Date.UTC(2026, 4, 25, 12);
+    const oldHour = Math.floor(Date.UTC(2026, 4, 24, 20) / (60 * 60 * 1000));
+    d1.db
+      .prepare(
+        `
+          INSERT INTO visits (
+            visit_id, site_id, visitor_id, session_id, status, started_at,
+            duration_ms, perf_ttfb_ms, perf_fcp_ms, perf_lcp_ms, perf_cls, perf_inp_ms
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .run(
+        "null-perf",
+        "site-1",
+        "v1",
+        "s1",
+        "closed",
+        oldHour * 60 * 60 * 1000 + 5000,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+      );
+
+    await runHourlyAggregation(env, scheduledTime);
+
+    const rollup = d1.db
+      .prepare("SELECT * FROM visit_hourly_rollups WHERE hour_bucket = ?")
+      .get(oldHour) as Row;
+    expect(rollup).toBeDefined();
+    expect(rollup.perf_ttfb_count).toBe(0);
+    expect(rollup.perf_fcp_count).toBe(0);
+    expect(rollup.perf_lcp_count).toBe(0);
+    expect(rollup.perf_cls_count).toBe(0);
+    expect(rollup.perf_inp_count).toBe(0);
+    d1.close();
+  });
+
+  it("skips sites with no closed visits", async () => {
+    const { env, d1 } = createEnv();
+    const scheduledTime = Date.UTC(2026, 4, 25, 12);
+    // Only an open visit - no closed visits
+    insertVisit(d1, {
+      visitId: "only-open",
+      status: "open",
+      startedAt: Date.UTC(2026, 4, 24, 20),
+    });
+
+    const result = await runHourlyAggregation(env, scheduledTime);
+
+    expect(result.status).toBe("skipped");
+    const rollups = d1.db
+      .prepare("SELECT COUNT(*) AS count FROM visit_hourly_rollups")
+      .get() as { count: number };
+    expect(rollups.count).toBe(0);
+    d1.close();
+  });
+
+  it("skips sites already current with aggregation state", async () => {
+    const { env, d1 } = createEnv();
+    const scheduledTime = Date.UTC(2026, 4, 25, 12);
+    const oldHour = Math.floor(Date.UTC(2026, 4, 24, 20) / (60 * 60 * 1000));
+    insertVisit(d1, {
+      visitId: "visit-1",
+      startedAt: oldHour * 60 * 60 * 1000 + 10_000,
+      durationMs: 1000,
+    });
+
+    // First run aggregates
+    await runHourlyAggregation(env, scheduledTime);
+    // Second run should skip (already current)
+    const result = await runHourlyAggregation(env, scheduledTime);
+
+    expect(result.status).toBe("skipped");
+    d1.close();
+  });
+
+  it("logs aggregation via logger", async () => {
+    const { env, d1 } = createEnv();
+    const scheduledTime = Date.UTC(2026, 4, 25, 12);
+    const oldHour = Math.floor(Date.UTC(2026, 4, 24, 20) / (60 * 60 * 1000));
+    insertVisit(d1, {
+      visitId: "visit-1",
+      startedAt: oldHour * 60 * 60 * 1000 + 10_000,
+      durationMs: 1000,
+    });
+
+    const logger = {
+      info: vi.fn(),
+      error: vi.fn(),
+    };
+    const result = await runHourlyAggregation(env, scheduledTime, { logger });
+
+    expect(result.status).toBe("success");
+    expect(logger.info).toHaveBeenCalledWith(
+      "aggregation_candidates",
+      expect.any(String),
+      expect.any(Object),
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      "aggregation_summary",
+      expect.any(String),
+      expect.objectContaining({ status: "success" }),
+    );
+    d1.close();
+  });
+
+  it("skips when cutoff is before epoch", async () => {
+    const { env, d1 } = createEnv();
+    const logger = { info: vi.fn(), error: vi.fn() };
+    // scheduledTime = 0 means cutoff is negative
+    const result = await runHourlyAggregation(env, 0, { logger });
+
+    expect(result.status).toBe("skipped");
+    expect(logger.info).toHaveBeenCalledWith(
+      "aggregation_skipped",
+      expect.any(String),
+      expect.any(Object),
+    );
+    d1.close();
+  });
+
+  it("reports partial status when a site fails", async () => {
+    const { env, d1 } = createEnv();
+    const scheduledTime = Date.UTC(2026, 4, 25, 12);
+    const oldHour = Math.floor(Date.UTC(2026, 4, 24, 20) / (60 * 60 * 1000));
+    insertVisit(d1, {
+      visitId: "visit-1",
+      startedAt: oldHour * 60 * 60 * 1000 + 10_000,
+      durationMs: 1000,
+    });
+
+    // Insert a second site
+    d1.db.prepare("INSERT INTO sites (id) VALUES ('site-2')").run();
+    insertVisit(d1, {
+      visitId: "visit-2",
+      siteId: "site-2",
+      startedAt: oldHour * 60 * 60 * 1000 + 20_000,
+      durationMs: 2000,
+    });
+
+    // Make batch fail for site-2 by corrupting the DB temporarily
+    const originalBatch = d1.batch.bind(d1);
+    let callCount = 0;
+    d1.batch = async function (statements: BoundStatement[]) {
+      callCount++;
+      if (callCount === 2) {
+        throw new Error("batch failed for testing");
+      }
+      return originalBatch(statements);
+    };
+
+    const logger = { info: vi.fn(), error: vi.fn() };
+    await runHourlyAggregation(env, scheduledTime, { logger });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      "site_aggregation_failed",
+      expect.any(String),
+      expect.objectContaining({
+        error: expect.stringContaining("batch failed"),
+      }),
+    );
+    d1.close();
+  });
+
+  it("handles visits with empty visitor and session ids", async () => {
+    const { env, d1 } = createEnv();
+    const scheduledTime = Date.UTC(2026, 4, 25, 12);
+    const oldHour = Math.floor(Date.UTC(2026, 4, 24, 20) / (60 * 60 * 1000));
+    d1.db
+      .prepare(
+        `
+          INSERT INTO visits (
+            visit_id, site_id, visitor_id, session_id, status, started_at, duration_ms
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .run(
+        "empty-ids",
+        "site-1",
+        "",
+        "",
+        "closed",
+        oldHour * 60 * 60 * 1000 + 5000,
+        1000,
+      );
+
+    await runHourlyAggregation(env, scheduledTime);
+
+    const rollup = d1.db
+      .prepare("SELECT * FROM visit_hourly_rollups WHERE hour_bucket = ?")
+      .get(oldHour) as Row;
+    expect(rollup).toBeDefined();
+    expect(rollup.views).toBe(1);
+    expect(rollup.visitors).toBe(0);
+    expect(rollup.sessions).toBe(0);
+    d1.close();
+  });
 });

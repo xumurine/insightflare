@@ -116,4 +116,37 @@ describe("queryTrendForSitesFromHourlyRollups", () => {
     );
     expect(result).toBeNull();
   });
+
+  it("returns null when splitRollupWindow returns null", async () => {
+    const db = makeDbMock();
+    db.all.mockResolvedValueOnce({
+      results: [{ siteId: "site-1", aggregatedUntilHour: 10 }],
+    });
+    const env = { DB: db } as unknown as Env;
+
+    const result = await queryTrendForSitesFromHourlyRollups(
+      env,
+      ["site-1"],
+      { fromMs: 100, toMs: 200, nowMs: 3000, timeZone: "UTC" },
+      "hour",
+    );
+    expect(result).toBeNull();
+  });
+});
+
+describe("queryOverviewForSitesFromHourlyRollups edge cases", () => {
+  it("returns null when not all sites have aggregation state", async () => {
+    const db = makeDbMock();
+    db.all.mockResolvedValueOnce({
+      results: [{ siteId: "site-1", aggregatedUntilHour: 10 }],
+    });
+    const env = { DB: db } as unknown as Env;
+
+    const result = await queryOverviewForSitesFromHourlyRollups(
+      env,
+      ["site-1", "site-2"],
+      { fromMs: 1000, toMs: 2000, nowMs: 3000, timeZone: "UTC" },
+    );
+    expect(result).toBeNull();
+  });
 });
