@@ -2,6 +2,8 @@ export const SECRET_PURPOSES = {
   dashboardSession: "insightflare:dashboard-session:v1",
   apiKeyHash: "insightflare:api-key-hash:v1",
   visitorDailySalt: "insightflare:visitor-daily-salt:v1",
+  notificationSecretEncryption:
+    "insightflare:notification-secret-encryption:v1",
 } as const;
 
 export interface SecretSource {

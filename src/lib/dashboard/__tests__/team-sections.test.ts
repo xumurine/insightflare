@@ -22,6 +22,7 @@ const messages = {
     versionUpdates: "Version updates",
     scheduledTasks: "Scheduled tasks",
     systemPerformance: "System performance",
+    systemSettings: "System settings",
   },
 } as AppMessages;
 
@@ -86,6 +87,11 @@ describe("dashboard team section builders", () => {
         key: "system-performance",
         label: "System performance",
         href: "/en/app/acme/manage/system-performance",
+      },
+      {
+        key: "system-settings",
+        label: "System settings",
+        href: "/en/app/acme/manage/system-settings",
       },
     ]);
   });

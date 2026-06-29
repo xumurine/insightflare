@@ -1,4 +1,8 @@
 import { normalizeTimeZone } from "@/lib/dashboard/time-zone";
+import {
+  defaultNotificationEmailConfig,
+  redactNotificationEmailConfig,
+} from "@/lib/notifications/email-config";
 import { findSiteProfileByPublicSlug } from "@/lib/realtime/demo-site-profiles";
 import {
   generateDemoDoDiagnostic,
@@ -158,6 +162,56 @@ export function handleDemoRequest(options: {
         },
       };
     }
+    if (path.includes("/admin/notification-email/test")) {
+      return {
+        ok: true,
+        data: {
+          provider: "resend",
+          messageId: "demo-email-message",
+          durationMs: 128,
+        },
+      };
+    }
+    if (path.includes("/admin/notification-email")) {
+      if (method === "DELETE") {
+        return {
+          ok: true,
+          data: redactNotificationEmailConfig(defaultNotificationEmailConfig()),
+        };
+      }
+      const body =
+        options.body && typeof options.body === "object" ? options.body : {};
+      const emailBody = body as {
+        clearResendApiKey?: unknown;
+        enabled?: unknown;
+        fromEmail?: unknown;
+        fromName?: unknown;
+        provider?: unknown;
+        replyTo?: unknown;
+        resendApiKey?: unknown;
+      };
+      const configured =
+        typeof emailBody.resendApiKey === "string" &&
+        emailBody.resendApiKey.trim().length > 0 &&
+        emailBody.clearResendApiKey !== true;
+      return {
+        ok: true,
+        data: {
+          ...redactNotificationEmailConfig(defaultNotificationEmailConfig()),
+          enabled:
+            typeof emailBody.enabled === "boolean" ? emailBody.enabled : false,
+          provider: emailBody.provider === "none" ? "none" : "resend",
+          fromName: String(emailBody.fromName || "InsightFlare"),
+          fromEmail: String(emailBody.fromEmail || ""),
+          replyTo: String(emailBody.replyTo || ""),
+          resend: {
+            configured,
+            apiKeyHint: configured ? "••••demo" : "",
+          },
+          updatedAt: Date.now(),
+        },
+      };
+    }
     if (path.includes("/admin/site")) {
       const body =
         options.body && typeof options.body === "object" ? options.body : {};
@@ -217,6 +271,12 @@ export function handleDemoRequest(options: {
   }
   if (path.includes("/admin/script-snippet")) {
     return { ok: true, data: getDemoScriptSnippet(siteId) };
+  }
+  if (path.includes("/admin/notification-email")) {
+    return {
+      ok: true,
+      data: redactNotificationEmailConfig(defaultNotificationEmailConfig()),
+    };
   }
   if (path.includes("/admin/scheduled-tasks")) {
     return generateDemoScheduledTasks(params);

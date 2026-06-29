@@ -95,6 +95,9 @@ function appendLog(chunk: Buffer | string): void {
 }
 
 function normalizeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (!env.MAIN_SECRET && env.DAILY_SALT_SECRET) {
+    env.MAIN_SECRET = env.DAILY_SALT_SECRET;
+  }
   return Object.fromEntries(
     Object.entries(env).filter((entry): entry is [string, string] => {
       return entry[1] !== undefined;

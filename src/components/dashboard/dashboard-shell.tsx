@@ -133,6 +133,7 @@ function getManagementSectionIcon(key: string) {
   if (key === "manage-users") return RiUser3Line;
   if (key === "version-updates") return RiFileInfoLine;
   if (key === "scheduled-tasks") return RiCalendarScheduleLine;
+  if (key === "system-settings") return RiSettings3Line;
   if (key === "system-performance") return RiSpeedUpLine;
   return RiTeamLine;
 }
@@ -251,6 +252,12 @@ function parseSidebarRouteState(
       return {
         mode: "team",
         activeManagementSectionKey: "system-performance",
+      };
+    }
+    if (localPath[1] === "system-settings") {
+      return {
+        mode: "team",
+        activeManagementSectionKey: "system-settings",
       };
     }
     if (localPath[1] === "version-updates") {

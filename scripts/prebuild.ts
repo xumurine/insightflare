@@ -54,6 +54,12 @@ function run(command: string, args: string[], cwd: string): void {
   }
 }
 
+function normalizeRootSecretEnv(): void {
+  if (!process.env.MAIN_SECRET && process.env.DAILY_SALT_SECRET) {
+    process.env.MAIN_SECRET = process.env.DAILY_SALT_SECRET;
+  }
+}
+
 function resolveWranglerCli(rootDir: string, edgeDir: string): string {
   const candidates = [
     path.join(edgeDir, "node_modules", "wrangler", "bin", "wrangler.js"),
@@ -112,6 +118,7 @@ async function main(): Promise<void> {
   const wranglerEnv = pickArg("env") ?? process.env.INSIGHTFLARE_ENV;
 
   log("InsightFlare prebuild started");
+  normalizeRootSecretEnv();
 
   // 检查环境变量安全性
   await checkEnvironmentVariables({ strict: wranglerEnv !== "local" });

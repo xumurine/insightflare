@@ -1015,6 +1015,7 @@ managementNav:
   versionUpdates: Version Updates
   scheduledTasks: Scheduled Tasks
   systemPerformance: System Performance
+  systemSettings: System Settings
 managementPages:
   versionUpdates:
     subtitle: Review published InsightFlare releases and the running build.
@@ -1177,6 +1178,41 @@ adminTeams:
     members: Members
     created: Created
     action: Action
+systemSettings:
+  title: System Settings
+  subtitle: Manage instance-wide configuration for this InsightFlare deployment.
+  notificationEmailTitle: Email Notifications
+  notificationEmailDescription: Configure the email service used for reports, alerts, and test messages.
+  enabledLabel: Enable email sending
+  enabledOn: Enabled
+  enabledOff: Disabled
+  providerLabel: Email service
+  providerResend: Resend
+  fromNameLabel: Sender name
+  fromEmailLabel: Sender email
+  replyToLabel: Reply-To email
+  replyToPlaceholder: Optional, defaults to sender email
+  resendApiKeyLabel: Resend API Key
+  resendApiKeyPlaceholder: Leave blank to keep the saved API key
+  resendApiKeySaved: Saved
+  clearApiKey: Clear saved API Key
+  testRecipientLabel: Test recipient
+  save: Save configuration
+  saving: Saving...
+  test: Send test email
+  testing: Sending...
+  saved: Email configuration saved.
+  saveFailed: Failed to save email configuration.
+  delete: Delete configuration
+  deleting: Deleting...
+  deleted: Email configuration deleted.
+  deleteFailed: Failed to delete email configuration.
+  deleteConfirm: Delete the email notification configuration? The system will treat email as unconfigured and disabled.
+  testSent: Test email sent.
+  testFailed: Failed to send test email.
+  loadFailed: Failed to load email configuration.
+  invalidEmail: Please enter a valid email address.
+  missingApiKey: Resend requires an API Key when enabled.
 systemPerformance:
   title: System Performance
   subtitle: Monitor InsightFlare collection, buffering, and write health from

@@ -2,6 +2,10 @@ import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleApiKeysAdmin } from "@/lib/edge/admin-api-keys";
+import {
+  handleNotificationEmailConfigAdmin,
+  handleNotificationEmailTestAdmin,
+} from "@/lib/edge/admin-notification-email";
 import { nf } from "@/lib/edge/admin-response";
 import { handleScheduledTasksAdmin } from "@/lib/edge/admin-scheduled-tasks";
 import {
@@ -24,6 +28,11 @@ vi.mock("@/lib/edge/admin-api-keys", () => ({
 
 vi.mock("@/lib/edge/admin-response", () => ({
   nf: vi.fn(() => new Response("not found", { status: 404 })),
+}));
+
+vi.mock("@/lib/edge/admin-notification-email", () => ({
+  handleNotificationEmailConfigAdmin: vi.fn(),
+  handleNotificationEmailTestAdmin: vi.fn(),
 }));
 
 vi.mock("@/lib/edge/admin-scheduled-tasks", () => ({
@@ -66,6 +75,8 @@ const routeCases = [
   ["/site-config", handleSiteConfigAdmin, true],
   ["/script-snippet", handleScriptSnippetAdmin, true],
   ["/api-keys", handleApiKeysAdmin, true],
+  ["/notification-email", handleNotificationEmailConfigAdmin, false],
+  ["/notification-email/test", handleNotificationEmailTestAdmin, false],
   ["/system-performance", handleSystemPerformanceAdmin, true, true],
   ["/scheduled-tasks", handleScheduledTasksAdmin, true, true],
   ["/do-diagnostic", handleDoDiagnosticAdmin, true, true],

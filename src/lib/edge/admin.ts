@@ -1,5 +1,9 @@
 import { handleApiKeysAdmin } from "./admin-api-keys";
 import { requireActor } from "./admin-auth";
+import {
+  handleNotificationEmailConfigAdmin,
+  handleNotificationEmailTestAdmin,
+} from "./admin-notification-email";
 import { nf } from "./admin-response";
 import { handleScheduledTasksAdmin } from "./admin-scheduled-tasks";
 import {
@@ -45,6 +49,10 @@ export async function handlePrivateAdmin(
     return handleScriptSnippetAdmin(request, env, url);
   if (p === "/api/private/admin/api-keys")
     return handleApiKeysAdmin(request, env, url);
+  if (p === "/api/private/admin/notification-email")
+    return handleNotificationEmailConfigAdmin(request, env);
+  if (p === "/api/private/admin/notification-email/test")
+    return handleNotificationEmailTestAdmin(request, env);
   if (p === "/api/private/admin/system-performance")
     return handleSystemPerformanceAdmin(request, env, url, requireActor);
   if (p === "/api/private/admin/scheduled-tasks")

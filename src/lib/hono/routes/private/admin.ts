@@ -2,6 +2,10 @@ import { Hono } from "hono";
 
 import { handleApiKeysAdmin } from "@/lib/edge/admin-api-keys";
 import { requireActor } from "@/lib/edge/admin-auth";
+import {
+  handleNotificationEmailConfigAdmin,
+  handleNotificationEmailTestAdmin,
+} from "@/lib/edge/admin-notification-email";
 import { nf } from "@/lib/edge/admin-response";
 import { handleScheduledTasksAdmin } from "@/lib/edge/admin-scheduled-tasks";
 import {
@@ -37,6 +41,12 @@ privateAdminRoutes.all("/script-snippet", (c) =>
 );
 privateAdminRoutes.all("/api-keys", (c) =>
   handleApiKeysAdmin(c.req.raw, c.env, requestUrl(c)),
+);
+privateAdminRoutes.all("/notification-email", (c) =>
+  handleNotificationEmailConfigAdmin(c.req.raw, c.env),
+);
+privateAdminRoutes.all("/notification-email/test", (c) =>
+  handleNotificationEmailTestAdmin(c.req.raw, c.env),
 );
 privateAdminRoutes.all("/system-performance", (c) =>
   handleSystemPerformanceAdmin(c.req.raw, c.env, requestUrl(c), requireActor),

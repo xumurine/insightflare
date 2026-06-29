@@ -351,6 +351,7 @@ export interface AppManagementMessages {
     versionUpdates: string;
     scheduledTasks: string;
     systemPerformance: string;
+    systemSettings: string;
   };
   managementPages: {
     versionUpdates: {
@@ -606,6 +607,42 @@ export interface AppManagementMessages {
     doDiagnosticSiteResponseMs: string;
     doDiagnosticThresholdsHint: string;
     doDiagnosticHealthy: string;
+  };
+  systemSettings: {
+    title: string;
+    subtitle: string;
+    notificationEmailTitle: string;
+    notificationEmailDescription: string;
+    enabledLabel: string;
+    enabledOn: string;
+    enabledOff: string;
+    providerLabel: string;
+    providerResend: string;
+    fromNameLabel: string;
+    fromEmailLabel: string;
+    replyToLabel: string;
+    replyToPlaceholder: string;
+    resendApiKeyLabel: string;
+    resendApiKeyPlaceholder: string;
+    resendApiKeySaved: string;
+    clearApiKey: string;
+    testRecipientLabel: string;
+    save: string;
+    saving: string;
+    test: string;
+    testing: string;
+    saved: string;
+    saveFailed: string;
+    delete: string;
+    deleting: string;
+    deleted: string;
+    deleteFailed: string;
+    deleteConfirm: string;
+    testSent: string;
+    testFailed: string;
+    loadFailed: string;
+    invalidEmail: string;
+    missingApiKey: string;
   };
   loginForm: {
     signingIn: string;

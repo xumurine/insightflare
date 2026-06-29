@@ -15,7 +15,8 @@ export type ManagementSectionKey =
   | "manage-teams"
   | "version-updates"
   | "scheduled-tasks"
-  | "system-performance";
+  | "system-performance"
+  | "system-settings";
 
 export interface DashboardSectionItem {
   key: string;
@@ -52,6 +53,7 @@ function managementLabel(
   if (key === "manage-teams") return messages.managementNav.teams;
   if (key === "version-updates") return messages.managementNav.versionUpdates;
   if (key === "scheduled-tasks") return messages.managementNav.scheduledTasks;
+  if (key === "system-settings") return messages.managementNav.systemSettings;
   return messages.managementNav.systemPerformance;
 }
 
@@ -77,6 +79,8 @@ function buildManagementPath(
     return `/${locale}/app/${teamSlug}/manage/version-updates`;
   if (key === "scheduled-tasks")
     return `/${locale}/app/${teamSlug}/manage/scheduled-tasks`;
+  if (key === "system-settings")
+    return `/${locale}/app/${teamSlug}/manage/system-settings`;
   return `/${locale}/app/${teamSlug}/manage/system-performance`;
 }
 
@@ -107,6 +111,7 @@ export function buildManagementSections(
     "version-updates",
     "scheduled-tasks",
     "system-performance",
+    "system-settings",
   ] as const;
   return keys.map((key) => ({
     key,

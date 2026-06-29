@@ -980,6 +980,7 @@ managementNav:
   versionUpdates: 版本更新
   scheduledTasks: 定时任务
   systemPerformance: 系统性能
+  systemSettings: 系统设置
 managementPages:
   versionUpdates:
     subtitle: 查看 InsightFlare 已发布版本与当前运行构建。
@@ -1142,6 +1143,41 @@ adminTeams:
     members: 成员数
     created: 创建时间
     action: 操作
+systemSettings:
+  title: 系统设置
+  subtitle: 管理当前 InsightFlare 实例的全站配置。
+  notificationEmailTitle: 邮件通知
+  notificationEmailDescription: 配置系统用于发送报告、告警和测试邮件的邮件服务。
+  enabledLabel: 启用邮件发送
+  enabledOn: 开启
+  enabledOff: 关闭
+  providerLabel: 邮件服务
+  providerResend: Resend
+  fromNameLabel: 发件人名称
+  fromEmailLabel: 发件人邮箱
+  replyToLabel: Reply-To 邮箱
+  replyToPlaceholder: 可选，默认使用发件人邮箱
+  resendApiKeyLabel: Resend API Key
+  resendApiKeyPlaceholder: 留空表示保留已保存的 API Key
+  resendApiKeySaved: 已保存
+  clearApiKey: 清除已保存的 API Key
+  testRecipientLabel: 测试收件人
+  save: 保存配置
+  saving: 保存中...
+  test: 发送测试邮件
+  testing: 发送中...
+  saved: 邮件配置已保存。
+  saveFailed: 保存邮件配置失败。
+  delete: 删除配置
+  deleting: 删除中...
+  deleted: 邮件配置已删除。
+  deleteFailed: 删除邮件配置失败。
+  deleteConfirm: 确认删除邮件通知配置吗？删除后系统将视为未配置并关闭邮件发送。
+  testSent: 测试邮件已发送。
+  testFailed: 测试邮件发送失败。
+  loadFailed: 加载邮件配置失败。
+  invalidEmail: 请填写有效邮箱。
+  missingApiKey: 启用 Resend 时需要配置 API Key。
 systemPerformance:
   title: 系统性能
   subtitle: 基于现有分析行监控 InsightFlare 的采集、缓冲和写入健康度。
