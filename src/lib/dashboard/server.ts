@@ -52,10 +52,8 @@ function safeSlug(value: string): string {
 }
 
 export function getSiteSlug(site: SiteData): string {
-  const primary = String(site.publicSlug || "").trim();
   const domain = String(site.domain || "").trim();
-  const name = String(site.name || "").trim();
-  const candidate = safeSlug(primary || domain || name);
+  const candidate = safeSlug(domain);
   if (candidate.length > 0) return candidate;
   return site.id.slice(0, 8);
 }

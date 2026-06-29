@@ -107,11 +107,7 @@ function safeSlug(value: string): string {
 function resolveSiteSlug(
   site: Pick<SiteData, "id" | "name" | "domain" | "publicSlug">,
 ): string {
-  const candidate = safeSlug(
-    String(site.publicSlug || "").trim() ||
-      String(site.domain || "").trim() ||
-      String(site.name || "").trim(),
-  );
+  const candidate = safeSlug(String(site.domain || "").trim());
   if (candidate.length > 0) return candidate;
   return site.id.slice(0, 8);
 }

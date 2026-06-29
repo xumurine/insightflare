@@ -58,18 +58,18 @@ describe("dashboard server helpers", () => {
     fetchAdminSitesMock.mockReset();
   });
 
-  it("builds stable site slugs from public slug, domain, name, or id", async () => {
+  it("builds stable site slugs from domain or id", async () => {
     const { getSiteSlug, buildSitePath } = await loadServerModule();
 
-    expect(getSiteSlug(site({ publicSlug: " Public Slug! " }))).toBe(
-      "public-slug",
-    );
+    expect(
+      getSiteSlug(site({ domain: "xeoos.net", publicSlug: " Public Slug! " })),
+    ).toBe("xeoos-net");
     expect(
       getSiteSlug(site({ publicSlug: "", domain: "Docs.EXAMPLE.test" })),
     ).toBe("docs-example-test");
     expect(
-      getSiteSlug(site({ publicSlug: "", domain: "", name: "My Site" })),
-    ).toBe("my-site");
+      getSiteSlug(site({ id: "abcdef123456", domain: "", name: "My Site" })),
+    ).toBe("abcdef12");
     expect(
       getSiteSlug(
         site({
@@ -113,12 +113,14 @@ describe("dashboard server helpers", () => {
     await expect(getDashboardTeamContext("team-a")).resolves.toMatchObject({
       activeTeam: { id: "team-1" },
       sites: [
-        expect.objectContaining({ id: "site-1", slug: "docs" }),
+        expect.objectContaining({ id: "site-1", slug: "docs-example-test" }),
         expect.objectContaining({ id: "site-2", slug: "blog-example-test" }),
       ],
     });
-    await expect(getTeamSiteContext("team-a", "docs")).resolves.toMatchObject({
-      activeSite: { id: "site-1", slug: "docs" },
+    await expect(
+      getTeamSiteContext("team-a", "docs-example-test"),
+    ).resolves.toMatchObject({
+      activeSite: { id: "site-1", slug: "docs-example-test" },
     });
     await expect(getTeamSiteContext("team-a", "site-2")).resolves.toMatchObject(
       {
@@ -183,11 +185,11 @@ describe("dashboard server helpers", () => {
 
     await expect(getDefaultTeamSite()).resolves.toEqual({
       teamSlug: "team-a",
-      siteSlug: "docs",
+      siteSlug: "docs-example-test",
     });
     await expect(getTeamDefaultSite("team-a")).resolves.toEqual({
       teamSlug: "team-a",
-      siteSlug: "docs",
+      siteSlug: "docs-example-test",
     });
 
     fetchAdminMeMock.mockRejectedValue(new Error("not signed in"));
