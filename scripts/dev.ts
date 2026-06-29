@@ -65,7 +65,7 @@ console.log("[dev] Next dev server: http://127.0.0.1:3000");
 console.log("[dev] Worker entrypoint: http://127.0.0.1:8787");
 console.log("[dev] Use the Worker URL for normal local development.");
 
-start("Next dev", npmCommand, ["run", "dev:next"]);
+start("Next dev", npmCommand, ["run", "dev:ui"]);
 start("Wrangler dev", npxCommand, [
   "wrangler",
   "dev",

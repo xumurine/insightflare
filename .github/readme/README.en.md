@@ -310,7 +310,7 @@ Set `NEXT_PUBLIC_DEMO_MODE=1` to make the development server automatically enabl
 | Command                           | Purpose                                                            |
 | --------------------------------- | ------------------------------------------------------------------ |
 | `npm run dev`                     | Local Worker + dashboard development (use `http://127.0.0.1:8787`) |
-| `npm run dev:next`                | Start only the Next.js UI dev server                               |
+| `npm run dev:ui`                  | Start only the Next.js UI dev server in Demo Mode                  |
 | `npm run check`                   | Run typecheck + lint + format + i18n + tests + spec checks         |
 | `npm run typecheck`               | TypeScript type checking                                           |
 | `npm run lint` / `lint:fix`       | ESLint                                                             |
