@@ -604,6 +604,7 @@ export function TeamManagementClient({
         router,
         `${buildSitePath(locale, team.slug, getSiteSlug(created))}/settings`,
       );
+      router.refresh();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : siteCreateCopy.createFailed;

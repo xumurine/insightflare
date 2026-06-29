@@ -153,6 +153,7 @@ export function AdminSitesManagementClient({
         router,
         `/${locale}/app/${team.slug}/${siteSlug(payload.data)}/settings`,
       );
+      router.refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : t.createFailed;
       toast.error(message || t.createFailed);
