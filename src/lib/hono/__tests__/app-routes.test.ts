@@ -22,7 +22,9 @@ import type * as QueryCoreModule from "@/lib/edge/query/core";
 import { fetchPublicSite, resolvePrivateSite } from "@/lib/edge/query/core";
 import type * as QueryRouterModule from "@/lib/edge/query/router";
 import { dispatchQueryRoute } from "@/lib/edge/query/router";
+import { handleReleasesCompareRequest } from "@/lib/edge/releases-compare";
 import { handleTrackerScriptRequest } from "@/lib/edge/script-endpoint";
+import { handleWikiSummaryRequest } from "@/lib/edge/wiki-summary";
 import { handleWorldCountriesRequest } from "@/lib/edge/world-countries";
 import apiApp from "@/lib/hono/app";
 
@@ -68,6 +70,10 @@ vi.mock("@/lib/edge/legacy-auth", () => ({
 
 vi.mock("@/lib/edge/map-tiles", () => ({
   handleMapTileRequest: vi.fn(),
+}));
+
+vi.mock("@/lib/edge/releases-compare", () => ({
+  handleReleasesCompareRequest: vi.fn(),
 }));
 
 vi.mock("@/lib/edge/query", () => ({
@@ -131,6 +137,10 @@ vi.mock("@/lib/edge/world-countries", () => ({
   handleWorldCountriesRequest: vi.fn(),
 }));
 
+vi.mock("@/lib/edge/wiki-summary", () => ({
+  handleWikiSummaryRequest: vi.fn(),
+}));
+
 const env = { DB: {}, INGEST_DO: {}, ARCHIVE_BUCKET: {} };
 const ctx = { waitUntil: vi.fn(), passThroughOnException: vi.fn() };
 const executionCtx = ctx as unknown as ExecutionContext;
@@ -153,6 +163,10 @@ describe("Hono API app routing", () => {
     );
     vi.mocked(handleWorldCountriesRequest).mockResolvedValue(
       new Response("countries"),
+    );
+    vi.mocked(handleWikiSummaryRequest).mockResolvedValue(new Response("wiki"));
+    vi.mocked(handleReleasesCompareRequest).mockResolvedValue(
+      new Response("compare"),
     );
     vi.mocked(handlePrivateAdmin).mockResolvedValue(new Response("admin"));
     vi.mocked(handleUsersAdmin).mockResolvedValue(new Response("admin"));
@@ -234,6 +248,77 @@ describe("Hono API app routing", () => {
 
     expect(response.headers.get("access-control-allow-origin")).toBe("*");
     expect(body.servers[0].url).toBe("https://edge.example.test");
+  });
+
+  it("serves well-known HEAD and dynamic metadata variants", async () => {
+    const openapiHead = await apiApp.fetch(
+      request("/.well-known/openapi.json", { method: "HEAD" }),
+      env as any,
+      executionCtx,
+    );
+    const skills = await apiApp.fetch(
+      request("/.well-known/skills.json", {
+        headers: {
+          "x-forwarded-host": "skills.example.test",
+          "x-forwarded-proto": "http",
+        },
+      }),
+      env as any,
+      executionCtx,
+    );
+    const skillsHead = await apiApp.fetch(
+      request("/.well-known/skills.json", { method: "HEAD" }),
+      env as any,
+      executionCtx,
+    );
+    const security = await apiApp.fetch(
+      request("/.well-known/security.txt"),
+      env as any,
+      executionCtx,
+    );
+    const securityHead = await apiApp.fetch(
+      request("/.well-known/security.txt", { method: "HEAD" }),
+      env as any,
+      executionCtx,
+    );
+
+    expect(openapiHead.status).toBe(200);
+    expect(await openapiHead.text()).toBe("");
+    expect(await skills.text()).toContain("http://skills.example.test");
+    expect(skillsHead.status).toBe(200);
+    expect(security.status).toBe(200);
+    expect(await security.text()).toContain("contact@insightflare.net");
+    expect(securityHead.status).toBe(200);
+  });
+
+  it("redirects well-known helpers using the request origin fallback", async () => {
+    const changePassword = await apiApp.fetch(
+      request("/.well-known/change-password"),
+      env as any,
+      executionCtx,
+    );
+    const changePasswordHead = await apiApp.fetch(
+      request("/.well-known/change-password", { method: "HEAD" }),
+      env as any,
+      executionCtx,
+    );
+    const health = await apiApp.fetch(
+      request("/.well-known/health"),
+      env as any,
+      executionCtx,
+    );
+    const healthHead = await apiApp.fetch(
+      request("/.well-known/health", { method: "HEAD" }),
+      env as any,
+      executionCtx,
+    );
+
+    expect(changePassword.status).toBe(302);
+    expect(changePassword.headers.get("location")).toBe("https://app.test/app");
+    expect(changePasswordHead.status).toBe(200);
+    expect(health.status).toBe(302);
+    expect(health.headers.get("location")).toBe("https://app.test/healthz");
+    expect(healthHead.status).toBe(200);
   });
 
   it("routes edge endpoints to their shared handlers", async () => {
@@ -350,5 +435,23 @@ describe("Hono API app routing", () => {
 
     expect(await response.text()).toBe("countries");
     expect(handleWorldCountriesRequest).toHaveBeenCalledWith(original);
+  });
+
+  it("routes wiki summary through Hono", async () => {
+    const original = request("/api/wiki-summary?wikidataId=Q42");
+
+    const response = await apiApp.fetch(original, env as any, executionCtx);
+
+    expect(await response.text()).toBe("wiki");
+    expect(handleWikiSummaryRequest).toHaveBeenCalledWith(original);
+  });
+
+  it("routes release comparison through Hono", async () => {
+    const original = request("/api/private/releases/compare?head=v2&base=v1");
+
+    const response = await apiApp.fetch(original, env as any, executionCtx);
+
+    expect(await response.text()).toBe("compare");
+    expect(handleReleasesCompareRequest).toHaveBeenCalledWith(original, env);
   });
 });

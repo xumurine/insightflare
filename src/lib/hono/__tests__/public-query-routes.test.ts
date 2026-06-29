@@ -100,6 +100,22 @@ describe("Hono public query routes", () => {
     expect(dispatchQueryRoute).not.toHaveBeenCalled();
   });
 
+  it("uses an empty slug fallback for malformed mounted site metadata paths", async () => {
+    const app = new Hono<AppEnv>();
+    app.route("/", publicQueryRoutes);
+
+    const response = await app.fetch(request("/demo/site"), env as never, ctx);
+    const body = (await response.json()) as {
+      ok: boolean;
+      data: { slug: string; id: string };
+    };
+
+    expect(body).toMatchObject({
+      ok: true,
+      data: { slug: "", id: "site-1" },
+    });
+  });
+
   it("routes public allowlist queries with publicMode and public cache options", async () => {
     const app = createApp();
 

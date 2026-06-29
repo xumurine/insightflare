@@ -153,9 +153,6 @@ async function fetchWikidataEntity(
       accept: "application/json",
       "user-agent": WIKIMEDIA_USER_AGENT,
     },
-    next: {
-      revalidate: 60 * 60 * 24,
-    },
   });
 
   if (!response.ok) {
@@ -179,9 +176,6 @@ async function fetchWikipediaSummary(
       "user-agent": WIKIMEDIA_USER_AGENT,
       ...(acceptLanguage ? { "accept-language": acceptLanguage } : {}),
     },
-    next: {
-      revalidate: 60 * 60 * 24,
-    },
   });
 
   if (response.status === 404) {
@@ -194,7 +188,9 @@ async function fetchWikipediaSummary(
   return (await response.json()) as WikipediaSummaryResponse;
 }
 
-export async function GET(request: Request): Promise<Response> {
+export async function handleWikiSummaryRequest(
+  request: Request,
+): Promise<Response> {
   const sameOriginError = requireSameOrigin(request);
   if (sameOriginError) return sameOriginError;
 

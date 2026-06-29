@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GET } from "@/app/api/private/releases/compare/route";
-import { resolveEdgeRuntime } from "@/lib/edge/runtime";
+import { handleReleasesCompareRequest } from "@/lib/edge/releases-compare";
 import { requireSession } from "@/lib/edge/session-auth";
 import { fetchGithubCompare } from "@/lib/github-releases";
 
@@ -13,13 +12,8 @@ vi.mock("@/lib/edge/session-auth", () => ({
   requireSession: vi.fn(),
 }));
 
-vi.mock("@/lib/edge/runtime", () => ({
-  resolveEdgeRuntime: vi.fn(),
-}));
-
 const fetchGithubCompareMock = vi.mocked(fetchGithubCompare);
 const requireSessionMock = vi.mocked(requireSession);
-const resolveEdgeRuntimeMock = vi.mocked(resolveEdgeRuntime);
 
 function mockRuntime(pathname: string, params?: Record<string, string>) {
   const url = new URL(`https://app.test${pathname}`);
@@ -27,12 +21,6 @@ function mockRuntime(pathname: string, params?: Record<string, string>) {
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   }
   const request = new Request(url.toString());
-  resolveEdgeRuntimeMock.mockResolvedValue({
-    request,
-    env: {},
-    ctx: { passThroughOnException: vi.fn(), waitUntil: vi.fn() },
-    url,
-  } as any);
   return request;
 }
 
@@ -40,7 +28,6 @@ describe("GET /api/private/releases/compare", () => {
   beforeEach(() => {
     fetchGithubCompareMock.mockReset();
     requireSessionMock.mockReset();
-    resolveEdgeRuntimeMock.mockReset();
   });
 
   it("returns 401 when session is not authenticated", async () => {
@@ -49,7 +36,7 @@ describe("GET /api/private/releases/compare", () => {
       head: "v2.0.0",
     });
 
-    const response = await GET(request);
+    const response = await handleReleasesCompareRequest(request, {} as any);
     expect(response.status).toBe(401);
   });
 
@@ -57,7 +44,7 @@ describe("GET /api/private/releases/compare", () => {
     requireSessionMock.mockResolvedValueOnce({ userId: "u1" } as any);
     const request = mockRuntime("/api/private/releases/compare");
 
-    const response = await GET(request);
+    const response = await handleReleasesCompareRequest(request, {} as any);
     expect(response.status).toBe(400);
     const body = (await response.json()) as any;
     expect(body.error.code).toBe("invalid_head_ref");
@@ -69,7 +56,7 @@ describe("GET /api/private/releases/compare", () => {
       head: "v1.0.0<script>",
     });
 
-    const response = await GET(request);
+    const response = await handleReleasesCompareRequest(request, {} as any);
     expect(response.status).toBe(400);
   });
 
@@ -79,7 +66,7 @@ describe("GET /api/private/releases/compare", () => {
       head: "v2.0.0",
     });
 
-    const response = await GET(request);
+    const response = await handleReleasesCompareRequest(request, {} as any);
     expect(response.status).toBe(200);
     const body = (await response.json()) as any;
     expect(body.ok).toBe(true);
@@ -95,7 +82,7 @@ describe("GET /api/private/releases/compare", () => {
       base: "bad ref!",
     });
 
-    const response = await GET(request);
+    const response = await handleReleasesCompareRequest(request, {} as any);
     expect(response.status).toBe(200);
     const body = (await response.json()) as any;
     expect(body.data.status).toBe("initial");
@@ -127,7 +114,7 @@ describe("GET /api/private/releases/compare", () => {
       base: "v1.0.0",
     });
 
-    const response = await GET(request);
+    const response = await handleReleasesCompareRequest(request, {} as any);
     expect(response.status).toBe(200);
     const body = (await response.json()) as any;
     expect(body.ok).toBe(true);
@@ -151,7 +138,7 @@ describe("GET /api/private/releases/compare", () => {
       base: "v1.0.0",
     });
 
-    const response = await GET(request);
+    const response = await handleReleasesCompareRequest(request, {} as any);
     expect(response.status).toBe(502);
     const body = (await response.json()) as any;
     expect(body.error.code).toBe("compare_failed");
@@ -165,7 +152,7 @@ describe("GET /api/private/releases/compare", () => {
       base: "v1.0.0",
     });
 
-    const response = await GET(request);
+    const response = await handleReleasesCompareRequest(request, {} as any);
     expect(response.status).toBe(502);
   });
 
@@ -182,7 +169,7 @@ describe("GET /api/private/releases/compare", () => {
       base: "  v1.0.0  ",
     });
 
-    await GET(request);
+    await handleReleasesCompareRequest(request, {} as any);
     expect(fetchGithubCompareMock).toHaveBeenCalledWith(
       "RavelloH",
       "InsightFlare",

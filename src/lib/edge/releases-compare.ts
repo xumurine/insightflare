@@ -1,5 +1,5 @@
-import { resolveEdgeRuntime } from "@/lib/edge/runtime";
 import { requireSession } from "@/lib/edge/session-auth";
+import type { Env } from "@/lib/edge/types";
 import { fetchGithubCompare } from "@/lib/github-releases";
 import { bad, errorResponse, jsonResponseFor } from "@/lib/response";
 
@@ -11,8 +11,10 @@ function readRef(url: URL, key: string): string {
   return (url.searchParams.get(key) || "").trim();
 }
 
-export async function GET(request: Request): Promise<Response> {
-  const { env } = await resolveEdgeRuntime(request);
+export async function handleReleasesCompareRequest(
+  request: Request,
+  env: Env,
+): Promise<Response> {
   const session = await requireSession(request, env);
   if (!session) {
     return new Response("Unauthorized", { status: 401 });

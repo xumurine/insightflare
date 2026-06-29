@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GET } from "@/app/api/wiki-summary/route";
+import { handleWikiSummaryRequest } from "@/lib/edge/wiki-summary";
 
 describe("wiki summary route", () => {
   beforeEach(() => {
@@ -13,7 +13,7 @@ describe("wiki summary route", () => {
   });
 
   it("rejects invalid or missing wikidata ids", async () => {
-    const response = await GET(
+    const response = await handleWikiSummaryRequest(
       new Request("https://app.test/api/wiki-summary?wikidataId=bad", {
         headers: { origin: "https://app.test" },
       }),
@@ -35,7 +35,7 @@ describe("wiki summary route", () => {
       new Response(JSON.stringify({ entities: {} })),
     );
 
-    const response = await GET(
+    const response = await handleWikiSummaryRequest(
       new Request("https://app.test/api/wiki-summary?wikidataId=q42", {
         headers: { origin: "https://app.test" },
       }),
@@ -62,7 +62,7 @@ describe("wiki summary route", () => {
       ),
     );
 
-    const response = await GET(
+    const response = await handleWikiSummaryRequest(
       new Request(
         "https://app.test/api/wiki-summary?wikidataId=Q99&locale=zh",
         {
@@ -128,7 +128,7 @@ describe("wiki summary route", () => {
         ),
       );
 
-    const response = await GET(
+    const response = await handleWikiSummaryRequest(
       new Request("https://app.test/api/wiki-summary?wikidataId=Q5&lang=1", {
         headers: { origin: "https://app.test" },
       }),
@@ -180,7 +180,7 @@ describe("wiki summary route", () => {
       )
       .mockResolvedValueOnce(new Response(JSON.stringify({})));
 
-    const response = await GET(
+    const response = await handleWikiSummaryRequest(
       new Request(
         "https://app.test/api/wiki-summary?wikidataId=Q42&lang=zh-CN",
         {
@@ -250,7 +250,7 @@ describe("wiki summary route", () => {
         ),
       );
 
-    const response = await GET(
+    const response = await handleWikiSummaryRequest(
       new Request("https://app.test/api/wiki-summary?wikidataId=Q123&lang=fr", {
         headers: { origin: "https://app.test" },
       }),
@@ -317,7 +317,7 @@ describe("wiki summary route", () => {
         ),
       );
 
-    const response = await GET(
+    const response = await handleWikiSummaryRequest(
       new Request(
         "https://app.test/api/wiki-summary?wikidataId=Q88&locale=zh",
         {
@@ -396,7 +396,7 @@ describe("wiki summary route", () => {
         ),
       );
 
-    const response = await GET(
+    const response = await handleWikiSummaryRequest(
       new Request(
         "https://app.test/api/wiki-summary?wikidataId=q42&lang=zh-TW",
         {
@@ -472,7 +472,7 @@ describe("wiki summary route", () => {
       )
       .mockResolvedValueOnce(new Response("not found", { status: 404 }));
 
-    const response = await GET(
+    const response = await handleWikiSummaryRequest(
       new Request("https://app.test/api/wiki-summary?wikidataId=Q7", {
         headers: { origin: "https://app.test" },
       }),
@@ -509,7 +509,7 @@ describe("wiki summary route", () => {
       new Response("rate limited", { status: 429 }),
     );
 
-    const response = await GET(
+    const response = await handleWikiSummaryRequest(
       new Request("https://app.test/api/wiki-summary?wikidataId=Q42", {
         headers: { origin: "https://app.test" },
       }),
@@ -545,7 +545,7 @@ describe("wiki summary route", () => {
       )
       .mockResolvedValueOnce(new Response("upstream error", { status: 500 }));
 
-    const response = await GET(
+    const response = await handleWikiSummaryRequest(
       new Request("https://app.test/api/wiki-summary?wikidataId=Q42", {
         headers: { origin: "https://app.test" },
       }),

@@ -1,15 +1,13 @@
 import { isBot } from "ua-parser-js/bot-detection";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { OPTIONS, POST } from "@/app/collect/route";
-import { resolveEdgeRuntime } from "@/lib/edge/runtime";
+import {
+  handleCollectOptionsRequest,
+  handleCollectRequest,
+} from "@/lib/edge/collect";
 import type * as SiteSettingsStoreModule from "@/lib/edge/site-settings-store";
 import { readSiteTrackingConfig } from "@/lib/edge/site-settings-store";
 import type { SiteTrackingConfig } from "@/lib/site-settings";
-
-vi.mock("@/lib/edge/runtime", () => ({
-  resolveEdgeRuntime: vi.fn(),
-}));
 
 vi.mock("@/lib/edge/site-settings-store", async () => {
   const actual = await vi.importActual<typeof SiteSettingsStoreModule>(
@@ -25,7 +23,6 @@ vi.mock("ua-parser-js/bot-detection", () => ({
   isBot: vi.fn(),
 }));
 
-const resolveEdgeRuntimeMock = vi.mocked(resolveEdgeRuntime);
 const readSiteTrackingConfigMock = vi.mocked(readSiteTrackingConfig);
 const isBotMock = vi.mocked(isBot);
 
@@ -107,13 +104,6 @@ function makeRuntimeRequest(input: {
     });
   }
 
-  resolveEdgeRuntimeMock.mockResolvedValue({
-    env: env as never,
-    ctx: ctx as never,
-    request,
-    url: new URL(request.url),
-  });
-
   return request;
 }
 
@@ -128,7 +118,6 @@ async function readForwardedEnvelope() {
 describe("collect route", () => {
   beforeEach(() => {
     vi.useRealTimers();
-    resolveEdgeRuntimeMock.mockReset();
     readSiteTrackingConfigMock.mockReset();
     isBotMock.mockReset();
     isBotMock.mockReturnValue(false);
@@ -153,7 +142,7 @@ describe("collect route", () => {
       name.toLowerCase() === "origin" ? "https://Example.com/path" : null,
     );
 
-    const response = await OPTIONS(request);
+    const response = await handleCollectOptionsRequest(request);
 
     expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-origin")).toBe(
@@ -174,7 +163,7 @@ describe("collect route", () => {
       name.toLowerCase() === "origin" ? "not a url" : null,
     );
 
-    const response = await OPTIONS(request);
+    const response = await handleCollectOptionsRequest(request);
 
     expect(response.status).toBe(204);
     expect(response.headers.has("access-control-allow-origin")).toBe(false);
@@ -186,7 +175,7 @@ describe("collect route", () => {
       method: "OPTIONS",
     });
 
-    const response = await OPTIONS(request);
+    const response = await handleCollectOptionsRequest(request);
 
     expect(response.status).toBe(204);
     expect(response.headers.has("access-control-allow-origin")).toBe(false);
@@ -197,12 +186,17 @@ describe("collect route", () => {
   });
 
   it("returns a JSON error for invalid JSON without reading settings", async () => {
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://example.com",
       body: "{",
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     await expect(response.json()).resolves.toEqual({
       ok: false,
@@ -217,7 +211,7 @@ describe("collect route", () => {
   });
 
   it("rejects custom event payloads with invalid eventData before forwarding", async () => {
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://example.com",
       body: makePayload({
         kind: "custom_event",
@@ -226,7 +220,12 @@ describe("collect route", () => {
       }),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     await expect(response.json()).resolves.toEqual({
       ok: false,
@@ -238,7 +237,7 @@ describe("collect route", () => {
   });
 
   it("returns a controlled validation error when custom event payloads omit eventData", async () => {
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://example.com",
       body: makePayload({
         kind: "custom_event",
@@ -246,7 +245,12 @@ describe("collect route", () => {
       }),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     await expect(response.json()).resolves.toEqual({
       ok: false,
@@ -279,12 +283,17 @@ describe("collect route", () => {
         }
         return stringify(value, replacer, space);
       });
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://example.com",
       body,
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     await expect(response.json()).resolves.toEqual({
       ok: false,
@@ -299,7 +308,7 @@ describe("collect route", () => {
 
   it("drops bot traffic without looking up settings", async () => {
     isBotMock.mockReturnValue(true);
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://example.com",
       body: makePayload(),
       headers: {
@@ -307,7 +316,12 @@ describe("collect route", () => {
       },
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     expect(isBotMock).toHaveBeenCalledWith("Googlebot/2.1");
@@ -324,13 +338,16 @@ describe("collect route", () => {
     ];
 
     for (const body of scenarios) {
-      makeRuntimeRequest({
+      const request = makeRuntimeRequest({
         origin: "https://example.com",
         body,
       });
 
-      const response = await POST(
-        new Request("https://collector.test/collect"),
+      const response = await handleCollectRequest(
+        request,
+        env as never,
+        ctx as never,
+        new URL(request.url),
       );
 
       expect(response.status).toBe(204);
@@ -347,13 +364,16 @@ describe("collect route", () => {
       } else {
         readSiteTrackingConfigMock.mockResolvedValueOnce(settingsResult);
       }
-      makeRuntimeRequest({
+      const request = makeRuntimeRequest({
         origin: "https://example.com",
         body: makePayload(),
       });
 
-      const response = await POST(
-        new Request("https://collector.test/collect"),
+      const response = await handleCollectRequest(
+        request,
+        env as never,
+        ctx as never,
+        new URL(request.url),
       );
 
       expect(response.status).toBe(204);
@@ -368,12 +388,17 @@ describe("collect route", () => {
       domainWhitelist: ["allowed.example"],
       allowedHostnames: ["allowed.example"],
     });
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://blocked.example",
       body: makePayload(),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-origin")).toBe(
@@ -388,12 +413,17 @@ describe("collect route", () => {
       domainWhitelist: ["allowed.example"],
       allowedHostnames: ["allowed.example"],
     });
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "file:///Users/example/page.html",
       body: makePayload(),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-origin")).toBe("null");
@@ -406,12 +436,17 @@ describe("collect route", () => {
       domainWhitelist: ["allowed.example"],
       allowedHostnames: [" Allowed.Example "],
     });
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://Allowed.Example.",
       body: makePayload(),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-origin")).toBe(
@@ -426,21 +461,26 @@ describe("collect route", () => {
       ...baseSettings,
       pathBlacklist: ["/private"],
     });
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://example.com",
       body: makePayload({
         pathname: "https://example.com/private/account?tab=billing",
       }),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     expect(ctx.waitUntil).not.toHaveBeenCalled();
   });
 
   it("forwards normalized pageview payloads to the ingest Durable Object", async () => {
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://example.com",
       body: makePayload({
         siteId: "  site-1  ",
@@ -463,7 +503,12 @@ describe("collect route", () => {
       },
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     expect(env.INGEST_DO.idFromName).toHaveBeenCalledWith("site-1");
@@ -510,13 +555,18 @@ describe("collect route", () => {
       ...baseSettings,
       pathBlacklist: ["", "/private"],
     });
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       body: makePayload({
         pathname: "?utm_source=newsletter",
       }),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     expect(response.headers.has("access-control-allow-origin")).toBe(false);
@@ -529,7 +579,7 @@ describe("collect route", () => {
   });
 
   it("falls back to the query siteId and removes empty UA hints when forwarding", async () => {
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       url: "https://collector.test/collect?siteId=query-site",
       origin: "https://example.com",
       body: makePayload({
@@ -545,7 +595,12 @@ describe("collect route", () => {
       }),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     expect(readSiteTrackingConfigMock).toHaveBeenCalledWith(env, "query-site");
@@ -560,7 +615,7 @@ describe("collect route", () => {
   });
 
   it("uses the default siteId when the payload and query omit one", async () => {
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://example.com",
       body: makePayload({
         siteId: "",
@@ -569,7 +624,12 @@ describe("collect route", () => {
       }),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     expect(readSiteTrackingConfigMock).toHaveBeenCalledWith(env, "default");
@@ -584,14 +644,19 @@ describe("collect route", () => {
   });
 
   it("rejects whitespace-only siteIds before reading settings", async () => {
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://example.com",
       body: makePayload({
         siteId: "   ",
       }),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     expect(readSiteTrackingConfigMock).not.toHaveBeenCalled();
@@ -599,7 +664,7 @@ describe("collect route", () => {
   });
 
   it("forwards custom events after event name normalization", async () => {
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://example.com",
       body: makePayload({
         kind: "custom_event",
@@ -611,7 +676,12 @@ describe("collect route", () => {
       }),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     expect(env.INGEST_DO.idFromName).toHaveBeenCalledWith("site-1");
@@ -629,7 +699,7 @@ describe("collect route", () => {
   });
 
   it("forwards visibility events after state and path normalization", async () => {
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://example.com",
       body: makePayload({
         kind: "visibility",
@@ -638,7 +708,12 @@ describe("collect route", () => {
       }),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     const envelope = await readForwardedEnvelope();
@@ -661,12 +736,17 @@ describe("collect route", () => {
       });
     const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.5);
     const expectedTraceId = `${Date.now().toString(36)}-i`;
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://example.com",
       body: makePayload(),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     const envelope = await readForwardedEnvelope();
@@ -688,13 +768,16 @@ describe("collect route", () => {
     ];
 
     for (const overrides of scenarios) {
-      makeRuntimeRequest({
+      const request = makeRuntimeRequest({
         origin: "https://example.com",
         body: makePayload(overrides),
       });
 
-      const response = await POST(
-        new Request("https://collector.test/collect"),
+      const response = await handleCollectRequest(
+        request,
+        env as never,
+        ctx as never,
+        new URL(request.url),
       );
 
       expect(response.status).toBe(204);
@@ -709,12 +792,17 @@ describe("collect route", () => {
     env.INGEST_DO.get.mockReturnValue({
       fetch: vi.fn().mockRejectedValue(forwardError),
     });
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://example.com",
       body: makePayload(),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     await expect(ctx.waitUntil.mock.calls[0]?.[0]).resolves.toBeUndefined();
@@ -729,12 +817,17 @@ describe("collect route", () => {
         .fn()
         .mockResolvedValue(new Response("bad gateway", { status: 502 })),
     });
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://example.com",
       body: makePayload(),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     await expect(ctx.waitUntil.mock.calls[0]?.[0]).resolves.toBeUndefined();
@@ -751,12 +844,17 @@ describe("collect route", () => {
         text: vi.fn().mockRejectedValue(new Error("stream closed")),
       }),
     });
-    makeRuntimeRequest({
+    const request = makeRuntimeRequest({
       origin: "https://example.com",
       body: makePayload(),
     });
 
-    const response = await POST(new Request("https://collector.test/collect"));
+    const response = await handleCollectRequest(
+      request,
+      env as never,
+      ctx as never,
+      new URL(request.url),
+    );
 
     expect(response.status).toBe(204);
     await expect(ctx.waitUntil.mock.calls[0]?.[0]).resolves.toBeUndefined();

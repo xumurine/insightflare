@@ -1,11 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GET } from "@/app/api/map-tiles/[z]/[x]/[y]/route";
+import { handleMapTileRequest } from "@/lib/edge/map-tiles";
 
 function params(z: string, x: string, y: string) {
-  return {
-    params: Promise.resolve({ z, x, y }),
-  };
+  return { z, x, y };
 }
 
 describe("map tile route", () => {
@@ -19,7 +17,7 @@ describe("map tile route", () => {
   });
 
   it("rejects invalid tile coordinates before fetching upstreams", async () => {
-    const response = await GET(
+    const response = await handleMapTileRequest(
       new Request("https://app.test/api/map-tiles/21/0/0.png"),
       params("21", "0", "0.png"),
     );
@@ -31,14 +29,14 @@ describe("map tile route", () => {
 
   it("rejects non-numeric and non-finite tile parameters", async () => {
     await expect(
-      GET(
+      handleMapTileRequest(
         new Request("https://app.test/api/map-tiles/nope/0/0.png"),
         params("nope", "0", "0.png"),
       ),
     ).resolves.toMatchObject({ status: 400 });
 
     await expect(
-      GET(
+      handleMapTileRequest(
         new Request("https://app.test/api/map-tiles/2/999/1"),
         params("2", "9".repeat(400), "1"),
       ),
@@ -57,7 +55,7 @@ describe("map tile route", () => {
         }),
       );
 
-    const response = await GET(
+    const response = await handleMapTileRequest(
       new Request("https://app.test/api/map-tiles/2/5/3.png?theme=dark"),
       params("2", "5", "3.png"),
     );
@@ -88,7 +86,7 @@ describe("map tile route", () => {
   it("uses light tiles by default and falls back to image/png content type", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(new Uint8Array([4])));
 
-    const response = await GET(
+    const response = await handleMapTileRequest(
       new Request("https://app.test/api/map-tiles/1/0/0"),
       params("1", "0", "0"),
     );
@@ -108,7 +106,7 @@ describe("map tile route", () => {
       .mockResolvedValueOnce(new Response("forbidden", { status: 403 }))
       .mockRejectedValueOnce(new Error("network down"));
 
-    const response = await GET(
+    const response = await handleMapTileRequest(
       new Request("https://app.test/api/map-tiles/1/0/0.png"),
       params("1", "0", "0.png"),
     );

@@ -13,6 +13,7 @@ import { publicRoutes } from "./routes/public";
 import { scriptRoutes } from "./routes/tracker-script";
 import { v1Routes } from "./routes/v1";
 import { wellKnownRoutes } from "./routes/well-known";
+import { wikiSummaryRoutes } from "./routes/wiki-summary";
 import { worldCountriesRoutes } from "./routes/world-countries";
 import type { AppEnv } from "./types";
 
@@ -33,5 +34,6 @@ apiApp.route("/api/public", publicRoutes);
 apiApp.route("/api/v1", v1Routes);
 apiApp.route("/api/map-tiles", mapTileRoutes);
 apiApp.route("/api", worldCountriesRoutes);
+apiApp.route("/api", wikiSummaryRoutes);
 
 export default apiApp;

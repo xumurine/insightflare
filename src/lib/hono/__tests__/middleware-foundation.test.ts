@@ -28,6 +28,7 @@ import {
 } from "@/lib/hono/middleware/site";
 import type { AppEnv } from "@/lib/hono/types";
 import { responseContext } from "@/lib/hono/utils/context";
+import { internalServerError } from "@/lib/hono/utils/response";
 
 vi.mock("@/lib/edge/api-key-auth", async (importOriginal) => {
   const actual = await importOriginal<typeof ApiKeyAuthModule>();
@@ -150,6 +151,14 @@ describe("Hono middleware foundation", () => {
     expect(body.error.code).toBe("internal_server_error");
   });
 
+  it("uses the default internal error message for empty non-Error values", async () => {
+    const response = internalServerError(request("/api/private/overview"), "");
+    const body = (await response.json()) as { error: { message: string } };
+
+    expect(response.status).toBe(500);
+    expect(body.error.message).toBe("Internal Server Error");
+  });
+
   it("passes thrown Response values through the error boundary middleware", async () => {
     const app = createApp(errorBoundaryMiddleware(), () => {
       throw new Response("teapot", { status: 418 });
@@ -159,6 +168,34 @@ describe("Hono middleware foundation", () => {
 
     expect(response.status).toBe(418);
     await expect(response.text()).resolves.toBe("teapot");
+  });
+
+  it("maps non-Response errors through the error boundary middleware", async () => {
+    const app = createApp(errorBoundaryMiddleware(), () => {
+      throw "boom";
+    });
+
+    const response = await app.fetch(request("/api/private/overview"), {}, ctx);
+    const body = (await response.json()) as { error: { code: string } };
+
+    expect(response.status).toBe(500);
+    expect(body.error.code).toBe("internal_server_error");
+  });
+
+  it("maps Error instances through the error boundary middleware", async () => {
+    const middleware = errorBoundaryMiddleware();
+    const c = {
+      req: { raw: request("/api/private/overview") },
+    } as never;
+
+    const response = (await middleware(c, async () => {
+      throw new Error("middleware boom");
+    })) as Response;
+
+    const body = (await response.json()) as { error: { message: string } };
+
+    expect(response.status).toBe(500);
+    expect(body.error.message).toBe("middleware boom");
   });
 
   it("short-circuits unsafe cross-origin requests", async () => {
@@ -264,6 +301,47 @@ describe("Hono middleware foundation", () => {
     });
   });
 
+  it("leaves non-record JSON bodies unchanged", async () => {
+    const app = createApp(
+      normalizeJsonBodyMiddleware((body) => ({ ...body, added: true })),
+      async (c) => Response.json(await c.req.raw.json()),
+    );
+
+    const response = await app.fetch(
+      request("/api/admin/site", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(["Site"]),
+      }),
+      createEnv(),
+      ctx,
+    );
+
+    await expect(response.json()).resolves.toEqual(["Site"]);
+  });
+
+  it("leaves invalid JSON bodies available to downstream handlers", async () => {
+    const app = createApp(
+      normalizeJsonBodyMiddleware((body) => ({ ...body, added: true })),
+      async (c) => {
+        await expect(c.req.raw.text()).resolves.toBe("{");
+        return new Response("ok");
+      },
+    );
+
+    const response = await app.fetch(
+      request("/api/admin/site", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{",
+      }),
+      createEnv(),
+      ctx,
+    );
+
+    await expect(response.text()).resolves.toBe("ok");
+  });
+
   it("stores authenticated session claims", async () => {
     vi.mocked(requireSession).mockResolvedValue({
       userId: "user-1",
@@ -347,6 +425,24 @@ describe("Hono middleware foundation", () => {
     await expect(deniedResponse.json()).resolves.toMatchObject({
       error: { code: "insufficient_scope" },
     });
+  });
+
+  it("short-circuits API scope checks when authentication fails", async () => {
+    vi.mocked(authenticateApiKey).mockResolvedValueOnce(
+      new Response("invalid", { status: 401 }),
+    );
+    const app = createApp(requireApiScopeMiddleware("analytics:read"), () =>
+      Response.json({ ok: true }),
+    );
+
+    const response = await app.fetch(
+      request("/api/v1/sites"),
+      createEnv(),
+      ctx,
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.text()).resolves.toBe("invalid");
   });
 
   it("continues API scope middleware when a principal is already available", async () => {

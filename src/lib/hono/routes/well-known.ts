@@ -34,6 +34,12 @@ function getBaseUrl(request: Request): string {
 
 export const wellKnownRoutes = new Hono<AppEnv>();
 
+wellKnownRoutes.on(
+  "HEAD",
+  "/.well-known/openapi.json",
+  () => new Response(null, { status: 200, headers: JSON_HEADERS }),
+);
+
 wellKnownRoutes.get("/.well-known/openapi.json", (c) => {
   const baseUrl = getBaseUrl(c.req.raw);
   const dynamicSpec = {
@@ -53,7 +59,7 @@ wellKnownRoutes.get("/.well-known/openapi.json", (c) => {
 
 wellKnownRoutes.on(
   "HEAD",
-  "/.well-known/openapi.json",
+  "/.well-known/skills.json",
   () => new Response(null, { status: 200, headers: JSON_HEADERS }),
 );
 
@@ -67,8 +73,8 @@ wellKnownRoutes.get("/.well-known/skills.json", (c) => {
 
 wellKnownRoutes.on(
   "HEAD",
-  "/.well-known/skills.json",
-  () => new Response(null, { status: 200, headers: JSON_HEADERS }),
+  "/.well-known/security.txt",
+  () => new Response(null, { status: 200, headers: TEXT_HEADERS }),
 );
 
 wellKnownRoutes.get(
@@ -78,26 +84,22 @@ wellKnownRoutes.get(
 
 wellKnownRoutes.on(
   "HEAD",
-  "/.well-known/security.txt",
-  () => new Response(null, { status: 200, headers: TEXT_HEADERS }),
-);
-
-wellKnownRoutes.get("/.well-known/change-password", (c) =>
-  Response.redirect(`${getBaseUrl(c.req.raw)}/app`, 302),
-);
-
-wellKnownRoutes.on(
-  "HEAD",
   "/.well-known/change-password",
   () => new Response(null, { status: 200 }),
 );
 
-wellKnownRoutes.get("/.well-known/health", (c) =>
-  Response.redirect(`${getBaseUrl(c.req.raw)}/healthz`, 302),
-);
+wellKnownRoutes.get("/.well-known/change-password", (c) => {
+  if (c.req.raw.method === "HEAD") return new Response(null, { status: 200 });
+  return Response.redirect(`${getBaseUrl(c.req.raw)}/app`, 302);
+});
 
 wellKnownRoutes.on(
   "HEAD",
   "/.well-known/health",
   () => new Response(null, { status: 200 }),
 );
+
+wellKnownRoutes.get("/.well-known/health", (c) => {
+  if (c.req.raw.method === "HEAD") return new Response(null, { status: 200 });
+  return Response.redirect(`${getBaseUrl(c.req.raw)}/healthz`, 302);
+});
