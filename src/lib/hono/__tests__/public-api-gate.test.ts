@@ -8,6 +8,7 @@ import {
   checkOriginOrReferer,
   getTargetOrigin,
   isBadSimpleUA,
+  isBotByUAParser,
   publicApiGate,
 } from "@/lib/hono/middleware/public-api-gate";
 import type { AppEnv } from "@/lib/hono/types";
@@ -46,6 +47,102 @@ describe("publicApiGate", () => {
     expect(isBadSimpleUA(req)).toBe(false);
     expect(checkFetchMetadata(req)).toBe("pass");
     expect(checkOriginOrReferer(req)).toBe(false);
+  });
+
+  it("covers malformed provenance and simple UA branches", () => {
+    const malformedUrl = { url: "::", headers: new Headers() } as Request;
+    const malformedReferer = request("/api/public/share/demo/overview", {
+      headers: {
+        "user-agent": CHROME_UA,
+        referer: "::",
+      },
+    });
+    const sameOrigin = request("/api/public/share/demo/overview", {
+      headers: {
+        "user-agent": CHROME_UA,
+        origin: "https://example.com",
+      },
+    });
+    const crossOrigin = request("/api/public/share/demo/overview", {
+      headers: {
+        "user-agent": CHROME_UA,
+        origin: "https://evil.example",
+      },
+    });
+    const longUa = request("/api/public/share/demo/overview", {
+      headers: { "user-agent": "a".repeat(513) },
+    });
+    const emptyUa = request("/api/public/share/demo/overview");
+
+    expect(getTargetOrigin(malformedUrl)).toBeNull();
+    expect(checkOriginOrReferer(malformedUrl)).toBe(false);
+    expect(checkOriginOrReferer(malformedReferer)).toBe(false);
+    expect(checkOriginOrReferer(sameOrigin)).toBe(true);
+    expect(checkOriginOrReferer(crossOrigin)).toBe(false);
+    expect(isBadSimpleUA(longUa)).toBe(true);
+    expect(isBadSimpleUA(emptyUa)).toBe(true);
+  });
+
+  it("covers fetch metadata optional mode and destination branches", () => {
+    const noModeOrDest = request("/api/public/share/demo/overview", {
+      headers: {
+        "user-agent": CHROME_UA,
+        "sec-fetch-site": "same-origin",
+      },
+    });
+    const badDest = request("/api/public/share/demo/overview", {
+      headers: browserHeaders({ "sec-fetch-dest": "document" }),
+    });
+    const badMode = request("/api/public/share/demo/overview", {
+      headers: browserHeaders({ "sec-fetch-mode": "navigate" }),
+    });
+    const imageWithoutResourceAllowance = request(
+      "/api/public/resources/map-tiles/1/0/0.png",
+      {
+        headers: browserHeaders({
+          "sec-fetch-mode": "no-cors",
+          "sec-fetch-dest": "image",
+        }),
+      },
+    );
+
+    expect(checkFetchMetadata(noModeOrDest)).toBe("pass");
+    expect(checkFetchMetadata(badDest)).toBe("fail");
+    expect(checkFetchMetadata(badMode)).toBe("fail");
+    expect(checkFetchMetadata(imageWithoutResourceAllowance)).toBe("fail");
+  });
+
+  it("covers ua-parser bot helper boundary branches", () => {
+    expect(isBotByUAParser(request("/api/public/share/demo/overview"))).toBe(
+      true,
+    );
+    expect(
+      isBotByUAParser(
+        request("/api/public/share/demo/overview", {
+          headers: { "user-agent": "a".repeat(513) },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isBotByUAParser(
+        request("/api/public/share/demo/overview", {
+          headers: { "user-agent": CHROME_UA },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("allows configured public methods", async () => {
+    const app = createApp({ methods: ["GET", "HEAD"] });
+
+    const response = await app.fetch(
+      request("/api/public/share/demo/overview", {
+        method: "HEAD",
+        headers: browserHeaders(),
+      }),
+    );
+
+    expect(response.status).toBe(200);
   });
 
   it("allows modern same-origin browser fetch requests", async () => {

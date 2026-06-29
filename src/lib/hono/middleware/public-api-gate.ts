@@ -89,7 +89,7 @@ export function checkOriginOrReferer(req: Request): boolean {
   return getRefererOrigin(req) === targetOrigin;
 }
 
-function isBotByUAParser(req: Request): boolean {
+export function isBotByUAParser(req: Request): boolean {
   const ua = req.headers.get("user-agent") ?? "";
   if (!ua) return true;
   if (ua.length > 512) return true;
