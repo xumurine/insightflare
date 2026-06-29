@@ -242,6 +242,39 @@ describe("middleware", () => {
     );
   });
 
+  it("uses forwarded host metadata for middleware API fetches", async () => {
+    const cookies = await sessionCookies();
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        data: { teams: [{ slug: "team-one" }] },
+      }),
+    );
+
+    await callMiddleware(
+      request("/en/app", {
+        cookies,
+        headers: {
+          "x-forwarded-host": "127.0.0.1:8787",
+          "x-forwarded-proto": "http",
+          host: "127.0.0.1:3000",
+        },
+      }),
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/private/admin/auth/me",
+      {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${cookies.if_session}`,
+        },
+        cache: "no-store",
+      },
+    );
+  });
+
   it("passes authenticated app roots through when the profile has multiple teams", async () => {
     const cookies = await sessionCookies();
     vi.mocked(fetch).mockResolvedValueOnce(

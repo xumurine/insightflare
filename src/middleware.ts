@@ -22,6 +22,14 @@ interface RedirectProfile {
   }>;
 }
 
+function forwardedOrigin(request: NextRequest): string {
+  const host =
+    request.headers.get("x-forwarded-host") || request.headers.get("host");
+  const proto = request.headers.get("x-forwarded-proto") || "https";
+  if (!host) return request.nextUrl.origin;
+  return `${proto}://${host}`;
+}
+
 async function resolveSessionSecretForMiddleware(): Promise<string | null> {
   if (hasConfiguredSessionSecret()) {
     const fromProcess = await dashboardSessionSecret({
@@ -66,8 +74,12 @@ async function fetchRedirectProfile(
     const url = request.nextUrl.clone();
     url.pathname = "/api/private/admin/auth/me";
     url.search = "";
+    const fetchUrl = new URL(
+      `${url.pathname}${url.search}`,
+      forwardedOrigin(request),
+    );
 
-    const response = await fetch(url.toString(), {
+    const response = await fetch(fetchUrl.toString(), {
       method: "GET",
       headers: {
         authorization: `Bearer ${token}`,

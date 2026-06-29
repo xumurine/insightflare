@@ -4,6 +4,7 @@ import { shouldUseHono } from "@/lib/hono/path-match";
 
 describe("shouldUseHono", () => {
   it.each([
+    "/api",
     "/api/private/overview",
     "/api/public/demo/site",
     "/api/v1/capabilities",
@@ -26,7 +27,6 @@ describe("shouldUseHono", () => {
     "/zh/app/team/site",
     "/_next/static/chunk.js",
     "/favicon.ico",
-    "/api",
     "/collect/",
     "/admin/ws/extra",
   ])("leaves %s on the OpenNext path", (pathname) => {

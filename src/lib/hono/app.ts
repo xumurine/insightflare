@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 
+import { apiNoCacheMiddleware } from "./middleware/api-cache";
 import { handleHonoError } from "./middleware/error-boundary";
 import { adminWsRoutes } from "./routes/admin-ws";
 import { authRoutes } from "./routes/auth";
@@ -20,12 +21,14 @@ import type { AppEnv } from "./types";
 export const apiApp = new Hono<AppEnv>();
 
 apiApp.onError(handleHonoError);
+apiApp.use("*", apiNoCacheMiddleware());
 
 apiApp.route("/", healthRoutes);
 apiApp.route("/", wellKnownRoutes);
 apiApp.route("/", collectRoutes);
 apiApp.route("/", scriptRoutes);
 apiApp.route("/", adminWsRoutes);
+apiApp.get("/api", (c) => c.redirect("/api/v1", 307));
 apiApp.route("/api/auth", authRoutes);
 apiApp.route("/api/admin", legacyAdminRoutes);
 apiApp.route("/api/archive", legacyArchiveRoutes);

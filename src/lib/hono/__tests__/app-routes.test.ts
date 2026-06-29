@@ -396,6 +396,34 @@ describe("Hono API app routing", () => {
     expect(handleApiV1).not.toHaveBeenCalled();
   });
 
+  it("redirects the bare API root to API v1 with no-cache headers", async () => {
+    const response = await apiApp.fetch(
+      request("/api"),
+      env as any,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("/api/v1");
+    expect(response.headers.get("cache-control")).toBe(
+      "no-store, no-cache, must-revalidate",
+    );
+    expect(response.headers.get("pragma")).toBe("no-cache");
+  });
+
+  it("adds no-cache headers to Hono API responses", async () => {
+    const response = await apiApp.fetch(
+      request("/api/world-countries"),
+      env as any,
+      executionCtx,
+    );
+
+    expect(response.headers.get("cache-control")).toBe(
+      "no-store, no-cache, must-revalidate",
+    );
+    expect(response.headers.get("pragma")).toBe("no-cache");
+  });
+
   it("routes legacy and map endpoints through Hono", async () => {
     await apiApp.fetch(
       request("/api/auth/login", { method: "POST" }),

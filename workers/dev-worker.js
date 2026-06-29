@@ -13,6 +13,8 @@ function proxyToNextDev(request) {
     NEXT_DEV_ORIGIN,
   );
   const headers = new Headers(request.headers);
+  headers.set("x-forwarded-host", incomingUrl.host);
+  headers.set("x-forwarded-proto", incomingUrl.protocol.replace(/:$/, ""));
   headers.set("host", nextUrl.host);
   return fetch(
     new Request(nextUrl, {
