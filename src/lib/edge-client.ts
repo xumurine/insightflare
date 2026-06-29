@@ -37,11 +37,6 @@ interface FetchEdgeOptions {
 }
 
 async function edgeBaseUrl(): Promise<string> {
-  const configured = (process.env.INSIGHTFLARE_EDGE_URL || "").trim();
-  if (configured.length > 0) {
-    return configured;
-  }
-
   try {
     const { headers } = await import("next/headers");
     const h = await headers();

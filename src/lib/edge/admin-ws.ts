@@ -73,9 +73,6 @@ async function verifySessionToken(
 }
 
 async function deriveSessionSecret(env: Env): Promise<string | null> {
-  const explicit = env.DASHBOARD_SESSION_SECRET || env.SESSION_SECRET;
-  if (explicit) return explicit;
-
   const root = env.MAIN_SECRET || env.DAILY_SALT_SECRET;
   if (!root) return null;
 

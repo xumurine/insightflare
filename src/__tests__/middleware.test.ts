@@ -61,7 +61,7 @@ describe("middleware", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "");
-    vi.stubEnv("DASHBOARD_SESSION_SECRET", "test-secret");
+    vi.stubEnv("MAIN_SECRET", "test-secret");
     vi.stubGlobal("fetch", vi.fn());
   });
 
@@ -160,14 +160,14 @@ describe("middleware", () => {
     );
   });
 
-  it("uses the Cloudflare runtime session secret for app route auth", async () => {
-    vi.stubEnv("DASHBOARD_SESSION_SECRET", "cloudflare-secret");
+  it("uses the Cloudflare runtime session root secret for app route auth", async () => {
+    vi.stubEnv("MAIN_SECRET", "cloudflare-secret");
     const cookies = await sessionCookies();
-    vi.stubEnv("DASHBOARD_SESSION_SECRET", "");
-    vi.stubEnv("SESSION_SECRET", "");
+    vi.stubEnv("MAIN_SECRET", "");
+    vi.stubEnv("DAILY_SALT_SECRET", "");
     vi.doMock("@opennextjs/cloudflare", () => ({
       getCloudflareContext: vi.fn(async () => ({
-        env: { DASHBOARD_SESSION_SECRET: "cloudflare-secret" },
+        env: { MAIN_SECRET: "cloudflare-secret" },
       })),
     }));
 
@@ -181,8 +181,8 @@ describe("middleware", () => {
 
   it("passes through app routes when no session secret is configured (auth state unknown)", async () => {
     const cookies = await sessionCookies();
-    vi.stubEnv("DASHBOARD_SESSION_SECRET", "");
-    vi.stubEnv("SESSION_SECRET", "");
+    vi.stubEnv("MAIN_SECRET", "");
+    vi.stubEnv("DAILY_SALT_SECRET", "");
     vi.doMock("@opennextjs/cloudflare", () => ({
       getCloudflareContext: vi.fn(async () => ({ env: {} })),
     }));

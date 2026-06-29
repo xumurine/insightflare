@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { deriveSecret, SECRET_PURPOSES } from "@/lib/secrets";
 import { createSessionToken, verifySessionToken } from "@/lib/session";
 
 function bytes(input: string): Uint8Array {
@@ -26,13 +27,11 @@ describe("Session Authentication (Web Crypto HMAC)", () => {
   };
 
   beforeEach(() => {
-    // Ensure SESSION_SECRET environment variable is set
-    process.env.SESSION_SECRET =
-      "a-very-long-test-session-secret-longer-than-32-bytes";
+    process.env.MAIN_SECRET =
+      "a-very-long-test-main-secret-longer-than-32-bytes";
   });
 
   afterEach(() => {
-    delete process.env.SESSION_SECRET;
     delete process.env.MAIN_SECRET;
     delete process.env.DAILY_SALT_SECRET;
   });
@@ -119,7 +118,7 @@ describe("Session Authentication (Web Crypto HMAC)", () => {
   it("should handle empty or wrong secret keys gracefully conforming to fallback behaviors", async () => {
     const token = await createSessionToken(mockClaims, 1800);
 
-    // 1. If empty string is supplied, verifySessionToken falls back to the default process.env.SESSION_SECRET.
+    // 1. If empty string is supplied, verifySessionToken falls back to the default derived session secret.
     // Assert it successfully verifies instead of returning null or crashing.
     const verifiedEmpty = await verifySessionToken(token, "");
     expect(verifiedEmpty).not.toBeNull();
@@ -139,7 +138,10 @@ describe("Session Authentication (Web Crypto HMAC)", () => {
 
     // Manually calculate signature using Node's crypto to pass the signature integrity check
     const crypto = await import("crypto");
-    const secret = process.env.SESSION_SECRET || "";
+    const secret = await deriveSecret(
+      process.env.MAIN_SECRET || "",
+      SECRET_PURPOSES.dashboardSession,
+    );
     const hmac = crypto.createHmac("sha256", secret);
     hmac.update(payloadPart);
     const signature = hmac.digest();
@@ -160,8 +162,6 @@ describe("Session Authentication (Web Crypto HMAC)", () => {
 
   it("should cover missing environment variable fallback (Line 16, 25)", async () => {
     // Delete session secret environment variables
-    delete process.env.SESSION_SECRET;
-    delete process.env.DASHBOARD_SESSION_SECRET;
     delete process.env.MAIN_SECRET;
     delete process.env.DAILY_SALT_SECRET;
 
@@ -177,8 +177,8 @@ describe("Session Authentication (Web Crypto HMAC)", () => {
   });
 
   it("should fail validation if base64 signature is highly malformed (Line 122)", async () => {
-    process.env.SESSION_SECRET =
-      "a-very-long-test-session-secret-longer-than-32-bytes";
+    process.env.MAIN_SECRET =
+      "a-very-long-test-main-secret-longer-than-32-bytes";
     const payload = base64UrlEncode(bytes(JSON.stringify(mockClaims)));
     // Highly malformed base64 containing illegal atob characters like non-ascii characters or illegal spacing
     const malformedToken = `${payload}.$$$!!!%%%`;
@@ -192,7 +192,10 @@ describe("Session Authentication (Web Crypto HMAC)", () => {
 
     // Manually calculate signature
     const crypto = await import("crypto");
-    const secret = process.env.SESSION_SECRET || "";
+    const secret = await deriveSecret(
+      process.env.MAIN_SECRET || "",
+      SECRET_PURPOSES.dashboardSession,
+    );
     const hmac = crypto.createHmac("sha256", secret);
     hmac.update(payloadPart);
     const signature = hmac.digest();
@@ -210,7 +213,10 @@ describe("Session Authentication (Web Crypto HMAC)", () => {
 
     // Manually calculate signature
     const crypto = await import("crypto");
-    const secret = process.env.SESSION_SECRET || "";
+    const secret = await deriveSecret(
+      process.env.MAIN_SECRET || "",
+      SECRET_PURPOSES.dashboardSession,
+    );
     const hmac = crypto.createHmac("sha256", secret);
     hmac.update(payloadPart);
     const signature = hmac.digest();

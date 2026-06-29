@@ -20,6 +20,7 @@ import {
   upsertSiteScriptSettings,
 } from "@/lib/edge/site-settings-store";
 import type { Env } from "@/lib/edge/types";
+import { deriveSecret, SECRET_PURPOSES } from "@/lib/secrets";
 import { DEFAULT_SITE_SCRIPT_SETTINGS } from "@/lib/site-settings";
 import type { DoDiagnosticPayload } from "@/lib/system-performance";
 
@@ -163,6 +164,17 @@ async function sessionToken(
   secret = "session-secret",
 ): Promise<string> {
   return hmacToken(b64u(bytesFromString(JSON.stringify(payload))), secret);
+}
+
+async function sessionSecretFromRoot(root = "main-secret"): Promise<string> {
+  return deriveSecret(root, SECRET_PURPOSES.dashboardSession);
+}
+
+async function derivedSessionToken(
+  payload: Record<string, unknown>,
+  root = "main-secret",
+): Promise<string> {
+  return sessionToken(payload, await sessionSecretFromRoot(root));
 }
 
 function argonHash(
@@ -571,7 +583,7 @@ describe("private admin edge handler", () => {
       } = await vi.importActual<ActualSessionAuth>("@/lib/edge/session-auth");
       vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
       const env = createEnv([], {
-        env: { DASHBOARD_SESSION_SECRET: "session-secret" },
+        env: { MAIN_SECRET: "main-secret" },
       }).env;
       const claims = {
         userId: "user-1",
@@ -580,7 +592,7 @@ describe("private admin edge handler", () => {
         systemRole: "admin",
         exp: 1_800_000_100,
       };
-      const token = await sessionToken(claims);
+      const token = await derivedSessionToken(claims);
       const bearerRequest = edgeRequest("/admin", {
         headers: { authorization: `Bearer ${token}` },
       });
@@ -613,7 +625,7 @@ describe("private admin edge handler", () => {
         await vi.importActual<ActualSessionAuth>("@/lib/edge/session-auth");
       vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
       const env = createEnv([], {
-        env: { SESSION_SECRET: "session-secret" },
+        env: { MAIN_SECRET: "main-secret" },
       }).env;
       const validPayload = {
         userId: "user-1",
@@ -622,14 +634,14 @@ describe("private admin edge handler", () => {
         systemRole: "admin",
         exp: 1_800_000_100,
       };
-      const validToken = await sessionToken(validPayload);
+      const validToken = await derivedSessionToken(validPayload);
       const invalidJsonPayload = b64u(bytesFromString("not-json"));
       const missingFieldsPayload = b64u(bytesFromString("{}"));
-      const expiredToken = await sessionToken({
+      const expiredToken = await derivedSessionToken({
         ...validPayload,
         exp: 1_799_999_999,
       });
-      const badRoleToken = await sessionToken({
+      const badRoleToken = await derivedSessionToken({
         ...validPayload,
         systemRole: "superadmin",
       });
@@ -644,10 +656,16 @@ describe("private admin edge handler", () => {
         verifySessionToken(`${"x".repeat(25)}.!`, env),
       ).resolves.toBeNull();
       await expect(
-        verifySessionToken(await hmacToken(invalidJsonPayload), env),
+        verifySessionToken(
+          await hmacToken(invalidJsonPayload, await sessionSecretFromRoot()),
+          env,
+        ),
       ).resolves.toBeNull();
       await expect(
-        verifySessionToken(await hmacToken(missingFieldsPayload), env),
+        verifySessionToken(
+          await hmacToken(missingFieldsPayload, await sessionSecretFromRoot()),
+          env,
+        ),
       ).resolves.toBeNull();
       await expect(verifySessionToken(expiredToken, env)).resolves.toBeNull();
       await expect(
@@ -796,8 +814,6 @@ describe("private admin edge handler", () => {
         ],
         {
           env: {
-            BOOTSTRAP_ADMIN_USERNAME: "Bootstrap",
-            BOOTSTRAP_ADMIN_EMAIL: "bootstrap@example.test",
             BOOTSTRAP_ADMIN_PASSWORD: "bootstrap-secret",
           },
         },
@@ -815,8 +831,8 @@ describe("private admin edge handler", () => {
         error: { message: "username/email and password are required" },
       });
       expect(update.bind).toHaveBeenCalledWith(
-        "bootstrap",
-        "bootstrap@example.test",
+        "admin",
+        "admin@insightflare.local",
         "Administrator",
         expect.stringMatching(/^argon2id\$/),
         "user-1",
@@ -3219,17 +3235,12 @@ describe("private admin edge handler", () => {
       });
     });
 
-    it("builds script snippets from the configured edge base URL", async () => {
+    it("builds script snippets from the request origin", async () => {
       setSession(adminSession);
-      const { env } = createEnv(
-        [
-          statement({ first: userRow() }),
-          statement({ first: { team_id: "team-1" } }),
-        ],
-        {
-          env: { EDGE_PUBLIC_BASE_URL: "https://cdn.example.test/" },
-        },
-      );
+      const { env } = createEnv([
+        statement({ first: userRow() }),
+        statement({ first: { team_id: "team-1" } }),
+      ]);
 
       const response = await dispatch(
         "/api/private/admin/script-snippet?siteId=site 1",
@@ -3241,9 +3252,9 @@ describe("private admin edge handler", () => {
         ok: true,
         data: {
           siteId: "site 1",
-          src: "https://cdn.example.test/script.js?siteId=site%201",
+          src: "https://edge.test/script.js?siteId=site%201",
           snippet:
-            '<script defer src="https://cdn.example.test/script.js?siteId=site%201"></script>',
+            '<script defer src="https://edge.test/script.js?siteId=site%201"></script>',
         },
       });
     });

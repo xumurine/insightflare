@@ -35,8 +35,6 @@ async function resolveSessionSecretForMiddleware(): Promise<string | null> {
     const fromProcess = await dashboardSessionSecret({
       MAIN_SECRET: process.env.MAIN_SECRET,
       DAILY_SALT_SECRET: process.env.DAILY_SALT_SECRET,
-      DASHBOARD_SESSION_SECRET: process.env.DASHBOARD_SESSION_SECRET,
-      SESSION_SECRET: process.env.SESSION_SECRET,
     });
     if (fromProcess) return fromProcess;
   }

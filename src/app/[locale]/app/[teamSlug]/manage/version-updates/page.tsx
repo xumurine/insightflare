@@ -54,12 +54,7 @@ function isCommitMatch(
 }
 
 function currentCommitHash(): string | null {
-  return (
-    process.env.CF_PAGES_COMMIT_SHA ||
-    process.env.GITHUB_SHA ||
-    process.env.COMMIT_SHA ||
-    null
-  );
+  return process.env.COMMIT_SHA || null;
 }
 
 function normalizeVersion(value: string | null | undefined): string {

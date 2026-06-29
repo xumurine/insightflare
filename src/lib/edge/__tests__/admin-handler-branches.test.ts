@@ -193,7 +193,6 @@ function createEnv(statements: MockStatement[] = []): {
     env: {
       DB: { prepare, batch } as unknown as D1Database,
       DAILY_SALT_SECRET: "daily-salt",
-      EDGE_PUBLIC_BASE_URL: "https://edge.example.test/base/",
     } as Env,
     prepare,
     batch,
@@ -643,9 +642,9 @@ describe("admin handler low branches", () => {
       ok: true,
       data: {
         siteId: "site 1",
-        src: "https://edge.example.test/base/script.js?siteId=site%201",
+        src: "https://edge.test/script.js?siteId=site%201",
         snippet:
-          '<script defer src="https://edge.example.test/base/script.js?siteId=site%201"></script>',
+          '<script defer src="https://edge.test/script.js?siteId=site%201"></script>',
       },
     });
   });

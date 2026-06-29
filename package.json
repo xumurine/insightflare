@@ -48,7 +48,6 @@
     "cf:secret:main": "wrangler secret put MAIN_SECRET --config wrangler.toml",
     "cf:secret:daily-salt": "wrangler secret put DAILY_SALT_SECRET --config wrangler.toml",
     "cf:secret:bootstrap-admin-password": "wrangler secret put BOOTSTRAP_ADMIN_PASSWORD --config wrangler.toml",
-    "cf:secret:session-secret": "wrangler secret put DASHBOARD_SESSION_SECRET --config wrangler.toml",
     "cf:tail": "wrangler tail --config wrangler.toml",
     "typecheck": "next typegen && tsc --noEmit -p tsconfig.json",
     "check:i18n": "tsx scripts/check-i18n.ts",

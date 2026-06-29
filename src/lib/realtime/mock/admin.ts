@@ -103,10 +103,9 @@ export function getDemoSiteConfig() {
 
 export function getDemoScriptSnippet(siteId: string) {
   const edgeBase =
-    process.env.NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL ||
-    (typeof window !== "undefined"
+    typeof window !== "undefined"
       ? window.location.origin
-      : "https://localhost:3000");
+      : "https://localhost:3000";
   const src = `${edgeBase.replace(/\/$/, "")}/script.js?siteId=${encodeURIComponent(siteId)}`;
   return {
     siteId,

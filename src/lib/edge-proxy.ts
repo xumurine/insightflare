@@ -2,10 +2,6 @@ import { getSessionToken } from "./auth";
 import { DEFAULT_EDGE_BASE_URL } from "./constants";
 
 export function resolveEdgeBaseUrl(requestUrl?: string): string {
-  const configured = (process.env.INSIGHTFLARE_EDGE_URL || "").trim();
-  if (configured.length > 0) {
-    return configured;
-  }
   if (requestUrl) {
     try {
       const origin = new URL(requestUrl).origin;

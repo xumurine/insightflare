@@ -22,20 +22,13 @@ export function sessionSecretSourceFromProcessEnv(): SecretSource {
   return {
     MAIN_SECRET: process.env.MAIN_SECRET,
     DAILY_SALT_SECRET: process.env.DAILY_SALT_SECRET,
-    DASHBOARD_SESSION_SECRET: process.env.DASHBOARD_SESSION_SECRET,
-    SESSION_SECRET: process.env.SESSION_SECRET,
   };
 }
 
 export function hasConfiguredSessionSecretSource(
   source: SecretSource = sessionSecretSourceFromProcessEnv(),
 ): boolean {
-  return Boolean(
-    source.DASHBOARD_SESSION_SECRET ||
-    source.SESSION_SECRET ||
-    source.MAIN_SECRET ||
-    source.DAILY_SALT_SECRET,
-  );
+  return Boolean(source.MAIN_SECRET || source.DAILY_SALT_SECRET);
 }
 
 export function hasConfiguredSessionSecret(): boolean {

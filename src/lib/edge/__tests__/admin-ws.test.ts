@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { handleAdminWs } from "@/lib/edge/admin-ws";
+import { deriveSecret, SECRET_PURPOSES } from "@/lib/secrets";
 
 function bytes(input: string): Uint8Array {
   return new TextEncoder().encode(input);
@@ -51,6 +52,10 @@ async function sessionToken(
   return `${payload}.${base64UrlEncode(signature)}`;
 }
 
+async function dashboardSecret(root = "root-secret"): Promise<string> {
+  return deriveSecret(root, SECRET_PURPOSES.dashboardSession);
+}
+
 function dbWithRows(rows: Record<string, unknown>[]) {
   return {
     prepare: vi.fn(() => ({
@@ -79,7 +84,8 @@ describe("handleAdminWs", () => {
   });
 
   it("checks site access and forwards websocket requests to the ingest DO", async () => {
-    const secret = "dashboard-secret";
+    const root = "root-secret";
+    const secret = await dashboardSecret(root);
     const token = await sessionToken(
       {
         userId: "user-1",
@@ -93,7 +99,7 @@ describe("handleAdminWs", () => {
       Promise.resolve(new Response("upgraded")),
     );
     const env = {
-      DASHBOARD_SESSION_SECRET: secret,
+      MAIN_SECRET: root,
       DB: dbWithRows([{ id: "site-1" }]),
       INGEST_DO: {
         idFromName: vi.fn(() => "do-id"),
@@ -102,12 +108,9 @@ describe("handleAdminWs", () => {
     };
 
     const response = await handleAdminWs(
-      new Request(
-        "https://app.test/api/private/realtime/ws?siteId=site-1&token=client",
-        {
-          headers: { authorization: `Bearer ${token}` },
-        },
-      ),
+      new Request("https://app.test/api/private/realtime/ws?siteId=site-1", {
+        headers: { authorization: `Bearer ${token}` },
+      }),
       env as any,
     );
 
@@ -116,13 +119,12 @@ describe("handleAdminWs", () => {
     expect(env.INGEST_DO.idFromName).toHaveBeenCalledWith("site-1");
     expect(fetchMock).toHaveBeenCalledWith(expect.any(Request));
     const forwarded = fetchMock.mock.calls[0]?.[0] as Request;
-    expect(forwarded.url).toBe(
-      "https://ingest.internal/ws?siteId=site-1&token=client",
-    );
+    expect(forwarded.url).toBe("https://ingest.internal/ws?siteId=site-1");
   });
 
   it("rejects missing and unauthorized site ids", async () => {
-    const secret = "dashboard-secret";
+    const root = "root-secret";
+    const secret = await dashboardSecret(root);
     const token = await sessionToken(
       {
         userId: "user-1",
@@ -137,7 +139,7 @@ describe("handleAdminWs", () => {
     const missing = await handleAdminWs(
       new Request("https://app.test/api/private/realtime/ws", { headers }),
       {
-        DASHBOARD_SESSION_SECRET: secret,
+        MAIN_SECRET: root,
         DB: dbWithRows([]),
         INGEST_DO: {},
       } as any,
@@ -149,7 +151,7 @@ describe("handleAdminWs", () => {
         headers,
       }),
       {
-        DASHBOARD_SESSION_SECRET: secret,
+        MAIN_SECRET: root,
         DB: dbWithRows([null as any]),
         INGEST_DO: {},
       } as any,

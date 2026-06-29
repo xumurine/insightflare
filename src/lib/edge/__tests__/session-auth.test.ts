@@ -85,12 +85,14 @@ describe("edge session authentication", () => {
         systemRole: "admin",
         exp,
       },
-      "dashboard-secret",
+      await import("@/lib/secrets").then(({ deriveSecret, SECRET_PURPOSES }) =>
+        deriveSecret("root-secret", SECRET_PURPOSES.dashboardSession),
+      ),
     );
 
     await expect(
       verifySessionToken(token, {
-        DASHBOARD_SESSION_SECRET: "dashboard-secret",
+        MAIN_SECRET: "root-secret",
       } as Env),
     ).resolves.toEqual({
       userId: "user-1",
@@ -101,7 +103,11 @@ describe("edge session authentication", () => {
     });
   });
 
-  it("falls back to SESSION_SECRET and defaults non-admin roles to user", async () => {
+  it("uses root-derived secrets and defaults non-admin roles to user", async () => {
+    const secret = await import("@/lib/secrets").then(
+      ({ deriveSecret, SECRET_PURPOSES }) =>
+        deriveSecret("root-secret", SECRET_PURPOSES.dashboardSession),
+    );
     const exp = Math.floor(Date.now() / 1000) + 60;
     const token = await createToken(
       {
@@ -111,12 +117,12 @@ describe("edge session authentication", () => {
         systemRole: "owner",
         exp,
       },
-      "legacy-secret",
+      secret,
     );
 
     await expect(
       verifySessionToken(token, {
-        SESSION_SECRET: "legacy-secret",
+        MAIN_SECRET: "root-secret",
       } as Env),
     ).resolves.toMatchObject({
       userId: "user-2",
@@ -126,21 +132,25 @@ describe("edge session authentication", () => {
   });
 
   it("rejects malformed, tampered, incomplete, and expired tokens", async () => {
-    const env = { DASHBOARD_SESSION_SECRET: "secret" } as Env;
+    const env = { MAIN_SECRET: "root-secret" } as Env;
+    const secret = await import("@/lib/secrets").then(
+      ({ deriveSecret, SECRET_PURPOSES }) =>
+        deriveSecret("root-secret", SECRET_PURPOSES.dashboardSession),
+    );
     const validPayload = {
       userId: "user-1",
       username: "admin",
       exp: Math.floor(Date.now() / 1000) + 60,
     };
-    const token = await createToken(validPayload, "secret");
+    const token = await createToken(validPayload, secret);
     const [payloadPart, signaturePart] = token.split(".");
     const expired = await createToken(
       { ...validPayload, exp: Math.floor(Date.now() / 1000) - 1 },
-      "secret",
+      secret,
     );
     const missingUser = await createToken(
       { username: "admin", exp: validPayload.exp },
-      "secret",
+      secret,
     );
 
     await expect(verifySessionToken("", env)).resolves.toBeNull();
@@ -157,11 +167,15 @@ describe("edge session authentication", () => {
 
   it("requires a session token from requests", async () => {
     const exp = Math.floor(Date.now() / 1000) + 60;
+    const secret = await import("@/lib/secrets").then(
+      ({ deriveSecret, SECRET_PURPOSES }) =>
+        deriveSecret("root-secret", SECRET_PURPOSES.dashboardSession),
+    );
     const token = await createToken(
       { userId: "user-1", username: "admin", exp },
-      "secret",
+      secret,
     );
-    const env = { DASHBOARD_SESSION_SECRET: "secret" } as Env;
+    const env = { MAIN_SECRET: "root-secret" } as Env;
 
     await expect(
       requireSession(

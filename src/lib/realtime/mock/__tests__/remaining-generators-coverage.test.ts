@@ -145,25 +145,13 @@ describe("mock remaining generator coverage", () => {
     );
   });
 
-  it("builds script snippets from an explicit edge URL without a trailing slash", () => {
-    const previousEdgeUrl = process.env.NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL;
-    process.env.NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL =
-      "https://edge.example.test/";
-
-    try {
-      expect(getDemoScriptSnippet("site/with space")).toEqual({
-        siteId: "site/with space",
-        src: "https://edge.example.test/script.js?siteId=site%2Fwith%20space",
-        snippet:
-          '<script defer src="https://edge.example.test/script.js?siteId=site%2Fwith%20space"></script>',
-      });
-    } finally {
-      if (previousEdgeUrl === undefined) {
-        delete process.env.NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL;
-      } else {
-        process.env.NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL = previousEdgeUrl;
-      }
-    }
+  it("builds script snippets from the current origin when available", () => {
+    expect(getDemoScriptSnippet("site/with space")).toEqual({
+      siteId: "site/with space",
+      src: "http://localhost:3000/script.js?siteId=site%2Fwith%20space",
+      snippet:
+        '<script defer src="http://localhost:3000/script.js?siteId=site%2Fwith%20space"></script>',
+    });
   });
 
   it("builds filter option branches from page, referrer, client, and geo tabs", () => {

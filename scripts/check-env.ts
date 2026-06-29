@@ -45,11 +45,6 @@ function hasUsableSecretSource(): boolean {
   const rootSecret = process.env.MAIN_SECRET || process.env.DAILY_SALT_SECRET;
   if (rootSecret && rootSecret.length >= 16) return true;
 
-  // 检查显式的 session secret
-  const sessionSecret =
-    process.env.DASHBOARD_SESSION_SECRET || process.env.SESSION_SECRET;
-  if (sessionSecret && sessionSecret.length >= 16) return true;
-
   return false;
 }
 
@@ -87,16 +82,6 @@ const RECOMMENDED_ENV_VARS = [
       return null;
     },
   },
-  {
-    name: "DASHBOARD_SESSION_SECRET",
-    description: "Optional override for dashboard session signing key",
-    validator: (value: string) => {
-      if (value.length < 16) {
-        return "Should be at least 16 characters long";
-      }
-      return null;
-    },
-  },
 ];
 
 // 检查是否为生产环境
@@ -104,7 +89,6 @@ function isProduction(): boolean {
   return (
     process.env.NODE_ENV === "production" ||
     process.env.CF_PAGES === "1" ||
-    process.env.VERCEL === "1" ||
     process.env.CI === "true"
   );
 }
@@ -156,8 +140,6 @@ export async function checkEnvironmentVariables(options?: {
       rlog.error("    At least one of the following must be set:");
       rlog.error("    - MAIN_SECRET (recommended)");
       rlog.error("    - DAILY_SALT_SECRET");
-      rlog.error("    - DASHBOARD_SESSION_SECRET");
-      rlog.error("    - SESSION_SECRET");
       rlog.error("");
       const generated = generateStrongSecret();
       rlog.info(`    Suggested MAIN_SECRET: ${generated}`);

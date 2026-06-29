@@ -16,19 +16,12 @@ const getSessionTokenMock = vi.mocked(getSessionToken);
 
 describe("edge proxy helpers", () => {
   beforeEach(() => {
-    vi.stubEnv("INSIGHTFLARE_EDGE_URL", "");
     vi.restoreAllMocks();
     getSessionTokenMock.mockReset();
     getSessionTokenMock.mockResolvedValue("session-token");
   });
 
-  it("resolves the edge base URL from env, request URL, or default fallback", () => {
-    vi.stubEnv("INSIGHTFLARE_EDGE_URL", " https://edge.example.test ");
-    expect(resolveEdgeBaseUrl("https://app.example.test/path")).toBe(
-      "https://edge.example.test",
-    );
-
-    vi.stubEnv("INSIGHTFLARE_EDGE_URL", "");
+  it("resolves the edge base URL from request URL or default fallback", () => {
     expect(resolveEdgeBaseUrl("https://app.example.test/path?q=1")).toBe(
       "https://app.example.test",
     );
@@ -43,9 +36,8 @@ describe("edge proxy helpers", () => {
       }),
     ).toBe("https://edge.example.test/api/test?q=hello+world");
 
-    vi.stubEnv("INSIGHTFLARE_EDGE_URL", "https://edge.example.test");
     expect(buildEdgeUrl("/api/test", { siteId: "site-1" })).toBe(
-      "https://edge.example.test/api/test?siteId=site-1",
+      "http://127.0.0.1:8787/api/test?siteId=site-1",
     );
   });
 
@@ -101,9 +93,9 @@ describe("edge proxy helpers", () => {
     getSessionTokenMock.mockRejectedValue(new Error("outside request scope"));
     const fetchMock = vi.fn().mockResolvedValue(new Response(null));
     vi.stubGlobal("fetch", fetchMock);
-    vi.stubEnv("INSIGHTFLARE_EDGE_URL", "https://edge.example.test");
 
     await fetchEdgeForServer({
+      baseUrl: "https://edge.example.test",
       pathname: "/api/ping",
       method: "HEAD",
       headers: {

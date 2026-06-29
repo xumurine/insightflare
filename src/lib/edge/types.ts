@@ -7,14 +7,8 @@ export interface Env {
   NEXT_PUBLIC_DEMO_MODE?: string;
   DISABLE_CRON_TASKS?: string;
   ADMIN_WS_TOKEN?: string;
-  DASHBOARD_SESSION_SECRET?: string;
-  SESSION_SECRET?: string;
-  EDGE_PUBLIC_BASE_URL?: string;
   PARQUET_WASM_URL?: string;
-  BOOTSTRAP_ADMIN_USERNAME?: string;
   BOOTSTRAP_ADMIN_PASSWORD?: string;
-  BOOTSTRAP_ADMIN_EMAIL?: string;
-  BOOTSTRAP_ADMIN_NAME?: string;
   SESSION_WINDOW_MINUTES?: string;
   SCRIPT_CACHE_TTL_SECONDS?: string;
   SITE_SETTINGS_KV?: KVNamespace;

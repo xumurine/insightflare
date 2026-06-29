@@ -308,7 +308,7 @@ export async function handleScriptSnippetAdmin(
   if (!siteId) return bad("Missing siteId", undefined, req);
   if (!(await canReadSite(env, a, siteId)))
     return forb("Site access denied", undefined, req);
-  const edgeBase = env.EDGE_PUBLIC_BASE_URL || `${url.protocol}//${url.host}`;
+  const edgeBase = `${url.protocol}//${url.host}`;
   const src = `${edgeBase.replace(/\/$/, "")}/script.js?siteId=${encodeURIComponent(siteId)}`;
   return jsonResponseFor(req, {
     ok: true,

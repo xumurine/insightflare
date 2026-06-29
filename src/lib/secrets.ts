@@ -7,8 +7,6 @@ export const SECRET_PURPOSES = {
 export interface SecretSource {
   MAIN_SECRET?: string;
   DAILY_SALT_SECRET?: string;
-  DASHBOARD_SESSION_SECRET?: string;
-  SESSION_SECRET?: string;
 }
 
 function bytes(input: string): Uint8Array {
@@ -64,10 +62,6 @@ export async function deriveSecret(
 export async function dashboardSessionSecret(
   source: SecretSource,
 ): Promise<string | null> {
-  const explicit =
-    normalizedSecret(source.DASHBOARD_SESSION_SECRET) ||
-    normalizedSecret(source.SESSION_SECRET);
-  if (explicit) return explicit;
   const root = rootSecret(source);
   return root ? deriveSecret(root, SECRET_PURPOSES.dashboardSession) : null;
 }

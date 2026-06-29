@@ -119,10 +119,10 @@ describe("realtime client", () => {
     vi.restoreAllMocks();
   });
 
-  it("reports mock mode from the import-time environment", async () => {
+  it("reports mock mode from the demo environment", async () => {
     await expect(
       importClientWithEnv().then((client) => client.isRealtimeMockEnabled()),
-    ).resolves.toBe(true);
+    ).resolves.toBe(false);
 
     await expect(
       importClientWithEnv({
@@ -132,18 +132,6 @@ describe("realtime client", () => {
     ).resolves.toBe(true);
 
     await expect(
-      importClientWithEnv({ NEXT_PUBLIC_REALTIME_MOCK: "1" }).then((client) =>
-        client.isRealtimeMockEnabled(),
-      ),
-    ).resolves.toBe(true);
-
-    await expect(
-      importClientWithEnv({ NEXT_PUBLIC_REALTIME_MOCK: "0" }).then((client) =>
-        client.isRealtimeMockEnabled(),
-      ),
-    ).resolves.toBe(false);
-
-    await expect(
       importClientWithEnv({ NODE_ENV: "production" }).then((client) =>
         client.isRealtimeMockEnabled(),
       ),
@@ -151,9 +139,7 @@ describe("realtime client", () => {
   });
 
   it("returns cloned idle state for empty and missing site ids", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
 
     expect(client.createIdleRealtimeChannelState()).toEqual({
       status: "disconnected",
@@ -209,9 +195,7 @@ describe("realtime client", () => {
   });
 
   it("does nothing for empty site ids", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
 
     const release = client.acquireRealtimeChannel("");
@@ -222,29 +206,22 @@ describe("realtime client", () => {
     expect(() => release()).not.toThrow();
   });
 
-  it("builds a websocket URL from the configured edge URL and token", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-      NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL: "https://edge.example.test/base",
-      NEXT_PUBLIC_ADMIN_WS_TOKEN: "secret-token",
-    });
+  it("builds a same-origin websocket URL", async () => {
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
+    window.history.pushState(null, "", "http://localhost:3000/dashboard");
 
     releases.push(client.acquireRealtimeChannel("site url"));
 
     expect(sockets).toHaveLength(1);
     expect(sockets[0]?.url).toBe(
-      "wss://edge.example.test/api/private/realtime/ws?siteId=site+url&token=secret-token",
+      "ws://localhost:3000/api/private/realtime/ws?siteId=site+url",
     );
     expect(latestBroadcastState().status).toBe("connecting");
   });
 
   it("builds a websocket URL from window.location when no edge URL is configured", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-      NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL: "",
-      NEXT_PUBLIC_ADMIN_WS_TOKEN: "",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     window.history.pushState(null, "", "http://localhost:3000/dashboard");
 
@@ -256,9 +233,7 @@ describe("realtime client", () => {
   });
 
   it("surfaces real websocket constructor failures when websocket is unavailable", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     const WebSocketMock = vi.fn(() => {
       throw new Error("WebSocket unsupported");
     });
@@ -274,9 +249,7 @@ describe("realtime client", () => {
   });
 
   it("opens one socket for multiple acquires and removes the channel only after the final release", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
 
     const releaseA = client.acquireRealtimeChannel("site-ref");
@@ -307,9 +280,7 @@ describe("realtime client", () => {
   });
 
   it("cleans up released channels without closing sockets that are already closing", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     const release = client.acquireRealtimeChannel("site-closing-release");
     releases.push(release);
@@ -326,9 +297,7 @@ describe("realtime client", () => {
   });
 
   it("keeps returned states and broadcasts cloned from internal state", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     releases.push(client.acquireRealtimeChannel("site-clone"));
     const socket = sockets[0]!;
@@ -355,9 +324,7 @@ describe("realtime client", () => {
   });
 
   it("applies event envelopes, normalizes snake_case fields, merges visits, and ignores malformed messages", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     releases.push(client.acquireRealtimeChannel("site-events"));
     const socket = sockets[0]!;
@@ -464,9 +431,7 @@ describe("realtime client", () => {
   });
 
   it("normalizes default event fields from non-string envelopes and prunes zero-time activity on recompute", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     releases.push(client.acquireRealtimeChannel("site-default-event"));
     const socket = sockets[0]!;
@@ -508,9 +473,7 @@ describe("realtime client", () => {
   });
 
   it("dedupes events, sorts presence leaves behind same-time activity, and removes expired records", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     releases.push(client.acquireRealtimeChannel("site-dedupe"));
     const socket = sockets[0]!;
@@ -572,9 +535,7 @@ describe("realtime client", () => {
   });
 
   it("ignores empty event ids, keeps newer duplicates, and treats latest presence leaves as inactive", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     releases.push(client.acquireRealtimeChannel("site-presence"));
     const socket = sockets[0]!;
@@ -651,9 +612,7 @@ describe("realtime client", () => {
   });
 
   it("derives events from snapshot visits when event arrays are absent", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     releases.push(client.acquireRealtimeChannel("site-visits"));
     const socket = sockets[0]!;
@@ -747,9 +706,7 @@ describe("realtime client", () => {
   });
 
   it("falls back for invalid snapshot point and visit timestamps and default visit fields", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     releases.push(client.acquireRealtimeChannel("site-snapshot-fallbacks"));
     const socket = sockets[0]!;
@@ -832,9 +789,7 @@ describe("realtime client", () => {
   });
 
   it("derives events from snapshot points and rejects invalid point coordinates", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     releases.push(client.acquireRealtimeChannel("site-points"));
     const socket = sockets[0]!;
@@ -892,9 +847,7 @@ describe("realtime client", () => {
   });
 
   it("handles invalid snapshot payloads and publishes unchanged state for invalid event payloads", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     releases.push(client.acquireRealtimeChannel("site-invalid"));
     const socket = sockets[0]!;
@@ -927,9 +880,7 @@ describe("realtime client", () => {
   });
 
   it("falls back to Date.now for invalid event timestamps and coordinates", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     releases.push(client.acquireRealtimeChannel("site-invalid-event"));
     const socket = sockets[0]!;
@@ -962,9 +913,7 @@ describe("realtime client", () => {
   });
 
   it("periodically prunes stale activity and publishes the recomputed state", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     releases.push(client.acquireRealtimeChannel("site-recompute"));
     const socket = sockets[0]!;
@@ -989,9 +938,7 @@ describe("realtime client", () => {
   });
 
   it("closes connecting sockets when the connect watchdog expires and reconnects", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     releases.push(client.acquireRealtimeChannel("site-watchdog"));
     const firstSocket = sockets[0]!;
@@ -1011,9 +958,7 @@ describe("realtime client", () => {
   });
 
   it("marks a channel failed after repeated pre-open closes", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     releases.push(client.acquireRealtimeChannel("site-failures"));
 
@@ -1031,9 +976,7 @@ describe("realtime client", () => {
   });
 
   it("resets reconnect failures after a successful open and reconnects on later closes", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     releases.push(client.acquireRealtimeChannel("site-reconnect"));
 
@@ -1057,9 +1000,7 @@ describe("realtime client", () => {
   });
 
   it("sets disconnected on socket errors and lets close schedule a reconnect", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     releases.push(client.acquireRealtimeChannel("site-error"));
     const socket = sockets[0]!;
@@ -1076,9 +1017,7 @@ describe("realtime client", () => {
   });
 
   it("clears reconnect timers on release before they create another socket", async () => {
-    const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "0",
-    });
+    const client = await importClientWithEnv();
     vi.stubGlobal("WebSocket", FakeSocket);
     const release = client.acquireRealtimeChannel("site-release-timer");
     releases.push(release);
@@ -1099,7 +1038,7 @@ describe("realtime client", () => {
       ({ siteId }: { siteId: string }) => new FakeSocket(`mock://${siteId}`),
     );
     const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "1",
+      NEXT_PUBLIC_DEMO_MODE: "1",
     });
 
     releases.push(client.acquireRealtimeChannel("site-mock"));
@@ -1123,7 +1062,7 @@ describe("realtime client", () => {
       ({ siteId }: { siteId: string }) => new FakeSocket(`mock://${siteId}`),
     );
     const client = await importClientWithEnv({
-      NEXT_PUBLIC_REALTIME_MOCK: "1",
+      NEXT_PUBLIC_DEMO_MODE: "1",
     });
 
     const release = client.acquireRealtimeChannel("site-release-before-mock");

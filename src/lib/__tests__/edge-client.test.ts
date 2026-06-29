@@ -59,7 +59,6 @@ function jsonResponse(data: unknown, status = 200): Response {
 
 describe("edge client request wrappers", () => {
   beforeEach(() => {
-    vi.stubEnv("INSIGHTFLARE_EDGE_URL", "https://edge.example.test");
     vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "");
     getSessionTokenMock.mockReset();
     getSessionTokenMock.mockResolvedValue("session-token");
@@ -101,7 +100,7 @@ describe("edge client request wrappers", () => {
     const headers = init.headers as Headers;
 
     expect(url).toBe(
-      "https://edge.example.test/api/public/share/public%20site/overview?from=10&to=20",
+      "http://127.0.0.1:8787/api/public/share/public%20site/overview?from=10&to=20",
     );
     expect(init.method).toBe("GET");
     expect(init.cache).toBe("no-store");
@@ -115,7 +114,7 @@ describe("edge client request wrappers", () => {
     const [url] = lastFetchCall();
 
     expect(url).toBe(
-      "https://edge.example.test/api/public/share/public%2Fsite%3Fdraft%3Dtrue/overview?from=0&to=1",
+      "http://127.0.0.1:8787/api/public/share/public%2Fsite%3Fdraft%3Dtrue/overview?from=0&to=1",
     );
   });
 
@@ -126,26 +125,26 @@ describe("edge client request wrappers", () => {
     let url = firstUrl;
     const headers = init.headers as Headers;
     expect(url).toBe(
-      "https://edge.example.test/api/private/admin/teams?userId=user-1",
+      "http://127.0.0.1:8787/api/private/admin/teams?userId=user-1",
     );
     expect(headers.get("authorization")).toBe("Bearer session-token");
 
     await fetchPublicTrend("slug", { from: 1, to: 2 });
     [url] = lastFetchCall();
     expect(url).toBe(
-      "https://edge.example.test/api/public/share/slug/trend?from=1&to=2&interval=day",
+      "http://127.0.0.1:8787/api/public/share/slug/trend?from=1&to=2&interval=day",
     );
 
     await fetchPublicPages("slug", { from: 1, to: 2 });
     [url] = lastFetchCall();
     expect(url).toBe(
-      "https://edge.example.test/api/public/share/slug/pages?from=1&to=2&limit=8",
+      "http://127.0.0.1:8787/api/public/share/slug/pages?from=1&to=2&limit=8",
     );
 
     await fetchPublicReferrers("slug", { from: 1, to: 2 });
     [url] = lastFetchCall();
     expect(url).toBe(
-      "https://edge.example.test/api/public/share/slug/referrers?from=1&to=2&limit=8",
+      "http://127.0.0.1:8787/api/public/share/slug/referrers?from=1&to=2&limit=8",
     );
   });
 
@@ -245,7 +244,7 @@ describe("edge client request wrappers", () => {
     const params = new URL(url).searchParams;
 
     expect(url).toBe(
-      "https://edge.example.test/api/public/share/slug/pages?from=1&to=2&limit=8",
+      "http://127.0.0.1:8787/api/public/share/slug/pages?from=1&to=2&limit=8",
     );
     expect(params.has("eventPayloadFilters")).toBe(false);
   });
@@ -255,7 +254,7 @@ describe("edge client request wrappers", () => {
 
     const [url] = lastFetchCall();
 
-    expect(url).toBe("https://edge.example.test/api/private/admin/teams");
+    expect(url).toBe("http://127.0.0.1:8787/api/private/admin/teams");
   });
 
   it("serializes POST and PATCH request bodies for admin wrappers", async () => {
@@ -263,14 +262,14 @@ describe("edge client request wrappers", () => {
 
     let [url, init] = lastFetchCall();
     const headers = init.headers as Headers;
-    expect(url).toBe("https://edge.example.test/api/private/admin/teams");
+    expect(url).toBe("http://127.0.0.1:8787/api/private/admin/teams");
     expect(init.method).toBe("POST");
     expect(headers.get("content-type")).toBe("application/json");
     expect(init.body).toBe(JSON.stringify({ name: "Team", slug: "team" }));
 
     await updateAdminTeam({ teamId: "team-1", name: "Renamed" });
     [url, init] = lastFetchCall();
-    expect(url).toBe("https://edge.example.test/api/private/admin/teams");
+    expect(url).toBe("http://127.0.0.1:8787/api/private/admin/teams");
     expect(init.method).toBe("PATCH");
     expect(init.body).toBe(
       JSON.stringify({ teamId: "team-1", name: "Renamed" }),
@@ -302,7 +301,7 @@ describe("edge client request wrappers", () => {
     await loginAdminAccount({ username: "admin", password: "secret" });
 
     let [url, init] = lastFetchCall();
-    expect(url).toBe("https://edge.example.test/api/public/session");
+    expect(url).toBe("http://127.0.0.1:8787/api/public/session");
     expect(init.method).toBe("POST");
     expect(init.body).toBe(
       JSON.stringify({ username: "admin", password: "secret" }),
@@ -316,7 +315,7 @@ describe("edge client request wrappers", () => {
       timeZone: "Asia/Shanghai",
     });
     [url, init] = lastFetchCall();
-    expect(url).toBe("https://edge.example.test/api/private/admin/profile");
+    expect(url).toBe("http://127.0.0.1:8787/api/private/admin/profile");
     expect(init.method).toBe("POST");
     expect(init.body).toBe(
       JSON.stringify({
@@ -404,13 +403,13 @@ describe("edge client request wrappers", () => {
     expect(fetchMock()).toHaveBeenCalledTimes(18);
     const urls = fetchMock().mock.calls.map(([url]) => String(url));
     expect(urls).toContain(
-      "https://edge.example.test/api/private/admin/sites?teamId=team-1",
+      "http://127.0.0.1:8787/api/private/admin/sites?teamId=team-1",
     );
     expect(urls).toContain(
-      "https://edge.example.test/api/private/admin/script-snippet?siteId=site-1",
+      "http://127.0.0.1:8787/api/private/admin/script-snippet?siteId=site-1",
     );
-    expect(urls).toContain("https://edge.example.test/api/private/session");
-    expect(urls).toContain("https://edge.example.test/api/private/admin/users");
+    expect(urls).toContain("http://127.0.0.1:8787/api/private/session");
+    expect(urls).toContain("http://127.0.0.1:8787/api/private/admin/users");
   });
 
   it("throws descriptive errors for non-OK edge responses", async () => {
@@ -458,7 +457,6 @@ describe("edge client request wrappers", () => {
   });
 
   it("derives the edge base URL from forwarded server headers", async () => {
-    vi.stubEnv("INSIGHTFLARE_EDGE_URL", " ");
     vi.doMock("next/headers", () => ({
       headers: vi.fn().mockResolvedValue(
         new Headers({
@@ -475,7 +473,6 @@ describe("edge client request wrappers", () => {
   });
 
   it("uses https for non-local server hosts when forwarded proto is absent", async () => {
-    vi.stubEnv("INSIGHTFLARE_EDGE_URL", "");
     vi.doMock("next/headers", () => ({
       headers: vi.fn().mockResolvedValue(new Headers({ host: "app.test" })),
     }));
@@ -487,7 +484,6 @@ describe("edge client request wrappers", () => {
   });
 
   it("falls back when server headers do not include a host", async () => {
-    vi.stubEnv("INSIGHTFLARE_EDGE_URL", "");
     vi.doMock("next/headers", () => ({
       headers: vi.fn().mockResolvedValue(new Headers()),
     }));
@@ -499,7 +495,6 @@ describe("edge client request wrappers", () => {
   });
 
   it("uses http for localhost server headers and falls back when headers fail", async () => {
-    vi.stubEnv("INSIGHTFLARE_EDGE_URL", "");
     vi.doMock("next/headers", () => ({
       headers: vi
         .fn()
@@ -519,7 +514,6 @@ describe("edge client request wrappers", () => {
   });
 
   it("uses http for 127.0.0.1 server hosts when forwarded proto is absent", async () => {
-    vi.stubEnv("INSIGHTFLARE_EDGE_URL", "");
     vi.doMock("next/headers", () => ({
       headers: vi
         .fn()

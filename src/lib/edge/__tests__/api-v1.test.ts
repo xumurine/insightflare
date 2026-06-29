@@ -71,7 +71,6 @@ interface Match {
 function createEnv(matches: Match[]) {
   return {
     MAIN_SECRET: "api-secret",
-    EDGE_PUBLIC_BASE_URL: "https://edge.test",
     INGEST_DO: {
       idFromName: vi.fn(() => "stub-id"),
       get: vi.fn(() => ({
@@ -2332,13 +2331,12 @@ describe("api v1 gateway", () => {
     expect(response.status).toBe(201);
   });
 
-  // ── additional coverage: tracking script with custom base URL ───
+  // ── additional coverage: tracking script URL ────────────────────
 
-  it("uses EDGE_PUBLIC_BASE_URL for script snippet", async () => {
-    const { response, env } = await authed(
-      "/api/v1/sites/site-1/tracking/script",
-      [siteMatch("site-1", "Blog")],
-    );
+  it("uses request origin for script snippet", async () => {
+    const { response } = await authed("/api/v1/sites/site-1/tracking/script", [
+      siteMatch("site-1", "Blog"),
+    ]);
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
       data: { src: string };

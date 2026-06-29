@@ -41,18 +41,12 @@ describe("secret derivation", () => {
     expect(new Set(values).size).toBe(3);
   });
 
-  it("keeps explicit session secrets as compatibility overrides", async () => {
+  it("derives dashboard session secrets only from the root secret", async () => {
+    const root = "main";
     await expect(
       dashboardSessionSecret({
-        MAIN_SECRET: "main",
-        DASHBOARD_SESSION_SECRET: "session",
+        MAIN_SECRET: root,
       }),
-    ).resolves.toBe("session");
-    await expect(
-      dashboardSessionSecret({
-        MAIN_SECRET: "main",
-        SESSION_SECRET: "legacy-session",
-      }),
-    ).resolves.toBe("legacy-session");
+    ).resolves.toBe(await deriveSecret(root, SECRET_PURPOSES.dashboardSession));
   });
 });

@@ -1831,7 +1831,7 @@ export async function handleTrackingScript(
   if (denied) return denied;
   const site = await siteById(env, principal, siteId, request);
   if (site instanceof Response) return site;
-  const edgeBase = env.EDGE_PUBLIC_BASE_URL || `${url.protocol}//${url.host}`;
+  const edgeBase = `${url.protocol}//${url.host}`;
   const src = `${edgeBase.replace(/\/$/, "")}/script.js?siteId=${encodeURIComponent(siteId)}`;
   return jsonSuccess(
     { siteId, src, snippet: `<script defer src="${src}"></script>` },

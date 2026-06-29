@@ -34,7 +34,6 @@ describe("applyWranglerEnvOverrides", () => {
   it("overrides root vars and resource bindings from environment values", () => {
     const result = applyWranglerEnvOverrides(BASE_CONFIG, {
       SESSION_WINDOW_MINUTES: "45",
-      INSIGHTFLARE_EDGE_URL: "https://edge.example.com",
       INSIGHTFLARE_D1_DATABASE_ID: "d1-id",
       INSIGHTFLARE_SITE_SETTINGS_KV_ID: "kv-id",
       INSIGHTFLARE_VAR_CUSTOM_FLAG: "enabled",
@@ -42,16 +41,12 @@ describe("applyWranglerEnvOverrides", () => {
 
     expect(result.applied).toEqual([
       "[vars].SESSION_WINDOW_MINUTES",
-      "[vars].INSIGHTFLARE_EDGE_URL",
       "[vars].CUSTOM_FLAG",
       "[[d1_databases]].database_id",
       "[[kv_namespaces]].id",
     ]);
     expect(result.content).toContain(
       'SESSION_WINDOW_MINUTES = "45" # keep comment',
-    );
-    expect(result.content).toContain(
-      'INSIGHTFLARE_EDGE_URL = "https://edge.example.com"',
     );
     expect(result.content).toContain('CUSTOM_FLAG = "enabled"');
     expect(result.content).toContain('database_id = "d1-id"');
@@ -82,20 +77,17 @@ describe("applyWranglerEnvOverrides", () => {
       BASE_CONFIG,
       {
         INSIGHTFLARE_PRODUCTION_D1_DATABASE_ID: "production-d1-id",
-        INSIGHTFLARE_PRODUCTION_VAR_INSIGHTFLARE_EDGE_URL:
-          "https://prod.example.com",
+        INSIGHTFLARE_PRODUCTION_VAR_CUSTOM_FLAG: "prod-enabled",
       },
       "production",
     );
 
     expect(result.applied).toEqual([
-      "[env.production.vars].INSIGHTFLARE_EDGE_URL",
+      "[env.production.vars].CUSTOM_FLAG",
       "[[env.production.d1_databases]].database_id",
     ]);
     expect(result.content).toContain('database_id = "production-d1-id"');
-    expect(result.content).toContain(
-      'INSIGHTFLARE_EDGE_URL = "https://prod.example.com"',
-    );
+    expect(result.content).toContain('CUSTOM_FLAG = "prod-enabled"');
     expect(result.content).toContain('database_id = "YOUR_D1_ID"');
   });
 

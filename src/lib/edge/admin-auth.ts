@@ -256,11 +256,9 @@ export async function ensureBootstrapAdmin(env: Env): Promise<UserRow> {
     await ensureDefaultTeam(env, admin);
     return admin;
   }
-  const username = normU(env.BOOTSTRAP_ADMIN_USERNAME || "admin") || "admin";
-  const email = normE(
-    env.BOOTSTRAP_ADMIN_EMAIL || `${username}@insightflare.local`,
-  );
-  const name = clampString(env.BOOTSTRAP_ADMIN_NAME || "Administrator", 120);
+  const username = "admin";
+  const email = normE(`${username}@insightflare.local`);
+  const name = "Administrator";
   const passHash = await hashPassword(
     String(env.BOOTSTRAP_ADMIN_PASSWORD || "insightflare"),
   );
