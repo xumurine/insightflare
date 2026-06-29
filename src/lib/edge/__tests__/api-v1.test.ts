@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ApiKeyPrincipal } from "@/lib/edge/api-key-auth";
 import {
   type ApiKeyRow,
   generateApiKeySecret,
   hashApiKeySecret,
 } from "@/lib/edge/api-key-store";
-import { handleApiV1 } from "@/lib/edge/api-v1";
+import {
+  handleApiV1,
+  handleCapabilities,
+  handleRoot,
+  handleToken,
+  handleTokenCheck,
+} from "@/lib/edge/api-v1";
 import type { Env } from "@/lib/edge/types";
 
 vi.mock("@/lib/edge/query/router", () => ({
@@ -167,6 +174,17 @@ function siteRow(id: string, name: string) {
     publicSlug: null,
     createdAt: 1,
     updatedAt: 2,
+  };
+}
+
+function principal(overrides: Partial<ApiKeyPrincipal> = {}): ApiKeyPrincipal {
+  return {
+    keyId: "key-1",
+    teamId: "team-1",
+    prefix: "if_123",
+    scopes: ["analytics:read"],
+    siteIds: [],
+    ...overrides,
   };
 }
 
@@ -349,6 +367,14 @@ describe("api v1 gateway", () => {
     expect(JSON.stringify(body)).not.toContain('"ok"');
   });
 
+  it("rejects non-GET discovery requests", async () => {
+    const response = await handleRoot(
+      request("/api/v1", undefined, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(405);
+  });
+
   it("rejects missing, expired, and revoked API keys with the new error envelope", async () => {
     const missing = await handleApiV1(
       request("/api/v1/sites"),
@@ -423,6 +449,48 @@ describe("api v1 gateway", () => {
     });
   });
 
+  it("reports inactive and site-restricted token check reasons", async () => {
+    const inactive = await handleTokenCheck(
+      request("/api/v1/token/check", undefined, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          checks: [{ scope: "analytics:read" }],
+        }),
+      }),
+      principal({ status: "revoked", scopes: ["analytics:read"] }),
+    );
+    const restricted = await handleTokenCheck(
+      request("/api/v1/token/check", undefined, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          checks: [{ scope: "analytics:read", siteId: "site-2" }],
+        }),
+      }),
+      principal({ scopes: ["analytics:read"], siteIds: ["site-1"] }),
+    );
+
+    expect(await inactive.json()).toMatchObject({
+      data: { checks: [{ allowed: false, reason: "token_inactive" }] },
+    });
+    expect(await restricted.json()).toMatchObject({
+      data: { checks: [{ allowed: false, reason: "site_not_allowed" }] },
+    });
+  });
+
+  it("rejects invalid token check bodies", async () => {
+    const invalidJson = await handleTokenCheck(
+      request("/api/v1/token/check", undefined, {
+        method: "POST",
+        body: "not json",
+      }),
+      principal(),
+    );
+
+    expect(invalidJson.status).toBe(400);
+  });
+
   it("returns capabilities based on token scopes", async () => {
     const { response } = await authed("/api/v1/capabilities", [], undefined, {
       scopes_json: JSON.stringify(["analytics:read"]),
@@ -438,6 +506,61 @@ describe("api v1 gateway", () => {
           batch: true,
         },
         limits: { batchMaxRequests: 20 },
+      },
+    });
+  });
+
+  it("rejects non-GET token and capabilities requests", async () => {
+    const token = await handleToken(
+      request("/api/v1/token", undefined, { method: "POST" }),
+      createEnv([]),
+      principal(),
+    );
+    const capabilities = await handleCapabilities(
+      request("/api/v1/capabilities", undefined, { method: "POST" }),
+      principal(),
+    );
+
+    expect(token.status).toBe(405);
+    expect(capabilities.status).toBe(405);
+  });
+
+  it("falls back token fields and reports restricted capabilities", async () => {
+    const token = await handleToken(
+      request("/api/v1/token"),
+      createEnv([teamMatch()]),
+      principal({
+        name: undefined,
+        status: undefined,
+        scopes: ["site_config:read"],
+        siteIds: ["site-1"],
+        createdAt: undefined,
+        expiresAt: undefined,
+        lastUsedAt: undefined,
+      }),
+    );
+    const capabilities = await handleCapabilities(
+      request("/api/v1/capabilities"),
+      principal({
+        scopes: ["site_config:read"],
+        siteIds: ["site-1"],
+      }),
+    );
+
+    expect(await token.json()).toMatchObject({
+      data: {
+        name: "",
+        status: "active",
+        siteAccess: { mode: "restricted", siteIds: ["site-1"] },
+      },
+    });
+    expect(await capabilities.json()).toMatchObject({
+      data: {
+        features: {
+          sites: false,
+          tracking: true,
+          analytics: false,
+        },
       },
     });
   });
