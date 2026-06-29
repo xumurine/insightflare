@@ -23,6 +23,7 @@ import { fetchPublicSite, resolvePrivateSite } from "@/lib/edge/query/core";
 import type * as QueryRouterModule from "@/lib/edge/query/router";
 import { dispatchQueryRoute } from "@/lib/edge/query/router";
 import { handleTrackerScriptRequest } from "@/lib/edge/script-endpoint";
+import { handleWorldCountriesRequest } from "@/lib/edge/world-countries";
 import apiApp from "@/lib/hono/app";
 
 vi.mock("@/lib/edge/admin", () => ({
@@ -126,6 +127,10 @@ vi.mock("@/lib/edge/script-endpoint", () => ({
   handleTrackerScriptRequest: vi.fn(),
 }));
 
+vi.mock("@/lib/edge/world-countries", () => ({
+  handleWorldCountriesRequest: vi.fn(),
+}));
+
 const env = { DB: {}, INGEST_DO: {}, ARCHIVE_BUCKET: {} };
 const ctx = { waitUntil: vi.fn(), passThroughOnException: vi.fn() };
 const executionCtx = ctx as unknown as ExecutionContext;
@@ -145,6 +150,9 @@ describe("Hono API app routing", () => {
     );
     vi.mocked(handleTrackerScriptRequest).mockResolvedValue(
       new Response("script"),
+    );
+    vi.mocked(handleWorldCountriesRequest).mockResolvedValue(
+      new Response("countries"),
     );
     vi.mocked(handlePrivateAdmin).mockResolvedValue(new Response("admin"));
     vi.mocked(handleUsersAdmin).mockResolvedValue(new Response("admin"));
@@ -333,5 +341,14 @@ describe("Hono API app routing", () => {
       x: "0",
       y: "0.png",
     });
+  });
+
+  it("routes world countries through Hono", async () => {
+    const original = request("/api/world-countries");
+
+    const response = await apiApp.fetch(original, env as any, executionCtx);
+
+    expect(await response.text()).toBe("countries");
+    expect(handleWorldCountriesRequest).toHaveBeenCalledWith(original);
   });
 });

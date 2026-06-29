@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GET } from "@/app/api/world-countries/route";
+import { handleWorldCountriesRequest } from "@/lib/edge/world-countries";
 
-describe("world countries route", () => {
+describe("world countries handler", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
   });
@@ -21,7 +21,7 @@ describe("world countries route", () => {
       .mockResolvedValueOnce(new Response("server error", { status: 500 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(payload)));
 
-    const response = await GET(
+    const response = await handleWorldCountriesRequest(
       new Request("https://app.test/api/world-countries"),
     );
 
@@ -39,7 +39,7 @@ describe("world countries route", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ type: "Feature" })))
       .mockResolvedValueOnce(new Response("not found", { status: 404 }));
 
-    const response = await GET(
+    const response = await handleWorldCountriesRequest(
       new Request("https://app.test/api/world-countries"),
     );
 
@@ -54,7 +54,7 @@ describe("world countries route", () => {
       .mockResolvedValueOnce(new Response("null"))
       .mockRejectedValueOnce(new Error("network unavailable"));
 
-    const response = await GET(
+    const response = await handleWorldCountriesRequest(
       new Request("https://app.test/api/world-countries"),
     );
 

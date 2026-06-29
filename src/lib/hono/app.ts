@@ -13,6 +13,7 @@ import { publicRoutes } from "./routes/public";
 import { scriptRoutes } from "./routes/tracker-script";
 import { v1Routes } from "./routes/v1";
 import { wellKnownRoutes } from "./routes/well-known";
+import { worldCountriesRoutes } from "./routes/world-countries";
 import type { AppEnv } from "./types";
 
 export const apiApp = new Hono<AppEnv>();
@@ -31,5 +32,6 @@ apiApp.route("/api/private", privateRoutes);
 apiApp.route("/api/public", publicRoutes);
 apiApp.route("/api/v1", v1Routes);
 apiApp.route("/api/map-tiles", mapTileRoutes);
+apiApp.route("/api", worldCountriesRoutes);
 
 export default apiApp;

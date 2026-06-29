@@ -12,6 +12,7 @@ import {
 
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   Card,
@@ -22,6 +23,7 @@ import {
 } from "@/components/ui/card";
 import { OverlayScrollbar } from "@/components/ui/overlay-scrollbar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Tooltip,
   TooltipContent,
@@ -422,12 +424,16 @@ function RetentionMetricCell({
   label,
   value,
   detail,
+  loading = false,
 }: {
   icon: RemixiconComponentType;
   label: string;
   value: string;
   detail: string;
+  loading?: boolean;
 }) {
+  const contentKey = loading ? "loading" : value;
+
   return (
     <div className="min-w-0 bg-card p-4">
       <div className="flex min-w-0 items-center gap-2">
@@ -438,9 +444,28 @@ function RetentionMetricCell({
           {label}
         </p>
       </div>
-      <p className="mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground">
-        {value}
-      </p>
+      <AutoResizer initial>
+        <AutoTransition
+          transitionKey={contentKey}
+          initial={false}
+          duration={0.2}
+          type="fade"
+          presenceMode="wait"
+        >
+          {loading ? (
+            <div key="loading" className="mt-3 inline-flex h-7 items-center">
+              <Spinner className="size-5" />
+            </div>
+          ) : (
+            <p
+              key={value}
+              className="mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground"
+            >
+              {value}
+            </p>
+          )}
+        </AutoTransition>
+      </AutoResizer>
       <p className="mt-3 min-w-0 truncate text-[11px] leading-[14px] text-muted-foreground">
         {detail}
       </p>
@@ -452,10 +477,12 @@ function RetentionSummaryGrid({
   locale,
   labels,
   viewModel,
+  loading = false,
 }: {
   locale: Locale;
   labels: RetentionCopy;
   viewModel: RetentionViewModel;
+  loading?: boolean;
 }) {
   const { summary } = viewModel;
 
@@ -466,18 +493,21 @@ function RetentionSummaryGrid({
           <RetentionMetricCell
             icon={RiCalendarLine}
             label={labels.cohortsMetric}
+            loading={loading}
             value={numberFormat(locale, summary.cohortCount)}
             detail={`${numberFormat(locale, viewModel.columns.length)} ${labels.periodsAnalyzed}`}
           />
           <RetentionMetricCell
             icon={RiGroupLine}
             label={labels.visitorsMetric}
+            loading={loading}
             value={numberFormat(locale, summary.totalVisitors)}
             detail={labels.cohortDetail}
           />
           <RetentionMetricCell
             icon={RiPercentLine}
             label={labels.periodOneMetric}
+            loading={loading}
             value={
               summary.periodOneRate === null
                 ? "--"
@@ -492,6 +522,7 @@ function RetentionSummaryGrid({
           <RetentionMetricCell
             icon={RiRepeat2Line}
             label={labels.averageReturnMetric}
+            loading={loading}
             value={
               summary.averageReturnRate === null
                 ? "--"
@@ -542,22 +573,6 @@ function RetentionLoading({ shape }: { shape: RetentionLoadingShape }) {
 
   return (
     <div className="space-y-4" aria-hidden="true">
-      <Card className="py-0">
-        <CardContent className="p-0">
-          <div className="grid gap-px overflow-hidden bg-border/70 sm:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className="bg-card p-4">
-                <div className="flex items-center gap-2">
-                  <Skeleton className="size-[11px]" />
-                  <Skeleton className="h-3 w-20" />
-                </div>
-                <Skeleton className="mt-3 h-7 w-24" />
-                <Skeleton className="mt-3 h-3 w-32" />
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
       <Card>
         <CardHeader>
           <Skeleton className="h-4 w-32" />
@@ -1015,6 +1030,15 @@ export function RetentionClientPage({
         subtitle={messages.retention.subtitle}
       />
 
+      {loading || (!error && !isEmpty) ? (
+        <RetentionSummaryGrid
+          locale={locale}
+          labels={labels}
+          viewModel={viewModel}
+          loading={loading}
+        />
+      ) : null}
+
       <AutoTransition
         transitionKey={bodyState}
         duration={0.18}
@@ -1037,11 +1061,6 @@ export function RetentionClientPage({
           />
         ) : (
           <div className="space-y-4">
-            <RetentionSummaryGrid
-              locale={locale}
-              labels={labels}
-              viewModel={viewModel}
-            />
             <RetentionMatrix
               locale={locale}
               messages={messages}

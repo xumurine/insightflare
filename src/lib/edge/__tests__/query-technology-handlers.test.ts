@@ -609,4 +609,33 @@ describe("edge query technology handlers", () => {
       expect.objectContaining({ fallbackKeyBase: "device" }),
     );
   });
+
+  it("accepts legacy short client cross breakdown dimension keys", async () => {
+    queryMocks.queryCrossDimensionFromD1.mockResolvedValue(emptyCrossData);
+
+    const response = await handleCrossBreakdown(
+      env,
+      siteId,
+      testUrl({
+        primaryDimension: "deviceType",
+        secondaryDimension: "operatingSystem",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await responseJson(response)).toEqual({
+      ok: true,
+      data: emptyCrossData,
+    });
+    expect(queryMocks.queryCrossDimensionFromD1).toHaveBeenCalledWith(
+      env,
+      siteId,
+      parsedWindow(),
+      expect.any(Object),
+      5,
+      6,
+      expect.objectContaining({ fallbackKeyBase: "device" }),
+      expect.objectContaining({ fallbackKeyBase: "os" }),
+    );
+  });
 });

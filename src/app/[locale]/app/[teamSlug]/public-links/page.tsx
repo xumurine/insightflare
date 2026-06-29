@@ -134,7 +134,7 @@ export default async function TeamPublicLinksPage({
                             <RiExternalLinkLine className="size-4 shrink-0 text-muted-foreground" />
                           </div>
                         ) : (
-                          <span className="text-sm text-muted-foreground">
+                          <span className="text-xs text-muted-foreground">
                             {copy.disabledHint}
                           </span>
                         )}

@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { PageHeading } from "@/components/dashboard/page-heading";
+import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -198,14 +199,18 @@ function SystemMetricCell({
   label,
   value,
   detail,
+  loading = false,
   tone = "default",
 }: {
   icon: RemixiconComponentType;
   label: string;
   value: string;
   detail: string;
+  loading?: boolean;
   tone?: "default" | "warning" | "good";
 }) {
+  const contentKey = loading ? "loading" : value;
+
   return (
     <div className="min-w-0 bg-card p-4">
       <div className="flex min-w-0 items-center gap-2">
@@ -216,24 +221,32 @@ function SystemMetricCell({
           {label}
         </p>
       </div>
-      <AutoTransition
-        transitionKey={value}
-        initial={false}
-        duration={0.2}
-        type="fade"
-        presenceMode="wait"
-      >
-        <p
-          key={value}
-          className={cn(
-            "mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground tabular-nums",
-            tone === "warning" && "text-destructive",
-            tone === "good" && "text-primary",
-          )}
+      <AutoResizer initial>
+        <AutoTransition
+          transitionKey={contentKey}
+          initial={false}
+          duration={0.2}
+          type="fade"
+          presenceMode="wait"
         >
-          {value}
-        </p>
-      </AutoTransition>
+          {loading ? (
+            <div key="loading" className="mt-3 inline-flex h-7 items-center">
+              <Spinner className="size-5" />
+            </div>
+          ) : (
+            <p
+              key={value}
+              className={cn(
+                "mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground tabular-nums",
+                tone === "warning" && "text-destructive",
+                tone === "good" && "text-primary",
+              )}
+            >
+              {value}
+            </p>
+          )}
+        </AutoTransition>
+      </AutoResizer>
       <p className="mt-3 min-w-0 truncate text-[11px] leading-[14px] text-muted-foreground">
         {detail}
       </p>
@@ -314,102 +327,117 @@ function LatencyPercentileChart({
         <CardDescription>{t.latencyPercentileTrendDescription}</CardDescription>
       </CardHeader>
       <CardContent>
-        {hasLatencyData ? (
-          <ChartContainer
-            className="h-[320px] w-full aspect-auto"
-            config={chartConfig}
+        <AutoResizer initial>
+          <AutoTransition
+            transitionKey={
+              hasLatencyData ? "chart" : loading ? "loading" : "empty"
+            }
+            initial={false}
+            duration={0.2}
+            type="fade"
           >
-            <LineChart
-              accessibilityLayer
-              data={chartData}
-              margin={{ left: 12, right: 12, top: 12, bottom: 4 }}
-            >
-              <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis
-                dataKey="timestampMs"
-                tickFormatter={(value) =>
-                  bucketFormatter.format(new Date(Number(value ?? 0)))
-                }
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                minTickGap={12}
-              />
-              <YAxis
-                tickFormatter={(value) =>
-                  formatLatency(locale, Number(value ?? 0))
-                }
-                tickLine={false}
-                axisLine={false}
-                width={74}
-              />
-              <ChartTooltip
-                cursor={false}
-                content={
-                  <ChartTooltipContent
-                    className="min-w-[14rem]"
-                    indicator="line"
-                    labelFormatter={(value, payload) => {
-                      const timestamp = Number(
-                        payload?.[0]?.payload?.timestampMs ?? value ?? 0,
-                      );
-                      return tooltipFormatter.format(new Date(timestamp));
-                    }}
-                    formatter={(value, name) => (
-                      <div className="flex w-full items-center justify-between gap-3">
-                        <span className="text-muted-foreground">
-                          {String(name ?? "")}
-                        </span>
-                        <span className="font-mono text-foreground tabular-nums">
-                          {formatLatency(locale, Number(value ?? 0))}
-                        </span>
-                      </div>
-                    )}
+            {hasLatencyData ? (
+              <ChartContainer
+                key="chart"
+                className="h-[320px] w-full aspect-auto"
+                config={chartConfig}
+              >
+                <LineChart
+                  accessibilityLayer
+                  data={chartData}
+                  margin={{ left: 12, right: 12, top: 12, bottom: 4 }}
+                >
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="timestampMs"
+                    tickFormatter={(value) =>
+                      bucketFormatter.format(new Date(Number(value ?? 0)))
+                    }
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    minTickGap={12}
                   />
-                }
-              />
-              <ChartLegend
-                content={
-                  <ChartLegendContent className="pt-6 flex-wrap justify-center gap-x-4 gap-y-2" />
-                }
-              />
-              <Line
-                type="monotone"
-                dataKey="p50"
-                name={t.p50Label}
-                stroke={LATENCY_SERIES_COLORS.p50}
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-                connectNulls={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="p75"
-                name={t.p75Label}
-                stroke={LATENCY_SERIES_COLORS.p75}
-                strokeWidth={2.4}
-                dot={false}
-                activeDot={{ r: 4 }}
-                connectNulls={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="p95"
-                name={t.p95Label}
-                stroke={LATENCY_SERIES_COLORS.p95}
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-                connectNulls={false}
-              />
-            </LineChart>
-          </ChartContainer>
-        ) : (
-          <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
-            {loading ? messages.common.loading : t.noData}
-          </div>
-        )}
+                  <YAxis
+                    tickFormatter={(value) =>
+                      formatLatency(locale, Number(value ?? 0))
+                    }
+                    tickLine={false}
+                    axisLine={false}
+                    width={74}
+                  />
+                  <ChartTooltip
+                    cursor={false}
+                    content={
+                      <ChartTooltipContent
+                        className="min-w-[14rem]"
+                        indicator="line"
+                        labelFormatter={(value, payload) => {
+                          const timestamp = Number(
+                            payload?.[0]?.payload?.timestampMs ?? value ?? 0,
+                          );
+                          return tooltipFormatter.format(new Date(timestamp));
+                        }}
+                        formatter={(value, name) => (
+                          <div className="flex w-full items-center justify-between gap-3">
+                            <span className="text-muted-foreground">
+                              {String(name ?? "")}
+                            </span>
+                            <span className="font-mono text-foreground tabular-nums">
+                              {formatLatency(locale, Number(value ?? 0))}
+                            </span>
+                          </div>
+                        )}
+                      />
+                    }
+                  />
+                  <ChartLegend
+                    content={
+                      <ChartLegendContent className="pt-6 flex-wrap justify-center gap-x-4 gap-y-2" />
+                    }
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="p50"
+                    name={t.p50Label}
+                    stroke={LATENCY_SERIES_COLORS.p50}
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    connectNulls={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="p75"
+                    name={t.p75Label}
+                    stroke={LATENCY_SERIES_COLORS.p75}
+                    strokeWidth={2.4}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    connectNulls={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="p95"
+                    name={t.p95Label}
+                    stroke={LATENCY_SERIES_COLORS.p95}
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    connectNulls={false}
+                  />
+                </LineChart>
+              </ChartContainer>
+            ) : (
+              <div
+                key={loading ? "loading" : "empty"}
+                className="flex h-[320px] items-center justify-center text-sm text-muted-foreground"
+              >
+                {loading ? messages.common.loading : t.noData}
+              </div>
+            )}
+          </AutoTransition>
+        </AutoResizer>
       </CardContent>
     </Card>
   );
@@ -957,6 +985,7 @@ export function SystemPerformanceClient({
             <SystemMetricCell
               icon={RiDatabase2Line}
               label={t.totalEvents}
+              loading={loading}
               value={
                 summary ? formatMetricNumber(locale, summary.totalEvents) : "--"
               }
@@ -969,6 +998,7 @@ export function SystemPerformanceClient({
             <SystemMetricCell
               icon={RiSpeedUpLine}
               label={t.p95Latency}
+              loading={loading}
               value={
                 summary ? formatLatency(locale, summary.p95LatencyMs) : "--"
               }
@@ -988,6 +1018,7 @@ export function SystemPerformanceClient({
             <SystemMetricCell
               icon={RiTimeLine}
               label={t.dataFreshness}
+              loading={loading}
               value={
                 summary ? formatAge(locale, summary.dataFreshnessMs) : "--"
               }
@@ -1001,6 +1032,7 @@ export function SystemPerformanceClient({
             <SystemMetricCell
               icon={RiAlarmWarningLine}
               label={t.clockAnomalies}
+              loading={loading}
               value={
                 summary ? formatPercent(locale, summary.anomalyRate) : "--"
               }
@@ -1029,46 +1061,64 @@ export function SystemPerformanceClient({
           <CardDescription>{t.throughputTrendDescription}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {(data?.trend ?? []).length > 0 ? (
-              data?.trend.map((point) => {
-                const visitWidth = `${(point.visits / maxTrendEvents) * 100}%`;
-                const customWidth = `${(point.customEvents / maxTrendEvents) * 100}%`;
-                const hasAnomaly =
-                  point.delayedEvents > 0 || point.futureSkewedEvents > 0;
-                return (
-                  <div
-                    key={point.bucket}
-                    className="grid grid-cols-[74px_minmax(0,1fr)_72px] items-center gap-3 text-xs"
-                  >
-                    <div className="text-muted-foreground tabular-nums">
-                      {bucketFormatter.format(new Date(point.timestampMs))}
-                    </div>
-                    <div className="flex h-7 min-w-0 items-center overflow-hidden border border-border bg-muted/25">
+          <AutoResizer initial>
+            <AutoTransition
+              transitionKey={
+                (data?.trend ?? []).length > 0
+                  ? "rows"
+                  : loading
+                    ? "loading"
+                    : "empty"
+              }
+              initial={false}
+              duration={0.2}
+              type="fade"
+            >
+              {(data?.trend ?? []).length > 0 ? (
+                <div key="rows" className="space-y-2">
+                  {data?.trend.map((point) => {
+                    const visitWidth = `${(point.visits / maxTrendEvents) * 100}%`;
+                    const customWidth = `${(point.customEvents / maxTrendEvents) * 100}%`;
+                    const hasAnomaly =
+                      point.delayedEvents > 0 || point.futureSkewedEvents > 0;
+                    return (
                       <div
-                        className="h-full bg-primary/70"
-                        style={{ width: visitWidth }}
-                      />
-                      <div
-                        className="h-full bg-foreground/35"
-                        style={{ width: customWidth }}
-                      />
-                      {hasAnomaly ? (
-                        <div className="ml-1 h-3 w-1 bg-destructive" />
-                      ) : null}
-                    </div>
-                    <div className="text-right font-mono tabular-nums">
-                      {formatMetricNumber(locale, point.totalEvents)}
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-                {loading ? messages.common.loading : t.noData}
-              </div>
-            )}
-          </div>
+                        key={point.bucket}
+                        className="grid grid-cols-[74px_minmax(0,1fr)_72px] items-center gap-3 text-xs"
+                      >
+                        <div className="text-muted-foreground tabular-nums">
+                          {bucketFormatter.format(new Date(point.timestampMs))}
+                        </div>
+                        <div className="flex h-7 min-w-0 items-center overflow-hidden border border-border bg-muted/25">
+                          <div
+                            className="h-full bg-primary/70"
+                            style={{ width: visitWidth }}
+                          />
+                          <div
+                            className="h-full bg-foreground/35"
+                            style={{ width: customWidth }}
+                          />
+                          {hasAnomaly ? (
+                            <div className="ml-1 h-3 w-1 bg-destructive" />
+                          ) : null}
+                        </div>
+                        <div className="text-right font-mono tabular-nums">
+                          {formatMetricNumber(locale, point.totalEvents)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div
+                  key={loading ? "loading" : "empty"}
+                  className="flex h-32 items-center justify-center text-sm text-muted-foreground"
+                >
+                  {loading ? messages.common.loading : t.noData}
+                </div>
+              )}
+            </AutoTransition>
+          </AutoResizer>
           <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
             <Badge variant="outline" className="gap-1">
               <span className="size-2 bg-primary/70" />

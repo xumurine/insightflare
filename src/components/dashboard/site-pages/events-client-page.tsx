@@ -332,6 +332,7 @@ export function EventsClientPage({
         locale={locale}
         labels={labels}
         summary={summary.summary}
+        loading={loading}
       />
 
       <EventTrendStackedBarCard

@@ -557,12 +557,16 @@ function EventMetricCell({
   label,
   value,
   detail,
+  loading = false,
 }: {
   icon: RemixiconComponentType;
   label: string;
   value: string;
   detail: string;
+  loading?: boolean;
 }) {
+  const contentKey = loading ? "loading" : value;
+
   return (
     <div className="min-w-0 bg-card p-4">
       <div className="flex min-w-0 items-center gap-2">
@@ -573,9 +577,28 @@ function EventMetricCell({
           {label}
         </p>
       </div>
-      <p className="mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground">
-        {value}
-      </p>
+      <AutoResizer initial>
+        <AutoTransition
+          transitionKey={contentKey}
+          initial={false}
+          duration={0.2}
+          type="fade"
+          presenceMode="wait"
+        >
+          {loading ? (
+            <div key="loading" className="mt-3 inline-flex h-7 items-center">
+              <Spinner className="size-5" />
+            </div>
+          ) : (
+            <p
+              key={value}
+              className="mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground"
+            >
+              {value}
+            </p>
+          )}
+        </AutoTransition>
+      </AutoResizer>
       <p className="mt-3 min-w-0 truncate text-[11px] leading-[14px] text-muted-foreground">
         {detail}
       </p>
@@ -588,6 +611,7 @@ export function EventMetricGrid({
   labels,
   summary,
   includeShare,
+  loading = false,
 }: {
   locale: Locale;
   labels: EventPageCopy;
@@ -600,6 +624,7 @@ export function EventMetricGrid({
     shareOfAllEvents?: number;
   };
   includeShare?: boolean;
+  loading?: boolean;
 }) {
   const average = numberFormat(
     locale,
@@ -617,6 +642,7 @@ export function EventMetricGrid({
           <EventMetricCell
             icon={RiPulseLine}
             label={labels.totalEvents}
+            loading={loading}
             value={numberFormat(locale, summary.events)}
             detail={
               share
@@ -627,18 +653,21 @@ export function EventMetricGrid({
           <EventMetricCell
             icon={RiStackLine}
             label={labels.eventTypes}
+            loading={loading}
             value={numberFormat(locale, summary.eventTypes)}
             detail={labels.breakdownTitle}
           />
           <EventMetricCell
             icon={RiFileList3Line}
             label={labels.sessions}
+            loading={loading}
             value={numberFormat(locale, summary.sessions)}
             detail={`${labels.avgEventsPerSession}: ${average}`}
           />
           <EventMetricCell
             icon={RiDatabase2Line}
             label={labels.visitors}
+            loading={loading}
             value={numberFormat(locale, summary.visitors)}
             detail={labels.recordsTitle}
           />
@@ -767,115 +796,138 @@ export function EventTrendStackedBarCard({
       </CardHeader>
       <CardContent>
         <div className="relative min-h-[320px]">
-          {loading && !hasContent ? (
-            <div className="space-y-4">
-              <Skeleton className="h-[280px] w-full" />
-              <div className="flex flex-wrap justify-center gap-2">
-                {Array.from({ length: 5 }, (_, index) => (
-                  <Skeleton key={index} className="h-5 w-20" />
-                ))}
-              </div>
-            </div>
-          ) : !hasContent ? (
-            <div className="flex h-[320px] items-center justify-center text-muted-foreground">
-              {labels.empty}
-            </div>
-          ) : (
-            <ChartContainer
-              className="h-[320px] w-full aspect-auto"
-              config={chartConfig}
+          <AutoResizer initial>
+            <AutoTransition
+              transitionKey={
+                loading && !hasContent
+                  ? "loading"
+                  : hasContent
+                    ? "chart"
+                    : "empty"
+              }
+              initial={false}
+              duration={0.2}
+              type="fade"
             >
-              <BarChart
-                accessibilityLayer
-                data={chartData}
-                margin={{ left: 12, right: 12, top: 12 }}
-              >
-                <CartesianGrid vertical={false} />
-                <XAxis
-                  dataKey="timestampMs"
-                  tickFormatter={(value) =>
-                    axisTickFormatter.format(new Date(Number(value ?? 0)))
-                  }
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  minTickGap={12}
-                />
-                <YAxis
-                  tickFormatter={(value) =>
-                    numberFormat(locale, Number(value ?? 0))
-                  }
-                  tickLine={false}
-                  axisLine={false}
-                  width={48}
-                />
-                <ChartTooltip
-                  cursor={false}
-                  content={
-                    <ChartTooltipContent
-                      className="min-w-[16rem]"
-                      indicator="line"
-                      labelFormatter={(value, payload) => {
-                        const timestamp = Number(
-                          payload?.[0]?.payload?.timestampMs ?? value ?? 0,
-                        );
-                        return tooltipFormatter.format(new Date(timestamp));
-                      }}
-                      formatter={(value, name, _item, _index, payload) => {
-                        const row = payload as unknown as Record<
-                          string,
-                          number
-                        >;
-                        const seriesKey = String(name ?? "");
-                        const numeric = Math.max(
-                          0,
-                          Number(row[seriesKey] ?? value ?? 0),
-                        );
-                        const currentSeries = series.find(
-                          (item) => item.key === seriesKey,
-                        );
-                        return (
-                          <div className="flex w-full items-center gap-3">
-                            <span className="inline-flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-                              <span
-                                className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
-                                style={{
-                                  backgroundColor: currentSeries?.color,
-                                }}
-                              />
-                              <span
-                                className="truncate text-muted-foreground"
-                                title={currentSeries?.displayLabel ?? seriesKey}
-                              >
-                                {currentSeries?.displayLabel ?? seriesKey}
-                              </span>
-                            </span>
-                            <span className="ml-auto shrink-0 whitespace-nowrap text-right font-mono text-foreground tabular-nums">
-                              {numberFormat(locale, numeric)}
-                            </span>
-                          </div>
-                        );
-                      }}
+              {loading && !hasContent ? (
+                <div key="loading" className="space-y-4">
+                  <Skeleton className="h-[280px] w-full" />
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {Array.from({ length: 5 }, (_, index) => (
+                      <Skeleton key={index} className="h-5 w-20" />
+                    ))}
+                  </div>
+                </div>
+              ) : !hasContent ? (
+                <div
+                  key="empty"
+                  className="flex h-[320px] items-center justify-center text-muted-foreground"
+                >
+                  {labels.empty}
+                </div>
+              ) : (
+                <ChartContainer
+                  key="chart"
+                  className="h-[320px] w-full aspect-auto"
+                  config={chartConfig}
+                >
+                  <BarChart
+                    accessibilityLayer
+                    data={chartData}
+                    margin={{ left: 12, right: 12, top: 12 }}
+                  >
+                    <CartesianGrid vertical={false} />
+                    <XAxis
+                      dataKey="timestampMs"
+                      tickFormatter={(value) =>
+                        axisTickFormatter.format(new Date(Number(value ?? 0)))
+                      }
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      minTickGap={12}
                     />
-                  }
-                />
-                {series.map((item) => (
-                  <Bar
-                    key={item.key}
-                    dataKey={item.key}
-                    stackId="events"
-                    fill={`var(--color-${item.key})`}
-                    radius={0}
-                    isAnimationActive
-                    onClick={() => selectSeries(item)}
-                    className={cn(
-                      item.isOther || !onSelectEvent ? "" : "cursor-pointer",
-                    )}
-                  />
-                ))}
-              </BarChart>
-            </ChartContainer>
-          )}
+                    <YAxis
+                      tickFormatter={(value) =>
+                        numberFormat(locale, Number(value ?? 0))
+                      }
+                      tickLine={false}
+                      axisLine={false}
+                      width={48}
+                    />
+                    <ChartTooltip
+                      cursor={false}
+                      content={
+                        <ChartTooltipContent
+                          className="min-w-[16rem]"
+                          indicator="line"
+                          labelFormatter={(value, payload) => {
+                            const timestamp = Number(
+                              payload?.[0]?.payload?.timestampMs ?? value ?? 0,
+                            );
+                            return tooltipFormatter.format(new Date(timestamp));
+                          }}
+                          formatter={(value, name, _item, _index, payload) => {
+                            const row = payload as unknown as Record<
+                              string,
+                              number
+                            >;
+                            const seriesKey = String(name ?? "");
+                            const numeric = Math.max(
+                              0,
+                              Number(row[seriesKey] ?? value ?? 0),
+                            );
+                            const currentSeries = series.find(
+                              (item) => item.key === seriesKey,
+                            );
+                            return (
+                              <div className="flex w-full items-center gap-3">
+                                <span className="inline-flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+                                  <span
+                                    className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
+                                    style={{
+                                      backgroundColor: currentSeries?.color,
+                                    }}
+                                  />
+                                  <span
+                                    className="truncate text-muted-foreground"
+                                    title={
+                                      currentSeries?.displayLabel ?? seriesKey
+                                    }
+                                  >
+                                    {currentSeries?.displayLabel ?? seriesKey}
+                                  </span>
+                                </span>
+                                <span className="ml-auto shrink-0 whitespace-nowrap text-right font-mono text-foreground tabular-nums">
+                                  {numberFormat(locale, numeric)}
+                                </span>
+                              </div>
+                            );
+                          }}
+                        />
+                      }
+                    />
+                    {series.map((item) => (
+                      <Bar
+                        key={item.key}
+                        dataKey={item.key}
+                        stackId="events"
+                        fill={`var(--color-${item.key})`}
+                        radius={0}
+                        isAnimationActive
+                        onClick={() => selectSeries(item)}
+                        className={cn(
+                          item.isOther || !onSelectEvent
+                            ? ""
+                            : "cursor-pointer",
+                        )}
+                      />
+                    ))}
+                  </BarChart>
+                </ChartContainer>
+              )}
+            </AutoTransition>
+          </AutoResizer>
 
           <AutoTransition
             type="fade"

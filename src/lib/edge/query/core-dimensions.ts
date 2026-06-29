@@ -205,7 +205,7 @@ export function resolveCrossBreakdownDimension(
   if (dimension === "utm.content") return utmDimensionDefinition("content");
 
   // ── client ────────────────────────────────────────────────────────────
-  if (dimension === "client.browser")
+  if (dimension === "client.browser" || dimension === "browser")
     return clientDimensionDefinition("browser");
   if (dimension === "client.browserVersion")
     return {
@@ -217,15 +217,15 @@ export function resolveCrossBreakdownDimension(
       labelExpr: browserEngineCaseSql("browser", "os"),
       fallbackKeyBase: "engine",
     };
-  if (dimension === "client.os")
+  if (dimension === "client.os" || dimension === "operatingSystem")
     return clientDimensionDefinition("operatingSystem");
-  if (dimension === "client.osVersion")
+  if (dimension === "client.osVersion" || dimension === "osVersion")
     return clientDimensionDefinition("osVersion");
-  if (dimension === "client.deviceType")
+  if (dimension === "client.deviceType" || dimension === "deviceType")
     return clientDimensionDefinition("deviceType");
-  if (dimension === "client.language")
+  if (dimension === "client.language" || dimension === "language")
     return clientDimensionDefinition("language");
-  if (dimension === "client.screenSize")
+  if (dimension === "client.screenSize" || dimension === "screenSize")
     return clientDimensionDefinition("screenSize");
 
   // ── geo ───────────────────────────────────────────────────────────────

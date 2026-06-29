@@ -28,6 +28,7 @@ import {
   EVENT_RECORD_DRAWER_Z_INDEX,
   FLOATING_LAYER_Z_ATTR,
 } from "@/components/dashboard/site-pages/floating-layer";
+import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -174,14 +175,18 @@ function HealthCell({
   label,
   value,
   detail,
+  loading = false,
   tone = "default",
 }: {
   icon: typeof RiTimeLine;
   label: string;
   value: string;
   detail: string;
+  loading?: boolean;
   tone?: "default" | "good" | "warning" | "danger";
 }) {
+  const contentKey = loading ? "loading" : value;
+
   return (
     <div className="min-w-0 bg-card p-4">
       <div className="flex min-w-0 items-center gap-2">
@@ -192,25 +197,33 @@ function HealthCell({
           {label}
         </p>
       </div>
-      <AutoTransition
-        transitionKey={value}
-        initial={false}
-        duration={0.2}
-        type="fade"
-        presenceMode="wait"
-      >
-        <p
-          key={value}
-          className={cn(
-            "mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground tabular-nums",
-            tone === "good" && "text-primary",
-            tone === "warning" && "text-amber-500",
-            tone === "danger" && "text-destructive",
-          )}
+      <AutoResizer initial>
+        <AutoTransition
+          transitionKey={contentKey}
+          initial={false}
+          duration={0.2}
+          type="fade"
+          presenceMode="wait"
         >
-          {value}
-        </p>
-      </AutoTransition>
+          {loading ? (
+            <div key="loading" className="mt-3 inline-flex h-7 items-center">
+              <Spinner className="size-5" />
+            </div>
+          ) : (
+            <p
+              key={value}
+              className={cn(
+                "mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground tabular-nums",
+                tone === "good" && "text-primary",
+                tone === "warning" && "text-amber-500",
+                tone === "danger" && "text-destructive",
+              )}
+            >
+              {value}
+            </p>
+          )}
+        </AutoTransition>
+      </AutoResizer>
       <p className="mt-3 min-w-0 truncate text-[11px] leading-[14px] text-muted-foreground">
         {detail}
       </p>
@@ -937,12 +950,14 @@ export function ScheduledTasksClient({
             <HealthCell
               icon={RiCalendarScheduleLine}
               label={t.runs24h}
+              loading={replacingRows}
               value={numberFormat(locale, data?.health.totalRuns24h ?? 0)}
               detail={`${t.retentionPrefix} ${data?.retentionDays ?? 30} ${t.days}`}
             />
             <HealthCell
               icon={RiCheckboxCircleLine}
               label={t.successRate24h}
+              loading={replacingRows}
               value={formatRate(locale, data?.health.successRate24h ?? null)}
               detail={t.successRateDescription}
               tone={
@@ -952,6 +967,7 @@ export function ScheduledTasksClient({
             <HealthCell
               icon={RiAlarmWarningLine}
               label={t.problemRuns24h}
+              loading={replacingRows}
               value={numberFormat(locale, failedOrPartial)}
               detail={`${t.failed}: ${numberFormat(locale, data?.health.failedRuns24h ?? 0)} / ${t.partial}: ${numberFormat(locale, data?.health.partialRuns24h ?? 0)}`}
               tone={failedOrPartial > 0 ? "danger" : "good"}
@@ -959,6 +975,7 @@ export function ScheduledTasksClient({
             <HealthCell
               icon={RiTimeLine}
               label={t.lastRun}
+              loading={replacingRows}
               value={
                 data?.health.lastRunAt
                   ? shortDateTime(locale, data.health.lastRunAt, timeZone)
@@ -987,7 +1004,6 @@ export function ScheduledTasksClient({
             loadingLabel={messages.common.loading}
             emptyLabel={t.empty}
             colSpan={8}
-            animate={false}
             header={
               <TableRow>
                 <TableHead>{t.task}</TableHead>

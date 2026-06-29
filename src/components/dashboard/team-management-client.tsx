@@ -1650,7 +1650,10 @@ export function TeamManagementClient({
                             onValueChange={setTransferTargetId}
                             disabled={transferring}
                           >
-                            <SelectTrigger id="transfer-target">
+                            <SelectTrigger
+                              id="transfer-target"
+                              className="w-full"
+                            >
                               <SelectValue
                                 placeholder={
                                   copy.settings.transferTargetPlaceholder

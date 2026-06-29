@@ -8,6 +8,7 @@ describe("shouldUseHono", () => {
     "/api/public/demo/site",
     "/api/v1/capabilities",
     "/api/map-tiles/1/0/0.png",
+    "/api/world-countries",
     "/collect",
     "/script.js",
     "/healthz",
