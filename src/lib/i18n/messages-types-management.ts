@@ -133,6 +133,68 @@ export interface AppManagementMessages {
     saved: string;
     saveFailed: string;
   };
+  notificationCenter: {
+    title: string;
+    subtitle: string;
+    inboxTitle: string;
+    empty: string;
+    loading: string;
+    markRead: string;
+    markAllRead: string;
+    refresh: string;
+    unreadAttentionCount: string;
+    attention: string;
+    statusPrefix: string;
+    read: string;
+    unread: string;
+    loadFailed: string;
+    markReadFailed: string;
+    markAllReadSuccess: string;
+    markAllReadFailed: string;
+    sections: {
+      importantTitle: string;
+      importantDescription: string;
+      importantEmpty: string;
+      reportsTitle: string;
+      reportsDescription: string;
+      reportsEmpty: string;
+    };
+    tabs: {
+      all: string;
+      unread: string;
+      attention: string;
+      report: string;
+    };
+    tabDescriptions: {
+      all: string;
+      unread: string;
+      attention: string;
+      report: string;
+    };
+    messageTypes: {
+      report: string;
+      milestone: string;
+      threshold: string;
+      change: string;
+      health: string;
+      system: string;
+      test: string;
+    };
+    severities: {
+      info: string;
+      success: string;
+      warning: string;
+      critical: string;
+    };
+    deliveryStatuses: {
+      created: string;
+      sending: string;
+      sent: string;
+      partial: string;
+      failed: string;
+      skipped: string;
+    };
+  };
   login: {
     title: string;
     subtitle: string;
@@ -209,6 +271,44 @@ export interface AppManagementMessages {
       title: string;
       subtitle: string;
       empty: string;
+      rulesTitle: string;
+      enabledCount: string;
+      createTestRule: string;
+      loadingRules: string;
+      deliveryTestTitle: string;
+      deliveryTestDescription: string;
+      inAppTestHint: string;
+      emailTestConfiguredHint: string;
+      emailTestUnconfiguredHint: string;
+      sendTestNotification: string;
+      testRuleName: string;
+      loadRulesFailed: string;
+      testRuleCreated: string;
+      createTestRuleFailed: string;
+      testNotificationSent: string;
+      sendTestNotificationFailed: string;
+      scheduleDaily: string;
+      scheduleInterval: string;
+      scheduleCustom: string;
+      columns: {
+        name: string;
+        type: string;
+        schedule: string;
+        nextRun: string;
+        status: string;
+      };
+      status: {
+        enabled: string;
+        disabled: string;
+      };
+      ruleTypes: {
+        report: string;
+        milestone: string;
+        threshold: string;
+        change: string;
+        health: string;
+        test: string;
+      };
     };
     publicLinks: {
       title: string;
@@ -428,6 +528,12 @@ export interface AppManagementMessages {
       sites: string;
       hours: string;
       rows: string;
+      summaryMetric1: string;
+      summaryMetric2: string;
+      summaryMetric3: string;
+      rulesScanned: string;
+      messagesCreated: string;
+      emailFailed: string;
       logs: string;
       viewLogs: string;
       logTitle: string;
@@ -447,7 +553,7 @@ export interface AppManagementMessages {
           description: string;
           schedule: string;
         };
-        email_digest: {
+        notification_tick: {
           name: string;
           description: string;
           schedule: string;

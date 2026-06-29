@@ -1,3 +1,7 @@
+import type {
+  NotificationMessageData,
+  NotificationRuleData,
+} from "@/lib/edge-client-types/admin";
 import {
   DEMO_SITE_PROFILES,
   DEMO_TEAMS,
@@ -115,6 +119,213 @@ export function getDemoScriptSnippet(siteId: string) {
   };
 }
 
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+function nextHourSeconds(now: number): number {
+  return Math.floor(now / 3600) * 3600 + 3600;
+}
+
+function demoNotificationMessage(
+  input: Partial<NotificationMessageData> & {
+    teamId: string;
+    userId?: string;
+  },
+): NotificationMessageData {
+  const now = nowSeconds();
+  const createdAt = input.createdAt ?? now;
+  return {
+    id: input.id ?? "demo-notification-message-001",
+    teamId: input.teamId,
+    siteId: input.siteId ?? null,
+    userId: input.userId ?? getDemoUser().id,
+    ruleId: input.ruleId ?? null,
+    runId: input.runId ?? "demo-run-notification",
+    batchId: input.batchId ?? "demo-batch-notification",
+    type: input.type ?? "test",
+    severity: input.severity ?? "info",
+    requiresAttention: input.requiresAttention ?? false,
+    title: input.title ?? "InsightFlare notification test",
+    summary: input.summary ?? "This is a test notification from InsightFlare.",
+    bodyText:
+      input.bodyText ??
+      "This demo notification confirms that in-app delivery is available.",
+    bodyHtml: input.bodyHtml ?? "",
+    data: input.data ?? {},
+    channels: input.channels ?? { inApp: true, email: true },
+    deliveryStatus: input.deliveryStatus ?? "sent",
+    deliveryResults: input.deliveryResults ?? {
+      inApp: { status: "sent" },
+      email: { status: "skipped", reason: "system_email_unconfigured" },
+    },
+    errorMessage: input.errorMessage ?? "",
+    readAt: input.readAt ?? null,
+    dismissedAt: input.dismissedAt ?? null,
+    archivedAt: input.archivedAt ?? null,
+    triggeredAt: input.triggeredAt ?? createdAt,
+    createdAt,
+    updatedAt: input.updatedAt ?? createdAt,
+    sentAt: input.sentAt ?? createdAt,
+    failedAt: input.failedAt ?? null,
+    expiresAt: input.expiresAt ?? createdAt + 30 * 24 * 60 * 60,
+  };
+}
+
+export function generateDemoNotificationRules(
+  teamId: string,
+): NotificationRuleData[] {
+  const now = nowSeconds();
+  const tid = teamId || getDemoTeams()[0].id;
+  const site = getDemoSites(tid)[0] ?? null;
+  return [
+    {
+      id: "demo-notification-rule-hourly",
+      teamId: tid,
+      siteId: site?.id ?? null,
+      name: "Hourly notification test",
+      description: "Demo rule for validating notification delivery.",
+      type: "test",
+      enabled: true,
+      schedule: { kind: "interval", everyMinutes: 60 },
+      condition: {},
+      recipient: { mode: "creator" },
+      lastCheckedAt: now - 3600,
+      lastTriggeredAt: now - 3600,
+      nextRunAt: nextHourSeconds(now),
+      cooldownUntil: null,
+      createdByUserId: getDemoUser().id,
+      createdAt: now - 7 * 24 * 60 * 60,
+      updatedAt: now - 3600,
+    },
+    {
+      id: "demo-notification-rule-daily",
+      teamId: tid,
+      siteId: null,
+      name: "Daily traffic report",
+      description: "Demo daily summary for team administrators.",
+      type: "report",
+      enabled: true,
+      schedule: { kind: "daily", time: "08:00", timezone: "Asia/Shanghai" },
+      condition: {},
+      recipient: { mode: "team_admins" },
+      lastCheckedAt: now - 24 * 60 * 60,
+      lastTriggeredAt: now - 24 * 60 * 60,
+      nextRunAt: nextHourSeconds(now + 20 * 60 * 60),
+      cooldownUntil: null,
+      createdByUserId: getDemoUser().id,
+      createdAt: now - 14 * 24 * 60 * 60,
+      updatedAt: now - 24 * 60 * 60,
+    },
+  ];
+}
+
+export function createDemoNotificationRule(
+  body: unknown,
+): NotificationRuleData {
+  const raw =
+    body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const now = nowSeconds();
+  const teamId = String(raw.teamId || getDemoTeams()[0].id);
+  const schedule =
+    raw.schedule && typeof raw.schedule === "object"
+      ? (raw.schedule as Record<string, unknown>)
+      : { kind: "interval", everyMinutes: 60 };
+  const recipient =
+    raw.recipient && typeof raw.recipient === "object"
+      ? (raw.recipient as Record<string, unknown>)
+      : { mode: "creator" };
+  return {
+    id: `demo-notification-rule-${now}`,
+    teamId,
+    siteId: typeof raw.siteId === "string" && raw.siteId ? raw.siteId : null,
+    name: String(raw.name || "Notification rule"),
+    description: String(raw.description || ""),
+    type: String(raw.type || "test"),
+    enabled: typeof raw.enabled === "boolean" ? raw.enabled : true,
+    schedule,
+    condition:
+      raw.condition && typeof raw.condition === "object"
+        ? (raw.condition as Record<string, unknown>)
+        : {},
+    recipient,
+    lastCheckedAt: null,
+    lastTriggeredAt: null,
+    nextRunAt: nextHourSeconds(now),
+    cooldownUntil: null,
+    createdByUserId: getDemoUser().id,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export function generateDemoNotificationMessages(
+  teamId: string,
+): NotificationMessageData[] {
+  const now = nowSeconds();
+  const tid = teamId || getDemoTeams()[0].id;
+  return [
+    demoNotificationMessage({
+      id: "demo-notification-message-attention",
+      teamId: tid,
+      ruleId: "demo-notification-rule-hourly",
+      type: "threshold",
+      severity: "warning",
+      requiresAttention: true,
+      title: "Traffic threshold reached",
+      summary: "Demo Store crossed the configured hourly views threshold.",
+      bodyText:
+        "Demo Store crossed the configured hourly views threshold in the latest check.",
+      readAt: null,
+      createdAt: now - 25 * 60,
+    }),
+    demoNotificationMessage({
+      id: "demo-notification-message-report",
+      teamId: tid,
+      ruleId: "demo-notification-rule-daily",
+      type: "report",
+      severity: "info",
+      requiresAttention: false,
+      title: "Daily traffic report is ready",
+      summary: "Your demo team report was generated successfully.",
+      bodyText: "Your demo team report was generated successfully.",
+      readAt: now - 2 * 60 * 60,
+      createdAt: now - 3 * 60 * 60,
+    }),
+  ];
+}
+
+export function generateDemoNotificationTest(body: unknown): {
+  message: NotificationMessageData;
+  summary: Record<string, unknown>;
+} {
+  const raw =
+    body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const teamId = String(raw.teamId || getDemoTeams()[0].id);
+  const userId = String(raw.userId || getDemoUser().id);
+  const message = demoNotificationMessage({
+    id: `demo-notification-test-${nowSeconds()}`,
+    teamId,
+    userId,
+    siteId: typeof raw.siteId === "string" && raw.siteId ? raw.siteId : null,
+    title: "InsightFlare notification test",
+    summary: "This is a test notification from InsightFlare.",
+    bodyText:
+      "This demo notification confirms that in-app delivery is available.",
+  });
+  return {
+    message,
+    summary: {
+      checkedRules: 0,
+      matchedRules: 1,
+      messagesCreated: 1,
+      deliveriesSent: 1,
+      deliveriesFailed: 0,
+      triggerType: "manual",
+    },
+  };
+}
+
 const DEMO_SCHEDULED_TASK_DEFINITIONS = [
   {
     key: "visit_hourly_rollup",
@@ -126,13 +337,12 @@ const DEMO_SCHEDULED_TASK_DEFINITIONS = [
     enabled: true,
   },
   {
-    key: "email_digest",
-    name: "Scheduled email delivery",
-    description:
-      "Reserved for scheduled team reports and alert digests. Not enabled yet.",
-    schedule: "Not configured",
+    key: "notification_tick",
+    name: "Notification dispatch",
+    description: "Evaluates notification rules and dispatches messages.",
+    schedule: "Every hour",
     trigger: "cron" as const,
-    enabled: false,
+    enabled: true,
   },
 ];
 

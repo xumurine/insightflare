@@ -6,6 +6,10 @@ import {
   handleNotificationEmailConfigAdmin,
   handleNotificationEmailTestAdmin,
 } from "@/lib/edge/admin-notification-email";
+import {
+  handleNotificationRulesAdmin,
+  handleNotificationTestAdmin,
+} from "@/lib/edge/admin-notifications";
 import { nf } from "@/lib/edge/admin-response";
 import { handleScheduledTasksAdmin } from "@/lib/edge/admin-scheduled-tasks";
 import {
@@ -47,6 +51,12 @@ privateAdminRoutes.all("/notification-email", (c) =>
 );
 privateAdminRoutes.all("/notification-email/test", (c) =>
   handleNotificationEmailTestAdmin(c.req.raw, c.env),
+);
+privateAdminRoutes.all("/notification-rules", (c) =>
+  handleNotificationRulesAdmin(c.req.raw, c.env, requestUrl(c)),
+);
+privateAdminRoutes.all("/notification-test", (c) =>
+  handleNotificationTestAdmin(c.req.raw, c.env),
 );
 privateAdminRoutes.all("/system-performance", (c) =>
   handleSystemPerformanceAdmin(c.req.raw, c.env, requestUrl(c), requireActor),

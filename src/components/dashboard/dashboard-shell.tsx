@@ -309,6 +309,7 @@ interface DashboardShellProps {
   teams: TeamData[];
   activeTeamSlug: string;
   sites: SidebarSite[];
+  unreadAttentionCount?: number;
   teamSections?: TeamSectionNavItem[];
   managementSections?: TeamSectionNavItem[];
   children: ReactNode;
@@ -322,6 +323,7 @@ export function DashboardShell({
   teams,
   activeTeamSlug,
   sites,
+  unreadAttentionCount = 0,
   teamSections,
   managementSections,
   children,
@@ -408,6 +410,7 @@ export function DashboardShell({
   const switchToEn = `/en${localeSuffix}`;
   const switchToZh = `/zh${localeSuffix}`;
   const accountHref = `/${locale}/app/${activeTeamSlug}/account`;
+  const notificationsHref = `/${locale}/app/${activeTeamSlug}/account/notifications`;
   const teamRootHref = `/${locale}/app/${activeTeamSlug}`;
   const backToTeamLabel = messages.common.backToTeam;
   const activeTeamName =
@@ -644,6 +647,8 @@ export function DashboardShell({
               switchToEn={switchToEn}
               switchToZh={switchToZh}
               accountHref={accountHref}
+              notificationsHref={notificationsHref}
+              unreadAttentionCount={unreadAttentionCount}
               messages={messages}
             />
           </SidebarFooter>

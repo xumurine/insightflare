@@ -11,13 +11,12 @@ export const SCHEDULED_TASKS: ScheduledTaskDefinitionInfo[] = [
     enabled: true,
   },
   {
-    key: "email_digest",
-    name: "Scheduled email delivery",
-    description:
-      "Reserved for scheduled team reports and alert digests. Not enabled yet.",
-    schedule: "Not configured",
+    key: "notification_tick",
+    name: "Notification dispatch",
+    description: "Evaluates notification rules and dispatches messages.",
+    schedule: "Every hour",
     trigger: "cron",
-    enabled: false,
+    enabled: true,
   },
 ];
 

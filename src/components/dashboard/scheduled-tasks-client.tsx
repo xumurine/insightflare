@@ -251,6 +251,54 @@ function summaryValue(
   return "--";
 }
 
+function runSummaryMetric(
+  labels: AppMessages["managementPages"]["scheduledTasks"],
+  run: ScheduledTaskRun | ScheduledTaskRunGroup,
+  index: 0 | 1 | 2,
+): { label: string; value: string } {
+  if (
+    Object.prototype.hasOwnProperty.call(run.summary, "rulesScanned") ||
+    Object.prototype.hasOwnProperty.call(run.summary, "messagesCreated")
+  ) {
+    const metrics = [
+      { label: labels.rulesScanned, key: "rulesScanned" },
+      { label: labels.messagesCreated, key: "messagesCreated" },
+      { label: labels.emailFailed, key: "emailFailed" },
+    ] as const;
+    const metric = metrics[index];
+    return { label: metric.label, value: summaryValue(run, metric.key) };
+  }
+  const metrics = [
+    { label: labels.sites, key: "sitesProcessed" },
+    { label: labels.hours, key: "hoursAggregated" },
+    { label: labels.rows, key: "rollupRowsWritten" },
+  ] as const;
+  const metric = metrics[index];
+  return { label: metric.label, value: summaryValue(run, metric.key) };
+}
+
+function SummaryMetricCell({
+  metric,
+  align = "right",
+}: {
+  metric: { label: string; value: string };
+  align?: "left" | "right";
+}) {
+  return (
+    <div
+      className={cn(
+        "min-w-20 space-y-0.5",
+        align === "right" ? "text-right" : "text-left",
+      )}
+    >
+      <div className="text-[10px] uppercase text-muted-foreground">
+        {metric.label}
+      </div>
+      <div className="font-mono">{metric.value}</div>
+    </div>
+  );
+}
+
 function localizedTaskInfo(
   labels: AppMessages["managementPages"]["scheduledTasks"],
   task: { key: string; name: string; description?: string; schedule?: string },
@@ -258,8 +306,8 @@ function localizedTaskInfo(
   const definition =
     task.key === "visit_hourly_rollup"
       ? labels.taskDefinitions.visit_hourly_rollup
-      : task.key === "email_digest"
-        ? labels.taskDefinitions.email_digest
+      : task.key === "notification_tick"
+        ? labels.taskDefinitions.notification_tick
         : null;
   return {
     name: definition?.name ?? task.name,
@@ -372,9 +420,15 @@ function ScheduledTaskRunsTable({
               <TableHead>{labels.statusLabel}</TableHead>
               <TableHead className="text-right">{labels.duration}</TableHead>
               <TableHead>{labels.taskResult}</TableHead>
-              <TableHead className="text-right">{labels.sites}</TableHead>
-              <TableHead className="text-right">{labels.hours}</TableHead>
-              <TableHead className="text-right">{labels.rows}</TableHead>
+              <TableHead className="text-right">
+                {labels.summaryMetric1}
+              </TableHead>
+              <TableHead className="text-right">
+                {labels.summaryMetric2}
+              </TableHead>
+              <TableHead className="text-right">
+                {labels.summaryMetric3}
+              </TableHead>
               <TableHead className="pr-4 text-right">{labels.logs}</TableHead>
             </TableRow>
           </TableHeader>
@@ -490,13 +544,19 @@ function ScheduledTaskRunsTable({
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {summaryValue(run, "sitesProcessed")}
+                        <SummaryMetricCell
+                          metric={runSummaryMetric(labels, run, 0)}
+                        />
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {summaryValue(run, "hoursAggregated")}
+                        <SummaryMetricCell
+                          metric={runSummaryMetric(labels, run, 1)}
+                        />
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {summaryValue(run, "rollupRowsWritten")}
+                        <SummaryMetricCell
+                          metric={runSummaryMetric(labels, run, 2)}
+                        />
                       </TableCell>
                       <TableCell className="pr-4 text-right">
                         <span
@@ -755,22 +815,23 @@ function ScheduledTaskRunLogDrawer({
                                   {formatDuration(locale, taskRun.durationMs)}
                                 </dd>
                               </div>
-                              <div className="space-y-1">
-                                <dt className="text-muted-foreground">
-                                  {labels.sites}
-                                </dt>
-                                <dd className="font-mono">
-                                  {summaryValue(taskRun, "sitesProcessed")}
-                                </dd>
-                              </div>
-                              <div className="space-y-1">
-                                <dt className="text-muted-foreground">
-                                  {labels.rows}
-                                </dt>
-                                <dd className="font-mono">
-                                  {summaryValue(taskRun, "rollupRowsWritten")}
-                                </dd>
-                              </div>
+                              {[0, 1].map((index) => {
+                                const metric = runSummaryMetric(
+                                  labels,
+                                  taskRun,
+                                  index as 0 | 1,
+                                );
+                                return (
+                                  <div key={metric.label} className="space-y-1">
+                                    <dt className="text-muted-foreground">
+                                      {metric.label}
+                                    </dt>
+                                    <dd className="font-mono">
+                                      {metric.value}
+                                    </dd>
+                                  </div>
+                                );
+                              })}
                             </dl>
                             {taskRun.errorMessage ? (
                               <div className="mt-3 border border-destructive/30 bg-destructive/5 p-3 text-sm">

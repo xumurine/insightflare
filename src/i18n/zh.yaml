@@ -784,6 +784,61 @@ accountSettings:
   saving: 保存中...
   saved: 时区偏好已保存。
   saveFailed: 保存时区偏好失败。
+notificationCenter:
+  title: 通知中心
+  subtitle: 查看团队通知规则生成的消息。
+  inboxTitle: 我的通知
+  empty: 暂无通知。
+  loading: 正在加载通知
+  markRead: 标记已读
+  markAllRead: 全部标记已读
+  refresh: 刷新
+  unreadAttentionCount: "{count} 条未读重点通知。"
+  attention: 重点
+  statusPrefix: "状态：{status}"
+  read: 已读
+  unread: 未读
+  loadFailed: 加载通知失败。
+  markReadFailed: 标记通知已读失败。
+  markAllReadSuccess: 通知已全部标记为已读。
+  markAllReadFailed: 全部标记已读失败。
+  sections:
+    importantTitle: 重要通知
+    importantDescription: "{count} 条未读重点通知。"
+    importantEmpty: 当前没有重要通知。
+    reportsTitle: 报告
+    reportsDescription: 查看通知规则生成的定期报告。
+    reportsEmpty: 当前没有报告。
+  tabs:
+    all: 全部
+    unread: 未读
+    attention: 重点
+    report: 报告
+  tabDescriptions:
+    all: 全部消息
+    unread: 等待查看
+    attention: 需要关注
+    report: 定期报告
+  messageTypes:
+    report: 报告
+    milestone: 里程碑
+    threshold: 阈值
+    change: 变化
+    health: 健康
+    system: 系统
+    test: 测试
+  severities:
+    info: 信息
+    success: 成功
+    warning: 警告
+    critical: 严重
+  deliveryStatuses:
+    created: 已创建
+    sending: 发送中
+    sent: 已发送
+    partial: 部分完成
+    failed: 失败
+    skipped: 已跳过
 login:
   title: 登录
   subtitle: 使用 InsightFlare 账号登录。
@@ -852,6 +907,41 @@ teamManagement:
     title: 事件通知
     subtitle: 管理当前团队的事件通知规则。
     empty: 当前团队还没有事件通知规则。
+    rulesTitle: 通知规则
+    enabledCount: "当前团队已启用 {count} 条规则。"
+    createTestRule: 创建测试规则
+    loadingRules: 正在加载通知规则
+    deliveryTestTitle: 投递测试
+    deliveryTestDescription: 为你创建一条站内通知；如果可用，也会尝试发送邮件。
+    inAppTestHint: 我们会向你发送一条站内通知。
+    emailTestConfiguredHint: 我们会向你发送一条测试邮件。
+    emailTestUnconfiguredHint: 当前系统未设置邮件发送服务，请联系管理员添加。
+    sendTestNotification: 发送测试通知
+    testRuleName: 每小时通知测试
+    loadRulesFailed: 加载通知规则失败。
+    testRuleCreated: 测试规则已创建。
+    createTestRuleFailed: 创建测试规则失败。
+    testNotificationSent: 测试通知已发送。
+    sendTestNotificationFailed: 发送测试通知失败。
+    scheduleDaily: "每天 {time}"
+    scheduleInterval: "每 {minutes} 分钟"
+    scheduleCustom: 自定义
+    columns:
+      name: 名称
+      type: 类型
+      schedule: 计划
+      nextRun: 下次运行
+      status: 状态
+    status:
+      enabled: 已启用
+      disabled: 未启用
+    ruleTypes:
+      report: 报告
+      milestone: 里程碑
+      threshold: 阈值
+      change: 变化
+      health: 健康
+      test: 测试
   publicLinks:
     title: 公开链接
     subtitle: 管理当前团队可公开访问的分享链接。
@@ -1055,6 +1145,12 @@ managementPages:
     sites: 站点
     hours: 小时
     rows: 行数
+    summaryMetric1: 指标 1
+    summaryMetric2: 指标 2
+    summaryMetric3: 指标 3
+    rulesScanned: 规则
+    messagesCreated: 消息
+    emailFailed: 邮件失败
     logs: 日志
     viewLogs: 查看
     logTitle: 运行日志
@@ -1072,10 +1168,10 @@ managementPages:
         name: 小时访问聚合
         description: 将已关闭的访问记录聚合为小时汇总，用于仪表盘计数器和趋势。
         schedule: 每小时
-      email_digest:
-        name: 计划邮件发送
-        description: 预留给团队报告和告警摘要邮件，当前尚未启用。
-        schedule: 未配置
+      notification_tick:
+        name: 通知分发
+        description: 检查通知规则并分发消息。
+        schedule: 每小时
 adminUsers:
   title: 用户管理
   subtitle: 仅系统管理员可创建和管理后台用户。

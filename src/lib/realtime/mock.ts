@@ -5,7 +5,11 @@ import {
 } from "@/lib/notifications/email-config";
 import { findSiteProfileByPublicSlug } from "@/lib/realtime/demo-site-profiles";
 import {
+  createDemoNotificationRule,
   generateDemoDoDiagnostic,
+  generateDemoNotificationMessages,
+  generateDemoNotificationRules,
+  generateDemoNotificationTest,
   generateDemoScheduledTasks,
   generateDemoSystemPerformance,
   getDemoMembers,
@@ -172,6 +176,45 @@ export function handleDemoRequest(options: {
         },
       };
     }
+    if (path.includes("/admin/notification-test")) {
+      return {
+        ok: true,
+        data: generateDemoNotificationTest(options.body),
+      };
+    }
+    if (path === "/api/private/notifications") {
+      return { ok: true, data: { updated: 1 } };
+    }
+    const notificationReadMatch = path.match(
+      /^\/api\/private\/notifications\/([^/]+)$/,
+    );
+    if (notificationReadMatch) {
+      const messageId = decodeURIComponent(
+        notificationReadMatch[1] || "demo-notification-message-attention",
+      );
+      const message =
+        generateDemoNotificationMessages(teamId || getDemoTeams()[0].id).find(
+          (item) => item.id === messageId,
+        ) ?? null;
+      return {
+        ok: true,
+        data: message
+          ? { ...message, readAt: Math.floor(Date.now() / 1000) }
+          : null,
+      };
+    }
+    if (path.includes("/admin/notification-rules")) {
+      if (method === "DELETE") {
+        return {
+          ok: true,
+          data: { id: String(params.id || ""), removed: true },
+        };
+      }
+      return {
+        ok: true,
+        data: createDemoNotificationRule(options.body),
+      };
+    }
     if (path.includes("/admin/notification-email")) {
       if (method === "DELETE") {
         return {
@@ -271,6 +314,26 @@ export function handleDemoRequest(options: {
   }
   if (path.includes("/admin/script-snippet")) {
     return { ok: true, data: getDemoScriptSnippet(siteId) };
+  }
+  if (path.includes("/admin/notification-rules")) {
+    return {
+      ok: true,
+      data: generateDemoNotificationRules(teamId || getDemoTeams()[0].id),
+    };
+  }
+  if (path === "/api/private/notifications") {
+    const messages = generateDemoNotificationMessages(
+      teamId || getDemoTeams()[0].id,
+    );
+    return {
+      ok: true,
+      data: {
+        messages,
+        unreadAttentionCount: messages.filter(
+          (message) => message.requiresAttention && message.readAt === null,
+        ).length,
+      },
+    };
   }
   if (path.includes("/admin/notification-email")) {
     return {

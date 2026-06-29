@@ -4,6 +4,13 @@ import {
   handleNotificationEmailConfigAdmin,
   handleNotificationEmailTestAdmin,
 } from "./admin-notification-email";
+import {
+  handleNotificationRead,
+  handleNotificationRulesAdmin,
+  handleNotifications,
+  handleNotificationsReadAll,
+  handleNotificationTestAdmin,
+} from "./admin-notifications";
 import { nf } from "./admin-response";
 import { handleScheduledTasksAdmin } from "./admin-scheduled-tasks";
 import {
@@ -53,6 +60,20 @@ export async function handlePrivateAdmin(
     return handleNotificationEmailConfigAdmin(request, env);
   if (p === "/api/private/admin/notification-email/test")
     return handleNotificationEmailTestAdmin(request, env);
+  if (p === "/api/private/notifications")
+    return request.method === "PATCH"
+      ? handleNotificationsReadAll(request, env)
+      : handleNotifications(request, env, url);
+  if (p.startsWith("/api/private/notifications/")) {
+    const messageId = decodeURIComponent(
+      p.slice("/api/private/notifications/".length),
+    ).trim();
+    return handleNotificationRead(request, env, messageId);
+  }
+  if (p === "/api/private/admin/notification-rules")
+    return handleNotificationRulesAdmin(request, env, url);
+  if (p === "/api/private/admin/notification-test")
+    return handleNotificationTestAdmin(request, env);
   if (p === "/api/private/admin/system-performance")
     return handleSystemPerformanceAdmin(request, env, url, requireActor);
   if (p === "/api/private/admin/scheduled-tasks")

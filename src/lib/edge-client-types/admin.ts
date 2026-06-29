@@ -71,3 +71,62 @@ export interface ApiKeyData {
   updatedAt: number;
   status: "active" | "expired" | "revoked";
 }
+
+export type NotificationDeliveryStatus =
+  | "created"
+  | "sending"
+  | "sent"
+  | "partial"
+  | "failed"
+  | "skipped";
+
+export interface NotificationRuleData {
+  id: string;
+  teamId: string;
+  siteId: string | null;
+  name: string;
+  description: string;
+  type: string;
+  enabled: boolean;
+  schedule: Record<string, unknown>;
+  condition: Record<string, unknown>;
+  recipient: Record<string, unknown>;
+  lastCheckedAt: number | null;
+  lastTriggeredAt: number | null;
+  nextRunAt: number | null;
+  cooldownUntil: number | null;
+  createdByUserId: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface NotificationMessageData {
+  id: string;
+  teamId: string;
+  siteId: string | null;
+  userId: string;
+  ruleId: string | null;
+  runId: string | null;
+  batchId: string | null;
+  type: string;
+  severity: string;
+  requiresAttention: boolean;
+  title: string;
+  summary: string;
+  bodyText: string;
+  bodyHtml: string;
+  data: Record<string, unknown>;
+  channels: Record<string, unknown>;
+  deliveryStatus: NotificationDeliveryStatus;
+  deliveryResults: Record<string, unknown>;
+  errorMessage: string;
+  readAt: number | null;
+  dismissedAt: number | null;
+  archivedAt: number | null;
+  triggeredAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+  sentAt: number | null;
+  failedAt: number | null;
+  expiresAt: number | null;
+}

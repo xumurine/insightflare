@@ -1,11 +1,16 @@
 import type * as ReactModule from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fetchAdminMe, fetchAdminSites } from "@/lib/edge-client";
+import {
+  fetchAdminMe,
+  fetchAdminSites,
+  fetchNotificationMessages,
+} from "@/lib/edge-client";
 
 vi.mock("@/lib/edge-client", () => ({
   fetchAdminMe: vi.fn(),
   fetchAdminSites: vi.fn(),
+  fetchNotificationMessages: vi.fn(),
 }));
 
 vi.mock("react", async (importOriginal) => {
@@ -18,6 +23,7 @@ vi.mock("react", async (importOriginal) => {
 
 const fetchAdminMeMock = vi.mocked(fetchAdminMe);
 const fetchAdminSitesMock = vi.mocked(fetchAdminSites);
+const fetchNotificationMessagesMock = vi.mocked(fetchNotificationMessages);
 
 async function loadServerModule() {
   vi.resetModules();
@@ -56,6 +62,11 @@ describe("dashboard server helpers", () => {
   beforeEach(() => {
     fetchAdminMeMock.mockReset();
     fetchAdminSitesMock.mockReset();
+    fetchNotificationMessagesMock.mockReset();
+    fetchNotificationMessagesMock.mockResolvedValue({
+      messages: [],
+      unreadAttentionCount: 0,
+    });
   });
 
   it("builds stable site slugs from domain or id", async () => {

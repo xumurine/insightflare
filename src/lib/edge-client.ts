@@ -2,6 +2,8 @@ import type { TeamRole } from "@/lib/dashboard/permissions";
 import type {
   AccountUserData,
   MemberData,
+  NotificationMessageData,
+  NotificationRuleData,
   OverviewData,
   PagesData,
   QueryFilters,
@@ -12,6 +14,7 @@ import type {
   TeamData,
   TrendData,
 } from "@/lib/edge-client-types";
+import type { PublicNotificationEmailConfig } from "@/lib/notifications/email-config";
 import type { SiteScriptSettings } from "@/lib/site-settings";
 
 import { getSessionToken } from "./auth";
@@ -544,6 +547,132 @@ export async function removeAdminUser(input: {
       ...input,
       intent: "remove",
     },
+  });
+  return res.data;
+}
+
+export async function fetchNotificationRules(input: {
+  teamId: string;
+}): Promise<NotificationRuleData[]> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: unknown;
+  }>({
+    path: "/api/private/admin/notification-rules",
+    params: { teamId: input.teamId },
+  });
+  return Array.isArray(res.data) ? (res.data as NotificationRuleData[]) : [];
+}
+
+export async function fetchNotificationEmailConfig(): Promise<PublicNotificationEmailConfig> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: PublicNotificationEmailConfig;
+  }>({
+    path: "/api/private/admin/notification-email",
+  });
+  return res.data;
+}
+
+export async function createNotificationRule(input: {
+  teamId: string;
+  name: string;
+  type?: string;
+  schedule?: Record<string, unknown>;
+  recipient?: Record<string, unknown>;
+}): Promise<NotificationRuleData> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: NotificationRuleData;
+  }>({
+    method: "POST",
+    path: "/api/private/admin/notification-rules",
+    body: input,
+  });
+  return res.data;
+}
+
+export async function fetchNotificationMessages(input: {
+  teamId?: string;
+  limit?: number;
+}): Promise<{
+  messages: NotificationMessageData[];
+  unreadAttentionCount: number;
+}> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: unknown;
+  }>({
+    path: "/api/private/notifications",
+    params: {
+      ...(input.teamId ? { teamId: input.teamId } : {}),
+      ...(input.limit ? { limit: input.limit } : {}),
+    },
+  });
+  const data =
+    res.data && typeof res.data === "object"
+      ? (res.data as {
+          messages?: unknown;
+          unreadAttentionCount?: unknown;
+        })
+      : {};
+  return {
+    messages: Array.isArray(data.messages)
+      ? (data.messages as NotificationMessageData[])
+      : [],
+    unreadAttentionCount:
+      typeof data.unreadAttentionCount === "number"
+        ? data.unreadAttentionCount
+        : 0,
+  };
+}
+
+export async function markNotificationMessageRead(input: {
+  messageId: string;
+}): Promise<NotificationMessageData | null> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: NotificationMessageData | null;
+  }>({
+    method: "PATCH",
+    path: `/api/private/notifications/${encodeURIComponent(input.messageId)}`,
+    body: { read: true },
+  });
+  return res.data;
+}
+
+export async function markAllNotificationMessagesRead(input: {
+  teamId?: string;
+}): Promise<{ updated: number }> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: { updated: number };
+  }>({
+    method: "PATCH",
+    path: "/api/private/notifications",
+    body: { ...input, read: true },
+  });
+  return res.data;
+}
+
+export async function sendNotificationTest(input: {
+  teamId: string;
+  siteId?: string;
+  userId?: string;
+}): Promise<{
+  message: NotificationMessageData | null;
+  summary: Record<string, unknown> | null;
+}> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: {
+      message: NotificationMessageData | null;
+      summary: Record<string, unknown> | null;
+    };
+  }>({
+    method: "POST",
+    path: "/api/private/admin/notification-test",
+    body: input,
   });
   return res.data;
 }

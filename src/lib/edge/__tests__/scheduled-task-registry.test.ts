@@ -37,10 +37,11 @@ describe("edge/scheduled-task-registry", () => {
       expect(task!.trigger).toBe("cron");
     });
 
-    it("includes the email_digest task as disabled", () => {
-      const task = SCHEDULED_TASKS.find((t) => t.key === "email_digest");
+    it("includes the notification_tick task as enabled", () => {
+      const task = SCHEDULED_TASKS.find((t) => t.key === "notification_tick");
       expect(task).toBeDefined();
-      expect(task!.enabled).toBe(false);
+      expect(task!.enabled).toBe(true);
+      expect(task!.trigger).toBe("cron");
     });
   });
 

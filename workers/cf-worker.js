@@ -5,6 +5,7 @@ import { getScheduledTaskDefinition } from "../src/lib/edge/scheduled-task-regis
 import { runScheduledTask } from "../src/lib/edge/scheduled-task-runner";
 import apiApp from "../src/lib/hono/app";
 import { shouldUseHono } from "../src/lib/hono/path-match";
+import { runNotificationTick } from "../src/lib/notifications/notification-task";
 
 export class IngestDurableObject extends BaseIngestDurableObject {}
 
@@ -32,18 +33,31 @@ export default {
       return;
     }
     const task = getScheduledTaskDefinition("visit_hourly_rollup");
+    const notificationTask = getScheduledTaskDefinition("notification_tick");
     ctx.waitUntil(
-      runScheduledTask(
-        env,
-        {
-          key: task?.key || "visit_hourly_rollup",
-          name: task?.name || "Hourly visit aggregation",
-          triggerType: "cron",
-        },
-        controller.scheduledTime,
-        ({ logger }) =>
-          runHourlyAggregation(env, controller.scheduledTime, { logger }),
-      ),
+      Promise.all([
+        runScheduledTask(
+          env,
+          {
+            key: task?.key || "visit_hourly_rollup",
+            name: task?.name || "Hourly visit aggregation",
+            triggerType: "cron",
+          },
+          controller.scheduledTime,
+          ({ logger }) =>
+            runHourlyAggregation(env, controller.scheduledTime, { logger }),
+        ),
+        runScheduledTask(
+          env,
+          {
+            key: notificationTask?.key || "notification_tick",
+            name: notificationTask?.name || "Notification dispatch",
+            triggerType: "cron",
+          },
+          controller.scheduledTime,
+          runNotificationTick,
+        ),
+      ]),
     );
   },
 };

@@ -70,6 +70,7 @@ export default async function TeamLayout({
       teams={context.teams}
       activeTeamSlug={context.activeTeam.slug}
       sites={context.sites}
+      unreadAttentionCount={context.unreadAttentionCount}
       teamSections={buildTeamSections(
         resolvedLocale,
         context.activeTeam.slug,

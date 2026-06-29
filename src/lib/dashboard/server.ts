@@ -5,6 +5,7 @@ import { cache } from "react";
 import {
   fetchAdminMe,
   fetchAdminSites,
+  fetchNotificationMessages,
   type SiteData,
   type TeamData,
 } from "@/lib/edge-client";
@@ -41,6 +42,7 @@ export interface DashboardTeamContext {
   teams: TeamData[];
   activeTeam: TeamData;
   sites: SiteWithSlug[];
+  unreadAttentionCount: number;
 }
 
 function safeSlug(value: string): string {
@@ -107,12 +109,19 @@ export const getDashboardTeamContext = cache(
     if (!activeTeam) return null;
 
     const sites = await getSitesForTeam(activeTeam.id);
+    const unreadAttentionCount = await fetchNotificationMessages({
+      teamId: activeTeam.id,
+      limit: 1,
+    })
+      .then((data) => data.unreadAttentionCount)
+      .catch(() => 0);
 
     return {
       user: me.user,
       teams: me.teams,
       activeTeam,
       sites,
+      unreadAttentionCount,
     };
   },
 );
