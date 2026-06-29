@@ -2,6 +2,7 @@ import {
   SCHEDULED_TASK_LOG_RETENTION_DAYS,
   type ScheduledTaskLogLevel,
   type ScheduledTaskRun,
+  type ScheduledTaskRunGroup,
   type ScheduledTaskRunLog,
   type ScheduledTasksData,
   type ScheduledTaskStatus,
@@ -61,6 +62,22 @@ interface LogRow {
   message: string;
   dataJson: string;
   createdAt: number;
+}
+
+interface RunGroupRow {
+  id: string;
+  triggerType: string;
+  status: string;
+  scheduledAt: number | null;
+  startedAt: number;
+  finishedAt: number | null;
+  taskCount: number;
+  successCount: number;
+  partialCount: number;
+  failedCount: number;
+  skippedCount: number;
+  runningCount: number;
+  logsCount: number;
 }
 
 interface TaskStatsRow {
@@ -171,6 +188,52 @@ function mapLog(row: LogRow): ScheduledTaskRunLog {
   };
 }
 
+function aggregateRunSummary(
+  runs: ScheduledTaskRun[],
+): Record<string, unknown> {
+  const summary: Record<string, unknown> = {};
+  for (const run of runs) {
+    for (const [key, value] of Object.entries(run.summary)) {
+      if (typeof value !== "number" || !Number.isFinite(value)) continue;
+      summary[key] = Number(summary[key] ?? 0) + value;
+    }
+  }
+  return summary;
+}
+
+function mapRunGroup(
+  row: RunGroupRow,
+  runs: ScheduledTaskRun[] = [],
+): ScheduledTaskRunGroup {
+  const startedAt = Number(row.startedAt ?? 0);
+  const finishedAt =
+    row.finishedAt === null || row.finishedAt === undefined
+      ? null
+      : Number(row.finishedAt);
+  return {
+    id: String(row.id ?? ""),
+    triggerType: String(row.triggerType ?? ""),
+    status: normalizeStatus(String(row.status ?? "")),
+    scheduledAt:
+      row.scheduledAt === null || row.scheduledAt === undefined
+        ? null
+        : Number(row.scheduledAt),
+    startedAt,
+    finishedAt,
+    durationMs:
+      finishedAt === null ? null : Math.max(0, finishedAt - startedAt),
+    taskCount: Number(row.taskCount ?? runs.length),
+    successCount: Number(row.successCount ?? 0),
+    partialCount: Number(row.partialCount ?? 0),
+    failedCount: Number(row.failedCount ?? 0),
+    skippedCount: Number(row.skippedCount ?? 0),
+    runningCount: Number(row.runningCount ?? 0),
+    logsCount: Number(row.logsCount ?? 0),
+    summary: aggregateRunSummary(runs),
+    runs,
+  };
+}
+
 const RUN_SELECT_COLUMNS = `
       id,
       invocation_id AS invocationId,
@@ -198,6 +261,64 @@ function runSelectSql(whereClause: string): string {
       ${RUN_SELECT_COLUMNS}
     FROM scheduled_task_runs
     ${whereClause}
+  `;
+}
+
+const RUN_GROUP_KEY_SQL = `
+      CASE
+        WHEN scheduled_at_ms IS NOT NULL THEN trigger_type || ':' || scheduled_at_ms
+        ELSE invocation_id
+      END
+`;
+
+function runGroupSelectSql(whereClause: string): string {
+  return `
+    WITH grouped AS (
+      SELECT
+        ${RUN_GROUP_KEY_SQL} AS id,
+        MAX(trigger_type) AS triggerType,
+        MIN(scheduled_at_ms) AS scheduledAt,
+        MIN(started_at_ms) AS startedAt,
+        CASE
+          WHEN SUM(CASE WHEN finished_at_ms IS NULL THEN 1 ELSE 0 END) > 0
+            THEN NULL
+          ELSE MAX(finished_at_ms)
+        END AS finishedAt,
+        COUNT(*) AS taskCount,
+        SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successCount,
+        SUM(CASE WHEN status = 'partial' THEN 1 ELSE 0 END) AS partialCount,
+        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failedCount,
+        SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) AS skippedCount,
+        SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS runningCount
+      FROM scheduled_task_runs
+      ${whereClause}
+      GROUP BY id
+    ),
+    normalized AS (
+      SELECT
+        *,
+        CASE
+          WHEN failedCount > 0 THEN 'failed'
+          WHEN runningCount > 0 THEN 'running'
+          WHEN partialCount > 0 THEN 'partial'
+          WHEN successCount > 0 AND skippedCount > 0 THEN 'partial'
+          WHEN skippedCount = taskCount THEN 'skipped'
+          ELSE 'success'
+        END AS status
+      FROM grouped
+    )
+    SELECT
+      normalized.*,
+      (
+        SELECT COUNT(*)
+        FROM scheduled_task_run_logs logs
+        INNER JOIN scheduled_task_runs runs
+          ON runs.id = logs.run_id
+        WHERE ${RUN_GROUP_KEY_SQL.replaceAll("scheduled_", "runs.scheduled_")
+          .replaceAll("trigger_type", "runs.trigger_type")
+          .replaceAll("invocation_id", "runs.invocation_id")} = normalized.id
+      ) AS logsCount
+    FROM normalized
   `;
 }
 
@@ -244,19 +365,17 @@ export async function handleScheduledTasksAdmin(
   const page = parseIntegerParam(url, "page", 1, 1, 10_000);
   const pageSize = parseRunPageSize(url);
   const offset = (page - 1) * pageSize;
-  const taskKey = (url.searchParams.get("taskKey") || "").trim();
   const status = (url.searchParams.get("status") || "").trim();
-  const runId = (url.searchParams.get("runId") || "").trim();
+  const runId = (
+    url.searchParams.get("runId") ||
+    url.searchParams.get("runGroupId") ||
+    ""
+  ).trim();
   const runFilters: string[] = ["started_at_ms >= ?"];
   const runBindings: Array<string | number> = [since30d];
-  if (taskKey) {
-    runFilters.push("task_key = ?");
-    runBindings.push(taskKey);
-  }
-  if (STATUS_VALUES.has(status as ScheduledTaskStatus)) {
-    runFilters.push("status = ?");
-    runBindings.push(status);
-  }
+  const statusFilter = STATUS_VALUES.has(status as ScheduledTaskStatus)
+    ? status
+    : "";
 
   const [healthRow, statsRows, latestRows, runRows] = await Promise.all([
     env.DB.prepare(
@@ -310,44 +429,107 @@ export async function handleScheduledTasksAdmin(
       .bind(since30d)
       .all<RunRow>(),
     env.DB.prepare(
-      `${runSelectSql(`WHERE ${runFilters.join(" AND ")}`)}
-       ORDER BY started_at_ms DESC
+      `${runGroupSelectSql(`WHERE ${runFilters.join(" AND ")}`)}
+       WHERE (? = '' OR status = ?)
+       ORDER BY startedAt DESC
        LIMIT ? OFFSET ?`,
     )
-      .bind(...runBindings, pageSize + 1, offset)
-      .all<RunRow>(),
+      .bind(...runBindings, statusFilter, statusFilter, pageSize + 1, offset)
+      .all<RunGroupRow>(),
   ]);
 
-  const requestedRuns = runRows.results.map(mapRun);
-  const hasMoreRuns = requestedRuns.length > pageSize;
-  const runs = hasMoreRuns ? requestedRuns.slice(0, pageSize) : requestedRuns;
+  const hasMoreRuns = runRows.results.length > pageSize;
+  const requestedGroupRows = hasMoreRuns
+    ? runRows.results.slice(0, pageSize)
+    : runRows.results;
+  const groupIds = requestedGroupRows.map((row) => String(row.id ?? ""));
+  const pageTaskRows =
+    groupIds.length > 0
+      ? await env.DB.prepare(
+          `${runSelectSql(
+            `WHERE ${RUN_GROUP_KEY_SQL} IN (${groupIds.map(() => "?").join(", ")})`,
+          )}
+           ORDER BY started_at_ms ASC, task_key ASC`,
+        )
+          .bind(...groupIds)
+          .all<RunRow>()
+      : { results: [] as RunRow[] };
+  const taskRunsByGroup = new Map<string, ScheduledTaskRun[]>();
+  for (const run of pageTaskRows.results.map(mapRun)) {
+    const groupId =
+      run.scheduledAt !== null
+        ? `${run.triggerType}:${run.scheduledAt}`
+        : run.invocationId;
+    const groupRuns = taskRunsByGroup.get(groupId) ?? [];
+    groupRuns.push(run);
+    taskRunsByGroup.set(groupId, groupRuns);
+  }
+  const runs = requestedGroupRows.map((row) =>
+    mapRunGroup(row, taskRunsByGroup.get(String(row.id ?? "")) ?? []),
+  );
   let selectedRun = runId ? null : runs.length > 0 ? (runs[0] ?? null) : null;
-  if (runId) {
-    const selectedRow = await env.DB.prepare(
-      `${runSelectSql("WHERE id = ?")} LIMIT 1`,
+  let selectedTaskRuns: ScheduledTaskRun[] = [];
+  if (selectedRun || runId) {
+    const selectedGroupId = runId || selectedRun?.id || "";
+    let selectedRow = await env.DB.prepare(
+      `${runGroupSelectSql("WHERE 1 = 1")}
+       WHERE id = ?
+       LIMIT 1`,
     )
-      .bind(runId)
-      .first<RunRow>();
-    selectedRun = selectedRow ? mapRun(selectedRow) : null;
+      .bind(selectedGroupId)
+      .first<RunGroupRow>();
+    if (!selectedRow && runId) {
+      selectedRow = await env.DB.prepare(
+        `${runGroupSelectSql(
+          `WHERE ${RUN_GROUP_KEY_SQL} = (
+            SELECT ${RUN_GROUP_KEY_SQL}
+            FROM scheduled_task_runs
+            WHERE id = ?
+            LIMIT 1
+          )`,
+        )}
+         LIMIT 1`,
+      )
+        .bind(runId)
+        .first<RunGroupRow>();
+    }
+    const detailGroupId = String(selectedRow?.id ?? selectedGroupId);
+    selectedTaskRuns = selectedRow
+      ? (
+          await env.DB.prepare(
+            `${runSelectSql(`WHERE ${RUN_GROUP_KEY_SQL} = ?`)}
+             ORDER BY started_at_ms ASC, task_key ASC`,
+          )
+            .bind(detailGroupId)
+            .all<RunRow>()
+        ).results.map(mapRun)
+      : [];
+    selectedRun = selectedRow
+      ? mapRunGroup(selectedRow, selectedTaskRuns)
+      : null;
   }
 
   const logRows = selectedRun
     ? await env.DB.prepare(
         `
           SELECT
-            id,
-            run_id AS runId,
-            task_key AS taskKey,
-            sequence,
-            level,
-            event,
-            message,
-            data_json AS dataJson,
-            created_at_ms AS createdAt
-          FROM scheduled_task_run_logs
-          WHERE run_id = ?
-          ORDER BY sequence ASC
-          LIMIT 300
+            logs.id,
+            logs.run_id AS runId,
+            logs.task_key AS taskKey,
+            logs.sequence,
+            logs.level,
+            logs.event,
+            logs.message,
+            logs.data_json AS dataJson,
+            logs.created_at_ms AS createdAt
+          FROM scheduled_task_run_logs logs
+          INNER JOIN scheduled_task_runs runs
+            ON runs.id = logs.run_id
+          WHERE ${RUN_GROUP_KEY_SQL.replaceAll("scheduled_", "runs.scheduled_")
+            .replaceAll("trigger_type", "runs.trigger_type")
+            .replaceAll("invocation_id", "runs.invocation_id")} = ?
+          ORDER BY runs.started_at_ms ASC, logs.sequence ASC
+          LIMIT 1000
         `,
       )
         .bind(selectedRun.id)

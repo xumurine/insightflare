@@ -8,6 +8,7 @@ import { integrateViews } from "@/lib/realtime/mock/site-curves";
 import {
   SCHEDULED_TASK_LOG_RETENTION_DAYS,
   type ScheduledTaskRun,
+  type ScheduledTaskRunGroup,
   type ScheduledTaskRunLog,
   type ScheduledTasksData,
   type ScheduledTaskStatus,
@@ -286,6 +287,83 @@ function demoScheduledLogs(run: ScheduledTaskRun): ScheduledTaskRunLog[] {
   return rows.sort((left, right) => left.sequence - right.sequence);
 }
 
+function demoRunGroupKey(run: ScheduledTaskRun): string {
+  return run.scheduledAt !== null
+    ? `${run.triggerType}:${run.scheduledAt}`
+    : run.invocationId;
+}
+
+function demoAggregateRunSummary(
+  runs: ScheduledTaskRun[],
+): Record<string, unknown> {
+  const summary: Record<string, unknown> = {};
+  for (const run of runs) {
+    for (const [key, value] of Object.entries(run.summary)) {
+      if (typeof value !== "number" || !Number.isFinite(value)) continue;
+      summary[key] = Number(summary[key] ?? 0) + value;
+    }
+  }
+  return summary;
+}
+
+function demoGroupStatus(runs: ScheduledTaskRun[]): ScheduledTaskStatus {
+  if (runs.some((run) => run.status === "failed")) return "failed";
+  if (runs.some((run) => run.status === "running")) return "running";
+  if (runs.some((run) => run.status === "partial")) return "partial";
+  const skipped = runs.filter((run) => run.status === "skipped").length;
+  if (skipped === runs.length) return "skipped";
+  if (skipped > 0) return "partial";
+  return "success";
+}
+
+function demoScheduledRunGroups(
+  runs: ScheduledTaskRun[],
+): ScheduledTaskRunGroup[] {
+  const grouped = new Map<string, ScheduledTaskRun[]>();
+  for (const run of runs) {
+    const key = demoRunGroupKey(run);
+    const groupRuns = grouped.get(key) ?? [];
+    groupRuns.push(run);
+    grouped.set(key, groupRuns);
+  }
+  return Array.from(grouped.entries())
+    .map(([id, groupRuns]) => {
+      const orderedRuns = [...groupRuns].sort(
+        (left, right) =>
+          left.startedAt - right.startedAt ||
+          left.taskKey.localeCompare(right.taskKey),
+      );
+      const startedAt = Math.min(...orderedRuns.map((run) => run.startedAt));
+      const finishedValues = orderedRuns.map((run) => run.finishedAt);
+      const finishedAt = finishedValues.some((value) => value === null)
+        ? null
+        : Math.max(...(finishedValues as number[]));
+      return {
+        id,
+        triggerType: orderedRuns[0]?.triggerType ?? "cron",
+        status: demoGroupStatus(orderedRuns),
+        scheduledAt: orderedRuns[0]?.scheduledAt ?? null,
+        startedAt,
+        finishedAt,
+        durationMs:
+          finishedAt === null ? null : Math.max(0, finishedAt - startedAt),
+        taskCount: orderedRuns.length,
+        successCount: countByStatus(orderedRuns, "success"),
+        partialCount: countByStatus(orderedRuns, "partial"),
+        failedCount: countByStatus(orderedRuns, "failed"),
+        skippedCount: countByStatus(orderedRuns, "skipped"),
+        runningCount: countByStatus(orderedRuns, "running"),
+        logsCount: orderedRuns.reduce(
+          (count, run) => count + demoScheduledLogs(run).length,
+          0,
+        ),
+        summary: demoAggregateRunSummary(orderedRuns),
+        runs: orderedRuns,
+      };
+    })
+    .sort((left, right) => right.startedAt - left.startedAt);
+}
+
 function countByStatus(runs: ScheduledTaskRun[], status: ScheduledTaskStatus) {
   return runs.filter((run) => run.status === status).length;
 }
@@ -332,7 +410,6 @@ export function generateDemoScheduledTasks(
 ): ScheduledTasksData {
   const now = Date.now();
   const allRuns = demoScheduledRuns(now);
-  const taskKey = String(params.taskKey || "");
   const status = String(params.status || "");
   const page = parseDemoScheduledTaskLimit(params.page, 1, 1, 10_000);
   const pageSize = parseDemoScheduledTaskLimit(
@@ -341,9 +418,9 @@ export function generateDemoScheduledTasks(
     1,
     100,
   );
-  const filteredRuns = allRuns
-    .filter((run) => !taskKey || run.taskKey === taskKey)
-    .filter((run) => !status || run.status === status);
+  const filteredRuns = demoScheduledRunGroups(allRuns).filter(
+    (run) => !status || run.status === status,
+  );
   const offset = (page - 1) * pageSize;
   const requestedRuns = filteredRuns.slice(offset, offset + pageSize + 1);
   const hasMore = requestedRuns.length > pageSize;
@@ -351,7 +428,11 @@ export function generateDemoScheduledTasks(
   const requestedRunId = String(params.runId || "");
   const selectedRun =
     (requestedRunId
-      ? (allRuns.find((run) => run.id === requestedRunId) ?? null)
+      ? (filteredRuns.find((run) => run.id === requestedRunId) ??
+        filteredRuns.find((group) =>
+          group.runs.some((run) => run.id === requestedRunId),
+        ) ??
+        null)
       : runs[0]) ?? null;
   const runs24h = allRuns.filter(
     (run) => run.startedAt >= now - 24 * 60 * 60 * 1000,
@@ -373,7 +454,9 @@ export function generateDemoScheduledTasks(
       nextPage: hasMore ? page + 1 : null,
     },
     selectedRun,
-    logs: selectedRun ? demoScheduledLogs(selectedRun) : [],
+    logs: selectedRun
+      ? selectedRun.runs.flatMap((run) => demoScheduledLogs(run))
+      : [],
     health: {
       totalRuns24h: runs24h.length,
       failedRuns24h: countByStatus(runs24h, "failed"),

@@ -19,7 +19,6 @@ import {
   RiArrowUpSLine,
   RiDatabase2Line,
   RiExternalLinkLine,
-  RiFileCopyLine,
   RiFileList3Line,
   RiFilter3Line,
   RiPulseLine,
@@ -28,7 +27,6 @@ import {
 } from "@remixicon/react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
-import { toast } from "sonner";
 
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
@@ -43,7 +41,7 @@ import {
   ReferrerMeta,
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
-import { JsonTree } from "@/components/dashboard/json-tree";
+import { JsonTreePanel } from "@/components/dashboard/json-tree";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { DetailDrawer } from "@/components/dashboard/site-pages/detail-drawer";
 import {
@@ -1383,17 +1381,6 @@ export function EventRecordDetailDrawer({
     openNestedDetail("session", nextSessionId);
   };
 
-  const copyPayloadJson = async () => {
-    if (!detail) return;
-    try {
-      await navigator.clipboard.writeText(
-        JSON.stringify(detail.eventData, null, 2),
-      );
-      toast.success(labels.copiedJson);
-    } catch {
-      toast.error(labels.copyJsonFailed);
-    }
-  };
   const sideDrawerOverlay =
     open && typeof document !== "undefined"
       ? createPortal(
@@ -1609,22 +1596,7 @@ export function EventRecordDetailDrawer({
 
                 <section className="space-y-3">
                   <h3 className="text-sm font-medium">{labels.payload}</h3>
-                  <div className="overflow-x-auto border bg-muted/20 p-3 font-mono text-xs leading-relaxed">
-                    <JsonTree value={detail.eventData} labels={labels} />
-                  </div>
-                  <div className="flex justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        void copyPayloadJson();
-                      }}
-                    >
-                      <RiFileCopyLine data-icon="inline-start" />
-                      {labels.copyJson}
-                    </Button>
-                  </div>
+                  <JsonTreePanel value={detail.eventData} labels={labels} />
                 </section>
               </div>
             )}

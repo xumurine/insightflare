@@ -17,6 +17,7 @@ import {
   RiSpeedUpLine,
   RiTeamLine,
   RiUser3Line,
+  RiUserSettingsLine,
   RiWindow2Line,
 } from "@remixicon/react";
 import type { PartialOptions } from "overlayscrollbars";
@@ -125,7 +126,7 @@ function getTeamSectionIcon(key: string) {
   if (key === "notifications") return RiNotification3Line;
   if (key === "public-links") return RiLinksLine;
   if (key === "api-keys") return RiKey2Line;
-  if (key === "settings") return RiSettings3Line;
+  if (key === "settings") return RiUserSettingsLine;
   return RiGlobalLine;
 }
 

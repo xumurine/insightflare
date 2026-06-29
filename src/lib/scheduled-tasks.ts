@@ -51,6 +51,25 @@ export interface ScheduledTaskRunLog {
   createdAt: number;
 }
 
+export interface ScheduledTaskRunGroup {
+  id: string;
+  triggerType: string;
+  status: ScheduledTaskStatus;
+  scheduledAt: number | null;
+  startedAt: number;
+  finishedAt: number | null;
+  durationMs: number | null;
+  taskCount: number;
+  successCount: number;
+  partialCount: number;
+  failedCount: number;
+  skippedCount: number;
+  runningCount: number;
+  logsCount: number;
+  summary: Record<string, unknown>;
+  runs: ScheduledTaskRun[];
+}
+
 export interface ScheduledTaskSummary {
   key: string;
   name: string;
@@ -92,9 +111,9 @@ export interface ScheduledTasksData {
   generatedAt: number;
   retentionDays: number;
   tasks: ScheduledTaskSummary[];
-  runs: ScheduledTaskRun[];
+  runs: ScheduledTaskRunGroup[];
   runsMeta: ScheduledTaskRunsMeta;
-  selectedRun: ScheduledTaskRun | null;
+  selectedRun: ScheduledTaskRunGroup | null;
   logs: ScheduledTaskRunLog[];
   health: ScheduledTasksHealth;
 }

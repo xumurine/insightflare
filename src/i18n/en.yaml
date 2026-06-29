@@ -1078,7 +1078,13 @@ managementPages:
     runHistoryTitle: Run history
     runHistoryDescription: Task runs retained over the last 30 days.
     noRuns: No run exists yet.
+    scheduledAt: Scheduled
     startedAt: Started
+    finishedAt: Finished
+    trigger: Trigger
+    tasks: Tasks
+    taskCount: Tasks
+    taskResult: Task result
     statusLabel: Status
     duration: Duration
     sites: Sites
@@ -1096,6 +1102,15 @@ managementPages:
       partial: Partial
       failed: Failed
       skipped: Skipped
+    taskDefinitions:
+      visit_hourly_rollup:
+        name: Hourly visit aggregation
+        description: Aggregates closed visit rows into hourly rollups for dashboard counters and trends.
+        schedule: Every hour
+      email_digest:
+        name: Scheduled email delivery
+        description: Reserved for scheduled team reports and alert digests. Not enabled yet.
+        schedule: Not configured
 adminUsers:
   title: User Management
   subtitle: Only system admins can create and manage dashboard users.

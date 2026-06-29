@@ -137,6 +137,10 @@ describe("scheduled task runner and admin API", () => {
     expect(response.status).toBe(200);
     expect(payload.ok).toBe(true);
     expect(payload.runs[0]).toMatchObject({
+      status: "success",
+      taskCount: 1,
+    });
+    expect(payload.runs[0]?.runs[0]).toMatchObject({
       taskKey: "visit_hourly_rollup",
       status: "success",
     });
@@ -215,13 +219,9 @@ describe("scheduled task runner and admin API", () => {
     const payload = (await response.json()) as ScheduledTasksData;
 
     expect(response.status).toBe(200);
-    expect(payload.runs.map((run) => run.id)).toEqual([
-      "run-5",
-      "run-6",
-      "run-7",
-      "run-8",
-      "run-9",
-    ]);
+    expect(payload.runs.map((run) => run.id)).toEqual(
+      [5, 6, 7, 8, 9].map((index) => `cron:${now - index * 60_000}`),
+    );
     expect(payload.runsMeta).toEqual({
       page: 2,
       pageSize: 5,
@@ -229,7 +229,8 @@ describe("scheduled task runner and admin API", () => {
       hasMore: true,
       nextPage: 3,
     });
-    expect(payload.selectedRun?.id).toBe("run-10");
+    expect(payload.selectedRun?.id).toBe(`cron:${now - 10 * 60_000}`);
+    expect(payload.selectedRun?.runs[0]?.id).toBe("run-10");
     d1.close();
   });
 

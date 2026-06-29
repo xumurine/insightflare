@@ -1043,7 +1043,13 @@ managementPages:
     runHistoryTitle: 运行历史
     runHistoryDescription: 最近 30 天内的任务运行记录。
     noRuns: 暂无运行记录。
+    scheduledAt: 计划时间
     startedAt: 开始时间
+    finishedAt: 结束时间
+    trigger: 触发
+    tasks: 任务
+    taskCount: 任务数
+    taskResult: 任务结果
     statusLabel: 状态
     duration: 耗时
     sites: 站点
@@ -1061,6 +1067,15 @@ managementPages:
       partial: 部分完成
       failed: 失败
       skipped: 已跳过
+    taskDefinitions:
+      visit_hourly_rollup:
+        name: 小时访问聚合
+        description: 将已关闭的访问记录聚合为小时汇总，用于仪表盘计数器和趋势。
+        schedule: 每小时
+      email_digest:
+        name: 计划邮件发送
+        description: 预留给团队报告和告警摘要邮件，当前尚未启用。
+        schedule: 未配置
 adminUsers:
   title: 用户管理
   subtitle: 仅系统管理员可创建和管理后台用户。

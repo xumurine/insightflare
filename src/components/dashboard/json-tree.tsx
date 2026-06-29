@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useState } from "react";
-import { RiArrowDownSLine } from "@remixicon/react";
+import { RiArrowDownSLine, RiFileCopyLine } from "@remixicon/react";
 import { toast } from "sonner";
 
 import { AutoResizer } from "@/components/ui/auto-resizer";
@@ -11,6 +11,9 @@ import { cn } from "@/lib/utils";
 export interface JsonTreeLabels {
   expandField: string;
   collapseField: string;
+  copyJson: string;
+  copiedJson: string;
+  copyJsonFailed: string;
   copyValue: string;
   copiedValue: string;
   copyValueFailed: string;
@@ -21,6 +24,12 @@ interface JsonTreeProps {
   labels: JsonTreeLabels;
   depth?: number;
   label?: ReactNode;
+}
+
+interface JsonTreePanelProps {
+  value: unknown;
+  labels: JsonTreeLabels;
+  className?: string;
 }
 
 const FIELD_TREE_CHILD_TRANSITION = {
@@ -208,6 +217,43 @@ export function JsonTree({ value, depth = 0, labels, label }: JsonTreeProps) {
           ) : null}
         </AutoTransition>
       </AutoResizer>
+    </div>
+  );
+}
+
+export function JsonTreePanel({
+  value,
+  labels,
+  className,
+}: JsonTreePanelProps) {
+  const copyJson = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(value, null, 2));
+      toast.success(labels.copiedJson);
+    } catch {
+      toast.error(labels.copyJsonFailed);
+    }
+  };
+
+  return (
+    <div
+      className={cn(
+        "relative overflow-x-auto border bg-muted/20 p-3 pr-10 font-mono text-xs leading-relaxed",
+        className,
+      )}
+    >
+      <button
+        type="button"
+        className="sticky top-0 right-0 float-right -mr-7 ml-2 inline-flex size-7 items-center justify-center border bg-background/90 text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+        onClick={() => {
+          void copyJson();
+        }}
+        title={labels.copyJson}
+        aria-label={labels.copyJson}
+      >
+        <RiFileCopyLine className="size-4" />
+      </button>
+      <JsonTree value={value} labels={labels} />
     </div>
   );
 }

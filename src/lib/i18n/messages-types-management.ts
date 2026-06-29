@@ -416,7 +416,13 @@ export interface AppManagementMessages {
       runHistoryTitle: string;
       runHistoryDescription: string;
       noRuns: string;
+      scheduledAt: string;
       startedAt: string;
+      finishedAt: string;
+      trigger: string;
+      tasks: string;
+      taskCount: string;
+      taskResult: string;
       statusLabel: string;
       duration: string;
       sites: string;
@@ -434,6 +440,18 @@ export interface AppManagementMessages {
         partial: string;
         failed: string;
         skipped: string;
+      };
+      taskDefinitions: {
+        visit_hourly_rollup: {
+          name: string;
+          description: string;
+          schedule: string;
+        };
+        email_digest: {
+          name: string;
+          description: string;
+          schedule: string;
+        };
       };
     };
   };
