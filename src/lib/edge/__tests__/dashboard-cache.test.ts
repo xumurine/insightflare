@@ -64,9 +64,7 @@ describe("edge dashboard cache wrapper", () => {
 
     expect(await response.text()).toBe("cached");
     expect(response.headers.get("x-edge-cache")).toBe("HIT");
-    expect(response.headers.get("cache-control")).toBe(
-      "public, max-age=30, s-maxage=30",
-    );
+    expect(response.headers.get("cache-control")).toBe("private, max-age=30");
     expect(response.headers.has("vary")).toBe(false);
     expect(match).toHaveBeenCalledTimes(1);
     expect((match.mock.calls[0]![0] as Request).url).toBe(
@@ -95,14 +93,15 @@ describe("edge dashboard cache wrapper", () => {
 
     expect(await response.text()).toBe("fresh");
     expect(response.headers.get("x-edge-cache")).toBe("MISS");
-    expect(response.headers.get("cache-control")).toBe(
-      "public, max-age=1, s-maxage=1",
-    );
+    expect(response.headers.get("cache-control")).toBe("private, max-age=1");
     expect(generate).toHaveBeenCalledTimes(1);
     expect(put).toHaveBeenCalledTimes(1);
     expect((put.mock.calls[0]![0] as Request).url).toBe(
       "https://example.test/api?a=1&z=9",
     );
+    expect(
+      (put.mock.calls[0]![1] as Response).headers.get("cache-control"),
+    ).toBe("public, max-age=1, s-maxage=1");
     expect(waitUntil).toHaveBeenCalledTimes(1);
   });
 

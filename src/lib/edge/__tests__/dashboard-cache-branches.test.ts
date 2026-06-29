@@ -43,9 +43,7 @@ describe("dashboard cache low branch coverage", () => {
     expect(response.status).toBe(202);
     expect(await response.text()).toBe("cached");
     expect(response.headers.get("x-edge-cache")).toBe("HIT");
-    expect(response.headers.get("cache-control")).toBe(
-      "public, max-age=5, s-maxage=5",
-    );
+    expect(response.headers.get("cache-control")).toBe("private, max-age=5");
     expect(match.mock.calls[0]![0].url).toBe("https://edge.test/query?a=1&b=2");
   });
 
@@ -68,6 +66,7 @@ describe("dashboard cache low branch coverage", () => {
     );
 
     expect(response.headers.get("x-edge-cache")).toBe("MISS");
+    expect(response.headers.get("cache-control")).toBe("private, max-age=2");
     expect(await response.text()).toBe("fresh");
     expect(put).toHaveBeenCalledTimes(1);
   });
