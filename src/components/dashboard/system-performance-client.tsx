@@ -221,7 +221,7 @@ function SystemMetricCell({
           {label}
         </p>
       </div>
-      <AutoResizer initial>
+      <AutoResizer initial className="mt-3">
         <AutoTransition
           transitionKey={contentKey}
           initial={false}
@@ -230,14 +230,14 @@ function SystemMetricCell({
           presenceMode="wait"
         >
           {loading ? (
-            <div key="loading" className="mt-3 inline-flex h-7 items-center">
+            <div key="loading" className="flex h-7 items-center">
               <Spinner className="size-5" />
             </div>
           ) : (
             <p
               key={value}
               className={cn(
-                "mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground tabular-nums",
+                "min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground tabular-nums",
                 tone === "warning" && "text-destructive",
                 tone === "good" && "text-primary",
               )}
