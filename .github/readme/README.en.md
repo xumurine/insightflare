@@ -138,6 +138,31 @@ After filling in the variables, wait about 3 minutes for the deployment to finis
 ![043](/.github/screenshot/043.webp)
 ![044](/.github/screenshot/044.webp)
 
+### Public Sharing System
+
+![045](/.github/screenshot/045.webp)
+![046](/.github/screenshot/046.webp)
+
+### Clearly Scoped API System
+
+![047](/.github/screenshot/047.webp)
+
+### Scheduled Tasks
+
+![048](/.github/screenshot/048.webp)
+
+### Deep Analysis for JSON Custom Events
+
+![049](/.github/screenshot/049.webp)
+![050](/.github/screenshot/050.webp)
+![051](/.github/screenshot/051.webp)
+![052](/.github/screenshot/052.webp)
+![053](/.github/screenshot/053.webp)
+
+### Analyze Visits and Events with Funnels
+
+![054](/.github/screenshot/054.webp)
+
 ---
 
 ## Advanced Configuration
