@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiKeyPrincipal } from "@/lib/edge/api-key-auth";
 import type * as ApiKeyAuthModule from "@/lib/edge/api-key-auth";
 import type { Env } from "@/lib/edge/types";
+import { apiNoCacheMiddleware } from "@/lib/hono/middleware/api-cache";
 import {
   authenticateApiKeyMiddleware,
   requireApiScopeMiddleware,
@@ -105,6 +106,17 @@ function createEnv(first: unknown = null): Env {
       })),
     },
   } as unknown as Env;
+}
+
+function responseWithThrowingHeaderSet(): Response {
+  const response = new Response("upgraded");
+  const headers = new Headers(response.headers);
+  const set = vi.spyOn(headers, "set").mockImplementation(() => {
+    throw new TypeError("Can't modify immutable headers.");
+  });
+  Object.defineProperty(response, "headers", { value: headers });
+  set.mockClear();
+  return response;
 }
 
 describe("Hono middleware foundation", () => {
@@ -613,5 +625,21 @@ describe("Hono middleware foundation", () => {
       expect.any(Function),
       { ttlSeconds: 30 },
     );
+  });
+
+  it("does not mutate realtime websocket response headers", async () => {
+    const app = createApp(apiNoCacheMiddleware(), () =>
+      responseWithThrowingHeaderSet(),
+    );
+
+    const response = await app.fetch(
+      request("/api/private/realtime/ws?siteId=site-1", {
+        headers: { upgrade: "websocket" },
+      }),
+      createEnv(),
+      ctx,
+    );
+
+    await expect(response.text()).resolves.toBe("upgraded");
   });
 });
