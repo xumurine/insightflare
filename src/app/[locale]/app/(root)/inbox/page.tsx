@@ -1,5 +1,4 @@
 import { NotificationCenterClient } from "@/components/dashboard/notification-center-client";
-import { RootDashboardShell } from "@/components/dashboard/root-dashboard-shell";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 
@@ -25,12 +24,6 @@ export default async function InboxPage({ params }: InboxPageProps) {
   const messages = getMessages(resolvedLocale);
 
   return (
-    <RootDashboardShell
-      locale={resolvedLocale}
-      messages={messages}
-      pathname={`/${resolvedLocale}/app/inbox`}
-    >
-      <NotificationCenterClient locale={resolvedLocale} messages={messages} />
-    </RootDashboardShell>
+    <NotificationCenterClient locale={resolvedLocale} messages={messages} />
   );
 }

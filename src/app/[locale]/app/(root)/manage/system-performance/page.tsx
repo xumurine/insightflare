@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 
-import { RootDashboardShell } from "@/components/dashboard/root-dashboard-shell";
 import { SystemPerformanceClient } from "@/components/dashboard/system-performance-client";
 import { getDashboardProfile } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
@@ -35,12 +34,6 @@ export default async function SystemPerformancePage({
   }
 
   return (
-    <RootDashboardShell
-      locale={resolvedLocale}
-      messages={messages}
-      pathname={`/${resolvedLocale}/app/manage/system-performance`}
-    >
-      <SystemPerformanceClient locale={resolvedLocale} messages={messages} />
-    </RootDashboardShell>
+    <SystemPerformanceClient locale={resolvedLocale} messages={messages} />
   );
 }

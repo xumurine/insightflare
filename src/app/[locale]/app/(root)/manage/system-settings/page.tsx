@@ -1,30 +1,29 @@
 import { notFound } from "next/navigation";
 
-import { AdminUsersManagementClient } from "@/components/dashboard/admin-users-management-client";
-import { RootDashboardShell } from "@/components/dashboard/root-dashboard-shell";
+import { NotificationEmailSettingsClient } from "@/components/dashboard/system-settings/notification-email-settings-client";
 import { getDashboardProfile } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 
-interface ManageUsersPageProps {
+interface SystemSettingsPageProps {
   params: Promise<{
     locale: string;
   }>;
 }
 
-export async function generateMetadata({ params }: ManageUsersPageProps) {
+export async function generateMetadata({ params }: SystemSettingsPageProps) {
   const { locale } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
 
   return {
-    title: messages.adminUsers.title,
+    title: messages.systemSettings.title,
   };
 }
 
-export default async function ManageUsersPage({
+export default async function SystemSettingsPage({
   params,
-}: ManageUsersPageProps) {
+}: SystemSettingsPageProps) {
   const { locale } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
@@ -35,16 +34,10 @@ export default async function ManageUsersPage({
   }
 
   return (
-    <RootDashboardShell
+    <NotificationEmailSettingsClient
       locale={resolvedLocale}
       messages={messages}
-      pathname={`/${resolvedLocale}/app/manage/users`}
-    >
-      <AdminUsersManagementClient
-        locale={resolvedLocale}
-        messages={messages}
-        currentUserId={profile.user.id}
-      />
-    </RootDashboardShell>
+      currentUserEmail={profile.user.email}
+    />
   );
 }

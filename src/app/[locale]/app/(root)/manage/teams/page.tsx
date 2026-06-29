@@ -1,30 +1,29 @@
 import { notFound } from "next/navigation";
 
-import { RootDashboardShell } from "@/components/dashboard/root-dashboard-shell";
-import { ScheduledTasksClient } from "@/components/dashboard/scheduled-tasks-client";
+import { AdminTeamsManagementClient } from "@/components/dashboard/admin-teams-management-client";
 import { getDashboardProfile } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 
-interface ScheduledTasksPageProps {
+interface ManageTeamsPageProps {
   params: Promise<{
     locale: string;
   }>;
 }
 
-export async function generateMetadata({ params }: ScheduledTasksPageProps) {
+export async function generateMetadata({ params }: ManageTeamsPageProps) {
   const { locale } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
 
   return {
-    title: messages.managementNav.scheduledTasks,
+    title: messages.adminTeams.title,
   };
 }
 
-export default async function ScheduledTasksPage({
+export default async function ManageTeamsPage({
   params,
-}: ScheduledTasksPageProps) {
+}: ManageTeamsPageProps) {
   const { locale } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
@@ -35,12 +34,6 @@ export default async function ScheduledTasksPage({
   }
 
   return (
-    <RootDashboardShell
-      locale={resolvedLocale}
-      messages={messages}
-      pathname={`/${resolvedLocale}/app/manage/scheduled-tasks`}
-    >
-      <ScheduledTasksClient locale={resolvedLocale} messages={messages} />
-    </RootDashboardShell>
+    <AdminTeamsManagementClient locale={resolvedLocale} messages={messages} />
   );
 }

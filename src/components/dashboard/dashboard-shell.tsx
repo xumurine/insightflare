@@ -577,9 +577,7 @@ export function DashboardShell({
               <AutoTransition
                 type="slideDown"
                 duration={0.18}
-                transitionKey={
-                  activeTeamSlug ? `team-select:${activeTeamSlug}` : "empty"
-                }
+                transitionKey={activeTeamSlug ? "team-select" : "empty"}
                 presenceMode="sync"
               >
                 {activeTeamSlug ? (

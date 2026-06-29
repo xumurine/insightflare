@@ -1,8 +1,6 @@
 import Link from "next/link";
 
 import { LogoutActionButton } from "@/components/auth/logout-action-button";
-import { PageHeading } from "@/components/dashboard/page-heading";
-import { RootDashboardShell } from "@/components/dashboard/root-dashboard-shell";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -37,34 +35,28 @@ export default async function AppRootPage({ params }: AppRootPageProps) {
 
   if (context && context.teams.length > 0) {
     return (
-      <RootDashboardShell
-        locale={resolvedLocale}
-        messages={t}
-        pathname={`/${resolvedLocale}/app`}
-      >
-        <div className="space-y-4">
-          <PageHeading
-            title={t.teamEntry.title}
-            subtitle={t.teamEntry.description}
-          />
-          <Card>
-            <CardContent className="space-y-2 p-4">
-              {context.teams.map((team) => (
-                <Button
-                  key={team.id}
-                  asChild
-                  variant="outline"
-                  className="w-full justify-between"
-                >
-                  <Link href={`/${resolvedLocale}/app/${team.slug}`}>
-                    <span className="truncate">{team.name}</span>
-                  </Link>
-                </Button>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-      </RootDashboardShell>
+      <div className="grid min-h-[calc(100svh-6rem)] place-items-center">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>{t.teamEntry.title}</CardTitle>
+            <CardDescription>{t.teamEntry.description}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 p-4">
+            {context.teams.map((team) => (
+              <Button
+                key={team.id}
+                asChild
+                variant="outline"
+                className="w-full justify-between"
+              >
+                <Link href={`/${resolvedLocale}/app/${team.slug}`}>
+                  <span className="truncate">{team.name}</span>
+                </Link>
+              </Button>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 

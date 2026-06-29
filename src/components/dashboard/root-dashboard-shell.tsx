@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { notFound } from "next/navigation";
 
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { getDashboardRootContext } from "@/lib/dashboard/server";
@@ -23,7 +22,7 @@ export async function RootDashboardShell({
   const context = await getDashboardRootContext();
 
   if (!context) {
-    notFound();
+    return <>{children}</>;
   }
 
   return (

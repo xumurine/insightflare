@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 
 import { AccountSettingsClient } from "@/components/dashboard/account-settings-client";
-import { RootDashboardShell } from "@/components/dashboard/root-dashboard-shell";
 import { getDashboardProfile } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
@@ -35,16 +34,10 @@ export default async function AccountSettingsPage({
   }
 
   return (
-    <RootDashboardShell
+    <AccountSettingsClient
       locale={resolvedLocale}
       messages={messages}
-      pathname={`/${resolvedLocale}/app/account`}
-    >
-      <AccountSettingsClient
-        locale={resolvedLocale}
-        messages={messages}
-        user={profile.user}
-      />
-    </RootDashboardShell>
+      user={profile.user}
+    />
   );
 }
