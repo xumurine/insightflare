@@ -5,7 +5,9 @@
   "type": "module",
   "packageManager": "npm@11.15.0",
   "scripts": {
-    "dev": "npm run build:sdk && next dev --port 3000",
+    "dev": "npm run build:sdk && tsx scripts/dev.ts",
+    "dev:next": "next dev --port 3000",
+    "dev:worker": "wrangler dev --config wrangler.dev.toml --port 8787",
     "build:sdk": "tsx scripts/build-tracker-sdk.ts",
     "generate:openapi": "tsx scripts/generate-openapi.ts",
     "generate:skills": "tsx scripts/generate-skills.ts",

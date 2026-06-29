@@ -307,18 +307,19 @@ Set `NEXT_PUBLIC_DEMO_MODE=1` to make the development server automatically enabl
 
 ## Common Commands
 
-| Command                           | Purpose                                     |
-| --------------------------------- | ------------------------------------------- |
-| `npm run dev`                     | Local dashboard development                 |
-| `npm run check`                   | Run typecheck + lint + format + i18n + tests + spec checks |
-| `npm run typecheck`               | TypeScript type checking                    |
-| `npm run lint` / `lint:fix`       | ESLint                                      |
-| `npm run format` / `format:check` | Prettier                                    |
-| `npm run check:i18n`              | Validate translation key completeness       |
-| `npm run d1:migrate:local`        | Local D1 migration                          |
-| `npm run d1:migrate:remote`       | Remote D1 migration                         |
-| `npm run d1:migration:create`     | Create a new migration file                 |
-| `npm run cf:tail`                 | View online Worker logs                     |
+| Command                           | Purpose                                                            |
+| --------------------------------- | ------------------------------------------------------------------ |
+| `npm run dev`                     | Local Worker + dashboard development (use `http://127.0.0.1:8787`) |
+| `npm run dev:next`                | Start only the Next.js UI dev server                               |
+| `npm run check`                   | Run typecheck + lint + format + i18n + tests + spec checks         |
+| `npm run typecheck`               | TypeScript type checking                                           |
+| `npm run lint` / `lint:fix`       | ESLint                                                             |
+| `npm run format` / `format:check` | Prettier                                                           |
+| `npm run check:i18n`              | Validate translation key completeness                              |
+| `npm run d1:migrate:local`        | Local D1 migration                                                 |
+| `npm run d1:migrate:remote`       | Remote D1 migration                                                |
+| `npm run d1:migration:create`     | Create a new migration file                                        |
+| `npm run cf:tail`                 | View online Worker logs                                            |
 
 ---
 
