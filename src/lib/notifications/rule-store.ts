@@ -374,6 +374,7 @@ export async function listDueNotificationRules(
       SELECT ${RULE_SELECT}
       FROM notification_rules
       WHERE enabled = 1
+        AND type != 'test'
         AND next_run_at IS NOT NULL
         AND next_run_at <= ?
         AND (cooldown_until IS NULL OR cooldown_until <= ?)
@@ -392,6 +393,7 @@ export async function advanceNotificationRuleSchedule(
     rule: NotificationRule;
     checkedAt: number;
     triggeredAt?: number | null;
+    cooldownUntil?: number | null;
   },
 ): Promise<void> {
   const nextRunAt = computeNextNotificationRunAt(
@@ -405,6 +407,11 @@ export async function advanceNotificationRuleSchedule(
         last_checked_at = ?,
         last_triggered_at = COALESCE(?, last_triggered_at),
         next_run_at = ?,
+        cooldown_until = CASE
+          WHEN ? IS NOT NULL THEN ?
+          WHEN cooldown_until IS NOT NULL AND cooldown_until <= ? THEN NULL
+          ELSE cooldown_until
+        END,
         updated_at = ?
       WHERE id = ?
     `,
@@ -413,6 +420,9 @@ export async function advanceNotificationRuleSchedule(
       input.checkedAt,
       input.triggeredAt ?? null,
       nextRunAt,
+      input.cooldownUntil ?? null,
+      input.cooldownUntil ?? null,
+      input.checkedAt,
       input.checkedAt,
       input.rule.id,
     )

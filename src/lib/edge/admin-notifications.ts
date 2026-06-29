@@ -13,6 +13,10 @@ import {
   type NotificationTaskSummary,
 } from "@/lib/notifications/notification-task";
 import {
+  getUserNotificationPreferences,
+  updateUserNotificationPreferences,
+} from "@/lib/notifications/preferences";
+import {
   createNotificationRule,
   deleteNotificationRule,
   listNotificationRules,
@@ -142,17 +146,26 @@ export async function handleNotifications(
   const requestedUserId = url.searchParams.get("userId")?.trim() || "";
   const teamId = url.searchParams.get("teamId")?.trim() || "";
   const siteId = url.searchParams.get("siteId")?.trim() || "";
+  const type = url.searchParams.get("type")?.trim() || "";
+  const severity = url.searchParams.get("severity")?.trim() || "";
+  const unread = url.searchParams.get("unread") === "1";
   const beforeRaw = Math.trunc(Number(url.searchParams.get("before") ?? 0));
   const before =
     Number.isFinite(beforeRaw) && beforeRaw > 0 ? beforeRaw : undefined;
   const limit = parseLimit(url);
 
   try {
-    if (teamId && (actor.isAdmin || (await canReadTeam(env, actor, teamId)))) {
+    if (
+      teamId &&
+      (actor.isAdmin || (await canManageTeam(env, actor, teamId)))
+    ) {
       const messages = await listNotificationMessagesForTeam(env, {
         teamId,
         userId: requestedUserId || undefined,
         siteId: siteId || undefined,
+        type: type || undefined,
+        severity: severity || undefined,
+        unread,
         limit,
         before,
       });
@@ -173,6 +186,9 @@ export async function handleNotifications(
       userId,
       teamId: teamId || undefined,
       siteId: siteId || undefined,
+      type: type || undefined,
+      severity: severity || undefined,
+      unread,
       limit,
       before,
     });
@@ -189,6 +205,27 @@ export async function handleNotifications(
   } catch (error) {
     return mapError(error, req);
   }
+}
+
+export async function handleNotificationPreferences(
+  req: Request,
+  env: Env,
+): Promise<Response> {
+  const actor = await requireActor(env, req);
+  if (actor instanceof Response) return actor;
+  if (req.method === "GET") {
+    const preferences = await getUserNotificationPreferences(
+      env,
+      actor.user.id,
+    );
+    return jsonResponseFor(req, { ok: true, data: preferences });
+  }
+  if (req.method !== "PATCH") return na(req);
+  const preferences = await updateUserNotificationPreferences(env, {
+    userId: actor.user.id,
+    preferences: await parseJson(req),
+  });
+  return jsonResponseFor(req, { ok: true, data: preferences });
 }
 
 export async function handleNotificationRead(

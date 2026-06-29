@@ -5,6 +5,7 @@ import {
   handleNotificationEmailTestAdmin,
 } from "./admin-notification-email";
 import {
+  handleNotificationPreferences,
   handleNotificationRead,
   handleNotificationRulesAdmin,
   handleNotifications,
@@ -64,6 +65,8 @@ export async function handlePrivateAdmin(
     return request.method === "PATCH"
       ? handleNotificationsReadAll(request, env)
       : handleNotifications(request, env, url);
+  if (p === "/api/private/notifications/preferences")
+    return handleNotificationPreferences(request, env);
   if (p.startsWith("/api/private/notifications/")) {
     const messageId = decodeURIComponent(
       p.slice("/api/private/notifications/".length),

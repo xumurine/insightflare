@@ -22,7 +22,7 @@ import { DEFAULT_EDGE_BASE_URL } from "./constants";
 
 export type * from "@/lib/edge-client-types";
 
-type HttpMethod = "GET" | "POST" | "PATCH";
+type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
 export interface PublicSiteData {
   id: string;
@@ -577,8 +577,12 @@ export async function fetchNotificationEmailConfig(): Promise<PublicNotification
 export async function createNotificationRule(input: {
   teamId: string;
   name: string;
+  siteId?: string | null;
+  description?: string;
   type?: string;
+  enabled?: boolean;
   schedule?: Record<string, unknown>;
+  condition?: Record<string, unknown>;
   recipient?: Record<string, unknown>;
 }): Promise<NotificationRuleData> {
   const res = await fetchEdgeJson<{
@@ -592,8 +596,49 @@ export async function createNotificationRule(input: {
   return res.data;
 }
 
+export async function updateNotificationRule(input: {
+  ruleId: string;
+  teamId?: string;
+  siteId?: string | null;
+  name?: string;
+  description?: string;
+  type?: string;
+  enabled?: boolean;
+  schedule?: Record<string, unknown>;
+  condition?: Record<string, unknown>;
+  recipient?: Record<string, unknown>;
+}): Promise<NotificationRuleData> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: NotificationRuleData;
+  }>({
+    method: "PATCH",
+    path: "/api/private/admin/notification-rules",
+    body: input,
+  });
+  return res.data;
+}
+
+export async function deleteNotificationRule(input: {
+  ruleId: string;
+}): Promise<{ id: string; removed: boolean }> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: { id: string; removed: boolean };
+  }>({
+    method: "DELETE",
+    path: "/api/private/admin/notification-rules",
+    params: { id: input.ruleId },
+  });
+  return res.data;
+}
+
 export async function fetchNotificationMessages(input: {
   teamId?: string;
+  siteId?: string;
+  type?: string;
+  severity?: string;
+  unread?: boolean;
   limit?: number;
 }): Promise<{
   messages: NotificationMessageData[];
@@ -606,6 +651,10 @@ export async function fetchNotificationMessages(input: {
     path: "/api/private/notifications",
     params: {
       ...(input.teamId ? { teamId: input.teamId } : {}),
+      ...(input.siteId ? { siteId: input.siteId } : {}),
+      ...(input.type ? { type: input.type } : {}),
+      ...(input.severity ? { severity: input.severity } : {}),
+      ...(input.unread ? { unread: 1 } : {}),
       ...(input.limit ? { limit: input.limit } : {}),
     },
   });
@@ -651,6 +700,47 @@ export async function markAllNotificationMessagesRead(input: {
     method: "PATCH",
     path: "/api/private/notifications",
     body: { ...input, read: true },
+  });
+  return res.data;
+}
+
+export interface NotificationPreferencesData {
+  inApp: boolean;
+  email: boolean;
+  webPush: boolean;
+  attention: {
+    reportsCreateUnread: boolean;
+    milestonesCreateUnread: boolean;
+    alertsCreateUnread: boolean;
+  };
+}
+
+export type NotificationPreferencesUpdate = Partial<
+  Omit<NotificationPreferencesData, "attention">
+> & {
+  attention?: Partial<NotificationPreferencesData["attention"]>;
+};
+
+export async function fetchNotificationPreferences(): Promise<NotificationPreferencesData> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: NotificationPreferencesData;
+  }>({
+    path: "/api/private/notifications/preferences",
+  });
+  return res.data;
+}
+
+export async function updateNotificationPreferences(
+  input: NotificationPreferencesUpdate,
+): Promise<NotificationPreferencesData> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: NotificationPreferencesData;
+  }>({
+    method: "PATCH",
+    path: "/api/private/notifications/preferences",
+    body: input,
   });
   return res.data;
 }

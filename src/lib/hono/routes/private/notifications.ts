@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 
 import {
+  handleNotificationPreferences,
   handleNotificationRead,
   handleNotifications,
   handleNotificationsReadAll,
@@ -13,6 +14,12 @@ export const privateNotificationRoutes = new Hono<AppEnv>();
 
 privateNotificationRoutes.get("/", (c) =>
   handleNotifications(c.req.raw, c.env, requestUrl(c)),
+);
+privateNotificationRoutes.get("/preferences", (c) =>
+  handleNotificationPreferences(c.req.raw, c.env),
+);
+privateNotificationRoutes.patch("/preferences", (c) =>
+  handleNotificationPreferences(c.req.raw, c.env),
 );
 privateNotificationRoutes.patch("/:messageId", (c) =>
   handleNotificationRead(c.req.raw, c.env, c.req.param("messageId").trim()),

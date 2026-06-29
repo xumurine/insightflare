@@ -1,3 +1,6 @@
+import type { Env } from "@/lib/edge/types";
+
+import { safeJsonStringify } from "./json";
 import type {
   NotificationChannel,
   NotificationMessageType,
@@ -69,6 +72,62 @@ export function normalizeNotificationPreferences(
       ),
     },
   };
+}
+
+export function mergeNotificationPreferencesUpdate(
+  currentInput: unknown,
+  updateInput: unknown,
+): NotificationPreferences {
+  const current = normalizeNotificationPreferences(currentInput);
+  if (!isRecord(updateInput)) return current;
+  const attention = isRecord(updateInput.attention)
+    ? updateInput.attention
+    : {};
+  return {
+    inApp: true,
+    email: booleanOr(updateInput.email, current.email),
+    webPush: current.webPush,
+    attention: {
+      reportsCreateUnread: booleanOr(
+        attention.reportsCreateUnread,
+        current.attention.reportsCreateUnread,
+      ),
+      milestonesCreateUnread: booleanOr(
+        attention.milestonesCreateUnread,
+        current.attention.milestonesCreateUnread,
+      ),
+      alertsCreateUnread: booleanOr(
+        attention.alertsCreateUnread,
+        current.attention.alertsCreateUnread,
+      ),
+    },
+  };
+}
+
+export async function getUserNotificationPreferences(
+  env: Env,
+  userId: string,
+): Promise<NotificationPreferences> {
+  const row = await env.DB.prepare(
+    "SELECT notification_preferences_json AS preferencesJson FROM users WHERE id = ? LIMIT 1",
+  )
+    .bind(userId)
+    .first<{ preferencesJson: string | null }>();
+  return normalizeNotificationPreferences(row?.preferencesJson);
+}
+
+export async function updateUserNotificationPreferences(
+  env: Env,
+  input: { userId: string; preferences: unknown },
+): Promise<NotificationPreferences> {
+  const current = await getUserNotificationPreferences(env, input.userId);
+  const next = mergeNotificationPreferencesUpdate(current, input.preferences);
+  await env.DB.prepare(
+    "UPDATE users SET notification_preferences_json = ?, updated_at = unixepoch() WHERE id = ?",
+  )
+    .bind(safeJsonStringify(next), input.userId)
+    .run();
+  return next;
 }
 
 export function isNotificationChannelEnabled(

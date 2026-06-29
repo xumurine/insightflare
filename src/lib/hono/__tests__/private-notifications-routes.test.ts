@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  handleNotificationPreferences,
   handleNotificationRead,
   handleNotifications,
   handleNotificationsReadAll,
@@ -13,6 +14,7 @@ import type { AppEnv } from "@/lib/hono/types";
 vi.mock("@/lib/edge/admin-notifications", () => ({
   handleNotificationRead: vi.fn(),
   handleNotifications: vi.fn(),
+  handleNotificationPreferences: vi.fn(),
   handleNotificationsReadAll: vi.fn(),
 }));
 
@@ -41,6 +43,9 @@ describe("Hono private notification routes", () => {
     vi.clearAllMocks();
     vi.mocked(handleNotifications).mockResolvedValue(new Response("ok"));
     vi.mocked(handleNotificationRead).mockResolvedValue(new Response("ok"));
+    vi.mocked(handleNotificationPreferences).mockResolvedValue(
+      new Response("ok"),
+    );
     vi.mocked(handleNotificationsReadAll).mockResolvedValue(new Response("ok"));
   });
 
@@ -98,6 +103,26 @@ describe("Hono private notification routes", () => {
       expect.any(Request),
       env,
     );
+  });
+
+  it("routes notification preference requests to the preference handler", async () => {
+    const app = createApp();
+
+    const response = await app.fetch(
+      request("/api/private/notifications/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ email: false }),
+      }),
+      env as never,
+      ctx,
+    );
+
+    expect(response.status).toBe(200);
+    expect(handleNotificationPreferences).toHaveBeenCalledWith(
+      expect.any(Request),
+      env,
+    );
+    expect(handleNotificationRead).not.toHaveBeenCalled();
   });
 
   it("returns not found for unsupported nested notification paths", async () => {

@@ -11,6 +11,8 @@ import {
   RiMailUnreadLine,
   RiNotification3Line,
   RiRefreshLine,
+  RiSave3Line,
+  RiSettings3Line,
 } from "@remixicon/react";
 import { toast } from "sonner";
 
@@ -20,13 +22,26 @@ import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { shortDateTime } from "@/lib/dashboard/format";
 import {
   fetchNotificationMessages,
+  fetchNotificationPreferences,
   markAllNotificationMessagesRead,
   markNotificationMessageRead,
   type NotificationMessageData,
+  type NotificationPreferencesData,
+  type NotificationPreferencesUpdate,
+  updateNotificationPreferences,
 } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -47,6 +62,21 @@ const NOTIFICATION_TABS: readonly NotificationTab[] = [
   "attention",
   "report",
 ];
+
+const MESSAGE_TYPE_FILTERS = [
+  "all",
+  "report",
+  "threshold",
+  "health",
+  "test",
+] as const;
+const SEVERITY_FILTERS = [
+  "all",
+  "info",
+  "success",
+  "warning",
+  "critical",
+] as const;
 
 function severityVariant(
   severity: string,
@@ -274,22 +304,31 @@ export function NotificationCenterClient({
   const [messagesList, setMessagesList] = useState<NotificationMessageData[]>(
     [],
   );
+  const [preferences, setPreferences] =
+    useState<NotificationPreferencesData | null>(null);
   const [unreadAttentionCount, setUnreadAttentionCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [preferencesSaving, setPreferencesSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<NotificationTab>("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [severityFilter, setSeverityFilter] = useState("all");
   const [updatingId, setUpdatingId] = useState("");
   const [markingAll, setMarkingAll] = useState(false);
 
   const filteredMessages = useMemo(() => {
-    if (activeTab === "all") return messagesList;
-    if (activeTab === "unread") return messagesList.filter(isUnread);
-    if (activeTab === "attention") {
-      return messagesList.filter(
-        (item) => item.requiresAttention && isUnread(item),
-      );
-    }
-    return messagesList.filter(isReport);
-  }, [activeTab, messagesList]);
+    return messagesList.filter((item) => {
+      if (typeFilter !== "all" && item.type !== typeFilter) return false;
+      if (severityFilter !== "all" && item.severity !== severityFilter) {
+        return false;
+      }
+      if (activeTab === "unread") return isUnread(item);
+      if (activeTab === "attention") {
+        return item.requiresAttention && isUnread(item);
+      }
+      if (activeTab === "report") return isReport(item);
+      return true;
+    });
+  }, [activeTab, messagesList, severityFilter, typeFilter]);
 
   const importantMessages = useMemo(
     () => filteredMessages.filter((item) => !isReport(item)),
@@ -313,9 +352,13 @@ export function NotificationCenterClient({
   async function loadMessages() {
     setLoading(true);
     try {
-      const data = await fetchNotificationMessages({ teamId, limit: 80 });
+      const [data, nextPreferences] = await Promise.all([
+        fetchNotificationMessages({ teamId, limit: 80 }),
+        fetchNotificationPreferences(),
+      ]);
       setMessagesList(data.messages);
       setUnreadAttentionCount(data.unreadAttentionCount);
+      setPreferences(nextPreferences);
     } catch {
       toast.error(copy.loadFailed);
     } finally {
@@ -358,6 +401,29 @@ export function NotificationCenterClient({
       toast.error(copy.markAllReadFailed);
     } finally {
       setMarkingAll(false);
+    }
+  }
+
+  async function savePreferences(patch: NotificationPreferencesUpdate) {
+    if (!preferences || preferencesSaving) return;
+    const next: NotificationPreferencesData = {
+      ...preferences,
+      ...patch,
+      attention: {
+        ...preferences.attention,
+        ...(patch.attention ?? {}),
+      },
+    };
+    setPreferences(next);
+    setPreferencesSaving(true);
+    try {
+      setPreferences(await updateNotificationPreferences(next));
+      toast.success("Notification preferences saved.");
+    } catch {
+      setPreferences(preferences);
+      toast.error("Failed to save notification preferences.");
+    } finally {
+      setPreferencesSaving(false);
     }
   }
 
@@ -418,6 +484,141 @@ export function NotificationCenterClient({
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardContent className="grid gap-4 p-4 md:grid-cols-[1fr_220px_220px] md:items-end">
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <RiSettings3Line className="size-4 text-muted-foreground" />
+              Filters
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Narrow the list by notification type or severity.
+            </p>
+          </div>
+          <Field>
+            <FieldLabel>Type</FieldLabel>
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MESSAGE_TYPE_FILTERS.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type === "all"
+                      ? "All types"
+                      : dictionaryLabel(copy.messageTypes, type)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel>Severity</FieldLabel>
+            <Select value={severityFilter} onValueChange={setSeverityFilter}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SEVERITY_FILTERS.map((severity) => (
+                  <SelectItem key={severity} value={severity}>
+                    {severity === "all"
+                      ? "All severities"
+                      : dictionaryLabel(copy.severities, severity)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        </CardContent>
+      </Card>
+
+      {preferences ? (
+        <Card>
+          <CardContent className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="space-y-1 md:col-span-2 xl:col-span-4">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                {preferencesSaving ? (
+                  <Spinner className="size-4" />
+                ) : (
+                  <RiSave3Line className="size-4 text-muted-foreground" />
+                )}
+                Notification preferences
+              </div>
+              <p className="text-xs text-muted-foreground">
+                These settings control email delivery and which messages remain
+                unread for attention.
+              </p>
+            </div>
+            <Field>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={preferences.email}
+                  disabled={preferencesSaving}
+                  onCheckedChange={(checked) =>
+                    void savePreferences({ email: !!checked })
+                  }
+                />
+                <FieldLabel>Email notifications</FieldLabel>
+              </div>
+              <FieldDescription>
+                Send email when a rule triggers.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={preferences.attention.reportsCreateUnread}
+                  disabled={preferencesSaving}
+                  onCheckedChange={(checked) =>
+                    void savePreferences({
+                      attention: { reportsCreateUnread: !!checked },
+                    })
+                  }
+                />
+                <FieldLabel>Reports unread</FieldLabel>
+              </div>
+              <FieldDescription>
+                Keep reports unread after creation.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={preferences.attention.milestonesCreateUnread}
+                  disabled={preferencesSaving}
+                  onCheckedChange={(checked) =>
+                    void savePreferences({
+                      attention: { milestonesCreateUnread: !!checked },
+                    })
+                  }
+                />
+                <FieldLabel>Milestones unread</FieldLabel>
+              </div>
+              <FieldDescription>
+                Reserve unread state for milestones.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={preferences.attention.alertsCreateUnread}
+                  disabled={preferencesSaving}
+                  onCheckedChange={(checked) =>
+                    void savePreferences({
+                      attention: { alertsCreateUnread: !!checked },
+                    })
+                  }
+                />
+                <FieldLabel>Alerts unread</FieldLabel>
+              </div>
+              <FieldDescription>
+                Keep threshold and health alerts unread.
+              </FieldDescription>
+            </Field>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <AutoResizer initial>
         <AutoTransition

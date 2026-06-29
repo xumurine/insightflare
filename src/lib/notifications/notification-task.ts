@@ -5,6 +5,7 @@ import type {
 import type { Env } from "@/lib/edge/types";
 
 import { deliverNotificationMessage } from "./delivery";
+import { evaluateNotificationRule } from "./evaluator";
 import {
   createNotificationMessage,
   type NotificationMessage,
@@ -16,7 +17,6 @@ import {
 import {
   advanceNotificationRuleSchedule,
   listDueNotificationRules,
-  type NotificationRule,
   resolveNotificationRecipients,
 } from "./rule-store";
 
@@ -25,6 +25,8 @@ export const NOTIFICATION_TASK_NAME = "Notification dispatch";
 
 export interface NotificationTaskSummary {
   rulesScanned: number;
+  rulesChecked: number;
+  rulesSkipped: number;
   rulesTriggered: number;
   messagesCreated: number;
   inAppCreated: number;
@@ -33,13 +35,6 @@ export interface NotificationTaskSummary {
   emailFailed: number;
   skippedByPreference: number;
   durationMs: number;
-}
-
-interface NotificationTemplate {
-  title: string;
-  summary: string;
-  bodyText: string;
-  requiresAttention: boolean;
 }
 
 function testTemplate(): NotificationTemplate {
@@ -52,26 +47,18 @@ function testTemplate(): NotificationTemplate {
   };
 }
 
-function templateForRule(rule: NotificationRule): NotificationTemplate | null {
-  if (rule.type === "test") return testTemplate();
-  if (
-    rule.type === "report" &&
-    String(rule.condition.reportType ?? "") === "daily"
-  ) {
-    return {
-      title: "InsightFlare daily report",
-      summary: "Your daily report is ready.",
-      bodyText:
-        "A minimal daily report notification was generated. Detailed report content will be expanded in a later release.",
-      requiresAttention: false,
-    };
-  }
-  return null;
+interface NotificationTemplate {
+  title: string;
+  summary: string;
+  bodyText: string;
+  requiresAttention: boolean;
 }
 
 function emptySummary(startedAt: number): NotificationTaskSummary {
   return {
     rulesScanned: 0,
+    rulesChecked: 0,
+    rulesSkipped: 0,
     rulesTriggered: 0,
     messagesCreated: 0,
     inAppCreated: 0,
@@ -132,7 +119,7 @@ export async function runNotificationTick(
     const checkedAt = Math.floor(Date.now() / 1000);
     try {
       await logger.info(
-        "notification_rule_evaluated",
+        "notification_rule_checked",
         "Evaluating notification rule",
         {
           ruleId: rule.id,
@@ -141,12 +128,35 @@ export async function runNotificationTick(
           type: rule.type,
         },
       );
-      const template = templateForRule(rule);
-      if (!template) {
+      const evaluation = await evaluateNotificationRule(env, rule, checkedAt);
+      summary.rulesChecked += 1;
+
+      if (evaluation.status === "skipped") {
+        summary.rulesSkipped += 1;
         await logger.info(
           "notification_rule_skipped",
-          "Notification rule type is not implemented in this release",
-          { ruleId: rule.id, type: rule.type },
+          "Notification rule was skipped",
+          {
+            ruleId: rule.id,
+            type: rule.type,
+            reason: evaluation.reason,
+            ...(evaluation.data ?? {}),
+          },
+        );
+        await advanceNotificationRuleSchedule(env, { rule, checkedAt });
+        continue;
+      }
+
+      if (evaluation.status === "checked") {
+        await logger.info(
+          "notification_rule_not_triggered",
+          "Notification rule was checked and did not trigger",
+          {
+            ruleId: rule.id,
+            type: rule.type,
+            summary: evaluation.summary,
+            ...(evaluation.data ?? {}),
+          },
         );
         await advanceNotificationRuleSchedule(env, { rule, checkedAt });
         continue;
@@ -154,6 +164,7 @@ export async function runNotificationTick(
 
       const recipients = await resolveNotificationRecipients(env, rule);
       if (recipients.length === 0) {
+        summary.rulesSkipped += 1;
         await logger.warn(
           "notification_rule_skipped",
           "Notification rule has no recipients",
@@ -165,6 +176,7 @@ export async function runNotificationTick(
 
       const batchId = crypto.randomUUID();
       summary.rulesTriggered += 1;
+      const draft = evaluation.message;
       await logger.info(
         "notification_rule_triggered",
         "Notification rule triggered",
@@ -172,6 +184,7 @@ export async function runNotificationTick(
           ruleId: rule.id,
           batchId,
           recipientCount: recipients.length,
+          ...(evaluation.data ?? {}),
         },
       );
 
@@ -181,8 +194,8 @@ export async function runNotificationTick(
         );
         const requiresAttention = shouldCreateUnreadAttention({
           preferences,
-          type: rule.type,
-          fallback: template.requiresAttention,
+          type: draft.type,
+          fallback: draft.requiresAttention,
         });
         const message = await createNotificationMessage(env, {
           teamId: rule.teamId,
@@ -191,15 +204,17 @@ export async function runNotificationTick(
           ruleId: rule.id,
           runId,
           batchId,
-          type: rule.type,
-          severity: "info",
+          type: draft.type,
+          severity: draft.severity,
           requiresAttention,
-          title: template.title,
-          summary: template.summary,
-          bodyText: template.bodyText,
+          title: draft.title,
+          summary: draft.summary,
+          bodyText: draft.bodyText,
+          bodyHtml: draft.bodyHtml,
           data: {
             ruleId: rule.id,
             batchId,
+            ...(draft.data ?? {}),
           },
           triggeredAt: checkedAt,
         });
@@ -225,10 +240,12 @@ export async function runNotificationTick(
         rule,
         checkedAt,
         triggeredAt: checkedAt,
+        cooldownUntil: evaluation.cooldownUntil ?? null,
       });
     } catch (error) {
+      summary.rulesSkipped += 1;
       await logger.error(
-        "notification_rule_skipped",
+        "notification_rule_failed",
         "Notification rule failed; continuing with remaining rules",
         {
           ruleId: rule.id,

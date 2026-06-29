@@ -101,6 +101,9 @@ export interface ListNotificationMessagesInput {
   userId?: string;
   teamId?: string;
   siteId?: string;
+  type?: string;
+  severity?: string;
+  unread?: boolean;
   limit?: number;
   before?: number;
 }
@@ -290,6 +293,17 @@ export async function listNotificationMessagesForUser(
     filters.push("site_id = ?");
     bindings.push(input.siteId);
   }
+  if (input.type) {
+    filters.push("type = ?");
+    bindings.push(input.type);
+  }
+  if (input.severity) {
+    filters.push("severity = ?");
+    bindings.push(input.severity);
+  }
+  if (input.unread) {
+    filters.push("read_at IS NULL");
+  }
   if (input.before) {
     filters.push("created_at < ?");
     bindings.push(Math.trunc(input.before));
@@ -322,6 +336,17 @@ export async function listNotificationMessagesForTeam(
   if (input.siteId) {
     filters.push("site_id = ?");
     bindings.push(input.siteId);
+  }
+  if (input.type) {
+    filters.push("type = ?");
+    bindings.push(input.type);
+  }
+  if (input.severity) {
+    filters.push("severity = ?");
+    bindings.push(input.severity);
+  }
+  if (input.unread) {
+    filters.push("read_at IS NULL");
   }
   if (input.before) {
     filters.push("created_at < ?");
@@ -374,7 +399,12 @@ export async function markNotificationMessageRead(
   )
     .bind(now, now, input.messageId, input.userId)
     .run();
-  return getNotificationMessage(env, input.messageId);
+  const row = await env.DB.prepare(
+    `SELECT ${MESSAGE_SELECT} FROM notification_messages WHERE id=? AND user_id=? LIMIT 1`,
+  )
+    .bind(input.messageId, input.userId)
+    .first<MessageRow>();
+  return row ? mapNotificationMessage(row) : null;
 }
 
 export async function markAllNotificationMessagesRead(
