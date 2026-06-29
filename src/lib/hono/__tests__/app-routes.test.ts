@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleUsersAdmin } from "@/lib/edge/admin-users";
@@ -146,6 +148,18 @@ const executionCtx = ctx as unknown as ExecutionContext;
 
 function request(path: string, init?: RequestInit): Request {
   return new Request(`https://app.test${path}`, init);
+}
+
+function publicBrowserRequest(path: string, init?: RequestInit): Request {
+  const headers = new Headers(init?.headers);
+  headers.set(
+    "user-agent",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  );
+  headers.set("sec-fetch-site", "same-origin");
+  headers.set("sec-fetch-mode", "cors");
+  headers.set("sec-fetch-dest", "empty");
+  return request(path, { ...init, headers });
 }
 
 describe("Hono API app routing", () => {
@@ -376,7 +390,7 @@ describe("Hono API app routing", () => {
       executionCtx,
     );
     await apiApp.fetch(
-      request("/api/public/share/demo/site"),
+      publicBrowserRequest("/api/public/share/demo/site"),
       env as any,
       executionCtx,
     );
@@ -433,7 +447,7 @@ describe("Hono API app routing", () => {
 
   it("does not add global no-cache headers to public resource responses", async () => {
     const response = await apiApp.fetch(
-      request("/api/public/resources/world-countries"),
+      publicBrowserRequest("/api/public/resources/world-countries"),
       env as any,
       executionCtx,
     );
@@ -454,7 +468,7 @@ describe("Hono API app routing", () => {
       executionCtx,
     );
     await apiApp.fetch(
-      request("/api/public/resources/map-tiles/1/0/0.png"),
+      publicBrowserRequest("/api/public/resources/map-tiles/1/0/0.png"),
       env as any,
       executionCtx,
     );
@@ -527,7 +541,9 @@ describe("Hono API app routing", () => {
   });
 
   it("routes world countries through Hono", async () => {
-    const original = request("/api/public/resources/world-countries");
+    const original = publicBrowserRequest(
+      "/api/public/resources/world-countries",
+    );
 
     const response = await apiApp.fetch(original, env as any, executionCtx);
 
@@ -536,7 +552,7 @@ describe("Hono API app routing", () => {
   });
 
   it("routes wiki summary through Hono", async () => {
-    const original = request(
+    const original = publicBrowserRequest(
       "/api/public/resources/wiki-summary?wikidataId=Q42",
     );
 

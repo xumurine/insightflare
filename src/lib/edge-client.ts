@@ -113,7 +113,12 @@ async function fetchEdgeJson<T>(options: FetchEdgeOptions): Promise<T> {
   const url = withQuery(new URL(options.path, baseUrl), options.params);
 
   const headers = new Headers();
-  if (!options.isPublic) {
+  if (options.isPublic) {
+    headers.set("x-requested-with", "fetch");
+    if (typeof window === "undefined") {
+      headers.set("referer", `${url.origin}/`);
+    }
+  } else {
     try {
       const sessionToken = await getSessionToken();
       if (sessionToken) {
