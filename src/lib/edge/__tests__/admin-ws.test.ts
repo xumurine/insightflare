@@ -64,13 +64,13 @@ function dbWithRows(rows: Record<string, unknown>[]) {
 describe("handleAdminWs", () => {
   it("rejects requests when session secrets or tokens are invalid", async () => {
     const unavailable = await handleAdminWs(
-      new Request("https://app.test/admin/ws?siteId=site-1"),
+      new Request("https://app.test/api/private/realtime/ws?siteId=site-1"),
       { DB: dbWithRows([]), INGEST_DO: {} } as any,
     );
     expect(unavailable.status).toBe(503);
 
     const unauthorized = await handleAdminWs(
-      new Request("https://app.test/admin/ws?siteId=site-1", {
+      new Request("https://app.test/api/private/realtime/ws?siteId=site-1", {
         headers: { authorization: "Bearer invalid" },
       }),
       { MAIN_SECRET: "root", DB: dbWithRows([]), INGEST_DO: {} } as any,
@@ -102,9 +102,12 @@ describe("handleAdminWs", () => {
     };
 
     const response = await handleAdminWs(
-      new Request("https://app.test/admin/ws?siteId=site-1&token=client", {
-        headers: { authorization: `Bearer ${token}` },
-      }),
+      new Request(
+        "https://app.test/api/private/realtime/ws?siteId=site-1&token=client",
+        {
+          headers: { authorization: `Bearer ${token}` },
+        },
+      ),
       env as any,
     );
 
@@ -132,7 +135,7 @@ describe("handleAdminWs", () => {
     const headers = { authorization: `Bearer ${token}` };
 
     const missing = await handleAdminWs(
-      new Request("https://app.test/admin/ws", { headers }),
+      new Request("https://app.test/api/private/realtime/ws", { headers }),
       {
         DASHBOARD_SESSION_SECRET: secret,
         DB: dbWithRows([]),
@@ -142,7 +145,9 @@ describe("handleAdminWs", () => {
     expect(missing.status).toBe(400);
 
     const forbidden = await handleAdminWs(
-      new Request("https://app.test/admin/ws?siteId=site-1", { headers }),
+      new Request("https://app.test/api/private/realtime/ws?siteId=site-1", {
+        headers,
+      }),
       {
         DASHBOARD_SESSION_SECRET: secret,
         DB: dbWithRows([null as any]),

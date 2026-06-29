@@ -66,7 +66,7 @@ export async function handleLegacyArchiveManifest(
     ...file,
     fetchUrl:
       typeof file.archiveKey === "string"
-        ? `/api/archive/file?key=${encodeURIComponent(file.archiveKey)}`
+        ? `/api/private/archive/file?key=${encodeURIComponent(file.archiveKey)}`
         : undefined,
   }));
 

@@ -234,7 +234,7 @@ describe("realtime client", () => {
 
     expect(sockets).toHaveLength(1);
     expect(sockets[0]?.url).toBe(
-      "wss://edge.example.test/admin/ws?siteId=site+url&token=secret-token",
+      "wss://edge.example.test/api/private/realtime/ws?siteId=site+url&token=secret-token",
     );
     expect(latestBroadcastState().status).toBe("connecting");
   });
@@ -251,7 +251,7 @@ describe("realtime client", () => {
     releases.push(client.acquireRealtimeChannel("site-local"));
 
     expect(sockets[0]?.url).toBe(
-      "ws://localhost:3000/admin/ws?siteId=site-local",
+      "ws://localhost:3000/api/private/realtime/ws?siteId=site-local",
     );
   });
 

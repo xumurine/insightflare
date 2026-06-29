@@ -231,7 +231,7 @@ describe("middleware", () => {
     );
     expect(response.headers.get("x-pathname")).toBe("/en/app/team-one");
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://app.test/api/private/admin/auth/me",
+      "https://app.test/api/private/session",
       {
         method: "GET",
         headers: {
@@ -264,7 +264,7 @@ describe("middleware", () => {
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8787/api/private/admin/auth/me",
+      "http://127.0.0.1:8787/api/private/session",
       {
         method: "GET",
         headers: {
@@ -421,7 +421,7 @@ describe("middleware", () => {
   });
 
   it("passes through websocket and localized public routes", async () => {
-    const websocket = await callMiddleware(request("/admin/ws"));
+    const websocket = await callMiddleware(request("/api/private/realtime/ws"));
     expect(websocket.status).toBe(200);
     expect(websocket.headers.get("x-middleware-next")).toBe("1");
 
@@ -432,11 +432,13 @@ describe("middleware", () => {
     expect(publicPage.headers.get("set-cookie")).toContain("if_locale=zh");
   });
 
-  it("allows admin and archive APIs directly in demo mode", async () => {
+  it("allows private APIs directly in demo mode", async () => {
     vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "1");
 
-    const adminApi = await callMiddleware(request("/api/admin/users"));
-    const archiveApi = await callMiddleware(request("/api/archive/manifest"));
+    const adminApi = await callMiddleware(request("/api/private/admin/users"));
+    const archiveApi = await callMiddleware(
+      request("/api/private/archive/manifest"),
+    );
 
     expect(adminApi.status).toBe(200);
     expect(adminApi.headers.get("x-middleware-next")).toBe("1");

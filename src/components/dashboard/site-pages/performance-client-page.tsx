@@ -1836,7 +1836,7 @@ function PerformanceHealthMapCard({
   useEffect(() => {
     let active = true;
 
-    fetch("/api/world-countries", { cache: "force-cache" })
+    fetch("/api/public/resources/world-countries", { cache: "force-cache" })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (!active) return;

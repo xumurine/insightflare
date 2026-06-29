@@ -63,7 +63,7 @@ interface RenderedRealtimePoint {
 function buildRasterStyle(theme: EffectiveMapTheme): StyleSpecification {
   const sourceId = `insightflare-realtime-map-source-${theme}`;
   const layerId = `insightflare-realtime-map-layer-${theme}`;
-  const endpoint = `/api/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
+  const endpoint = `/api/public/resources/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
 
   return {
     version: 8,

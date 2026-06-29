@@ -139,7 +139,7 @@ export function AdminUsersManagementClient({
 
     setSubmitting(true);
     try {
-      const response = await fetch("/api/admin/user", {
+      const response = await fetch("/api/private/admin/users", {
         method: "POST",
         credentials: "include",
         headers: {
@@ -175,8 +175,8 @@ export function AdminUsersManagementClient({
   async function handleDeleteUser(userId: string) {
     setDeletingUserId(userId);
     try {
-      const response = await fetch("/api/admin/user", {
-        method: "POST",
+      const response = await fetch("/api/private/admin/users", {
+        method: "PATCH",
         credentials: "include",
         headers: {
           "content-type": "application/json",

@@ -205,7 +205,7 @@ describe("Hono middleware foundation", () => {
     const app = createApp(sameOriginMiddleware(), () => new Response("ok"));
 
     const response = await app.fetch(
-      request("/api/admin/user", {
+      request("/api/private/admin/users", {
         method: "POST",
         headers: { origin: "https://evil.test" },
       }),
@@ -221,7 +221,7 @@ describe("Hono middleware foundation", () => {
     const app = createApp(sameOriginMiddleware(), () => new Response("ok"));
 
     const response = await app.fetch(
-      request("/api/admin/user", { method: "POST" }),
+      request("/api/private/admin/users", { method: "POST" }),
       createEnv(),
       ctx,
     );
@@ -286,7 +286,7 @@ describe("Hono middleware foundation", () => {
     );
 
     const response = await app.fetch(
-      request("/api/admin/site", {
+      request("/api/private/admin/sites", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: "Site" }),
@@ -308,7 +308,7 @@ describe("Hono middleware foundation", () => {
     );
 
     const response = await app.fetch(
-      request("/api/admin/site", {
+      request("/api/private/admin/sites", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(["Site"]),
@@ -330,7 +330,7 @@ describe("Hono middleware foundation", () => {
     );
 
     const response = await app.fetch(
-      request("/api/admin/site", {
+      request("/api/private/admin/sites", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{",

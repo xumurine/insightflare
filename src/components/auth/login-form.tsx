@@ -51,7 +51,7 @@ export function LoginForm({
     if (pending) return;
     setPending(true);
     try {
-      const response = await fetch("/api/auth/login", {
+      const response = await fetch("/api/public/session", {
         method: "POST",
         credentials: "include",
         headers: {
@@ -84,7 +84,7 @@ export function LoginForm({
     <form
       className="space-y-4"
       method="post"
-      action="/api/auth/login"
+      action="/api/public/session"
       onSubmit={(event) => {
         event.preventDefault();
         void handleLogin();

@@ -22,7 +22,7 @@ describe("world countries handler", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify(payload)));
 
     const response = await handleWorldCountriesRequest(
-      new Request("https://app.test/api/world-countries"),
+      new Request("https://app.test/api/public/resources/world-countries"),
     );
 
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -40,7 +40,7 @@ describe("world countries handler", () => {
       .mockResolvedValueOnce(new Response("not found", { status: 404 }));
 
     const response = await handleWorldCountriesRequest(
-      new Request("https://app.test/api/world-countries"),
+      new Request("https://app.test/api/public/resources/world-countries"),
     );
 
     expect(response.status).toBe(404);
@@ -55,7 +55,7 @@ describe("world countries handler", () => {
       .mockRejectedValueOnce(new Error("network unavailable"));
 
     const response = await handleWorldCountriesRequest(
-      new Request("https://app.test/api/world-countries"),
+      new Request("https://app.test/api/public/resources/world-countries"),
     );
 
     expect(fetch).toHaveBeenCalledTimes(2);

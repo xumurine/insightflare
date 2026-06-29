@@ -745,7 +745,7 @@ function toRealtimeWsUrl(siteId: string): string {
   const configuredBase = process.env.NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL || "";
   const origin =
     configuredBase.length > 0 ? configuredBase : window.location.origin;
-  const url = new URL("/admin/ws", origin);
+  const url = new URL("/api/private/realtime/ws", origin);
   url.searchParams.set("siteId", siteId);
 
   const wsToken = process.env.NEXT_PUBLIC_ADMIN_WS_TOKEN || "";

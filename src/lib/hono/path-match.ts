@@ -6,6 +6,6 @@ export function shouldUseHono(pathname: string): boolean {
     pathname === "/script.js" ||
     pathname === "/healthz" ||
     pathname.startsWith("/.well-known/") ||
-    pathname === "/admin/ws"
+    pathname.startsWith("/admin/")
   );
 }

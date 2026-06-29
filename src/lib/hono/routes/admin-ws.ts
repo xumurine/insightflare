@@ -5,4 +5,6 @@ import type { AppEnv } from "@/lib/hono/types";
 
 export const adminWsRoutes = new Hono<AppEnv>();
 
-adminWsRoutes.all("/admin/ws", (c) => handleAdminWs(c.req.raw, c.env));
+adminWsRoutes.all("/api/private/realtime/ws", (c) =>
+  handleAdminWs(c.req.raw, c.env),
+);

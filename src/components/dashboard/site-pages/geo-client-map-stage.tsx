@@ -134,7 +134,7 @@ function resolveGeoMapPadding(isMobile: boolean): {
 function buildRasterStyle(theme: EffectiveMapTheme): StyleSpecification {
   const sourceId = `insightflare-geo-map-source-${theme}`;
   const layerId = `insightflare-geo-map-layer-${theme}`;
-  const endpoint = `/api/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
+  const endpoint = `/api/public/resources/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
 
   return {
     version: 8,
@@ -476,7 +476,7 @@ export function GeoClientMapStage({
   useEffect(() => {
     let active = true;
 
-    fetch("/api/world-countries", { cache: "force-cache" })
+    fetch("/api/public/resources/world-countries", { cache: "force-cache" })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (!active) return;

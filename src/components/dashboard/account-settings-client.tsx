@@ -278,7 +278,7 @@ export function AccountSettingsClient({
 
     setProfileSaving(true);
     try {
-      const response = await fetch("/api/admin/profile", {
+      const response = await fetch("/api/private/admin/profile", {
         method: "POST",
         credentials: "include",
         headers: {
@@ -328,7 +328,7 @@ export function AccountSettingsClient({
 
     setPasswordSaving(true);
     try {
-      const response = await fetch("/api/admin/profile", {
+      const response = await fetch("/api/private/admin/profile", {
         method: "POST",
         credentials: "include",
         headers: {
@@ -372,7 +372,7 @@ export function AccountSettingsClient({
 
     setSaving(true);
     try {
-      const response = await fetch("/api/admin/profile", {
+      const response = await fetch("/api/private/admin/profile", {
         method: "POST",
         credentials: "include",
         headers: {

@@ -336,18 +336,19 @@ interface ActionResponse<T> {
 async function postJson<T>(
   url: string,
   body: Record<string, unknown>,
+  method: "POST" | "PATCH" = "POST",
 ): Promise<T> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: url,
-      method: "POST",
+      method,
       body,
     }) as ActionResponse<T>;
     return (result.data ?? {}) as T;
   }
   const response = await fetch(url, {
-    method: "POST",
+    method,
     credentials: "include",
     headers: {
       "content-type": "application/json",
@@ -589,7 +590,7 @@ export function TeamManagementClient({
     setCreatingSite(true);
     setCreateSiteError("");
     try {
-      const created = await postJson<SiteData>("/api/admin/site", {
+      const created = await postJson<SiteData>("/api/private/admin/sites", {
         teamId: team.id,
         name,
         domain,
@@ -625,11 +626,15 @@ export function TeamManagementClient({
 
     setSavingTeam(true);
     try {
-      const updated = await postJson<TeamData>("/api/admin/team", {
-        teamId: activeTeam.id,
-        name,
-        slug: slug || undefined,
-      });
+      const updated = await postJson<TeamData>(
+        "/api/private/admin/teams",
+        {
+          teamId: activeTeam.id,
+          name,
+          slug: slug || undefined,
+        },
+        "PATCH",
+      );
       setCurrentTeamName(updated.name);
       setTeamName(updated.name);
       setTeamSlug(updated.slug);
@@ -658,7 +663,7 @@ export function TeamManagementClient({
 
     setAddingMember(true);
     try {
-      await postJson("/api/admin/member", {
+      await postJson("/api/private/admin/members", {
         teamId: activeTeam.id,
         identifier,
         role: addRole,
@@ -679,10 +684,14 @@ export function TeamManagementClient({
   async function handleDeleteTeam() {
     setDeletingTeam(true);
     try {
-      await postJson("/api/admin/team", {
-        intent: "remove",
-        teamId: activeTeam.id,
-      });
+      await postJson(
+        "/api/private/admin/teams",
+        {
+          intent: "remove",
+          teamId: activeTeam.id,
+        },
+        "PATCH",
+      );
       toast.success(copy.toasts.teamDeleted);
       setDeleteTeamDialogOpen(false);
       navigateWithTransition(router, `/${locale}/app`);
@@ -703,11 +712,15 @@ export function TeamManagementClient({
     }
     setTransferring(true);
     try {
-      await postJson<TeamData>("/api/admin/team", {
-        intent: "transfer_owner",
-        teamId: activeTeam.id,
-        newOwnerUserId: transferTargetId,
-      });
+      await postJson<TeamData>(
+        "/api/private/admin/teams",
+        {
+          intent: "transfer_owner",
+          teamId: activeTeam.id,
+          newOwnerUserId: transferTargetId,
+        },
+        "PATCH",
+      );
       toast.success(copy.toasts.ownerTransferred);
       setTransferDialogOpen(false);
       setTransferTargetId("");
@@ -730,12 +743,16 @@ export function TeamManagementClient({
   ) {
     setChangingRoleId(userId);
     try {
-      await postJson("/api/admin/member", {
-        intent: "update_role",
-        teamId: activeTeam.id,
-        userId,
-        role: nextRole,
-      });
+      await postJson(
+        "/api/private/admin/members",
+        {
+          intent: "update_role",
+          teamId: activeTeam.id,
+          userId,
+          role: nextRole,
+        },
+        "PATCH",
+      );
       await refreshMembers();
       toast.success(copy.toasts.roleChanged);
     } catch (error) {
@@ -750,11 +767,15 @@ export function TeamManagementClient({
   async function handleRemoveMember(userId: string) {
     setRemovingMemberId(userId);
     try {
-      await postJson("/api/admin/member", {
-        intent: "remove",
-        teamId: activeTeam.id,
-        userId,
-      });
+      await postJson(
+        "/api/private/admin/members",
+        {
+          intent: "remove",
+          teamId: activeTeam.id,
+          userId,
+        },
+        "PATCH",
+      );
       await refreshMembers();
       toast.success(copy.toasts.memberRemoved);
     } catch (error) {

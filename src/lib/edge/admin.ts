@@ -29,10 +29,8 @@ export async function handlePrivateAdmin(
   url: URL,
 ): Promise<Response> {
   const p = url.pathname;
-  if (p === "/api/private/admin/auth/login")
-    return handleAuthLoginAdmin(request, env);
-  if (p === "/api/private/admin/auth/me")
-    return handleAuthMeAdmin(request, env);
+  if (p === "/api/public/session") return handleAuthLoginAdmin(request, env);
+  if (p === "/api/private/session") return handleAuthMeAdmin(request, env);
   if (p === "/api/private/admin/users") return handleUsersAdmin(request, env);
   if (p === "/api/private/admin/profile")
     return handleProfileAdmin(request, env);

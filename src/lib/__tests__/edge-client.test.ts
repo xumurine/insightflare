@@ -101,7 +101,7 @@ describe("edge client request wrappers", () => {
     const headers = init.headers as Headers;
 
     expect(url).toBe(
-      "https://edge.example.test/api/public/public%20site/overview?from=10&to=20",
+      "https://edge.example.test/api/public/share/public%20site/overview?from=10&to=20",
     );
     expect(init.method).toBe("GET");
     expect(init.cache).toBe("no-store");
@@ -115,7 +115,7 @@ describe("edge client request wrappers", () => {
     const [url] = lastFetchCall();
 
     expect(url).toBe(
-      "https://edge.example.test/api/public/public%2Fsite%3Fdraft%3Dtrue/overview?from=0&to=1",
+      "https://edge.example.test/api/public/share/public%2Fsite%3Fdraft%3Dtrue/overview?from=0&to=1",
     );
   });
 
@@ -133,19 +133,19 @@ describe("edge client request wrappers", () => {
     await fetchPublicTrend("slug", { from: 1, to: 2 });
     [url] = lastFetchCall();
     expect(url).toBe(
-      "https://edge.example.test/api/public/slug/trend?from=1&to=2&interval=day",
+      "https://edge.example.test/api/public/share/slug/trend?from=1&to=2&interval=day",
     );
 
     await fetchPublicPages("slug", { from: 1, to: 2 });
     [url] = lastFetchCall();
     expect(url).toBe(
-      "https://edge.example.test/api/public/slug/pages?from=1&to=2&limit=8",
+      "https://edge.example.test/api/public/share/slug/pages?from=1&to=2&limit=8",
     );
 
     await fetchPublicReferrers("slug", { from: 1, to: 2 });
     [url] = lastFetchCall();
     expect(url).toBe(
-      "https://edge.example.test/api/public/slug/referrers?from=1&to=2&limit=8",
+      "https://edge.example.test/api/public/share/slug/referrers?from=1&to=2&limit=8",
     );
   });
 
@@ -245,7 +245,7 @@ describe("edge client request wrappers", () => {
     const params = new URL(url).searchParams;
 
     expect(url).toBe(
-      "https://edge.example.test/api/public/slug/pages?from=1&to=2&limit=8",
+      "https://edge.example.test/api/public/share/slug/pages?from=1&to=2&limit=8",
     );
     expect(params.has("eventPayloadFilters")).toBe(false);
   });
@@ -302,7 +302,7 @@ describe("edge client request wrappers", () => {
     await loginAdminAccount({ username: "admin", password: "secret" });
 
     let [url, init] = lastFetchCall();
-    expect(url).toBe("https://edge.example.test/api/private/admin/auth/login");
+    expect(url).toBe("https://edge.example.test/api/public/session");
     expect(init.method).toBe("POST");
     expect(init.body).toBe(
       JSON.stringify({ username: "admin", password: "secret" }),
@@ -409,9 +409,7 @@ describe("edge client request wrappers", () => {
     expect(urls).toContain(
       "https://edge.example.test/api/private/admin/script-snippet?siteId=site-1",
     );
-    expect(urls).toContain(
-      "https://edge.example.test/api/private/admin/auth/me",
-    );
+    expect(urls).toContain("https://edge.example.test/api/private/session");
     expect(urls).toContain("https://edge.example.test/api/private/admin/users");
   });
 
@@ -546,7 +544,7 @@ describe("edge client request wrappers", () => {
 
     expect(result).toEqual({ ok: true, data: [{ bucket: 1 }] });
     expect(handleDemoRequestMock).toHaveBeenCalledWith({
-      path: "/api/public/demo-site/trend",
+      path: "/api/public/share/demo-site/trend",
       method: undefined,
       params: { from: 1, to: 2, interval: "day" },
       body: undefined,

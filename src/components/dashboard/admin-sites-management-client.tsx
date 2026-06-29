@@ -128,7 +128,7 @@ export function AdminSitesManagementClient({
 
     setSubmitting(true);
     try {
-      const response = await fetch("/api/admin/site", {
+      const response = await fetch("/api/private/admin/sites", {
         method: "POST",
         credentials: "include",
         headers: {

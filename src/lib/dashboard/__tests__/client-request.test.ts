@@ -128,7 +128,7 @@ describe("dashboard client request helpers", () => {
     ).resolves.toEqual({ ok: true, value: "public" });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/public/team%20site%2Fone/overview?from=1&to=2",
+      "/api/public/share/team%20site%2Fone/overview?from=1&to=2",
       expect.objectContaining({
         method: "GET",
         credentials: "omit",
@@ -157,7 +157,9 @@ describe("dashboard client request helpers", () => {
     expect(fetchMock.mock.calls[0][0]).toBe(
       "/api/private/overview?siteId=site-1",
     );
-    expect(fetchMock.mock.calls[1][0]).toBe("/api/public/site-1/overview");
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "/api/public/share/site-1/overview",
+    );
     expect(fetchMock.mock.calls[0][1]).toMatchObject({
       credentials: "include",
     });
@@ -244,12 +246,12 @@ describe("dashboard client request helpers", () => {
     vi.mocked(handleDemoRequest).mockReturnValue({ ok: true });
 
     await expect(
-      fetchPrivateJsonMutate("/api/private/auth/login", "POST", undefined, {
+      fetchPrivateJsonMutate("/api/public/session", "POST", undefined, {
         username: "demo",
       }),
     ).resolves.toMatchObject({ ok: true });
     expect(handleDemoRequest).toHaveBeenCalledWith({
-      path: "/api/private/auth/login",
+      path: "/api/public/session",
       method: "POST",
       params: undefined,
       body: { username: "demo" },

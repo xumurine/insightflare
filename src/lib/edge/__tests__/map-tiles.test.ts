@@ -18,7 +18,7 @@ describe("map tile route", () => {
 
   it("rejects invalid tile coordinates before fetching upstreams", async () => {
     const response = await handleMapTileRequest(
-      new Request("https://app.test/api/map-tiles/21/0/0.png"),
+      new Request("https://app.test/api/public/resources/map-tiles/21/0/0.png"),
       params("21", "0", "0.png"),
     );
 
@@ -30,14 +30,16 @@ describe("map tile route", () => {
   it("rejects non-numeric and non-finite tile parameters", async () => {
     await expect(
       handleMapTileRequest(
-        new Request("https://app.test/api/map-tiles/nope/0/0.png"),
+        new Request(
+          "https://app.test/api/public/resources/map-tiles/nope/0/0.png",
+        ),
         params("nope", "0", "0.png"),
       ),
     ).resolves.toMatchObject({ status: 400 });
 
     await expect(
       handleMapTileRequest(
-        new Request("https://app.test/api/map-tiles/2/999/1"),
+        new Request("https://app.test/api/public/resources/map-tiles/2/999/1"),
         params("2", "9".repeat(400), "1"),
       ),
     ).resolves.toMatchObject({ status: 400 });
@@ -56,7 +58,9 @@ describe("map tile route", () => {
       );
 
     const response = await handleMapTileRequest(
-      new Request("https://app.test/api/map-tiles/2/5/3.png?theme=dark"),
+      new Request(
+        "https://app.test/api/public/resources/map-tiles/2/5/3.png?theme=dark",
+      ),
       params("2", "5", "3.png"),
     );
 
@@ -87,7 +91,7 @@ describe("map tile route", () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(new Uint8Array([4])));
 
     const response = await handleMapTileRequest(
-      new Request("https://app.test/api/map-tiles/1/0/0"),
+      new Request("https://app.test/api/public/resources/map-tiles/1/0/0"),
       params("1", "0", "0"),
     );
 
@@ -107,7 +111,7 @@ describe("map tile route", () => {
       .mockRejectedValueOnce(new Error("network down"));
 
     const response = await handleMapTileRequest(
-      new Request("https://app.test/api/map-tiles/1/0/0.png"),
+      new Request("https://app.test/api/public/resources/map-tiles/1/0/0.png"),
       params("1", "0", "0.png"),
     );
 

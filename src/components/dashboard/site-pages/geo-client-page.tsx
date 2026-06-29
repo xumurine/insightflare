@@ -771,7 +771,7 @@ async function fetchGeoWikiSummary(
   if (cached) return cached;
 
   const request = fetch(
-    `/api/wiki-summary?wikidataId=${encodeURIComponent(normalizedId)}&locale=${encodeURIComponent(locale)}`,
+    `/api/public/resources/wiki-summary?wikidataId=${encodeURIComponent(normalizedId)}&locale=${encodeURIComponent(locale)}`,
     {
       method: "GET",
       cache: "force-cache",

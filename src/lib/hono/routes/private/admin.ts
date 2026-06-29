@@ -14,21 +14,12 @@ import {
   handleSystemPerformanceAdmin,
 } from "@/lib/edge/admin-system";
 import { handleMembersAdmin, handleTeamsAdmin } from "@/lib/edge/admin-teams";
-import {
-  handleAuthLoginAdmin,
-  handleAuthMeAdmin,
-  handleProfileAdmin,
-  handleUsersAdmin,
-} from "@/lib/edge/admin-users";
+import { handleProfileAdmin, handleUsersAdmin } from "@/lib/edge/admin-users";
 import type { AppEnv } from "@/lib/hono/types";
 import { requestUrl } from "@/lib/hono/utils/context";
 
 export const privateAdminRoutes = new Hono<AppEnv>();
 
-privateAdminRoutes.all("/auth/login", (c) =>
-  handleAuthLoginAdmin(c.req.raw, c.env),
-);
-privateAdminRoutes.all("/auth/me", (c) => handleAuthMeAdmin(c.req.raw, c.env));
 privateAdminRoutes.all("/users", (c) => handleUsersAdmin(c.req.raw, c.env));
 privateAdminRoutes.all("/profile", (c) => handleProfileAdmin(c.req.raw, c.env));
 privateAdminRoutes.all("/teams", (c) => handleTeamsAdmin(c.req.raw, c.env));

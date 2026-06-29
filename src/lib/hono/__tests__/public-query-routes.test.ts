@@ -55,7 +55,7 @@ function request(path: string, init?: RequestInit): Request {
 
 function createApp() {
   const app = new Hono<AppEnv>();
-  app.route("/api/public", publicQueryRoutes);
+  app.route("/api/public/share", publicQueryRoutes);
   return app;
 }
 
@@ -74,7 +74,7 @@ describe("Hono public query routes", () => {
     const app = createApp();
 
     const response = await app.fetch(
-      request("/api/public/demo/site"),
+      request("/api/public/share/demo/site"),
       env as never,
       ctx,
     );
@@ -89,11 +89,11 @@ describe("Hono public query routes", () => {
     });
     expect(fetchPublicSite).toHaveBeenCalledWith(
       env,
-      new URL("https://app.test/api/public/demo/site"),
+      new URL("https://app.test/api/public/share/demo/site"),
     );
     expect(withDashboardCache).toHaveBeenCalledWith(
       ctx,
-      new URL("https://app.test/api/public/demo/site"),
+      new URL("https://app.test/api/public/share/demo/site"),
       expect.any(Function),
       PUBLIC_QUERY_CACHE_OPTIONS,
     );
@@ -112,7 +112,7 @@ describe("Hono public query routes", () => {
 
     expect(body).toMatchObject({
       ok: true,
-      data: { slug: "", id: "site-1" },
+      data: { slug: "demo", id: "site-1" },
     });
   });
 
@@ -120,7 +120,7 @@ describe("Hono public query routes", () => {
     const app = createApp();
 
     const response = await app.fetch(
-      request("/api/public/demo/overview?preset=today"),
+      request("/api/public/share/demo/overview?preset=today"),
       env as never,
       ctx,
     );
@@ -128,7 +128,7 @@ describe("Hono public query routes", () => {
     await expect(response.text()).resolves.toBe("query");
     expect(withDashboardCache).toHaveBeenCalledWith(
       ctx,
-      new URL("https://app.test/api/public/demo/overview?preset=today"),
+      new URL("https://app.test/api/public/share/demo/overview?preset=today"),
       expect.any(Function),
       PUBLIC_QUERY_CACHE_OPTIONS,
     );
@@ -136,7 +136,7 @@ describe("Hono public query routes", () => {
       env,
       "site-1",
       "overview",
-      new URL("https://app.test/api/public/demo/overview?preset=today"),
+      new URL("https://app.test/api/public/share/demo/overview?preset=today"),
       { publicMode: true },
       expect.any(Request),
     );
@@ -146,7 +146,7 @@ describe("Hono public query routes", () => {
     const app = createApp();
 
     const response = await app.fetch(
-      request("/api/public/demo/overview", { method: "POST" }),
+      request("/api/public/share/demo/overview", { method: "POST" }),
       env as never,
       ctx,
     );
@@ -164,7 +164,7 @@ describe("Hono public query routes", () => {
     const app = createApp();
 
     const response = await app.fetch(
-      request("/api/public/missing/overview"),
+      request("/api/public/share/missing/overview"),
       env as never,
       ctx,
     );
@@ -182,7 +182,7 @@ describe("Hono public query routes", () => {
     const app = createApp();
 
     const response = await app.fetch(
-      request("/api/public/demo/events-records"),
+      request("/api/public/share/demo/events-records"),
       env as never,
       ctx,
     );
@@ -192,7 +192,7 @@ describe("Hono public query routes", () => {
       env,
       "site-1",
       "events-records",
-      new URL("https://app.test/api/public/demo/events-records"),
+      new URL("https://app.test/api/public/share/demo/events-records"),
       { publicMode: true },
       expect.any(Request),
     );

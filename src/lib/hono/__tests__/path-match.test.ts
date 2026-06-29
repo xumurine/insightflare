@@ -6,16 +6,17 @@ describe("shouldUseHono", () => {
   it.each([
     "/api",
     "/api/private/overview",
-    "/api/public/demo/site",
+    "/api/public/share/demo/site",
     "/api/v1/capabilities",
-    "/api/map-tiles/1/0/0.png",
-    "/api/world-countries",
+    "/api/public/resources/map-tiles/1/0/0.png",
+    "/api/public/resources/world-countries",
     "/collect",
     "/script.js",
     "/healthz",
     "/.well-known/openapi.json",
     "/.well-known/security.txt",
-    "/admin/ws",
+    "/api/private/realtime/ws",
+    "/api/private/realtime/ws/extra",
   ])("routes %s through the Hono app", (pathname) => {
     expect(shouldUseHono(pathname)).toBe(true);
   });
@@ -28,7 +29,6 @@ describe("shouldUseHono", () => {
     "/_next/static/chunk.js",
     "/favicon.ico",
     "/collect/",
-    "/admin/ws/extra",
   ])("leaves %s on the OpenNext path", (pathname) => {
     expect(shouldUseHono(pathname)).toBe(false);
   });

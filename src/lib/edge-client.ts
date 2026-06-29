@@ -158,7 +158,7 @@ export async function fetchPublicOverview(
   },
 ): Promise<OverviewData> {
   return fetchEdgeJson<OverviewData>({
-    path: `/api/public/${encodeURIComponent(slug)}/overview`,
+    path: `/api/public/share/${encodeURIComponent(slug)}/overview`,
     params: withFilters(
       {
         from: params.from,
@@ -172,7 +172,7 @@ export async function fetchPublicOverview(
 
 export async function fetchPublicSite(slug: string): Promise<PublicSiteData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: PublicSiteData }>({
-    path: `/api/public/${encodeURIComponent(slug)}/site`,
+    path: `/api/public/share/${encodeURIComponent(slug)}/site`,
     isPublic: true,
   });
   if (!res.ok || !res.data) {
@@ -190,7 +190,7 @@ export async function fetchPublicTrend(
   },
 ): Promise<TrendData> {
   return fetchEdgeJson<TrendData>({
-    path: `/api/public/${encodeURIComponent(slug)}/trend`,
+    path: `/api/public/share/${encodeURIComponent(slug)}/trend`,
     params: withFilters(
       {
         from: params.from,
@@ -212,7 +212,7 @@ export async function fetchPublicPages(
   },
 ): Promise<PagesData> {
   return fetchEdgeJson<PagesData>({
-    path: `/api/public/${encodeURIComponent(slug)}/pages`,
+    path: `/api/public/share/${encodeURIComponent(slug)}/pages`,
     params: withFilters(
       {
         from: params.from,
@@ -234,7 +234,7 @@ export async function fetchPublicReferrers(
   },
 ): Promise<ReferrersData> {
   return fetchEdgeJson<ReferrersData>({
-    path: `/api/public/${encodeURIComponent(slug)}/referrers`,
+    path: `/api/public/share/${encodeURIComponent(slug)}/referrers`,
     params: withFilters(
       {
         from: params.from,
@@ -471,7 +471,7 @@ export async function loginAdminAccount(input: {
     };
   }>({
     method: "POST",
-    path: "/api/private/admin/auth/login",
+    path: "/api/public/session",
     body: input,
   });
   return res.data;
@@ -488,7 +488,7 @@ export async function fetchAdminMe(): Promise<{
       teams: TeamData[];
     };
   }>({
-    path: "/api/private/admin/auth/me",
+    path: "/api/private/session",
   });
   return res.data;
 }

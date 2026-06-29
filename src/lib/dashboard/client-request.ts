@@ -28,7 +28,7 @@ function publicSlugFromParams(params?: PrivateRequestParams): string | null {
 
 function publicPathForPrivateRequest(path: string, slug: string): string {
   const endpoint = path.replace(/^\/api\/private\/?/, "");
-  return `/api/public/${encodeURIComponent(slug)}/${endpoint}`;
+  return `/api/public/share/${encodeURIComponent(slug)}/${endpoint}`;
 }
 
 function paramsWithoutSiteId(

@@ -79,7 +79,10 @@ export async function fetchPublicSite(
   const segments = url.pathname.split("/").filter(Boolean);
   let slug = "";
   try {
-    slug = decodeURIComponent(segments[2] || "").trim();
+    const shareIndex = segments.indexOf("share");
+    const slugSegment =
+      shareIndex >= 0 ? segments[shareIndex + 1] : segments[2];
+    slug = decodeURIComponent(slugSegment || "").trim();
   } catch {
     return notFound("Public site not found");
   }

@@ -100,13 +100,9 @@ export function SidebarFooterMenus({
     if (loggingOut) return;
     setLoggingOut(true);
     try {
-      const response = await fetch("/api/auth/logout", {
-        method: "POST",
+      const response = await fetch("/api/public/session", {
+        method: "DELETE",
         credentials: "include",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({}),
       });
       if (!response.ok) throw new Error(messages.sidebarFooter.logoutFailed);
       toast.success(messages.sidebarFooter.logoutSuccess);

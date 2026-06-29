@@ -14,12 +14,7 @@ import {
   handleSystemPerformanceAdmin,
 } from "@/lib/edge/admin-system";
 import { handleMembersAdmin, handleTeamsAdmin } from "@/lib/edge/admin-teams";
-import {
-  handleAuthLoginAdmin,
-  handleAuthMeAdmin,
-  handleProfileAdmin,
-  handleUsersAdmin,
-} from "@/lib/edge/admin-users";
+import { handleProfileAdmin, handleUsersAdmin } from "@/lib/edge/admin-users";
 import { privateAdminRoutes } from "@/lib/hono/routes/private/admin";
 import type { AppEnv } from "@/lib/hono/types";
 
@@ -52,8 +47,6 @@ vi.mock("@/lib/edge/admin-teams", () => ({
 }));
 
 vi.mock("@/lib/edge/admin-users", () => ({
-  handleAuthLoginAdmin: vi.fn(),
-  handleAuthMeAdmin: vi.fn(),
   handleProfileAdmin: vi.fn(),
   handleUsersAdmin: vi.fn(),
 }));
@@ -65,8 +58,6 @@ const ctx = {
 } as unknown as ExecutionContext;
 
 const routeCases = [
-  ["/auth/login", handleAuthLoginAdmin, false],
-  ["/auth/me", handleAuthMeAdmin, false],
   ["/users", handleUsersAdmin, false],
   ["/profile", handleProfileAdmin, false],
   ["/teams", handleTeamsAdmin, false],

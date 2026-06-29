@@ -1,21 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handlePrivateAdmin } from "@/lib/edge/admin";
 import { handleUsersAdmin } from "@/lib/edge/admin-users";
 import { handleAdminWs } from "@/lib/edge/admin-ws";
 import { authenticateApiKey } from "@/lib/edge/api-key-auth";
-import { handleApiV1, handleCapabilities } from "@/lib/edge/api-v1";
+import { handleApiV1, handleCapabilities, handleRoot } from "@/lib/edge/api-v1";
 import {
   handlePrivateArchive,
+  handlePrivateArchiveFile,
   handlePrivateArchiveManifest,
 } from "@/lib/edge/archive-query";
 import {
   handleCollectOptionsRequest,
   handleCollectRequest,
 } from "@/lib/edge/collect";
-import { handleLegacyAdminUser } from "@/lib/edge/legacy-admin";
-import { handleLegacyArchiveFile } from "@/lib/edge/legacy-archive";
-import { handleLegacyAuthLogin } from "@/lib/edge/legacy-auth";
+import {
+  handleLegacyAuthLogin,
+  handleLegacyAuthLogout,
+} from "@/lib/edge/legacy-auth";
 import { handleMapTileRequest } from "@/lib/edge/map-tiles";
 import { handlePrivateQuery, handlePublicQuery } from "@/lib/edge/query";
 import type * as QueryCoreModule from "@/lib/edge/query/core";
@@ -27,10 +28,6 @@ import { handleTrackerScriptRequest } from "@/lib/edge/script-endpoint";
 import { handleWikiSummaryRequest } from "@/lib/edge/wiki-summary";
 import { handleWorldCountriesRequest } from "@/lib/edge/world-countries";
 import apiApp from "@/lib/hono/app";
-
-vi.mock("@/lib/edge/admin", () => ({
-  handlePrivateAdmin: vi.fn(),
-}));
 
 vi.mock("@/lib/edge/admin-ws", () => ({
   handleAdminWs: vi.fn(),
@@ -52,10 +49,6 @@ vi.mock("@/lib/edge/admin-users", () => ({
 vi.mock("@/lib/edge/collect", () => ({
   handleCollectOptionsRequest: vi.fn(),
   handleCollectRequest: vi.fn(),
-}));
-
-vi.mock("@/lib/edge/legacy-admin", () => ({
-  handleLegacyAdminUser: vi.fn(),
 }));
 
 vi.mock("@/lib/edge/legacy-archive", () => ({
@@ -141,6 +134,12 @@ vi.mock("@/lib/edge/wiki-summary", () => ({
   handleWikiSummaryRequest: vi.fn(),
 }));
 
+vi.mock("@/lib/edge/session-auth", () => ({
+  requireSession: vi.fn(),
+}));
+
+const { requireSession } = await import("@/lib/edge/session-auth");
+
 const env = { DB: {}, INGEST_DO: {}, ARCHIVE_BUCKET: {} };
 const ctx = { waitUntil: vi.fn(), passThroughOnException: vi.fn() };
 const executionCtx = ctx as unknown as ExecutionContext;
@@ -168,9 +167,18 @@ describe("Hono API app routing", () => {
     vi.mocked(handleReleasesCompareRequest).mockResolvedValue(
       new Response("compare"),
     );
-    vi.mocked(handlePrivateAdmin).mockResolvedValue(new Response("admin"));
     vi.mocked(handleUsersAdmin).mockResolvedValue(new Response("admin"));
+    vi.mocked(requireSession).mockResolvedValue({
+      userId: "user-1",
+      username: "user",
+      displayName: "User",
+      systemRole: "admin",
+      exp: 9999999999,
+    });
     vi.mocked(handlePrivateArchive).mockResolvedValue(new Response("archive"));
+    vi.mocked(handlePrivateArchiveFile).mockResolvedValue(
+      new Response("archive-file"),
+    );
     vi.mocked(handlePrivateArchiveManifest).mockResolvedValue(
       new Response("archive"),
     );
@@ -194,6 +202,7 @@ describe("Hono API app routing", () => {
       new Response("public-query"),
     );
     vi.mocked(handleApiV1).mockResolvedValue(new Response("v1"));
+    vi.mocked(handleRoot).mockResolvedValue(new Response("root"));
     vi.mocked(authenticateApiKey).mockResolvedValue({
       keyId: "key-1",
       teamId: "team-1",
@@ -205,11 +214,8 @@ describe("Hono API app routing", () => {
     vi.mocked(handleLegacyAuthLogin).mockResolvedValue(
       new Response("legacy-login"),
     );
-    vi.mocked(handleLegacyAdminUser).mockResolvedValue(
-      new Response("legacy-admin"),
-    );
-    vi.mocked(handleLegacyArchiveFile).mockResolvedValue(
-      new Response("legacy-file"),
+    vi.mocked(handleLegacyAuthLogout).mockResolvedValue(
+      new Response("legacy-logout"),
     );
     vi.mocked(handleMapTileRequest).mockResolvedValue(new Response("tile"));
     vi.mocked(handleAdminWs).mockResolvedValue(new Response("ws"));
@@ -333,7 +339,11 @@ describe("Hono API app routing", () => {
       executionCtx,
     );
     await apiApp.fetch(request("/script.js"), env as any, executionCtx);
-    await apiApp.fetch(request("/admin/ws"), env as any, executionCtx);
+    await apiApp.fetch(
+      request("/api/private/realtime/ws"),
+      env as any,
+      executionCtx,
+    );
 
     expect(handleCollectOptionsRequest).toHaveBeenCalled();
     expect(handleCollectRequest).toHaveBeenCalledWith(
@@ -366,7 +376,7 @@ describe("Hono API app routing", () => {
       executionCtx,
     );
     await apiApp.fetch(
-      request("/api/public/demo/site"),
+      request("/api/public/share/demo/site"),
       env as any,
       executionCtx,
     );
@@ -377,7 +387,6 @@ describe("Hono API app routing", () => {
     );
 
     expect(handleUsersAdmin).toHaveBeenCalled();
-    expect(handlePrivateAdmin).not.toHaveBeenCalled();
     expect(handlePrivateArchiveManifest).toHaveBeenCalled();
     expect(handlePrivateArchive).not.toHaveBeenCalled();
     expect(resolvePrivateSite).toHaveBeenCalled();
@@ -396,7 +405,7 @@ describe("Hono API app routing", () => {
     expect(handleApiV1).not.toHaveBeenCalled();
   });
 
-  it("redirects the bare API root to API v1 with no-cache headers", async () => {
+  it("redirects the bare API root to API v1 without applying API no-cache defaults", async () => {
     const response = await apiApp.fetch(
       request("/api"),
       env as any,
@@ -405,15 +414,13 @@ describe("Hono API app routing", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe("/api/v1");
-    expect(response.headers.get("cache-control")).toBe(
-      "no-store, no-cache, must-revalidate",
-    );
-    expect(response.headers.get("pragma")).toBe("no-cache");
+    expect(response.headers.get("cache-control")).toBeNull();
+    expect(response.headers.get("pragma")).toBeNull();
   });
 
-  it("adds no-cache headers to Hono API responses", async () => {
+  it("adds no-cache headers to API v1 responses", async () => {
     const response = await apiApp.fetch(
-      request("/api/world-countries"),
+      request("/api/v1"),
       env as any,
       executionCtx,
     );
@@ -424,31 +431,36 @@ describe("Hono API app routing", () => {
     expect(response.headers.get("pragma")).toBe("no-cache");
   });
 
-  it("routes legacy and map endpoints through Hono", async () => {
+  it("does not add global no-cache headers to public resource responses", async () => {
+    const response = await apiApp.fetch(
+      request("/api/public/resources/world-countries"),
+      env as any,
+      executionCtx,
+    );
+
+    expect(response.headers.get("cache-control")).toBeNull();
+    expect(response.headers.get("pragma")).toBeNull();
+  });
+
+  it("routes public session and resource endpoints through Hono", async () => {
     await apiApp.fetch(
-      request("/api/auth/login", { method: "POST" }),
+      request("/api/public/session", { method: "POST" }),
       env as any,
       executionCtx,
     );
     await apiApp.fetch(
-      request("/api/admin/user", { method: "POST" }),
+      request("/api/public/session", { method: "DELETE" }),
       env as any,
       executionCtx,
     );
     await apiApp.fetch(
-      request("/api/archive/file?key=a", { method: "HEAD" }),
-      env as any,
-      executionCtx,
-    );
-    await apiApp.fetch(
-      request("/api/map-tiles/1/0/0.png"),
+      request("/api/public/resources/map-tiles/1/0/0.png"),
       env as any,
       executionCtx,
     );
 
     expect(handleLegacyAuthLogin).toHaveBeenCalled();
-    expect(handleLegacyAdminUser).toHaveBeenCalled();
-    expect(handleLegacyArchiveFile).toHaveBeenCalled();
+    expect(handleLegacyAuthLogout).toHaveBeenCalled();
     expect(handleMapTileRequest).toHaveBeenCalledWith(expect.any(Request), {
       z: "1",
       x: "0",
@@ -456,8 +468,66 @@ describe("Hono API app routing", () => {
     });
   });
 
+  it("routes private endpoints only after session authentication", async () => {
+    await apiApp.fetch(
+      request("/api/private/archive/file?key=a", { method: "HEAD" }),
+      env as any,
+      executionCtx,
+    );
+    await apiApp.fetch(
+      request("/api/private/realtime/ws?siteId=site-1"),
+      env as any,
+      executionCtx,
+    );
+
+    expect(requireSession).toHaveBeenCalled();
+    expect(handlePrivateArchiveFile).toHaveBeenCalled();
+    expect(handleAdminWs).toHaveBeenCalled();
+  });
+
+  it("returns 401 for private endpoints without a session", async () => {
+    vi.mocked(requireSession).mockResolvedValueOnce(null);
+
+    const response = await apiApp.fetch(
+      request("/api/private/admin/users"),
+      env as any,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(401);
+    expect(handleUsersAdmin).not.toHaveBeenCalled();
+  });
+
+  it("does not mount legacy private API aliases", async () => {
+    const legacyAdmin = await apiApp.fetch(
+      request("/api" + "/admin/user", { method: "POST" }),
+      env as any,
+      executionCtx,
+    );
+    const legacyArchive = await apiApp.fetch(
+      request("/api" + "/archive/file?key=a"),
+      env as any,
+      executionCtx,
+    );
+    const legacyMap = await apiApp.fetch(
+      request("/api" + "/map-tiles/1/0/0.png"),
+      env as any,
+      executionCtx,
+    );
+    const legacyWs = await apiApp.fetch(
+      request("/admin" + "/ws?siteId=site-1"),
+      env as any,
+      executionCtx,
+    );
+
+    expect(legacyAdmin.status).toBe(404);
+    expect(legacyArchive.status).toBe(404);
+    expect(legacyMap.status).toBe(404);
+    expect(legacyWs.status).toBe(404);
+  });
+
   it("routes world countries through Hono", async () => {
-    const original = request("/api/world-countries");
+    const original = request("/api/public/resources/world-countries");
 
     const response = await apiApp.fetch(original, env as any, executionCtx);
 
@@ -466,7 +536,9 @@ describe("Hono API app routing", () => {
   });
 
   it("routes wiki summary through Hono", async () => {
-    const original = request("/api/wiki-summary?wikidataId=Q42");
+    const original = request(
+      "/api/public/resources/wiki-summary?wikidataId=Q42",
+    );
 
     const response = await apiApp.fetch(original, env as any, executionCtx);
 

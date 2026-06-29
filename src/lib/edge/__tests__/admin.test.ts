@@ -679,10 +679,10 @@ describe("private admin edge handler", () => {
     it("rejects unsupported login and auth/me methods before database access", async () => {
       const { env, prepare } = createEnv();
 
-      const login = await dispatch("/api/private/admin/auth/login", env, {
+      const login = await dispatch("/api/public/session", env, {
         method: "GET",
       });
-      const me = await dispatch("/api/private/admin/auth/me", env, {
+      const me = await dispatch("/api/private/session", env, {
         method: "POST",
       });
 
@@ -707,7 +707,7 @@ describe("private admin edge handler", () => {
       ]);
 
       const response = await dispatch(
-        "/api/private/admin/auth/login",
+        "/api/public/session",
         env,
         jsonInit({ username: "admin", password: "secret-password" }),
       );
@@ -732,7 +732,7 @@ describe("private admin edge handler", () => {
       });
 
       const promoteFailure = await dispatch(
-        "/api/private/admin/auth/login",
+        "/api/public/session",
         createEnv([
           statement({ first: null }),
           statement({ first: existing }),
@@ -743,7 +743,7 @@ describe("private admin edge handler", () => {
       );
 
       const createFailure = await dispatch(
-        "/api/private/admin/auth/login",
+        "/api/public/session",
         createEnv([
           statement({ first: null }),
           statement({ first: null }),
@@ -804,7 +804,7 @@ describe("private admin edge handler", () => {
       );
 
       const response = await dispatch(
-        "/api/private/admin/auth/login",
+        "/api/public/session",
         env,
         jsonInit({ username: "bo" }),
       );
@@ -867,7 +867,7 @@ describe("private admin edge handler", () => {
       );
 
       const response = await dispatch(
-        "/api/private/admin/auth/login",
+        "/api/public/session",
         env,
         jsonInit({ username: "Admin", password: "secret-password" }),
       );
@@ -895,7 +895,7 @@ describe("private admin edge handler", () => {
       ]);
 
       const response = await dispatch(
-        "/api/private/admin/auth/login",
+        "/api/public/session",
         env,
         jsonInit({ email: "admin@example.test", password: "secret-password" }),
       );
@@ -931,7 +931,7 @@ describe("private admin edge handler", () => {
         statement({ all: teams }),
       ]);
 
-      const response = await dispatch("/api/private/admin/auth/me", env);
+      const response = await dispatch("/api/private/session", env);
 
       expect(response.status).toBe(200);
       expect(await response.json()).toMatchObject({
@@ -951,15 +951,15 @@ describe("private admin edge handler", () => {
       setSession(null);
       const { env: absentEnv } = createEnv();
 
-      const absent = await dispatch("/api/private/admin/auth/me", absentEnv);
+      const absent = await dispatch("/api/private/session", absentEnv);
 
       setSession(adminSession);
       const { env: staleEnv } = createEnv([statement({ first: null })]);
-      const stale = await dispatch("/api/private/admin/auth/me", staleEnv);
+      const stale = await dispatch("/api/private/session", staleEnv);
 
       setSession({ ...adminSession, userId: "" });
       const emptyUserId = await dispatch(
-        "/api/private/admin/auth/me",
+        "/api/private/session",
         createEnv().env,
       );
 

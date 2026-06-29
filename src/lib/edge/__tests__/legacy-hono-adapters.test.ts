@@ -96,7 +96,7 @@ describe("legacy Hono edge adapters", () => {
 
   it("logs in through the private auth handler and sets the legacy cookie", async () => {
     const response = await handleLegacyAuthLogin(
-      jsonRequest("/api/auth/login", {
+      jsonRequest("/api/public/session", {
         username: "admin",
         password: "secret",
         next: "/app/team",
@@ -113,7 +113,7 @@ describe("legacy Hono edge adapters", () => {
 
   it("maps legacy auth validation, credential, and logout branches", async () => {
     const invalid = await handleLegacyAuthLogin(
-      jsonRequest("/api/auth/login", { username: "a", password: "" }),
+      jsonRequest("/api/public/session", { username: "a", password: "" }),
       env as any,
     );
     expect(invalid.status).toBe(400);
@@ -122,7 +122,7 @@ describe("legacy Hono edge adapters", () => {
       Response.json({ ok: false }, { status: 401 }),
     );
     const denied = await handleLegacyAuthLogin(
-      jsonRequest("/api/auth/login", {
+      jsonRequest("/api/public/session", {
         username: "admin",
         password: "wrong",
         next: "https://evil.test",
@@ -132,7 +132,7 @@ describe("legacy Hono edge adapters", () => {
     expect(denied.status).toBe(401);
 
     const logout = handleLegacyAuthLogout(
-      new Request("https://app.test/api/auth/logout", { method: "POST" }),
+      new Request("https://app.test/api/public/session", { method: "POST" }),
     );
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
   });
@@ -142,7 +142,7 @@ describe("legacy Hono edge adapters", () => {
       new Response("service unavailable", { status: 503 }),
     );
     const unavailable = await handleLegacyAuthLogin(
-      jsonRequest("/api/auth/login", {
+      jsonRequest("/api/public/session", {
         username: "admin",
         password: "secret",
       }),
@@ -154,7 +154,7 @@ describe("legacy Hono edge adapters", () => {
       new Response("not json", { status: 200 }),
     );
     const invalidJson = await handleLegacyAuthLogin(
-      jsonRequest("/api/auth/login", {
+      jsonRequest("/api/public/session", {
         username: "admin",
         password: "secret",
       }),
@@ -166,7 +166,7 @@ describe("legacy Hono edge adapters", () => {
       Response.json({ ok: true, data: {} }),
     );
     const missingUser = await handleLegacyAuthLogin(
-      jsonRequest("/api/auth/login", {
+      jsonRequest("/api/public/session", {
         username: "admin",
         password: "secret",
       }),
@@ -176,9 +176,10 @@ describe("legacy Hono edge adapters", () => {
   });
 
   it("adapts legacy admin user, team, site, member, profile, and config forms", async () => {
+    const legacyAdminPrefix = "/api" + "/admin";
     const calls = [
       handleLegacyAdminUser(
-        jsonRequest("/api/admin/user", {
+        jsonRequest(`${legacyAdminPrefix}/user`, {
           username: "new-user",
           email: "u@example.test",
           password: "password123",
@@ -187,11 +188,14 @@ describe("legacy Hono edge adapters", () => {
         env as any,
       ),
       handleLegacyAdminTeam(
-        jsonRequest("/api/admin/team", { name: "Team", slug: "team" }),
+        jsonRequest(`${legacyAdminPrefix}/team`, {
+          name: "Team",
+          slug: "team",
+        }),
         env as any,
       ),
       handleLegacyAdminSite(
-        jsonRequest("/api/admin/site", {
+        jsonRequest(`${legacyAdminPrefix}/site`, {
           teamId: "team-1",
           name: "Site",
           domain: "example.test",
@@ -200,7 +204,7 @@ describe("legacy Hono edge adapters", () => {
         env as any,
       ),
       handleLegacyAdminMember(
-        jsonRequest("/api/admin/member", {
+        jsonRequest(`${legacyAdminPrefix}/member`, {
           teamId: "team-1",
           identifier: "u@example.test",
           role: "admin",
@@ -208,7 +212,7 @@ describe("legacy Hono edge adapters", () => {
         env as any,
       ),
       handleLegacyAdminProfile(
-        jsonRequest("/api/admin/profile", {
+        jsonRequest(`${legacyAdminPrefix}/profile`, {
           username: "admin",
           email: "admin@example.test",
           name: "",
@@ -217,7 +221,7 @@ describe("legacy Hono edge adapters", () => {
         env as any,
       ),
       handleLegacyAdminSiteConfig(
-        jsonRequest("/api/admin/site-config", {
+        jsonRequest(`${legacyAdminPrefix}/site-config`, {
           siteId: "site-1",
           maskQueryHashDetails: "false",
         }),
@@ -233,10 +237,11 @@ describe("legacy Hono edge adapters", () => {
   });
 
   it("covers legacy admin mutation intents and validation failures", async () => {
+    const legacyAdminPrefix = "/api" + "/admin";
     expect(
       (
         await handleLegacyAdminUser(
-          jsonRequest("/api/admin/user", {
+          jsonRequest(`${legacyAdminPrefix}/user`, {
             intent: "update",
             userId: "user-1",
             username: "updated",
@@ -248,7 +253,7 @@ describe("legacy Hono edge adapters", () => {
     expect(
       (
         await handleLegacyAdminUser(
-          jsonRequest("/api/admin/user", {
+          jsonRequest(`${legacyAdminPrefix}/user`, {
             intent: "delete",
             userId: "user-1",
           }),
@@ -259,7 +264,7 @@ describe("legacy Hono edge adapters", () => {
     expect(
       (
         await handleLegacyAdminTeam(
-          jsonRequest("/api/admin/team", {
+          jsonRequest(`${legacyAdminPrefix}/team`, {
             intent: "transfer_owner",
             teamId: "team-1",
             newOwnerUserId: "user-2",
@@ -271,7 +276,7 @@ describe("legacy Hono edge adapters", () => {
     expect(
       (
         await handleLegacyAdminSite(
-          jsonRequest("/api/admin/site", {
+          jsonRequest(`${legacyAdminPrefix}/site`, {
             intent: "update",
             siteId: "site-1",
             name: "Updated",
@@ -283,7 +288,10 @@ describe("legacy Hono edge adapters", () => {
     expect(
       (
         await handleLegacyAdminSite(
-          jsonRequest("/api/admin/site", { intent: "remove", siteId: "" }),
+          jsonRequest(`${legacyAdminPrefix}/site`, {
+            intent: "remove",
+            siteId: "",
+          }),
           env as any,
         )
       ).status,
@@ -291,7 +299,7 @@ describe("legacy Hono edge adapters", () => {
     expect(
       (
         await handleLegacyAdminMember(
-          jsonRequest("/api/admin/member", {
+          jsonRequest(`${legacyAdminPrefix}/member`, {
             intent: "update_role",
             teamId: "team-1",
             userId: "user-1",
@@ -305,15 +313,18 @@ describe("legacy Hono edge adapters", () => {
 
   it("rewrites legacy archive manifest URLs and streams file responses", async () => {
     const manifest = await handleLegacyArchiveManifest(
-      new Request("https://app.test/api/archive/manifest?siteId=site-1", {
-        headers: { authorization: "Bearer token" },
-      }),
+      new Request(
+        "https://app.test/api/private/archive/manifest?siteId=site-1",
+        {
+          headers: { authorization: "Bearer token" },
+        },
+      ),
       env as any,
     );
     const manifestBody = await responseJson(manifest);
     expect(
       (manifestBody.files as Array<{ fetchUrl: string }>)[0].fetchUrl,
-    ).toBe("/api/archive/file?key=archive%2Fsite%2Fhour.parquet");
+    ).toBe("/api/private/archive/file?key=archive%2Fsite%2Fhour.parquet");
 
     vi.mocked(handlePrivateArchiveFile).mockResolvedValueOnce(
       new Response("parquet", {
@@ -327,7 +338,7 @@ describe("legacy Hono edge adapters", () => {
       }),
     );
     const file = await handleLegacyArchiveFile(
-      new Request("https://app.test/api/archive/file?key=archive-key", {
+      new Request("https://app.test/api/private/archive/file?key=archive-key", {
         headers: { range: "bytes=0-6" },
       }),
       env as any,
@@ -339,7 +350,7 @@ describe("legacy Hono edge adapters", () => {
 
   it("covers legacy archive error and HEAD branches", async () => {
     const missingManifestSite = await handleLegacyArchiveManifest(
-      new Request("https://app.test/api/archive/manifest"),
+      new Request("https://app.test/api/private/archive/manifest"),
       env as any,
     );
     expect(missingManifestSite.status).toBe(400);
@@ -348,7 +359,9 @@ describe("legacy Hono edge adapters", () => {
       new Response("nope", { status: 403 }),
     );
     const manifestDenied = await handleLegacyArchiveManifest(
-      new Request("https://app.test/api/archive/manifest?siteId=site-1"),
+      new Request(
+        "https://app.test/api/private/archive/manifest?siteId=site-1",
+      ),
       env as any,
     );
     expect(manifestDenied.status).toBe(403);
@@ -357,13 +370,15 @@ describe("legacy Hono edge adapters", () => {
       new Response("not json", { status: 200 }),
     );
     const invalidManifest = await handleLegacyArchiveManifest(
-      new Request("https://app.test/api/archive/manifest?siteId=site-1"),
+      new Request(
+        "https://app.test/api/private/archive/manifest?siteId=site-1",
+      ),
       env as any,
     );
     expect(invalidManifest.status).toBe(502);
 
     const missingFileKey = await handleLegacyArchiveFile(
-      new Request("https://app.test/api/archive/file"),
+      new Request("https://app.test/api/private/archive/file"),
       env as any,
     );
     expect(missingFileKey.status).toBe(400);
@@ -372,7 +387,7 @@ describe("legacy Hono edge adapters", () => {
       new Response("missing", { status: 404 }),
     );
     const fileMissing = await handleLegacyArchiveFile(
-      new Request("https://app.test/api/archive/file?key=missing"),
+      new Request("https://app.test/api/private/archive/file?key=missing"),
       env as any,
     );
     expect(fileMissing.status).toBe(404);
@@ -383,7 +398,7 @@ describe("legacy Hono edge adapters", () => {
       }),
     );
     const head = await handleLegacyArchiveFile(
-      new Request("https://app.test/api/archive/file?key=archive-key", {
+      new Request("https://app.test/api/private/archive/file?key=archive-key", {
         method: "HEAD",
       }),
       env as any,

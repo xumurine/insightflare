@@ -131,12 +131,13 @@ function formatSampleRateValue(value: number): string {
 async function postJson<T>(
   url: string,
   body: Record<string, unknown>,
+  method: "POST" | "PATCH" = "POST",
 ): Promise<T> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: url.split("?")[0],
-      method: "POST",
+      method,
       params: Object.fromEntries(new URLSearchParams(url.split("?")[1] || "")),
       body,
     }) as ActionResponse<T>;
@@ -146,7 +147,7 @@ async function postJson<T>(
     return result.data;
   }
   const response = await fetch(url, {
-    method: "POST",
+    method,
     credentials: "include",
     headers: {
       "content-type": "application/json",
@@ -420,12 +421,16 @@ export function SettingsClientPage({
 
     setSaving(true);
     try {
-      const updated = await postJson<SiteData>("/api/admin/site", {
-        intent: "update",
-        siteId: site.id,
-        name: name.trim(),
-        domain: domain.trim(),
-      });
+      const updated = await postJson<SiteData>(
+        "/api/private/admin/sites",
+        {
+          intent: "update",
+          siteId: site.id,
+          name: name.trim(),
+          domain: domain.trim(),
+        },
+        "PATCH",
+      );
 
       setName(updated.name);
       setDomain(updated.domain);
@@ -460,12 +465,16 @@ export function SettingsClientPage({
       const nextPublicSlug = publicEnabled
         ? publicSlug.trim() || randomPublicSlug()
         : publicSlug.trim();
-      const updated = await postJson<SiteData>("/api/admin/site", {
-        intent: "update",
-        siteId: site.id,
-        publicEnabled,
-        publicSlug: nextPublicSlug || undefined,
-      });
+      const updated = await postJson<SiteData>(
+        "/api/private/admin/sites",
+        {
+          intent: "update",
+          siteId: site.id,
+          publicEnabled,
+          publicSlug: nextPublicSlug || undefined,
+        },
+        "PATCH",
+      );
 
       const updatedPublicEnabled = Boolean(updated.publicEnabled);
       const updatedPublicSlug = updated.publicSlug || "";
@@ -500,7 +509,7 @@ export function SettingsClientPage({
       ...input,
     });
     const savedSettings = await postJson<Record<string, unknown>>(
-      "/api/admin/site-config",
+      "/api/private/admin/site-config",
       {
         siteId: site.id,
         config: normalizedSettings,
@@ -614,11 +623,12 @@ export function SettingsClientPage({
     setDeleting(true);
     try {
       await postJson<{ siteId: string; teamId: string; removed: boolean }>(
-        "/api/admin/site",
+        "/api/private/admin/sites",
         {
           intent: "remove",
           siteId: site.id,
         },
+        "PATCH",
       );
       toast.success(copy.toasts.deleted);
       setDeleteDialogOpen(false);
@@ -644,11 +654,15 @@ export function SettingsClientPage({
 
     setTransferring(true);
     try {
-      const updated = await postJson<SiteData>("/api/admin/site", {
-        intent: "update",
-        siteId: site.id,
-        teamId: targetTeam.id,
-      });
+      const updated = await postJson<SiteData>(
+        "/api/private/admin/sites",
+        {
+          intent: "update",
+          siteId: site.id,
+          teamId: targetTeam.id,
+        },
+        "PATCH",
+      );
       toast.success(copy.toasts.transferred);
       const nextSlug = resolveSiteSlug(updated);
       navigateWithTransition(

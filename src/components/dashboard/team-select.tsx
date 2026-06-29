@@ -118,7 +118,7 @@ export function TeamSelect({
     setSubmitting(true);
     setSubmitError("");
     try {
-      const response = await fetch("/api/admin/team", {
+      const response = await fetch("/api/private/admin/teams", {
         method: "POST",
         headers: {
           "content-type": "application/json",

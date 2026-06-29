@@ -72,7 +72,7 @@ async function fetchRedirectProfile(
 
   try {
     const url = request.nextUrl.clone();
-    url.pathname = "/api/private/admin/auth/me";
+    url.pathname = "/api/private/session";
     url.search = "";
     const fetchUrl = new URL(
       `${url.pathname}${url.search}`,
@@ -199,11 +199,8 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
   // Demo mode: skip all auth checks
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    if (pathname === "/admin/ws") return NextResponse.next();
-    if (
-      pathname.startsWith("/api/admin") ||
-      pathname.startsWith("/api/archive")
-    ) {
+    if (pathname === "/api/private/realtime/ws") return NextResponse.next();
+    if (pathname.startsWith("/api/private")) {
       return NextResponse.next();
     }
     if (!pathnameHasLocale(pathname)) {
@@ -268,7 +265,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
   // API 鉴权必须在各自 route handler 内完成（matcher 排除了 /api 路径，此处不会命中）。
   // WebSocket 认证在 Worker 层 (cf-worker.js) 处理，此处直接放行。
-  if (pathname === "/admin/ws") {
+  if (pathname === "/api/private/realtime/ws") {
     return NextResponse.next();
   }
 
@@ -358,6 +355,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|collect|script\\.js|healthz|favicon\\.ico|admin/ws|.*\\..*).*)",
+    "/((?!api|_next/static|_next/image|collect|script\\.js|healthz|favicon\\.ico|.*\\..*).*)",
   ],
 };

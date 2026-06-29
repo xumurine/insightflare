@@ -85,7 +85,7 @@ export function handleDemoRequest(options: {
   body?: unknown;
 }): unknown {
   const { path, method = "GET", params = {} } = options;
-  const publicRouteMatch = path.match(/\/api\/public\/([^/]+)\//);
+  const publicRouteMatch = path.match(/\/api\/public\/share\/([^/]+)\//);
   const publicSiteProfile = publicRouteMatch
     ? findSiteProfileByPublicSlug(publicRouteMatch[1] || "")
     : null;
@@ -106,7 +106,7 @@ export function handleDemoRequest(options: {
       return createDemoFunnel(siteId, options.body);
     }
     // Special cases that need real-looking responses
-    if (path.includes("/auth/login")) {
+    if (path === "/api/public/session" || path.includes("/auth/login")) {
       const user = getDemoUser();
       return { ok: true, data: { user, teams: getDemoTeams() } };
     }
@@ -195,7 +195,7 @@ export function handleDemoRequest(options: {
   }
 
   // GET routes
-  if (path.includes("/admin/auth/me")) {
+  if (path === "/api/private/session" || path.includes("/admin/auth/me")) {
     return { ok: true, data: { user: getDemoUser(), teams: getDemoTeams() } };
   }
   if (path.includes("/admin/users")) {
@@ -228,7 +228,7 @@ export function handleDemoRequest(options: {
     return generateDemoDoDiagnostic();
   }
 
-  const publicSiteMatch = path.match(/\/api\/public\/([^/]+)\/site$/);
+  const publicSiteMatch = path.match(/\/api\/public\/share\/([^/]+)\/site$/);
   if (publicSiteMatch) {
     const slug = decodeURIComponent(publicSiteMatch[1] || "demo-site");
     const profile = publicSiteProfile ?? findSiteProfileByPublicSlug(slug);
@@ -425,7 +425,7 @@ export function handleDemoRequest(options: {
   }
 
   // Public routes — delegate to same generators
-  const publicMatch = path.match(/\/api\/public\/[^/]+\/(.*)/);
+  const publicMatch = path.match(/\/api\/public\/share\/[^/]+\/(.*)/);
   if (publicMatch) {
     if (!publicSiteProfile) return DEMO_NOT_FOUND_RESPONSE;
     const subPath = publicMatch[1];

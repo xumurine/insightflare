@@ -38,9 +38,9 @@ afterEach(() => {
 
 describe("mock — handleDemoRequest", () => {
   describe("write operations", () => {
-    it("returns user+teams for POST /auth/login", () => {
+    it("returns user+teams for POST /api/public/session", () => {
       const res = ok(
-        handleDemoRequest({ path: "/api/private/auth/login", method: "POST" }),
+        handleDemoRequest({ path: "/api/public/session", method: "POST" }),
       );
       expect(res.ok).toBe(true);
       const data = res.data as Record<string, unknown>;
@@ -48,17 +48,15 @@ describe("mock — handleDemoRequest", () => {
       expect(Array.isArray(data.teams)).toBe(true);
     });
 
-    it("returns user+teams for POST /auth/me", () => {
-      const res = ok(
-        handleDemoRequest({ path: "/api/private/auth/me", method: "POST" }),
-      );
+    it("returns user+teams for GET /api/private/session", () => {
+      const res = ok(handleDemoRequest({ path: "/api/private/session" }));
       expect(res.ok).toBe(true);
     });
 
     it("PATCH /profile merges body into demo user", () => {
       const res = ok(
         handleDemoRequest({
-          path: "/api/private/profile",
+          path: "/api/private/admin/profile",
           method: "PATCH",
           body: { name: "New Name", timeZone: "Asia/Shanghai" },
         }),
@@ -72,7 +70,7 @@ describe("mock — handleDemoRequest", () => {
     it("PATCH /profile keeps existing timeZone when key is absent", () => {
       const res = ok(
         handleDemoRequest({
-          path: "/api/private/profile",
+          path: "/api/private/admin/profile",
           method: "PATCH",
           body: { name: "Only Name" },
         }),
@@ -85,7 +83,7 @@ describe("mock — handleDemoRequest", () => {
     it("PATCH /profile tolerates non-object bodies", () => {
       const res = ok(
         handleDemoRequest({
-          path: "/api/private/profile",
+          path: "/api/private/admin/profile",
           method: "PATCH",
           body: "not-an-object",
         }),
@@ -96,7 +94,7 @@ describe("mock — handleDemoRequest", () => {
     it("PUT /site-config merges config body", () => {
       const res = ok(
         handleDemoRequest({
-          path: "/api/private/site-config",
+          path: "/api/private/admin/site-config",
           method: "PUT",
           body: { config: { foo: "bar" } },
         }),
@@ -107,7 +105,7 @@ describe("mock — handleDemoRequest", () => {
     it("PUT /site-config tolerates missing config", () => {
       const res = ok(
         handleDemoRequest({
-          path: "/api/private/site-config",
+          path: "/api/private/admin/site-config",
           method: "PUT",
           body: {},
         }),
@@ -125,33 +123,33 @@ describe("mock — handleDemoRequest", () => {
 
   describe("admin routes", () => {
     it("returns auth/me data", () => {
-      const res = ok(handleDemoRequest({ path: "/api/admin/admin/auth/me" }));
+      const res = ok(handleDemoRequest({ path: "/api/private/session" }));
       expect(res.ok).toBe(true);
     });
 
     it("returns users", () => {
-      const res = ok(handleDemoRequest({ path: "/api/admin/admin/users" }));
+      const res = ok(handleDemoRequest({ path: "/api/private/admin/users" }));
       expect(Array.isArray(res.data)).toBe(true);
     });
 
     it("returns teams", () => {
-      const res = ok(handleDemoRequest({ path: "/api/admin/admin/teams" }));
+      const res = ok(handleDemoRequest({ path: "/api/private/admin/teams" }));
       expect(Array.isArray(res.data)).toBe(true);
     });
 
     it("returns sites", () => {
-      const res = ok(handleDemoRequest({ path: "/api/admin/admin/sites" }));
+      const res = ok(handleDemoRequest({ path: "/api/private/admin/sites" }));
       expect(Array.isArray(res.data)).toBe(true);
     });
 
     it("returns members", () => {
-      const res = ok(handleDemoRequest({ path: "/api/admin/admin/members" }));
+      const res = ok(handleDemoRequest({ path: "/api/private/admin/members" }));
       expect(Array.isArray(res.data)).toBe(true);
     });
 
     it("returns site config", () => {
       const res = ok(
-        handleDemoRequest({ path: "/api/admin/admin/site-config" }),
+        handleDemoRequest({ path: "/api/private/admin/site-config" }),
       );
       expect(res.ok).toBe(true);
     });
@@ -159,7 +157,7 @@ describe("mock — handleDemoRequest", () => {
     it("returns script snippet", () => {
       const res = ok(
         handleDemoRequest({
-          path: "/api/admin/admin/script-snippet",
+          path: "/api/private/admin/script-snippet",
           params: { siteId: SITE_ID },
         }),
       );
@@ -168,14 +166,14 @@ describe("mock — handleDemoRequest", () => {
 
     it("returns system performance metrics", () => {
       const res = ok(
-        handleDemoRequest({ path: "/api/admin/admin/system-performance" }),
+        handleDemoRequest({ path: "/api/private/admin/system-performance" }),
       );
       expect(res.ok).toBe(true);
     });
 
     it("returns DO diagnostic", () => {
       const res = ok(
-        handleDemoRequest({ path: "/api/admin/admin/do-diagnostic" }),
+        handleDemoRequest({ path: "/api/private/admin/do-diagnostic" }),
       );
       expect(res.ok).toBe(true);
     });
@@ -183,7 +181,7 @@ describe("mock — handleDemoRequest", () => {
     it("returns system-performance with different windowMinutes values", () => {
       for (const minutes of [5, 30, 180, 720, 1440]) {
         const res = handleDemoRequest({
-          path: "/api/admin/admin/system-performance",
+          path: "/api/private/admin/system-performance",
           params: { windowMinutes: minutes },
         });
         expect(res).toBeDefined();
@@ -199,7 +197,7 @@ describe("mock — handleDemoRequest", () => {
       ] as const) {
         const res = asRecord(
           handleDemoRequest({
-            path: "/api/admin/admin/system-performance",
+            path: "/api/private/admin/system-performance",
             params: { minutes },
           }),
         );
@@ -210,7 +208,7 @@ describe("mock — handleDemoRequest", () => {
 
       const fallback = asRecord(
         handleDemoRequest({
-          path: "/api/admin/admin/system-performance",
+          path: "/api/private/admin/system-performance",
           params: { minutes: 999 },
         }),
       );
@@ -1014,7 +1012,7 @@ describe("mock — handleDemoRequest", () => {
 
     it("dispatches overview to the same generator", () => {
       const res = handleDemoRequest({
-        path: "/api/public/some-token/overview",
+        path: "/api/public/share/some-token/overview",
         params,
       });
       expect(res).toBeDefined();
@@ -1022,7 +1020,7 @@ describe("mock — handleDemoRequest", () => {
 
     it("dispatches trend to the same generator", () => {
       const res = handleDemoRequest({
-        path: "/api/public/some-token/trend",
+        path: "/api/public/share/some-token/trend",
         params,
       });
       expect(res).toBeDefined();
@@ -1030,7 +1028,7 @@ describe("mock — handleDemoRequest", () => {
 
     it("dispatches pages to the same generator", () => {
       const res = handleDemoRequest({
-        path: "/api/public/some-token/pages",
+        path: "/api/public/share/some-token/pages",
         params,
       });
       expect(res).toBeDefined();
@@ -1038,7 +1036,7 @@ describe("mock — handleDemoRequest", () => {
 
     it("dispatches referrers to the same generator", () => {
       const res = handleDemoRequest({
-        path: "/api/public/some-token/referrers",
+        path: "/api/public/share/some-token/referrers",
         params,
       });
       expect(res).toBeDefined();
@@ -1047,7 +1045,7 @@ describe("mock — handleDemoRequest", () => {
     it("returns fallback for unknown public sub-paths", () => {
       const res = ok(
         handleDemoRequest({
-          path: "/api/public/some-token/unknown",
+          path: "/api/public/share/some-token/unknown",
           params,
         }),
       );
