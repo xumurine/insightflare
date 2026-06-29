@@ -62,36 +62,36 @@ describe("dashboard team section builders", () => {
   });
 
   it("returns management sections in navigation order", () => {
-    expect(buildManagementSections("en", "acme", messages)).toEqual([
+    expect(buildManagementSections("en", messages)).toEqual([
       {
         key: "manage-users",
         label: "Users",
-        href: "/en/app/acme/manage/users",
+        href: "/en/app/manage/users",
       },
       {
         key: "manage-teams",
         label: "Teams",
-        href: "/en/app/acme/manage/teams",
+        href: "/en/app/manage/teams",
       },
       {
         key: "version-updates",
         label: "Version updates",
-        href: "/en/app/acme/manage/version-updates",
+        href: "/en/app/manage/version-updates",
       },
       {
         key: "scheduled-tasks",
         label: "Scheduled tasks",
-        href: "/en/app/acme/manage/scheduled-tasks",
+        href: "/en/app/manage/scheduled-tasks",
       },
       {
         key: "system-performance",
         label: "System performance",
-        href: "/en/app/acme/manage/system-performance",
+        href: "/en/app/manage/system-performance",
       },
       {
         key: "system-settings",
         label: "System settings",
-        href: "/en/app/acme/manage/system-settings",
+        href: "/en/app/manage/system-settings",
       },
     ]);
   });

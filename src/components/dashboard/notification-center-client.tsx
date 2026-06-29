@@ -35,7 +35,7 @@ import { formatI18nTemplate } from "@/lib/i18n/template";
 interface NotificationCenterClientProps {
   locale: Locale;
   messages: AppMessages;
-  teamId: string;
+  teamId?: string;
 }
 
 type NotificationTab = "all" | "unread" | "attention" | "report";

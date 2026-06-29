@@ -1,20 +1,15 @@
-import { notFound } from "next/navigation";
-
 import { NotificationCenterClient } from "@/components/dashboard/notification-center-client";
-import { getDashboardTeamContext } from "@/lib/dashboard/server";
+import { RootDashboardShell } from "@/components/dashboard/root-dashboard-shell";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 
-interface AccountNotificationsPageProps {
+interface InboxPageProps {
   params: Promise<{
     locale: string;
-    teamSlug: string;
   }>;
 }
 
-export async function generateMetadata({
-  params,
-}: AccountNotificationsPageProps) {
+export async function generateMetadata({ params }: InboxPageProps) {
   const { locale } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
@@ -24,23 +19,18 @@ export async function generateMetadata({
   };
 }
 
-export default async function AccountNotificationsPage({
-  params,
-}: AccountNotificationsPageProps) {
-  const { locale, teamSlug } = await params;
+export default async function InboxPage({ params }: InboxPageProps) {
+  const { locale } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
-  const context = await getDashboardTeamContext(teamSlug);
-
-  if (!context) {
-    notFound();
-  }
 
   return (
-    <NotificationCenterClient
+    <RootDashboardShell
       locale={resolvedLocale}
       messages={messages}
-      teamId={context.activeTeam.id}
-    />
+      pathname={`/${resolvedLocale}/app/inbox`}
+    >
+      <NotificationCenterClient locale={resolvedLocale} messages={messages} />
+    </RootDashboardShell>
   );
 }

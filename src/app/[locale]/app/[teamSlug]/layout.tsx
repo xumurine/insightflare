@@ -52,15 +52,6 @@ export default async function TeamLayout({
   }
   const pathname = `/${resolvedLocale}/app/${context.activeTeam.slug}`;
 
-  const managementSections =
-    context.user.systemRole === "admin"
-      ? buildManagementSections(
-          resolvedLocale,
-          context.activeTeam.slug,
-          messages,
-        )
-      : undefined;
-
   return (
     <DashboardShell
       locale={resolvedLocale}
@@ -80,7 +71,11 @@ export default async function TeamLayout({
           context.user.systemRole,
         ),
       )}
-      managementSections={managementSections}
+      managementSections={
+        context.user.systemRole === "admin"
+          ? buildManagementSections(resolvedLocale, messages)
+          : undefined
+      }
     >
       {children}
     </DashboardShell>

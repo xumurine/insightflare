@@ -70,18 +70,14 @@ function buildTeamTabPath(
 
 function buildManagementPath(
   locale: Locale,
-  teamSlug: string,
   key: ManagementSectionKey,
 ): string {
-  if (key === "manage-users") return `/${locale}/app/${teamSlug}/manage/users`;
-  if (key === "manage-teams") return `/${locale}/app/${teamSlug}/manage/teams`;
-  if (key === "version-updates")
-    return `/${locale}/app/${teamSlug}/manage/version-updates`;
-  if (key === "scheduled-tasks")
-    return `/${locale}/app/${teamSlug}/manage/scheduled-tasks`;
-  if (key === "system-settings")
-    return `/${locale}/app/${teamSlug}/manage/system-settings`;
-  return `/${locale}/app/${teamSlug}/manage/system-performance`;
+  if (key === "manage-users") return `/${locale}/app/manage/users`;
+  if (key === "manage-teams") return `/${locale}/app/manage/teams`;
+  if (key === "version-updates") return `/${locale}/app/manage/version-updates`;
+  if (key === "scheduled-tasks") return `/${locale}/app/manage/scheduled-tasks`;
+  if (key === "system-settings") return `/${locale}/app/manage/system-settings`;
+  return `/${locale}/app/manage/system-performance`;
 }
 
 export function buildTeamSections(
@@ -102,7 +98,6 @@ export function buildTeamSections(
 
 export function buildManagementSections(
   locale: Locale,
-  teamSlug: string,
   messages: AppMessages,
 ): DashboardSectionItem[] {
   const keys: readonly ManagementSectionKey[] = [
@@ -116,6 +111,6 @@ export function buildManagementSections(
   return keys.map((key) => ({
     key,
     label: managementLabel(messages, key),
-    href: buildManagementPath(locale, teamSlug, key),
+    href: buildManagementPath(locale, key),
   }));
 }

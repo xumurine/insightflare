@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 import { LogoutActionButton } from "@/components/auth/logout-action-button";
+import { PageHeading } from "@/components/dashboard/page-heading";
+import { RootDashboardShell } from "@/components/dashboard/root-dashboard-shell";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -10,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getDashboardProfile } from "@/lib/dashboard/server";
+import { getDashboardRootContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 
@@ -32,40 +33,42 @@ export default async function AppRootPage({ params }: AppRootPageProps) {
   const { locale } = await params;
   const resolvedLocale = resolveLocale(locale);
   const t = getMessages(resolvedLocale);
-  const profile = await getDashboardProfile();
+  const context = await getDashboardRootContext();
 
-  if (profile && profile.teams.length === 1) {
-    redirect(`/${resolvedLocale}/app/${profile.teams[0].slug}`);
-  }
-
-  if (profile && profile.teams.length > 0) {
+  if (context && context.teams.length > 0) {
     return (
-      <main className="grid min-h-svh place-items-center p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>{t.teamEntry.title}</CardTitle>
-            <CardDescription>{t.teamEntry.description}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {profile.teams.map((team) => (
-              <Button
-                key={team.id}
-                asChild
-                variant="outline"
-                className="w-full justify-between"
-              >
-                <Link href={`/${resolvedLocale}/app/${team.slug}`}>
-                  <span className="truncate">{team.name}</span>
-                </Link>
-              </Button>
-            ))}
-          </CardContent>
-        </Card>
-      </main>
+      <RootDashboardShell
+        locale={resolvedLocale}
+        messages={t}
+        pathname={`/${resolvedLocale}/app`}
+      >
+        <div className="space-y-4">
+          <PageHeading
+            title={t.teamEntry.title}
+            subtitle={t.teamEntry.description}
+          />
+          <Card>
+            <CardContent className="space-y-2 p-4">
+              {context.teams.map((team) => (
+                <Button
+                  key={team.id}
+                  asChild
+                  variant="outline"
+                  className="w-full justify-between"
+                >
+                  <Link href={`/${resolvedLocale}/app/${team.slug}`}>
+                    <span className="truncate">{team.name}</span>
+                  </Link>
+                </Button>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      </RootDashboardShell>
     );
   }
 
-  const noTeams = !profile || profile.teams.length === 0;
+  const noTeams = !context || context.teams.length === 0;
 
   return (
     <main className="grid min-h-svh place-items-center p-4">

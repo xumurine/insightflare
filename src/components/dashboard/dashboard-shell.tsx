@@ -10,14 +10,17 @@ import {
   RiCalendarScheduleLine,
   RiFileInfoLine,
   RiGlobalLine,
+  RiGroupLine,
   RiKey2Line,
   RiLinksLine,
   RiNotification3Line,
   RiSettings3Line,
+  RiShieldUserLine,
   RiSpeedUpLine,
   RiTeamLine,
   RiUser3Line,
   RiUserSettingsLine,
+  RiVipCrownLine,
   RiWindow2Line,
 } from "@remixicon/react";
 import type { PartialOptions } from "overlayscrollbars";
@@ -113,7 +116,8 @@ const SIDEBAR_COLLAPSE_MARGIN_CLASS =
   "transition-[margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-data-[collapsible=icon]:mb-0";
 
 interface SidebarRouteState {
-  mode: "team" | "site";
+  mode: "root" | "team" | "site";
+  activeRootSectionKey?: string;
   activeTeamSectionKey?: string;
   activeManagementSectionKey?: string;
   activeSiteSlug?: string;
@@ -137,6 +141,18 @@ function getManagementSectionIcon(key: string) {
   if (key === "system-settings") return RiSettings3Line;
   if (key === "system-performance") return RiSpeedUpLine;
   return RiTeamLine;
+}
+
+function getTeamRoleIcon(role: string | undefined) {
+  if (role === "owner") return RiVipCrownLine;
+  if (role === "admin") return RiShieldUserLine;
+  return RiGroupLine;
+}
+
+function getTeamRoleLabel(messages: AppMessages, role: string | undefined) {
+  if (role === "owner") return messages.teamManagement.members.roleLabels.owner;
+  if (role === "admin") return messages.teamManagement.members.roleLabels.admin;
+  return messages.teamManagement.members.roleLabels.member;
 }
 
 function normalizeLocalePath(pathname: string): string {
@@ -173,9 +189,44 @@ function buildSitePath(
 
 function parseSidebarRouteState(
   pathname: string,
-  activeTeamSlug: string,
+  activeTeamSlug?: string,
 ): SidebarRouteState {
   const segments = pathname.split("/").filter((segment) => segment.length > 0);
+  const appIndex = segments.findIndex((segment) => segment === "app");
+  const appLocalPath = appIndex >= 0 ? segments.slice(appIndex + 1) : [];
+
+  if (!activeTeamSlug) {
+    if (appLocalPath[0] === "inbox") {
+      return {
+        mode: "root",
+        activeRootSectionKey: "inbox",
+      };
+    }
+    if (appLocalPath[0] === "account") {
+      return {
+        mode: "root",
+        activeRootSectionKey: "account",
+      };
+    }
+    if (appLocalPath[0] === "manage") {
+      const managementKeyByPath: Record<string, string> = {
+        users: "manage-users",
+        teams: "manage-teams",
+        "version-updates": "version-updates",
+        "scheduled-tasks": "scheduled-tasks",
+        "system-performance": "system-performance",
+        "system-settings": "system-settings",
+      };
+      return {
+        mode: "root",
+        activeManagementSectionKey: managementKeyByPath[appLocalPath[1] || ""],
+      };
+    }
+    return {
+      mode: "root",
+    };
+  }
+
   const teamIndex = segments.findIndex(
     (segment, index) =>
       segment === activeTeamSlug && index > 0 && segments[index - 1] === "app",
@@ -307,8 +358,8 @@ interface DashboardShellProps {
     timeZone?: string;
   };
   teams: TeamData[];
-  activeTeamSlug: string;
-  sites: SidebarSite[];
+  activeTeamSlug?: string;
+  sites?: SidebarSite[];
   unreadAttentionCount?: number;
   teamSections?: TeamSectionNavItem[];
   managementSections?: TeamSectionNavItem[];
@@ -322,7 +373,7 @@ export function DashboardShell({
   user,
   teams,
   activeTeamSlug,
-  sites,
+  sites = [],
   unreadAttentionCount = 0,
   teamSections,
   managementSections,
@@ -362,6 +413,7 @@ export function DashboardShell({
     const segments = livePathname.split("/").filter((s) => s.length > 0);
     const teamIndex = segments.findIndex(
       (segment, index) =>
+        activeTeamSlug &&
         segment === activeTeamSlug &&
         index > 0 &&
         segments[index - 1] === "app",
@@ -375,12 +427,16 @@ export function DashboardShell({
   );
   const resolvedActiveSiteSlug = routeState.activeSiteSlug || "";
   const hasActiveSite =
-    routeState.mode === "site" && resolvedActiveSiteSlug.length > 0;
-  const activeSiteBase = hasActiveSite
-    ? buildSitePath(locale, activeTeamSlug, resolvedActiveSiteSlug)
-    : null;
-  const activeTeamId =
-    teams.find((team) => team.slug === activeTeamSlug)?.id || "";
+    Boolean(activeTeamSlug) &&
+    routeState.mode === "site" &&
+    resolvedActiveSiteSlug.length > 0;
+  const activeSiteBase =
+    hasActiveSite && activeTeamSlug
+      ? buildSitePath(locale, activeTeamSlug, resolvedActiveSiteSlug)
+      : null;
+  const activeTeamId = activeTeamSlug
+    ? teams.find((team) => team.slug === activeTeamSlug)?.id || ""
+    : "";
 
   const analyticsSections: Array<{
     key: AnalyticsNavKey;
@@ -409,12 +465,16 @@ export function DashboardShell({
   const localeSuffix = normalizeLocalePath(livePathname);
   const switchToEn = `/en${localeSuffix}`;
   const switchToZh = `/zh${localeSuffix}`;
-  const accountHref = `/${locale}/app/${activeTeamSlug}/account`;
-  const notificationsHref = `/${locale}/app/${activeTeamSlug}/account/notifications`;
-  const teamRootHref = `/${locale}/app/${activeTeamSlug}`;
+  const accountHref = `/${locale}/app/account`;
+  const notificationsHref = `/${locale}/app/inbox`;
+  const appRootHref = `/${locale}/app`;
+  const teamRootHref = activeTeamSlug
+    ? `/${locale}/app/${activeTeamSlug}`
+    : appRootHref;
   const backToTeamLabel = messages.common.backToTeam;
-  const activeTeamName =
-    teams.find((team) => team.slug === activeTeamSlug)?.name || activeTeamSlug;
+  const activeTeamName = activeTeamSlug
+    ? teams.find((team) => team.slug === activeTeamSlug)?.name || activeTeamSlug
+    : "";
   const activeSiteName = hasActiveSite
     ? sites.find((site) => site.slug === resolvedActiveSiteSlug)?.name ||
       resolvedActiveSiteSlug
@@ -450,7 +510,7 @@ export function DashboardShell({
     : "h-svh min-h-0 overflow-y-auto overscroll-contain";
   const mobileCurrentLevelName = hasActiveSite
     ? activeSiteName
-    : activeTeamName;
+    : activeTeamName || messages.appName;
   const teamOptions = teams.map((team) => ({
     slug: team.slug,
     name: team.name,
@@ -509,19 +569,115 @@ export function DashboardShell({
           </SidebarHeader>
 
           <SidebarContent>
-            <SidebarGroup className={SIDEBAR_COLLAPSE_SECTION_CLASS}>
-              <SidebarGroupContent>
-                <TeamSelect
-                  locale={locale}
-                  messages={messages}
-                  options={teamOptions}
-                  activeTeamSlug={activeTeamSlug}
-                />
-              </SidebarGroupContent>
-            </SidebarGroup>
+            <AutoResizer
+              initial
+              duration={0.22}
+              className={SIDEBAR_COLLAPSE_SECTION_CLASS}
+            >
+              <AutoTransition
+                type="slideDown"
+                duration={0.18}
+                transitionKey={
+                  activeTeamSlug ? `team-select:${activeTeamSlug}` : "empty"
+                }
+                presenceMode="sync"
+              >
+                {activeTeamSlug ? (
+                  <SidebarGroup>
+                    <SidebarGroupContent>
+                      <TeamSelect
+                        locale={locale}
+                        messages={messages}
+                        options={teamOptions}
+                        activeTeamSlug={activeTeamSlug}
+                      />
+                    </SidebarGroupContent>
+                  </SidebarGroup>
+                ) : (
+                  <div aria-hidden="true" />
+                )}
+              </AutoTransition>
+            </AutoResizer>
 
             <SidebarMenuStage mode={routeState.mode}>
-              {routeState.mode === "team" ? (
+              {routeState.mode === "root" ? (
+                <>
+                  <SidebarGroup>
+                    <SidebarGroupLabel>
+                      {messages.common.team}
+                    </SidebarGroupLabel>
+                    <SidebarGroupContent>
+                      <SidebarMenu>
+                        {teams.map((team) => {
+                          const RoleIcon = getTeamRoleIcon(team.membershipRole);
+                          const roleLabel = getTeamRoleLabel(
+                            messages,
+                            team.membershipRole,
+                          );
+                          return (
+                            <SidebarMenuItem key={team.id}>
+                              <SidebarMenuButton asChild>
+                                <Link href={`/${locale}/app/${team.slug}`}>
+                                  <span
+                                    aria-label={roleLabel}
+                                    title={roleLabel}
+                                    className={
+                                      team.membershipRole === "owner"
+                                        ? "text-primary"
+                                        : undefined
+                                    }
+                                  >
+                                    <RoleIcon aria-hidden="true" />
+                                  </span>
+                                  <span>{team.name}</span>
+                                </Link>
+                              </SidebarMenuButton>
+                            </SidebarMenuItem>
+                          );
+                        })}
+                      </SidebarMenu>
+                    </SidebarGroupContent>
+                  </SidebarGroup>
+
+                  {hasManagementSections ? (
+                    <>
+                      <SidebarSeparator
+                        className={SIDEBAR_COLLAPSE_SEPARATOR_CLASS}
+                      />
+                      <SidebarGroup>
+                        <SidebarGroupLabel>
+                          {messages.common.management}
+                        </SidebarGroupLabel>
+                        <SidebarGroupContent>
+                          <SidebarMenu>
+                            {managementSections?.map((item) => {
+                              const isActive =
+                                routeState.activeManagementSectionKey ===
+                                item.key;
+                              const SectionIcon = getManagementSectionIcon(
+                                item.key,
+                              );
+                              return (
+                                <SidebarMenuItem key={item.key}>
+                                  <SidebarMenuButton
+                                    asChild
+                                    isActive={isActive}
+                                  >
+                                    <Link href={item.href}>
+                                      <SectionIcon />
+                                      <span>{item.label}</span>
+                                    </Link>
+                                  </SidebarMenuButton>
+                                </SidebarMenuItem>
+                              );
+                            })}
+                          </SidebarMenu>
+                        </SidebarGroupContent>
+                      </SidebarGroup>
+                    </>
+                  ) : null}
+                </>
+              ) : routeState.mode === "team" ? (
                 <>
                   <SidebarGroup>
                     <SidebarGroupLabel>
@@ -617,7 +773,7 @@ export function DashboardShell({
                       <SidebarSiteDetails
                         locale={locale}
                         teamId={activeTeamId}
-                        teamSlug={activeTeamSlug}
+                        teamSlug={activeTeamSlug || ""}
                         activeSiteSlug={resolvedActiveSiteSlug}
                         currentSection={currentAnalyticsSection}
                         sites={sites.map((site) => ({
@@ -687,9 +843,13 @@ export function DashboardShell({
                               {activeTeamName}
                             </Link>
                           </BreadcrumbLink>
-                        ) : (
+                        ) : activeTeamName ? (
                           <BreadcrumbPage className="block max-w-[28vw] truncate">
                             {activeTeamName}
+                          </BreadcrumbPage>
+                        ) : (
+                          <BreadcrumbPage className="block max-w-[28vw] truncate">
+                            {messages.appName}
                           </BreadcrumbPage>
                         )}
                       </BreadcrumbItem>

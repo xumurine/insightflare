@@ -230,7 +230,7 @@ export function SidebarFooterMenus({
               <RiNotification3Line />
               <span>{messages.notificationCenter.title}</span>
               {unreadAttentionCount > 0 ? (
-                <span className="ml-auto font-mono text-sm text-destructive tabular-nums pr-2">
+                <span className="ml-auto font-mono text-xs text-destructive tabular-nums pr-2">
                   {unreadAttentionCount > 99 ? "99+" : unreadAttentionCount}
                 </span>
               ) : null}

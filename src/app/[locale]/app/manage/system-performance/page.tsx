@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { RootDashboardShell } from "@/components/dashboard/root-dashboard-shell";
 import { SystemPerformanceClient } from "@/components/dashboard/system-performance-client";
 import { getDashboardProfile } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
@@ -8,7 +9,6 @@ import { getMessages } from "@/lib/i18n/messages";
 interface SystemPerformancePageProps {
   params: Promise<{
     locale: string;
-    teamSlug: string;
   }>;
 }
 
@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: SystemPerformancePageProps) {
 export default async function SystemPerformancePage({
   params,
 }: SystemPerformancePageProps) {
-  const { locale, teamSlug } = await params;
+  const { locale } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
   const profile = await getDashboardProfile();
@@ -34,12 +34,13 @@ export default async function SystemPerformancePage({
     notFound();
   }
 
-  const activeTeam = profile.teams.find((team) => team.slug === teamSlug);
-  if (!activeTeam) {
-    notFound();
-  }
-
   return (
-    <SystemPerformanceClient locale={resolvedLocale} messages={messages} />
+    <RootDashboardShell
+      locale={resolvedLocale}
+      messages={messages}
+      pathname={`/${resolvedLocale}/app/manage/system-performance`}
+    >
+      <SystemPerformanceClient locale={resolvedLocale} messages={messages} />
+    </RootDashboardShell>
   );
 }

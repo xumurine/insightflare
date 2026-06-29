@@ -786,7 +786,7 @@ accountSettings:
   saveFailed: 保存时区偏好失败。
 notificationCenter:
   title: 通知中心
-  subtitle: 查看团队通知规则生成的消息。
+  subtitle: 查看你的全部通知和报告。
   inboxTitle: 我的通知
   empty: 暂无通知。
   loading: 正在加载通知

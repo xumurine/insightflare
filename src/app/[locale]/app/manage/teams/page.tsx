@@ -1,31 +1,31 @@
 import { notFound } from "next/navigation";
 
-import { AdminUsersManagementClient } from "@/components/dashboard/admin-users-management-client";
+import { AdminTeamsManagementClient } from "@/components/dashboard/admin-teams-management-client";
+import { RootDashboardShell } from "@/components/dashboard/root-dashboard-shell";
 import { getDashboardProfile } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 
-interface ManageUsersPageProps {
+interface ManageTeamsPageProps {
   params: Promise<{
     locale: string;
-    teamSlug: string;
   }>;
 }
 
-export async function generateMetadata({ params }: ManageUsersPageProps) {
+export async function generateMetadata({ params }: ManageTeamsPageProps) {
   const { locale } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
 
   return {
-    title: messages.adminUsers.title,
+    title: messages.adminTeams.title,
   };
 }
 
-export default async function ManageUsersPage({
+export default async function ManageTeamsPage({
   params,
-}: ManageUsersPageProps) {
-  const { locale, teamSlug } = await params;
+}: ManageTeamsPageProps) {
+  const { locale } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
   const profile = await getDashboardProfile();
@@ -34,16 +34,13 @@ export default async function ManageUsersPage({
     notFound();
   }
 
-  const activeTeam = profile.teams.find((team) => team.slug === teamSlug);
-  if (!activeTeam) {
-    notFound();
-  }
-
   return (
-    <AdminUsersManagementClient
+    <RootDashboardShell
       locale={resolvedLocale}
       messages={messages}
-      currentUserId={profile.user.id}
-    />
+      pathname={`/${resolvedLocale}/app/manage/teams`}
+    >
+      <AdminTeamsManagementClient locale={resolvedLocale} messages={messages} />
+    </RootDashboardShell>
   );
 }

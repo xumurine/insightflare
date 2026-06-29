@@ -45,6 +45,19 @@ export interface DashboardTeamContext {
   unreadAttentionCount: number;
 }
 
+export interface DashboardRootContext {
+  user: {
+    id: string;
+    username: string;
+    email: string;
+    name: string;
+    systemRole: "admin" | "user";
+    timeZone?: string;
+  };
+  teams: TeamData[];
+  unreadAttentionCount: number;
+}
+
 function safeSlug(value: string): string {
   return value
     .trim()
@@ -89,6 +102,25 @@ export const getDashboardProfile = cache(async () => {
   return getMe();
 });
 
+export const getDashboardRootContext = cache(
+  async (): Promise<DashboardRootContext | null> => {
+    const me = await getMe();
+    if (!me) return null;
+
+    const unreadAttentionCount = await fetchNotificationMessages({
+      limit: 1,
+    })
+      .then((data) => data.unreadAttentionCount)
+      .catch(() => 0);
+
+    return {
+      user: me.user,
+      teams: me.teams,
+      unreadAttentionCount,
+    };
+  },
+);
+
 const getSitesForTeam = cache(
   async (teamId: string): Promise<SiteWithSlug[]> => {
     try {
@@ -110,7 +142,6 @@ export const getDashboardTeamContext = cache(
 
     const sites = await getSitesForTeam(activeTeam.id);
     const unreadAttentionCount = await fetchNotificationMessages({
-      teamId: activeTeam.id,
       limit: 1,
     })
       .then((data) => data.unreadAttentionCount)
