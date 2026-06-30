@@ -139,8 +139,9 @@ describe("mock — handleDemoRequest", () => {
       ).toMatchObject({
         status: "triggered",
         message: {
-          title: "Checkout conversion dropped",
-          bodyText: expect.any(String),
+          type: "threshold",
+          title: expect.stringContaining("traffic threshold reached"),
+          bodyText: expect.stringContaining("Threshold: < 120"),
         },
       });
       expect(
@@ -473,7 +474,12 @@ describe("mock — handleDemoRequest", () => {
         ).data,
       ).toMatchObject({
         messages: expect.arrayContaining([
-          expect.objectContaining({ title: "流量阈值已触发" }),
+          expect.objectContaining({
+            type: "threshold",
+            title: expect.stringContaining("访问量达到阈值"),
+          }),
+          expect.objectContaining({ type: "milestone" }),
+          expect.objectContaining({ type: "change" }),
         ]),
         unreadAttentionCount: expect.any(Number),
       });

@@ -7,9 +7,19 @@ import type {
 } from "@/lib/edge-client-types/admin";
 import type { Locale } from "@/lib/i18n/config";
 import {
+  buildNotificationContent,
+  notificationSiteName,
+} from "@/lib/notifications/content";
+import {
   defaultNotificationEmailConfig,
   redactNotificationEmailConfig,
 } from "@/lib/notifications/email-config";
+import { renderNotificationPlainText } from "@/lib/notifications/email-text";
+import type { NotificationMessage } from "@/lib/notifications/message-store";
+import type {
+  NotificationMessageType,
+  NotificationSeverity,
+} from "@/lib/notifications/message-types";
 import { findSiteProfileByPublicSlug } from "@/lib/realtime/demo-site-profiles";
 import {
   createDemoNotificationRule,
@@ -115,6 +125,15 @@ function demoLocale(value: unknown): Locale {
   return value === "zh" ? "zh" : "en";
 }
 
+function demoSiteDomain(siteId: string | null | undefined): string {
+  if (!siteId) return "demo.insightflare.app";
+  for (const team of getDemoTeams()) {
+    const site = getDemoSites(team.id).find((item) => item.id === siteId);
+    if (site) return site.domain;
+  }
+  return "demo.insightflare.app";
+}
+
 function escapeDemoNotificationHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -154,10 +173,77 @@ function demoNotificationBodyHtml(input: {
   ].join("");
 }
 
+function demoRuleMessage(input: {
+  type: NotificationMessageType;
+  severity: NotificationSeverity;
+  requiresAttention: boolean;
+  data: Record<string, unknown>;
+  locale: Locale;
+}) {
+  const content = buildNotificationContent({
+    type: input.type,
+    severity: input.severity,
+    data: input.data,
+    locale: input.locale,
+  });
+  const data = {
+    ...input.data,
+    locale: input.locale,
+  };
+  const bodyText = renderNotificationPlainText({
+    content,
+    locale: input.locale,
+    message: {
+      id: "demo-preview-message",
+      teamId: "demo-team",
+      siteId: null,
+      userId: "demo-user",
+      ruleId: null,
+      runId: null,
+      batchId: null,
+      type: input.type,
+      severity: input.severity,
+      requiresAttention: input.requiresAttention,
+      data,
+      title: content.title,
+      summary: content.summary,
+      bodyText: content.bodyText,
+      bodyHtml: "",
+      channels: { inApp: true, email: true },
+      deliveryStatus: "sent",
+      deliveryResults: {},
+      errorMessage: "",
+      readAt: null,
+      dismissedAt: null,
+      archivedAt: null,
+      triggeredAt: null,
+      createdAt: 0,
+      updatedAt: 0,
+      sentAt: null,
+      failedAt: null,
+      expiresAt: null,
+    } satisfies NotificationMessage,
+  });
+  return {
+    type: input.type,
+    severity: input.severity,
+    requiresAttention: input.requiresAttention,
+    title: content.title,
+    summary: content.summary,
+    bodyText,
+    bodyHtml: demoNotificationBodyHtml(content),
+    data,
+  };
+}
+
 function demoRuleEvaluation(
   rule: NotificationRuleData,
+  locale: Locale = "en",
 ): NotificationRuleEvaluationData {
   const condition = rule.condition || {};
+  const siteDomain = notificationSiteName({
+    siteDomain: demoSiteDomain(rule.siteId),
+  });
   if (!rule.enabled) {
     return {
       status: "skipped",
@@ -167,51 +253,51 @@ function demoRuleEvaluation(
   }
 
   if (rule.type === "report") {
-    const title = "Daily traffic report is ready";
-    const summary = "Your demo team report was generated successfully.";
-    const bodyText =
-      "Your demo team report was generated successfully.\n\nAcross all demo sites, visitors increased by 12.4% day over day. The strongest gains came from the Launch Microsite and SaaS Console profiles.";
+    const data = {
+      ruleId: rule.id,
+      siteDomain,
+      reportType: condition.reportType || "daily",
+      range: { label: "2026-06-29" },
+      metrics: { views: 3820, visitors: 1240, sessions: 1510 },
+      topPages: [
+        { path: "/", views: 1200 },
+        { path: "/pricing", views: 420 },
+      ],
+      topReferrers: [
+        { referrer: "Google", visits: 520 },
+        { referrer: "Direct", visits: 160 },
+      ],
+    };
     return {
       status: "triggered",
-      message: {
+      message: demoRuleMessage({
         type: "report",
         severity: "info",
         requiresAttention: false,
-        title,
-        summary,
-        bodyText,
-        bodyHtml: demoNotificationBodyHtml({ title, summary, bodyText }),
-        data: {
-          ruleId: rule.id,
-          reportType: condition.reportType || "daily",
-          range: "yesterday",
-        },
-      },
+        data,
+        locale,
+      }),
       data: { ruleId: rule.id, type: rule.type },
     };
   }
 
   if (rule.type === "health") {
-    const title = "Tracking has gone quiet";
-    const summary = "No eligible events have arrived for the demo docs site.";
-    const bodyText =
-      "No eligible events have arrived for the demo docs site for more than six hours.\n\nThe rule is configured to alert all team members because this usually indicates a script deployment, CSP, or DNS issue.";
+    const data = {
+      ruleId: rule.id,
+      siteDomain,
+      check: condition.check || "no_data",
+      hours: condition.hours || 6,
+      lastSeenAt: nowSeconds() - Number(condition.hours || 6) * 3600,
+    };
     return {
       status: "triggered",
-      message: {
+      message: demoRuleMessage({
         type: "health",
         severity: "critical",
         requiresAttention: true,
-        title,
-        summary,
-        bodyText,
-        bodyHtml: demoNotificationBodyHtml({ title, summary, bodyText }),
-        data: {
-          ruleId: rule.id,
-          check: condition.check || "no_data",
-          hours: condition.hours || 6,
-        },
-      },
+        data,
+        locale,
+      }),
       cooldownUntil:
         Number(condition.cooldownMinutes || 0) > 0
           ? nowSeconds() + Number(condition.cooldownMinutes) * 60
@@ -224,37 +310,25 @@ function demoRuleEvaluation(
     const target = Number(condition.value || 120);
     const currentValue =
       condition.operator === "<" || condition.operator === "<=" ? 84 : 1428;
-    const title =
-      condition.operator === "<"
-        ? "Checkout conversion dropped"
-        : "Traffic threshold reached";
-    const summary =
-      condition.operator === "<"
-        ? "Checkout completions are below the demo alert threshold."
-        : "Demo Store crossed the configured hourly threshold.";
-    const bodyText =
-      condition.operator === "<"
-        ? "Checkout completions are below the demo alert threshold.\n\nThe latest hourly window recorded 84 completed checkout sessions against a threshold of 120. Review campaign traffic quality and payment gateway health before the next dispatch window."
-        : "Demo Store crossed the configured hourly threshold in the latest check.\n\nThe latest hourly window recorded 1,428 visits, which is above the configured limit.";
+    const severity = condition.operator === "<" ? "critical" : "warning";
+    const data = {
+      ruleId: rule.id,
+      siteDomain,
+      metric: condition.metric || "sessions",
+      window: condition.window || "last_1h",
+      operator: condition.operator || "<",
+      value: currentValue,
+      target,
+    };
     return {
       status: "triggered",
-      message: {
+      message: demoRuleMessage({
         type: "threshold",
-        severity: condition.operator === "<" ? "critical" : "warning",
+        severity,
         requiresAttention: true,
-        title,
-        summary,
-        bodyText,
-        bodyHtml: demoNotificationBodyHtml({ title, summary, bodyText }),
-        data: {
-          ruleId: rule.id,
-          metric: condition.metric || "sessions",
-          window: condition.window || "last_1h",
-          operator: condition.operator || "<",
-          value: currentValue,
-          target,
-        },
-      },
+        data,
+        locale,
+      }),
       cooldownUntil:
         Number(condition.cooldownMinutes || 0) > 0
           ? nowSeconds() + Number(condition.cooldownMinutes) * 60
@@ -263,22 +337,15 @@ function demoRuleEvaluation(
     };
   }
 
-  const title = "InsightFlare notification test";
-  const summary = "This is a test notification from InsightFlare.";
-  const bodyText =
-    "This demo notification confirms that in-app delivery is available.";
   return {
     status: "triggered",
-    message: {
+    message: demoRuleMessage({
       type: "test",
       severity: "info",
       requiresAttention: false,
-      title,
-      summary,
-      bodyText,
-      bodyHtml: demoNotificationBodyHtml({ title, summary, bodyText }),
       data: { ruleId: rule.id, source: "demo_rule_preview" },
-    },
+      locale,
+    }),
     data: { ruleId: rule.id, type: rule.type },
   };
 }
@@ -330,14 +397,25 @@ function demoRunMessage(
 function generateDemoNotificationRulePreview(
   body: unknown,
 ): NotificationRuleEvaluationData {
-  return demoRuleEvaluation(findDemoNotificationRule(requestRuleId(body)));
+  const locale =
+    body && typeof body === "object"
+      ? demoLocale((body as Record<string, unknown>).locale)
+      : "en";
+  return demoRuleEvaluation(
+    findDemoNotificationRule(requestRuleId(body)),
+    locale,
+  );
 }
 
 function generateDemoNotificationRuleRun(
   body: unknown,
 ): NotificationRuleRunData {
   const rule = findDemoNotificationRule(requestRuleId(body));
-  const evaluation = demoRuleEvaluation(rule);
+  const locale =
+    body && typeof body === "object"
+      ? demoLocale((body as Record<string, unknown>).locale)
+      : "en";
+  const evaluation = demoRuleEvaluation(rule, locale);
   const messages = demoRunMessage(rule, evaluation);
   return {
     evaluation,

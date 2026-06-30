@@ -5,6 +5,13 @@ import type {
   NotificationRuleData,
 } from "@/lib/edge-client-types/admin";
 import type { Locale } from "@/lib/i18n/config";
+import { buildNotificationContent } from "@/lib/notifications/content";
+import { renderNotificationPlainText } from "@/lib/notifications/email-text";
+import type { NotificationMessage } from "@/lib/notifications/message-store";
+import type {
+  NotificationMessageType,
+  NotificationSeverity,
+} from "@/lib/notifications/message-types";
 import {
   DEMO_SITE_PROFILES,
   DEMO_TEAMS,
@@ -196,8 +203,17 @@ export function generateDemoApiKeys(teamId: string): ApiKeyData[] {
 }
 
 function demoNotificationMessage(
-  input: Partial<NotificationMessageData> & {
+  input: Omit<
+    Partial<NotificationMessageData>,
+    "bodyText" | "data" | "severity" | "summary" | "title" | "type"
+  > & {
     teamId: string;
+    type: NotificationMessageType;
+    severity: NotificationSeverity;
+    title: string;
+    summary: string;
+    bodyText: string;
+    data: Record<string, unknown>;
     userId?: string;
   },
 ): NotificationMessageData {
@@ -211,16 +227,14 @@ function demoNotificationMessage(
     ruleId: input.ruleId ?? null,
     runId: input.runId ?? "demo-run-notification",
     batchId: input.batchId ?? "demo-batch-notification",
-    type: input.type ?? "test",
-    severity: input.severity ?? "info",
+    type: input.type,
+    severity: input.severity,
     requiresAttention: input.requiresAttention ?? false,
-    title: input.title ?? "InsightFlare notification test",
-    summary: input.summary ?? "This is a test notification from InsightFlare.",
-    bodyText:
-      input.bodyText ??
-      "This demo notification confirms that in-app delivery is available.",
+    title: input.title,
+    summary: input.summary,
+    bodyText: input.bodyText,
     bodyHtml: input.bodyHtml ?? "",
-    data: input.data ?? {},
+    data: input.data,
     channels: input.channels ?? { inApp: true, email: true },
     deliveryStatus: input.deliveryStatus ?? "sent",
     deliveryResults: input.deliveryResults ?? {
@@ -238,6 +252,79 @@ function demoNotificationMessage(
     failedAt: input.failedAt ?? null,
     expiresAt: input.expiresAt ?? createdAt + 30 * 24 * 60 * 60,
   };
+}
+
+function demoTypedNotificationMessage(
+  input: Omit<
+    Partial<NotificationMessageData>,
+    "bodyText" | "data" | "severity" | "summary" | "title" | "type"
+  > & {
+    teamId: string;
+    type: NotificationMessageType;
+    severity: NotificationSeverity;
+    data: Record<string, unknown>;
+    locale: Locale;
+    bodyText?: string;
+    summary?: string;
+    title?: string;
+  },
+): NotificationMessageData {
+  const content = buildNotificationContent({
+    type: input.type,
+    severity: input.severity,
+    data: input.data,
+    locale: input.locale,
+    fallbackTitle: input.title,
+    fallbackSummary: input.summary,
+    fallbackBodyText: input.bodyText,
+  });
+  const data = {
+    ...input.data,
+    locale: input.locale,
+  };
+  const bodyText =
+    input.bodyText ??
+    renderNotificationPlainText({
+      content,
+      locale: input.locale,
+      message: {
+        id: input.id ?? "demo-notification-message",
+        teamId: input.teamId,
+        siteId: input.siteId ?? null,
+        userId: input.userId ?? getDemoUser().id,
+        ruleId: input.ruleId ?? null,
+        runId: input.runId ?? null,
+        batchId: input.batchId ?? null,
+        type: input.type,
+        severity: input.severity,
+        requiresAttention: input.requiresAttention ?? false,
+        data,
+        title: input.title ?? content.title,
+        summary: input.summary ?? content.summary,
+        bodyText: content.bodyText,
+        bodyHtml: input.bodyHtml ?? "",
+        channels: input.channels ?? { inApp: true, email: true },
+        deliveryStatus: input.deliveryStatus ?? "sent",
+        deliveryResults: input.deliveryResults ?? {},
+        errorMessage: input.errorMessage ?? "",
+        readAt: input.readAt ?? null,
+        dismissedAt: input.dismissedAt ?? null,
+        archivedAt: input.archivedAt ?? null,
+        triggeredAt: input.triggeredAt ?? null,
+        createdAt: input.createdAt ?? 0,
+        updatedAt: input.updatedAt ?? input.createdAt ?? 0,
+        sentAt: input.sentAt ?? null,
+        failedAt: input.failedAt ?? null,
+        expiresAt: input.expiresAt ?? null,
+      } satisfies NotificationMessage,
+    });
+  return demoNotificationMessage({
+    ...input,
+    title: input.title ?? content.title,
+    summary: input.summary ?? content.summary,
+    bodyText,
+    data,
+  });
 }
 
 export function generateDemoNotificationRules(
@@ -405,189 +492,249 @@ export function generateDemoNotificationMessages(
   const now = nowSeconds();
   const tid = teamId || getDemoTeams()[0].id;
   const sites = getDemoSites(tid);
-  const zh = locale === "zh";
+  const primarySite = sites[0] ?? null;
+  const docsSite = sites[1] ?? primarySite;
+  const apiSite = sites[2] ?? primarySite;
+  const primaryDomain = primarySite?.domain ?? "demo.insightflare.app";
+  const docsDomain = docsSite?.domain ?? "docs.insightflare.app";
+  const apiDomain = apiSite?.domain ?? "api.insightflare.app";
   return [
-    demoNotificationMessage({
+    demoTypedNotificationMessage({
       id: "demo-notification-message-attention",
       teamId: tid,
-      siteId: sites[0]?.id ?? null,
-      ruleId: "demo-notification-rule-hourly",
+      siteId: primarySite?.id ?? null,
+      ruleId: "demo-notification-rule-conversion-drop",
       type: "threshold",
       severity: "warning",
       requiresAttention: true,
-      title: zh ? "流量阈值已触发" : "Traffic threshold reached",
-      summary: zh
-        ? "Demo Store 超过了配置的小时浏览量阈值。"
-        : "Demo Store crossed the configured hourly views threshold.",
-      bodyText: zh
-        ? "Demo Store 在最近一次检查中超过了小时浏览量阈值。\n\n过去 1 小时浏览量达到 1,428，比配置上限高 18%。主要增长来自自然搜索和付费社交流量。"
-        : "Demo Store crossed the configured hourly views threshold in the latest check.\n\nViews reached 1,428 in the last hour, which is 18% above the configured limit. Organic search and paid social were the main contributors.",
+      locale,
+      data: {
+        siteDomain: primaryDomain,
+        metric: "sessions",
+        window: "last_1h",
+        value: 84,
+        operator: "<",
+        target: 120,
+      },
       readAt: null,
       createdAt: now - 25 * 60,
     }),
-    demoNotificationMessage({
+    demoTypedNotificationMessage({
       id: "demo-notification-message-conversion-drop",
       teamId: tid,
-      siteId: sites[0]?.id ?? null,
+      siteId: primarySite?.id ?? null,
       ruleId: "demo-notification-rule-conversion-drop",
-      type: "threshold",
+      type: "change",
       severity: "critical",
       requiresAttention: true,
-      title: zh ? "结账转化下降" : "Checkout conversion dropped",
-      summary: zh
-        ? "结账完成数低于 demo 告警阈值。"
-        : "Checkout completions are below the demo alert threshold.",
-      bodyText: zh
-        ? "结账完成数低于 demo 告警阈值。\n\n最近 1 小时记录到 84 次完成结账，低于 120 的阈值。建议在下一次投递窗口前检查广告流量质量和支付网关状态。"
-        : "Checkout completions are below the demo alert threshold.\n\nThe latest hourly window recorded 84 completed checkout sessions against a threshold of 120. Review campaign traffic quality and payment gateway health before the next dispatch window.",
+      locale,
+      data: {
+        siteDomain: primaryDomain,
+        metric: "visitors",
+        window: "last_24h",
+        previous: 920,
+        current: 1860,
+        change: 102.1,
+        mode: "percent",
+      },
       deliveryStatus: "partial",
       deliveryResults: {
         inApp: { status: "sent" },
-        email: { status: "failed", reason: "demo_provider_rejected" },
+        email: { status: "failed", reason: "provider_failed" },
       },
       errorMessage: "Demo provider rejected one recipient.",
       readAt: null,
       createdAt: now - 58 * 60,
     }),
-    demoNotificationMessage({
+    demoTypedNotificationMessage({
+      id: "demo-notification-message-milestone",
+      teamId: tid,
+      siteId: primarySite?.id ?? null,
+      ruleId: "demo-notification-rule-hourly",
+      type: "milestone",
+      severity: "success",
+      requiresAttention: false,
+      locale,
+      data: {
+        siteDomain: primaryDomain,
+        metric: "visitors",
+        value: 50240,
+        step: 10000,
+        bucket: 50000,
+      },
+      readAt: null,
+      createdAt: now - 82 * 60,
+    }),
+    demoTypedNotificationMessage({
       id: "demo-notification-message-health",
       teamId: tid,
-      siteId: sites[1]?.id ?? sites[0]?.id ?? null,
+      siteId: docsSite?.id ?? null,
       ruleId: "demo-notification-rule-no-data",
       type: "health",
       severity: "critical",
       requiresAttention: true,
-      title: zh ? "追踪数据已中断" : "Tracking has gone quiet",
-      summary: zh
-        ? "demo 文档站点没有收到符合条件的事件。"
-        : "No eligible events have arrived for the demo docs site.",
-      bodyText: zh
-        ? "demo 文档站点已超过 6 小时没有收到符合条件的事件。\n\n这条规则会通知所有团队成员，因为这通常意味着脚本发布、CSP 或 DNS 配置存在问题。"
-        : "No eligible events have arrived for the demo docs site for more than six hours.\n\nThe rule is configured to alert all team members because this usually indicates a script deployment, CSP, or DNS issue.",
+      locale,
+      data: {
+        siteDomain: docsDomain,
+        hours: 6,
+        lastSeenAt: now - 7 * 60 * 60,
+      },
       readAt: null,
       createdAt: now - 9 * 60 * 60,
     }),
-    demoNotificationMessage({
+    demoTypedNotificationMessage({
       id: "demo-notification-message-report",
       teamId: tid,
+      siteId: primarySite?.id ?? null,
       ruleId: "demo-notification-rule-daily",
       type: "report",
       severity: "info",
       requiresAttention: false,
-      title: zh ? "日报已生成" : "Daily traffic report is ready",
-      summary: zh
-        ? "你的 demo 团队报告已成功生成。"
-        : "Your demo team report was generated successfully.",
-      bodyText: zh
-        ? "你的 demo 团队报告已成功生成。\n\n所有 demo 站点的访客数环比昨日增长 12.4%。增长最明显的是 Launch Microsite 和 SaaS Console。"
-        : "Your demo team report was generated successfully.\n\nAcross all demo sites, visitors increased by 12.4% day over day. The strongest gains came from the Launch Microsite and SaaS Console profiles.",
+      locale,
+      data: {
+        siteDomain: primaryDomain,
+        reportType: "daily",
+        range: { label: "2026-06-29" },
+        metrics: { views: 3820, visitors: 1240, sessions: 1510 },
+        topPages: [
+          { path: "/", views: 1200 },
+          { path: "/pricing", views: 420 },
+          { path: "/docs/getting-started", views: 380 },
+        ],
+        topReferrers: [
+          { referrer: "Google", visits: 520 },
+          { referrer: "Product Hunt", visits: 240 },
+          { referrer: "Direct", visits: 160 },
+        ],
+      },
       readAt: now - 2 * 60 * 60,
       createdAt: now - 3 * 60 * 60,
     }),
-    demoNotificationMessage({
+    demoTypedNotificationMessage({
       id: "demo-notification-message-weekly-report",
       teamId: tid,
-      siteId: null,
-      ruleId: "demo-notification-rule-daily",
+      siteId: docsSite?.id ?? null,
+      ruleId: "demo-notification-rule-weekly-growth",
       type: "report",
       severity: "success",
       requiresAttention: false,
-      title: zh ? "周报已送达" : "Weekly report delivered",
-      summary: zh
-        ? "本周活跃访客和会话质量均有提升。"
-        : "Active visitors and session quality improved this week.",
-      bodyText: zh
-        ? "本周报告已完成投递。\n\n活跃访客增长 8.1%，平均会话时长增加 34 秒。报告建议继续观察产品页到结账页的转化路径。"
-        : "The weekly report has been delivered.\n\nActive visitors increased by 8.1%, and average session duration improved by 34 seconds. The report recommends watching the product-to-checkout path.",
+      locale,
+      data: {
+        siteDomain: docsDomain,
+        reportType: "weekly",
+        range: { label: "2026-06-23 - 2026-06-29" },
+        metrics: { views: 18240, visitors: 6940, sessions: 7810 },
+        topPages: [
+          { path: "/docs", views: 3600 },
+          { path: "/docs/api", views: 2100 },
+          { path: "/docs/install", views: 1880 },
+        ],
+        topReferrers: [
+          { referrer: "Google", visits: 2140 },
+          { referrer: "GitHub", visits: 920 },
+          { referrer: "Direct", visits: 760 },
+        ],
+      },
       readAt: now - 26 * 60 * 60,
       createdAt: now - 28 * 60 * 60,
     }),
-    demoNotificationMessage({
+    demoTypedNotificationMessage({
       id: "demo-notification-message-campaign-spike",
       teamId: tid,
-      siteId: sites[0]?.id ?? null,
+      siteId: primarySite?.id ?? null,
       ruleId: "demo-notification-rule-hourly",
-      type: "threshold",
+      type: "change",
       severity: "success",
       requiresAttention: false,
-      title: zh ? "活动流量明显增长" : "Campaign traffic spiked",
-      summary: zh
-        ? "Launch Microsite 的活动入口带来了明显增长。"
-        : "Launch Microsite saw a strong increase from campaign entry points.",
-      bodyText: zh
-        ? "最近 30 分钟的访客数高于常规基线。\n\n活动入口贡献了 63% 的新增会话，移动端表现尤其明显。"
-        : "Visitors in the last 30 minutes are above the normal baseline.\n\nCampaign entry points contributed 63% of new sessions, with the strongest movement on mobile.",
+      locale,
+      data: {
+        siteDomain: primaryDomain,
+        metric: "sessions",
+        window: "last_1h",
+        previous: 410,
+        current: 688,
+        change: 67.8,
+        mode: "percent",
+      },
       readAt: null,
       createdAt: now - 95 * 60,
     }),
-    demoNotificationMessage({
+    demoTypedNotificationMessage({
       id: "demo-notification-message-api-latency",
       teamId: tid,
-      siteId: sites[2]?.id ?? sites[0]?.id ?? null,
-      ruleId: "demo-notification-rule-no-data",
-      type: "health",
+      siteId: apiSite?.id ?? null,
+      ruleId: "demo-notification-rule-conversion-drop",
+      type: "threshold",
       severity: "warning",
       requiresAttention: true,
-      title: zh ? "事件写入延迟升高" : "Event ingest latency increased",
-      summary: zh
-        ? "最近一批事件的写入延迟高于 demo 基线。"
-        : "The latest event batch is above the demo ingest latency baseline.",
-      bodyText: zh
-        ? "事件写入延迟在最近 15 分钟内升高。\n\n数据仍在接收，但建议检查边缘函数和数据库写入耗时，避免后续报告延迟。"
-        : "Event ingest latency increased during the last 15 minutes.\n\nData is still arriving, but review edge function and database write timing to avoid delayed reports.",
+      locale,
+      data: {
+        siteDomain: apiDomain,
+        metric: "views",
+        window: "last_24h",
+        value: 15680,
+        operator: ">=",
+        target: 12000,
+      },
       readAt: null,
       createdAt: now - 2 * 60 * 60,
     }),
-    demoNotificationMessage({
+    demoTypedNotificationMessage({
       id: "demo-notification-message-monthly-report",
       teamId: tid,
-      siteId: null,
+      siteId: apiSite?.id ?? null,
       ruleId: "demo-notification-rule-daily",
       type: "report",
       severity: "info",
       requiresAttention: false,
-      title: zh ? "月度报告可查看" : "Monthly report is available",
-      summary: zh
-        ? "本月概览已经整理完成，可用于团队复盘。"
-        : "The monthly overview is ready for team review.",
-      bodyText: zh
-        ? "本月报告已经生成。\n\n留存访问占比提升到 41%，回访用户主要来自产品文档、价格页和控制台入口。"
-        : "The monthly report has been generated.\n\nReturning visit share increased to 41%, led by product docs, pricing, and console entry points.",
+      locale,
+      data: {
+        siteDomain: apiDomain,
+        reportType: "monthly",
+        range: { label: "2026-06" },
+        metrics: { views: 72400, visitors: 21840, sessions: 28910 },
+        topPages: [
+          { path: "/api", views: 14200 },
+          { path: "/api/auth", views: 9800 },
+          { path: "/api/webhooks", views: 7400 },
+        ],
+        topReferrers: [
+          { referrer: "GitHub", visits: 3820 },
+          { referrer: "Google", visits: 2940 },
+          { referrer: "Direct", visits: 1660 },
+        ],
+      },
       readAt: now - 4 * 24 * 60 * 60,
       createdAt: now - 4 * 24 * 60 * 60 - 20 * 60,
     }),
-    demoNotificationMessage({
+    demoTypedNotificationMessage({
       id: "demo-notification-message-recovery",
       teamId: tid,
-      siteId: sites[1]?.id ?? sites[0]?.id ?? null,
+      siteId: docsSite?.id ?? null,
       ruleId: "demo-notification-rule-no-data",
       type: "health",
       severity: "success",
       requiresAttention: false,
-      title: zh ? "追踪已恢复" : "Tracking recovered",
-      summary: zh
-        ? "文档站点已重新收到事件。"
-        : "The docs site is receiving events again.",
-      bodyText: zh
-        ? "健康检查已恢复正常。\n\n最近一次检查收到 326 条事件，告警条件不再满足。"
-        : "The health check has returned to normal.\n\nThe latest check received 326 events, so the alert condition no longer matches.",
+      locale,
+      data: {
+        siteDomain: docsDomain,
+        hours: 6,
+        lastSeenAt: now - 8 * 60,
+      },
       readAt: now - 6 * 60 * 60,
       createdAt: now - 7 * 60 * 60,
     }),
-    demoNotificationMessage({
+    demoTypedNotificationMessage({
       id: "demo-notification-message-test",
       teamId: tid,
       ruleId: null,
       type: "test",
       severity: "success",
       requiresAttention: false,
-      title: zh ? "demo 测试通知已送达" : "Demo test notification delivered",
-      summary: zh
-        ? "此 demo 工作区可以正常接收站内通知。"
-        : "In-app delivery is available for this demo workspace.",
-      bodyText: zh
-        ? "此 demo 工作区可以正常接收站内通知。\n\ndemo 模式会模拟邮件投递，因此不需要配置 Resend 密钥。"
-        : "In-app delivery is available for this demo workspace.\n\nEmail is intentionally simulated in demo mode, so this message does not require a configured Resend key.",
+      locale,
+      data: {
+        source: "demo",
+      },
       readAt: now - 65 * 60,
       createdAt: now - 70 * 60,
     }),
@@ -602,15 +749,17 @@ export function generateDemoNotificationTest(body: unknown): {
     body && typeof body === "object" ? (body as Record<string, unknown>) : {};
   const teamId = String(raw.teamId || getDemoTeams()[0].id);
   const userId = String(raw.userId || getDemoUser().id);
-  const message = demoNotificationMessage({
+  const locale = raw.locale === "zh" ? "zh" : "en";
+  const message = demoTypedNotificationMessage({
     id: `demo-notification-test-${nowSeconds()}`,
     teamId,
     userId,
     siteId: typeof raw.siteId === "string" && raw.siteId ? raw.siteId : null,
-    title: "InsightFlare notification test",
-    summary: "This is a test notification from InsightFlare.",
-    bodyText:
-      "This demo notification confirms that in-app delivery is available.",
+    type: "test",
+    severity: "info",
+    requiresAttention: false,
+    locale,
+    data: { source: "demo_notification_test" },
   });
   return {
     message,

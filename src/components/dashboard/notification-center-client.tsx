@@ -12,7 +12,6 @@ import {
   RiMailUnreadLine,
   RiNotification3Line,
   RiRefreshLine,
-  RiSettings3Line,
 } from "@remixicon/react";
 import { toast } from "sonner";
 
@@ -22,7 +21,6 @@ import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Field, FieldLabel } from "@/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -61,7 +59,9 @@ const NOTIFICATION_TABS: readonly NotificationTab[] = [
 const MESSAGE_TYPE_FILTERS = [
   "all",
   "report",
+  "milestone",
   "threshold",
+  "change",
   "health",
   "test",
 ] as const;
@@ -503,6 +503,34 @@ export function NotificationCenterClient({
         subtitle={copy.subtitle}
         actions={
           <>
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="w-40">
+                <SelectValue aria-label={copy.typeFilterLabel} />
+              </SelectTrigger>
+              <SelectContent>
+                {MESSAGE_TYPE_FILTERS.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type === "all"
+                      ? copy.allTypes
+                      : dictionaryLabel(copy.messageTypes, type)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={severityFilter} onValueChange={setSeverityFilter}>
+              <SelectTrigger className="w-40">
+                <SelectValue aria-label={copy.severityFilterLabel} />
+              </SelectTrigger>
+              <SelectContent>
+                {SEVERITY_FILTERS.map((severity) => (
+                  <SelectItem key={severity} value={severity}>
+                    {severity === "all"
+                      ? copy.allSeverities
+                      : dictionaryLabel(copy.severities, severity)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               type="button"
               variant="outline"
@@ -577,54 +605,6 @@ export function NotificationCenterClient({
               />
             ))}
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="grid gap-4 p-4 md:grid-cols-[1fr_220px_220px] md:items-center">
-          <div className="min-w-0 space-y-1">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <RiSettings3Line className="size-4 text-muted-foreground" />
-              {copy.filtersTitle}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {copy.filtersDescription}
-            </p>
-          </div>
-          <Field>
-            <FieldLabel>{copy.typeFilterLabel}</FieldLabel>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MESSAGE_TYPE_FILTERS.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {type === "all"
-                      ? copy.allTypes
-                      : dictionaryLabel(copy.messageTypes, type)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field>
-            <FieldLabel>{copy.severityFilterLabel}</FieldLabel>
-            <Select value={severityFilter} onValueChange={setSeverityFilter}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SEVERITY_FILTERS.map((severity) => (
-                  <SelectItem key={severity} value={severity}>
-                    {severity === "all"
-                      ? copy.allSeverities
-                      : dictionaryLabel(copy.severities, severity)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
         </CardContent>
       </Card>
 
