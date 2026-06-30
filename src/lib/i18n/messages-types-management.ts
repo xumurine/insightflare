@@ -343,6 +343,11 @@ export interface AppManagementMessages {
       noSitesForRules: string;
       editRule: string;
       dialogDescription: string;
+      ruleInfoSection: string;
+      scheduleSection: string;
+      conditionSection: string;
+      deliverySection: string;
+      summarySection: string;
       nameLabel: string;
       siteLabel: string;
       chooseSite: string;
@@ -354,6 +359,21 @@ export interface AppManagementMessages {
       timeLabel: string;
       timezoneLabel: string;
       intervalLabel: string;
+      dayLabel: string;
+      dayOfMonthLabel: string;
+      monthLabel: string;
+      reportPeriodLabel: string;
+      milestoneEveryLabel: string;
+      matchLabel: string;
+      matchAll: string;
+      matchAny: string;
+      changeValueLabel: string;
+      changeModeLabel: string;
+      changeModePercent: string;
+      changeModeAbsolute: string;
+      addCondition: string;
+      removeCondition: string;
+      conditionItemTitle: string;
       metricLabel: string;
       windowLabel: string;
       operatorLabel: string;
@@ -388,11 +408,29 @@ export interface AppManagementMessages {
       previewDialogDescription: string;
       coolingDownUntil: string;
       scheduleDaily: string;
+      scheduleWeekly: string;
+      scheduleMonthly: string;
+      scheduleQuarterly: string;
+      scheduleYearly: string;
       scheduleInterval: string;
       scheduleCustom: string;
+      conditionReport: string;
+      conditionMilestone: string;
+      conditionThreshold: string;
+      conditionChange: string;
+      conditionHealth: string;
+      summaryWhenConditions: string;
+      summaryWhenSingleCondition: string;
+      summaryConditionThreshold: string;
+      summaryConditionChange: string;
+      summaryReportCondition: string;
+      summaryMilestoneCondition: string;
+      summaryHealthCondition: string;
       defaultNames: {
         report: string;
+        milestone: string;
         threshold: string;
+        change: string;
         health: string;
       };
       columns: {
@@ -401,6 +439,7 @@ export interface AppManagementMessages {
         site: string;
         recipient: string;
         schedule: string;
+        condition: string;
         nextRun: string;
         status: string;
       };
@@ -436,14 +475,22 @@ export interface AppManagementMessages {
       };
       scheduleKinds: {
         daily: string;
+        weekly: string;
+        monthly: string;
+        quarterly: string;
+        yearly: string;
         interval: string;
       };
       intervalOptions: {
+        every30Minutes: string;
         everyHour: string;
         every6Hours: string;
         every12Hours: string;
         everyDay: string;
+        every7Days: string;
+        every30Days: string;
       };
+      weekDays: string[];
       metrics: {
         views: string;
         visitors: string;

@@ -7,12 +7,18 @@ import {
 import type { NotificationRule } from "@/lib/notifications/rule-store";
 
 const loadDailyReportData = vi.hoisted(() => vi.fn());
+const loadReportData = vi.hoisted(() => vi.fn());
 const loadMetricValue = vi.hoisted(() => vi.fn());
+const loadPreviousMetricValue = vi.hoisted(() => vi.fn());
+const loadCumulativeMetricValue = vi.hoisted(() => vi.fn());
 const loadSiteLastSeenAt = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/notifications/report-data", () => ({
   loadDailyReportData,
+  loadReportData,
   loadMetricValue,
+  loadPreviousMetricValue,
+  loadCumulativeMetricValue,
   loadSiteLastSeenAt,
 }));
 
@@ -28,6 +34,7 @@ function rule(input: Partial<NotificationRule> = {}): NotificationRule {
     schedule: { kind: "interval", everyMinutes: 60 },
     condition: {},
     recipient: { mode: "team_admins" },
+    state: {},
     lastCheckedAt: null,
     lastTriggeredAt: null,
     nextRunAt: null,
@@ -73,9 +80,10 @@ describe("notification evaluator", () => {
   });
 
   it("builds a daily report draft from report data", async () => {
-    loadDailyReportData.mockResolvedValue({
+    loadReportData.mockResolvedValue({
       siteName: "Example",
       siteDomain: "example.com",
+      reportType: "daily",
       range: { from: 10, to: 20, label: "2026-06-29" },
       metrics: { views: 3820, visitors: 1240, sessions: 1510 },
       topPages: [{ path: "/", views: 1200 }],
@@ -97,6 +105,39 @@ describe("notification evaluator", () => {
       expect(result.message.type).toBe("report");
       expect(result.message.summary).toContain("1,240 visitors");
       expect(result.message.bodyText).toContain("Top Pages");
+    }
+  });
+
+  it("builds report drafts for non-daily report types", async () => {
+    loadReportData.mockResolvedValue({
+      siteName: "Example",
+      siteDomain: "example.com",
+      reportType: "monthly",
+      range: { from: 10, to: 20, label: "2026-05" },
+      metrics: { views: 3820, visitors: 1240, sessions: 1510 },
+      topPages: [],
+      topReferrers: [],
+    });
+
+    const result = await evaluateNotificationRule(
+      {} as never,
+      rule({
+        type: "report",
+        condition: { reportType: "monthly" },
+        schedule: {
+          kind: "monthly",
+          time: "08:00",
+          timezone: "UTC",
+          dayOfMonth: 1,
+        },
+      }),
+      100,
+    );
+
+    expect(result.status).toBe("triggered");
+    if (result.status === "triggered") {
+      expect(result.message.data?.reportType).toBe("monthly");
+      expect(result.message.title).toContain("monthly traffic report");
     }
   });
 
@@ -127,7 +168,42 @@ describe("notification evaluator", () => {
       expect(result.message.type).toBe("threshold");
       expect(result.message.severity).toBe("warning");
       expect(result.cooldownUntil).toBe(22600);
+      expect(result.state?.threshold).toMatchObject({
+        lastTriggerKey: expect.stringContaining("threshold|"),
+      });
     }
+  });
+
+  it("does not repeat threshold triggers for the same evaluated window", async () => {
+    loadMetricValue.mockResolvedValue({
+      metric: "visitors",
+      window: "last_1h",
+      value: 1240,
+      range: { from: 1, to: 2 },
+    });
+
+    const result = await evaluateNotificationRule(
+      envWithSite() as never,
+      rule({
+        condition: {
+          metric: "visitors",
+          window: "last_1h",
+          operator: ">=",
+          value: 1000,
+        },
+        state: {
+          threshold: {
+            lastTriggerKey: "threshold|all|visitors:last_1h:>=:1000:1:2",
+          },
+        },
+      }),
+      1000,
+    );
+
+    expect(result).toMatchObject({
+      status: "checked",
+      triggered: false,
+    });
   });
 
   it("returns checked when threshold rules do not match", async () => {
@@ -236,5 +312,114 @@ describe("notification evaluator", () => {
     expect(compareThreshold(10, ">=", 10)).toBe(true);
     expect(compareThreshold(10, "<", 11)).toBe(true);
     expect(compareThreshold(10, "<=", 10)).toBe(true);
+  });
+
+  it("triggers milestone rules once per crossed bucket", async () => {
+    loadCumulativeMetricValue.mockResolvedValue(2500);
+
+    const result = await evaluateNotificationRule(
+      envWithSite() as never,
+      rule({
+        type: "milestone",
+        condition: { metric: "visitors", step: 1000 },
+        state: { milestone: { visitors: { lastBucket: 1000 } } },
+      }),
+      1000,
+    );
+
+    expect(result.status).toBe("triggered");
+    if (result.status === "triggered") {
+      expect(result.state?.milestone).toMatchObject({
+        visitors: { lastBucket: 2000 },
+      });
+    }
+  });
+
+  it("triggers change rules against the previous period", async () => {
+    loadMetricValue.mockResolvedValue({
+      metric: "visitors",
+      window: "last_24h",
+      value: 200,
+      range: { from: 2, to: 3 },
+    });
+    loadPreviousMetricValue.mockResolvedValue({
+      metric: "visitors",
+      window: "last_24h",
+      value: 100,
+      range: { from: 1, to: 2 },
+    });
+
+    const result = await evaluateNotificationRule(
+      envWithSite() as never,
+      rule({
+        type: "change",
+        condition: {
+          any: [
+            {
+              metric: "visitors",
+              window: "last_24h",
+              mode: "percent",
+              operator: ">=",
+              value: 50,
+            },
+          ],
+        },
+      }),
+      1000,
+    );
+
+    expect(result.status).toBe("triggered");
+    if (result.status === "triggered") {
+      expect(result.message.type).toBe("change");
+      expect(result.message.data?.change).toBe(100);
+      expect(result.state?.change).toMatchObject({
+        lastTriggerKey: expect.stringContaining("change|"),
+      });
+    }
+  });
+
+  it("does not repeat change triggers for the same compared windows", async () => {
+    loadMetricValue.mockResolvedValue({
+      metric: "visitors",
+      window: "last_24h",
+      value: 200,
+      range: { from: 2, to: 3 },
+    });
+    loadPreviousMetricValue.mockResolvedValue({
+      metric: "visitors",
+      window: "last_24h",
+      value: 100,
+      range: { from: 1, to: 2 },
+    });
+
+    const result = await evaluateNotificationRule(
+      envWithSite() as never,
+      rule({
+        type: "change",
+        condition: {
+          any: [
+            {
+              metric: "visitors",
+              window: "last_24h",
+              mode: "percent",
+              operator: ">=",
+              value: 50,
+            },
+          ],
+        },
+        state: {
+          change: {
+            lastTriggerKey:
+              "change|any|visitors:last_24h:percent:>=:50:2:3:1:2",
+          },
+        },
+      }),
+      1000,
+    );
+
+    expect(result).toMatchObject({
+      status: "checked",
+      triggered: false,
+    });
   });
 });

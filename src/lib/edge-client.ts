@@ -721,7 +721,7 @@ export async function fetchNotificationMessages(input: {
 }
 
 export async function fetchNotificationEmailPreview(input: {
-  type: "test" | "report" | "threshold" | "health";
+  type: "test" | "report" | "milestone" | "threshold" | "change" | "health";
   locale: "en" | "zh";
   format: "html" | "text" | "json";
 }): Promise<
@@ -809,6 +809,53 @@ export interface NotificationPreferencesData {
   };
 }
 
+export const DEFAULT_NOTIFICATION_PREFERENCES_DATA: NotificationPreferencesData =
+  {
+    inApp: true,
+    email: true,
+    webPush: false,
+    attention: {
+      reportsCreateUnread: false,
+      milestonesCreateUnread: false,
+      alertsCreateUnread: true,
+    },
+  };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function booleanOr(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+export function normalizeNotificationPreferencesData(
+  input: unknown,
+): NotificationPreferencesData {
+  const raw = isRecord(input) ? input : {};
+  const attention = isRecord(raw.attention) ? raw.attention : {};
+  const defaults = DEFAULT_NOTIFICATION_PREFERENCES_DATA;
+  return {
+    inApp: true,
+    email: booleanOr(raw.email, defaults.email),
+    webPush: booleanOr(raw.webPush, defaults.webPush),
+    attention: {
+      reportsCreateUnread: booleanOr(
+        attention.reportsCreateUnread,
+        defaults.attention.reportsCreateUnread,
+      ),
+      milestonesCreateUnread: booleanOr(
+        attention.milestonesCreateUnread,
+        defaults.attention.milestonesCreateUnread,
+      ),
+      alertsCreateUnread: booleanOr(
+        attention.alertsCreateUnread,
+        defaults.attention.alertsCreateUnread,
+      ),
+    },
+  };
+}
+
 export type NotificationPreferencesUpdate = Partial<
   Omit<NotificationPreferencesData, "attention">
 > & {
@@ -822,7 +869,7 @@ export async function fetchNotificationPreferences(): Promise<NotificationPrefer
   }>({
     path: "/api/private/notifications/preferences",
   });
-  return res.data;
+  return normalizeNotificationPreferencesData(res.data);
 }
 
 export async function updateNotificationPreferences(
@@ -836,7 +883,7 @@ export async function updateNotificationPreferences(
     path: "/api/private/notifications/preferences",
     body: input,
   });
-  return res.data;
+  return normalizeNotificationPreferencesData(res.data);
 }
 
 export async function sendNotificationTest(input: {

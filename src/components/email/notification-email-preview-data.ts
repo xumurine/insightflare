@@ -77,6 +77,33 @@ export const notificationEmailPreviewMessages = {
       locale: "en",
     },
   }),
+  milestone: baseMessage({
+    type: "milestone",
+    severity: "success",
+    data: {
+      siteDomain: "example.com",
+      metric: "visitors",
+      value: 50240,
+      step: 10000,
+      bucket: 50000,
+      locale: "en",
+    },
+  }),
+  change: baseMessage({
+    type: "change",
+    severity: "warning",
+    requiresAttention: true,
+    data: {
+      siteDomain: "example.com",
+      metric: "visitors",
+      window: "last_24h",
+      current: 1860,
+      previous: 920,
+      change: 102.1,
+      mode: "percent",
+      locale: "en",
+    },
+  }),
   health: baseMessage({
     type: "health",
     severity: "critical",

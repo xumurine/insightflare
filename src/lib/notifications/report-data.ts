@@ -8,6 +8,12 @@ import type { Env } from "@/lib/edge/types";
 
 export type NotificationMetric = "views" | "visitors" | "sessions";
 export type NotificationMetricWindow = "last_1h" | "last_24h" | "yesterday";
+export type NotificationReportType =
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "quarterly"
+  | "yearly";
 
 export interface NotificationReportRange {
   from: number;
@@ -15,9 +21,10 @@ export interface NotificationReportRange {
   label: string;
 }
 
-export interface DailyReportData {
+export interface ReportData {
   siteName: string;
   siteDomain: string;
+  reportType: NotificationReportType;
   range: NotificationReportRange;
   metrics: {
     views: number;
@@ -33,6 +40,8 @@ export interface DailyReportData {
     visits: number;
   }>;
 }
+
+export type DailyReportData = ReportData;
 
 export interface MetricValueResult {
   metric: NotificationMetric;
@@ -118,6 +127,12 @@ function dateLabel(parts: { year: number; month: number; day: number }) {
   return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
 }
 
+function rangeLabel(fromMs: number, toMs: number, timeZone: string): string {
+  const from = dateLabel(partsInTimezone(new Date(fromMs), timeZone));
+  const to = dateLabel(partsInTimezone(new Date(toMs), timeZone));
+  return from === to ? from : `${from} to ${to}`;
+}
+
 export function notificationWindowFor(input: {
   window: NotificationMetricWindow;
   now: number;
@@ -170,6 +185,133 @@ export function notificationWindowFor(input: {
   };
 }
 
+export function notificationReportWindowFor(input: {
+  reportType: NotificationReportType;
+  now: number;
+  timezone?: string;
+}): QueryWindow & { label: string } {
+  const nowMs = Math.max(0, Math.trunc(input.now)) * 1000;
+  const timeZone = cleanTimezone(input.timezone);
+  const local = partsInTimezone(new Date(nowMs), timeZone);
+
+  if (input.reportType === "daily") {
+    return notificationWindowFor({
+      window: "yesterday",
+      now: input.now,
+      timezone: timeZone,
+    });
+  }
+
+  if (input.reportType === "weekly") {
+    const dayIndex = new Date(
+      Date.UTC(local.year, local.month - 1, local.day),
+    ).getUTCDay();
+    const daysSinceMonday = (dayIndex + 6) % 7;
+    const startThisWeek = zonedTimeToUtcMs({
+      year: local.year,
+      month: local.month,
+      day: local.day - daysSinceMonday,
+      hour: 0,
+      minute: 0,
+      timeZone,
+    });
+    const fromMs = startThisWeek - 7 * 24 * 60 * 60 * 1000;
+    const toMs = Math.max(fromMs, startThisWeek - 1);
+    return {
+      fromMs,
+      toMs,
+      nowMs,
+      timeZone,
+      label: rangeLabel(fromMs, toMs, timeZone),
+    };
+  }
+
+  if (input.reportType === "monthly") {
+    const startThisMonth = zonedTimeToUtcMs({
+      year: local.year,
+      month: local.month,
+      day: 1,
+      hour: 0,
+      minute: 0,
+      timeZone,
+    });
+    const previousMonth = local.month === 1 ? 12 : local.month - 1;
+    const previousYear = local.month === 1 ? local.year - 1 : local.year;
+    const fromMs = zonedTimeToUtcMs({
+      year: previousYear,
+      month: previousMonth,
+      day: 1,
+      hour: 0,
+      minute: 0,
+      timeZone,
+    });
+    return {
+      fromMs,
+      toMs: Math.max(fromMs, startThisMonth - 1),
+      nowMs,
+      timeZone,
+      label: `${previousYear}-${String(previousMonth).padStart(2, "0")}`,
+    };
+  }
+
+  if (input.reportType === "quarterly") {
+    const currentQuarterStartMonth = Math.floor((local.month - 1) / 3) * 3 + 1;
+    const startThisQuarter = zonedTimeToUtcMs({
+      year: local.year,
+      month: currentQuarterStartMonth,
+      day: 1,
+      hour: 0,
+      minute: 0,
+      timeZone,
+    });
+    const previousQuarterStartMonth =
+      currentQuarterStartMonth === 1 ? 10 : currentQuarterStartMonth - 3;
+    const previousQuarterYear =
+      currentQuarterStartMonth === 1 ? local.year - 1 : local.year;
+    const fromMs = zonedTimeToUtcMs({
+      year: previousQuarterYear,
+      month: previousQuarterStartMonth,
+      day: 1,
+      hour: 0,
+      minute: 0,
+      timeZone,
+    });
+    const quarter = Math.floor((previousQuarterStartMonth - 1) / 3) + 1;
+    return {
+      fromMs,
+      toMs: Math.max(fromMs, startThisQuarter - 1),
+      nowMs,
+      timeZone,
+      label: `${previousQuarterYear} Q${quarter}`,
+    };
+  }
+
+  const startThisYear = zonedTimeToUtcMs({
+    year: local.year,
+    month: 1,
+    day: 1,
+    hour: 0,
+    minute: 0,
+    timeZone,
+  });
+  const previousYear = local.year - 1;
+  const fromMs = zonedTimeToUtcMs({
+    year: previousYear,
+    month: 1,
+    day: 1,
+    hour: 0,
+    minute: 0,
+    timeZone,
+  });
+  return {
+    fromMs,
+    toMs: Math.max(fromMs, startThisYear - 1),
+    nowMs,
+    timeZone,
+    label: String(previousYear),
+  };
+}
+
 async function getSite(
   env: Env,
   siteId: string,
@@ -190,10 +332,22 @@ export async function loadDailyReportData(
     timezone?: string;
   },
 ): Promise<DailyReportData | null> {
+  return loadReportData(env, { ...input, reportType: "daily" });
+}
+
+export async function loadReportData(
+  env: Env,
+  input: {
+    siteId: string;
+    now: number;
+    timezone?: string;
+    reportType: NotificationReportType;
+  },
+): Promise<ReportData | null> {
   const site = await getSite(env, input.siteId);
   if (!site) return null;
-  const window = notificationWindowFor({
-    window: "yesterday",
+  const window = notificationReportWindowFor({
+    reportType: input.reportType,
     now: input.now,
     timezone: input.timezone,
   });
@@ -205,6 +359,7 @@ export async function loadDailyReportData(
   return {
     siteName: site.name,
     siteDomain: site.domain,
+    reportType: input.reportType,
     range: {
       from: Math.floor(window.fromMs / 1000),
       to: Math.floor(window.toMs / 1000),
@@ -251,6 +406,69 @@ export async function loadMetricValue(
       to: Math.floor(window.toMs / 1000),
     },
   };
+}
+
+export async function loadPreviousMetricValue(
+  env: Env,
+  input: {
+    siteId: string;
+    metric: NotificationMetric;
+    window: NotificationMetricWindow;
+    now: number;
+    timezone?: string;
+  },
+): Promise<MetricValueResult> {
+  const currentWindow = notificationWindowFor({
+    window: input.window,
+    now: input.now,
+    timezone: input.timezone,
+  });
+  const width = Math.max(1, currentWindow.toMs - currentWindow.fromMs);
+  const previousWindow = {
+    fromMs: Math.max(0, currentWindow.fromMs - width),
+    toMs: Math.max(0, currentWindow.fromMs - 1),
+    nowMs: currentWindow.nowMs,
+    timeZone: currentWindow.timeZone,
+  };
+  const overview = await queryOverviewAggregate(
+    env,
+    input.siteId,
+    previousWindow,
+    {},
+  );
+  return {
+    metric: input.metric,
+    window: input.window,
+    value: overview.value[input.metric],
+    range: {
+      from: Math.floor(previousWindow.fromMs / 1000),
+      to: Math.floor(previousWindow.toMs / 1000),
+    },
+  };
+}
+
+export async function loadCumulativeMetricValue(
+  env: Env,
+  input: {
+    siteId: string;
+    metric: NotificationMetric;
+    now: number;
+    timezone?: string;
+  },
+): Promise<number> {
+  const nowMs = Math.max(0, Math.trunc(input.now)) * 1000;
+  const overview = await queryOverviewAggregate(
+    env,
+    input.siteId,
+    {
+      fromMs: 0,
+      toMs: nowMs,
+      nowMs,
+      timeZone: cleanTimezone(input.timezone),
+    },
+    {},
+  );
+  return overview.value[input.metric];
 }
 
 export async function loadSiteLastSeenAt(

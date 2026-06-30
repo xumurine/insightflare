@@ -35,6 +35,7 @@ export interface NotificationRule {
   schedule: NotificationScheduleConfig;
   condition: Record<string, unknown>;
   recipient: NotificationRecipientConfig;
+  state: Record<string, unknown>;
   lastCheckedAt: number | null;
   lastTriggeredAt: number | null;
   nextRunAt: number | null;
@@ -55,6 +56,7 @@ interface RuleRow {
   scheduleJson: string;
   conditionJson: string;
   recipientJson: string;
+  stateJson?: string | null;
   lastCheckedAt: number | null;
   lastTriggeredAt: number | null;
   nextRunAt: number | null;
@@ -100,6 +102,7 @@ const RULE_SELECT = `
   schedule_json AS scheduleJson,
   condition_json AS conditionJson,
   recipient_json AS recipientJson,
+  state_json AS stateJson,
   last_checked_at AS lastCheckedAt,
   last_triggered_at AS lastTriggeredAt,
   next_run_at AS nextRunAt,
@@ -149,6 +152,7 @@ export function mapNotificationRule(row: RuleRow): NotificationRule {
     schedule: normalizeNotificationSchedule(row.scheduleJson),
     condition: safeParseRecord(row.conditionJson),
     recipient: normalizeNotificationRecipientConfig(row.recipientJson),
+    state: safeParseRecord(row.stateJson),
     lastCheckedAt:
       row.lastCheckedAt === null || row.lastCheckedAt === undefined
         ? null
@@ -218,9 +222,9 @@ export async function createNotificationRule(
     `
       INSERT INTO notification_rules (
         id, team_id, site_id, name, description, type, enabled,
-        schedule_json, condition_json, recipient_json, next_run_at,
+        schedule_json, condition_json, recipient_json, state_json, next_run_at,
         created_by_user_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
   )
     .bind(
@@ -234,6 +238,7 @@ export async function createNotificationRule(
       safeJsonStringify(schedule),
       safeJsonStringify(input.condition ?? {}),
       safeJsonStringify(recipient),
+      safeJsonStringify({}),
       nextRunAt,
       actor.user.id,
       now,
@@ -401,6 +406,7 @@ export async function advanceNotificationRuleSchedule(
     checkedAt: number;
     triggeredAt?: number | null;
     cooldownUntil?: number | null;
+    state?: Record<string, unknown>;
   },
 ): Promise<void> {
   const nextRunAt = computeNextNotificationRunAt(
@@ -414,6 +420,7 @@ export async function advanceNotificationRuleSchedule(
         last_checked_at = ?,
         last_triggered_at = COALESCE(?, last_triggered_at),
         next_run_at = ?,
+        state_json = ?,
         cooldown_until = CASE
           WHEN ? IS NOT NULL THEN ?
           WHEN cooldown_until IS NOT NULL AND cooldown_until <= ? THEN NULL
@@ -427,12 +434,33 @@ export async function advanceNotificationRuleSchedule(
       input.checkedAt,
       input.triggeredAt ?? null,
       nextRunAt,
+      safeJsonStringify(input.state ?? input.rule.state),
       input.cooldownUntil ?? null,
       input.cooldownUntil ?? null,
       input.checkedAt,
       input.checkedAt,
       input.rule.id,
     )
+    .run();
+}
+
+export async function updateNotificationRuleState(
+  env: Env,
+  input: {
+    ruleId: string;
+    state: Record<string, unknown>;
+    now?: number;
+  },
+): Promise<void> {
+  const now = Math.trunc(input.now ?? Date.now() / 1000);
+  await env.DB.prepare(
+    `
+      UPDATE notification_rules
+      SET state_json = ?, updated_at = ?
+      WHERE id = ?
+    `,
+  )
+    .bind(safeJsonStringify(input.state), now, input.ruleId)
     .run();
 }
 

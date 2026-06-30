@@ -35,7 +35,7 @@ describe("notification schedule", () => {
     expect(
       normalizeNotificationSchedule({
         kind: "daily",
-        time: "25:99",
+        time: "08:21",
         timezone: "Not/A_Zone",
       }),
     ).toEqual({ kind: "daily", time: "08:00", timezone: "UTC" });
@@ -57,7 +57,7 @@ describe("notification schedule", () => {
   it("clamps interval schedules and handles non-hourly alignment", () => {
     expect(
       normalizeNotificationSchedule({ kind: "interval", everyMinutes: 5 }),
-    ).toEqual({ kind: "interval", everyMinutes: 15 });
+    ).toEqual({ kind: "interval", everyMinutes: 30 });
     expect(
       normalizeNotificationSchedule({
         kind: "interval",
@@ -70,13 +70,59 @@ describe("notification schedule", () => {
 
     const now = Math.floor(Date.UTC(2026, 5, 29, 10, 20, 0) / 1000);
     const next = computeNextNotificationRunAt(
-      { kind: "interval", everyMinutes: 15 },
+      { kind: "interval", everyMinutes: 30 },
       now,
     );
 
     expect(new Date(next * 1000).toISOString()).toBe(
       "2026-06-29T10:30:00.000Z",
     );
+  });
+
+  it("computes weekly, monthly, quarterly, and yearly schedules", () => {
+    const now = Math.floor(Date.UTC(2026, 5, 30, 10, 20, 0) / 1000);
+
+    expect(
+      new Date(
+        computeNextNotificationRunAt(
+          { kind: "weekly", time: "08:30", timezone: "UTC", dayOfWeek: 1 },
+          now,
+        ) * 1000,
+      ).toISOString(),
+    ).toBe("2026-07-06T08:30:00.000Z");
+
+    expect(
+      new Date(
+        computeNextNotificationRunAt(
+          { kind: "monthly", time: "08:00", timezone: "UTC", dayOfMonth: 1 },
+          now,
+        ) * 1000,
+      ).toISOString(),
+    ).toBe("2026-07-01T08:00:00.000Z");
+
+    expect(
+      new Date(
+        computeNextNotificationRunAt(
+          { kind: "quarterly", time: "08:00", timezone: "UTC", dayOfMonth: 1 },
+          now,
+        ) * 1000,
+      ).toISOString(),
+    ).toBe("2026-07-01T08:00:00.000Z");
+
+    expect(
+      new Date(
+        computeNextNotificationRunAt(
+          {
+            kind: "yearly",
+            time: "08:00",
+            timezone: "UTC",
+            month: 1,
+            dayOfMonth: 1,
+          },
+          now,
+        ) * 1000,
+      ).toISOString(),
+    ).toBe("2027-01-01T08:00:00.000Z");
   });
 
   it("keeps daily runs at least one minute ahead", () => {

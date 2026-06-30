@@ -14,7 +14,7 @@ export const SCHEDULED_TASKS: ScheduledTaskDefinitionInfo[] = [
     key: "notification_tick",
     name: "Notification dispatch",
     description: "Evaluates notification rules and dispatches messages.",
-    schedule: "Every hour",
+    schedule: "Every 30 minutes",
     trigger: "cron",
     enabled: true,
   },

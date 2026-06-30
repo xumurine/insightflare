@@ -35,7 +35,7 @@ function renderPreviewHtml(input: {
 }
 
 export async function handleDemoNotificationEmailPreview(input: {
-  type: "test" | "report" | "threshold" | "health";
+  type: "test" | "report" | "milestone" | "threshold" | "change" | "health";
   locale: "en" | "zh";
   format: "html" | "text" | "json";
 }): Promise<

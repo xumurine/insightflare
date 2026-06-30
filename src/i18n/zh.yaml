@@ -978,6 +978,11 @@ teamManagement:
     noSitesForRules: 请先创建站点，再配置通知规则。
     editRule: 编辑规则
     dialogDescription: 为当前团队配置一条基础通知规则。
+    ruleInfoSection: 规则信息
+    scheduleSection: 计划
+    conditionSection: 条件
+    deliverySection: 投递
+    summarySection: 摘要
     nameLabel: 名称
     siteLabel: 站点
     chooseSite: 选择站点
@@ -989,6 +994,21 @@ teamManagement:
     timeLabel: 时间
     timezoneLabel: 时区
     intervalLabel: 间隔
+    dayLabel: 星期
+    dayOfMonthLabel: 日期
+    monthLabel: 月份
+    reportPeriodLabel: 报告周期
+    milestoneEveryLabel: 每个里程碑
+    matchLabel: 匹配
+    matchAll: 全部
+    matchAny: 任一
+    changeValueLabel: 变化值
+    changeModeLabel: 变化方式
+    changeModePercent: 百分比
+    changeModeAbsolute: 绝对值
+    addCondition: 添加条件
+    removeCondition: 移除
+    conditionItemTitle: "条件 {index}"
     metricLabel: 指标
     windowLabel: 时间窗口
     operatorLabel: 操作符
@@ -1023,11 +1043,29 @@ teamManagement:
     previewDialogDescription: 仅评估规则，不创建消息，也不发送邮件。
     coolingDownUntil: "冷却至 {time}"
     scheduleDaily: "每天 {time}"
+    scheduleWeekly: "每周{day} {time}"
+    scheduleMonthly: "每月 {day} 日 {time}"
+    scheduleQuarterly: "每季度 {day} 日 {time}"
+    scheduleYearly: "每年 {month}/{day} {time}"
     scheduleInterval: "每 {minutes} 分钟"
     scheduleCustom: 自定义
+    conditionReport: "{period}报告"
+    conditionMilestone: "{metric} 每 {step} 触发"
+    conditionThreshold: "{window} {metric} {operator} {value}"
+    conditionChange: "{window} {metric} 变化 {operator} {value}"
+    conditionHealth: "{hours} 小时无数据"
+    summaryWhenConditions: "当满足下列{combinator}条件时，发送{type}通知："
+    summaryWhenSingleCondition: "当满足此条件时，发送{type}通知："
+    summaryConditionThreshold: "{window}{metric}{operator}{value}"
+    summaryConditionChange: "{window}{metric}{mode}变化{operator}{value}"
+    summaryReportCondition: "生成{period}报告"
+    summaryMilestoneCondition: "{metric} 每达到 {step} 触发"
+    summaryHealthCondition: "{hours} 小时无数据"
     defaultNames:
       report: "{site} 每日报告"
+      milestone: "{site} 流量里程碑"
       threshold: "{site} 访问阈值"
+      change: "{site} 流量变化"
       health: "{site} 健康检查"
     columns:
       name: 名称
@@ -1035,6 +1073,7 @@ teamManagement:
       site: 站点
       recipient: 接收人
       schedule: 计划
+      condition: 条件
       nextRun: 下次运行
       status: 状态
     status:
@@ -1064,12 +1103,27 @@ teamManagement:
       users: 指定用户
     scheduleKinds:
       daily: 每天
+      weekly: 每周
+      monthly: 每月
+      quarterly: 每季度
+      yearly: 每年
       interval: 间隔
     intervalOptions:
+      every30Minutes: 每 30 分钟
       everyHour: 每小时
       every6Hours: 每 6 小时
       every12Hours: 每 12 小时
       everyDay: 每天
+      every7Days: 每 7 天
+      every30Days: 每 30 天
+    weekDays:
+      - 周日
+      - 周一
+      - 周二
+      - 周三
+      - 周四
+      - 周五
+      - 周六
     metrics:
       views: 浏览量
       visitors: 访客

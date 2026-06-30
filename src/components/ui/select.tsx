@@ -298,6 +298,8 @@ function SelectContent({
   align = "center",
   sideOffset = 4,
   onKeyDown: onKeyDownProp,
+  onWheel: onWheelProp,
+  onWheelCapture: onWheelCaptureProp,
   onOpenAutoFocus: onOpenAutoFocusProp,
   ...props
 }: SelectContentProps) {
@@ -377,6 +379,18 @@ function SelectContent({
     }
   };
 
+  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    onWheelProp?.(event);
+    if (event.defaultPrevented) return;
+    event.stopPropagation();
+  };
+
+  const handleWheelCapture = (event: React.WheelEvent<HTMLDivElement>) => {
+    onWheelCaptureProp?.(event);
+    if (event.defaultPrevented) return;
+    event.stopPropagation();
+  };
+
   const activeDescendantId = ctx.highlightedValue
     ? ctx.itemIdFor(ctx.highlightedValue)
     : undefined;
@@ -392,6 +406,8 @@ function SelectContent({
         align={align}
         sideOffset={sideOffset}
         onKeyDown={handleKeyDown}
+        onWheelCapture={handleWheelCapture}
+        onWheel={handleWheel}
         onOpenAutoFocus={handleOpenAutoFocus}
         data-slot="select-content"
         className={cn(

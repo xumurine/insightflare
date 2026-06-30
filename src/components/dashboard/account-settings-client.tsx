@@ -42,14 +42,16 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { intlLocale } from "@/lib/dashboard/format";
 import {
+  buildTimeZoneOptions,
   FALLBACK_TIME_ZONE,
+  formatTimeZoneOptionLabel,
   normalizeTimeZone,
   supportedTimeZones,
-  timeZoneOffsetMinutes,
 } from "@/lib/dashboard/time-zone";
 import {
   type AccountUserData,
   fetchNotificationPreferences,
+  normalizeNotificationPreferencesData,
   type NotificationPreferencesData,
   updateNotificationPreferences,
 } from "@/lib/edge-client";
@@ -72,103 +74,24 @@ interface ProfileResponse {
   message?: string;
 }
 
-interface TimeZoneOption {
-  value: string;
-  label: string;
-}
-
 function sameNotificationPreferences(
   left: NotificationPreferencesData | null,
   right: NotificationPreferencesData | null,
 ): boolean {
   if (!left || !right) return false;
+  const normalizedLeft = normalizeNotificationPreferencesData(left);
+  const normalizedRight = normalizeNotificationPreferencesData(right);
   return (
-    left.inApp === right.inApp &&
-    left.email === right.email &&
-    left.webPush === right.webPush &&
-    left.attention.reportsCreateUnread ===
-      right.attention.reportsCreateUnread &&
-    left.attention.milestonesCreateUnread ===
-      right.attention.milestonesCreateUnread &&
-    left.attention.alertsCreateUnread === right.attention.alertsCreateUnread
+    normalizedLeft.inApp === normalizedRight.inApp &&
+    normalizedLeft.email === normalizedRight.email &&
+    normalizedLeft.webPush === normalizedRight.webPush &&
+    normalizedLeft.attention.reportsCreateUnread ===
+      normalizedRight.attention.reportsCreateUnread &&
+    normalizedLeft.attention.milestonesCreateUnread ===
+      normalizedRight.attention.milestonesCreateUnread &&
+    normalizedLeft.attention.alertsCreateUnread ===
+      normalizedRight.attention.alertsCreateUnread
   );
-}
-
-const timeZoneNameFormatterCache = new Map<string, Intl.DateTimeFormat>();
-
-function getTimeZoneNameFormatter(
-  locale: Locale,
-  timeZone: string,
-): Intl.DateTimeFormat | null {
-  const cacheKey = `${locale}::${timeZone}`;
-  const cached = timeZoneNameFormatterCache.get(cacheKey);
-  if (cached) return cached;
-
-  try {
-    const formatter = new Intl.DateTimeFormat(intlLocale(locale), {
-      timeZone,
-      timeZoneName: "long",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    });
-    timeZoneNameFormatterCache.set(cacheKey, formatter);
-    return formatter;
-  } catch {
-    return null;
-  }
-}
-
-function formatUtcOffset(offsetMinutes: number): string {
-  const sign = offsetMinutes >= 0 ? "+" : "-";
-  const absolute = Math.abs(offsetMinutes);
-  const hours = Math.floor(absolute / 60)
-    .toString()
-    .padStart(2, "0");
-  const minutes = (absolute % 60).toString().padStart(2, "0");
-  return `UTC${sign}${hours}:${minutes}`;
-}
-
-function formatTimeZoneOptionLabel(
-  locale: Locale,
-  timeZone: string,
-  timestampMs: number,
-): string {
-  const date = new Date(timestampMs);
-  const name =
-    getTimeZoneNameFormatter(locale, timeZone)
-      ?.formatToParts(date)
-      .find((part) => part.type === "timeZoneName")
-      ?.value.trim() || "";
-  const offset = formatUtcOffset(timeZoneOffsetMinutes(timeZone, timestampMs));
-  return name && name !== timeZone
-    ? `${name} (${offset}) - ${timeZone}`
-    : `${timeZone} (${offset})`;
-}
-
-function buildTimeZoneOptions(params: {
-  locale: Locale;
-  supported: string[];
-  selected: string;
-  active: string;
-  browser: string;
-  timestampMs: number;
-}): TimeZoneOption[] {
-  const values = new Set<string>();
-  for (const value of [
-    params.selected,
-    params.active,
-    params.browser,
-    ...params.supported,
-  ]) {
-    const normalized = normalizeTimeZone(value);
-    if (normalized) values.add(normalized);
-  }
-
-  return Array.from(values).map((value) => ({
-    value,
-    label: formatTimeZoneOptionLabel(params.locale, value, params.timestampMs),
-  }));
 }
 
 export function AccountSettingsClient({
@@ -249,7 +172,7 @@ export function AccountSettingsClient({
   const timeZoneOptions = useMemo(
     () =>
       buildTimeZoneOptions({
-        locale,
+        locale: intlLocale(locale),
         supported: timeZones,
         selected: selectedCustomTimeZone,
         active: timeZone,
@@ -290,8 +213,10 @@ export function AccountSettingsClient({
     fetchNotificationPreferences()
       .then((nextPreferences) => {
         if (!active) return;
-        setNotificationPreferences(nextPreferences);
-        setDraftNotificationPreferences(nextPreferences);
+        const normalized =
+          normalizeNotificationPreferencesData(nextPreferences);
+        setNotificationPreferences(normalized);
+        setDraftNotificationPreferences(normalized);
       })
       .catch(() => {
         if (!active) return;
@@ -317,17 +242,17 @@ export function AccountSettingsClient({
     nextPreference !== timeZonePreference;
   const sourceLabel =
     timeZonePreference.length > 0 ? copy.manualSource : copy.browserSource;
-  const activeTimeZoneLabel = formatTimeZoneOptionLabel(
-    locale,
+  const activeTimeZoneLabel = formatTimeZoneOptionLabel({
+    locale: intlLocale(locale),
     timeZone,
-    timeZoneOptionTimestamp,
-  );
+    timestampMs: timeZoneOptionTimestamp,
+  });
   const browserTimeZoneLabel = browserTimeZone
-    ? formatTimeZoneOptionLabel(
-        locale,
-        browserTimeZone,
-        timeZoneOptionTimestamp,
-      )
+    ? formatTimeZoneOptionLabel({
+        locale: intlLocale(locale),
+        timeZone: browserTimeZone,
+        timestampMs: timeZoneOptionTimestamp,
+      })
     : copy.browserUnavailable;
 
   function applySavedUser(savedUser: AccountUserData) {
@@ -345,11 +270,12 @@ export function AccountSettingsClient({
   ) {
     setDraftNotificationPreferences((current) => {
       if (!current) return current;
+      const normalized = normalizeNotificationPreferencesData(current);
       return {
-        ...current,
+        ...normalized,
         ...patch,
         attention: {
-          ...current.attention,
+          ...normalized.attention,
           ...(patch.attention ?? {}),
         },
       };
@@ -466,8 +392,9 @@ export function AccountSettingsClient({
       const saved = await updateNotificationPreferences(
         draftNotificationPreferences,
       );
-      setNotificationPreferences(saved);
-      setDraftNotificationPreferences(saved);
+      const normalized = normalizeNotificationPreferencesData(saved);
+      setNotificationPreferences(normalized);
+      setDraftNotificationPreferences(normalized);
       toast.success(notificationCopy.preferencesSaved);
       router.refresh();
     } catch {

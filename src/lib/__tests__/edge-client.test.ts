@@ -597,6 +597,28 @@ describe("edge client request wrappers", () => {
     );
   });
 
+  it("normalizes incomplete notification preference responses", async () => {
+    fetchMock().mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        data: {
+          email: false,
+        },
+      }),
+    );
+
+    await expect(fetchNotificationPreferences()).resolves.toEqual({
+      inApp: true,
+      email: false,
+      webPush: false,
+      attention: {
+        reportsCreateUnread: false,
+        milestonesCreateUnread: false,
+        alertsCreateUnread: true,
+      },
+    });
+  });
+
   it("fetches notification email previews in every supported format", async () => {
     fetchMock().mockResolvedValueOnce(
       jsonResponse({

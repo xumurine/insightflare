@@ -68,7 +68,9 @@ function isPreviewType(value: string): value is NotificationEmailPreviewType {
   return (
     value === "test" ||
     value === "report" ||
+    value === "milestone" ||
     value === "threshold" ||
+    value === "change" ||
     value === "health"
   );
 }

@@ -73,6 +73,30 @@ export function notificationWindowLabel(
 function reportContent(input: NotificationContentInput): NotificationContent {
   const messages = NOTIFICATION_EMAIL_MESSAGES[input.locale];
   const site = notificationSiteName(input.data);
+  const reportType =
+    typeof input.data.reportType === "string" && input.data.reportType
+      ? input.data.reportType
+      : "daily";
+  const periodLabels = {
+    en: {
+      daily: "daily",
+      weekly: "weekly",
+      monthly: "monthly",
+      quarterly: "quarterly",
+      yearly: "yearly",
+    },
+    zh: {
+      daily: "每日",
+      weekly: "每周",
+      monthly: "每月",
+      quarterly: "每季度",
+      yearly: "每年",
+    },
+  } as const;
+  const periodLabel =
+    periodLabels[input.locale][
+      reportType as keyof (typeof periodLabels)[typeof input.locale]
+    ] ?? reportType;
   const range =
     input.data.range && typeof input.data.range === "object"
       ? (input.data.range as Record<string, unknown>)
@@ -83,7 +107,7 @@ function reportContent(input: NotificationContentInput): NotificationContent {
     input.data.metrics && typeof input.data.metrics === "object"
       ? (input.data.metrics as Record<string, unknown>)
       : {};
-  const subject = format(messages.report.subject, { site });
+  const subject = format(messages.report.subject, { site, periodLabel });
   const summary = format(messages.report.summary, {
     date,
     visitors: formatNotificationNumber(metrics.visitors, input.locale),
@@ -91,7 +115,7 @@ function reportContent(input: NotificationContentInput): NotificationContent {
   });
   return {
     subject,
-    title: format(messages.report.title, { site }),
+    title: format(messages.report.title, { site, periodLabel }),
     summary,
     bodyText: summary,
   };
@@ -141,6 +165,45 @@ function healthContent(input: NotificationContentInput): NotificationContent {
   };
 }
 
+function milestoneContent(
+  input: NotificationContentInput,
+): NotificationContent {
+  const messages = NOTIFICATION_EMAIL_MESSAGES[input.locale];
+  const site = notificationSiteName(input.data);
+  const metric = notificationMetricLabel(input.locale, input.data.metric);
+  const bucket = formatNotificationNumber(input.data.bucket, input.locale);
+  const subject = format(messages.milestone.subject, { site, bucket, metric });
+  const summary = format(messages.milestone.summary, { bucket, metric });
+  return {
+    subject,
+    title: format(messages.milestone.title, { site, bucket, metric }),
+    summary,
+    bodyText: summary,
+  };
+}
+
+function changeContent(input: NotificationContentInput): NotificationContent {
+  const messages = NOTIFICATION_EMAIL_MESSAGES[input.locale];
+  const site = notificationSiteName(input.data);
+  const metric = notificationMetricLabel(input.locale, input.data.metric);
+  const window = notificationWindowLabel(input.locale, input.data.window);
+  const change = `${formatNotificationNumber(input.data.change, input.locale)}${
+    input.data.mode === "percent" ? "%" : ""
+  }`;
+  const subject = format(messages.change.subject, { site });
+  const summary = format(messages.change.summary, {
+    window,
+    metric,
+    change,
+  });
+  return {
+    subject,
+    title: format(messages.change.title, { site }),
+    summary,
+    bodyText: summary,
+  };
+}
+
 export function buildNotificationContent(
   input: NotificationContentInput,
 ): NotificationContent {
@@ -154,7 +217,9 @@ export function buildNotificationContent(
     };
   }
   if (input.type === "report") return reportContent(input);
+  if (input.type === "milestone") return milestoneContent(input);
   if (input.type === "threshold") return thresholdContent(input);
+  if (input.type === "change") return changeContent(input);
   if (input.type === "health") return healthContent(input);
 
   const title = input.fallbackTitle || messages.common.fallbackSubject;

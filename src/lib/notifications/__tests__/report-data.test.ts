@@ -17,6 +17,7 @@ import {
   loadDailyReportData,
   loadMetricValue,
   loadSiteLastSeenAt,
+  notificationReportWindowFor,
   notificationWindowFor,
 } from "@/lib/notifications/report-data";
 
@@ -74,6 +75,39 @@ describe("notification report data", () => {
     ).toMatchObject({
       label: "2026-06-29",
     });
+  });
+
+  it("builds calendar report windows for previous complete periods", () => {
+    const now = Date.UTC(2026, 6, 15, 12) / 1000;
+
+    expect(
+      notificationReportWindowFor({
+        reportType: "weekly",
+        now,
+        timezone: "UTC",
+      }).label,
+    ).toBe("2026-07-06 to 2026-07-12");
+    expect(
+      notificationReportWindowFor({
+        reportType: "monthly",
+        now,
+        timezone: "UTC",
+      }).label,
+    ).toBe("2026-06");
+    expect(
+      notificationReportWindowFor({
+        reportType: "quarterly",
+        now,
+        timezone: "UTC",
+      }).label,
+    ).toBe("2026 Q2");
+    expect(
+      notificationReportWindowFor({
+        reportType: "yearly",
+        now,
+        timezone: "UTC",
+      }).label,
+    ).toBe("2025");
   });
 
   it("loads daily report data from site metadata and aggregate queries", async () => {

@@ -115,6 +115,21 @@ describe("notification email content", () => {
         type: "change",
         severity: "info",
         locale: "en",
+        data: {
+          siteDomain: "demo.test",
+          metric: "visitors",
+          window: "last_24h",
+          change: 52,
+          mode: "percent",
+        },
+      }).summary,
+    ).toContain("52%");
+
+    expect(
+      buildNotificationContent({
+        type: "system",
+        severity: "info",
+        locale: "en",
         data: {},
         fallbackTitle: "Custom",
         fallbackSummary: "Custom summary",

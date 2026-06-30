@@ -277,6 +277,7 @@ export async function runNotificationTick(
         checkedAt,
         triggeredAt: checkedAt,
         cooldownUntil: evaluation.cooldownUntil ?? null,
+        state: evaluation.state ?? rule.state,
       });
     } catch (error) {
       summary.rulesSkipped += 1;

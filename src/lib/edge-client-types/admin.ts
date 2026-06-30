@@ -92,6 +92,7 @@ export interface NotificationRuleData {
   schedule: Record<string, unknown>;
   condition: Record<string, unknown>;
   recipient: Record<string, unknown>;
+  state: Record<string, unknown>;
   lastCheckedAt: number | null;
   lastTriggeredAt: number | null;
   nextRunAt: number | null;

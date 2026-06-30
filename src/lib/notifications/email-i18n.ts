@@ -40,9 +40,14 @@ export const NOTIFICATION_EMAIL_MESSAGES = {
       body: "This is a test notification from InsightFlare. If email is configured and enabled, this message also verifies Resend delivery.",
     },
     report: {
-      subject: "{site} daily traffic report",
-      title: "{site} daily traffic report",
+      subject: "{site} {periodLabel} traffic report",
+      title: "{site} {periodLabel} traffic report",
       summary: "{date}: {visitors} visitors and {views} views.",
+    },
+    milestone: {
+      subject: "{site} reached {bucket} {metric}",
+      title: "{site} reached {bucket} {metric}",
+      summary: "Traffic milestone reached: {bucket} {metric}.",
     },
     threshold: {
       subject: "{site} traffic threshold reached",
@@ -65,6 +70,11 @@ export const NOTIFICATION_EMAIL_MESSAGES = {
       title: "{site} has not received data for {hours} hours",
       noHistory:
         "No historical traffic data was found. Check that the tracking script is installed.",
+    },
+    change: {
+      subject: "{site} traffic change detected",
+      title: "{site} traffic change detected",
+      summary: "{window} {metric} changed by {change}.",
     },
   },
   zh: {
@@ -105,9 +115,14 @@ export const NOTIFICATION_EMAIL_MESSAGES = {
       body: "这是一条来自 InsightFlare 的测试通知。如果邮件已配置并启用，它也会验证 Resend 投递是否正常。",
     },
     report: {
-      subject: "{site} 每日访问报告",
-      title: "{site} 每日访问报告",
+      subject: "{site} {periodLabel}访问报告",
+      title: "{site} {periodLabel}访问报告",
       summary: "{date}：{visitors} 位访客，{views} 次浏览。",
+    },
+    milestone: {
+      subject: "{site} 达到 {bucket} {metric}",
+      title: "{site} 达到 {bucket} {metric}",
+      summary: "已达到流量里程碑：{bucket} {metric}。",
     },
     threshold: {
       subject: "{site} 访问量达到阈值",
@@ -128,6 +143,11 @@ export const NOTIFICATION_EMAIL_MESSAGES = {
       subject: "{site} 已超过 {hours} 小时没有收到访问数据",
       title: "{site} 已超过 {hours} 小时没有收到访问数据",
       noHistory: "当前没有历史访问数据。请检查统计脚本是否已正确安装。",
+    },
+    change: {
+      subject: "{site} 流量变化提醒",
+      title: "{site} 流量变化提醒",
+      summary: "{window}的{metric}变化了 {change}。",
     },
   },
 } satisfies Record<Locale, Record<string, unknown>>;

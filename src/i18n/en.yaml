@@ -1009,6 +1009,11 @@ teamManagement:
     noSitesForRules: Create a site before configuring notification rules.
     editRule: Edit rule
     dialogDescription: Configure a basic notification rule for this team.
+    ruleInfoSection: Rule info
+    scheduleSection: Schedule
+    conditionSection: Conditions
+    deliverySection: Delivery
+    summarySection: Summary
     nameLabel: Name
     siteLabel: Site
     chooseSite: Choose site
@@ -1020,6 +1025,21 @@ teamManagement:
     timeLabel: Time
     timezoneLabel: Timezone
     intervalLabel: Interval
+    dayLabel: Day
+    dayOfMonthLabel: Day of month
+    monthLabel: Month
+    reportPeriodLabel: Report period
+    milestoneEveryLabel: Every milestone
+    matchLabel: Match
+    matchAll: All
+    matchAny: Any
+    changeValueLabel: Change value
+    changeModeLabel: Change mode
+    changeModePercent: Percent
+    changeModeAbsolute: Absolute
+    addCondition: Add condition
+    removeCondition: Remove
+    conditionItemTitle: "Condition {index}"
     metricLabel: Metric
     windowLabel: Window
     operatorLabel: Operator
@@ -1054,11 +1074,29 @@ teamManagement:
     previewDialogDescription: Evaluate this rule without creating messages or sending email.
     coolingDownUntil: "Cooling down until {time}"
     scheduleDaily: "Daily {time}"
+    scheduleWeekly: "Weekly {day} {time}"
+    scheduleMonthly: "Monthly day {day} {time}"
+    scheduleQuarterly: "Quarterly day {day} {time}"
+    scheduleYearly: "Yearly {month}/{day} {time}"
     scheduleInterval: "Every {minutes} min"
     scheduleCustom: Custom
+    conditionReport: "{period} report"
+    conditionMilestone: "{metric} every {step}"
+    conditionThreshold: "{window} {metric} {operator} {value}"
+    conditionChange: "{window} {metric} change {operator} {value}"
+    conditionHealth: "No data for {hours}h"
+    summaryWhenConditions: "When {combinator} of the following conditions match, send a {type} notification:"
+    summaryWhenSingleCondition: "When this condition matches, send a {type} notification:"
+    summaryConditionThreshold: "{window} {metric} {operator} {value}"
+    summaryConditionChange: "{window} {metric} {mode} change {operator} {value}"
+    summaryReportCondition: "Generate the {period} report"
+    summaryMilestoneCondition: "{metric} reaches every {step}"
+    summaryHealthCondition: "No data for {hours} hours"
     defaultNames:
       report: "{site} daily report"
+      milestone: "{site} traffic milestone"
       threshold: "{site} traffic threshold"
+      change: "{site} traffic change"
       health: "{site} health check"
     columns:
       name: Name
@@ -1066,6 +1104,7 @@ teamManagement:
       site: Site
       recipient: Recipient
       schedule: Schedule
+      condition: Condition
       nextRun: Next Run
       status: Status
     status:
@@ -1095,12 +1134,27 @@ teamManagement:
       users: Selected users
     scheduleKinds:
       daily: Daily
+      weekly: Weekly
+      monthly: Monthly
+      quarterly: Quarterly
+      yearly: Yearly
       interval: Interval
     intervalOptions:
+      every30Minutes: Every 30 minutes
       everyHour: Every hour
       every6Hours: Every 6 hours
       every12Hours: Every 12 hours
       everyDay: Every day
+      every7Days: Every 7 days
+      every30Days: Every 30 days
+    weekDays:
+      - Sun
+      - Mon
+      - Tue
+      - Wed
+      - Thu
+      - Fri
+      - Sat
     metrics:
       views: Views
       visitors: Visitors

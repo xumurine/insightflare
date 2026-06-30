@@ -49,6 +49,7 @@ function rule(input: Partial<NotificationRule> = {}): NotificationRule {
     schedule: { kind: "interval", everyMinutes: 60 },
     condition: {},
     recipient: { mode: "team_admins" },
+    state: {},
     lastCheckedAt: null,
     lastTriggeredAt: null,
     nextRunAt: 1,
