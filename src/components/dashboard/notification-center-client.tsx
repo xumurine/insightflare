@@ -11,7 +11,6 @@ import {
   RiMailUnreadLine,
   RiNotification3Line,
   RiRefreshLine,
-  RiSave3Line,
   RiSettings3Line,
 } from "@remixicon/react";
 import { toast } from "sonner";
@@ -22,8 +21,7 @@ import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Field, FieldLabel } from "@/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -35,13 +33,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { shortDateTime } from "@/lib/dashboard/format";
 import {
   fetchNotificationMessages,
-  fetchNotificationPreferences,
   markAllNotificationMessagesRead,
   markNotificationMessageRead,
   type NotificationMessageData,
-  type NotificationPreferencesData,
-  type NotificationPreferencesUpdate,
-  updateNotificationPreferences,
 } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -408,11 +402,8 @@ export function NotificationCenterClient({
   const [messagesList, setMessagesList] = useState<NotificationMessageData[]>(
     [],
   );
-  const [preferences, setPreferences] =
-    useState<NotificationPreferencesData | null>(null);
   const [unreadAttentionCount, setUnreadAttentionCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [preferencesSaving, setPreferencesSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<NotificationTab>("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
@@ -457,13 +448,9 @@ export function NotificationCenterClient({
   async function loadMessages() {
     setLoading(true);
     try {
-      const [data, nextPreferences] = await Promise.all([
-        fetchNotificationMessages({ teamId, limit: 80 }),
-        fetchNotificationPreferences(),
-      ]);
+      const data = await fetchNotificationMessages({ teamId, limit: 80 });
       setMessagesList(data.messages);
       setUnreadAttentionCount(data.unreadAttentionCount);
-      setPreferences(nextPreferences);
     } catch {
       toast.error(copy.loadFailed);
     } finally {
@@ -506,29 +493,6 @@ export function NotificationCenterClient({
       toast.error(copy.markAllReadFailed);
     } finally {
       setMarkingAll(false);
-    }
-  }
-
-  async function savePreferences(patch: NotificationPreferencesUpdate) {
-    if (!preferences || preferencesSaving) return;
-    const next: NotificationPreferencesData = {
-      ...preferences,
-      ...patch,
-      attention: {
-        ...preferences.attention,
-        ...(patch.attention ?? {}),
-      },
-    };
-    setPreferences(next);
-    setPreferencesSaving(true);
-    try {
-      setPreferences(await updateNotificationPreferences(next));
-      toast.success(copy.preferencesSaved);
-    } catch {
-      setPreferences(preferences);
-      toast.error(copy.preferencesSaveFailed);
-    } finally {
-      setPreferencesSaving(false);
     }
   }
 
@@ -591,7 +555,7 @@ export function NotificationCenterClient({
       </Card>
 
       <Card>
-        <CardContent className="grid gap-4 p-4 md:grid-cols-[1fr_220px_220px] md:items-end">
+        <CardContent className="grid gap-4 p-4 md:grid-cols-[1fr_220px_220px] md:items-center">
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2 text-sm font-medium">
               <RiSettings3Line className="size-4 text-muted-foreground" />
@@ -637,92 +601,6 @@ export function NotificationCenterClient({
           </Field>
         </CardContent>
       </Card>
-
-      {preferences ? (
-        <Card>
-          <CardContent className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="space-y-1 md:col-span-2 xl:col-span-4">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                {preferencesSaving ? (
-                  <Spinner className="size-4" />
-                ) : (
-                  <RiSave3Line className="size-4 text-muted-foreground" />
-                )}
-                {copy.preferencesTitle}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {copy.preferencesDescription}
-              </p>
-            </div>
-            <Field>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={preferences.email}
-                  disabled={preferencesSaving}
-                  onCheckedChange={(checked) =>
-                    void savePreferences({ email: !!checked })
-                  }
-                />
-                <FieldLabel>{copy.emailNotificationsLabel}</FieldLabel>
-              </div>
-              <FieldDescription>
-                {copy.emailNotificationsDescription}
-              </FieldDescription>
-            </Field>
-            <Field>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={preferences.attention.reportsCreateUnread}
-                  disabled={preferencesSaving}
-                  onCheckedChange={(checked) =>
-                    void savePreferences({
-                      attention: { reportsCreateUnread: !!checked },
-                    })
-                  }
-                />
-                <FieldLabel>{copy.reportsUnreadLabel}</FieldLabel>
-              </div>
-              <FieldDescription>
-                {copy.reportsUnreadDescription}
-              </FieldDescription>
-            </Field>
-            <Field>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={preferences.attention.milestonesCreateUnread}
-                  disabled={preferencesSaving}
-                  onCheckedChange={(checked) =>
-                    void savePreferences({
-                      attention: { milestonesCreateUnread: !!checked },
-                    })
-                  }
-                />
-                <FieldLabel>{copy.milestonesUnreadLabel}</FieldLabel>
-              </div>
-              <FieldDescription>
-                {copy.milestonesUnreadDescription}
-              </FieldDescription>
-            </Field>
-            <Field>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={preferences.attention.alertsCreateUnread}
-                  disabled={preferencesSaving}
-                  onCheckedChange={(checked) =>
-                    void savePreferences({
-                      attention: { alertsCreateUnread: !!checked },
-                    })
-                  }
-                />
-                <FieldLabel>{copy.alertsUnreadLabel}</FieldLabel>
-              </div>
-              <FieldDescription>
-                {copy.alertsUnreadDescription}
-              </FieldDescription>
-            </Field>
-          </CardContent>
-        </Card>
-      ) : null}
 
       <AutoResizer initial>
         <AutoTransition

@@ -994,8 +994,12 @@ export function TeamNotificationsClient({
               <RiCheckboxCircleLine className="size-4 text-emerald-600" />
               {copy.inAppTestHint}
             </div>
-            <div className="flex items-center gap-2">
-              <RiMailSendLine className="size-4" />
+            <div
+              className={`flex items-center gap-2${emailConfigured ? " text-foreground" : ""}`}
+            >
+              <RiMailSendLine
+                className={`size-4${emailConfigured ? " text-emerald-600" : ""}`}
+              />
               {emailConfigured
                 ? copy.emailTestConfiguredHint
                 : copy.emailTestUnconfiguredHint}

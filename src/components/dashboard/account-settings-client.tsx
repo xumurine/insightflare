@@ -7,6 +7,7 @@ import {
   RiComputerLine,
   RiGlobalLine,
   RiLockPasswordLine,
+  RiNotification3Line,
   RiUserSettingsLine,
 } from "@remixicon/react";
 import { toast } from "sonner";
@@ -23,6 +24,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
   FieldContent,
@@ -45,7 +47,12 @@ import {
   supportedTimeZones,
   timeZoneOffsetMinutes,
 } from "@/lib/dashboard/time-zone";
-import type { AccountUserData } from "@/lib/edge-client";
+import {
+  type AccountUserData,
+  fetchNotificationPreferences,
+  type NotificationPreferencesData,
+  updateNotificationPreferences,
+} from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
@@ -67,6 +74,23 @@ interface ProfileResponse {
 interface TimeZoneOption {
   value: string;
   label: string;
+}
+
+function sameNotificationPreferences(
+  left: NotificationPreferencesData | null,
+  right: NotificationPreferencesData | null,
+): boolean {
+  if (!left || !right) return false;
+  return (
+    left.inApp === right.inApp &&
+    left.email === right.email &&
+    left.webPush === right.webPush &&
+    left.attention.reportsCreateUnread ===
+      right.attention.reportsCreateUnread &&
+    left.attention.milestonesCreateUnread ===
+      right.attention.milestonesCreateUnread &&
+    left.attention.alertsCreateUnread === right.attention.alertsCreateUnread
+  );
 }
 
 const timeZoneNameFormatterCache = new Map<string, Intl.DateTimeFormat>();
@@ -152,6 +176,7 @@ export function AccountSettingsClient({
   user,
 }: AccountSettingsClientProps) {
   const copy = messages.accountSettings;
+  const notificationCopy = messages.notificationCenter;
   const router = useRouter();
   const {
     timeZone,
@@ -168,6 +193,14 @@ export function AccountSettingsClient({
   const [nextPassword, setNextPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const [notificationPreferences, setNotificationPreferences] =
+    useState<NotificationPreferencesData | null>(null);
+  const [draftNotificationPreferences, setDraftNotificationPreferences] =
+    useState<NotificationPreferencesData | null>(null);
+  const [notificationPreferencesLoading, setNotificationPreferencesLoading] =
+    useState(true);
+  const [notificationPreferencesSaving, setNotificationPreferencesSaving] =
+    useState(false);
   const timeZones = useMemo(() => supportedTimeZones(), []);
   const [mode, setMode] = useState<TimeZoneMode>(
     timeZonePreference ? "custom" : "browser",
@@ -195,6 +228,14 @@ export function AccountSettingsClient({
     currentPassword.length > 0 &&
     nextPassword.length >= 8 &&
     confirmPassword.length > 0;
+  const canSaveNotificationPreferences =
+    !notificationPreferencesLoading &&
+    !notificationPreferencesSaving &&
+    Boolean(draftNotificationPreferences) &&
+    !sameNotificationPreferences(
+      notificationPreferences,
+      draftNotificationPreferences,
+    );
   const selectedCustomTimeZone =
     normalizeTimeZone(customTimeZone) ||
     normalizeTimeZone(timeZone) ||
@@ -236,6 +277,30 @@ export function AccountSettingsClient({
     }
   }, [timeZone, timeZonePreference]);
 
+  useEffect(() => {
+    let active = true;
+
+    setNotificationPreferencesLoading(true);
+    fetchNotificationPreferences()
+      .then((nextPreferences) => {
+        if (!active) return;
+        setNotificationPreferences(nextPreferences);
+        setDraftNotificationPreferences(nextPreferences);
+      })
+      .catch(() => {
+        if (!active) return;
+        toast.error(notificationCopy.preferencesSaveFailed);
+      })
+      .finally(() => {
+        if (!active) return;
+        setNotificationPreferencesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [notificationCopy.preferencesSaveFailed]);
+
   const nextPreference = mode === "browser" ? "" : selectedCustomTimeZone;
   const canSave =
     !saving &&
@@ -261,6 +326,24 @@ export function AccountSettingsClient({
     setProfileName(savedUser.name || "");
     setProfileUsername(savedUser.username || "");
     setProfileEmail(savedUser.email || "");
+  }
+
+  function updateDraftNotificationPreferences(
+    patch: Omit<Partial<NotificationPreferencesData>, "attention"> & {
+      attention?: Partial<NotificationPreferencesData["attention"]>;
+    },
+  ) {
+    setDraftNotificationPreferences((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        ...patch,
+        attention: {
+          ...current.attention,
+          ...(patch.attention ?? {}),
+        },
+      };
+    });
   }
 
   async function handleProfileSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -359,6 +442,28 @@ export function AccountSettingsClient({
       );
     } finally {
       setPasswordSaving(false);
+    }
+  }
+
+  async function handleNotificationPreferencesSubmit(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    if (!draftNotificationPreferences || notificationPreferencesSaving) return;
+
+    setNotificationPreferencesSaving(true);
+    try {
+      const saved = await updateNotificationPreferences(
+        draftNotificationPreferences,
+      );
+      setNotificationPreferences(saved);
+      setDraftNotificationPreferences(saved);
+      toast.success(notificationCopy.preferencesSaved);
+      router.refresh();
+    } catch {
+      toast.error(notificationCopy.preferencesSaveFailed);
+    } finally {
+      setNotificationPreferencesSaving(false);
     }
   }
 
@@ -580,6 +685,146 @@ export function AccountSettingsClient({
                 </Button>
               </div>
             </form>
+          </CardContent>
+        </Card>
+
+        <Card className="h-full lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiNotification3Line className="size-4 text-muted-foreground" />
+              {notificationCopy.preferencesTitle}
+            </CardTitle>
+            <CardDescription>
+              {notificationCopy.preferencesDescription}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex h-full flex-col">
+            {notificationPreferencesLoading || !draftNotificationPreferences ? (
+              <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
+                <Spinner className="mr-2 size-4" />
+                {messages.common.loading}
+              </div>
+            ) : (
+              <form
+                className="flex h-full flex-col gap-5"
+                onSubmit={handleNotificationPreferencesSubmit}
+              >
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field>
+                    <FieldLabel>
+                      {notificationCopy.emailNotificationsLabel}
+                    </FieldLabel>
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={draftNotificationPreferences.email}
+                        disabled={notificationPreferencesSaving}
+                        onCheckedChange={(checked) =>
+                          updateDraftNotificationPreferences({
+                            email: !!checked,
+                          })
+                        }
+                      />
+                      <FieldDescription>
+                        {notificationCopy.emailNotificationsDescription}
+                      </FieldDescription>
+                    </div>
+                  </Field>
+                  <Field>
+                    <FieldLabel>
+                      {notificationCopy.reportsUnreadLabel}
+                    </FieldLabel>
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={
+                          draftNotificationPreferences.attention
+                            .reportsCreateUnread
+                        }
+                        disabled={notificationPreferencesSaving}
+                        onCheckedChange={(checked) =>
+                          updateDraftNotificationPreferences({
+                            attention: { reportsCreateUnread: !!checked },
+                          })
+                        }
+                      />
+                      <FieldDescription>
+                        {notificationCopy.reportsUnreadDescription}
+                      </FieldDescription>
+                    </div>
+                  </Field>
+                  <Field>
+                    <FieldLabel>
+                      {notificationCopy.milestonesUnreadLabel}
+                    </FieldLabel>
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={
+                          draftNotificationPreferences.attention
+                            .milestonesCreateUnread
+                        }
+                        disabled={notificationPreferencesSaving}
+                        onCheckedChange={(checked) =>
+                          updateDraftNotificationPreferences({
+                            attention: { milestonesCreateUnread: !!checked },
+                          })
+                        }
+                      />
+                      <FieldDescription>
+                        {notificationCopy.milestonesUnreadDescription}
+                      </FieldDescription>
+                    </div>
+                  </Field>
+                  <Field>
+                    <FieldLabel>
+                      {notificationCopy.alertsUnreadLabel}
+                    </FieldLabel>
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={
+                          draftNotificationPreferences.attention
+                            .alertsCreateUnread
+                        }
+                        disabled={notificationPreferencesSaving}
+                        onCheckedChange={(checked) =>
+                          updateDraftNotificationPreferences({
+                            attention: { alertsCreateUnread: !!checked },
+                          })
+                        }
+                      />
+                      <FieldDescription>
+                        {notificationCopy.alertsUnreadDescription}
+                      </FieldDescription>
+                    </div>
+                  </Field>
+                </div>
+
+                <div className="mt-auto flex justify-start">
+                  <Button
+                    type="submit"
+                    disabled={!canSaveNotificationPreferences}
+                  >
+                    <AutoTransition className="inline-flex items-center gap-2">
+                      {notificationPreferencesSaving ? (
+                        <span
+                          key="notification-preferences-saving"
+                          className="inline-flex items-center gap-2"
+                        >
+                          <Spinner className="size-4" />
+                          {copy.saving}
+                        </span>
+                      ) : (
+                        <span
+                          key="notification-preferences-save"
+                          className="inline-flex items-center gap-2"
+                        >
+                          <RiCheckLine className="size-4" />
+                          {copy.save}
+                        </span>
+                      )}
+                    </AutoTransition>
+                  </Button>
+                </div>
+              </form>
+            )}
           </CardContent>
         </Card>
 
