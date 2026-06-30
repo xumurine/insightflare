@@ -240,13 +240,6 @@ function NotificationMessageList({
       {items.map((item) => (
         <Card key={item.id}>
           <CardContent className="space-y-4 p-4 md:p-5">
-            {item.summary ? (
-              <blockquote className="border-l-2 border-primary/55 bg-muted/35 px-4 py-3 text-sm leading-6 text-foreground/90">
-                <p className="whitespace-pre-wrap break-words">
-                  {item.summary}
-                </p>
-              </blockquote>
-            ) : null}
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div className="min-w-0 space-y-2">
                 <h2 className="truncate text-sm font-semibold">{item.title}</h2>
@@ -289,11 +282,20 @@ function NotificationMessageList({
                 </div>
               ) : null}
             </div>
-            {item.bodyText ? (
-              <div className="border-t pt-4">
-                <div className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground/85">
-                  {item.bodyText}
-                </div>
+            {item.summary || item.bodyText ? (
+              <div className="space-y-4 border-t pt-4">
+                {item.summary ? (
+                  <blockquote className="border-l-2 border-primary/55 bg-muted/35 px-4 py-3 text-sm leading-6 text-foreground/90">
+                    <p className="whitespace-pre-wrap break-words">
+                      {item.summary}
+                    </p>
+                  </blockquote>
+                ) : null}
+                {item.bodyText ? (
+                  <div className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground/85">
+                    {item.bodyText}
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </CardContent>
