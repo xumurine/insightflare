@@ -9,6 +9,8 @@ import {
   RiArrowRightSLine,
   RiArrowUpLine,
   RiDeleteBinLine,
+  RiGlobalLine,
+  RiGroupLine,
   RiLockLine,
 } from "@remixicon/react";
 import { motion } from "motion/react";
@@ -22,6 +24,7 @@ import {
   SiteTrafficStackChart,
   TrafficPairBarChart,
 } from "@/components/dashboard/site-traffic-charts";
+import { TableActionButton } from "@/components/dashboard/table-action-button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,8 +36,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -43,7 +46,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Clickable } from "@/components/ui/clickable";
 import {
   Dialog,
   DialogContent,
@@ -1181,35 +1183,27 @@ export function TeamManagementClient({
                 </TableCell>
                 <TableCell className="text-right">
                   {member.role === "owner" ? null : (
-                    <Clickable
+                    <TableActionButton
                       onClick={() => {
                         void handleRemoveMember(member.userId);
                       }}
                       disabled={
                         !canManage || removingMemberId === member.userId
                       }
-                      className="size-6 text-destructive/80 hover:text-destructive"
-                      aria-label={copy.members.remove}
-                      title={copy.members.remove}
+                      label={copy.members.remove}
+                      tone="destructive"
+                      transitionKey={
+                        removingMemberId === member.userId
+                          ? "removing"
+                          : "remove"
+                      }
                     >
-                      <AutoTransition className="inline-flex items-center justify-center">
-                        {removingMemberId === member.userId ? (
-                          <span
-                            key="removing"
-                            className="inline-flex items-center justify-center"
-                          >
-                            <Spinner className="size-3.5" />
-                          </span>
-                        ) : (
-                          <span
-                            key="remove"
-                            className="inline-flex items-center justify-center"
-                          >
-                            <RiDeleteBinLine className="size-4" />
-                          </span>
-                        )}
-                      </AutoTransition>
-                    </Clickable>
+                      {removingMemberId === member.userId ? (
+                        <Spinner className="size-3.5" />
+                      ) : (
+                        <RiDeleteBinLine className="size-4" />
+                      )}
+                    </TableActionButton>
                   )}
                 </TableCell>
               </TableRow>
@@ -1227,40 +1221,66 @@ export function TeamManagementClient({
         subtitle={panelSubtitle}
         actions={
           <>
-            <Badge variant="outline">
-              <span className="inline-flex items-center gap-1.5">
-                {copy.stats.sites}:
-                <AutoTransition initial className="inline-flex items-center">
-                  {loading ? (
-                    <span
-                      key="sites-loading"
+            <Button variant="outline" asChild>
+              <Link href={`/${locale}/app/${activeTeam.slug}`}>
+                <RiGlobalLine />
+                <span className="inline-flex items-center gap-1.5">
+                  {copy.stats.sites}:
+                  <AutoResizer
+                    initial
+                    animateWidth
+                    animateHeight={false}
+                    className="inline-flex items-center"
+                  >
+                    <AutoTransition
+                      initial
                       className="inline-flex items-center"
                     >
-                      <Spinner className="size-3.5" />
-                    </span>
-                  ) : (
-                    <span key="sites-value">{siteCount}</span>
-                  )}
-                </AutoTransition>
-              </span>
-            </Badge>
-            <Badge variant="outline">
-              <span className="inline-flex items-center gap-1.5">
-                {copy.stats.members}:
-                <AutoTransition initial className="inline-flex items-center">
-                  {loading ? (
-                    <span
-                      key="members-loading"
+                      {loading ? (
+                        <span
+                          key="sites-loading"
+                          className="inline-flex items-center"
+                        >
+                          <Spinner className="size-3.5" />
+                        </span>
+                      ) : (
+                        <span key="sites-value">{siteCount}</span>
+                      )}
+                    </AutoTransition>
+                  </AutoResizer>
+                </span>
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href={`/${locale}/app/${activeTeam.slug}/members`}>
+                <RiGroupLine />
+                <span className="inline-flex items-center gap-1.5">
+                  {copy.stats.members}:
+                  <AutoResizer
+                    initial
+                    animateWidth
+                    animateHeight={false}
+                    className="inline-flex items-center"
+                  >
+                    <AutoTransition
+                      initial
                       className="inline-flex items-center"
                     >
-                      <Spinner className="size-3.5" />
-                    </span>
-                  ) : (
-                    <span key="members-value">{memberCount}</span>
-                  )}
-                </AutoTransition>
-              </span>
-            </Badge>
+                      {loading ? (
+                        <span
+                          key="members-loading"
+                          className="inline-flex items-center"
+                        >
+                          <Spinner className="size-3.5" />
+                        </span>
+                      ) : (
+                        <span key="members-value">{memberCount}</span>
+                      )}
+                    </AutoTransition>
+                  </AutoResizer>
+                </span>
+              </Link>
+            </Button>
             {activeTab === "sites" && canManageSites ? (
               <Button
                 type="button"
@@ -1935,33 +1955,25 @@ export function TeamManagementClient({
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Clickable
+                        <TableActionButton
                           onClick={() => {
                             void handleRemoveMember(member.userId);
                           }}
                           disabled={removingMemberId === member.userId}
-                          className="size-6 text-destructive/80 hover:text-destructive"
-                          aria-label={copy.members.remove}
-                          title={copy.members.remove}
+                          label={copy.members.remove}
+                          tone="destructive"
+                          transitionKey={
+                            removingMemberId === member.userId
+                              ? "removing"
+                              : "remove"
+                          }
                         >
-                          <AutoTransition className="inline-flex items-center justify-center">
-                            {removingMemberId === member.userId ? (
-                              <span
-                                key="removing"
-                                className="inline-flex items-center justify-center"
-                              >
-                                <Spinner className="size-3.5" />
-                              </span>
-                            ) : (
-                              <span
-                                key="remove"
-                                className="inline-flex items-center justify-center"
-                              >
-                                <RiDeleteBinLine className="size-4" />
-                              </span>
-                            )}
-                          </AutoTransition>
-                        </Clickable>
+                          {removingMemberId === member.userId ? (
+                            <Spinner className="size-3.5" />
+                          ) : (
+                            <RiDeleteBinLine className="size-4" />
+                          )}
+                        </TableActionButton>
                       </TableCell>
                     </TableRow>
                   ))}

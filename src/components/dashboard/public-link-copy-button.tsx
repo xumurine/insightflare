@@ -3,7 +3,7 @@
 import { RiFileCopyLine } from "@remixicon/react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
+import { TableActionButton } from "@/components/dashboard/table-action-button";
 
 interface PublicLinkCopyButtonProps {
   value: string;
@@ -17,19 +17,15 @@ export function PublicLinkCopyButton({
   copiedLabel,
 }: PublicLinkCopyButtonProps) {
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="icon-sm"
-      aria-label={label}
-      title={label}
+    <TableActionButton
+      label={label}
       onClick={() => {
         void navigator.clipboard.writeText(value).then(() => {
           toast.success(copiedLabel);
         });
       }}
     >
-      <RiFileCopyLine />
-    </Button>
+      <RiFileCopyLine className="size-4" />
+    </TableActionButton>
   );
 }

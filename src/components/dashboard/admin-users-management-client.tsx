@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { TableActionButton } from "@/components/dashboard/table-action-button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,7 +26,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Clickable } from "@/components/ui/clickable";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -351,7 +351,7 @@ export function AdminUsersManagementClient({
                   {shortDateTime(locale, user.createdAt, timeZone)}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Clickable
+                  <TableActionButton
                     onClick={() => {
                       setPendingDeleteUserId(user.id);
                       setDeleteUserDialogOpen(true);
@@ -359,28 +359,18 @@ export function AdminUsersManagementClient({
                     disabled={
                       deletingUserId !== null || user.id === currentUserId
                     }
-                    className="size-6 text-destructive/80 hover:text-destructive"
-                    aria-label={t.delete}
-                    title={t.delete}
+                    label={t.delete}
+                    tone="destructive"
+                    transitionKey={
+                      deletingUserId === user.id ? "deleting" : "delete"
+                    }
                   >
-                    <AutoTransition className="inline-flex items-center justify-center">
-                      {deletingUserId === user.id ? (
-                        <span
-                          key="deleting"
-                          className="inline-flex items-center justify-center"
-                        >
-                          <Spinner className="size-3.5" />
-                        </span>
-                      ) : (
-                        <span
-                          key="delete"
-                          className="inline-flex items-center justify-center"
-                        >
-                          <RiDeleteBinLine className="size-4" />
-                        </span>
-                      )}
-                    </AutoTransition>
-                  </Clickable>
+                    {deletingUserId === user.id ? (
+                      <Spinner className="size-3.5" />
+                    ) : (
+                      <RiDeleteBinLine className="size-4" />
+                    )}
+                  </TableActionButton>
                 </TableCell>
               </TableRow>
             ))}

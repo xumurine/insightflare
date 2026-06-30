@@ -4,6 +4,8 @@ import { useEffect } from "react";
 import type { PartialOptions } from "overlayscrollbars";
 import { OverlayScrollbars } from "overlayscrollbars";
 
+import { isAppleDeviceScrollbarHost } from "@/components/ui/overlay-scrollbar";
+
 const globalScrollbarOptions = {
   overflow: {
     x: "hidden",
@@ -19,6 +21,13 @@ const globalScrollbarOptions = {
 
 export function GlobalScrollbars() {
   useEffect(() => {
+    if (isAppleDeviceScrollbarHost()) {
+      document.documentElement.dataset.nativeScrollbars = "true";
+      return () => {
+        delete document.documentElement.dataset.nativeScrollbars;
+      };
+    }
+
     const existingInstance = OverlayScrollbars(document.body);
     const instance =
       existingInstance ??

@@ -5,8 +5,8 @@ import { RiExternalLinkLine, RiLinksLine } from "@remixicon/react";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { PublicLinkCopyButton } from "@/components/dashboard/public-link-copy-button";
+import { PublicLinkSettingsButton } from "@/components/dashboard/public-link-settings-button";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -145,7 +145,7 @@ export default async function TeamPublicLinksPage({
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex justify-end gap-1">
+                        <div className="flex justify-end gap-2">
                           {enabled ? (
                             <PublicLinkCopyButton
                               value={publicUrl}
@@ -153,9 +153,10 @@ export default async function TeamPublicLinksPage({
                               copiedLabel={copy.linkCopied}
                             />
                           ) : null}
-                          <Button asChild variant="outline" size="sm">
-                            <Link href={settingsHref}>{copy.viewSettings}</Link>
-                          </Button>
+                          <PublicLinkSettingsButton
+                            href={settingsHref}
+                            label={copy.viewSettings}
+                          />
                         </div>
                       </TableCell>
                     </TableRow>

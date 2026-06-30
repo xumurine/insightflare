@@ -44,6 +44,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { isAppleDeviceScrollbarHost } from "@/components/ui/overlay-scrollbar";
 import {
   Sidebar,
   SidebarContent,
@@ -629,6 +630,10 @@ export function DashboardShell({
   useEffect(() => {
     const host = scrollContainerRef.current;
     if (!host) return;
+    if (isAppleDeviceScrollbarHost()) {
+      host.removeAttribute("data-overlayscrollbars-initialize");
+      return;
+    }
 
     const existing = OverlayScrollbars(host);
     const instance =
@@ -677,7 +682,7 @@ export function DashboardShell({
             </Link>
           </SidebarHeader>
 
-          <SidebarContent>
+          <SidebarContent className="min-h-0 overflow-y-auto">
             <SidebarMenuStage mode={sidebarContextMode}>
               {routeState.mode === "root" ? (
                 <>

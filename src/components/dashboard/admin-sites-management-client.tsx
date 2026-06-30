@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { TableActionButton } from "@/components/dashboard/table-action-button";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +17,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Clickable } from "@/components/ui/clickable";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
@@ -266,19 +266,17 @@ export function AdminSitesManagementClient({
                 </TableCell>
                 <TableCell className="text-right">
                   {activeTeam ? (
-                    <Clickable
+                    <TableActionButton
                       onClick={() => {
                         navigateWithTransition(
                           router,
                           `/${locale}/app/${activeTeam.slug}/${siteSlug(site)}`,
                         );
                       }}
-                      className="size-6 text-muted-foreground hover:text-foreground"
-                      aria-label={t.open}
-                      title={t.open}
+                      label={t.open}
                     >
                       <RiLineChartLine className="size-4" />
-                    </Clickable>
+                    </TableActionButton>
                   ) : null}
                 </TableCell>
               </TableRow>

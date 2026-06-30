@@ -142,11 +142,7 @@ export function VersionUpdateDetailsButton({
 
   return (
     <>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => handleOpenChange(true)}
-      >
+      <Button variant="outline" onClick={() => handleOpenChange(true)}>
         <RiListCheck2 />
         {labels.viewDetails}
       </Button>

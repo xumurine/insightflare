@@ -19,6 +19,20 @@ export const HORIZONTAL_SCROLLBAR_OPTIONS = {
   },
 } satisfies PartialOptions;
 
+export function isAppleDeviceScrollbarHost(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const uaData = (
+    navigator as Navigator & { userAgentData?: { platform?: string } }
+  ).userAgentData;
+  const platform = uaData?.platform || navigator.platform || "";
+  const userAgent = navigator.userAgent || "";
+
+  return (
+    /Mac|iPhone|iPad|iPod/i.test(platform) ||
+    /iPhone|iPad|iPod/i.test(userAgent)
+  );
+}
+
 interface OverlayScrollbarProps extends ComponentPropsWithoutRef<"div"> {
   options?: PartialOptions;
   syncKey?: string | number | boolean | null;
@@ -40,6 +54,10 @@ export function OverlayScrollbar({
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    if (isAppleDeviceScrollbarHost()) {
+      host.removeAttribute("data-overlayscrollbars-initialize");
+      return;
+    }
 
     const slot = document.createElement("div");
     slot.style.position = "fixed";
@@ -136,8 +154,13 @@ export function OverlayScrollbar({
     <div
       {...props}
       ref={hostRef}
-      className={cn("overflow-hidden", className)}
-      data-overlayscrollbars-initialize
+      className={cn(
+        isAppleDeviceScrollbarHost() ? "overflow-x-auto" : "overflow-hidden",
+        className,
+      )}
+      data-overlayscrollbars-initialize={
+        isAppleDeviceScrollbarHost() ? undefined : ""
+      }
     >
       {children}
     </div>

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { TableActionButton } from "@/components/dashboard/table-action-button";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +17,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Clickable } from "@/components/ui/clickable";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
@@ -230,32 +230,28 @@ export function AdminTeamsManagementClient({
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="inline-flex items-center justify-end gap-2">
-                    <Clickable
+                    <TableActionButton
                       onClick={() => {
                         navigateWithTransition(
                           router,
                           `/${locale}/app/${team.slug}`,
                         );
                       }}
-                      className="size-6 text-muted-foreground hover:text-foreground"
-                      aria-label={t.open}
-                      title={t.open}
+                      label={t.open}
                     >
                       <RiArrowRightLine className="size-4" />
-                    </Clickable>
-                    <Clickable
+                    </TableActionButton>
+                    <TableActionButton
                       onClick={() => {
                         navigateWithTransition(
                           router,
                           `/${locale}/app/${team.slug}/settings`,
                         );
                       }}
-                      className="size-6 text-muted-foreground hover:text-foreground"
-                      aria-label={t.settings}
-                      title={t.settings}
+                      label={t.settings}
                     >
                       <RiSettings3Line className="size-4" />
-                    </Clickable>
+                    </TableActionButton>
                   </div>
                 </TableCell>
               </TableRow>

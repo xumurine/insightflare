@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   RiAddLine,
+  RiDeleteBinLine,
   RiFileCopyLine,
   RiKey2Line,
   RiRefreshLine,
 } from "@remixicon/react";
 import { toast } from "sonner";
 
+import { TableActionButton } from "@/components/dashboard/table-action-button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,6 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -487,194 +490,182 @@ export function ApiKeysClient({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <AutoTransition
-            transitionKey={
-              loading ? "loading" : keys.length === 0 ? "empty" : "data"
-            }
-            initial={false}
-            duration={0.15}
-            type="fade"
-            presenceMode="wait"
-          >
-            {loading ? (
-              <p
-                key="loading"
-                className="py-8 text-center text-sm text-muted-foreground"
-              >
-                {copy.loading}
-              </p>
-            ) : keys.length === 0 ? (
-              <div
-                key="empty"
-                className="flex flex-col items-center gap-3 py-10 text-center text-sm text-muted-foreground"
-              >
-                <RiKey2Line className="size-8 text-muted-foreground/70" />
-                <p>{copy.empty}</p>
-              </div>
-            ) : (
-              <Table key="data">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{copy.columns.name}</TableHead>
-                    <TableHead>{copy.columns.scopes}</TableHead>
-                    <TableHead>{copy.columns.sites}</TableHead>
-                    <TableHead>{copy.columns.expires}</TableHead>
-                    <TableHead>{copy.columns.lastUsed}</TableHead>
-                    <TableHead>{copy.columns.status}</TableHead>
-                    <TableHead className="text-right">
-                      {copy.columns.action}
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {keys.map((key) => (
-                    <TableRow key={key.id}>
-                      <TableCell>
-                        <div className="font-medium">{key.name}</div>
-                        <div className="font-mono text-muted-foreground">
-                          {key.prefix}
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-72 whitespace-normal">
-                        <div className="flex flex-wrap gap-1">
-                          {key.scopes.map((scope) => (
-                            <Badge key={scope} variant="outline">
-                              {scopeLabel(copy, scope)}
-                            </Badge>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-56 truncate">
-                        {siteScopeLabel(key)}
-                      </TableCell>
-                      <TableCell>
-                        {key.expiresAt
-                          ? dateTime(locale, key.expiresAt)
-                          : copy.neverExpires}
-                      </TableCell>
-                      <TableCell>
-                        {key.lastUsedAt
-                          ? dateTime(locale, key.lastUsedAt)
-                          : copy.notUsed}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            key.status === "active" ? "secondary" : "outline"
-                          }
-                        >
-                          {copy.status[key.status]}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-1">
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={
-                                  key.status !== "active" ||
-                                  busyKeyId === key.id
-                                }
-                              >
-                                <AutoTransition className="inline-flex items-center gap-2">
-                                  {busyKeyId === key.id ? (
-                                    <span
-                                      key="rotating"
-                                      className="inline-flex items-center gap-2"
-                                    >
-                                      <Spinner className="size-4" />
-                                      {copy.rotate}
-                                    </span>
-                                  ) : (
-                                    <span
-                                      key="rotate"
-                                      className="inline-flex items-center gap-2"
-                                    >
-                                      <RiRefreshLine />
-                                      {copy.rotate}
-                                    </span>
-                                  )}
-                                </AutoTransition>
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>
-                                  {copy.rotate}
-                                </AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  {copy.rotateConfirm}
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>
-                                  {cancelLabel}
-                                </AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => void rotateKey(key.id)}
-                                >
-                                  {copy.rotate}
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                disabled={
-                                  key.status !== "active" ||
-                                  busyKeyId === key.id
-                                }
-                              >
-                                <AutoTransition className="inline-flex items-center gap-2">
-                                  {busyKeyId === key.id ? (
-                                    <span
-                                      key="revoking"
-                                      className="inline-flex items-center gap-2"
-                                    >
-                                      <Spinner className="size-4" />
-                                      {copy.revoke}
-                                    </span>
-                                  ) : (
-                                    <span key="revoke">{copy.revoke}</span>
-                                  )}
-                                </AutoTransition>
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>
-                                  {copy.revoke}
-                                </AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  {copy.revokeConfirm}
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>
-                                  {cancelLabel}
-                                </AlertDialogCancel>
-                                <AlertDialogAction
-                                  variant="destructive"
-                                  onClick={() => void revokeKey(key.id)}
-                                >
-                                  {copy.revoke}
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </TableCell>
+          <AutoResizer initial>
+            <AutoTransition
+              transitionKey={
+                loading ? "loading" : keys.length === 0 ? "empty" : "data"
+              }
+              initial={false}
+              duration={0.15}
+              type="fade"
+              presenceMode="wait"
+            >
+              {loading ? (
+                <div
+                  key="loading"
+                  className="flex h-32 items-center justify-center text-sm text-muted-foreground"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner className="size-4" />
+                    {copy.loading}
+                  </span>
+                </div>
+              ) : keys.length === 0 ? (
+                <div
+                  key="empty"
+                  className="flex flex-col items-center gap-3 py-10 text-center text-sm text-muted-foreground"
+                >
+                  <RiKey2Line className="size-8 text-muted-foreground/70" />
+                  <p>{copy.empty}</p>
+                </div>
+              ) : (
+                <Table key="data">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{copy.columns.name}</TableHead>
+                      <TableHead>{copy.columns.scopes}</TableHead>
+                      <TableHead>{copy.columns.sites}</TableHead>
+                      <TableHead>{copy.columns.expires}</TableHead>
+                      <TableHead>{copy.columns.lastUsed}</TableHead>
+                      <TableHead>{copy.columns.status}</TableHead>
+                      <TableHead className="text-right">
+                        {copy.columns.action}
+                      </TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </AutoTransition>
+                  </TableHeader>
+                  <TableBody>
+                    {keys.map((key) => (
+                      <TableRow key={key.id}>
+                        <TableCell>
+                          <div className="font-medium">{key.name}</div>
+                          <div className="font-mono text-muted-foreground">
+                            {key.prefix}
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-72 whitespace-normal">
+                          <div className="flex flex-wrap gap-1">
+                            {key.scopes.map((scope) => (
+                              <Badge key={scope} variant="outline">
+                                {scopeLabel(copy, scope)}
+                              </Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-56 truncate">
+                          {siteScopeLabel(key)}
+                        </TableCell>
+                        <TableCell>
+                          {key.expiresAt
+                            ? dateTime(locale, key.expiresAt)
+                            : copy.neverExpires}
+                        </TableCell>
+                        <TableCell>
+                          {key.lastUsedAt
+                            ? dateTime(locale, key.lastUsedAt)
+                            : copy.notUsed}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              key.status === "active" ? "secondary" : "outline"
+                            }
+                          >
+                            {copy.status[key.status]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-2">
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <TableActionButton
+                                  label={copy.rotate}
+                                  disabled={
+                                    key.status !== "active" ||
+                                    busyKeyId === key.id
+                                  }
+                                  transitionKey={
+                                    busyKeyId === key.id ? "rotating" : "rotate"
+                                  }
+                                >
+                                  {busyKeyId === key.id ? (
+                                    <Spinner className="size-3.5" />
+                                  ) : (
+                                    <RiRefreshLine className="size-4" />
+                                  )}
+                                </TableActionButton>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>
+                                    {copy.rotate}
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    {copy.rotateConfirm}
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>
+                                    {cancelLabel}
+                                  </AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => void rotateKey(key.id)}
+                                  >
+                                    {copy.rotate}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <TableActionButton
+                                  label={copy.revoke}
+                                  tone="destructive"
+                                  disabled={
+                                    key.status !== "active" ||
+                                    busyKeyId === key.id
+                                  }
+                                  transitionKey={
+                                    busyKeyId === key.id ? "revoking" : "revoke"
+                                  }
+                                >
+                                  {busyKeyId === key.id ? (
+                                    <Spinner className="size-3.5" />
+                                  ) : (
+                                    <RiDeleteBinLine className="size-4" />
+                                  )}
+                                </TableActionButton>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>
+                                    {copy.revoke}
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    {copy.revokeConfirm}
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>
+                                    {cancelLabel}
+                                  </AlertDialogCancel>
+                                  <AlertDialogAction
+                                    variant="destructive"
+                                    onClick={() => void revokeKey(key.id)}
+                                  >
+                                    {copy.revoke}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </AutoTransition>
+          </AutoResizer>
         </CardContent>
       </Card>
 

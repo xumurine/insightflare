@@ -17,6 +17,9 @@ import {
 import { toast } from "sonner";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
+import { TableActionButton } from "@/components/dashboard/table-action-button";
+import { AutoResizer } from "@/components/ui/auto-resizer";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -438,196 +441,220 @@ function RuleFormFields({
             </SelectContent>
           </Select>
         </Field>
-        {form.scheduleKind === "daily" ? (
-          <>
-            <Field>
-              <FieldLabel>{copy.timeLabel}</FieldLabel>
-              <Input
-                type="time"
-                value={form.time}
-                onChange={(event) => onChange({ time: event.target.value })}
-              />
-            </Field>
-            <Field>
-              <FieldLabel>{copy.timezoneLabel}</FieldLabel>
-              <Select
-                value={form.timezone}
-                onValueChange={(timezone) => onChange({ timezone })}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="max-h-80">
-                  {timeZones.map((timeZone) => (
-                    <SelectItem key={timeZone} value={timeZone}>
-                      {timeZone}
+        <AutoResizer
+          duration={0.22}
+          ease={[0.22, 1, 0.36, 1]}
+          className="sm:col-span-2"
+        >
+          <AutoTransition
+            transitionKey={form.scheduleKind}
+            duration={0.18}
+            type="fade"
+            presenceMode="wait"
+          >
+            {form.scheduleKind === "daily" ? (
+              <div key="daily" className="grid gap-4 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel>{copy.timeLabel}</FieldLabel>
+                  <Input
+                    type="time"
+                    value={form.time}
+                    onChange={(event) => onChange({ time: event.target.value })}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel>{copy.timezoneLabel}</FieldLabel>
+                  <Select
+                    value={form.timezone}
+                    onValueChange={(timezone) => onChange({ timezone })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-80">
+                      {timeZones.map((timeZone) => (
+                        <SelectItem key={timeZone} value={timeZone}>
+                          {timeZone}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </div>
+            ) : (
+              <Field key="interval">
+                <FieldLabel>{copy.intervalLabel}</FieldLabel>
+                <Select
+                  value={form.everyMinutes}
+                  onValueChange={(everyMinutes) => onChange({ everyMinutes })}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="60">
+                      {copy.intervalOptions.everyHour}
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-          </>
-        ) : (
-          <Field>
-            <FieldLabel>{copy.intervalLabel}</FieldLabel>
-            <Select
-              value={form.everyMinutes}
-              onValueChange={(everyMinutes) => onChange({ everyMinutes })}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="60">
-                  {copy.intervalOptions.everyHour}
-                </SelectItem>
-                <SelectItem value="360">
-                  {copy.intervalOptions.every6Hours}
-                </SelectItem>
-                <SelectItem value="720">
-                  {copy.intervalOptions.every12Hours}
-                </SelectItem>
-                <SelectItem value="1440">
-                  {copy.intervalOptions.everyDay}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-        )}
+                    <SelectItem value="360">
+                      {copy.intervalOptions.every6Hours}
+                    </SelectItem>
+                    <SelectItem value="720">
+                      {copy.intervalOptions.every12Hours}
+                    </SelectItem>
+                    <SelectItem value="1440">
+                      {copy.intervalOptions.everyDay}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            )}
+          </AutoTransition>
+        </AutoResizer>
       </div>
 
-      {form.type === "threshold" ? (
-        <div className="grid gap-4 sm:grid-cols-5">
-          <Field>
-            <FieldLabel>{copy.metricLabel}</FieldLabel>
-            <Select
-              value={form.metric}
-              onValueChange={(value) => {
-                if (
-                  value === "views" ||
-                  value === "visitors" ||
-                  value === "sessions"
-                ) {
-                  onChange({ metric: value });
-                }
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="views">{copy.metrics.views}</SelectItem>
-                <SelectItem value="visitors">
-                  {copy.metrics.visitors}
-                </SelectItem>
-                <SelectItem value="sessions">
-                  {copy.metrics.sessions}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field>
-            <FieldLabel>{copy.windowLabel}</FieldLabel>
-            <Select
-              value={form.window}
-              onValueChange={(value) => {
-                if (
-                  value === "last_1h" ||
-                  value === "last_24h" ||
-                  value === "yesterday"
-                ) {
-                  onChange({ window: value });
-                }
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="last_1h">{copy.windows.last_1h}</SelectItem>
-                <SelectItem value="last_24h">
-                  {copy.windows.last_24h}
-                </SelectItem>
-                <SelectItem value="yesterday">
-                  {copy.windows.yesterday}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field>
-            <FieldLabel>{copy.operatorLabel}</FieldLabel>
-            <Select
-              value={form.operator}
-              onValueChange={(value) => {
-                if (
-                  value === ">" ||
-                  value === ">=" ||
-                  value === "<" ||
-                  value === "<="
-                ) {
-                  onChange({ operator: value });
-                }
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value=">">&gt;</SelectItem>
-                <SelectItem value=">=">&gt;=</SelectItem>
-                <SelectItem value="<">&lt;</SelectItem>
-                <SelectItem value="<=">&lt;=</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field>
-            <FieldLabel>{copy.valueLabel}</FieldLabel>
-            <Input
-              type="number"
-              min={0}
-              value={form.value}
-              onChange={(event) => onChange({ value: event.target.value })}
-            />
-          </Field>
-          <Field>
-            <FieldLabel>{copy.cooldownLabel}</FieldLabel>
-            <Input
-              type="number"
-              min={0}
-              value={form.cooldownMinutes}
-              onChange={(event) =>
-                onChange({ cooldownMinutes: event.target.value })
-              }
-            />
-          </Field>
-        </div>
-      ) : null}
-
-      {form.type === "health" ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field>
-            <FieldLabel>{copy.noDataHoursLabel}</FieldLabel>
-            <Input
-              type="number"
-              min={1}
-              value={form.hours}
-              onChange={(event) => onChange({ hours: event.target.value })}
-            />
-          </Field>
-          <Field>
-            <FieldLabel>{copy.cooldownLabel}</FieldLabel>
-            <Input
-              type="number"
-              min={0}
-              value={form.cooldownMinutes}
-              onChange={(event) =>
-                onChange({ cooldownMinutes: event.target.value })
-              }
-            />
-            <FieldDescription>{copy.cooldownDescription}</FieldDescription>
-          </Field>
-        </div>
-      ) : null}
+      <AutoResizer duration={0.22} ease={[0.22, 1, 0.36, 1]}>
+        <AutoTransition
+          transitionKey={form.type}
+          duration={0.18}
+          type="fade"
+          presenceMode="wait"
+        >
+          {form.type === "threshold" ? (
+            <div key="threshold" className="grid gap-4 sm:grid-cols-5">
+              <Field>
+                <FieldLabel>{copy.metricLabel}</FieldLabel>
+                <Select
+                  value={form.metric}
+                  onValueChange={(value) => {
+                    if (
+                      value === "views" ||
+                      value === "visitors" ||
+                      value === "sessions"
+                    ) {
+                      onChange({ metric: value });
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="views">{copy.metrics.views}</SelectItem>
+                    <SelectItem value="visitors">
+                      {copy.metrics.visitors}
+                    </SelectItem>
+                    <SelectItem value="sessions">
+                      {copy.metrics.sessions}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel>{copy.windowLabel}</FieldLabel>
+                <Select
+                  value={form.window}
+                  onValueChange={(value) => {
+                    if (
+                      value === "last_1h" ||
+                      value === "last_24h" ||
+                      value === "yesterday"
+                    ) {
+                      onChange({ window: value });
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="last_1h">
+                      {copy.windows.last_1h}
+                    </SelectItem>
+                    <SelectItem value="last_24h">
+                      {copy.windows.last_24h}
+                    </SelectItem>
+                    <SelectItem value="yesterday">
+                      {copy.windows.yesterday}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel>{copy.operatorLabel}</FieldLabel>
+                <Select
+                  value={form.operator}
+                  onValueChange={(value) => {
+                    if (
+                      value === ">" ||
+                      value === ">=" ||
+                      value === "<" ||
+                      value === "<="
+                    ) {
+                      onChange({ operator: value });
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value=">">&gt;</SelectItem>
+                    <SelectItem value=">=">&gt;=</SelectItem>
+                    <SelectItem value="<">&lt;</SelectItem>
+                    <SelectItem value="<=">&lt;=</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel>{copy.valueLabel}</FieldLabel>
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.value}
+                  onChange={(event) => onChange({ value: event.target.value })}
+                />
+              </Field>
+              <Field>
+                <FieldLabel>{copy.cooldownLabel}</FieldLabel>
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.cooldownMinutes}
+                  onChange={(event) =>
+                    onChange({ cooldownMinutes: event.target.value })
+                  }
+                />
+              </Field>
+            </div>
+          ) : form.type === "health" ? (
+            <div key="health" className="grid gap-4 sm:grid-cols-2">
+              <Field>
+                <FieldLabel>{copy.noDataHoursLabel}</FieldLabel>
+                <Input
+                  type="number"
+                  min={1}
+                  value={form.hours}
+                  onChange={(event) => onChange({ hours: event.target.value })}
+                />
+              </Field>
+              <Field>
+                <FieldLabel>{copy.cooldownLabel}</FieldLabel>
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.cooldownMinutes}
+                  onChange={(event) =>
+                    onChange({ cooldownMinutes: event.target.value })
+                  }
+                />
+                <FieldDescription>{copy.cooldownDescription}</FieldDescription>
+              </Field>
+            </div>
+          ) : (
+            <div key="report" />
+          )}
+        </AutoTransition>
+      </AutoResizer>
     </div>
   );
 }
@@ -822,7 +849,7 @@ export function TeamNotificationsClient({
         subtitle={copy.subtitle}
         actions={
           <>
-            <Button type="button" size="sm" variant="outline" asChild>
+            <Button type="button" variant="outline" asChild>
               <Link
                 href={`/${locale}/app/${teamSlug}/notifications/email-preview`}
               >
@@ -832,7 +859,7 @@ export function TeamNotificationsClient({
             </Button>
             <Button
               type="button"
-              size="sm"
+              variant="outline"
               onClick={() => setTestDialogOpen(true)}
             >
               <RiMailSendLine />
@@ -840,7 +867,6 @@ export function TeamNotificationsClient({
             </Button>
             <Button
               type="button"
-              size="sm"
               onClick={() => openCreate()}
               disabled={!canCreateRule}
               title={!canCreateRule ? copy.noSitesForRules : copy.createRule}
@@ -868,140 +894,168 @@ export function TeamNotificationsClient({
                 {copy.noSitesForRules}
               </div>
             ) : null}
-            {loading ? (
-              <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
-                <Spinner className="mr-2 size-4" />
-                {copy.loadingRules}
-              </div>
-            ) : rules.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 py-12 text-center text-sm text-muted-foreground">
-                <RiNotification3Line className="size-8 text-muted-foreground/70" />
-                <p>{copy.empty}</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{copy.columns.name}</TableHead>
-                    <TableHead>{copy.columns.type}</TableHead>
-                    <TableHead>{copy.columns.site}</TableHead>
-                    <TableHead>{copy.columns.recipient}</TableHead>
-                    <TableHead>{copy.columns.schedule}</TableHead>
-                    <TableHead>{copy.lastChecked}</TableHead>
-                    <TableHead>{copy.lastTriggered}</TableHead>
-                    <TableHead>{copy.columns.nextRun}</TableHead>
-                    <TableHead>{copy.columns.status}</TableHead>
-                    <TableHead>{copy.actions}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rules.map((rule) => (
-                    <TableRow key={rule.id}>
-                      <TableCell className="font-medium">{rule.name}</TableCell>
-                      <TableCell>{ruleTypeLabel(copy, rule.type)}</TableCell>
-                      <TableCell>{siteLabel(siteById, rule.siteId)}</TableCell>
-                      <TableCell>
-                        {recipientLabel(
-                          copy,
-                          String(rule.recipient.mode ?? ""),
-                        )}
-                      </TableCell>
-                      <TableCell>{scheduleLabel(copy, rule)}</TableCell>
-                      <TableCell>
-                        {formatRunAt(locale, rule.lastCheckedAt)}
-                      </TableCell>
-                      <TableCell>
-                        {formatRunAt(locale, rule.lastTriggeredAt)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          <span>
-                            {nextRunLabel(copy, locale, rule, nowSeconds)}
-                          </span>
-                          {isCoolingDown(rule, nowSeconds) ? (
-                            <Badge variant="secondary">
-                              {formatI18nTemplate(copy.coolingDownUntil, {
-                                time: formatRunAt(locale, rule.cooldownUntil),
-                              })}
+            <AutoResizer initial>
+              <AutoTransition
+                transitionKey={
+                  loading ? "loading" : rules.length === 0 ? "empty" : "data"
+                }
+                initial={false}
+                duration={0.18}
+                type="fade"
+                presenceMode="wait"
+              >
+                {loading ? (
+                  <div
+                    key="loading"
+                    className="flex h-40 items-center justify-center text-sm text-muted-foreground"
+                  >
+                    <Spinner className="mr-2 size-4" />
+                    {copy.loadingRules}
+                  </div>
+                ) : rules.length === 0 ? (
+                  <div
+                    key="empty"
+                    className="flex flex-col items-center gap-3 py-12 text-center text-sm text-muted-foreground"
+                  >
+                    <RiNotification3Line className="size-8 text-muted-foreground/70" />
+                    <p>{copy.empty}</p>
+                  </div>
+                ) : (
+                  <Table key="data">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{copy.columns.name}</TableHead>
+                        <TableHead>{copy.columns.type}</TableHead>
+                        <TableHead>{copy.columns.site}</TableHead>
+                        <TableHead>{copy.columns.recipient}</TableHead>
+                        <TableHead>{copy.columns.schedule}</TableHead>
+                        <TableHead>{copy.lastChecked}</TableHead>
+                        <TableHead>{copy.lastTriggered}</TableHead>
+                        <TableHead>{copy.columns.nextRun}</TableHead>
+                        <TableHead>{copy.columns.status}</TableHead>
+                        <TableHead>{copy.actions}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {rules.map((rule) => (
+                        <TableRow key={rule.id}>
+                          <TableCell className="font-medium">
+                            {rule.name}
+                          </TableCell>
+                          <TableCell>
+                            {ruleTypeLabel(copy, rule.type)}
+                          </TableCell>
+                          <TableCell>
+                            {siteLabel(siteById, rule.siteId)}
+                          </TableCell>
+                          <TableCell>
+                            {recipientLabel(
+                              copy,
+                              String(rule.recipient.mode ?? ""),
+                            )}
+                          </TableCell>
+                          <TableCell>{scheduleLabel(copy, rule)}</TableCell>
+                          <TableCell>
+                            {formatRunAt(locale, rule.lastCheckedAt)}
+                          </TableCell>
+                          <TableCell>
+                            {formatRunAt(locale, rule.lastTriggeredAt)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              <span>
+                                {nextRunLabel(copy, locale, rule, nowSeconds)}
+                              </span>
+                              {isCoolingDown(rule, nowSeconds) ? (
+                                <Badge variant="secondary">
+                                  {formatI18nTemplate(copy.coolingDownUntil, {
+                                    time: formatRunAt(
+                                      locale,
+                                      rule.cooldownUntil,
+                                    ),
+                                  })}
+                                </Badge>
+                              ) : null}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={rule.enabled ? "default" : "secondary"}
+                            >
+                              {rule.enabled
+                                ? copy.status.enabled
+                                : copy.status.disabled}
                             </Badge>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={rule.enabled ? "default" : "secondary"}>
-                          {rule.enabled
-                            ? copy.status.enabled
-                            : copy.status.disabled}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          <Button
-                            type="button"
-                            size="icon-xs"
-                            variant="outline"
-                            title={copy.preview}
-                            disabled={previewingId === rule.id}
-                            onClick={() => void handlePreview(rule)}
-                          >
-                            {previewingId === rule.id ? (
-                              <Spinner className="size-3" />
-                            ) : (
-                              <RiEyeLine />
-                            )}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon-xs"
-                            variant="outline"
-                            title={copy.runNow}
-                            disabled={runningId === rule.id}
-                            onClick={() => void handleRunNow(rule)}
-                          >
-                            {runningId === rule.id ? (
-                              <Spinner className="size-3" />
-                            ) : (
-                              <RiPlayCircleLine />
-                            )}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon-xs"
-                            variant="outline"
-                            title={copy.edit}
-                            onClick={() => openEdit(rule)}
-                          >
-                            <RiEditLine />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon-xs"
-                            variant="outline"
-                            title={rule.enabled ? copy.disable : copy.enable}
-                            onClick={() => void toggleRule(rule)}
-                          >
-                            {rule.enabled ? (
-                              <RiPauseCircleLine />
-                            ) : (
-                              <RiPlayCircleLine />
-                            )}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon-xs"
-                            variant="destructive"
-                            title={copy.delete}
-                            onClick={() => void removeRule(rule)}
-                          >
-                            <RiDeleteBinLine />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-2">
+                              <TableActionButton
+                                label={copy.preview}
+                                disabled={previewingId === rule.id}
+                                onClick={() => void handlePreview(rule)}
+                                transitionKey={
+                                  previewingId === rule.id
+                                    ? "previewing"
+                                    : "preview"
+                                }
+                              >
+                                {previewingId === rule.id ? (
+                                  <Spinner className="size-3" />
+                                ) : (
+                                  <RiEyeLine className="size-4" />
+                                )}
+                              </TableActionButton>
+                              <TableActionButton
+                                label={copy.runNow}
+                                disabled={runningId === rule.id}
+                                onClick={() => void handleRunNow(rule)}
+                                transitionKey={
+                                  runningId === rule.id ? "running" : "run"
+                                }
+                              >
+                                {runningId === rule.id ? (
+                                  <Spinner className="size-3" />
+                                ) : (
+                                  <RiPlayCircleLine className="size-4" />
+                                )}
+                              </TableActionButton>
+                              <TableActionButton
+                                label={copy.edit}
+                                onClick={() => openEdit(rule)}
+                              >
+                                <RiEditLine className="size-4" />
+                              </TableActionButton>
+                              <TableActionButton
+                                label={
+                                  rule.enabled ? copy.disable : copy.enable
+                                }
+                                onClick={() => void toggleRule(rule)}
+                                transitionKey={
+                                  rule.enabled ? "enabled" : "disabled"
+                                }
+                              >
+                                {rule.enabled ? (
+                                  <RiPauseCircleLine className="size-4" />
+                                ) : (
+                                  <RiPlayCircleLine className="size-4" />
+                                )}
+                              </TableActionButton>
+                              <TableActionButton
+                                label={copy.delete}
+                                tone="destructive"
+                                onClick={() => void removeRule(rule)}
+                              >
+                                <RiDeleteBinLine className="size-4" />
+                              </TableActionButton>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </AutoTransition>
+            </AutoResizer>
           </CardContent>
         </Card>
       </div>
@@ -1039,7 +1093,12 @@ export function TeamNotificationsClient({
             >
               {messages.teamSelect.cancel}
             </Button>
-            <Button type="button" onClick={handleSendTest} disabled={testing}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleSendTest}
+              disabled={testing}
+            >
               {testing ? <Spinner className="size-4" /> : <RiMailSendLine />}
               <span>{copy.sendTestNotification}</span>
             </Button>

@@ -6,6 +6,12 @@ import { toast } from "sonner";
 
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
+import { Clickable } from "@/components/ui/clickable";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 export interface JsonTreeLabels {
@@ -242,17 +248,22 @@ export function JsonTreePanel({
         className,
       )}
     >
-      <button
-        type="button"
-        className="sticky top-0 right-0 float-right -mr-7 ml-2 inline-flex size-7 items-center justify-center border bg-background/90 text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-        onClick={() => {
-          void copyJson();
-        }}
-        title={labels.copyJson}
-        aria-label={labels.copyJson}
-      >
-        <RiFileCopyLine className="size-4" />
-      </button>
+      <div className="sticky top-0 right-0 float-right -mr-7 ml-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Clickable
+              className="size-7 text-muted-foreground hover:text-foreground"
+              aria-label={labels.copyJson}
+              onClick={() => {
+                void copyJson();
+              }}
+            >
+              <RiFileCopyLine className="size-4" />
+            </Clickable>
+          </TooltipTrigger>
+          <TooltipContent>{labels.copyJson}</TooltipContent>
+        </Tooltip>
+      </div>
       <JsonTree value={value} labels={labels} />
     </div>
   );

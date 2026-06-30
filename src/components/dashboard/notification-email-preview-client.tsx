@@ -5,6 +5,8 @@ import { RiRefreshLine } from "@remixicon/react";
 import { toast } from "sonner";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
+import { AutoResizer } from "@/components/ui/auto-resizer";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -76,13 +78,40 @@ export function NotificationEmailPreviewClient({
         actions={
           <Button
             type="button"
-            size="sm"
             variant="outline"
             disabled={loading}
             onClick={() => void loadPreview()}
           >
-            {loading ? <Spinner className="size-4" /> : <RiRefreshLine />}
-            <span>{page.refresh}</span>
+            <span className="inline-flex size-4 shrink-0 items-center justify-center">
+              {loading ? (
+                <Spinner className="size-4" />
+              ) : (
+                <RiRefreshLine className="size-4" />
+              )}
+            </span>
+            <AutoResizer
+              initial
+              animateWidth
+              animateHeight={false}
+              className="inline-flex shrink-0 items-center"
+            >
+              <AutoTransition
+                className="inline-block"
+                duration={0.2}
+                type="fade"
+                initial={false}
+                presenceMode="wait"
+                customVariants={{
+                  initial: { opacity: 0 },
+                  animate: { opacity: 1 },
+                  exit: { opacity: 0 },
+                }}
+              >
+                <span key={loading ? "loading" : "refresh"}>
+                  {page.refresh}
+                </span>
+              </AutoTransition>
+            </AutoResizer>
           </Button>
         }
       />

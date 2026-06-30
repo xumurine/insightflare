@@ -185,7 +185,7 @@ export default async function VersionUpdatesPage({
         title={messages.managementNav.versionUpdates}
         subtitle={labels.subtitle}
         actions={
-          <Button variant="outline" size="sm" asChild>
+          <Button variant="outline" asChild>
             <Link href={REPO_RELEASES_URL} target="_blank" rel="noreferrer">
               <RiExternalLinkLine />
               {labels.source}
@@ -344,7 +344,7 @@ export default async function VersionUpdatesPage({
                       currentCommit={runtimeCommit}
                       labels={detailLabels}
                     />
-                    <Button variant="outline" size="sm" asChild>
+                    <Button variant="outline" asChild>
                       <Link
                         href={release.htmlUrl}
                         target="_blank"

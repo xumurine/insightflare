@@ -140,6 +140,47 @@
   }
 }
 
+@supports (-webkit-touch-callout: none) {
+  * {
+    -ms-overflow-style: auto;
+    scrollbar-width: auto;
+  }
+
+  *::-webkit-scrollbar {
+    display: initial;
+    width: initial;
+    height: initial;
+  }
+}
+
+html[data-native-scrollbars="true"] *,
+html[data-native-scrollbars="true"] {
+  -ms-overflow-style: auto;
+  scrollbar-width: auto;
+}
+
+html[data-native-scrollbars="true"] *::-webkit-scrollbar,
+html[data-native-scrollbars="true"]::-webkit-scrollbar {
+  display: initial;
+  width: initial;
+  height: initial;
+}
+
+@media (hover: hover) and (-webkit-min-device-pixel-ratio: 0) {
+  @supports (font: -apple-system-body) {
+    * {
+      -ms-overflow-style: auto;
+      scrollbar-width: auto;
+    }
+
+    *::-webkit-scrollbar {
+      display: initial;
+      width: initial;
+      height: initial;
+    }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   body {
     animation: none;

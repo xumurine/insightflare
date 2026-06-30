@@ -14,6 +14,7 @@ import {
   RiCalendarScheduleLine,
   RiCheckboxCircleLine,
   RiCloseCircleLine,
+  RiFileList3Line,
   RiRefreshLine,
   RiTimeLine,
 } from "@remixicon/react";
@@ -28,6 +29,7 @@ import {
   EVENT_RECORD_DRAWER_Z_INDEX,
   FLOATING_LAYER_Z_ATTR,
 } from "@/components/dashboard/site-pages/floating-layer";
+import { TableActionButton } from "@/components/dashboard/table-action-button";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
@@ -559,17 +561,13 @@ function ScheduledTaskRunsTable({
                         />
                       </TableCell>
                       <TableCell className="pr-4 text-right">
-                        <span
-                          className={cn(
-                            "inline-flex h-7 items-center px-2 text-xs font-medium transition-colors",
-                            selected
-                              ? "bg-secondary text-secondary-foreground"
-                              : "text-muted-foreground group-hover:text-foreground",
-                          )}
+                        <TableActionButton
+                          label={`${numberFormat(locale, run.logsCount)} ${labels.viewLogs}`}
+                          onClick={() => onOpenRun(run)}
+                          className={cn(selected && "text-foreground")}
                         >
-                          {numberFormat(locale, run.logsCount)} ·{" "}
-                          {labels.viewLogs}
-                        </span>
+                          <RiFileList3Line className="size-4" />
+                        </TableActionButton>
                       </TableCell>
                     </TableRow>
                   );
@@ -714,170 +712,223 @@ function ScheduledTaskRunLogDrawer({
           <DrawerHeader className="border-b">
             <DrawerTitle>{labels.logTitle}</DrawerTitle>
             <DrawerDescription>
-              {run
-                ? `${shortDateTimeWithSeconds(locale, run.startedAt, timeZone)} · ${numberFormat(locale, run.taskCount)} ${labels.taskCount}`
-                : loading
-                  ? messages.common.loading
-                  : labels.noRunSelected}
+              <AutoResizer animateWidth>
+                <AutoTransition
+                  transitionKey={run ? run.id : loading ? "loading" : "empty"}
+                  type="slide"
+                  duration={0.18}
+                  className="inline-flex items-center"
+                >
+                  {run ? (
+                    <span key={run.id}>
+                      {`${shortDateTimeWithSeconds(locale, run.startedAt, timeZone)} · ${numberFormat(locale, run.taskCount)} ${labels.taskCount}`}
+                    </span>
+                  ) : loading ? (
+                    <span key="loading">{messages.common.loading}</span>
+                  ) : (
+                    <span key="empty">{labels.noRunSelected}</span>
+                  )}
+                </AutoTransition>
+              </AutoResizer>
             </DrawerDescription>
           </DrawerHeader>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            {loading && !run ? (
-              <div className="flex h-64 items-center justify-center text-muted-foreground">
-                <span className="inline-flex items-center gap-2">
-                  <Spinner className="size-4" />
-                  {messages.common.loading}
-                </span>
-              </div>
-            ) : !run ? (
-              <div className="flex h-64 items-center justify-center text-muted-foreground">
-                {labels.noRunSelected}
-              </div>
-            ) : (
-              <div className="space-y-5">
-                <section className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge status={run.status} labels={labels.status} />
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {run.id}
+            <AutoResizer initial>
+              <AutoTransition
+                transitionKey={run ? run.id : loading ? "loading" : "empty"}
+                initial={false}
+                duration={0.18}
+                type="fade"
+                presenceMode="wait"
+              >
+                {loading && !run ? (
+                  <div
+                    key="loading"
+                    className="flex h-64 items-center justify-center text-muted-foreground"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <Spinner className="size-4" />
+                      {messages.common.loading}
                     </span>
                   </div>
-                  <dl className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1">
-                      <dt className="text-muted-foreground">
-                        {labels.startedAt}
-                      </dt>
-                      <dd className="font-mono text-xs">
-                        {shortDateTimeWithSeconds(
-                          locale,
-                          run.startedAt,
-                          timeZone,
-                        )}
-                      </dd>
-                    </div>
-                    <div className="space-y-1">
-                      <dt className="text-muted-foreground">
-                        {labels.duration}
-                      </dt>
-                      <dd className="font-mono text-xs">
-                        {formatDuration(locale, run.durationMs)}
-                      </dd>
-                    </div>
-                    <div className="space-y-1">
-                      <dt className="text-muted-foreground">
-                        {labels.taskCount}
-                      </dt>
-                      <dd className="font-mono text-xs">
-                        {numberFormat(locale, run.taskCount)}
-                      </dd>
-                    </div>
-                    <div className="space-y-1">
-                      <dt className="text-muted-foreground">
-                        {labels.statusLabel}
-                      </dt>
-                      <dd>{labels.status[run.status]}</dd>
-                    </div>
-                  </dl>
-                </section>
+                ) : !run ? (
+                  <div
+                    key="empty"
+                    className="flex h-64 items-center justify-center text-muted-foreground"
+                  >
+                    {labels.noRunSelected}
+                  </div>
+                ) : (
+                  <div key={run.id} className="space-y-5">
+                    <section className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge
+                          status={run.status}
+                          labels={labels.status}
+                        />
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {run.id}
+                        </span>
+                      </div>
+                      <dl className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1">
+                          <dt className="text-muted-foreground">
+                            {labels.startedAt}
+                          </dt>
+                          <dd className="font-mono text-xs">
+                            {shortDateTimeWithSeconds(
+                              locale,
+                              run.startedAt,
+                              timeZone,
+                            )}
+                          </dd>
+                        </div>
+                        <div className="space-y-1">
+                          <dt className="text-muted-foreground">
+                            {labels.duration}
+                          </dt>
+                          <dd className="font-mono text-xs">
+                            {formatDuration(locale, run.durationMs)}
+                          </dd>
+                        </div>
+                        <div className="space-y-1">
+                          <dt className="text-muted-foreground">
+                            {labels.taskCount}
+                          </dt>
+                          <dd className="font-mono text-xs">
+                            {numberFormat(locale, run.taskCount)}
+                          </dd>
+                        </div>
+                        <div className="space-y-1">
+                          <dt className="text-muted-foreground">
+                            {labels.statusLabel}
+                          </dt>
+                          <dd>{labels.status[run.status]}</dd>
+                        </div>
+                      </dl>
+                    </section>
 
-                <section className="space-y-3">
-                  <h3 className="text-sm font-medium">{labels.tasks}</h3>
-                  {run.runs.length > 0 ? (
-                    <div className="space-y-3">
-                      {run.runs.map((taskRun) => {
-                        const taskLogs = logsByRunId.get(taskRun.id) ?? [];
-                        const taskInfo = localizedTaskInfo(labels, {
-                          key: taskRun.taskKey,
-                          name: taskRun.taskName,
-                        });
-                        return (
-                          <div key={taskRun.id} className="border bg-card p-3">
-                            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                              <div className="min-w-0">
-                                <div className="truncate text-sm font-medium">
-                                  {taskInfo.name}
+                    <section className="space-y-3">
+                      <h3 className="text-sm font-medium">{labels.tasks}</h3>
+                      {run.runs.length > 0 ? (
+                        <div className="space-y-3">
+                          {run.runs.map((taskRun) => {
+                            const taskLogs = logsByRunId.get(taskRun.id) ?? [];
+                            const taskInfo = localizedTaskInfo(labels, {
+                              key: taskRun.taskKey,
+                              name: taskRun.taskName,
+                            });
+                            return (
+                              <div
+                                key={taskRun.id}
+                                className="border bg-card p-3"
+                              >
+                                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="truncate text-sm font-medium">
+                                      {taskInfo.name}
+                                    </div>
+                                    <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                                      {taskRun.id}
+                                    </div>
+                                  </div>
+                                  <StatusBadge
+                                    status={taskRun.status}
+                                    labels={labels.status}
+                                  />
                                 </div>
-                                <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                                  {taskRun.id}
-                                </div>
-                              </div>
-                              <StatusBadge
-                                status={taskRun.status}
-                                labels={labels.status}
-                              />
-                            </div>
-                            <dl className="mt-3 grid gap-3 text-xs sm:grid-cols-3">
-                              <div className="space-y-1">
-                                <dt className="text-muted-foreground">
-                                  {labels.duration}
-                                </dt>
-                                <dd className="font-mono">
-                                  {formatDuration(locale, taskRun.durationMs)}
-                                </dd>
-                              </div>
-                              {[0, 1].map((index) => {
-                                const metric = runSummaryMetric(
-                                  labels,
-                                  taskRun,
-                                  index as 0 | 1,
-                                );
-                                return (
-                                  <div key={metric.label} className="space-y-1">
+                                <dl className="mt-3 grid gap-3 text-xs sm:grid-cols-3">
+                                  <div className="space-y-1">
                                     <dt className="text-muted-foreground">
-                                      {metric.label}
+                                      {labels.duration}
                                     </dt>
                                     <dd className="font-mono">
-                                      {metric.value}
+                                      {formatDuration(
+                                        locale,
+                                        taskRun.durationMs,
+                                      )}
                                     </dd>
                                   </div>
-                                );
-                              })}
-                            </dl>
-                            {taskRun.errorMessage ? (
-                              <div className="mt-3 border border-destructive/30 bg-destructive/5 p-3 text-sm">
-                                <div className="flex items-center gap-2 font-medium text-destructive">
-                                  <RiCloseCircleLine className="size-4" />
-                                  {taskRun.errorName ?? labels.error}
+                                  {[0, 1].map((index) => {
+                                    const metric = runSummaryMetric(
+                                      labels,
+                                      taskRun,
+                                      index as 0 | 1,
+                                    );
+                                    return (
+                                      <div
+                                        key={metric.label}
+                                        className="space-y-1"
+                                      >
+                                        <dt className="text-muted-foreground">
+                                          {metric.label}
+                                        </dt>
+                                        <dd className="font-mono">
+                                          {metric.value}
+                                        </dd>
+                                      </div>
+                                    );
+                                  })}
+                                </dl>
+                                {taskRun.errorMessage ? (
+                                  <div className="mt-3 border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                                    <div className="flex items-center gap-2 font-medium text-destructive">
+                                      <RiCloseCircleLine className="size-4" />
+                                      {taskRun.errorName ?? labels.error}
+                                    </div>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      {taskRun.errorMessage}
+                                    </p>
+                                  </div>
+                                ) : null}
+                                <div className="mt-3 space-y-2">
+                                  <h4 className="text-xs font-medium">
+                                    {labels.logs}
+                                  </h4>
+                                  {taskLogs.length > 0 ? (
+                                    taskLogs.map((log) => (
+                                      <ScheduledTaskLogEntry
+                                        key={log.id}
+                                        log={log}
+                                        locale={locale}
+                                        timeZone={timeZone}
+                                        messages={messages}
+                                      />
+                                    ))
+                                  ) : (
+                                    <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">
+                                      {loading ? (
+                                        <span className="inline-flex items-center gap-2">
+                                          <Spinner className="size-4" />
+                                          {messages.common.loading}
+                                        </span>
+                                      ) : (
+                                        labels.noLogs
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  {taskRun.errorMessage}
-                                </p>
                               </div>
-                            ) : null}
-                            <div className="mt-3 space-y-2">
-                              <h4 className="text-xs font-medium">
-                                {labels.logs}
-                              </h4>
-                              {taskLogs.length > 0 ? (
-                                taskLogs.map((log) => (
-                                  <ScheduledTaskLogEntry
-                                    key={log.id}
-                                    log={log}
-                                    locale={locale}
-                                    timeZone={timeZone}
-                                    messages={messages}
-                                  />
-                                ))
-                              ) : (
-                                <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">
-                                  {loading
-                                    ? messages.common.loading
-                                    : labels.noLogs}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
-                      {loading ? messages.common.loading : labels.noLogs}
-                    </div>
-                  )}
-                </section>
-              </div>
-            )}
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
+                          {loading ? (
+                            <span className="inline-flex items-center gap-2">
+                              <Spinner className="size-4" />
+                              {messages.common.loading}
+                            </span>
+                          ) : (
+                            labels.noLogs
+                          )}
+                        </div>
+                      )}
+                    </section>
+                  </div>
+                )}
+              </AutoTransition>
+            </AutoResizer>
           </div>
         </DrawerContent>
       </Drawer>
@@ -1130,25 +1181,36 @@ export function ScheduledTasksClient({
               disabled={replacingRows}
               onClick={() => setRefreshNonce((value) => value + 1)}
             >
-              <AutoTransition className="inline-flex items-center gap-2">
+              <span className="inline-flex size-4 shrink-0 items-center justify-center">
                 {replacingRows ? (
-                  <span
-                    key="loading"
-                    className="inline-flex items-center gap-2"
-                  >
-                    <Spinner className="size-4" />
-                    {messages.common.loading}
-                  </span>
+                  <Spinner className="size-4" />
                 ) : (
-                  <span
-                    key="refresh"
-                    className="inline-flex items-center gap-2"
-                  >
-                    <RiRefreshLine className="size-4" />
-                    {t.refresh}
-                  </span>
+                  <RiRefreshLine className="size-4" />
                 )}
-              </AutoTransition>
+              </span>
+              <AutoResizer
+                initial
+                animateWidth
+                animateHeight={false}
+                className="inline-flex shrink-0 items-center"
+              >
+                <AutoTransition
+                  className="inline-block"
+                  duration={0.2}
+                  type="fade"
+                  initial={false}
+                  presenceMode="wait"
+                  customVariants={{
+                    initial: { opacity: 0 },
+                    animate: { opacity: 1 },
+                    exit: { opacity: 0 },
+                  }}
+                >
+                  <span key={replacingRows ? "loading" : "refresh"}>
+                    {replacingRows ? messages.common.loading : t.refresh}
+                  </span>
+                </AutoTransition>
+              </AutoResizer>
             </Button>
           </>
         }

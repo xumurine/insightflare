@@ -432,7 +432,6 @@ export function NotificationCenterClient({
             <Button
               type="button"
               variant="outline"
-              size="sm"
               onClick={handleReadAll}
               disabled={markingAll || unreadCount === 0}
             >
@@ -446,12 +445,39 @@ export function NotificationCenterClient({
             <Button
               type="button"
               variant="outline"
-              size="sm"
               disabled={loading}
               onClick={() => void loadMessages()}
             >
-              {loading ? <Spinner className="size-4" /> : <RiRefreshLine />}
-              <span>{loading ? messages.common.loading : copy.refresh}</span>
+              <span className="inline-flex size-4 shrink-0 items-center justify-center">
+                {loading ? (
+                  <Spinner className="size-4" />
+                ) : (
+                  <RiRefreshLine className="size-4" />
+                )}
+              </span>
+              <AutoResizer
+                initial
+                animateWidth
+                animateHeight={false}
+                className="inline-flex shrink-0 items-center"
+              >
+                <AutoTransition
+                  className="inline-block"
+                  duration={0.2}
+                  type="fade"
+                  initial={false}
+                  presenceMode="wait"
+                  customVariants={{
+                    initial: { opacity: 0 },
+                    animate: { opacity: 1 },
+                    exit: { opacity: 0 },
+                  }}
+                >
+                  <span key={loading ? "loading" : "refresh"}>
+                    {loading ? messages.common.loading : copy.refresh}
+                  </span>
+                </AutoTransition>
+              </AutoResizer>
             </Button>
           </>
         }
