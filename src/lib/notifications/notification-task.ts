@@ -10,6 +10,8 @@ import {
   type NotificationMessageDraft,
   type NotificationRuleEvaluationResult,
 } from "./evaluator";
+import { resolveNotificationLocale } from "./locale";
+import { buildLocalizedNotificationMessageFields } from "./localized-message";
 import {
   createNotificationMessage,
   type NotificationMessage,
@@ -44,23 +46,6 @@ export interface NotificationTaskSummary {
   emailSkippedBySystem: number;
   emailSkippedInvalidRecipient: number;
   durationMs: number;
-}
-
-function testTemplate(): NotificationTemplate {
-  return {
-    title: "InsightFlare notification test",
-    summary: "This is a test notification from InsightFlare.",
-    bodyText:
-      "This is a test notification from InsightFlare. If email is configured and enabled, this message also verifies Resend delivery.",
-    requiresAttention: false,
-  };
-}
-
-interface NotificationTemplate {
-  title: string;
-  summary: string;
-  bodyText: string;
-  requiresAttention: boolean;
 }
 
 function emptySummary(startedAt: number): NotificationTaskSummary {
@@ -155,6 +140,12 @@ async function createAndDeliverMessages(input: {
   );
 
   for (const user of recipients) {
+    const locale = resolveNotificationLocale(user.preferredLocale);
+    const localized = buildLocalizedNotificationMessageFields({
+      draft,
+      locale,
+      timeZone: user.timeZone,
+    });
     const preferences = normalizeNotificationPreferences(user.preferencesJson);
     const requiresAttention = shouldCreateUnreadAttention({
       preferences,
@@ -171,14 +162,15 @@ async function createAndDeliverMessages(input: {
       type: draft.type,
       severity: draft.severity,
       requiresAttention,
-      title: draft.title,
-      summary: draft.summary,
-      bodyText: draft.bodyText,
-      bodyHtml: draft.bodyHtml,
+      title: localized.title,
+      summary: localized.summary,
+      bodyText: localized.bodyText,
+      bodyHtml: "",
       data: {
         ruleId: rule.id,
         batchId,
         ...(draft.data ?? {}),
+        locale: localized.locale,
       },
       triggeredAt,
     });
@@ -413,7 +405,8 @@ export async function createManualTestNotification(input: {
         id,
         email,
         notification_preferences_json AS preferencesJson,
-        preferred_locale AS preferredLocale
+        preferred_locale AS preferredLocale,
+        timezone AS timeZone
       FROM users
       WHERE id = ?
       LIMIT 1
@@ -425,6 +418,7 @@ export async function createManualTestNotification(input: {
       email: string;
       preferencesJson: string;
       preferredLocale?: string | null;
+      timeZone?: string | null;
     }>();
   if (!user) {
     await context.logger.warn(
@@ -434,7 +428,21 @@ export async function createManualTestNotification(input: {
     );
     return { message: null, summary };
   }
-  const template = testTemplate();
+  const locale = resolveNotificationLocale(user.preferredLocale);
+  const localized = buildLocalizedNotificationMessageFields({
+    draft: {
+      type: "test",
+      severity: "info",
+      requiresAttention: false,
+      title: "InsightFlare notification test",
+      summary: "This is a test notification from InsightFlare.",
+      bodyText:
+        "This is a test notification from InsightFlare. If email is configured and enabled, this message also verifies Resend delivery.",
+      data: { source: "manual_test" },
+    },
+    locale,
+    timeZone: user.timeZone,
+  });
   const message = await createNotificationMessage(env, {
     teamId,
     siteId: siteId ?? null,
@@ -444,10 +452,14 @@ export async function createManualTestNotification(input: {
     type: "test",
     severity: "info",
     requiresAttention: false,
-    title: template.title,
-    summary: template.summary,
-    bodyText: template.bodyText,
-    data: { source: "manual_test" },
+    title: localized.title,
+    summary: localized.summary,
+    bodyText: localized.bodyText,
+    bodyHtml: "",
+    data:
+      localized.locale === "en"
+        ? { source: "manual_test" }
+        : { source: "manual_test", locale: localized.locale },
     triggeredAt: now,
   });
   summary.messagesCreated = 1;

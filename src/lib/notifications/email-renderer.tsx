@@ -4,12 +4,13 @@ import { render } from "@react-email/render";
 import type { Locale } from "@/lib/i18n/config";
 
 import { buildNotificationContent, type NotificationContent } from "./content";
-import { renderNotificationEmailText } from "./email-text";
+import { renderNotificationPlainText } from "./email-text";
 import type { NotificationMessage } from "./message-store";
 
 export interface RenderNotificationEmailInput {
   message: NotificationMessage;
   locale: Locale;
+  timeZone?: string | null;
 }
 
 export interface RenderedNotificationEmail {
@@ -36,13 +37,19 @@ export function buildNotificationContentForMessage(input: {
 export async function renderNotificationEmail({
   message,
   locale,
+  timeZone,
 }: RenderNotificationEmailInput): Promise<RenderedNotificationEmail> {
   const content = buildNotificationContentForMessage({ message, locale });
-  const text = renderNotificationEmailText({ content, message, locale });
+  const text = renderNotificationPlainText({
+    content,
+    message,
+    locale,
+    timeZone,
+  });
   const { NotificationEmail } =
     await import("@/components/email/notification-email");
   const html = await render(
-    createElement(NotificationEmail, { locale, content, message }),
+    createElement(NotificationEmail, { locale, content, message, timeZone }),
   );
   return {
     subject: content.subject,

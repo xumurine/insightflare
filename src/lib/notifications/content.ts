@@ -1,10 +1,13 @@
 import type { Locale } from "@/lib/i18n/config";
 
+import { formatNotificationNumber } from "./email-format";
 import { NOTIFICATION_EMAIL_MESSAGES } from "./email-i18n";
 import type {
   NotificationMessageType,
   NotificationSeverity,
 } from "./message-types";
+
+export { formatNotificationNumber } from "./email-format";
 
 export interface NotificationContentInput {
   type: NotificationMessageType;
@@ -31,12 +34,6 @@ function format(template: string, values: Record<string, string>): string {
     /\{([a-zA-Z0-9_]+)\}/g,
     (_, key: string) => values[key] ?? "",
   );
-}
-
-export function formatNotificationNumber(value: unknown): string {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return "0";
-  return Math.trunc(number).toLocaleString("en-US");
 }
 
 export function notificationSiteName(data: Record<string, unknown>): string {
@@ -89,14 +86,14 @@ function reportContent(input: NotificationContentInput): NotificationContent {
   const subject = format(messages.report.subject, { site });
   const summary = format(messages.report.summary, {
     date,
-    visitors: formatNotificationNumber(metrics.visitors),
-    views: formatNotificationNumber(metrics.views),
+    visitors: formatNotificationNumber(metrics.visitors, input.locale),
+    views: formatNotificationNumber(metrics.views, input.locale),
   });
   return {
     subject,
     title: format(messages.report.title, { site }),
     summary,
-    bodyText: input.fallbackBodyText || summary,
+    bodyText: summary,
   };
 }
 
@@ -109,8 +106,8 @@ function thresholdContent(
   const window = notificationWindowLabel(input.locale, input.data.window);
   const operator =
     typeof input.data.operator === "string" ? input.data.operator : ">=";
-  const value = formatNotificationNumber(input.data.value);
-  const target = formatNotificationNumber(input.data.target);
+  const value = formatNotificationNumber(input.data.value, input.locale);
+  const target = formatNotificationNumber(input.data.target, input.locale);
   const subject = format(messages.threshold.subject, { site });
   const summary = format(messages.threshold.summary, {
     window,
@@ -123,14 +120,14 @@ function thresholdContent(
     subject,
     title: format(messages.threshold.title, { site }),
     summary,
-    bodyText: input.fallbackBodyText || summary,
+    bodyText: summary,
   };
 }
 
 function healthContent(input: NotificationContentInput): NotificationContent {
   const messages = NOTIFICATION_EMAIL_MESSAGES[input.locale];
   const site = notificationSiteName(input.data);
-  const hours = formatNotificationNumber(input.data.hours);
+  const hours = formatNotificationNumber(input.data.hours, input.locale);
   const subject = format(messages.health.subject, { site, hours });
   const summary =
     input.data.lastSeenAt === null
@@ -140,7 +137,7 @@ function healthContent(input: NotificationContentInput): NotificationContent {
     subject,
     title: format(messages.health.title, { site, hours }),
     summary,
-    bodyText: input.fallbackBodyText || summary,
+    bodyText: summary,
   };
 }
 

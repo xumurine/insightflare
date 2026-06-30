@@ -16,10 +16,13 @@ import {
 import type { Locale } from "@/lib/i18n/config";
 import type { NotificationContent } from "@/lib/notifications/content";
 import {
-  formatNotificationNumber,
   notificationMetricLabel,
   notificationWindowLabel,
 } from "@/lib/notifications/content";
+import {
+  formatNotificationDateTime,
+  formatNotificationNumber,
+} from "@/lib/notifications/email-format";
 import { NOTIFICATION_EMAIL_MESSAGES } from "@/lib/notifications/email-i18n";
 import type { NotificationMessage } from "@/lib/notifications/message-store";
 
@@ -27,6 +30,7 @@ export interface NotificationEmailProps {
   locale: Locale;
   content: NotificationContent;
   message: NotificationMessage;
+  timeZone?: string | null;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -48,11 +52,15 @@ function textValue(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
-function formatLastSeen(value: unknown, locale: Locale): string {
+function formatLastSeen(
+  value: unknown,
+  locale: Locale,
+  timeZone?: string | null,
+): string {
   const messages = NOTIFICATION_EMAIL_MESSAGES[locale];
-  const seconds = Number(value);
-  if (!Number.isFinite(seconds) || seconds <= 0) return messages.common.never;
-  return new Date(Math.trunc(seconds) * 1000).toISOString();
+  return (
+    formatNotificationDateTime(value, locale, timeZone) || messages.common.never
+  );
 }
 
 function Intro({ content }: { content: NotificationContent }) {
@@ -91,11 +99,11 @@ function ReportEmail({ locale, message }: NotificationEmailProps) {
   const topReferrers = rows(message.data.topReferrers);
   const pageRows: EmailTableRow[] = topPages.map((page, index) => ({
     label: `${index + 1}. ${textValue(page.path, "/")}`,
-    value: `${formatNotificationNumber(page.views)} ${messages.common.viewsUnit}`,
+    value: `${formatNotificationNumber(page.views, locale)} ${messages.common.viewsUnit}`,
   }));
   const referrerRows: EmailTableRow[] = topReferrers.map((referrer, index) => ({
     label: `${index + 1}. ${textValue(referrer.referrer, messages.common.direct)}`,
-    value: `${formatNotificationNumber(referrer.visits)} ${messages.common.visits}`,
+    value: `${formatNotificationNumber(referrer.visits, locale)} ${messages.common.visits}`,
   }));
 
   return (
@@ -111,15 +119,15 @@ function ReportEmail({ locale, message }: NotificationEmailProps) {
       <EmailMetricGrid>
         <EmailMetricCard
           label={messages.common.views}
-          value={formatNotificationNumber(metrics.views)}
+          value={formatNotificationNumber(metrics.views, locale)}
         />
         <EmailMetricCard
           label={messages.common.visitors}
-          value={formatNotificationNumber(metrics.visitors)}
+          value={formatNotificationNumber(metrics.visitors, locale)}
         />
         <EmailMetricCard
           label={messages.common.sessions}
-          value={formatNotificationNumber(metrics.sessions)}
+          value={formatNotificationNumber(metrics.sessions, locale)}
         />
       </EmailMetricGrid>
       <EmailListTable
@@ -141,7 +149,9 @@ function ThresholdEmail({ locale, message }: NotificationEmailProps) {
   const operator = textValue(message.data.operator, ">=");
   return (
     <>
-      <EmailBadge severity="warning">warning</EmailBadge>
+      <EmailBadge severity="warning">
+        {messages.common.severity.warning}
+      </EmailBadge>
       <EmailTable
         rows={[
           {
@@ -154,11 +164,11 @@ function ThresholdEmail({ locale, message }: NotificationEmailProps) {
           },
           {
             label: messages.common.currentValue,
-            value: formatNotificationNumber(message.data.value),
+            value: formatNotificationNumber(message.data.value, locale),
           },
           {
             label: messages.common.threshold,
-            value: `${operator} ${formatNotificationNumber(message.data.target)}`,
+            value: `${operator} ${formatNotificationNumber(message.data.target, locale)}`,
           },
         ]}
       />
@@ -166,16 +176,23 @@ function ThresholdEmail({ locale, message }: NotificationEmailProps) {
   );
 }
 
-function HealthEmail({ locale, content, message }: NotificationEmailProps) {
+function HealthEmail({
+  locale,
+  content,
+  message,
+  timeZone,
+}: NotificationEmailProps) {
   const messages = NOTIFICATION_EMAIL_MESSAGES[locale];
   return (
     <>
-      <EmailBadge severity="critical">critical</EmailBadge>
+      <EmailBadge severity="critical">
+        {messages.common.severity.critical}
+      </EmailBadge>
       <EmailTable
         rows={[
           {
             label: messages.common.lastSeen,
-            value: formatLastSeen(message.data.lastSeenAt, locale),
+            value: formatLastSeen(message.data.lastSeenAt, locale, timeZone),
           },
         ]}
       />

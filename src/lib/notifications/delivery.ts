@@ -18,12 +18,17 @@ import {
 import { normalizeNotificationPreferences } from "./preferences";
 
 const RESEND_EMAILS_API_URL = "https://api.resend.com/emails";
+type NotificationDeliveryLogger = Pick<
+  ScheduledTaskLogger,
+  "info" | "warn" | "error"
+>;
 
 export interface NotificationDeliveryUser {
   id: string;
   email: string;
   preferencesJson?: string | null;
   preferredLocale?: string | null;
+  timeZone?: string | null;
 }
 
 function buildFromAddress(input: { fromName: string; fromEmail: string }) {
@@ -67,7 +72,7 @@ export async function deliverNotificationMessage(
   env: Env,
   message: NotificationMessage,
   user: NotificationDeliveryUser,
-  context: { logger?: ScheduledTaskLogger },
+  context: { logger?: NotificationDeliveryLogger },
 ): Promise<NotificationMessage | null> {
   const preferences = normalizeNotificationPreferences(user.preferencesJson);
   const channels = { inApp: true, email: preferences.email };
@@ -197,7 +202,11 @@ export async function deliverNotificationMessage(
     let rendered = fallbackRenderedEmail(message);
     try {
       const locale = resolveNotificationLocale(user.preferredLocale);
-      rendered = await renderNotificationEmail({ message, locale });
+      rendered = await renderNotificationEmail({
+        message,
+        locale,
+        timeZone: user.timeZone,
+      });
     } catch (error) {
       await context.logger?.warn(
         "notification_email_render_failed",

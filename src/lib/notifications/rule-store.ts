@@ -445,6 +445,7 @@ export async function resolveNotificationRecipients(
     email: string;
     preferencesJson: string;
     preferredLocale?: string | null;
+    timeZone?: string | null;
   }>
 > {
   if (rule.recipient.mode === "creator") {
@@ -455,7 +456,8 @@ export async function resolveNotificationRecipients(
           id,
           email,
           notification_preferences_json AS preferencesJson,
-          preferred_locale AS preferredLocale
+          preferred_locale AS preferredLocale,
+          timezone AS timeZone
         FROM users
         WHERE id = ?
         LIMIT 1
@@ -467,6 +469,7 @@ export async function resolveNotificationRecipients(
         email: string;
         preferencesJson: string;
         preferredLocale?: string | null;
+        timeZone?: string | null;
       }>();
     return row ? [row] : [];
   }
@@ -479,7 +482,8 @@ export async function resolveNotificationRecipients(
           id,
           email,
           notification_preferences_json AS preferencesJson,
-          preferred_locale AS preferredLocale
+          preferred_locale AS preferredLocale,
+          timezone AS timeZone
         FROM users
         WHERE id IN (${placeholders})
       `,
@@ -490,6 +494,7 @@ export async function resolveNotificationRecipients(
         email: string;
         preferencesJson: string;
         preferredLocale?: string | null;
+        timeZone?: string | null;
       }>();
     return rows.results;
   }
@@ -503,7 +508,8 @@ export async function resolveNotificationRecipients(
         u.id,
         u.email,
         u.notification_preferences_json AS preferencesJson,
-        u.preferred_locale AS preferredLocale
+        u.preferred_locale AS preferredLocale,
+        u.timezone AS timeZone
       FROM users u
       INNER JOIN team_members tm ON tm.user_id = u.id
       INNER JOIN teams t ON t.id = tm.team_id
@@ -518,6 +524,7 @@ export async function resolveNotificationRecipients(
       email: string;
       preferencesJson: string;
       preferredLocale?: string | null;
+      timeZone?: string | null;
     }>();
   return rows.results;
 }

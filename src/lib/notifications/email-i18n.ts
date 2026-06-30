@@ -26,6 +26,12 @@ export const NOTIFICATION_EMAIL_MESSAGES = {
       fallbackSubject: "InsightFlare notification",
       trackingHint:
         "Please check whether the tracking script is installed correctly or whether the site still has traffic.",
+      severity: {
+        info: "Info",
+        success: "Success",
+        warning: "Warning",
+        critical: "Critical",
+      },
     },
     test: {
       subject: "InsightFlare notification test",
@@ -85,6 +91,12 @@ export const NOTIFICATION_EMAIL_MESSAGES = {
       footer: "这封邮件由 InsightFlare 通知系统发送。",
       fallbackSubject: "InsightFlare 通知",
       trackingHint: "请检查统计脚本是否正常安装，或确认站点是否仍有流量。",
+      severity: {
+        info: "信息",
+        success: "成功",
+        warning: "警告",
+        critical: "严重",
+      },
     },
     test: {
       subject: "InsightFlare 通知测试",
