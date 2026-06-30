@@ -2236,6 +2236,35 @@ describe("api v1 gateway", () => {
     expect(body.data.responses[0].status).toBe(400);
   });
 
+  it("covers batch invalid JSON and query value filtering", async () => {
+    const invalidJson = await authed("/api/v1/batch", [], {
+      method: "POST",
+      body: "not json",
+    });
+    expect(invalidJson.response.status).toBe(400);
+
+    const { response } = await authed("/api/v1/batch", [], {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        requests: [
+          {
+            id: "ok",
+            method: "GET",
+            path: "/api/v1/sites",
+            query: { keep: "yes", skipNull: null, skipUndefined: undefined },
+          },
+        ],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { responses: Array<{ status: number }> };
+    };
+    expect(body.data.responses[0].status).toBe(200);
+  });
+
   // ── additional coverage: catch-all 404 ──────────────────────────
 
   it("returns 404 for unknown top-level resource", async () => {
@@ -2655,6 +2684,46 @@ describe("api v1 gateway", () => {
     });
   });
 
+  it("covers analytics explore complex filter operator branches", async () => {
+    const { response } = await authed(
+      "/api/v1/sites/site-1/analytics/explore",
+      [
+        siteMatch("site-1", "Blog"),
+        {
+          includes: ["event_rollup"],
+          all: [{ d0: "/pricing", views: 1 }],
+        },
+      ],
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          timeRange: {
+            from: "2026-06-01T00:00:00Z",
+            to: "2026-06-02T00:00:00Z",
+          },
+          metrics: ["views"],
+          dimensions: ["page.path"],
+          filters: [
+            { field: "page.path", op: "notExists" },
+            { field: "page.title", op: "in", value: [] },
+            { field: "page.hostname", op: "notIn", value: [] },
+            { field: "referrer.domain", op: "startsWith", value: "docs" },
+            { field: "referrer.url", op: "endsWith", value: "/pricing" },
+            { field: "client.browser", op: "neq", value: "Firefox" },
+            { field: "client.deviceType", op: "gt", value: 1 },
+            { field: "client.language", op: "gte", value: true },
+            { field: "geo.country", op: "lt", value: null },
+            { field: "geo.city", op: "lte" },
+          ],
+          orderBy: [],
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+  });
+
   it("rejects invalid analytics explore inputs", async () => {
     for (const body of [
       { metrics: [] },
@@ -2793,6 +2862,33 @@ describe("api v1 gateway", () => {
     );
     expect(badMetric.response.status).toBe(400);
     expect(badDimension.response.status).toBe(400);
+    expect(unknown.response.status).toBe(404);
+  });
+
+  it("covers realtime subresources and method branches", async () => {
+    for (const resource of [
+      "active-visitors",
+      "events",
+      "sessions",
+      "snapshot",
+    ]) {
+      const { response } = await authed(
+        `/api/v1/sites/site-1/realtime/${resource}`,
+        [siteMatch("site-1", "Blog")],
+      );
+      expect(response.status).toBe(200);
+    }
+
+    const method = await authed(
+      "/api/v1/sites/site-1/realtime/snapshot",
+      [siteMatch("site-1", "Blog")],
+      { method: "POST" },
+    );
+    const unknown = await authed("/api/v1/sites/site-1/realtime/unknown", [
+      siteMatch("site-1", "Blog"),
+    ]);
+
+    expect(method.response.status).toBe(405);
     expect(unknown.response.status).toBe(404);
   });
 });

@@ -5,6 +5,7 @@ import {
   handleDemoRequest,
   type RealtimeSocketLike,
 } from "@/lib/realtime/mock";
+import { handleDemoNotificationEmailPreview } from "@/lib/realtime/mock/notification-email-preview";
 
 const SITE_ID = "demo-site-001";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -215,6 +216,106 @@ describe("mock — handleDemoRequest", () => {
       ).toMatchObject({ resend: { configured: false } });
     });
 
+    it("covers notification rule preview and run variants", () => {
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/admin/notification-rules/preview",
+            method: "POST",
+            body: { id: "demo-notification-rule-daily" },
+          }),
+        ).data,
+      ).toMatchObject({
+        status: "triggered",
+        message: { type: "report", data: { reportType: expect.any(String) } },
+      });
+
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/admin/notification-rules/preview",
+            method: "POST",
+            body: { ruleId: "demo-notification-rule-no-data" },
+          }),
+        ).data,
+      ).toMatchObject({
+        status: "triggered",
+        message: { type: "health", severity: "critical" },
+      });
+
+      const fallback = ok(
+        handleDemoRequest({
+          path: "/api/private/admin/notification-rules/preview",
+          method: "POST",
+          body: null,
+        }),
+      ).data as Record<string, unknown>;
+      expect(fallback.status).toBe("triggered");
+
+      const run = ok(
+        handleDemoRequest({
+          path: "/api/private/admin/notification-rules/run",
+          method: "POST",
+          body: { ruleId: "missing-rule-id" },
+        }),
+      ).data as Record<string, unknown>;
+      expect(run.summary).toEqual(
+        expect.objectContaining({
+          rulesScanned: 1,
+          messagesCreated: expect.any(Number),
+        }),
+      );
+    });
+
+    it("routes funnel and API key write variants", () => {
+      expect(
+        handleDemoRequest({
+          path: "/api/private/funnels",
+          method: "POST",
+          params: { siteId: SITE_ID },
+          body: { name: "Checkout", steps: [] },
+        }),
+      ).toBeDefined();
+      expect(
+        handleDemoRequest({
+          path: "/api/private/funnels",
+          method: "DELETE",
+          params: { siteId: SITE_ID, id: "funnel-1" },
+        }),
+      ).toBeDefined();
+
+      const created = ok(
+        handleDemoRequest({
+          path: "/api/private/admin/api-keys",
+          method: "POST",
+          params: { teamId: "demo-team-001" },
+          body: {
+            name: "Created key",
+            scopes: ["analytics:read"],
+            siteIds: [SITE_ID],
+          },
+        }),
+      ).data as Record<string, unknown>;
+      expect(created).toMatchObject({
+        key: {
+          name: "Created key",
+          scopes: ["analytics:read"],
+          siteIds: [SITE_ID],
+        },
+        secret: expect.stringContaining("if_demo_"),
+      });
+
+      const key = (created.key as Record<string, unknown>).id;
+      const revoked = ok(
+        handleDemoRequest({
+          path: "/api/private/admin/api-keys",
+          method: "PATCH",
+          body: { keyId: key, teamId: "demo-team-001" },
+        }),
+      ).data as Record<string, unknown>;
+      expect(revoked.status).toBe("revoked");
+    });
+
     it("routes demo site writes with fallback body handling", () => {
       const updated = ok(
         handleDemoRequest({
@@ -344,6 +445,49 @@ describe("mock — handleDemoRequest", () => {
         handleDemoRequest({ path: "/api/private/admin/do-diagnostic" }),
       );
       expect(res.ok).toBe(true);
+    });
+
+    it("returns notification admin lists", () => {
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/admin/api-keys",
+            params: { teamId: "demo-team-001" },
+          }),
+        ).data,
+      ).toEqual(expect.any(Array));
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/admin/notification-rules",
+            params: { teamId: "demo-team-001" },
+          }),
+        ).data,
+      ).toEqual(expect.any(Array));
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/notifications",
+            params: { teamId: "demo-team-001" },
+          }),
+        ).data,
+      ).toMatchObject({
+        messages: expect.any(Array),
+        unreadAttentionCount: expect.any(Number),
+      });
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/admin/notification-email",
+          }),
+        ).data,
+      ).toMatchObject({ resend: { configured: false } });
+      expect(
+        handleDemoRequest({
+          path: "/api/private/admin/scheduled-tasks",
+          params: { teamId: "demo-team-001" },
+        }),
+      ).toBeDefined();
     });
 
     it("returns system-performance with different windowMinutes values", () => {
@@ -1186,6 +1330,43 @@ describe("mock — handleDemoRequest", () => {
       expect(res).toBeDefined();
     });
 
+    it("returns public site metadata and not-found for missing public slugs", () => {
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/public/share/demo-site-001/site",
+            params,
+          }),
+        ),
+      ).toMatchObject({
+        ok: true,
+        data: {
+          id: expect.any(String),
+          slug: "demo-site-001",
+          name: expect.any(String),
+          domain: expect.any(String),
+        },
+      });
+
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/public/share/no-such-demo-public-site-999/site",
+            params,
+          }),
+        ),
+      ).toEqual({ ok: false, data: { error: "Not Found" } });
+
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/public/share/no-such-demo-public-site-999/unknown",
+            params,
+          }),
+        ),
+      ).toEqual({ ok: false, data: { error: "Not Found" } });
+    });
+
     it("dispatches trend to the same generator", () => {
       const res = handleDemoRequest({
         path: "/api/public/share/some-token/trend",
@@ -1271,6 +1452,38 @@ describe("mock — handleDemoRequest", () => {
           }),
         ),
       ).toMatchObject({ ok: true });
+    });
+  });
+
+  describe("email preview", () => {
+    it("renders demo notification previews in html, text, and json formats", async () => {
+      await expect(
+        handleDemoNotificationEmailPreview({
+          type: "report",
+          locale: "zh",
+          format: "html",
+        }),
+      ).resolves.toContain("<");
+      await expect(
+        handleDemoNotificationEmailPreview({
+          type: "threshold",
+          locale: "en",
+          format: "text",
+        }),
+      ).resolves.toEqual(expect.any(String));
+      await expect(
+        handleDemoNotificationEmailPreview({
+          type: "health",
+          locale: "en",
+          format: "json",
+        }),
+      ).resolves.toEqual(
+        expect.objectContaining({
+          subject: expect.any(String),
+          html: expect.any(String),
+          text: expect.any(String),
+        }),
+      );
     });
   });
 

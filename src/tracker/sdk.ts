@@ -4,11 +4,8 @@
 
 import { initAutoTrack } from "./auto-track";
 import { createPerformanceTracker } from "./performance";
-import {
-  readUaClientHints,
-  type UaClientHintsResult,
-  withUaClientHints,
-} from "./ua-client-hints";
+import type { UaClientHintsResult } from "./ua-client-hints";
+import { readUaClientHints, withUaClientHints } from "./ua-client-hints";
 
 // ── Config placeholders (replaced at serve time) ──
 const SITE_ID = "__IF_SITE_ID__";

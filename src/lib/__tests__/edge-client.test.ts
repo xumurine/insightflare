@@ -18,12 +18,14 @@ import {
   fetchAdminTeams,
   fetchAdminUsers,
   fetchNotificationEmailConfig,
+  fetchNotificationEmailPreview,
   fetchNotificationMessages,
   fetchNotificationPreferences,
   fetchNotificationRules,
   fetchPublicOverview,
   fetchPublicPages,
   fetchPublicReferrers,
+  fetchPublicSite,
   fetchPublicTrend,
   loginAdminAccount,
   markAllNotificationMessagesRead,
@@ -46,6 +48,7 @@ import {
   upsertAdminSiteConfig,
 } from "@/lib/edge-client";
 import { handleDemoRequest } from "@/lib/realtime/mock";
+import { handleDemoNotificationEmailPreview } from "@/lib/realtime/mock/notification-email-preview";
 
 vi.mock("@/lib/auth", () => ({
   getSessionToken: vi.fn(),
@@ -55,7 +58,14 @@ vi.mock("@/lib/realtime/mock", () => ({
   handleDemoRequest: vi.fn(),
 }));
 
+vi.mock("@/lib/realtime/mock/notification-email-preview", () => ({
+  handleDemoNotificationEmailPreview: vi.fn(),
+}));
+
 const getSessionTokenMock = vi.mocked(getSessionToken);
+const handleDemoNotificationEmailPreviewMock = vi.mocked(
+  handleDemoNotificationEmailPreview,
+);
 const handleDemoRequestMock = vi.mocked(handleDemoRequest);
 
 function fetchMock() {
@@ -119,6 +129,35 @@ describe("edge client request wrappers", () => {
     expect(init.cache).toBe("no-store");
     expect(headers.has("authorization")).toBe(false);
     expect(getSessionTokenMock).not.toHaveBeenCalled();
+  });
+
+  it("unwraps public site metadata and rejects missing public sites", async () => {
+    fetchMock().mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        data: {
+          id: "site-1",
+          slug: "public-site",
+          name: "Public Site",
+          domain: "example.test",
+        },
+      }),
+    );
+
+    await expect(fetchPublicSite("public site")).resolves.toEqual({
+      id: "site-1",
+      slug: "public-site",
+      name: "Public Site",
+      domain: "example.test",
+    });
+    expect(lastFetchCall()[0]).toBe(
+      "http://127.0.0.1:8787/api/public/share/public%20site/site",
+    );
+
+    fetchMock().mockResolvedValueOnce(jsonResponse({ ok: false, data: null }));
+    await expect(fetchPublicSite("missing")).rejects.toThrow(
+      "Public site not found",
+    );
   });
 
   it("encodes public slugs and query params", async () => {
@@ -558,6 +597,64 @@ describe("edge client request wrappers", () => {
     );
   });
 
+  it("fetches notification email previews in every supported format", async () => {
+    fetchMock().mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        data: {
+          subject: "Demo subject",
+          html: "<p>Demo</p>",
+          text: "Demo",
+        },
+      }),
+    );
+
+    await expect(
+      fetchNotificationEmailPreview({
+        type: "report",
+        locale: "en",
+        format: "json",
+      }),
+    ).resolves.toEqual({
+      subject: "Demo subject",
+      html: "<p>Demo</p>",
+      text: "Demo",
+    });
+    expect(new URL(lastFetchCall()[0]).searchParams.get("format")).toBe("json");
+
+    fetchMock().mockResolvedValueOnce(new Response("<p>HTML</p>"));
+    await expect(
+      fetchNotificationEmailPreview({
+        type: "health",
+        locale: "zh",
+        format: "html",
+      }),
+    ).resolves.toBe("<p>HTML</p>");
+
+    fetchMock().mockResolvedValueOnce(new Response("plain text"));
+    await expect(
+      fetchNotificationEmailPreview({
+        type: "threshold",
+        locale: "en",
+        format: "text",
+      }),
+    ).resolves.toBe("plain text");
+  });
+
+  it("throws descriptive errors for failed notification email previews", async () => {
+    fetchMock().mockResolvedValueOnce(
+      new Response("preview denied", { status: 403 }),
+    );
+
+    await expect(
+      fetchNotificationEmailPreview({
+        type: "test",
+        locale: "en",
+        format: "html",
+      }),
+    ).rejects.toThrow("Email preview failed (403): preview denied");
+  });
+
   it("throws descriptive errors for non-OK edge responses", async () => {
     fetchMock().mockResolvedValueOnce(new Response("denied", { status: 403 }));
 
@@ -710,6 +807,34 @@ describe("edge client request wrappers", () => {
     });
     expect(fetchMock()).not.toHaveBeenCalled();
     expect(getSessionTokenMock).not.toHaveBeenCalled();
+  });
+
+  it("delegates notification email previews to the demo handler in demo mode", async () => {
+    vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "1");
+    const preview = {
+      subject: "Demo",
+      html: "<p>Demo</p>",
+      text: "Demo",
+    };
+    const mockModule =
+      await import("@/lib/realtime/mock/notification-email-preview");
+    vi.mocked(mockModule.handleDemoNotificationEmailPreview).mockResolvedValue(
+      preview,
+    );
+
+    await expect(
+      fetchNotificationEmailPreview({
+        type: "test",
+        locale: "en",
+        format: "json",
+      }),
+    ).resolves.toBe(preview);
+    expect(mockModule.handleDemoNotificationEmailPreview).toHaveBeenCalledWith({
+      type: "test",
+      locale: "en",
+      format: "json",
+    });
+    expect(fetchMock()).not.toHaveBeenCalled();
   });
 
   it("wires the edge-client filter helper into at least one exported request wrapper", () => {

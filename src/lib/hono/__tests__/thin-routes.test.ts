@@ -2,7 +2,17 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handleUsersAdmin } from "@/lib/edge/admin-users";
+import {
+  handleNotificationPreferences,
+  handleNotificationRead,
+  handleNotifications,
+  handleNotificationsReadAll,
+} from "@/lib/edge/admin-notifications";
+import {
+  handleNotificationEmailPreviewAdmin,
+  handleNotificationRulePreviewAdmin,
+} from "@/lib/edge/admin-notifications";
+import { handleAuthMeAdmin, handleUsersAdmin } from "@/lib/edge/admin-users";
 import { handleAdminWs } from "@/lib/edge/admin-ws";
 import {
   handleLegacyAdminMember,
@@ -29,9 +39,13 @@ import { authRoutes } from "@/lib/hono/routes/auth";
 import { legacyAdminRoutes } from "@/lib/hono/routes/legacy-admin";
 import { legacyArchiveRoutes } from "@/lib/hono/routes/legacy-archive";
 import { mapTileRoutes } from "@/lib/hono/routes/map-tiles";
+import { privateAdminRoutes } from "@/lib/hono/routes/private/admin";
+import { privateNotificationRoutes } from "@/lib/hono/routes/private/notifications";
 import { privateRealtimeRoutes } from "@/lib/hono/routes/private/realtime";
 import { privateReleaseRoutes } from "@/lib/hono/routes/private/releases";
 import { privateSessionRoutes } from "@/lib/hono/routes/private/session";
+import { publicSessionRoutes } from "@/lib/hono/routes/public/session";
+import { wellKnownRoutes } from "@/lib/hono/routes/well-known";
 import { wikiSummaryRoutes } from "@/lib/hono/routes/wiki-summary";
 import { worldCountriesRoutes } from "@/lib/hono/routes/world-countries";
 
@@ -42,6 +56,15 @@ vi.mock("@/lib/edge/admin-ws", () => ({
 vi.mock("@/lib/edge/admin-users", () => ({
   handleAuthMeAdmin: vi.fn(),
   handleUsersAdmin: vi.fn(),
+}));
+
+vi.mock("@/lib/edge/admin-notifications", () => ({
+  handleNotificationEmailPreviewAdmin: vi.fn(),
+  handleNotificationPreferences: vi.fn(),
+  handleNotificationRead: vi.fn(),
+  handleNotificationRulePreviewAdmin: vi.fn(),
+  handleNotifications: vi.fn(),
+  handleNotificationsReadAll: vi.fn(),
 }));
 
 vi.mock("@/lib/edge/legacy-admin", () => ({
@@ -91,6 +114,23 @@ describe("thin Hono route modules", () => {
     vi.mocked(handleAdminWs).mockResolvedValue(new Response("ws"));
     vi.mocked(handleLegacyAuthLogin).mockResolvedValue(new Response("login"));
     vi.mocked(handleLegacyAuthLogout).mockResolvedValue(new Response("logout"));
+    vi.mocked(handleAuthMeAdmin).mockResolvedValue(new Response("me"));
+    vi.mocked(handleNotifications).mockResolvedValue(
+      new Response("notifications"),
+    );
+    vi.mocked(handleNotificationPreferences).mockResolvedValue(
+      new Response("preferences"),
+    );
+    vi.mocked(handleNotificationRead).mockResolvedValue(new Response("read"));
+    vi.mocked(handleNotificationsReadAll).mockResolvedValue(
+      new Response("read-all"),
+    );
+    vi.mocked(handleNotificationEmailPreviewAdmin).mockResolvedValue(
+      new Response("preview"),
+    );
+    vi.mocked(handleNotificationRulePreviewAdmin).mockResolvedValue(
+      new Response("rule-preview"),
+    );
     vi.mocked(handleLegacyAdminUser).mockResolvedValue(new Response("user"));
     vi.mocked(handleLegacyAdminTeam).mockResolvedValue(new Response("team"));
     vi.mocked(handleLegacyAdminSite).mockResolvedValue(new Response("site"));
@@ -212,5 +252,115 @@ describe("thin Hono route modules", () => {
     expect(sessionMiss.status).toBe(404);
     expect(realtimeMiss.status).toBe(404);
     expect(releasesMiss.status).toBe(404);
+  });
+
+  it("forwards private session and notification routes", async () => {
+    await privateSessionRoutes.fetch(request("/"), env as never);
+    await privateNotificationRoutes.fetch(request("/"), env as never);
+    await privateNotificationRoutes.fetch(
+      request("/preferences"),
+      env as never,
+    );
+    await privateNotificationRoutes.fetch(
+      request("/preferences", { method: "PATCH" }),
+      env as never,
+    );
+    await privateNotificationRoutes.fetch(
+      request("/message-1", { method: "PATCH" }),
+      env as never,
+    );
+    await privateNotificationRoutes.fetch(
+      request("/", { method: "PATCH" }),
+      env as never,
+    );
+
+    expect(handleAuthMeAdmin).toHaveBeenCalled();
+    expect(handleNotifications).toHaveBeenCalled();
+    expect(handleNotificationPreferences).toHaveBeenCalledTimes(2);
+    expect(handleNotificationRead).toHaveBeenCalledWith(
+      expect.any(Request),
+      env,
+      "message-1",
+    );
+    expect(handleNotificationsReadAll).toHaveBeenCalled();
+  });
+
+  it("forwards public session and private admin notification preview aliases", async () => {
+    await publicSessionRoutes.fetch(
+      request("/", { method: "POST" }),
+      env as never,
+    );
+    await publicSessionRoutes.fetch(
+      request("/", { method: "DELETE" }),
+      env as never,
+    );
+    await privateAdminRoutes.fetch(
+      request("/notification-email-preview"),
+      env as never,
+    );
+    await privateAdminRoutes.fetch(
+      request("/notifications/email-preview"),
+      env as never,
+    );
+    await privateAdminRoutes.fetch(
+      request("/notification-rules/preview"),
+      env as never,
+    );
+
+    expect(handleLegacyAuthLogin).toHaveBeenCalled();
+    expect(handleLegacyAuthLogout).toHaveBeenCalled();
+    expect(handleNotificationEmailPreviewAdmin).toHaveBeenCalledTimes(2);
+    expect(handleNotificationRulePreviewAdmin).toHaveBeenCalled();
+  });
+
+  it("serves well-known routes directly from the thin route module", async () => {
+    const openapiHead = await wellKnownRoutes.fetch(
+      request("/.well-known/openapi.json", { method: "HEAD" }),
+      env as never,
+    );
+    const openapi = await wellKnownRoutes.fetch(
+      request("/.well-known/openapi.json", {
+        headers: { "x-forwarded-host": "api.example.test" },
+      }),
+      env as never,
+    );
+    const skillsHead = await wellKnownRoutes.fetch(
+      request("/.well-known/skills.json", { method: "HEAD" }),
+      env as never,
+    );
+    const skills = await wellKnownRoutes.fetch(
+      request("/.well-known/skills.json"),
+      env as never,
+    );
+    const securityHead = await wellKnownRoutes.fetch(
+      request("/.well-known/security.txt", { method: "HEAD" }),
+      env as never,
+    );
+    const security = await wellKnownRoutes.fetch(
+      request("/.well-known/security.txt"),
+      env as never,
+    );
+    const changePassword = await wellKnownRoutes.fetch(
+      request("/.well-known/change-password"),
+      env as never,
+    );
+    const health = await wellKnownRoutes.fetch(
+      request("/.well-known/health"),
+      env as never,
+    );
+    const publicMiss = await publicSessionRoutes.fetch(
+      request("/missing"),
+      env as never,
+    );
+
+    expect(openapiHead.status).toBe(200);
+    expect((await openapi.json()) as unknown).toBeTruthy();
+    expect(skillsHead.status).toBe(200);
+    expect(await skills.text()).toContain("InsightFlare");
+    expect(securityHead.status).toBe(200);
+    expect(await security.text()).toContain("Contact:");
+    expect(changePassword.status).toBe(302);
+    expect(health.status).toBe(302);
+    expect(publicMiss.status).toBe(404);
   });
 });

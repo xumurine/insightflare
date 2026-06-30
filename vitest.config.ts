@@ -2,7 +2,8 @@ import path from "path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  oxc: {
+  oxc: false,
+  esbuild: {
     jsx: "automatic",
   },
   test: {
@@ -60,9 +61,11 @@ export default defineConfig({
         "src/lib/edge-client-types/**",
         "src/lib/i18n/messages-types*.ts",
         "src/lib/realtime/demo-site-profiles-types.ts",
+        "src/lib/realtime/mock.ts",
         "src/lib/edge/ingest-flush-types.ts",
         "src/lib/edge/ingest-types.ts",
         "src/lib/realtime/mock/events-helpers.ts",
+        "src/tracker/sdk.ts",
         "src/lib/edge/query.ts",
         "src/lib/system-performance.ts",
         "src/components/dashboard/site-pages/use-dashboard-query.ts",

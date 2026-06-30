@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createFunnel,
+  deleteFunnel,
   fetchEventRecordDetail,
   fetchEventsRecords,
   fetchEventsSummary,
@@ -8,6 +10,7 @@ import {
   fetchEventTypeDetail,
   fetchEventTypeFieldValues,
   fetchFunnelDetail,
+  fetchFunnels,
   fetchPerformance,
   fetchSessionDetail,
   fetchSessions,
@@ -223,11 +226,48 @@ describe("fetchSessionDetail", () => {
 });
 
 describe("fetchFunnelDetail", () => {
+  it("fetches funnel lists by site", async () => {
+    fetchPrivateJsonMock.mockResolvedValueOnce({ funnels: [] } as any);
+
+    await fetchFunnels("site-1");
+
+    expect(fetchPrivateJsonMock).toHaveBeenCalledWith("/api/private/funnels", {
+      siteId: "site-1",
+    });
+  });
+
   it("throws for empty funnelId", async () => {
     await expect(fetchFunnelDetail("site-1", "  ", window)).rejects.toThrow(
       "Funnel id is required",
     );
     expect(fetchPrivateJsonMock).not.toHaveBeenCalled();
+  });
+
+  it("creates and deletes funnels through mutation requests", async () => {
+    fetchPrivateJsonMutateMock.mockResolvedValueOnce({ ok: true } as any);
+    fetchPrivateJsonMutateMock.mockResolvedValueOnce({ ok: true } as any);
+
+    await createFunnel("site-1", "Signup", [
+      { id: "step-1", type: "page", value: "/signup" },
+    ] as any);
+    await deleteFunnel("site-1", "funnel-1");
+
+    expect(fetchPrivateJsonMutateMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/private/funnels",
+      "POST",
+      { siteId: "site-1" },
+      {
+        name: "Signup",
+        steps: [{ id: "step-1", type: "page", value: "/signup" }],
+      },
+    );
+    expect(fetchPrivateJsonMutateMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/private/funnels",
+      "DELETE",
+      { siteId: "site-1", id: "funnel-1" },
+    );
   });
 });
 

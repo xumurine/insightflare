@@ -734,7 +734,7 @@ export async function fetchNotificationEmailPreview(input: {
 > {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
     const { handleDemoNotificationEmailPreview } =
-      await import("@/lib/realtime/mock");
+      await import("@/lib/realtime/mock/notification-email-preview");
     return handleDemoNotificationEmailPreview(input);
   }
   const baseUrl = await edgeBaseUrl();

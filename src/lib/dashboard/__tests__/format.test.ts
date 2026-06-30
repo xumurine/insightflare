@@ -7,6 +7,7 @@ import {
   percentFormat,
   shortDate,
   shortDateTime,
+  shortDateTimeWithSeconds,
 } from "@/lib/dashboard/format";
 
 describe("Dashboard Format Utilities", () => {
@@ -90,6 +91,7 @@ describe("Dashboard Format Utilities", () => {
       const isoStr = "2026-05-25T03:43:43Z";
       expect(shortDate("en", isoStr, "UTC")).toContain("May");
       expect(shortDateTime("en", isoStr, "UTC")).toContain("43");
+      expect(shortDateTimeWithSeconds("en", isoStr, "UTC")).toContain("43");
     });
 
     it("should format without a timezone override when one is not provided", () => {

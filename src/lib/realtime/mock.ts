@@ -1,4 +1,3 @@
-import { notificationEmailPreviewMessage } from "@/components/email/notification-email-preview-data";
 import { normalizeTimeZone } from "@/lib/dashboard/time-zone";
 import type {
   NotificationMessageData,
@@ -10,8 +9,6 @@ import {
   defaultNotificationEmailConfig,
   redactNotificationEmailConfig,
 } from "@/lib/notifications/email-config";
-import { renderNotificationEmail } from "@/lib/notifications/email-renderer";
-import { resolveNotificationLocale } from "@/lib/notifications/locale";
 import { findSiteProfileByPublicSlug } from "@/lib/realtime/demo-site-profiles";
 import {
   createDemoNotificationRule,
@@ -297,29 +294,6 @@ function generateDemoNotificationRuleRun(
       durationMs: 24,
     },
   };
-}
-
-export async function handleDemoNotificationEmailPreview(input: {
-  type: "test" | "report" | "threshold" | "health";
-  locale: "en" | "zh";
-  format: "html" | "text" | "json";
-}): Promise<
-  | string
-  | {
-      subject: string;
-      html: string;
-      text: string;
-    }
-> {
-  const locale = resolveNotificationLocale(input.locale);
-  const rendered = await renderNotificationEmail({
-    message: notificationEmailPreviewMessage(input.type, locale),
-    locale,
-    timeZone: "Asia/Shanghai",
-  });
-  if (input.format === "text") return rendered.text;
-  if (input.format === "json") return rendered;
-  return rendered.html;
 }
 
 // ---------------------------------------------------------------------------
