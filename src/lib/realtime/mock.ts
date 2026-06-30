@@ -5,6 +5,7 @@ import type {
   NotificationRuleEvaluationData,
   NotificationRuleRunData,
 } from "@/lib/edge-client-types/admin";
+import type { Locale } from "@/lib/i18n/config";
 import {
   defaultNotificationEmailConfig,
   redactNotificationEmailConfig,
@@ -110,6 +111,49 @@ function findDemoNotificationRule(ruleId: string): NotificationRuleData {
   return generateDemoNotificationRules(teams[0]?.id || "")[0]!;
 }
 
+function demoLocale(value: unknown): Locale {
+  return value === "zh" ? "zh" : "en";
+}
+
+function escapeDemoNotificationHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function demoNotificationBodyHtml(input: {
+  title: string;
+  summary: string;
+  bodyText: string;
+}): string {
+  const paragraphs = input.bodyText
+    .split("\n")
+    .filter((line) => line.trim())
+    .map(
+      (line) =>
+        `<p style="margin:0 0 12px;color:#334155;font-size:14px;line-height:1.7">${escapeDemoNotificationHtml(line)}</p>`,
+    )
+    .join("");
+  return [
+    "<!doctype html>",
+    '<html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /></head>',
+    '<body style="margin:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#0f172a">',
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f8fafc;padding:28px 14px"><tr><td align="center">',
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;border:1px solid #e2e8f0">',
+    '<tr><td style="padding:28px 28px 20px;border-bottom:1px solid #e2e8f0">',
+    '<div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin-bottom:10px">InsightFlare</div>',
+    `<h1 style="margin:0;color:#0f172a;font-size:22px;line-height:1.3;font-weight:650">${escapeDemoNotificationHtml(input.title)}</h1>`,
+    `<p style="margin:12px 0 0;color:#475569;font-size:14px;line-height:1.6">${escapeDemoNotificationHtml(input.summary)}</p>`,
+    "</td></tr>",
+    `<tr><td style="padding:24px 28px">${paragraphs}</td></tr>`,
+    "</table>",
+    "</td></tr></table>",
+    "</body></html>",
+  ].join("");
+}
+
 function demoRuleEvaluation(
   rule: NotificationRuleData,
 ): NotificationRuleEvaluationData {
@@ -123,16 +167,20 @@ function demoRuleEvaluation(
   }
 
   if (rule.type === "report") {
+    const title = "Daily traffic report is ready";
+    const summary = "Your demo team report was generated successfully.";
+    const bodyText =
+      "Your demo team report was generated successfully.\n\nAcross all demo sites, visitors increased by 12.4% day over day. The strongest gains came from the Launch Microsite and SaaS Console profiles.";
     return {
       status: "triggered",
       message: {
         type: "report",
         severity: "info",
         requiresAttention: false,
-        title: "Daily traffic report is ready",
-        summary: "Your demo team report was generated successfully.",
-        bodyText:
-          "Your demo team report was generated successfully.\n\nAcross all demo sites, visitors increased by 12.4% day over day. The strongest gains came from the Launch Microsite and SaaS Console profiles.",
+        title,
+        summary,
+        bodyText,
+        bodyHtml: demoNotificationBodyHtml({ title, summary, bodyText }),
         data: {
           ruleId: rule.id,
           reportType: condition.reportType || "daily",
@@ -144,16 +192,20 @@ function demoRuleEvaluation(
   }
 
   if (rule.type === "health") {
+    const title = "Tracking has gone quiet";
+    const summary = "No eligible events have arrived for the demo docs site.";
+    const bodyText =
+      "No eligible events have arrived for the demo docs site for more than six hours.\n\nThe rule is configured to alert all team members because this usually indicates a script deployment, CSP, or DNS issue.";
     return {
       status: "triggered",
       message: {
         type: "health",
         severity: "critical",
         requiresAttention: true,
-        title: "Tracking has gone quiet",
-        summary: "No eligible events have arrived for the demo docs site.",
-        bodyText:
-          "No eligible events have arrived for the demo docs site for more than six hours.\n\nThe rule is configured to alert all team members because this usually indicates a script deployment, CSP, or DNS issue.",
+        title,
+        summary,
+        bodyText,
+        bodyHtml: demoNotificationBodyHtml({ title, summary, bodyText }),
         data: {
           ruleId: rule.id,
           check: condition.check || "no_data",
@@ -172,24 +224,28 @@ function demoRuleEvaluation(
     const target = Number(condition.value || 120);
     const currentValue =
       condition.operator === "<" || condition.operator === "<=" ? 84 : 1428;
+    const title =
+      condition.operator === "<"
+        ? "Checkout conversion dropped"
+        : "Traffic threshold reached";
+    const summary =
+      condition.operator === "<"
+        ? "Checkout completions are below the demo alert threshold."
+        : "Demo Store crossed the configured hourly threshold.";
+    const bodyText =
+      condition.operator === "<"
+        ? "Checkout completions are below the demo alert threshold.\n\nThe latest hourly window recorded 84 completed checkout sessions against a threshold of 120. Review campaign traffic quality and payment gateway health before the next dispatch window."
+        : "Demo Store crossed the configured hourly threshold in the latest check.\n\nThe latest hourly window recorded 1,428 visits, which is above the configured limit.";
     return {
       status: "triggered",
       message: {
         type: "threshold",
         severity: condition.operator === "<" ? "critical" : "warning",
         requiresAttention: true,
-        title:
-          condition.operator === "<"
-            ? "Checkout conversion dropped"
-            : "Traffic threshold reached",
-        summary:
-          condition.operator === "<"
-            ? "Checkout completions are below the demo alert threshold."
-            : "Demo Store crossed the configured hourly threshold.",
-        bodyText:
-          condition.operator === "<"
-            ? "Checkout completions are below the demo alert threshold.\n\nThe latest hourly window recorded 84 completed checkout sessions against a threshold of 120. Review campaign traffic quality and payment gateway health before the next dispatch window."
-            : "Demo Store crossed the configured hourly threshold in the latest check.\n\nThe latest hourly window recorded 1,428 visits, which is above the configured limit.",
+        title,
+        summary,
+        bodyText,
+        bodyHtml: demoNotificationBodyHtml({ title, summary, bodyText }),
         data: {
           ruleId: rule.id,
           metric: condition.metric || "sessions",
@@ -207,16 +263,20 @@ function demoRuleEvaluation(
     };
   }
 
+  const title = "InsightFlare notification test";
+  const summary = "This is a test notification from InsightFlare.";
+  const bodyText =
+    "This demo notification confirms that in-app delivery is available.";
   return {
     status: "triggered",
     message: {
       type: "test",
       severity: "info",
       requiresAttention: false,
-      title: "InsightFlare notification test",
-      summary: "This is a test notification from InsightFlare.",
-      bodyText:
-        "This demo notification confirms that in-app delivery is available.",
+      title,
+      summary,
+      bodyText,
+      bodyHtml: demoNotificationBodyHtml({ title, summary, bodyText }),
       data: { ruleId: rule.id, source: "demo_rule_preview" },
     },
     data: { ruleId: rule.id, type: rule.type },
@@ -315,6 +375,11 @@ export function handleDemoRequest(options: {
     params.siteId || publicSiteProfile?.id || "demo-site-001",
   );
   const teamId = String(params.teamId || "");
+  const bodyRecord =
+    options.body && typeof options.body === "object"
+      ? (options.body as Record<string, unknown>)
+      : {};
+  const locale = demoLocale(params.locale ?? bodyRecord.locale);
 
   // Write operations → read-only stub
   if (
@@ -455,9 +520,10 @@ export function handleDemoRequest(options: {
         notificationReadMatch[1] || "demo-notification-message-attention",
       );
       const message =
-        generateDemoNotificationMessages(teamId || getDemoTeams()[0].id).find(
-          (item) => item.id === messageId,
-        ) ?? null;
+        generateDemoNotificationMessages(
+          teamId || getDemoTeams()[0].id,
+          locale,
+        ).find((item) => item.id === messageId) ?? null;
       return {
         ok: true,
         data: message
@@ -602,6 +668,7 @@ export function handleDemoRequest(options: {
   if (path === "/api/private/notifications") {
     const messages = generateDemoNotificationMessages(
       teamId || getDemoTeams()[0].id,
+      locale,
     );
     return {
       ok: true,

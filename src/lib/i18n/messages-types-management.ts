@@ -345,9 +345,12 @@ export interface AppManagementMessages {
       dialogDescription: string;
       ruleInfoSection: string;
       scheduleSection: string;
+      sendScheduleSection: string;
+      checkSection: string;
       conditionSection: string;
       deliverySection: string;
       summarySection: string;
+      liveSummaryDescription: string;
       nameLabel: string;
       siteLabel: string;
       chooseSite: string;
@@ -379,9 +382,10 @@ export interface AppManagementMessages {
       operatorLabel: string;
       valueLabel: string;
       cooldownLabel: string;
-      noDataHoursLabel: string;
       cooldownDescription: string;
+      noDataHoursLabel: string;
       pleaseChooseSite: string;
+      pleaseChooseRecipients: string;
       ruleCreated: string;
       ruleUpdated: string;
       createRuleFailed: string;
@@ -423,6 +427,7 @@ export interface AppManagementMessages {
       summaryWhenSingleCondition: string;
       summaryConditionThreshold: string;
       summaryConditionChange: string;
+      summaryReportSchedule: string;
       summaryReportCondition: string;
       summaryMilestoneCondition: string;
       summaryHealthCondition: string;
@@ -456,8 +461,13 @@ export interface AppManagementMessages {
         status: string;
         summary: string;
         title: string;
+        htmlPreview: string;
         bodyText: string;
         data: string;
+        createdAt: string;
+        updatedAt: string;
+        loadingContent: string;
+        noHtmlPreview: string;
       };
       ruleTypes: {
         report: string;
@@ -467,11 +477,26 @@ export interface AppManagementMessages {
         health: string;
         test: string;
       };
+      ruleTypeDescriptions: {
+        report: string;
+        milestone: string;
+        threshold: string;
+        change: string;
+        health: string;
+      };
       recipientModes: {
         creator: string;
         team_admins: string;
         all_team_members: string;
         users: string;
+      };
+      recipientKindLabel: string;
+      recipientPresetLabel: string;
+      customRecipientsEmpty: string;
+      noTeamMembers: string;
+      recipientKinds: {
+        preset: string;
+        custom: string;
       };
       scheduleKinds: {
         daily: string;
@@ -480,6 +505,18 @@ export interface AppManagementMessages {
         quarterly: string;
         yearly: string;
         interval: string;
+      };
+      reportPeriods: {
+        daily: string;
+        weekly: string;
+        monthly: string;
+        quarterly: string;
+        yearly: string;
+      };
+      cooldownUnits: {
+        minutes: string;
+        hours: string;
+        days: string;
       };
       intervalOptions: {
         every30Minutes: string;

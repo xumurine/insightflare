@@ -366,6 +366,7 @@ export function NotificationCenterClient({
       const data = await fetchNotificationMessages({
         teamId,
         ruleId: ruleIdFilter || undefined,
+        locale,
         limit: 80,
       });
       setMessagesList(data.messages);
@@ -379,7 +380,7 @@ export function NotificationCenterClient({
 
   useEffect(() => {
     void loadMessages();
-  }, [ruleIdFilter, teamId]);
+  }, [locale, ruleIdFilter, teamId]);
 
   function clearRuleFilter() {
     const next = new URLSearchParams(searchParams.toString());
@@ -392,7 +393,7 @@ export function NotificationCenterClient({
     const target = messagesList.find((item) => item.id === messageId);
     setUpdatingId(messageId);
     try {
-      const updated = await markNotificationMessageRead({ messageId });
+      const updated = await markNotificationMessageRead({ messageId, locale });
       setMessagesList((current) =>
         current.map((item) =>
           item.id === messageId && updated ? updated : item,

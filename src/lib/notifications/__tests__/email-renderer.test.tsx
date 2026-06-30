@@ -51,6 +51,34 @@ describe("renderNotificationEmail", () => {
     expect(rendered.text).toContain("指标：访客数");
   });
 
+  it("renders milestone html with the shared email design", async () => {
+    const rendered = await renderNotificationEmail({
+      message: notificationEmailPreviewMessage("milestone", "zh"),
+      locale: "zh",
+      timeZone: "Asia/Shanghai",
+    });
+
+    expect(rendered.html).toContain("达到");
+    expect(rendered.html).toContain("成功");
+    expect(rendered.html).toContain("里程碑");
+    expect(rendered.html).toContain("当前值");
+    expect(rendered.text).toContain("已达到流量里程碑");
+  });
+
+  it("renders change html with the shared email design", async () => {
+    const rendered = await renderNotificationEmail({
+      message: notificationEmailPreviewMessage("change", "zh"),
+      locale: "zh",
+      timeZone: "Asia/Shanghai",
+    });
+
+    expect(rendered.html).toContain("流量变化提醒");
+    expect(rendered.html).toContain("警告");
+    expect(rendered.html).toContain("上一值");
+    expect(rendered.html).toContain("变化");
+    expect(rendered.text).toContain("变化了");
+  });
+
   it("renders health html and text with timezone", async () => {
     const rendered = await renderNotificationEmail({
       message: notificationEmailPreviewMessage("health", "zh"),

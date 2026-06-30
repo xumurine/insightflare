@@ -48,7 +48,6 @@ import {
   upsertAdminSiteConfig,
 } from "@/lib/edge-client";
 import { handleDemoRequest } from "@/lib/realtime/mock";
-import { handleDemoNotificationEmailPreview } from "@/lib/realtime/mock/notification-email-preview";
 
 vi.mock("@/lib/auth", () => ({
   getSessionToken: vi.fn(),
@@ -58,14 +57,7 @@ vi.mock("@/lib/realtime/mock", () => ({
   handleDemoRequest: vi.fn(),
 }));
 
-vi.mock("@/lib/realtime/mock/notification-email-preview", () => ({
-  handleDemoNotificationEmailPreview: vi.fn(),
-}));
-
 const getSessionTokenMock = vi.mocked(getSessionToken);
-const handleDemoNotificationEmailPreviewMock = vi.mocked(
-  handleDemoNotificationEmailPreview,
-);
 const handleDemoRequestMock = vi.mocked(handleDemoRequest);
 
 function fetchMock() {
@@ -558,6 +550,7 @@ describe("edge client request wrappers", () => {
         type: "report",
         severity: "warning",
         unread: true,
+        locale: "zh",
         limit: 25,
       }),
     ).resolves.toEqual({
@@ -565,7 +558,7 @@ describe("edge client request wrappers", () => {
       unreadAttentionCount: 5,
     });
     expect(lastFetchCall()[0]).toBe(
-      "http://127.0.0.1:8787/api/private/notifications?teamId=team-1&siteId=site-1&type=report&severity=warning&unread=1&limit=25",
+      "http://127.0.0.1:8787/api/private/notifications?teamId=team-1&siteId=site-1&type=report&severity=warning&unread=1&locale=zh&limit=25",
     );
 
     fetchMock().mockResolvedValueOnce(jsonResponse({ ok: true, data: null }));
@@ -574,11 +567,13 @@ describe("edge client request wrappers", () => {
       unreadAttentionCount: 0,
     });
 
-    await markNotificationMessageRead({ messageId: "msg/1" });
+    await markNotificationMessageRead({ messageId: "msg/1", locale: "zh" });
     expect(lastFetchCall()[0]).toBe(
       "http://127.0.0.1:8787/api/private/notifications/msg%2F1",
     );
-    expect(lastFetchCall()[1].body).toBe(JSON.stringify({ read: true }));
+    expect(lastFetchCall()[1].body).toBe(
+      JSON.stringify({ read: true, locale: "zh" }),
+    );
 
     await markAllNotificationMessagesRead({ teamId: "team-1" });
     expect(lastFetchCall()[0]).toBe(
@@ -831,17 +826,15 @@ describe("edge client request wrappers", () => {
     expect(getSessionTokenMock).not.toHaveBeenCalled();
   });
 
-  it("delegates notification email previews to the demo handler in demo mode", async () => {
+  it("fetches notification email previews through the API in demo mode", async () => {
     vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "1");
     const preview = {
       subject: "Demo",
       html: "<p>Demo</p>",
       text: "Demo",
     };
-    const mockModule =
-      await import("@/lib/realtime/mock/notification-email-preview");
-    vi.mocked(mockModule.handleDemoNotificationEmailPreview).mockResolvedValue(
-      preview,
+    fetchMock().mockResolvedValueOnce(
+      jsonResponse({ ok: true, data: preview }),
     );
 
     await expect(
@@ -850,13 +843,16 @@ describe("edge client request wrappers", () => {
         locale: "en",
         format: "json",
       }),
-    ).resolves.toBe(preview);
-    expect(mockModule.handleDemoNotificationEmailPreview).toHaveBeenCalledWith({
-      type: "test",
-      locale: "en",
-      format: "json",
-    });
-    expect(fetchMock()).not.toHaveBeenCalled();
+    ).resolves.toEqual(preview);
+
+    const [url, init] = lastFetchCall();
+    expect(url).toBe(
+      "http://127.0.0.1:8787/api/private/admin/notification-email-preview?type=test&locale=en&format=json",
+    );
+    expect((init.headers as Headers).get("authorization")).toBe(
+      "Bearer session-token",
+    );
+    expect(handleDemoRequestMock).not.toHaveBeenCalled();
   });
 
   it("wires the edge-client filter helper into at least one exported request wrapper", () => {

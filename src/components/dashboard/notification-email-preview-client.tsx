@@ -22,10 +22,23 @@ import { fetchNotificationEmailPreview } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
-type PreviewType = "test" | "report" | "threshold" | "health";
+type PreviewType =
+  | "test"
+  | "report"
+  | "milestone"
+  | "threshold"
+  | "change"
+  | "health";
 type PreviewFormat = "html" | "text" | "json";
 
-const PREVIEW_TYPES: PreviewType[] = ["test", "report", "threshold", "health"];
+const PREVIEW_TYPES: PreviewType[] = [
+  "test",
+  "report",
+  "milestone",
+  "threshold",
+  "change",
+  "health",
+];
 const PREVIEW_FORMATS: PreviewFormat[] = ["html", "text", "json"];
 
 export function NotificationEmailPreviewClient({
@@ -126,7 +139,9 @@ export function NotificationEmailPreviewClient({
                 if (
                   value === "test" ||
                   value === "report" ||
+                  value === "milestone" ||
                   value === "threshold" ||
+                  value === "change" ||
                   value === "health"
                 ) {
                   setType(value);

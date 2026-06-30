@@ -682,6 +682,7 @@ export async function fetchNotificationMessages(input: {
   type?: string;
   severity?: string;
   unread?: boolean;
+  locale?: "en" | "zh";
   limit?: number;
 }): Promise<{
   messages: NotificationMessageData[];
@@ -699,6 +700,7 @@ export async function fetchNotificationMessages(input: {
       ...(input.type ? { type: input.type } : {}),
       ...(input.severity ? { severity: input.severity } : {}),
       ...(input.unread ? { unread: 1 } : {}),
+      ...(input.locale ? { locale: input.locale } : {}),
       ...(input.limit ? { limit: input.limit } : {}),
     },
   });
@@ -732,11 +734,6 @@ export async function fetchNotificationEmailPreview(input: {
       text: string;
     }
 > {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoNotificationEmailPreview } =
-      await import("@/lib/realtime/mock/notification-email-preview");
-    return handleDemoNotificationEmailPreview(input);
-  }
   const baseUrl = await edgeBaseUrl();
   const url = withQuery(
     new URL("/api/private/admin/notification-email-preview", baseUrl),
@@ -772,6 +769,7 @@ export async function fetchNotificationEmailPreview(input: {
 
 export async function markNotificationMessageRead(input: {
   messageId: string;
+  locale?: "en" | "zh";
 }): Promise<NotificationMessageData | null> {
   const res = await fetchEdgeJson<{
     ok: boolean;
@@ -779,7 +777,7 @@ export async function markNotificationMessageRead(input: {
   }>({
     method: "PATCH",
     path: `/api/private/notifications/${encodeURIComponent(input.messageId)}`,
-    body: { read: true },
+    body: { read: true, ...(input.locale ? { locale: input.locale } : {}) },
   });
   return res.data;
 }

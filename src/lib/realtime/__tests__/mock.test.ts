@@ -468,11 +468,13 @@ describe("mock — handleDemoRequest", () => {
         ok(
           handleDemoRequest({
             path: "/api/private/notifications",
-            params: { teamId: "demo-team-001" },
+            params: { teamId: "demo-team-001", locale: "zh" },
           }),
         ).data,
       ).toMatchObject({
-        messages: expect.any(Array),
+        messages: expect.arrayContaining([
+          expect.objectContaining({ title: "流量阈值已触发" }),
+        ]),
         unreadAttentionCount: expect.any(Number),
       });
       expect(

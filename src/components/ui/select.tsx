@@ -382,7 +382,11 @@ function SelectContent({
   const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     onWheelProp?.(event);
     if (event.defaultPrevented) return;
+    event.preventDefault();
     event.stopPropagation();
+    const target = event.currentTarget;
+    target.scrollTop += event.deltaY;
+    target.scrollLeft += event.deltaX;
   };
 
   const handleWheelCapture = (event: React.WheelEvent<HTMLDivElement>) => {

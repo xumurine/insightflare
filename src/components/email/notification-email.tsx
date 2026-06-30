@@ -167,6 +167,70 @@ function ThresholdEmail({ locale, message }: NotificationEmailProps) {
   );
 }
 
+function MilestoneEmail({ locale, message }: NotificationEmailProps) {
+  const messages = NOTIFICATION_EMAIL_MESSAGES[locale];
+  return (
+    <>
+      <EmailBadge severity="success">
+        {messages.common.severity.success}
+      </EmailBadge>
+      <EmailMetricGrid>
+        <EmailMetricCard
+          label={messages.common.metric}
+          value={notificationMetricLabel(locale, message.data.metric)}
+        />
+        <EmailMetricCard
+          label={messages.common.milestone}
+          value={formatNotificationNumber(message.data.bucket, locale)}
+        />
+        <EmailMetricCard
+          label={messages.common.currentValue}
+          value={formatNotificationNumber(message.data.value, locale)}
+        />
+      </EmailMetricGrid>
+    </>
+  );
+}
+
+function ChangeEmail({ locale, message }: NotificationEmailProps) {
+  const messages = NOTIFICATION_EMAIL_MESSAGES[locale];
+  const changeValue = `${formatNotificationNumber(
+    message.data.change,
+    locale,
+  )}${message.data.mode === "percent" ? "%" : ""}`;
+  return (
+    <>
+      <EmailBadge severity={message.severity}>
+        {messages.common.severity[message.severity]}
+      </EmailBadge>
+      <EmailTable
+        rows={[
+          {
+            label: messages.common.metric,
+            value: notificationMetricLabel(locale, message.data.metric),
+          },
+          {
+            label: messages.common.window,
+            value: notificationWindowLabel(locale, message.data.window),
+          },
+          {
+            label: messages.common.previousValue,
+            value: formatNotificationNumber(message.data.previous, locale),
+          },
+          {
+            label: messages.common.currentValue,
+            value: formatNotificationNumber(message.data.current, locale),
+          },
+          {
+            label: messages.common.change,
+            value: changeValue,
+          },
+        ]}
+      />
+    </>
+  );
+}
+
 function HealthEmail({
   locale,
   content,
@@ -228,10 +292,14 @@ export function NotificationEmail(props: NotificationEmailProps) {
       <EmailCard>
         <Intro content={content} />
         {message.type === "report" ? <ReportEmail {...props} /> : null}
+        {message.type === "milestone" ? <MilestoneEmail {...props} /> : null}
         {message.type === "threshold" ? <ThresholdEmail {...props} /> : null}
+        {message.type === "change" ? <ChangeEmail {...props} /> : null}
         {message.type === "health" ? <HealthEmail {...props} /> : null}
         {message.type !== "report" &&
+        message.type !== "milestone" &&
         message.type !== "threshold" &&
+        message.type !== "change" &&
         message.type !== "health" ? (
           <FallbackEmail content={content} />
         ) : null}

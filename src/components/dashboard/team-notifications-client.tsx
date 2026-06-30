@@ -16,6 +16,7 @@ import {
 } from "@remixicon/react";
 import { toast } from "sonner";
 
+import { JsonTreePanel } from "@/components/dashboard/json-tree";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { TableActionButton } from "@/components/dashboard/table-action-button";
 import { AutoResizer } from "@/components/ui/auto-resizer";
@@ -38,7 +39,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -58,15 +59,20 @@ import {
 } from "@/components/ui/table";
 import { intlLocale, shortDateTime } from "@/lib/dashboard/format";
 import {
+  browserTimeZone,
   buildTimeZoneOptions,
+  formatUtcOffset,
   supportedTimeZones,
+  timeZoneOffsetMinutes,
 } from "@/lib/dashboard/time-zone";
 import {
   createNotificationRule,
   deleteNotificationRule,
+  fetchAdminMembers,
   fetchAdminSites,
   fetchNotificationEmailConfig,
   fetchNotificationRules,
+  type MemberData,
   type NotificationRuleData,
   type NotificationRuleEvaluationData,
   previewNotificationRule,
@@ -78,6 +84,7 @@ import {
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
+import { cn } from "@/lib/utils";
 
 interface TeamNotificationsClientProps {
   locale: Locale;
@@ -88,7 +95,8 @@ interface TeamNotificationsClientProps {
 }
 
 type RuleFormType = "report" | "milestone" | "threshold" | "change" | "health";
-type RecipientMode = "creator" | "team_admins" | "all_team_members";
+type RecipientKind = "preset" | "custom";
+type RecipientPreset = "creator" | "team_admins" | "all_team_members";
 type ScheduleKind =
   | "daily"
   | "weekly"
@@ -102,6 +110,7 @@ type ChangeMode = "absolute" | "percent";
 type MetricName = "views" | "visitors" | "sessions";
 type MetricWindow = "last_1h" | "last_24h" | "yesterday";
 type ThresholdOperator = ">" | ">=" | "<" | "<=";
+type CooldownUnit = "minutes" | "hours" | "days";
 
 interface MetricConditionForm {
   id: string;
@@ -118,7 +127,9 @@ interface RuleFormState {
   type: RuleFormType;
   siteId: string;
   enabled: boolean;
-  recipientMode: RecipientMode;
+  recipientKind: RecipientKind;
+  recipientPreset: RecipientPreset;
+  recipientUserIds: string[];
   scheduleKind: ScheduleKind;
   reportType: ReportType;
   time: string;
@@ -131,7 +142,8 @@ interface RuleFormState {
   conditions: MetricConditionForm[];
   metric: MetricName;
   milestoneStep: string;
-  cooldownMinutes: string;
+  cooldownValue: string;
+  cooldownUnit: CooldownUnit;
   hours: string;
 }
 
@@ -152,7 +164,9 @@ const EMPTY_FORM: RuleFormState = {
   type: "report",
   siteId: "",
   enabled: true,
-  recipientMode: "team_admins",
+  recipientKind: "preset",
+  recipientPreset: "creator",
+  recipientUserIds: [],
   scheduleKind: "daily",
   reportType: "daily",
   time: "08:00",
@@ -165,7 +179,8 @@ const EMPTY_FORM: RuleFormState = {
   conditions: [defaultMetricCondition()],
   metric: "visitors",
   milestoneStep: "1000",
-  cooldownMinutes: "360",
+  cooldownValue: "6",
+  cooldownUnit: "hours",
   hours: "12",
 };
 
@@ -347,7 +362,7 @@ function conditionLabel(
       ? rule.condition.reportType
       : "daily";
     return formatI18nTemplate(copy.conditionReport, {
-      period: copy.scheduleKinds[reportType],
+      period: copy.reportPeriods[reportType],
     });
   }
   if (rule.type === "milestone") {
@@ -414,12 +429,60 @@ function ruleTypeLabel(
 
 function recipientLabel(
   copy: AppMessages["teamManagement"]["notifications"],
-  mode: string,
+  recipient: Record<string, unknown>,
+  memberByUserId: Map<string, MemberData>,
 ): string {
+  const mode = String(recipient.mode ?? "");
+  if (mode === "users") {
+    const userIds = userIdsFromRecipient(recipient);
+    if (userIds.length === 0) return copy.recipientModes.users;
+    return userIds
+      .map((userId) => memberName(memberByUserId.get(userId)) || userId)
+      .filter(Boolean)
+      .join(", ");
+  }
   if (mode in copy.recipientModes) {
     return copy.recipientModes[mode as keyof typeof copy.recipientModes];
   }
   return copy.recipientModes.team_admins;
+}
+
+function memberName(member: MemberData | undefined): string {
+  if (!member) return "";
+  return member.name || member.username || member.email || member.userId;
+}
+
+function userIdsFromRecipient(recipient: Record<string, unknown>): string[] {
+  return Array.isArray(recipient.userIds)
+    ? recipient.userIds.filter(
+        (userId): userId is string =>
+          typeof userId === "string" && userId.length > 0,
+      )
+    : [];
+}
+
+function defaultRecipientUserIds(
+  members: MemberData[],
+  currentUserId: string,
+): string[] {
+  if (members.some((member) => member.userId === currentUserId)) {
+    return [currentUserId];
+  }
+  return members[0]?.userId ? [members[0].userId] : [];
+}
+
+function recipientTextFromForm(
+  copy: AppMessages["teamManagement"]["notifications"],
+  form: RuleFormState,
+  memberByUserId: Map<string, MemberData>,
+): string {
+  if (form.recipientKind === "preset") {
+    return copy.recipientModes[form.recipientPreset];
+  }
+  const names = form.recipientUserIds
+    .map((userId) => memberName(memberByUserId.get(userId)) || userId)
+    .filter(Boolean);
+  return names.length > 0 ? names.join(", ") : copy.customRecipientsEmpty;
 }
 
 function siteLabel(siteById: Map<string, SiteData>, siteId: string | null) {
@@ -435,12 +498,34 @@ function previewSummary(result: NotificationRuleEvaluationData | null): string {
   return result.reason;
 }
 
-function jsonBlock(value: unknown): string {
-  try {
-    return JSON.stringify(value ?? {}, null, 2);
-  } catch {
-    return "{}";
+function cooldownPartsFromMinutes(minutes: unknown): {
+  value: string;
+  unit: CooldownUnit;
+} {
+  const totalMinutes = Math.max(0, Math.trunc(Number(minutes ?? 360)));
+  if (totalMinutes > 0 && totalMinutes % 1440 === 0) {
+    return { value: String(totalMinutes / 1440), unit: "days" };
   }
+  if (totalMinutes > 0 && totalMinutes % 60 === 0) {
+    return { value: String(totalMinutes / 60), unit: "hours" };
+  }
+  return { value: String(totalMinutes), unit: "minutes" };
+}
+
+function cooldownMinutesFromForm(form: RuleFormState): number {
+  const value = Math.max(0, Math.trunc(Number(form.cooldownValue || 0)));
+  if (form.cooldownUnit === "days") return value * 1440;
+  if (form.cooldownUnit === "hours") return value * 60;
+  return value;
+}
+
+function cooldownLabel(
+  copy: AppMessages["teamManagement"]["notifications"],
+  form: RuleFormState,
+): string {
+  const value = form.cooldownValue || "0";
+  const unit = copy.cooldownUnits[form.cooldownUnit];
+  return `${value} ${unit}`;
 }
 
 function inferFormFromRule(rule: NotificationRuleData): RuleFormState {
@@ -457,6 +542,10 @@ function inferFormFromRule(rule: NotificationRuleData): RuleFormState {
     : scheduleKind !== "interval" && isReportType(scheduleKind)
       ? scheduleKind
       : "daily";
+  const cooldown = cooldownPartsFromMinutes(rule.condition.cooldownMinutes);
+  const recipientMode = String(rule.recipient.mode ?? "");
+  const recipientUserIds =
+    recipientMode === "users" ? userIdsFromRecipient(rule.recipient) : [];
   return {
     ...EMPTY_FORM,
     id: rule.id,
@@ -464,11 +553,12 @@ function inferFormFromRule(rule: NotificationRuleData): RuleFormState {
     type,
     siteId: rule.siteId ?? "",
     enabled: rule.enabled,
-    recipientMode:
-      rule.recipient.mode === "creator" ||
-      rule.recipient.mode === "all_team_members"
-        ? rule.recipient.mode
+    recipientKind: recipientMode === "users" ? "custom" : "preset",
+    recipientPreset:
+      recipientMode === "creator" || recipientMode === "all_team_members"
+        ? recipientMode
         : "team_admins",
+    recipientUserIds,
     scheduleKind,
     reportType,
     time: String(rule.schedule.time ?? "08:00"),
@@ -490,7 +580,8 @@ function inferFormFromRule(rule: NotificationRuleData): RuleFormState {
         rule.condition.value ??
         "1000",
     ),
-    cooldownMinutes: String(rule.condition.cooldownMinutes ?? "360"),
+    cooldownValue: cooldown.value,
+    cooldownUnit: cooldown.unit,
     hours: String(rule.condition.hours ?? "12"),
   };
 }
@@ -502,6 +593,54 @@ function defaultName(
 ) {
   const siteName = site?.name || copy.siteLabel;
   return formatI18nTemplate(copy.defaultNames[type], { site: siteName });
+}
+
+function browserDefaultTimeZone(): string {
+  return browserTimeZone() || "UTC";
+}
+
+function timeZoneOffsetLabel(timeZone: string, timestampMs: number): string {
+  return formatUtcOffset(timeZoneOffsetMinutes(timeZone || "UTC", timestampMs));
+}
+
+function scheduleTextFromForm(
+  copy: AppMessages["teamManagement"]["notifications"],
+  form: RuleFormState,
+  timestampMs: number,
+): string {
+  const timeZoneLabel = ` (${timeZoneOffsetLabel(form.timezone, timestampMs)})`;
+  if (form.scheduleKind === "daily") {
+    return `${formatI18nTemplate(copy.scheduleDaily, { time: form.time })}${timeZoneLabel}`;
+  }
+  if (form.scheduleKind === "weekly") {
+    const dayIndex = Math.trunc(Number(form.dayOfWeek || 1));
+    return `${formatI18nTemplate(copy.scheduleWeekly, {
+      day: copy.weekDays[dayIndex] ?? copy.weekDays[1] ?? "",
+      time: form.time,
+    })}${timeZoneLabel}`;
+  }
+  if (form.scheduleKind === "monthly") {
+    return `${formatI18nTemplate(copy.scheduleMonthly, {
+      day: form.dayOfMonth || "1",
+      time: form.time,
+    })}${timeZoneLabel}`;
+  }
+  if (form.scheduleKind === "quarterly") {
+    return `${formatI18nTemplate(copy.scheduleQuarterly, {
+      day: form.dayOfMonth || "1",
+      time: form.time,
+    })}${timeZoneLabel}`;
+  }
+  if (form.scheduleKind === "yearly") {
+    return `${formatI18nTemplate(copy.scheduleYearly, {
+      month: form.month || "1",
+      day: form.dayOfMonth || "1",
+      time: form.time,
+    })}${timeZoneLabel}`;
+  }
+  return formatI18nTemplate(copy.scheduleInterval, {
+    minutes: form.everyMinutes || "60",
+  });
 }
 
 function buildRulePayload(
@@ -552,7 +691,7 @@ function buildRulePayload(
         : form.type === "threshold"
           ? {
               [form.combinator]: metricConditions,
-              cooldownMinutes: Number(form.cooldownMinutes || 0),
+              cooldownMinutes: cooldownMinutesFromForm(form),
             }
           : form.type === "change"
             ? {
@@ -564,12 +703,12 @@ function buildRulePayload(
                   mode: condition.changeMode,
                   compareTo: "previous_period",
                 })),
-                cooldownMinutes: Number(form.cooldownMinutes || 0),
+                cooldownMinutes: cooldownMinutesFromForm(form),
               }
             : {
                 check: "no_data",
                 hours: Number(form.hours || 0),
-                cooldownMinutes: Number(form.cooldownMinutes || 0),
+                cooldownMinutes: cooldownMinutesFromForm(form),
               };
   return {
     name,
@@ -578,7 +717,10 @@ function buildRulePayload(
     enabled: form.enabled,
     schedule,
     condition,
-    recipient: { mode: form.recipientMode },
+    recipient:
+      form.recipientKind === "custom"
+        ? { mode: "users", userIds: form.recipientUserIds }
+        : { mode: form.recipientPreset },
   };
 }
 
@@ -620,11 +762,7 @@ function ruleSummaryLines(
     );
   }
   if (form.type === "report") {
-    return [
-      formatI18nTemplate(copy.summaryReportCondition, {
-        period: copy.scheduleKinds[form.reportType],
-      }),
-    ];
+    return [];
   }
   if (form.type === "milestone") {
     return [
@@ -644,7 +782,14 @@ function ruleSummaryLines(
 function ruleSummaryTitle(
   copy: AppMessages["teamManagement"]["notifications"],
   form: RuleFormState,
+  timestampMs: number,
 ): string {
+  if (form.type === "report") {
+    return formatI18nTemplate(copy.summaryReportSchedule, {
+      period: copy.reportPeriods[form.reportType],
+      schedule: scheduleTextFromForm(copy, form, timestampMs),
+    });
+  }
   if (form.type === "threshold" || form.type === "change") {
     return formatI18nTemplate(copy.summaryWhenConditions, {
       combinator: form.combinator === "any" ? copy.matchAny : copy.matchAll,
@@ -679,16 +824,24 @@ function RuleFormFields({
   locale,
   form,
   sites,
+  members,
+  currentUserId,
   onChange,
 }: {
   copy: AppMessages["teamManagement"]["notifications"];
   locale: Locale;
   form: RuleFormState;
   sites: SiteData[];
+  members: MemberData[];
+  currentUserId: string;
   onChange: (patch: Partial<RuleFormState>) => void;
 }) {
   const timeZones = useMemo(() => supportedTimeZones(), []);
   const timeZoneOptionTimestamp = useMemo(() => Date.now(), []);
+  const [localTimeZone, setLocalTimeZone] = useState("UTC");
+  useEffect(() => {
+    setLocalTimeZone(browserDefaultTimeZone());
+  }, []);
   const timeZoneOptions = useMemo(
     () =>
       buildTimeZoneOptions({
@@ -696,10 +849,20 @@ function RuleFormFields({
         supported: timeZones,
         selected: form.timezone,
         active: form.timezone,
+        browser: localTimeZone,
         timestampMs: timeZoneOptionTimestamp,
       }),
-    [form.timezone, locale, timeZoneOptionTimestamp, timeZones],
+    [form.timezone, locale, localTimeZone, timeZoneOptionTimestamp, timeZones],
   );
+  const selectedSite = useMemo(
+    () => sites.find((site) => site.id === form.siteId),
+    [form.siteId, sites],
+  );
+  const memberByUserId = useMemo(
+    () => new Map(members.map((member) => [member.userId, member])),
+    [members],
+  );
+  const namePlaceholder = defaultName(copy, form.type, selectedSite);
 
   function updateCondition(id: string, patch: Partial<MetricConditionForm>) {
     onChange({
@@ -725,501 +888,139 @@ function RuleFormFields({
     });
   }
 
+  function toggleRecipientUser(userId: string, checked: boolean) {
+    onChange({
+      recipientUserIds: checked
+        ? Array.from(new Set([...form.recipientUserIds, userId]))
+        : form.recipientUserIds.filter(
+            (selectedUserId) => selectedUserId !== userId,
+          ),
+    });
+  }
+
   const summaryLines = ruleSummaryLines(copy, form);
 
   return (
     <div className="space-y-5">
-      <RuleFormSection title={copy.ruleInfoSection}>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field>
-            <FieldLabel>{copy.nameLabel}</FieldLabel>
-            <Input
-              value={form.name}
-              maxLength={160}
-              onChange={(event) => onChange({ name: event.target.value })}
-            />
-          </Field>
-          <Field>
-            <FieldLabel>{copy.siteLabel}</FieldLabel>
-            <Select
-              value={form.siteId}
-              onValueChange={(siteId) => onChange({ siteId })}
+      <Field>
+        <FieldLabel>{copy.ruleTypeLabel}</FieldLabel>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          {(
+            [
+              "report",
+              "milestone",
+              "threshold",
+              "change",
+              "health",
+            ] as RuleFormType[]
+          ).map((type) => (
+            <button
+              key={type}
+              type="button"
+              className={cn(
+                "min-h-16 border px-3 py-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50",
+                form.type === type
+                  ? "border-primary bg-primary/8 text-foreground"
+                  : "border-border bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+              )}
+              onClick={() =>
+                onChange({
+                  type,
+                  scheduleKind: type === "report" ? "daily" : "interval",
+                })
+              }
             >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={copy.chooseSite} />
-              </SelectTrigger>
-              <SelectContent>
-                {sites.map((site) => (
-                  <SelectItem key={site.id} value={site.id}>
-                    {site.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field>
-            <FieldLabel>{copy.ruleTypeLabel}</FieldLabel>
-            <Select
-              value={form.type}
-              onValueChange={(value) => {
-                if (isRuleFormType(value)) {
-                  onChange({
-                    type: value,
-                    scheduleKind: value === "report" ? "daily" : "interval",
-                    reportType: value === "report" ? "daily" : form.reportType,
-                  });
-                }
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="report">{copy.ruleTypes.report}</SelectItem>
-                <SelectItem value="milestone">
-                  {copy.ruleTypes.milestone}
-                </SelectItem>
-                <SelectItem value="threshold">
-                  {copy.ruleTypes.threshold}
-                </SelectItem>
-                <SelectItem value="change">{copy.ruleTypes.change}</SelectItem>
-                <SelectItem value="health">{copy.ruleTypes.health}</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field>
-            <FieldLabel>{copy.recipientLabel}</FieldLabel>
-            <Select
-              value={form.recipientMode}
-              onValueChange={(value) => {
-                if (
-                  value === "creator" ||
-                  value === "team_admins" ||
-                  value === "all_team_members"
-                ) {
-                  onChange({ recipientMode: value });
-                }
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="team_admins">
-                  {copy.recipientModes.team_admins}
-                </SelectItem>
-                <SelectItem value="creator">
-                  {copy.recipientModes.creator}
-                </SelectItem>
-                <SelectItem value="all_team_members">
-                  {copy.recipientModes.all_team_members}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field>
-            <FieldLabel>{copy.enabledLabel}</FieldLabel>
-            <div className="flex h-8 items-center gap-2">
-              <Checkbox
-                checked={form.enabled}
-                onCheckedChange={(checked) => onChange({ enabled: !!checked })}
-              />
-              <span className="text-xs text-muted-foreground">
-                {copy.enabledHint}
+              <span className="block font-medium text-foreground">
+                {copy.ruleTypes[type]}
               </span>
-            </div>
-          </Field>
+              <span className="mt-1 block leading-4">
+                {copy.ruleTypeDescriptions[type]}
+              </span>
+            </button>
+          ))}
         </div>
-      </RuleFormSection>
+      </Field>
 
-      <RuleFormSection title={copy.scheduleSection}>
-        <div className="grid gap-4 md:grid-cols-3">
-          <Field>
-            <FieldLabel>{copy.scheduleLabel}</FieldLabel>
-            <Select
-              value={form.scheduleKind}
-              onValueChange={(value) => {
-                if (isScheduleKind(value)) {
-                  onChange({
-                    scheduleKind: value,
-                    reportType: isReportType(value) ? value : form.reportType,
-                  });
-                }
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="daily">
-                  {copy.scheduleKinds.daily}
-                </SelectItem>
-                <SelectItem value="weekly">
-                  {copy.scheduleKinds.weekly}
-                </SelectItem>
-                <SelectItem value="monthly">
-                  {copy.scheduleKinds.monthly}
-                </SelectItem>
-                <SelectItem value="quarterly">
-                  {copy.scheduleKinds.quarterly}
-                </SelectItem>
-                <SelectItem value="yearly">
-                  {copy.scheduleKinds.yearly}
-                </SelectItem>
-                <SelectItem value="interval">
-                  {copy.scheduleKinds.interval}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-
-          {form.scheduleKind !== "interval" ? (
-            <>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="min-w-0 space-y-5">
+          <RuleFormSection title={copy.ruleInfoSection}>
+            <div className="grid gap-4 md:grid-cols-2">
               <Field>
-                <FieldLabel>{copy.timeLabel}</FieldLabel>
+                <FieldLabel>{copy.siteLabel}</FieldLabel>
                 <Select
-                  value={form.time}
-                  onValueChange={(time) => onChange({ time })}
+                  value={form.siteId}
+                  onValueChange={(siteId) => onChange({ siteId })}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-80">
-                    {TIME_OPTIONS.map((time) => (
-                      <SelectItem key={time} value={time}>
-                        {time}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field className="md:col-span-1">
-                <FieldLabel>{copy.timezoneLabel}</FieldLabel>
-                <Select
-                  value={form.timezone}
-                  onValueChange={(timezone) => onChange({ timezone })}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-80">
-                    {timeZoneOptions.map((timeZone) => (
-                      <SelectItem key={timeZone.value} value={timeZone.value}>
-                        {timeZone.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              {form.scheduleKind === "weekly" ? (
-                <Field>
-                  <FieldLabel>{copy.dayLabel}</FieldLabel>
-                  <Select
-                    value={form.dayOfWeek}
-                    onValueChange={(dayOfWeek) => onChange({ dayOfWeek })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {WEEK_DAY_INDEXES.map((index) => (
-                        <SelectItem key={index} value={String(index)}>
-                          {copy.weekDays[index]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              ) : null}
-              {form.scheduleKind === "monthly" ||
-              form.scheduleKind === "quarterly" ||
-              form.scheduleKind === "yearly" ? (
-                <Field>
-                  <FieldLabel>{copy.dayOfMonthLabel}</FieldLabel>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={31}
-                    value={form.dayOfMonth}
-                    onChange={(event) =>
-                      onChange({ dayOfMonth: event.target.value })
-                    }
-                  />
-                </Field>
-              ) : null}
-              {form.scheduleKind === "yearly" ? (
-                <Field>
-                  <FieldLabel>{copy.monthLabel}</FieldLabel>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={12}
-                    value={form.month}
-                    onChange={(event) =>
-                      onChange({ month: event.target.value })
-                    }
-                  />
-                </Field>
-              ) : null}
-            </>
-          ) : (
-            <Field>
-              <FieldLabel>{copy.intervalLabel}</FieldLabel>
-              <Select
-                value={form.everyMinutes}
-                onValueChange={(everyMinutes) => onChange({ everyMinutes })}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="30">
-                    {copy.intervalOptions.every30Minutes}
-                  </SelectItem>
-                  <SelectItem value="60">
-                    {copy.intervalOptions.everyHour}
-                  </SelectItem>
-                  <SelectItem value="360">
-                    {copy.intervalOptions.every6Hours}
-                  </SelectItem>
-                  <SelectItem value="720">
-                    {copy.intervalOptions.every12Hours}
-                  </SelectItem>
-                  <SelectItem value="1440">
-                    {copy.intervalOptions.everyDay}
-                  </SelectItem>
-                  <SelectItem value="10080">
-                    {copy.intervalOptions.every7Days}
-                  </SelectItem>
-                  <SelectItem value="43200">
-                    {copy.intervalOptions.every30Days}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-          )}
-        </div>
-      </RuleFormSection>
-
-      <RuleFormSection title={copy.conditionSection}>
-        {form.type === "report" ? (
-          <div className="grid gap-4 md:grid-cols-3">
-            <Field>
-              <FieldLabel>{copy.reportPeriodLabel}</FieldLabel>
-              <Select
-                value={form.reportType}
-                onValueChange={(value) => {
-                  if (isReportType(value)) {
-                    onChange({ reportType: value, scheduleKind: value });
-                  }
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {REPORT_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {copy.scheduleKinds[type]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-          </div>
-        ) : null}
-
-        {form.type === "milestone" ? (
-          <div className="grid gap-4 md:grid-cols-3">
-            <Field>
-              <FieldLabel>{copy.metricLabel}</FieldLabel>
-              <Select
-                value={form.metric}
-                onValueChange={(value) => {
-                  if (
-                    value === "views" ||
-                    value === "visitors" ||
-                    value === "sessions"
-                  ) {
-                    onChange({ metric: value });
-                  }
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="views">{copy.metrics.views}</SelectItem>
-                  <SelectItem value="visitors">
-                    {copy.metrics.visitors}
-                  </SelectItem>
-                  <SelectItem value="sessions">
-                    {copy.metrics.sessions}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel>{copy.milestoneEveryLabel}</FieldLabel>
-              <Input
-                type="number"
-                min={1}
-                value={form.milestoneStep}
-                onChange={(event) =>
-                  onChange({ milestoneStep: event.target.value })
-                }
-              />
-            </Field>
-          </div>
-        ) : null}
-
-        {form.type === "threshold" || form.type === "change" ? (
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <Field>
-                <FieldLabel>{copy.matchLabel}</FieldLabel>
-                <Select
-                  value={form.combinator}
-                  onValueChange={(value) => {
-                    if (value === "all" || value === "any") {
-                      onChange({ combinator: value });
-                    }
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
+                    <SelectValue placeholder={copy.chooseSite} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">{copy.matchAll}</SelectItem>
-                    <SelectItem value="any">{copy.matchAny}</SelectItem>
+                    {sites.map((site) => (
+                      <SelectItem key={site.id} value={site.id}>
+                        {site.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </Field>
+              <Field>
+                <FieldLabel>{copy.nameLabel}</FieldLabel>
+                <Input
+                  value={form.name}
+                  placeholder={namePlaceholder}
+                  maxLength={160}
+                  onChange={(event) => onChange({ name: event.target.value })}
+                />
+              </Field>
             </div>
+          </RuleFormSection>
 
-            <div className="space-y-3">
-              {form.conditions.map((condition, index) => (
-                <div
-                  key={condition.id}
-                  className="grid gap-3 border-l border-border pl-3 sm:grid-cols-2 lg:grid-cols-[repeat(5,minmax(0,1fr))_auto]"
-                >
-                  <div className="text-xs font-medium text-muted-foreground sm:col-span-2 lg:col-span-6">
-                    {formatI18nTemplate(copy.conditionItemTitle, {
-                      index: String(index + 1),
-                    })}
-                  </div>
-                  <Field>
-                    <FieldLabel>{copy.metricLabel}</FieldLabel>
-                    <Select
-                      value={condition.metric}
-                      onValueChange={(value) => {
-                        if (
-                          value === "views" ||
-                          value === "visitors" ||
-                          value === "sessions"
-                        ) {
-                          updateCondition(condition.id, { metric: value });
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="views">
-                          {copy.metrics.views}
-                        </SelectItem>
-                        <SelectItem value="visitors">
-                          {copy.metrics.visitors}
-                        </SelectItem>
-                        <SelectItem value="sessions">
-                          {copy.metrics.sessions}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  <Field>
-                    <FieldLabel>{copy.windowLabel}</FieldLabel>
-                    <Select
-                      value={condition.window}
-                      onValueChange={(value) => {
-                        if (
-                          value === "last_1h" ||
-                          value === "last_24h" ||
-                          value === "yesterday"
-                        ) {
-                          updateCondition(condition.id, { window: value });
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="last_1h">
-                          {copy.windows.last_1h}
-                        </SelectItem>
-                        <SelectItem value="last_24h">
-                          {copy.windows.last_24h}
-                        </SelectItem>
-                        <SelectItem value="yesterday">
-                          {copy.windows.yesterday}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  <Field>
-                    <FieldLabel>{copy.operatorLabel}</FieldLabel>
-                    <Select
-                      value={condition.operator}
-                      onValueChange={(value) => {
-                        if (
-                          value === ">" ||
-                          value === ">=" ||
-                          value === "<" ||
-                          value === "<="
-                        ) {
-                          updateCondition(condition.id, { operator: value });
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value=">">&gt;</SelectItem>
-                        <SelectItem value=">=">&gt;=</SelectItem>
-                        <SelectItem value="<">&lt;</SelectItem>
-                        <SelectItem value="<=">&lt;=</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  <Field>
-                    <FieldLabel>
-                      {form.type === "change"
-                        ? copy.changeValueLabel
-                        : copy.valueLabel}
-                    </FieldLabel>
-                    <Input
-                      type="number"
-                      value={condition.value}
-                      onChange={(event) =>
-                        updateCondition(condition.id, {
-                          value: event.target.value,
-                        })
-                      }
-                    />
-                  </Field>
-                  {form.type === "change" ? (
+          <RuleFormSection title={copy.conditionSection}>
+            <AutoResizer initial duration={0.2}>
+              <AutoTransition
+                transitionKey={form.type}
+                duration={0.18}
+                type="fade"
+                initial={false}
+                presenceMode="wait"
+              >
+                {form.type === "report" ? (
+                  <div key="report" className="grid gap-4 md:grid-cols-3">
                     <Field>
-                      <FieldLabel>{copy.changeModeLabel}</FieldLabel>
+                      <FieldLabel>{copy.reportPeriodLabel}</FieldLabel>
                       <Select
-                        value={condition.changeMode}
+                        value={form.reportType}
                         onValueChange={(value) => {
-                          if (value === "absolute" || value === "percent") {
-                            updateCondition(condition.id, {
-                              changeMode: value,
-                            });
+                          if (isReportType(value))
+                            onChange({ reportType: value });
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {REPORT_TYPES.map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {copy.reportPeriods[type]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  </div>
+                ) : form.type === "milestone" ? (
+                  <div key="milestone" className="grid gap-4 md:grid-cols-3">
+                    <Field>
+                      <FieldLabel>{copy.metricLabel}</FieldLabel>
+                      <Select
+                        value={form.metric}
+                        onValueChange={(value) => {
+                          if (
+                            value === "views" ||
+                            value === "visitors" ||
+                            value === "sessions"
+                          ) {
+                            onChange({ metric: value });
                           }
                         }}
                       >
@@ -1227,82 +1028,720 @@ function RuleFormFields({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="percent">
-                            {copy.changeModePercent}
+                          <SelectItem value="views">
+                            {copy.metrics.views}
                           </SelectItem>
-                          <SelectItem value="absolute">
-                            {copy.changeModeAbsolute}
+                          <SelectItem value="visitors">
+                            {copy.metrics.visitors}
+                          </SelectItem>
+                          <SelectItem value="sessions">
+                            {copy.metrics.sessions}
                           </SelectItem>
                         </SelectContent>
                       </Select>
                     </Field>
-                  ) : null}
-                  <div className="flex items-end sm:col-span-2 lg:col-span-1 lg:w-20">
+                    <Field>
+                      <FieldLabel>{copy.milestoneEveryLabel}</FieldLabel>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={form.milestoneStep}
+                        onChange={(event) =>
+                          onChange({ milestoneStep: event.target.value })
+                        }
+                      />
+                    </Field>
+                  </div>
+                ) : form.type === "threshold" || form.type === "change" ? (
+                  <div key={form.type} className="space-y-4">
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <Field>
+                        <FieldLabel>{copy.matchLabel}</FieldLabel>
+                        <Select
+                          value={form.combinator}
+                          onValueChange={(value) => {
+                            if (value === "all" || value === "any") {
+                              onChange({ combinator: value });
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">{copy.matchAll}</SelectItem>
+                            <SelectItem value="any">{copy.matchAny}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    </div>
+
+                    <AutoResizer initial duration={0.2}>
+                      <div className="space-y-3">
+                        {form.conditions.map((condition, index) => (
+                          <div
+                            key={condition.id}
+                            className="grid gap-3 border-l border-border pl-3 md:grid-cols-2 xl:grid-cols-[1.1fr_1.2fr_0.8fr_1fr_auto]"
+                          >
+                            <div className="text-xs font-medium text-muted-foreground md:col-span-2 xl:col-span-5">
+                              {formatI18nTemplate(copy.conditionItemTitle, {
+                                index: String(index + 1),
+                              })}
+                            </div>
+                            <Field>
+                              <FieldLabel>{copy.metricLabel}</FieldLabel>
+                              <Select
+                                value={condition.metric}
+                                onValueChange={(value) => {
+                                  if (
+                                    value === "views" ||
+                                    value === "visitors" ||
+                                    value === "sessions"
+                                  ) {
+                                    updateCondition(condition.id, {
+                                      metric: value,
+                                    });
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="views">
+                                    {copy.metrics.views}
+                                  </SelectItem>
+                                  <SelectItem value="visitors">
+                                    {copy.metrics.visitors}
+                                  </SelectItem>
+                                  <SelectItem value="sessions">
+                                    {copy.metrics.sessions}
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                            <Field>
+                              <FieldLabel>{copy.windowLabel}</FieldLabel>
+                              <Select
+                                value={condition.window}
+                                onValueChange={(value) => {
+                                  if (
+                                    value === "last_1h" ||
+                                    value === "last_24h" ||
+                                    value === "yesterday"
+                                  ) {
+                                    updateCondition(condition.id, {
+                                      window: value,
+                                    });
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="last_1h">
+                                    {copy.windows.last_1h}
+                                  </SelectItem>
+                                  <SelectItem value="last_24h">
+                                    {copy.windows.last_24h}
+                                  </SelectItem>
+                                  <SelectItem value="yesterday">
+                                    {copy.windows.yesterday}
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                            <Field>
+                              <FieldLabel>{copy.operatorLabel}</FieldLabel>
+                              <Select
+                                value={condition.operator}
+                                onValueChange={(value) => {
+                                  if (
+                                    value === ">" ||
+                                    value === ">=" ||
+                                    value === "<" ||
+                                    value === "<="
+                                  ) {
+                                    updateCondition(condition.id, {
+                                      operator: value,
+                                    });
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value=">">&gt;</SelectItem>
+                                  <SelectItem value=">=">&gt;=</SelectItem>
+                                  <SelectItem value="<">&lt;</SelectItem>
+                                  <SelectItem value="<=">&lt;=</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                            <Field>
+                              <FieldLabel>
+                                {form.type === "change"
+                                  ? copy.changeValueLabel
+                                  : copy.valueLabel}
+                              </FieldLabel>
+                              <Input
+                                type="number"
+                                value={condition.value}
+                                onChange={(event) =>
+                                  updateCondition(condition.id, {
+                                    value: event.target.value,
+                                  })
+                                }
+                              />
+                            </Field>
+                            <div className="flex items-end">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="w-full px-2 xl:w-20"
+                                disabled={form.conditions.length <= 1}
+                                onClick={() => removeCondition(condition.id)}
+                                aria-label={copy.removeCondition}
+                              >
+                                <RiDeleteBinLine className="size-4" />
+                                <span className="xl:sr-only">
+                                  {copy.removeCondition}
+                                </span>
+                              </Button>
+                            </div>
+                            {form.type === "change" ? (
+                              <Field className="md:col-span-2 xl:col-span-2">
+                                <FieldLabel>{copy.changeModeLabel}</FieldLabel>
+                                <Select
+                                  value={condition.changeMode}
+                                  onValueChange={(value) => {
+                                    if (
+                                      value === "absolute" ||
+                                      value === "percent"
+                                    ) {
+                                      updateCondition(condition.id, {
+                                        changeMode: value,
+                                      });
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="percent">
+                                      {copy.changeModePercent}
+                                    </SelectItem>
+                                    <SelectItem value="absolute">
+                                      {copy.changeModeAbsolute}
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </AutoResizer>
+
                     <Button
                       type="button"
                       variant="outline"
-                      className="w-full px-2"
-                      disabled={form.conditions.length <= 1}
-                      onClick={() => removeCondition(condition.id)}
-                      aria-label={copy.removeCondition}
+                      onClick={addCondition}
                     >
-                      <RiDeleteBinLine className="size-4" />
-                      <span className="lg:sr-only">{copy.removeCondition}</span>
+                      <RiAddLine />
+                      <span>{copy.addCondition}</span>
                     </Button>
                   </div>
-                </div>
-              ))}
+                ) : (
+                  <div key="health" className="grid gap-4 md:grid-cols-3">
+                    <Field>
+                      <FieldLabel>{copy.noDataHoursLabel}</FieldLabel>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={form.hours}
+                        onChange={(event) =>
+                          onChange({ hours: event.target.value })
+                        }
+                      />
+                    </Field>
+                  </div>
+                )}
+              </AutoTransition>
+            </AutoResizer>
+          </RuleFormSection>
+
+          <RuleFormSection
+            title={
+              form.type === "report"
+                ? copy.sendScheduleSection
+                : copy.checkSection
+            }
+          >
+            <div className="grid gap-4 md:grid-cols-3">
+              <Field>
+                <FieldLabel>{copy.scheduleLabel}</FieldLabel>
+                <Select
+                  value={form.scheduleKind}
+                  onValueChange={(value) => {
+                    if (isScheduleKind(value))
+                      onChange({ scheduleKind: value });
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">
+                      {copy.scheduleKinds.daily}
+                    </SelectItem>
+                    <SelectItem value="weekly">
+                      {copy.scheduleKinds.weekly}
+                    </SelectItem>
+                    <SelectItem value="monthly">
+                      {copy.scheduleKinds.monthly}
+                    </SelectItem>
+                    <SelectItem value="quarterly">
+                      {copy.scheduleKinds.quarterly}
+                    </SelectItem>
+                    <SelectItem value="yearly">
+                      {copy.scheduleKinds.yearly}
+                    </SelectItem>
+                    <SelectItem value="interval">
+                      {copy.scheduleKinds.interval}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <AutoResizer initial duration={0.2} className="md:col-span-2">
+                <AutoTransition
+                  transitionKey={form.scheduleKind}
+                  duration={0.18}
+                  type="fade"
+                  initial={false}
+                  presenceMode="wait"
+                >
+                  {form.scheduleKind !== "interval" ? (
+                    <div
+                      key="calendar"
+                      className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+                    >
+                      <Field>
+                        <FieldLabel>{copy.timeLabel}</FieldLabel>
+                        <Select
+                          value={form.time}
+                          onValueChange={(time) => onChange({ time })}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-80">
+                            {TIME_OPTIONS.map((time) => (
+                              <SelectItem key={time} value={time}>
+                                {time}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field>
+                        <FieldLabel>{copy.timezoneLabel}</FieldLabel>
+                        <Select
+                          value={form.timezone}
+                          onValueChange={(timezone) => onChange({ timezone })}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-80">
+                            {timeZoneOptions.map((timeZone) => (
+                              <SelectItem
+                                key={timeZone.value}
+                                value={timeZone.value}
+                              >
+                                {timeZone.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      {form.scheduleKind === "weekly" ? (
+                        <Field>
+                          <FieldLabel>{copy.dayLabel}</FieldLabel>
+                          <Select
+                            value={form.dayOfWeek}
+                            onValueChange={(dayOfWeek) =>
+                              onChange({ dayOfWeek })
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {WEEK_DAY_INDEXES.map((index) => (
+                                <SelectItem key={index} value={String(index)}>
+                                  {copy.weekDays[index]}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                      ) : null}
+                      {form.scheduleKind === "monthly" ||
+                      form.scheduleKind === "quarterly" ||
+                      form.scheduleKind === "yearly" ? (
+                        <Field>
+                          <FieldLabel>{copy.dayOfMonthLabel}</FieldLabel>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={31}
+                            value={form.dayOfMonth}
+                            onChange={(event) =>
+                              onChange({ dayOfMonth: event.target.value })
+                            }
+                          />
+                        </Field>
+                      ) : null}
+                      {form.scheduleKind === "yearly" ? (
+                        <Field>
+                          <FieldLabel>{copy.monthLabel}</FieldLabel>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={12}
+                            value={form.month}
+                            onChange={(event) =>
+                              onChange({ month: event.target.value })
+                            }
+                          />
+                        </Field>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div key="interval" className="grid gap-4 md:grid-cols-2">
+                      <Field>
+                        <FieldLabel>{copy.intervalLabel}</FieldLabel>
+                        <Select
+                          value={form.everyMinutes}
+                          onValueChange={(everyMinutes) =>
+                            onChange({ everyMinutes })
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="30">
+                              {copy.intervalOptions.every30Minutes}
+                            </SelectItem>
+                            <SelectItem value="60">
+                              {copy.intervalOptions.everyHour}
+                            </SelectItem>
+                            <SelectItem value="360">
+                              {copy.intervalOptions.every6Hours}
+                            </SelectItem>
+                            <SelectItem value="720">
+                              {copy.intervalOptions.every12Hours}
+                            </SelectItem>
+                            <SelectItem value="1440">
+                              {copy.intervalOptions.everyDay}
+                            </SelectItem>
+                            <SelectItem value="10080">
+                              {copy.intervalOptions.every7Days}
+                            </SelectItem>
+                            <SelectItem value="43200">
+                              {copy.intervalOptions.every30Days}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    </div>
+                  )}
+                </AutoTransition>
+              </AutoResizer>
+            </div>
+          </RuleFormSection>
+
+          <RuleFormSection title={copy.deliverySection}>
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field>
+                  <FieldLabel>{copy.recipientKindLabel}</FieldLabel>
+                  <Select
+                    value={form.recipientKind}
+                    onValueChange={(value) => {
+                      if (value === "preset" || value === "custom") {
+                        onChange({
+                          recipientKind: value,
+                          recipientUserIds:
+                            value === "custom" &&
+                            form.recipientUserIds.length === 0
+                              ? defaultRecipientUserIds(members, currentUserId)
+                              : form.recipientUserIds,
+                        });
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="preset">
+                        {copy.recipientKinds.preset}
+                      </SelectItem>
+                      <SelectItem value="custom">
+                        {copy.recipientKinds.custom}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                {form.recipientKind === "preset" ? (
+                  <Field>
+                    <FieldLabel>{copy.recipientPresetLabel}</FieldLabel>
+                    <Select
+                      value={form.recipientPreset}
+                      onValueChange={(value) => {
+                        if (
+                          value === "creator" ||
+                          value === "team_admins" ||
+                          value === "all_team_members"
+                        ) {
+                          onChange({ recipientPreset: value });
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="creator">
+                          {copy.recipientModes.creator}
+                        </SelectItem>
+                        <SelectItem value="team_admins">
+                          {copy.recipientModes.team_admins}
+                        </SelectItem>
+                        <SelectItem value="all_team_members">
+                          {copy.recipientModes.all_team_members}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                ) : null}
+              </div>
+
+              <AutoResizer initial duration={0.2}>
+                <AutoTransition
+                  className="pb-1"
+                  transitionKey={form.recipientKind}
+                  duration={0.18}
+                  type="fade"
+                  initial={false}
+                  presenceMode="wait"
+                >
+                  {form.recipientKind === "custom" ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {members.length > 0 ? (
+                        members.map((member) => (
+                          <label
+                            key={member.userId}
+                            className="flex min-w-0 items-start gap-3 border px-3 py-2 text-sm"
+                          >
+                            <Checkbox
+                              checked={form.recipientUserIds.includes(
+                                member.userId,
+                              )}
+                              onCheckedChange={(checked) =>
+                                toggleRecipientUser(member.userId, !!checked)
+                              }
+                            />
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium">
+                                {memberName(member)}
+                              </span>
+                              <span className="block truncate text-xs text-muted-foreground">
+                                {member.email}
+                              </span>
+                            </span>
+                          </label>
+                        ))
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          {copy.noTeamMembers}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="h-1" />
+                  )}
+                </AutoTransition>
+              </AutoResizer>
             </div>
 
-            <Button type="button" variant="outline" onClick={addCondition}>
-              <RiAddLine />
-              <span>{copy.addCondition}</span>
-            </Button>
-          </div>
-        ) : null}
-
-        {form.type === "health" ? (
-          <div className="grid gap-4 md:grid-cols-3">
-            <Field>
-              <FieldLabel>{copy.noDataHoursLabel}</FieldLabel>
-              <Input
-                type="number"
-                min={1}
-                value={form.hours}
-                onChange={(event) => onChange({ hours: event.target.value })}
-              />
-            </Field>
-          </div>
-        ) : null}
-      </RuleFormSection>
-
-      <RuleFormSection title={copy.deliverySection}>
-        <div className="grid gap-4 md:grid-cols-3">
-          <Field>
-            <FieldLabel>{copy.cooldownLabel}</FieldLabel>
-            <Input
-              type="number"
-              min={0}
-              value={form.cooldownMinutes}
-              onChange={(event) =>
-                onChange({ cooldownMinutes: event.target.value })
-              }
-            />
-            <FieldDescription>{copy.cooldownDescription}</FieldDescription>
-          </Field>
+            <div className="space-y-2">
+              <Field>
+                <FieldLabel>{copy.cooldownLabel}</FieldLabel>
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem]">
+                  <Input
+                    type="number"
+                    min={0}
+                    value={form.cooldownValue}
+                    onChange={(event) =>
+                      onChange({ cooldownValue: event.target.value })
+                    }
+                  />
+                  <Select
+                    value={form.cooldownUnit}
+                    onValueChange={(value) => {
+                      if (
+                        value === "minutes" ||
+                        value === "hours" ||
+                        value === "days"
+                      ) {
+                        onChange({ cooldownUnit: value });
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="minutes">
+                        {copy.cooldownUnits.minutes}
+                      </SelectItem>
+                      <SelectItem value="hours">
+                        {copy.cooldownUnits.hours}
+                      </SelectItem>
+                      <SelectItem value="days">
+                        {copy.cooldownUnits.days}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </Field>
+              <p className="text-xs leading-5 text-muted-foreground">
+                {copy.cooldownDescription}
+              </p>
+            </div>
+          </RuleFormSection>
         </div>
-      </RuleFormSection>
 
-      <RuleFormSection title={copy.summarySection}>
-        <div className="space-y-2 text-sm">
-          <p>{ruleSummaryTitle(copy, form)}</p>
-          <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-            {summaryLines.map((line, index) => (
-              <li key={`${line}-${index}`}>{line}</li>
-            ))}
-          </ul>
-        </div>
-      </RuleFormSection>
+        <aside className="min-w-0 lg:sticky lg:top-4 lg:self-start">
+          <div className="space-y-4 border bg-muted/20 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-medium">{copy.summarySection}</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {copy.liveSummaryDescription}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Checkbox
+                  checked={form.enabled}
+                  onCheckedChange={(checked) =>
+                    onChange({ enabled: !!checked })
+                  }
+                  aria-label={copy.enabledLabel}
+                />
+                <span className="text-xs text-muted-foreground">
+                  {copy.enabledHint}
+                </span>
+              </div>
+            </div>
+
+            <AutoResizer initial duration={0.2}>
+              <AutoTransition
+                transitionKey={[
+                  form.type,
+                  form.siteId,
+                  form.recipientKind,
+                  form.recipientPreset,
+                  form.recipientUserIds.join(","),
+                  form.scheduleKind,
+                  form.reportType,
+                  form.combinator,
+                  summaryLines.join("|"),
+                ].join(":")}
+                duration={0.18}
+                type="fade"
+                initial={false}
+                presenceMode="wait"
+              >
+                <div className="space-y-4 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      {copy.nameLabel}
+                    </p>
+                    <p className="mt-1 break-words font-medium">
+                      {form.name.trim() || namePlaceholder}
+                    </p>
+                  </div>
+                  <div className="grid gap-3 text-xs">
+                    <div>
+                      <p className="text-muted-foreground">{copy.siteLabel}</p>
+                      <p className="mt-1 text-foreground">
+                        {selectedSite
+                          ? `${selectedSite.name} (${selectedSite.domain})`
+                          : copy.chooseSite}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">
+                        {copy.scheduleSection}
+                      </p>
+                      <p className="mt-1 text-foreground">
+                        {scheduleTextFromForm(
+                          copy,
+                          form,
+                          timeZoneOptionTimestamp,
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">
+                        {copy.recipientLabel}
+                      </p>
+                      <p className="mt-1 text-foreground">
+                        {recipientTextFromForm(copy, form, memberByUserId)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">
+                        {copy.cooldownLabel}
+                      </p>
+                      <p className="mt-1 text-foreground">
+                        {cooldownLabel(copy, form)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <p
+                      className={
+                        form.type === "report"
+                          ? "text-xs text-muted-foreground"
+                          : undefined
+                      }
+                    >
+                      {ruleSummaryTitle(copy, form, timeZoneOptionTimestamp)}
+                    </p>
+                    {summaryLines.length > 0 ? (
+                      <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                        {summaryLines.map((line, index) => (
+                          <li key={`${line}-${index}`}>{line}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                </div>
+              </AutoTransition>
+            </AutoResizer>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
@@ -1317,6 +1756,7 @@ export function TeamNotificationsClient({
   const copy = messages.teamManagement.notifications;
   const [rules, setRules] = useState<NotificationRuleData[]>([]);
   const [sites, setSites] = useState<SiteData[]>([]);
+  const [members, setMembers] = useState<MemberData[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -1326,6 +1766,9 @@ export function TeamNotificationsClient({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [previewRule, setPreviewRule] = useState<NotificationRuleData | null>(
+    null,
+  );
   const [previewResult, setPreviewResult] =
     useState<NotificationRuleEvaluationData | null>(null);
   const [form, setForm] = useState<RuleFormState>(EMPTY_FORM);
@@ -1334,6 +1777,10 @@ export function TeamNotificationsClient({
   const siteById = useMemo(
     () => new Map(sites.map((site) => [site.id, site])),
     [sites],
+  );
+  const memberByUserId = useMemo(
+    () => new Map(members.map((member) => [member.userId, member])),
+    [members],
   );
   const enabledCount = useMemo(
     () => rules.filter((rule) => rule.enabled).length,
@@ -1344,13 +1791,16 @@ export function TeamNotificationsClient({
   async function loadRules() {
     setLoading(true);
     try {
-      const [nextRules, nextSites, emailConfig] = await Promise.all([
-        fetchNotificationRules({ teamId }),
-        fetchAdminSites(teamId),
-        fetchNotificationEmailConfig(),
-      ]);
+      const [nextRules, nextSites, nextMembers, emailConfig] =
+        await Promise.all([
+          fetchNotificationRules({ teamId }),
+          fetchAdminSites(teamId),
+          fetchAdminMembers(teamId),
+          fetchNotificationEmailConfig(),
+        ]);
       setRules(nextRules);
       setSites(nextSites);
+      setMembers(nextMembers);
       setEmailConfigured(
         emailConfig.enabled &&
           emailConfig.provider === "resend" &&
@@ -1375,8 +1825,10 @@ export function TeamNotificationsClient({
       ...EMPTY_FORM,
       type,
       siteId: firstSite?.id ?? "",
-      name: defaultName(copy, type, firstSite),
+      name: "",
       scheduleKind: type === "report" ? "daily" : "interval",
+      timezone: browserDefaultTimeZone(),
+      recipientUserIds: defaultRecipientUserIds(members, currentUserId),
     });
     setDialogOpen(true);
   }
@@ -1390,6 +1842,10 @@ export function TeamNotificationsClient({
     if (saving) return;
     if (!form.siteId) {
       toast.error(copy.pleaseChooseSite);
+      return;
+    }
+    if (form.recipientKind === "custom" && form.recipientUserIds.length === 0) {
+      toast.error(copy.pleaseChooseRecipients);
       return;
     }
     setSaving(true);
@@ -1458,11 +1914,13 @@ export function TeamNotificationsClient({
 
   async function handlePreview(rule: NotificationRuleData) {
     if (previewingId) return;
+    setPreviewRule(rule);
+    setPreviewResult(null);
+    setPreviewDialogOpen(true);
     setPreviewingId(rule.id);
     try {
       const result = await previewNotificationRule({ ruleId: rule.id });
       setPreviewResult(result);
-      setPreviewDialogOpen(true);
     } catch {
       toast.error(copy.previewFailed);
     } finally {
@@ -1577,9 +2035,7 @@ export function TeamNotificationsClient({
                         <TableHead>{copy.columns.site}</TableHead>
                         <TableHead>{copy.columns.recipient}</TableHead>
                         <TableHead>{copy.columns.schedule}</TableHead>
-                        <TableHead>{copy.columns.condition}</TableHead>
                         <TableHead>{copy.lastChecked}</TableHead>
-                        <TableHead>{copy.lastTriggered}</TableHead>
                         <TableHead>{copy.columns.nextRun}</TableHead>
                         <TableHead>{copy.columns.status}</TableHead>
                         <TableHead>{copy.actions}</TableHead>
@@ -1600,33 +2056,26 @@ export function TeamNotificationsClient({
                           <TableCell>
                             {recipientLabel(
                               copy,
-                              String(rule.recipient.mode ?? ""),
+                              rule.recipient,
+                              memberByUserId,
                             )}
                           </TableCell>
                           <TableCell>{scheduleLabel(copy, rule)}</TableCell>
-                          <TableCell>{conditionLabel(copy, rule)}</TableCell>
                           <TableCell>
                             {formatRunAt(locale, rule.lastCheckedAt)}
                           </TableCell>
                           <TableCell>
-                            {formatRunAt(locale, rule.lastTriggeredAt)}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-col gap-1">
+                            {isCoolingDown(rule, nowSeconds) ? (
+                              <span className="text-xs font-medium text-foreground/70">
+                                {formatI18nTemplate(copy.coolingDownUntil, {
+                                  time: formatRunAt(locale, rule.cooldownUntil),
+                                })}
+                              </span>
+                            ) : (
                               <span>
                                 {nextRunLabel(copy, locale, rule, nowSeconds)}
                               </span>
-                              {isCoolingDown(rule, nowSeconds) ? (
-                                <Badge variant="secondary">
-                                  {formatI18nTemplate(copy.coolingDownUntil, {
-                                    time: formatRunAt(
-                                      locale,
-                                      rule.cooldownUntil,
-                                    ),
-                                  })}
-                                </Badge>
-                              ) : null}
-                            </div>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Badge
@@ -1757,57 +2206,195 @@ export function TeamNotificationsClient({
       </Dialog>
 
       <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
-        <DialogContent className="max-h-[min(760px,calc(100vh-2rem))] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[min(860px,calc(100vh-2rem))] max-w-5xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{copy.previewDialogTitle}</DialogTitle>
             <DialogDescription>
               {copy.previewDialogDescription}
             </DialogDescription>
           </DialogHeader>
-          {previewResult ? (
-            <div className="grid gap-4 text-sm">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
+          <div className="space-y-5">
+            {previewRule ? (
+              <div className="grid gap-3 border bg-muted/20 p-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    {copy.columns.name}
+                  </p>
+                  <p className="mt-1 font-medium">{previewRule.name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    {copy.columns.type}
+                  </p>
+                  <p className="mt-1">
+                    {ruleTypeLabel(copy, previewRule.type)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    {copy.columns.site}
+                  </p>
+                  <p className="mt-1">
+                    {siteLabel(siteById, previewRule.siteId)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    {copy.columns.schedule}
+                  </p>
+                  <p className="mt-1">{scheduleLabel(copy, previewRule)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    {copy.columns.condition}
+                  </p>
+                  <p className="mt-1">{conditionLabel(copy, previewRule)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    {copy.columns.recipient}
+                  </p>
+                  <p className="mt-1">
+                    {recipientLabel(
+                      copy,
+                      previewRule.recipient,
+                      memberByUserId,
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    {copy.previewFields.createdAt}
+                  </p>
+                  <p className="mt-1">
+                    {formatRunAt(locale, previewRule.createdAt)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    {copy.previewFields.updatedAt}
+                  </p>
+                  <p className="mt-1">
+                    {formatRunAt(locale, previewRule.updatedAt)}
+                  </p>
+                </div>
+                <div>
                   <p className="text-xs text-muted-foreground">
                     {copy.previewFields.status}
                   </p>
-                  <Badge variant="outline">{previewResult.status}</Badge>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">
-                    {copy.previewFields.summary}
-                  </p>
-                  <p className="break-words">{previewSummary(previewResult)}</p>
+                  <Badge
+                    className="mt-1"
+                    variant={previewRule.enabled ? "default" : "secondary"}
+                  >
+                    {previewRule.enabled
+                      ? copy.status.enabled
+                      : copy.status.disabled}
+                  </Badge>
                 </div>
               </div>
-              {previewResult.status === "triggered" ? (
-                <>
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">
-                      {copy.previewFields.title}
-                    </p>
-                    <p className="font-medium">{previewResult.message.title}</p>
+            ) : null}
+
+            <AutoResizer initial duration={0.2}>
+              <AutoTransition
+                transitionKey={
+                  previewingId
+                    ? "loading"
+                    : previewResult
+                      ? previewResult.status
+                      : "empty"
+                }
+                duration={0.18}
+                type="fade"
+                initial={false}
+                presenceMode="wait"
+              >
+                {previewingId ? (
+                  <div className="flex h-56 items-center justify-center text-sm text-muted-foreground">
+                    <Spinner className="mr-2 size-4" />
+                    {copy.previewFields.loadingContent}
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">
-                      {copy.previewFields.bodyText}
-                    </p>
-                    <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-3 text-xs leading-5">
-                      {previewResult.message.bodyText}
-                    </pre>
+                ) : previewResult ? (
+                  <div className="space-y-5 text-sm">
+                    <div className="grid gap-3 sm:grid-cols-[12rem_minmax(0,1fr)]">
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">
+                          {copy.previewFields.status}
+                        </p>
+                        <Badge variant="outline">{previewResult.status}</Badge>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">
+                          {copy.previewFields.summary}
+                        </p>
+                        <p className="break-words">
+                          {previewSummary(previewResult)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {previewResult.status === "triggered" ? (
+                      <div className="space-y-5">
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">
+                            {copy.previewFields.title}
+                          </p>
+                          <p className="font-medium">
+                            {previewResult.message.title}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-xs text-muted-foreground">
+                            {copy.previewFields.htmlPreview}
+                          </p>
+                          {previewResult.message.bodyHtml ? (
+                            <iframe
+                              title={copy.previewFields.htmlPreview}
+                              sandbox=""
+                              srcDoc={previewResult.message.bodyHtml}
+                              className="h-[520px] w-full border bg-white"
+                            />
+                          ) : (
+                            <div className="flex h-32 items-center justify-center border bg-muted/20 text-xs text-muted-foreground">
+                              {copy.previewFields.noHtmlPreview}
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">
+                            {copy.previewFields.bodyText}
+                          </p>
+                          <pre className="max-h-64 overflow-auto whitespace-pre-wrap bg-muted p-3 text-xs leading-5">
+                            {previewResult.message.bodyText}
+                          </pre>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">
+                        {copy.previewFields.data}
+                      </p>
+                      <JsonTreePanel
+                        value={previewResult}
+                        labels={{
+                          expandField: messages.events.expandField,
+                          collapseField: messages.events.collapseField,
+                          copyJson: messages.events.copyJson,
+                          copiedJson: messages.events.copiedJson,
+                          copyJsonFailed: messages.events.copyJsonFailed,
+                          copyValue: messages.events.copyValue,
+                          copiedValue: messages.events.copiedValue,
+                          copyValueFailed: messages.events.copyValueFailed,
+                        }}
+                      />
+                    </div>
                   </div>
-                </>
-              ) : null}
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">
-                  {copy.previewFields.data}
-                </p>
-                <pre className="max-h-64 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">
-                  {jsonBlock(previewResult.data)}
-                </pre>
-              </div>
-            </div>
-          ) : null}
+                ) : (
+                  <div className="h-1" />
+                )}
+              </AutoTransition>
+            </AutoResizer>
+          </div>
           <DialogFooter>
             <Button
               type="button"
@@ -1821,26 +2408,32 @@ export function TeamNotificationsClient({
       </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[min(820px,calc(100vh-2rem))] max-w-3xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {form.id ? copy.editRule : copy.createRule}
-            </DialogTitle>
-            <DialogDescription>{copy.dialogDescription}</DialogDescription>
-          </DialogHeader>
-          <RuleFormFields
-            copy={copy}
-            locale={locale}
-            form={form}
-            sites={sites}
-            onChange={(patch) =>
-              setForm((current) => ({
-                ...current,
-                ...patch,
-              }))
-            }
-          />
-          <DialogFooter>
+        <DialogContent className="flex max-h-[min(860px,calc(100vh-1rem))] max-w-6xl flex-col overflow-hidden p-0">
+          <div className="border-b p-4 sm:p-6">
+            <DialogHeader>
+              <DialogTitle>
+                {form.id ? copy.editRule : copy.createRule}
+              </DialogTitle>
+              <DialogDescription>{copy.dialogDescription}</DialogDescription>
+            </DialogHeader>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+            <RuleFormFields
+              copy={copy}
+              locale={locale}
+              form={form}
+              sites={sites}
+              members={members}
+              currentUserId={currentUserId}
+              onChange={(patch) =>
+                setForm((current) => ({
+                  ...current,
+                  ...patch,
+                }))
+              }
+            />
+          </div>
+          <DialogFooter className="border-t p-4 sm:p-6">
             <Button
               type="button"
               variant="outline"

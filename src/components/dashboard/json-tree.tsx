@@ -244,7 +244,7 @@ export function JsonTreePanel({
   return (
     <div
       className={cn(
-        "relative overflow-x-auto border bg-muted/20 p-3 pr-10 font-mono text-xs leading-relaxed",
+        "relative min-w-0 max-w-full overflow-x-auto border bg-muted/20 p-3 pr-10 font-mono text-xs leading-relaxed",
         className,
       )}
     >

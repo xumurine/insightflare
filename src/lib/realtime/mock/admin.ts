@@ -4,6 +4,7 @@ import type {
   NotificationMessageData,
   NotificationRuleData,
 } from "@/lib/edge-client-types/admin";
+import type { Locale } from "@/lib/i18n/config";
 import {
   DEMO_SITE_PROFILES,
   DEMO_TEAMS,
@@ -399,10 +400,12 @@ export function createDemoNotificationRule(
 
 export function generateDemoNotificationMessages(
   teamId: string,
+  locale: Locale = "en",
 ): NotificationMessageData[] {
   const now = nowSeconds();
   const tid = teamId || getDemoTeams()[0].id;
   const sites = getDemoSites(tid);
+  const zh = locale === "zh";
   return [
     demoNotificationMessage({
       id: "demo-notification-message-attention",
@@ -412,10 +415,13 @@ export function generateDemoNotificationMessages(
       type: "threshold",
       severity: "warning",
       requiresAttention: true,
-      title: "Traffic threshold reached",
-      summary: "Demo Store crossed the configured hourly views threshold.",
-      bodyText:
-        "Demo Store crossed the configured hourly views threshold in the latest check.\n\nViews reached 1,428 in the last hour, which is 18% above the configured limit. Organic search and paid social were the main contributors.",
+      title: zh ? "流量阈值已触发" : "Traffic threshold reached",
+      summary: zh
+        ? "Demo Store 超过了配置的小时浏览量阈值。"
+        : "Demo Store crossed the configured hourly views threshold.",
+      bodyText: zh
+        ? "Demo Store 在最近一次检查中超过了小时浏览量阈值。\n\n过去 1 小时浏览量达到 1,428，比配置上限高 18%。主要增长来自自然搜索和付费社交流量。"
+        : "Demo Store crossed the configured hourly views threshold in the latest check.\n\nViews reached 1,428 in the last hour, which is 18% above the configured limit. Organic search and paid social were the main contributors.",
       readAt: null,
       createdAt: now - 25 * 60,
     }),
@@ -427,10 +433,13 @@ export function generateDemoNotificationMessages(
       type: "threshold",
       severity: "critical",
       requiresAttention: true,
-      title: "Checkout conversion dropped",
-      summary: "Checkout completions are below the demo alert threshold.",
-      bodyText:
-        "Checkout completions are below the demo alert threshold.\n\nThe latest hourly window recorded 84 completed checkout sessions against a threshold of 120. Review campaign traffic quality and payment gateway health before the next dispatch window.",
+      title: zh ? "结账转化下降" : "Checkout conversion dropped",
+      summary: zh
+        ? "结账完成数低于 demo 告警阈值。"
+        : "Checkout completions are below the demo alert threshold.",
+      bodyText: zh
+        ? "结账完成数低于 demo 告警阈值。\n\n最近 1 小时记录到 84 次完成结账，低于 120 的阈值。建议在下一次投递窗口前检查广告流量质量和支付网关状态。"
+        : "Checkout completions are below the demo alert threshold.\n\nThe latest hourly window recorded 84 completed checkout sessions against a threshold of 120. Review campaign traffic quality and payment gateway health before the next dispatch window.",
       deliveryStatus: "partial",
       deliveryResults: {
         inApp: { status: "sent" },
@@ -448,10 +457,13 @@ export function generateDemoNotificationMessages(
       type: "health",
       severity: "critical",
       requiresAttention: true,
-      title: "Tracking has gone quiet",
-      summary: "No eligible events have arrived for the demo docs site.",
-      bodyText:
-        "No eligible events have arrived for the demo docs site for more than six hours.\n\nThe rule is configured to alert all team members because this usually indicates a script deployment, CSP, or DNS issue.",
+      title: zh ? "追踪数据已中断" : "Tracking has gone quiet",
+      summary: zh
+        ? "demo 文档站点没有收到符合条件的事件。"
+        : "No eligible events have arrived for the demo docs site.",
+      bodyText: zh
+        ? "demo 文档站点已超过 6 小时没有收到符合条件的事件。\n\n这条规则会通知所有团队成员，因为这通常意味着脚本发布、CSP 或 DNS 配置存在问题。"
+        : "No eligible events have arrived for the demo docs site for more than six hours.\n\nThe rule is configured to alert all team members because this usually indicates a script deployment, CSP, or DNS issue.",
       readAt: null,
       createdAt: now - 9 * 60 * 60,
     }),
@@ -462,12 +474,105 @@ export function generateDemoNotificationMessages(
       type: "report",
       severity: "info",
       requiresAttention: false,
-      title: "Daily traffic report is ready",
-      summary: "Your demo team report was generated successfully.",
-      bodyText:
-        "Your demo team report was generated successfully.\n\nAcross all demo sites, visitors increased by 12.4% day over day. The strongest gains came from the Launch Microsite and SaaS Console profiles.",
+      title: zh ? "日报已生成" : "Daily traffic report is ready",
+      summary: zh
+        ? "你的 demo 团队报告已成功生成。"
+        : "Your demo team report was generated successfully.",
+      bodyText: zh
+        ? "你的 demo 团队报告已成功生成。\n\n所有 demo 站点的访客数环比昨日增长 12.4%。增长最明显的是 Launch Microsite 和 SaaS Console。"
+        : "Your demo team report was generated successfully.\n\nAcross all demo sites, visitors increased by 12.4% day over day. The strongest gains came from the Launch Microsite and SaaS Console profiles.",
       readAt: now - 2 * 60 * 60,
       createdAt: now - 3 * 60 * 60,
+    }),
+    demoNotificationMessage({
+      id: "demo-notification-message-weekly-report",
+      teamId: tid,
+      siteId: null,
+      ruleId: "demo-notification-rule-daily",
+      type: "report",
+      severity: "success",
+      requiresAttention: false,
+      title: zh ? "周报已送达" : "Weekly report delivered",
+      summary: zh
+        ? "本周活跃访客和会话质量均有提升。"
+        : "Active visitors and session quality improved this week.",
+      bodyText: zh
+        ? "本周报告已完成投递。\n\n活跃访客增长 8.1%，平均会话时长增加 34 秒。报告建议继续观察产品页到结账页的转化路径。"
+        : "The weekly report has been delivered.\n\nActive visitors increased by 8.1%, and average session duration improved by 34 seconds. The report recommends watching the product-to-checkout path.",
+      readAt: now - 26 * 60 * 60,
+      createdAt: now - 28 * 60 * 60,
+    }),
+    demoNotificationMessage({
+      id: "demo-notification-message-campaign-spike",
+      teamId: tid,
+      siteId: sites[0]?.id ?? null,
+      ruleId: "demo-notification-rule-hourly",
+      type: "threshold",
+      severity: "success",
+      requiresAttention: false,
+      title: zh ? "活动流量明显增长" : "Campaign traffic spiked",
+      summary: zh
+        ? "Launch Microsite 的活动入口带来了明显增长。"
+        : "Launch Microsite saw a strong increase from campaign entry points.",
+      bodyText: zh
+        ? "最近 30 分钟的访客数高于常规基线。\n\n活动入口贡献了 63% 的新增会话，移动端表现尤其明显。"
+        : "Visitors in the last 30 minutes are above the normal baseline.\n\nCampaign entry points contributed 63% of new sessions, with the strongest movement on mobile.",
+      readAt: null,
+      createdAt: now - 95 * 60,
+    }),
+    demoNotificationMessage({
+      id: "demo-notification-message-api-latency",
+      teamId: tid,
+      siteId: sites[2]?.id ?? sites[0]?.id ?? null,
+      ruleId: "demo-notification-rule-no-data",
+      type: "health",
+      severity: "warning",
+      requiresAttention: true,
+      title: zh ? "事件写入延迟升高" : "Event ingest latency increased",
+      summary: zh
+        ? "最近一批事件的写入延迟高于 demo 基线。"
+        : "The latest event batch is above the demo ingest latency baseline.",
+      bodyText: zh
+        ? "事件写入延迟在最近 15 分钟内升高。\n\n数据仍在接收，但建议检查边缘函数和数据库写入耗时，避免后续报告延迟。"
+        : "Event ingest latency increased during the last 15 minutes.\n\nData is still arriving, but review edge function and database write timing to avoid delayed reports.",
+      readAt: null,
+      createdAt: now - 2 * 60 * 60,
+    }),
+    demoNotificationMessage({
+      id: "demo-notification-message-monthly-report",
+      teamId: tid,
+      siteId: null,
+      ruleId: "demo-notification-rule-daily",
+      type: "report",
+      severity: "info",
+      requiresAttention: false,
+      title: zh ? "月度报告可查看" : "Monthly report is available",
+      summary: zh
+        ? "本月概览已经整理完成，可用于团队复盘。"
+        : "The monthly overview is ready for team review.",
+      bodyText: zh
+        ? "本月报告已经生成。\n\n留存访问占比提升到 41%，回访用户主要来自产品文档、价格页和控制台入口。"
+        : "The monthly report has been generated.\n\nReturning visit share increased to 41%, led by product docs, pricing, and console entry points.",
+      readAt: now - 4 * 24 * 60 * 60,
+      createdAt: now - 4 * 24 * 60 * 60 - 20 * 60,
+    }),
+    demoNotificationMessage({
+      id: "demo-notification-message-recovery",
+      teamId: tid,
+      siteId: sites[1]?.id ?? sites[0]?.id ?? null,
+      ruleId: "demo-notification-rule-no-data",
+      type: "health",
+      severity: "success",
+      requiresAttention: false,
+      title: zh ? "追踪已恢复" : "Tracking recovered",
+      summary: zh
+        ? "文档站点已重新收到事件。"
+        : "The docs site is receiving events again.",
+      bodyText: zh
+        ? "健康检查已恢复正常。\n\n最近一次检查收到 326 条事件，告警条件不再满足。"
+        : "The health check has returned to normal.\n\nThe latest check received 326 events, so the alert condition no longer matches.",
+      readAt: now - 6 * 60 * 60,
+      createdAt: now - 7 * 60 * 60,
     }),
     demoNotificationMessage({
       id: "demo-notification-message-test",
@@ -476,10 +581,13 @@ export function generateDemoNotificationMessages(
       type: "test",
       severity: "success",
       requiresAttention: false,
-      title: "Demo test notification delivered",
-      summary: "In-app delivery is available for this demo workspace.",
-      bodyText:
-        "In-app delivery is available for this demo workspace.\n\nEmail is intentionally simulated in demo mode, so this message does not require a configured Resend key.",
+      title: zh ? "demo 测试通知已送达" : "Demo test notification delivered",
+      summary: zh
+        ? "此 demo 工作区可以正常接收站内通知。"
+        : "In-app delivery is available for this demo workspace.",
+      bodyText: zh
+        ? "此 demo 工作区可以正常接收站内通知。\n\ndemo 模式会模拟邮件投递，因此不需要配置 Resend 密钥。"
+        : "In-app delivery is available for this demo workspace.\n\nEmail is intentionally simulated in demo mode, so this message does not require a configured Resend key.",
       readAt: now - 65 * 60,
       createdAt: now - 70 * 60,
     }),

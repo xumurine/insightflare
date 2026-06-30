@@ -1011,9 +1011,12 @@ teamManagement:
     dialogDescription: Configure a basic notification rule for this team.
     ruleInfoSection: Rule info
     scheduleSection: Schedule
+    sendScheduleSection: Send time
+    checkSection: Check frequency
     conditionSection: Conditions
     deliverySection: Delivery
     summarySection: Summary
+    liveSummaryDescription: Confirm how this rule will run.
     nameLabel: Name
     siteLabel: Site
     chooseSite: Choose site
@@ -1045,9 +1048,10 @@ teamManagement:
     operatorLabel: Operator
     valueLabel: Value
     cooldownLabel: Cooldown
+    cooldownDescription: Reports will not be sent again during this cooldown window.
     noDataHoursLabel: No data hours
-    cooldownDescription: Minutes between repeated alerts.
     pleaseChooseSite: Please choose a site.
+    pleaseChooseRecipients: Please choose at least one recipient.
     ruleCreated: Rule created.
     ruleUpdated: Rule updated.
     createRuleFailed: Failed to create rule.
@@ -1089,6 +1093,7 @@ teamManagement:
     summaryWhenSingleCondition: "When this condition matches, send a {type} notification:"
     summaryConditionThreshold: "{window} {metric} {operator} {value}"
     summaryConditionChange: "{window} {metric} {mode} change {operator} {value}"
+    summaryReportSchedule: "{period}: {schedule}"
     summaryReportCondition: "Generate the {period} report"
     summaryMilestoneCondition: "{metric} reaches every {step}"
     summaryHealthCondition: "No data for {hours} hours"
@@ -1118,8 +1123,13 @@ teamManagement:
       status: Status
       summary: Summary
       title: Title
+      htmlPreview: HTML preview
       bodyText: Body text
       data: Data
+      createdAt: Created at
+      updatedAt: Updated at
+      loadingContent: Loading evaluated report content
+      noHtmlPreview: This preview has no HTML content.
     ruleTypes:
       report: Report
       milestone: Milestone
@@ -1127,11 +1137,24 @@ teamManagement:
       change: Change
       health: Health
       test: Test
+    ruleTypeDescriptions:
+      report: Send a site overview on a schedule
+      milestone: Notify when a metric reaches each step
+      threshold: Notify when a metric crosses a limit
+      change: Notify on period-over-period movement
+      health: Notify when tracking goes quiet
     recipientModes:
       creator: Creator
       team_admins: Team admins
       all_team_members: All members
       users: Selected users
+    recipientKindLabel: Recipient type
+    recipientPresetLabel: Preset
+    customRecipientsEmpty: No recipients selected
+    noTeamMembers: No team members available.
+    recipientKinds:
+      preset: Preset
+      custom: Custom
     scheduleKinds:
       daily: Daily
       weekly: Weekly
@@ -1139,6 +1162,16 @@ teamManagement:
       quarterly: Quarterly
       yearly: Yearly
       interval: Interval
+    reportPeriods:
+      daily: Daily report
+      weekly: Weekly report
+      monthly: Monthly report
+      quarterly: Quarterly report
+      yearly: Yearly report
+    cooldownUnits:
+      minutes: minutes
+      hours: hours
+      days: days
     intervalOptions:
       every30Minutes: Every 30 minutes
       everyHour: Every hour

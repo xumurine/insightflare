@@ -980,9 +980,12 @@ teamManagement:
     dialogDescription: 为当前团队配置一条基础通知规则。
     ruleInfoSection: 规则信息
     scheduleSection: 计划
+    sendScheduleSection: 发送时间
+    checkSection: 检查频率
     conditionSection: 条件
     deliverySection: 投递
     summarySection: 摘要
+    liveSummaryDescription: 实时确认这条规则会如何运行。
     nameLabel: 名称
     siteLabel: 站点
     chooseSite: 选择站点
@@ -1014,9 +1017,10 @@ teamManagement:
     operatorLabel: 操作符
     valueLabel: 阈值
     cooldownLabel: 冷却时间
+    cooldownDescription: 在这段时间内，不会重复发送报告。
     noDataHoursLabel: 无数据小时数
-    cooldownDescription: 重复告警之间间隔的分钟数。
     pleaseChooseSite: 请选择一个站点。
+    pleaseChooseRecipients: 请至少选择一个接收人。
     ruleCreated: 规则已创建。
     ruleUpdated: 规则已更新。
     createRuleFailed: 创建规则失败。
@@ -1058,6 +1062,7 @@ teamManagement:
     summaryWhenSingleCondition: "当满足此条件时，发送{type}通知："
     summaryConditionThreshold: "{window}{metric}{operator}{value}"
     summaryConditionChange: "{window}{metric}{mode}变化{operator}{value}"
+    summaryReportSchedule: "{period}：{schedule}"
     summaryReportCondition: "生成{period}报告"
     summaryMilestoneCondition: "{metric} 每达到 {step} 触发"
     summaryHealthCondition: "{hours} 小时无数据"
@@ -1087,8 +1092,13 @@ teamManagement:
       status: 状态
       summary: 摘要
       title: 标题
+      htmlPreview: HTML 预览
       bodyText: 正文
       data: 数据
+      createdAt: 创建时间
+      updatedAt: 更新时间
+      loadingContent: 正在加载实际报告内容
+      noHtmlPreview: 当前预览没有 HTML 内容。
     ruleTypes:
       report: 报告
       milestone: 里程碑
@@ -1096,11 +1106,24 @@ teamManagement:
       change: 变化
       health: 健康
       test: 测试
+    ruleTypeDescriptions:
+      report: 定期发送站点概览
+      milestone: 指标达到阶段值时通知
+      threshold: 指标高于或低于阈值时通知
+      change: 指标相对上个周期变化时通知
+      health: 长时间无数据时通知
     recipientModes:
       creator: 创建者
       team_admins: 团队管理员
       all_team_members: 全部团队成员
       users: 指定用户
+    recipientKindLabel: 接收人类型
+    recipientPresetLabel: 预设
+    customRecipientsEmpty: 未选择接收人
+    noTeamMembers: 当前没有可选团队成员。
+    recipientKinds:
+      preset: 预设
+      custom: 自定义
     scheduleKinds:
       daily: 每天
       weekly: 每周
@@ -1108,6 +1131,16 @@ teamManagement:
       quarterly: 每季度
       yearly: 每年
       interval: 间隔
+    reportPeriods:
+      daily: 日报
+      weekly: 周报
+      monthly: 月报
+      quarterly: 季度报告
+      yearly: 年报
+    cooldownUnits:
+      minutes: 分钟
+      hours: 小时
+      days: 天
     intervalOptions:
       every30Minutes: 每 30 分钟
       everyHour: 每小时
