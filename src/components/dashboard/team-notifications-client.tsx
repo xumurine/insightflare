@@ -199,6 +199,10 @@ const REPORT_TYPES: ReportType[] = [
 ];
 const WEEK_DAY_INDEXES = [0, 1, 2, 3, 4, 5, 6] as const;
 
+function scheduleKindFromReportType(reportType: ReportType): ScheduleKind {
+  return reportType;
+}
+
 function isRuleFormType(value: string): value is RuleFormType {
   return (
     value === "report" ||
@@ -926,7 +930,10 @@ function RuleFormFields({
               onClick={() =>
                 onChange({
                   type,
-                  scheduleKind: type === "report" ? "daily" : "interval",
+                  scheduleKind:
+                    type === "report"
+                      ? scheduleKindFromReportType(form.reportType)
+                      : "interval",
                 })
               }
             >
@@ -991,8 +998,12 @@ function RuleFormFields({
                       <Select
                         value={form.reportType}
                         onValueChange={(value) => {
-                          if (isReportType(value))
-                            onChange({ reportType: value });
+                          if (isReportType(value)) {
+                            onChange({
+                              reportType: value,
+                              scheduleKind: scheduleKindFromReportType(value),
+                            });
+                          }
                         }}
                       >
                         <SelectTrigger className="w-full">
@@ -1281,43 +1292,150 @@ function RuleFormFields({
                 : copy.checkSection
             }
           >
-            <div className="grid gap-4 md:grid-cols-3">
-              <Field>
-                <FieldLabel>{copy.scheduleLabel}</FieldLabel>
-                <Select
-                  value={form.scheduleKind}
-                  onValueChange={(value) => {
-                    if (isScheduleKind(value))
-                      onChange({ scheduleKind: value });
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="daily">
-                      {copy.scheduleKinds.daily}
-                    </SelectItem>
-                    <SelectItem value="weekly">
-                      {copy.scheduleKinds.weekly}
-                    </SelectItem>
-                    <SelectItem value="monthly">
-                      {copy.scheduleKinds.monthly}
-                    </SelectItem>
-                    <SelectItem value="quarterly">
-                      {copy.scheduleKinds.quarterly}
-                    </SelectItem>
-                    <SelectItem value="yearly">
-                      {copy.scheduleKinds.yearly}
-                    </SelectItem>
-                    <SelectItem value="interval">
-                      {copy.scheduleKinds.interval}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-[11rem_minmax(0,1fr)]">
+                <Field>
+                  <FieldLabel>{copy.scheduleLabel}</FieldLabel>
+                  <Select
+                    value={form.scheduleKind}
+                    onValueChange={(value) => {
+                      if (isScheduleKind(value)) {
+                        onChange({
+                          scheduleKind: value,
+                          ...(form.type === "report" && isReportType(value)
+                            ? { reportType: value }
+                            : {}),
+                        });
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="daily">
+                        {copy.scheduleKinds.daily}
+                      </SelectItem>
+                      <SelectItem value="weekly">
+                        {copy.scheduleKinds.weekly}
+                      </SelectItem>
+                      <SelectItem value="monthly">
+                        {copy.scheduleKinds.monthly}
+                      </SelectItem>
+                      <SelectItem value="quarterly">
+                        {copy.scheduleKinds.quarterly}
+                      </SelectItem>
+                      <SelectItem value="yearly">
+                        {copy.scheduleKinds.yearly}
+                      </SelectItem>
+                      <SelectItem value="interval">
+                        {copy.scheduleKinds.interval}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
 
-              <AutoResizer initial duration={0.2} className="md:col-span-2">
+                <AutoResizer initial duration={0.2}>
+                  <AutoTransition
+                    transitionKey={form.scheduleKind}
+                    duration={0.18}
+                    type="fade"
+                    initial={false}
+                    presenceMode="wait"
+                  >
+                    {form.scheduleKind !== "interval" ? (
+                      <div
+                        key="calendar-primary"
+                        className="grid gap-4 md:grid-cols-[11rem_minmax(0,1fr)]"
+                      >
+                        <Field>
+                          <FieldLabel>{copy.timeLabel}</FieldLabel>
+                          <Select
+                            value={form.time}
+                            onValueChange={(time) => onChange({ time })}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-80">
+                              {TIME_OPTIONS.map((time) => (
+                                <SelectItem key={time} value={time}>
+                                  {time}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                        <Field className="min-w-0">
+                          <FieldLabel>{copy.timezoneLabel}</FieldLabel>
+                          <Select
+                            value={form.timezone}
+                            onValueChange={(timezone) => onChange({ timezone })}
+                          >
+                            <SelectTrigger className="w-full min-w-0">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-80">
+                              {timeZoneOptions.map((timeZone) => (
+                                <SelectItem
+                                  key={timeZone.value}
+                                  value={timeZone.value}
+                                >
+                                  {timeZone.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                      </div>
+                    ) : (
+                      <div
+                        key="interval-primary"
+                        className="grid gap-4 md:grid-cols-[minmax(0,11rem)]"
+                      >
+                        <Field>
+                          <FieldLabel>{copy.intervalLabel}</FieldLabel>
+                          <Select
+                            value={form.everyMinutes}
+                            onValueChange={(everyMinutes) =>
+                              onChange({ everyMinutes })
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="30">
+                                {copy.intervalOptions.every30Minutes}
+                              </SelectItem>
+                              <SelectItem value="60">
+                                {copy.intervalOptions.everyHour}
+                              </SelectItem>
+                              <SelectItem value="360">
+                                {copy.intervalOptions.every6Hours}
+                              </SelectItem>
+                              <SelectItem value="720">
+                                {copy.intervalOptions.every12Hours}
+                              </SelectItem>
+                              <SelectItem value="1440">
+                                {copy.intervalOptions.everyDay}
+                              </SelectItem>
+                              <SelectItem value="10080">
+                                {copy.intervalOptions.every7Days}
+                              </SelectItem>
+                              <SelectItem value="43200">
+                                {copy.intervalOptions.every30Days}
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                      </div>
+                    )}
+                  </AutoTransition>
+                </AutoResizer>
+              </div>
+
+              <AutoResizer initial duration={0.2}>
                 <AutoTransition
                   transitionKey={form.scheduleKind}
                   duration={0.18}
@@ -1326,50 +1444,11 @@ function RuleFormFields({
                   presenceMode="wait"
                 >
                   {form.scheduleKind !== "interval" ? (
-                    <div
-                      key="calendar"
-                      className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
-                    >
-                      <Field>
-                        <FieldLabel>{copy.timeLabel}</FieldLabel>
-                        <Select
-                          value={form.time}
-                          onValueChange={(time) => onChange({ time })}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-80">
-                            {TIME_OPTIONS.map((time) => (
-                              <SelectItem key={time} value={time}>
-                                {time}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                      <Field>
-                        <FieldLabel>{copy.timezoneLabel}</FieldLabel>
-                        <Select
-                          value={form.timezone}
-                          onValueChange={(timezone) => onChange({ timezone })}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-80">
-                            {timeZoneOptions.map((timeZone) => (
-                              <SelectItem
-                                key={timeZone.value}
-                                value={timeZone.value}
-                              >
-                                {timeZone.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                      {form.scheduleKind === "weekly" ? (
+                    form.scheduleKind === "weekly" ? (
+                      <div
+                        key="weekly"
+                        className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+                      >
                         <Field>
                           <FieldLabel>{copy.dayLabel}</FieldLabel>
                           <Select
@@ -1390,10 +1469,13 @@ function RuleFormFields({
                             </SelectContent>
                           </Select>
                         </Field>
-                      ) : null}
-                      {form.scheduleKind === "monthly" ||
-                      form.scheduleKind === "quarterly" ||
-                      form.scheduleKind === "yearly" ? (
+                      </div>
+                    ) : form.scheduleKind === "monthly" ||
+                      form.scheduleKind === "quarterly" ? (
+                      <div
+                        key="month-day"
+                        className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+                      >
                         <Field>
                           <FieldLabel>{copy.dayOfMonthLabel}</FieldLabel>
                           <Input
@@ -1402,12 +1484,18 @@ function RuleFormFields({
                             max={31}
                             value={form.dayOfMonth}
                             onChange={(event) =>
-                              onChange({ dayOfMonth: event.target.value })
+                              onChange({
+                                dayOfMonth: event.target.value,
+                              })
                             }
                           />
                         </Field>
-                      ) : null}
-                      {form.scheduleKind === "yearly" ? (
+                      </div>
+                    ) : form.scheduleKind === "yearly" ? (
+                      <div
+                        key="yearly"
+                        className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+                      >
                         <Field>
                           <FieldLabel>{copy.monthLabel}</FieldLabel>
                           <Input
@@ -1420,47 +1508,26 @@ function RuleFormFields({
                             }
                           />
                         </Field>
-                      ) : null}
-                    </div>
+                        <Field>
+                          <FieldLabel>{copy.dayOfMonthLabel}</FieldLabel>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={31}
+                            value={form.dayOfMonth}
+                            onChange={(event) =>
+                              onChange({
+                                dayOfMonth: event.target.value,
+                              })
+                            }
+                          />
+                        </Field>
+                      </div>
+                    ) : (
+                      <div key="empty-schedule-details" className="h-0" />
+                    )
                   ) : (
-                    <div key="interval" className="grid gap-4 md:grid-cols-2">
-                      <Field>
-                        <FieldLabel>{copy.intervalLabel}</FieldLabel>
-                        <Select
-                          value={form.everyMinutes}
-                          onValueChange={(everyMinutes) =>
-                            onChange({ everyMinutes })
-                          }
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="30">
-                              {copy.intervalOptions.every30Minutes}
-                            </SelectItem>
-                            <SelectItem value="60">
-                              {copy.intervalOptions.everyHour}
-                            </SelectItem>
-                            <SelectItem value="360">
-                              {copy.intervalOptions.every6Hours}
-                            </SelectItem>
-                            <SelectItem value="720">
-                              {copy.intervalOptions.every12Hours}
-                            </SelectItem>
-                            <SelectItem value="1440">
-                              {copy.intervalOptions.everyDay}
-                            </SelectItem>
-                            <SelectItem value="10080">
-                              {copy.intervalOptions.every7Days}
-                            </SelectItem>
-                            <SelectItem value="43200">
-                              {copy.intervalOptions.every30Days}
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                    </div>
+                    <div key="interval-details" className="h-0" />
                   )}
                 </AutoTransition>
               </AutoResizer>
