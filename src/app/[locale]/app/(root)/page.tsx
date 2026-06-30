@@ -35,7 +35,7 @@ export default async function AppRootPage({ params }: AppRootPageProps) {
 
   if (context && context.teams.length > 0) {
     return (
-      <div className="grid min-h-[calc(100svh-6rem)] place-items-center">
+      <div className="grid h-[calc(100svh-8rem)] min-h-0 place-items-center overflow-hidden">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle>{t.teamEntry.title}</CardTitle>

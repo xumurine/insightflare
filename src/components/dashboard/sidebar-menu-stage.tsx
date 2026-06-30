@@ -25,12 +25,14 @@ interface SidebarMenuStageProps {
   mode: SidebarMenuMode;
   children: ReactNode;
   className?: string;
+  storageKey?: string;
 }
 
 export function SidebarMenuStage({
   mode,
   children,
   className,
+  storageKey = SIDEBAR_MODE_STORAGE_KEY,
 }: SidebarMenuStageProps) {
   const previousModeRef = useRef<SidebarMenuMode | null>(null);
   const directionRef = useRef<1 | -1>(1);
@@ -38,10 +40,8 @@ export function SidebarMenuStage({
 
   if (previousModeRef.current === null) {
     previousModeRef.current = mode;
-    if (typeof window !== "undefined") {
-      const storedMode = window.sessionStorage.getItem(
-        SIDEBAR_MODE_STORAGE_KEY,
-      );
+    if (storageKey && typeof window !== "undefined") {
+      const storedMode = window.sessionStorage.getItem(storageKey);
       if (isSidebarMenuMode(storedMode) && storedMode !== mode) {
         directionRef.current =
           MODE_ORDER[storedMode] < MODE_ORDER[mode] ? 1 : -1;
@@ -57,8 +57,9 @@ export function SidebarMenuStage({
   }
 
   useEffect(() => {
-    window.sessionStorage.setItem(SIDEBAR_MODE_STORAGE_KEY, mode);
-  }, [mode]);
+    if (!storageKey) return;
+    window.sessionStorage.setItem(storageKey, mode);
+  }, [mode, storageKey]);
 
   const variants: NonNullable<AutoTransitionProps["customVariants"]> = {
     initial: (direction) => ({
