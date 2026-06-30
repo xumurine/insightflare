@@ -66,6 +66,7 @@ type UserRow = {
   password_hash: string | null;
   system_role: string;
   timezone: string;
+  preferred_locale?: string | null;
   created_at: number;
   updated_at: number;
 };
@@ -211,6 +212,10 @@ function publicUser(row: UserRow) {
     name: row.name || "",
     systemRole: row.system_role === "admin" ? "admin" : "user",
     timeZone: row.timezone || "",
+    preferredLocale:
+      row.preferred_locale === "en" || row.preferred_locale === "zh"
+        ? row.preferred_locale
+        : "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1678,6 +1683,68 @@ describe("private admin edge handler", () => {
         "",
         "user-1",
       );
+    });
+
+    it("updates and validates profile preferred locale", async () => {
+      setSession(userSession);
+
+      for (const [inputLocale, savedLocale, expectedLocale] of [
+        ["en", "en", "en"],
+        ["zh", "zh", "zh"],
+        ["", "", ""],
+      ] as const) {
+        const actor = userRow({
+          id: "user-1",
+          system_role: "user",
+          preferred_locale: "zh",
+        });
+        const updated = userRow({
+          ...actor,
+          preferred_locale: savedLocale,
+          updated_at: 301,
+        });
+        const update = statement();
+        const { env } = createEnv([
+          statement({ first: actor }),
+          statement({ first: null }),
+          statement({ first: null }),
+          update,
+          statement({ first: updated }),
+        ]);
+
+        const response = await dispatch(
+          "/api/private/admin/profile",
+          env,
+          jsonInit({ preferredLocale: inputLocale }),
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          ok: true,
+          data: { preferredLocale: expectedLocale },
+        });
+        expect(update.bind).toHaveBeenCalledWith(
+          "admin",
+          "admin@example.test",
+          "Admin User",
+          actor.password_hash,
+          "UTC",
+          savedLocale,
+          "user-1",
+        );
+      }
+
+      const invalidLocale = await dispatch(
+        "/api/private/admin/profile",
+        createEnv([statement({ first: userRow({ id: "user-1" }) })]).env,
+        jsonInit({ preferredLocale: "fr" }),
+      );
+
+      expect(invalidLocale.status).toBe(400);
+      expect(await invalidLocale.json()).toMatchObject({
+        ok: false,
+        error: { message: "Invalid preferred locale" },
+      });
     });
   });
 

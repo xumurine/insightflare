@@ -58,12 +58,13 @@ privateAdminRoutes.all("/notification-email/test", (c) =>
 privateAdminRoutes.all("/notification-email-preview", (c) =>
   handleNotificationEmailPreviewAdmin(c.req.raw, c.env, requestUrl(c)),
 );
-privateAdminRoutes.all("/notifications/email-preview", (c) =>
-  handleNotificationEmailPreviewAdmin(c.req.raw, c.env, requestUrl(c)),
-);
 privateAdminRoutes.all("/notification-rules", (c) =>
   handleNotificationRulesAdmin(c.req.raw, c.env, requestUrl(c)),
 );
+// TODO(private-api): Consider migrating notification rule mutations to
+// /notification-rules/:ruleId, /:ruleId/preview, and /:ruleId/run once the
+// notification UI stabilizes. Keep the current body/query based shape for now
+// to avoid unnecessary churn during the initial notification-system rollout.
 privateAdminRoutes.all("/notification-rules/preview", (c) =>
   handleNotificationRulePreviewAdmin(c.req.raw, c.env),
 );

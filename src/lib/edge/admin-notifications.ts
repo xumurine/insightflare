@@ -413,6 +413,8 @@ export async function handleNotificationTestAdmin(
   if (!(await canReadTeam(env, actor, teamId))) {
     return forb("Forbidden", undefined, req);
   }
+  // Team readers may send a harmless test to themselves; sending to another
+  // user requires team management permission.
   if (
     requestedUserId !== actor.user.id &&
     !(await canManageTeam(env, actor, teamId))

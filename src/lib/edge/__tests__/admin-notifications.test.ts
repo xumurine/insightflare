@@ -798,7 +798,7 @@ describe("admin notification handlers", () => {
         {} as never,
       ),
       handleNotificationTestAdmin(
-        request("/api/private/admin/notifications/test", { teamId: "team-1" }),
+        request("/api/private/admin/notification-test", { teamId: "team-1" }),
         {} as never,
       ),
       handleNotificationEmailPreviewAdmin(
@@ -904,11 +904,11 @@ describe("admin notification handlers", () => {
     canManageTeam.mockResolvedValue(false);
 
     const self = await handleNotificationTestAdmin(
-      request("/api/private/admin/notifications/test", { teamId: "team-1" }),
+      request("/api/private/admin/notification-test", { teamId: "team-1" }),
       {} as never,
     );
     const deniedOtherUser = await handleNotificationTestAdmin(
-      request("/api/private/admin/notifications/test", {
+      request("/api/private/admin/notification-test", {
         teamId: "team-1",
         userId: "user-2",
       }),
@@ -916,7 +916,7 @@ describe("admin notification handlers", () => {
     );
     canManageTeam.mockResolvedValue(true);
     const otherUser = await handleNotificationTestAdmin(
-      request("/api/private/admin/notifications/test", {
+      request("/api/private/admin/notification-test", {
         teamId: "team-1",
         siteId: "site-1",
         userId: "user-2",
@@ -938,12 +938,12 @@ describe("admin notification handlers", () => {
 
   it("validates manual test notification permissions and partial outcomes", async () => {
     const missingTeam = await handleNotificationTestAdmin(
-      request("/api/private/admin/notifications/test", {}),
+      request("/api/private/admin/notification-test", {}),
       {} as never,
     );
     canReadTeam.mockResolvedValueOnce(false);
     const unreadableTeam = await handleNotificationTestAdmin(
-      request("/api/private/admin/notifications/test", { teamId: "team-1" }),
+      request("/api/private/admin/notification-test", { teamId: "team-1" }),
       {} as never,
     );
     canReadTeam.mockResolvedValue(true);
@@ -953,7 +953,7 @@ describe("admin notification handlers", () => {
       summary: { messagesCreated: 1 },
     });
     const partial = await handleNotificationTestAdmin(
-      request("/api/private/admin/notifications/test", { teamId: "team-1" }),
+      request("/api/private/admin/notification-test", { teamId: "team-1" }),
       {} as never,
     );
 

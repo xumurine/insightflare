@@ -285,7 +285,7 @@ describe("thin Hono route modules", () => {
     expect(handleNotificationsReadAll).toHaveBeenCalled();
   });
 
-  it("forwards public session and private admin notification preview aliases", async () => {
+  it("forwards public session and canonical private admin notification preview", async () => {
     await publicSessionRoutes.fetch(
       request("/", { method: "POST" }),
       env as never,
@@ -299,18 +299,24 @@ describe("thin Hono route modules", () => {
       env as never,
     );
     await privateAdminRoutes.fetch(
-      request("/notifications/email-preview"),
-      env as never,
-    );
-    await privateAdminRoutes.fetch(
       request("/notification-rules/preview"),
       env as never,
     );
 
     expect(handleLegacyAuthLogin).toHaveBeenCalled();
     expect(handleLegacyAuthLogout).toHaveBeenCalled();
-    expect(handleNotificationEmailPreviewAdmin).toHaveBeenCalledTimes(2);
+    expect(handleNotificationEmailPreviewAdmin).toHaveBeenCalledTimes(1);
     expect(handleNotificationRulePreviewAdmin).toHaveBeenCalled();
+  });
+
+  it("does not forward the removed private admin notification preview alias", async () => {
+    const response = await privateAdminRoutes.fetch(
+      request("/notifications/email-preview"),
+      env as never,
+    );
+
+    expect(response.status).toBe(404);
+    expect(handleNotificationEmailPreviewAdmin).not.toHaveBeenCalled();
   });
 
   it("serves well-known routes directly from the thin route module", async () => {

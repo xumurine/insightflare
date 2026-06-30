@@ -357,6 +357,7 @@ describe("edge client request wrappers", () => {
       currentPassword: "old-secret",
       password: "new-secret",
       timeZone: "Asia/Shanghai",
+      preferredLocale: "zh",
     });
     [url, init] = lastFetchCall();
     expect(url).toBe("http://127.0.0.1:8787/api/private/admin/profile");
@@ -368,6 +369,7 @@ describe("edge client request wrappers", () => {
         currentPassword: "old-secret",
         password: "new-secret",
         timeZone: "Asia/Shanghai",
+        preferredLocale: "zh",
       }),
     );
 
