@@ -197,6 +197,61 @@ describe("admin notification email handlers", () => {
     expect(saved.resend.configured).toBe(true);
   });
 
+  it("updates provider metadata and validates request methods and bodies", async () => {
+    const unsupported = await handleNotificationEmailConfigAdmin(
+      request({ method: "PUT" }),
+      createEnv([]),
+    );
+    expect(unsupported.status).toBe(405);
+
+    const invalid = await handleNotificationEmailConfigAdmin(
+      jsonRequest({ enabled: "yes" }),
+      createEnv([]),
+    );
+    expect(invalid.status).toBe(400);
+
+    const select = statement();
+    const upsert = statement();
+    const response = await handleNotificationEmailConfigAdmin(
+      jsonRequest({
+        provider: "none",
+        fromName: " Team Mail ",
+        fromEmail: "",
+        replyTo: "reply@example.test",
+        clearResendApiKey: false,
+      }),
+      createEnv([select, upsert]),
+    );
+
+    expect(response.status).toBe(200);
+    const saved = JSON.parse(
+      upsert.bind.mock.calls[0][1],
+    ) as NotificationEmailConfig;
+    expect(saved).toMatchObject({
+      provider: "none",
+      fromName: "Team Mail",
+      fromEmail: "",
+      replyTo: "reply@example.test",
+      updatedByUserId: "admin-1",
+    });
+  });
+
+  it("reports encryption failures without saving config", async () => {
+    const response = await handleNotificationEmailConfigAdmin(
+      jsonRequest({
+        enabled: true,
+        provider: "resend",
+        fromEmail: "noreply@example.test",
+        resendApiKey: "re_secret_1234",
+      }),
+      createEnv([statement()], { MAIN_SECRET: "", DAILY_SALT_SECRET: "" }),
+    );
+    const body = await jsonOf(response);
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("notification_secret_encryption_failed");
+  });
+
   it("clears an existing API key and rejects enabling without a key", async () => {
     const clearSelect = statement({
       first: row({
@@ -302,6 +357,156 @@ describe("admin notification email handlers", () => {
     fetchMock.mockRestore();
   });
 
+  it("uses the actor email and includes reply-to for test emails", async () => {
+    const env = createEnv([]);
+    const encrypted = await encryptNotificationSecret(env, "re_test_secret");
+    const select = statement({
+      first: row({
+        fromName: 'Insight "Flare"',
+        fromEmail: "noreply@example.test",
+        replyTo: "reply@example.test",
+        resend: {
+          apiKeyEncrypted: encrypted,
+          apiKeyHint: "••••cret",
+          configured: true,
+        },
+      }),
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 123 }), { status: 200 }),
+      );
+
+    const response = await handleNotificationEmailTestAdmin(
+      new Request(
+        "https://app.test/api/private/admin/notification-email/test",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ to: " " }),
+        },
+      ),
+      createEnv([select]),
+    );
+    const body = await jsonOf(response);
+    const resendBody = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+
+    expect(response.status).toBe(200);
+    expect(body.data.messageId).toBe("");
+    expect(resendBody).toMatchObject({
+      from: "Insight Flare <noreply@example.test>",
+      to: ["admin@example.test"],
+      reply_to: "reply@example.test",
+    });
+    fetchMock.mockRestore();
+  });
+
+  it("validates test email permissions, method, recipient, and config", async () => {
+    vi.mocked(requireActor).mockResolvedValueOnce(
+      new Response("unauthorized", { status: 401 }),
+    );
+    const unauthorized = await handleNotificationEmailTestAdmin(
+      request({ method: "POST" }),
+      createEnv([]),
+    );
+    expect(unauthorized.status).toBe(401);
+
+    vi.mocked(requireActor).mockResolvedValueOnce({ ...actor, isAdmin: false });
+    const forbidden = await handleNotificationEmailTestAdmin(
+      request({ method: "POST" }),
+      createEnv([]),
+    );
+    expect(forbidden.status).toBe(403);
+
+    const unsupported = await handleNotificationEmailTestAdmin(
+      request(),
+      createEnv([]),
+    );
+    expect(unsupported.status).toBe(405);
+
+    vi.mocked(requireActor).mockResolvedValueOnce({
+      ...actor,
+      user: { ...actor.user, email: "" },
+    });
+    const invalidRecipient = await handleNotificationEmailTestAdmin(
+      request({
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ to: "" }),
+      }),
+      createEnv([]),
+    );
+    expect(invalidRecipient.status).toBe(400);
+
+    const providerNone = await handleNotificationEmailTestAdmin(
+      jsonRequest({ to: "receiver@example.test" }, "POST"),
+      createEnv([statement({ first: row({ provider: "none" }) })]),
+    );
+    expect(providerNone.status).toBe(400);
+
+    const invalidFrom = await handleNotificationEmailTestAdmin(
+      jsonRequest({ to: "receiver@example.test" }, "POST"),
+      createEnv([statement({ first: row({ fromEmail: "bad" }) })]),
+    );
+    expect(invalidFrom.status).toBe(400);
+
+    const missingKey = await handleNotificationEmailTestAdmin(
+      jsonRequest({ to: "receiver@example.test" }, "POST"),
+      createEnv([
+        statement({
+          first: row({ fromEmail: "noreply@example.test" }),
+        }),
+      ]),
+    );
+    expect(missingKey.status).toBe(400);
+  });
+
+  it("handles test email decryption and network failures", async () => {
+    const decryptFailure = await handleNotificationEmailTestAdmin(
+      jsonRequest({ to: "receiver@example.test" }, "POST"),
+      createEnv([
+        statement({
+          first: row({
+            fromEmail: "noreply@example.test",
+            resend: {
+              apiKeyEncrypted: "v1:bad",
+              apiKeyHint: "••••bad",
+              configured: true,
+            },
+          }),
+        }),
+      ]),
+    );
+    expect(decryptFailure.status).toBe(400);
+
+    const env = createEnv([]);
+    const encrypted = await encryptNotificationSecret(env, "re_test_secret");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(new TypeError("offline"));
+    const networkFailure = await handleNotificationEmailTestAdmin(
+      jsonRequest({ to: "receiver@example.test" }, "POST"),
+      createEnv([
+        statement({
+          first: row({
+            fromEmail: "noreply@example.test",
+            resend: {
+              apiKeyEncrypted: encrypted,
+              apiKeyHint: "••••cret",
+              configured: true,
+            },
+          }),
+        }),
+      ]),
+    );
+    const body = await jsonOf(networkFailure);
+
+    expect(networkFailure.status).toBe(400);
+    expect(body.error.code).toBe("resend_request_failed");
+    fetchMock.mockRestore();
+  });
+
   it("summarizes Resend errors without leaking API keys", async () => {
     const env = createEnv([]);
     const encrypted = await encryptNotificationSecret(env, "re_leaky_secret");
@@ -342,5 +547,40 @@ describe("admin notification email handlers", () => {
     expect(JSON.stringify(body)).toContain("Domain is not verified");
     expect(JSON.stringify(body)).not.toContain("re_leaky_secret");
     fetchMock.mockRestore();
+  });
+
+  it("summarizes alternate Resend error payloads", async () => {
+    const env = createEnv([]);
+    const encrypted = await encryptNotificationSecret(env, "re_test_secret");
+    const payloads = [
+      { error: "bad_sender" },
+      { name: "ValidationError" },
+      { message: "" },
+    ];
+
+    for (const payload of payloads) {
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(payload), { status: 400 }),
+        );
+      const response = await handleNotificationEmailTestAdmin(
+        jsonRequest({ to: "receiver@example.test" }, "POST"),
+        createEnv([
+          statement({
+            first: row({
+              fromEmail: "noreply@example.test",
+              resend: {
+                apiKeyEncrypted: encrypted,
+                apiKeyHint: "••••cret",
+                configured: true,
+              },
+            }),
+          }),
+        ]),
+      );
+      expect(response.status).toBe(400);
+      fetchMock.mockRestore();
+    }
   });
 });

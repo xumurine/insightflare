@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { formatNotificationDateTime } from "@/lib/notifications/email-format";
+import {
+  formatNotificationDateTime,
+  formatNotificationNumber,
+} from "@/lib/notifications/email-format";
 import { renderNotificationPlainText } from "@/lib/notifications/email-text";
 import type { NotificationMessageDraft } from "@/lib/notifications/evaluator";
 import { buildLocalizedNotificationMessageFields } from "@/lib/notifications/localized-message";
@@ -150,6 +153,25 @@ describe("localized notification messages", () => {
       bodyText: "System title\n\nSystem body",
     });
   });
+
+  it("falls back to draft fields when content rendering fails", () => {
+    const localized = buildLocalizedNotificationMessageFields({
+      draft: draft({
+        type: "report",
+        title: "Fallback title",
+        summary: "Fallback summary",
+        bodyText: "Fallback body",
+      }),
+      locale: "missing" as never,
+    });
+
+    expect(localized).toEqual({
+      locale: "missing",
+      title: "Fallback title",
+      summary: "Fallback summary",
+      bodyText: "Fallback body",
+    });
+  });
 });
 
 describe("notification plain text and email rendering", () => {
@@ -160,6 +182,17 @@ describe("notification plain text and email rendering", () => {
     expect(
       formatNotificationDateTime(1_782_793_800, "zh", "Asia/Shanghai"),
     ).toContain("2026");
+    expect(formatNotificationDateTime("bad", "en")).toBe("");
+    expect(formatNotificationDateTime(0, "en")).toBe("");
+    expect(
+      formatNotificationDateTime(1_782_793_800, "en", "Bad/Zone"),
+    ).toContain("Jun");
+  });
+
+  it("formats notification numbers defensively", () => {
+    expect(formatNotificationNumber(1234.9, "en")).toBe("1,234");
+    expect(formatNotificationNumber(1234.9, "zh")).toBe("1,234");
+    expect(formatNotificationNumber("bad", "en")).toBe("0");
   });
 
   it("renders plain text without html or object string output", () => {
