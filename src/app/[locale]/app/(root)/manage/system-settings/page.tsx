@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 
+import { PageHeading } from "@/components/dashboard/page-heading";
+import { LoginTurnstileSettingsClient } from "@/components/dashboard/system-settings/login-turnstile-settings-client";
 import { NotificationEmailSettingsClient } from "@/components/dashboard/system-settings/notification-email-settings-client";
 import { getDashboardProfile } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
@@ -34,10 +36,18 @@ export default async function SystemSettingsPage({
   }
 
   return (
-    <NotificationEmailSettingsClient
-      locale={resolvedLocale}
-      messages={messages}
-      currentUserEmail={profile.user.email}
-    />
+    <div className="space-y-4">
+      <PageHeading
+        title={messages.systemSettings.title}
+        subtitle={messages.systemSettings.subtitle}
+      />
+      <LoginTurnstileSettingsClient messages={messages} />
+      <NotificationEmailSettingsClient
+        locale={resolvedLocale}
+        messages={messages}
+        currentUserEmail={profile.user.email}
+        showHeading={false}
+      />
+    </div>
   );
 }

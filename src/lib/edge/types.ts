@@ -12,6 +12,7 @@ export interface Env {
   SESSION_WINDOW_MINUTES?: string;
   SCRIPT_CACHE_TTL_SECONDS?: string;
   SITE_SETTINGS_KV?: KVNamespace;
+  INSIGHTFLARE_LOGIN_TURNSTILE_DISABLED?: string;
 }
 
 export interface SerializedRequestPayload {

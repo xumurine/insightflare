@@ -1,0 +1,674 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  RiDeleteBinLine,
+  RiSave3Line,
+  RiShieldCheckLine,
+  RiTestTubeLine,
+} from "@remixicon/react";
+import { toast } from "sonner";
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { AutoTransition } from "@/components/ui/auto-transition";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
+import type { AppMessages } from "@/lib/i18n/messages";
+
+interface LoginTurnstileSettingsClientProps {
+  messages: AppMessages;
+}
+
+interface PublicLoginTurnstileAdminConfig {
+  enabled: boolean;
+  siteKey: string;
+  mode: "invisible";
+  secretKeyConfigured: boolean;
+  secretKeyHint: string;
+  updatedAt: number;
+}
+
+interface ApiResponse<T> {
+  ok?: boolean;
+  data?: T;
+  error?: string | { message?: string };
+  message?: string;
+}
+
+type FormState = Pick<PublicLoginTurnstileAdminConfig, "enabled" | "siteKey">;
+
+interface TurnstileApi {
+  render: (
+    container: HTMLElement,
+    options: {
+      sitekey: string;
+      size: "invisible";
+      callback: (token: string) => void;
+      "error-callback": () => void;
+      "expired-callback": () => void;
+    },
+  ) => string;
+  execute: (widgetId: string) => void;
+  reset: (widgetId: string) => void;
+  remove?: (widgetId: string) => void;
+}
+
+declare global {
+  interface Window {
+    turnstile?: TurnstileApi;
+  }
+}
+
+const API_PATH = "/api/private/admin/login-turnstile";
+const TURNSTILE_SCRIPT_ID = "cloudflare-turnstile-script";
+let turnstileScriptPromise: Promise<void> | null = null;
+
+function defaultConfig(): PublicLoginTurnstileAdminConfig {
+  return {
+    enabled: false,
+    siteKey: "",
+    mode: "invisible",
+    secretKeyConfigured: false,
+    secretKeyHint: "",
+    updatedAt: 0,
+  };
+}
+
+function toFormState(config: PublicLoginTurnstileAdminConfig): FormState {
+  return {
+    enabled: config.enabled,
+    siteKey: config.siteKey,
+  };
+}
+
+function apiMessage(payload: ApiResponse<unknown>, fallback: string): string {
+  if (typeof payload.message === "string" && payload.message) {
+    return payload.message;
+  }
+  if (typeof payload.error === "string" && payload.error) {
+    return payload.error;
+  }
+  if (
+    payload.error &&
+    typeof payload.error === "object" &&
+    typeof payload.error.message === "string"
+  ) {
+    return payload.error.message;
+  }
+  return fallback;
+}
+
+function makeHint(secret: string): string {
+  const value = secret.trim();
+  return value ? `••••${value.slice(-4)}` : "";
+}
+
+async function fetchConfig(): Promise<PublicLoginTurnstileAdminConfig> {
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+    const { handleDemoRequest } = await import("@/lib/realtime/mock");
+    const result = handleDemoRequest({
+      path: API_PATH,
+    }) as ApiResponse<PublicLoginTurnstileAdminConfig>;
+    return result.data ?? defaultConfig();
+  }
+
+  const response = await fetch(API_PATH, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+  const payload =
+    (await response.json()) as ApiResponse<PublicLoginTurnstileAdminConfig>;
+  if (!response.ok || payload.ok !== true || !payload.data) {
+    throw new Error(apiMessage(payload, "load_login_turnstile_failed"));
+  }
+  return payload.data;
+}
+
+async function saveConfig(
+  body: Record<string, unknown>,
+): Promise<PublicLoginTurnstileAdminConfig> {
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+    const { handleDemoRequest } = await import("@/lib/realtime/mock");
+    const result = handleDemoRequest({
+      path: API_PATH,
+      method: "PATCH",
+      body,
+    }) as ApiResponse<PublicLoginTurnstileAdminConfig>;
+    if (!result.ok || !result.data) {
+      throw new Error(apiMessage(result, "save_login_turnstile_failed"));
+    }
+    return result.data;
+  }
+
+  const response = await fetch(API_PATH, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload =
+    (await response.json()) as ApiResponse<PublicLoginTurnstileAdminConfig>;
+  if (!response.ok || payload.ok !== true || !payload.data) {
+    throw new Error(apiMessage(payload, "save_login_turnstile_failed"));
+  }
+  return payload.data;
+}
+
+async function deleteConfig(): Promise<PublicLoginTurnstileAdminConfig> {
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+    const { handleDemoRequest } = await import("@/lib/realtime/mock");
+    const result = handleDemoRequest({
+      path: API_PATH,
+      method: "DELETE",
+    }) as ApiResponse<PublicLoginTurnstileAdminConfig>;
+    if (!result.ok || !result.data) {
+      throw new Error(apiMessage(result, "delete_login_turnstile_failed"));
+    }
+    return result.data;
+  }
+
+  const response = await fetch(API_PATH, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  const payload =
+    (await response.json()) as ApiResponse<PublicLoginTurnstileAdminConfig>;
+  if (!response.ok || payload.ok !== true || !payload.data) {
+    throw new Error(apiMessage(payload, "delete_login_turnstile_failed"));
+  }
+  return payload.data;
+}
+
+async function testConfig(body: {
+  siteKey: string;
+  secretKey: string;
+  turnstileToken: string;
+}): Promise<void> {
+  const path = `${API_PATH}/test`;
+
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+    const { handleDemoRequest } = await import("@/lib/realtime/mock");
+    const result = handleDemoRequest({
+      path,
+      method: "POST",
+      body,
+    }) as ApiResponse<{ verified: boolean }>;
+    if (!result.ok) {
+      throw new Error(apiMessage(result, "test_login_turnstile_failed"));
+    }
+    return;
+  }
+
+  const response = await fetch(path, {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = (await response.json()) as ApiResponse<{ verified: boolean }>;
+  if (!response.ok || payload.ok !== true) {
+    throw new Error(apiMessage(payload, "test_login_turnstile_failed"));
+  }
+}
+
+function loadTurnstileScript(): Promise<void> {
+  if (window.turnstile) return Promise.resolve();
+  if (turnstileScriptPromise) return turnstileScriptPromise;
+
+  turnstileScriptPromise = new Promise((resolve, reject) => {
+    const existing = document.getElementById(
+      TURNSTILE_SCRIPT_ID,
+    ) as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("load")), {
+        once: true,
+      });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = TURNSTILE_SCRIPT_ID;
+    script.src =
+      "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true;
+    script.defer = true;
+    script.addEventListener("load", () => resolve(), { once: true });
+    script.addEventListener("error", () => reject(new Error("load")), {
+      once: true,
+    });
+    document.head.appendChild(script);
+  });
+
+  return turnstileScriptPromise;
+}
+
+export function LoginTurnstileSettingsClient({
+  messages,
+}: LoginTurnstileSettingsClientProps) {
+  const copy = messages.systemSettings;
+  const turnstileRef = useRef<HTMLDivElement | null>(null);
+  const widgetIdRef = useRef<string | null>(null);
+  const [config, setConfig] =
+    useState<PublicLoginTurnstileAdminConfig>(defaultConfig);
+  const [form, setForm] = useState<FormState>(() =>
+    toFormState(defaultConfig()),
+  );
+  const [secretKey, setSecretKey] = useState("");
+  const [testedFingerprint, setTestedFingerprint] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingConfig, setDeletingConfig] = useState(false);
+
+  const currentFingerprint = `${form.siteKey.trim()}::${secretKey.trim()}`;
+  const newSecretTested =
+    secretKey.trim().length === 0 || testedFingerprint === currentFingerprint;
+  const canSaveEnabled =
+    !form.enabled ||
+    (form.siteKey.trim().length > 0 &&
+      (secretKey.trim().length > 0 || config.secretKeyConfigured) &&
+      newSecretTested);
+  const hasChanges = useMemo(() => {
+    const persisted = toFormState(config);
+    return (
+      form.enabled !== persisted.enabled ||
+      form.siteKey !== persisted.siteKey ||
+      secretKey.trim().length > 0
+    );
+  }, [config, form, secretKey]);
+  const secretPlaceholder =
+    config.secretKeyConfigured && config.secretKeyHint
+      ? `${copy.loginTurnstileSecretKeySaved}: ${config.secretKeyHint}`
+      : copy.loginTurnstileSecretKeyPlaceholder;
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    fetchConfig()
+      .then((nextConfig) => {
+        if (!active) return;
+        setConfig(nextConfig);
+        setForm(toFormState(nextConfig));
+      })
+      .catch(() => {
+        if (!active) return;
+        toast.error(copy.loginTurnstileLoadFailed);
+      })
+      .finally(() => {
+        if (!active) return;
+        setLoading(false);
+      });
+    return () => {
+      active = false;
+      const widgetId = widgetIdRef.current;
+      if (widgetId && window.turnstile?.remove) {
+        window.turnstile.remove(widgetId);
+      }
+    };
+  }, [copy.loginTurnstileLoadFailed]);
+
+  function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+    setTestedFingerprint("");
+  }
+
+  async function executeTestTurnstile(siteKey: string): Promise<string> {
+    await loadTurnstileScript();
+    return new Promise((resolve, reject) => {
+      const container = turnstileRef.current;
+      const turnstile = window.turnstile;
+      if (!container || !turnstile) {
+        reject(new Error("turnstile_unavailable"));
+        return;
+      }
+      if (widgetIdRef.current) {
+        turnstile.remove?.(widgetIdRef.current);
+        widgetIdRef.current = null;
+      }
+      widgetIdRef.current = turnstile.render(container, {
+        sitekey: siteKey,
+        size: "invisible",
+        callback: (token) => resolve(token),
+        "error-callback": () => reject(new Error("turnstile_error")),
+        "expired-callback": () => reject(new Error("turnstile_expired")),
+      });
+      turnstile.execute(widgetIdRef.current);
+    });
+  }
+
+  async function handleTest() {
+    const siteKey = form.siteKey.trim();
+    const nextSecretKey = secretKey.trim();
+    if (!siteKey || !nextSecretKey) {
+      toast.error(copy.loginTurnstileTestMissing);
+      return;
+    }
+    setTesting(true);
+    try {
+      const turnstileToken = await executeTestTurnstile(siteKey);
+      await testConfig({ siteKey, secretKey: nextSecretKey, turnstileToken });
+      setTestedFingerprint(`${siteKey}::${nextSecretKey}`);
+      toast.success(copy.loginTurnstileTestPassed);
+    } catch {
+      setTestedFingerprint("");
+      toast.error(copy.loginTurnstileTestFailed);
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function handleSave() {
+    const body: Record<string, unknown> = {
+      enabled: form.enabled,
+      siteKey: form.siteKey.trim(),
+    };
+    const nextSecretKey = secretKey.trim();
+    if (nextSecretKey) body.secretKey = nextSecretKey;
+
+    setSaving(true);
+    try {
+      const saved = await saveConfig(body);
+      setConfig(saved);
+      setForm(toFormState(saved));
+      setSecretKey("");
+      setTestedFingerprint("");
+      toast.success(copy.loginTurnstileSaved);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : copy.loginTurnstileSaveFailed,
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteConfig() {
+    setDeletingConfig(true);
+    try {
+      const reset = await deleteConfig();
+      setConfig(reset);
+      setForm(toFormState(reset));
+      setSecretKey("");
+      setTestedFingerprint("");
+      setDeleteDialogOpen(false);
+      toast.success(copy.loginTurnstileDeleted);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : copy.loginTurnstileDeleteFailed,
+      );
+    } finally {
+      setDeletingConfig(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <RiShieldCheckLine className="size-4" />
+          {copy.loginTurnstileTitle}
+        </CardTitle>
+        <CardDescription>{copy.loginTurnstileDescription}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="grid gap-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSave();
+          }}
+        >
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="system-login-turnstile-enabled">
+                {copy.loginTurnstileEnabledLabel}
+              </Label>
+              <Select
+                value={form.enabled ? "true" : "false"}
+                onValueChange={(value) =>
+                  updateForm("enabled", value === "true")
+                }
+                disabled={loading || saving}
+              >
+                <SelectTrigger
+                  id="system-login-turnstile-enabled"
+                  className="w-full"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">{copy.enabledOn}</SelectItem>
+                  <SelectItem value="false">{copy.enabledOff}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="system-login-turnstile-mode">
+                {copy.loginTurnstileModeLabel}
+              </Label>
+              <Input
+                id="system-login-turnstile-mode"
+                value={copy.loginTurnstileModeInvisible}
+                disabled
+                readOnly
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="system-login-turnstile-site-key">
+                {copy.loginTurnstileSiteKeyLabel}
+              </Label>
+              <Input
+                id="system-login-turnstile-site-key"
+                value={form.siteKey}
+                maxLength={256}
+                disabled={loading || saving}
+                onChange={(event) => updateForm("siteKey", event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="system-login-turnstile-secret-key">
+                {copy.loginTurnstileSecretKeyLabel}
+              </Label>
+              <Input
+                id="system-login-turnstile-secret-key"
+                type="password"
+                value={secretKey}
+                placeholder={secretPlaceholder}
+                disabled={loading || saving || deletingConfig}
+                onChange={(event) => {
+                  setSecretKey(event.target.value);
+                  setTestedFingerprint("");
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-3 border-t pt-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge
+                  variant={config.secretKeyConfigured ? "outline" : "secondary"}
+                >
+                  {config.secretKeyConfigured
+                    ? `${copy.loginTurnstileSecretKeySaved}: ${
+                        config.secretKeyHint || makeHint(secretKey)
+                      }`
+                    : copy.loginTurnstileSecretKeyNotSaved}
+                </Badge>
+                {secretKey.trim() ? (
+                  <Badge variant={newSecretTested ? "default" : "secondary"}>
+                    {newSecretTested
+                      ? copy.loginTurnstileTestPassed
+                      : copy.loginTurnstileTestRequired}
+                  </Badge>
+                ) : null}
+              </div>
+              <p className="text-xs/relaxed text-muted-foreground">
+                {copy.loginTurnstilePrivacyNotice}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={loading || saving || testing || !secretKey.trim()}
+              onClick={() => {
+                void handleTest();
+              }}
+            >
+              <AutoTransition className="inline-flex items-center gap-2">
+                {testing ? (
+                  <span
+                    key="testing"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <Spinner className="size-4" />
+                    {copy.loginTurnstileTesting}
+                  </span>
+                ) : (
+                  <span key="test" className="inline-flex items-center gap-2">
+                    <RiTestTubeLine className="size-4" />
+                    {copy.loginTurnstileTest}
+                  </span>
+                )}
+              </AutoTransition>
+            </Button>
+          </div>
+
+          <div ref={turnstileRef} className="hidden" aria-hidden="true" />
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="submit"
+              disabled={loading || saving || !hasChanges || !canSaveEnabled}
+            >
+              <AutoTransition className="inline-flex items-center gap-2">
+                {saving ? (
+                  <span key="saving" className="inline-flex items-center gap-2">
+                    <Spinner className="size-4" />
+                    {copy.saving}
+                  </span>
+                ) : (
+                  <span key="save" className="inline-flex items-center gap-2">
+                    <RiSave3Line className="size-4" />
+                    {copy.save}
+                  </span>
+                )}
+              </AutoTransition>
+            </Button>
+
+            <AlertDialog
+              open={deleteDialogOpen}
+              onOpenChange={(open) => {
+                if (deletingConfig) return;
+                setDeleteDialogOpen(open);
+              }}
+            >
+              <AlertDialogTrigger asChild>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={
+                    loading ||
+                    saving ||
+                    deletingConfig ||
+                    config.updatedAt === 0
+                  }
+                >
+                  <AutoTransition className="inline-flex items-center gap-2">
+                    {deletingConfig ? (
+                      <span
+                        key="deleting-config"
+                        className="inline-flex items-center gap-2"
+                      >
+                        <Spinner className="size-4" />
+                        {copy.deleting}
+                      </span>
+                    ) : (
+                      <span
+                        key="delete-config"
+                        className="inline-flex items-center gap-2"
+                      >
+                        <RiDeleteBinLine className="size-4" />
+                        {copy.delete}
+                      </span>
+                    )}
+                  </AutoTransition>
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent size="sm">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{copy.delete}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {copy.loginTurnstileDeleteConfirm}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={deletingConfig}>
+                    {messages.teamSelect.cancel}
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    variant="destructive"
+                    disabled={deletingConfig}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void handleDeleteConfig();
+                    }}
+                  >
+                    <AutoTransition className="inline-flex items-center gap-2">
+                      {deletingConfig ? (
+                        <span
+                          key="deleting-config-dialog"
+                          className="inline-flex items-center gap-2"
+                        >
+                          <Spinner className="size-4" />
+                          {copy.deleting}
+                        </span>
+                      ) : (
+                        <span key="confirm-delete-config">{copy.delete}</span>
+                      )}
+                    </AutoTransition>
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}

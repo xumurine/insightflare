@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleApiKeysAdmin } from "@/lib/edge/admin-api-keys";
 import {
+  handleLoginTurnstileConfigAdmin,
+  handleLoginTurnstileTestAdmin,
+} from "@/lib/edge/admin-login-turnstile";
+import {
   handleNotificationEmailConfigAdmin,
   handleNotificationEmailTestAdmin,
 } from "@/lib/edge/admin-notification-email";
@@ -40,6 +44,11 @@ vi.mock("@/lib/edge/admin-response", () => ({
 vi.mock("@/lib/edge/admin-notification-email", () => ({
   handleNotificationEmailConfigAdmin: vi.fn(),
   handleNotificationEmailTestAdmin: vi.fn(),
+}));
+
+vi.mock("@/lib/edge/admin-login-turnstile", () => ({
+  handleLoginTurnstileConfigAdmin: vi.fn(),
+  handleLoginTurnstileTestAdmin: vi.fn(),
 }));
 
 vi.mock("@/lib/edge/admin-notifications", () => ({
@@ -92,6 +101,8 @@ const routeCases = [
   ["/api-keys", handleApiKeysAdmin, true],
   ["/notification-email", handleNotificationEmailConfigAdmin, false],
   ["/notification-email/test", handleNotificationEmailTestAdmin, false],
+  ["/login-turnstile", handleLoginTurnstileConfigAdmin, false],
+  ["/login-turnstile/test", handleLoginTurnstileTestAdmin, false],
   ["/notification-email-preview", handleNotificationEmailPreviewAdmin, true],
   ["/notification-rules", handleNotificationRulesAdmin, true],
   ["/notification-rules/preview", handleNotificationRulePreviewAdmin, false],

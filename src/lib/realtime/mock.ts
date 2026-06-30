@@ -134,6 +134,22 @@ function demoSiteDomain(siteId: string | null | undefined): string {
   return "demo.insightflare.app";
 }
 
+function demoLoginTurnstileConfig(body?: Record<string, unknown>) {
+  const secretKey =
+    typeof body?.secretKey === "string" && body.secretKey.trim().length > 0
+      ? body.secretKey.trim()
+      : "";
+  const configured = secretKey.length > 0;
+  return {
+    enabled: typeof body?.enabled === "boolean" ? body.enabled : false,
+    siteKey: typeof body?.siteKey === "string" ? body.siteKey : "",
+    mode: "invisible",
+    secretKeyConfigured: configured,
+    secretKeyHint: configured ? `••••${secretKey.slice(-4)}` : "",
+    updatedAt: configured || body ? Date.now() : 0,
+  };
+}
+
 function escapeDemoNotificationHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -533,6 +549,18 @@ export function handleDemoRequest(options: {
         },
       };
     }
+    if (path.includes("/admin/login-turnstile/test")) {
+      return { ok: true, data: { verified: true, hostname: "demo.local" } };
+    }
+    if (path.includes("/admin/login-turnstile")) {
+      if (method === "DELETE") {
+        return { ok: true, data: demoLoginTurnstileConfig() };
+      }
+      return {
+        ok: true,
+        data: demoLoginTurnstileConfig(bodyRecord),
+      };
+    }
     if (path.includes("/admin/api-keys")) {
       const body =
         options.body && typeof options.body === "object" ? options.body : {};
@@ -762,6 +790,21 @@ export function handleDemoRequest(options: {
     return {
       ok: true,
       data: redactNotificationEmailConfig(defaultNotificationEmailConfig()),
+    };
+  }
+  if (path.includes("/admin/login-turnstile")) {
+    return { ok: true, data: demoLoginTurnstileConfig() };
+  }
+  if (path === "/api/public/login-security") {
+    return {
+      ok: true,
+      data: {
+        turnstile: {
+          enabled: false,
+          siteKey: "",
+          mode: "invisible",
+        },
+      },
     };
   }
   if (path.includes("/admin/scheduled-tasks")) {

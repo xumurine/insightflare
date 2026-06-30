@@ -1,5 +1,8 @@
 import { SESSION_COOKIE, SESSION_DURATION_SECONDS } from "@/lib/constants";
 import { handleAuthLoginAdmin } from "@/lib/edge/admin-users";
+import { readLoginTurnstileRuntimeConfig } from "@/lib/edge/login-turnstile-runtime";
+import { decryptLoginTurnstileSecret } from "@/lib/edge/secret-encryption";
+import { verifyTurnstileToken } from "@/lib/edge/turnstile-siteverify";
 import type { Env } from "@/lib/edge/types";
 import {
   assertContentSize,
@@ -7,7 +10,7 @@ import {
   bodyStr,
   parseRequestBody,
 } from "@/lib/form-helpers";
-import { bad, errorResponse, jsonResponseFor, una } from "@/lib/response";
+import { bad, errorResponse, jsonResponseFor, na, una } from "@/lib/response";
 import { dashboardSessionSecret } from "@/lib/secrets";
 
 interface LoginUser {
@@ -89,16 +92,35 @@ async function createSessionTokenForEnv(
   return `${encodedPayload}.${base64UrlEncode(signature)}`;
 }
 
+function requestRemoteIp(request: Request): string {
+  const cfIp = request.headers.get("cf-connecting-ip");
+  if (cfIp) return cfIp.trim();
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (!forwarded) return "";
+  return forwarded.split(",")[0]?.trim() || "";
+}
+
+function requestHostname(request: Request): string {
+  try {
+    return new URL(request.url).hostname;
+  } catch {
+    return request.headers.get("host")?.split(":")[0]?.trim() || "";
+  }
+}
+
 export async function handleLegacyAuthLogin(
   request: Request,
   env: Env,
 ): Promise<Response> {
+  if (request.method !== "POST") return na(request);
+
   const sizeError = assertContentSize(request, BODY_SIZE_LIMITS.LOGIN);
   if (sizeError) return sizeError;
 
   const body = await parseRequestBody(request);
-  const username = bodyStr(body, "username");
+  const username = bodyStr(body, "username") || bodyStr(body, "email");
   const password = String(body.password ?? "");
+  const turnstileToken = bodyStr(body, "turnstileToken");
   const nextPathRaw = bodyStr(body, "next") || "/app";
   const nextPathClean = nextPathRaw.split("?")[0].replace(/\/+$/, "");
   const isUnsafe =
@@ -110,6 +132,49 @@ export async function handleLegacyAuthLogin(
 
   if (username.length < 2 || password.length < 1) {
     return bad("Invalid credentials", "invalid_credentials", request);
+  }
+
+  const turnstileConfig = await readLoginTurnstileRuntimeConfig(env);
+  if (turnstileConfig?.enabled) {
+    if (!turnstileToken) {
+      return bad(
+        "Turnstile verification is required",
+        "turnstile_required",
+        request,
+      );
+    }
+
+    let secret: string;
+    try {
+      secret = await decryptLoginTurnstileSecret(
+        env,
+        turnstileConfig.secretKeyEncrypted,
+      );
+    } catch {
+      return bad(
+        "Turnstile is not configured correctly",
+        "turnstile_not_configured",
+        request,
+      );
+    }
+
+    const result = await verifyTurnstileToken({
+      secret,
+      token: turnstileToken,
+      remoteIp: requestRemoteIp(request),
+      expectedHostname: requestHostname(request),
+    });
+    if (!result.ok) {
+      return bad(
+        result.reason === "network_error"
+          ? "Turnstile verification is temporarily unavailable"
+          : "Turnstile verification failed",
+        result.reason === "network_error"
+          ? "turnstile_verification_error"
+          : "turnstile_failed",
+        request,
+      );
+    }
   }
 
   const headers = new Headers(request.headers);

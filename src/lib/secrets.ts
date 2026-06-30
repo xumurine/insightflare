@@ -4,6 +4,8 @@ export const SECRET_PURPOSES = {
   visitorDailySalt: "insightflare:visitor-daily-salt:v1",
   notificationSecretEncryption:
     "insightflare:notification-secret-encryption:v1",
+  loginTurnstileSecretEncryption:
+    "insightflare:login-turnstile-secret-encryption:v1",
 } as const;
 
 export interface SecretSource {

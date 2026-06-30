@@ -111,6 +111,15 @@ export default async function LoginPage({
             passwordLabel={t.login.password}
             signInLabel={t.login.signIn}
             signingInLabel={t.loginForm.signingIn}
+            verifyingSecurityLabel={t.loginForm.verifyingSecurity}
+            securityVerificationFailedLabel={
+              t.loginForm.securityVerificationFailed
+            }
+            securityVerificationTitleLabel={
+              t.loginForm.securityVerificationTitle
+            }
+            retrySecurityLabel={t.loginForm.retrySecurityVerification}
+            redirectingLabel={t.loginForm.redirecting}
             invalidCredentialsLabel={t.login.invalidCredentials}
             failedLabel={t.loginForm.failed}
           />

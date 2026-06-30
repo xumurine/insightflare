@@ -42,25 +42,23 @@ function toArrayBuffer(input: Uint8Array): ArrayBuffer {
   return out.buffer;
 }
 
-function getNotificationRootSecret(
+function getRootSecret(
   env: Pick<Env, "MAIN_SECRET" | "DAILY_SALT_SECRET">,
 ): string {
   const secret = rootSecret(env);
   if (!secret) {
     throw new Error(
-      "MAIN_SECRET or DAILY_SALT_SECRET is required to encrypt notification secrets",
+      "MAIN_SECRET or DAILY_SALT_SECRET is required to encrypt secrets",
     );
   }
   return secret;
 }
 
-async function notificationEncryptionKey(
+async function secretEncryptionKey(
   env: Pick<Env, "MAIN_SECRET" | "DAILY_SALT_SECRET">,
+  purpose: string,
 ): Promise<CryptoKey> {
-  const derivedHex = await deriveSecret(
-    getNotificationRootSecret(env),
-    SECRET_PURPOSES.notificationSecretEncryption,
-  );
+  const derivedHex = await deriveSecret(getRootSecret(env), purpose);
   return crypto.subtle.importKey(
     "raw",
     toArrayBuffer(hexToBytes(derivedHex)),
@@ -70,11 +68,12 @@ async function notificationEncryptionKey(
   );
 }
 
-export async function encryptNotificationSecret(
+export async function encryptSecret(
   env: Pick<Env, "MAIN_SECRET" | "DAILY_SALT_SECRET">,
   secret: string,
+  purpose: string,
 ): Promise<string> {
-  const key = await notificationEncryptionKey(env);
+  const key = await secretEncryptionKey(env, purpose);
   const iv = crypto.getRandomValues(new Uint8Array(AES_GCM_IV_BYTES));
   const ciphertext = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv: toArrayBuffer(iv) },
@@ -84,9 +83,10 @@ export async function encryptNotificationSecret(
   return `${FORMAT_PREFIX}:${b64u(iv)}:${b64u(new Uint8Array(ciphertext))}`;
 }
 
-export async function decryptNotificationSecret(
+export async function decryptSecret(
   env: Pick<Env, "MAIN_SECRET" | "DAILY_SALT_SECRET">,
   encrypted: string,
+  purpose: string,
 ): Promise<string> {
   const parts = encrypted.split(":");
   if (parts.length !== 3 || parts[0] !== FORMAT_PREFIX) {
@@ -97,11 +97,55 @@ export async function decryptNotificationSecret(
     throw new Error("Invalid encrypted secret IV");
   }
   const ciphertext = fromB64u(parts[2]);
-  const key = await notificationEncryptionKey(env);
+  const key = await secretEncryptionKey(env, purpose);
   const plaintext = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: toArrayBuffer(iv) },
     key,
     toArrayBuffer(ciphertext),
   );
   return new TextDecoder().decode(plaintext);
+}
+
+export async function encryptNotificationSecret(
+  env: Pick<Env, "MAIN_SECRET" | "DAILY_SALT_SECRET">,
+  secret: string,
+): Promise<string> {
+  return encryptSecret(
+    env,
+    secret,
+    SECRET_PURPOSES.notificationSecretEncryption,
+  );
+}
+
+export async function decryptNotificationSecret(
+  env: Pick<Env, "MAIN_SECRET" | "DAILY_SALT_SECRET">,
+  encrypted: string,
+): Promise<string> {
+  return decryptSecret(
+    env,
+    encrypted,
+    SECRET_PURPOSES.notificationSecretEncryption,
+  );
+}
+
+export async function encryptLoginTurnstileSecret(
+  env: Pick<Env, "MAIN_SECRET" | "DAILY_SALT_SECRET">,
+  secret: string,
+): Promise<string> {
+  return encryptSecret(
+    env,
+    secret,
+    SECRET_PURPOSES.loginTurnstileSecretEncryption,
+  );
+}
+
+export async function decryptLoginTurnstileSecret(
+  env: Pick<Env, "MAIN_SECRET" | "DAILY_SALT_SECRET">,
+  encrypted: string,
+): Promise<string> {
+  return decryptSecret(
+    env,
+    encrypted,
+    SECRET_PURPOSES.loginTurnstileSecretEncryption,
+  );
 }

@@ -1516,6 +1516,29 @@ systemSettings:
   subtitle: 管理当前 InsightFlare 实例的全站配置。
   notificationEmailTitle: 邮件通知
   notificationEmailDescription: 配置系统用于发送报告、告警和测试邮件的邮件服务。
+  loginTurnstileTitle: 登录 Turnstile 保护
+  loginTurnstileDescription: 启用后，登录页会在后台执行 Cloudflare Turnstile Invisible 验证，并在服务端登录流程中强制校验。
+  loginTurnstileEnabledLabel: 启用登录保护
+  loginTurnstileSiteKeyLabel: Site Key
+  loginTurnstileSecretKeyLabel: Secret Key
+  loginTurnstileSecretKeyPlaceholder: 留空表示保留已保存的 Secret Key
+  loginTurnstileSecretKeySaved: 已保存
+  loginTurnstileSecretKeyNotSaved: 尚未保存 Secret Key
+  loginTurnstileModeLabel: 验证模式
+  loginTurnstileModeInvisible: Invisible
+  loginTurnstileTest: 测试验证
+  loginTurnstileTesting: 验证中...
+  loginTurnstileTestPassed: 验证成功
+  loginTurnstileTestRequired: 新 Secret Key 需要先测试
+  loginTurnstileTestMissing: 请先填写 Site Key 和 Secret Key。
+  loginTurnstileTestFailed: 验证失败，请检查 Site Key 与 Secret Key。
+  loginTurnstileSaved: 登录 Turnstile 配置已保存。
+  loginTurnstileSaveFailed: 保存登录 Turnstile 配置失败。
+  loginTurnstileDeleted: 登录 Turnstile 配置已删除。
+  loginTurnstileDeleteFailed: 删除登录 Turnstile 配置失败。
+  loginTurnstileDeleteConfirm: 确认删除登录 Turnstile 配置吗？删除后登录保护将关闭。
+  loginTurnstileLoadFailed: 加载登录 Turnstile 配置失败。
+  loginTurnstilePrivacyNotice: 请在 Cloudflare Turnstile 控制台创建 Invisible widget。自托管站点启用后，请自行确认隐私政策与 Cloudflare Turnstile 要求匹配。
   enabledLabel: 启用邮件发送
   enabledOn: 开启
   enabledOff: 关闭
@@ -1633,6 +1656,11 @@ systemPerformance:
   doDiagnosticHealthy: 当前未发现异常缓冲行。
 loginForm:
   signingIn: 登录中...
+  verifyingSecurity: 正在安全验证...
+  securityVerificationTitle: 安全验证失败
+  securityVerificationFailed: 安全验证失败，请重试。
+  retrySecurityVerification: 重试验证
+  redirecting: 正在跳转...
   failed: 登录失败，请稍后重试。
 logoutAction:
   pending: 退出中...

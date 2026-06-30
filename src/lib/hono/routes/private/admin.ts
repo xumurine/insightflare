@@ -3,6 +3,10 @@ import { Hono } from "hono";
 import { handleApiKeysAdmin } from "@/lib/edge/admin-api-keys";
 import { requireActor } from "@/lib/edge/admin-auth";
 import {
+  handleLoginTurnstileConfigAdmin,
+  handleLoginTurnstileTestAdmin,
+} from "@/lib/edge/admin-login-turnstile";
+import {
   handleNotificationEmailConfigAdmin,
   handleNotificationEmailTestAdmin,
 } from "@/lib/edge/admin-notification-email";
@@ -54,6 +58,12 @@ privateAdminRoutes.all("/notification-email", (c) =>
 );
 privateAdminRoutes.all("/notification-email/test", (c) =>
   handleNotificationEmailTestAdmin(c.req.raw, c.env),
+);
+privateAdminRoutes.all("/login-turnstile", (c) =>
+  handleLoginTurnstileConfigAdmin(c.req.raw, c.env),
+);
+privateAdminRoutes.all("/login-turnstile/test", (c) =>
+  handleLoginTurnstileTestAdmin(c.req.raw, c.env),
 );
 privateAdminRoutes.all("/notification-email-preview", (c) =>
   handleNotificationEmailPreviewAdmin(c.req.raw, c.env, requestUrl(c)),

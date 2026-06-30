@@ -22,6 +22,9 @@ import {
   handleLegacyAuthLogin,
   handleLegacyAuthLogout,
 } from "@/lib/edge/legacy-auth";
+import { readLoginTurnstileRuntimeConfig } from "@/lib/edge/login-turnstile-runtime";
+import { decryptLoginTurnstileSecret } from "@/lib/edge/secret-encryption";
+import { verifyTurnstileToken } from "@/lib/edge/turnstile-siteverify";
 
 vi.mock("@/lib/edge/admin", () => ({
   handlePrivateAdmin: vi.fn(),
@@ -34,6 +37,18 @@ vi.mock("@/lib/edge/archive-query", () => ({
 
 vi.mock("@/lib/edge/admin-users", () => ({
   handleAuthLoginAdmin: vi.fn(),
+}));
+
+vi.mock("@/lib/edge/login-turnstile-runtime", () => ({
+  readLoginTurnstileRuntimeConfig: vi.fn(),
+}));
+
+vi.mock("@/lib/edge/secret-encryption", () => ({
+  decryptLoginTurnstileSecret: vi.fn(),
+}));
+
+vi.mock("@/lib/edge/turnstile-siteverify", () => ({
+  verifyTurnstileToken: vi.fn(),
 }));
 
 const env = {
@@ -53,6 +68,13 @@ function jsonRequest(path: string, body: Record<string, unknown>): Request {
 
 async function responseJson(response: Response) {
   return (await response.json()) as Record<string, unknown>;
+}
+
+function errorCode(body: Record<string, unknown>): string {
+  const error = body.error;
+  return error && typeof error === "object" && "code" in error
+    ? String((error as { code?: unknown }).code ?? "")
+    : "";
 }
 
 describe("legacy Hono edge adapters", () => {
@@ -92,6 +114,14 @@ describe("legacy Hono edge adapters", () => {
         },
       }),
     );
+    vi.mocked(readLoginTurnstileRuntimeConfig).mockResolvedValue(null);
+    vi.mocked(decryptLoginTurnstileSecret).mockResolvedValue(
+      "turnstile-secret",
+    );
+    vi.mocked(verifyTurnstileToken).mockResolvedValue({
+      ok: true,
+      hostname: "app.test",
+    });
   });
 
   it("logs in through the private auth handler and sets the legacy cookie", async () => {
@@ -173,6 +203,88 @@ describe("legacy Hono edge adapters", () => {
       env as any,
     );
     expect(missingUser.status).toBe(502);
+  });
+
+  it("requires Turnstile before calling the password verifier when enabled", async () => {
+    vi.mocked(readLoginTurnstileRuntimeConfig).mockResolvedValueOnce({
+      enabled: true,
+      siteKey: "0xsite",
+      mode: "invisible",
+      secretKeyEncrypted: "encrypted",
+      updatedAt: 1,
+    });
+
+    const response = await handleLegacyAuthLogin(
+      jsonRequest("/api/public/session", {
+        username: "admin",
+        password: "secret",
+      }),
+      env as any,
+    );
+    const body = await responseJson(response);
+
+    expect(response.status).toBe(400);
+    expect(errorCode(body)).toBe("turnstile_required");
+    expect(handleAuthLoginAdmin).not.toHaveBeenCalled();
+  });
+
+  it("rejects failed Turnstile verification before password verification", async () => {
+    vi.mocked(readLoginTurnstileRuntimeConfig).mockResolvedValueOnce({
+      enabled: true,
+      siteKey: "0xsite",
+      mode: "invisible",
+      secretKeyEncrypted: "encrypted",
+      updatedAt: 1,
+    });
+    vi.mocked(verifyTurnstileToken).mockResolvedValueOnce({
+      ok: false,
+      reason: "siteverify_failed",
+      errorCodes: [],
+    });
+
+    const response = await handleLegacyAuthLogin(
+      jsonRequest("/api/public/session", {
+        username: "admin",
+        password: "secret",
+        turnstileToken: "token",
+      }),
+      env as any,
+    );
+    const body = await responseJson(response);
+
+    expect(response.status).toBe(400);
+    expect(errorCode(body)).toBe("turnstile_failed");
+    expect(handleAuthLoginAdmin).not.toHaveBeenCalled();
+  });
+
+  it("continues login after successful Turnstile verification", async () => {
+    vi.mocked(readLoginTurnstileRuntimeConfig).mockResolvedValueOnce({
+      enabled: true,
+      siteKey: "0xsite",
+      mode: "invisible",
+      secretKeyEncrypted: "encrypted",
+      updatedAt: 1,
+    });
+
+    const response = await handleLegacyAuthLogin(
+      jsonRequest("/api/public/session", {
+        username: "admin",
+        password: "secret",
+        turnstileToken: "token",
+      }),
+      env as any,
+    );
+
+    expect(response.status).toBe(200);
+    expect(decryptLoginTurnstileSecret).toHaveBeenCalledWith(env, "encrypted");
+    expect(verifyTurnstileToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        secret: "turnstile-secret",
+        token: "token",
+        expectedHostname: "app.test",
+      }),
+    );
+    expect(handleAuthLoginAdmin).toHaveBeenCalled();
   });
 
   it("adapts legacy admin user, team, site, member, profile, and config forms", async () => {

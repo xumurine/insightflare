@@ -1,6 +1,10 @@
 import { handleApiKeysAdmin } from "./admin-api-keys";
 import { requireActor } from "./admin-auth";
 import {
+  handleLoginTurnstileConfigAdmin,
+  handleLoginTurnstileTestAdmin,
+} from "./admin-login-turnstile";
+import {
   handleNotificationEmailConfigAdmin,
   handleNotificationEmailTestAdmin,
 } from "./admin-notification-email";
@@ -28,11 +32,11 @@ import {
 } from "./admin-system";
 import { handleMembersAdmin, handleTeamsAdmin } from "./admin-teams";
 import {
-  handleAuthLoginAdmin,
   handleAuthMeAdmin,
   handleProfileAdmin,
   handleUsersAdmin,
 } from "./admin-users";
+import { handleLegacyAuthLogin } from "./legacy-auth";
 import type { Env } from "./types";
 
 /**
@@ -44,7 +48,7 @@ export async function handlePrivateAdmin(
   url: URL,
 ): Promise<Response> {
   const p = url.pathname;
-  if (p === "/api/public/session") return handleAuthLoginAdmin(request, env);
+  if (p === "/api/public/session") return handleLegacyAuthLogin(request, env);
   if (p === "/api/private/session") return handleAuthMeAdmin(request, env);
   if (p === "/api/private/admin/users") return handleUsersAdmin(request, env);
   if (p === "/api/private/admin/profile")
@@ -64,6 +68,10 @@ export async function handlePrivateAdmin(
     return handleNotificationEmailConfigAdmin(request, env);
   if (p === "/api/private/admin/notification-email/test")
     return handleNotificationEmailTestAdmin(request, env);
+  if (p === "/api/private/admin/login-turnstile")
+    return handleLoginTurnstileConfigAdmin(request, env);
+  if (p === "/api/private/admin/login-turnstile/test")
+    return handleLoginTurnstileTestAdmin(request, env);
   if (p === "/api/private/admin/notification-email-preview")
     return handleNotificationEmailPreviewAdmin(request, env, url);
   if (p === "/api/private/notifications")

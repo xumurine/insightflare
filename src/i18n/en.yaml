@@ -1551,6 +1551,29 @@ systemSettings:
   subtitle: Manage instance-wide configuration for this InsightFlare deployment.
   notificationEmailTitle: Email Notifications
   notificationEmailDescription: Configure the email service used for reports, alerts, and test messages.
+  loginTurnstileTitle: Login Turnstile Protection
+  loginTurnstileDescription: When enabled, the login page runs Cloudflare Turnstile Invisible verification in the background and the server enforces it during sign-in.
+  loginTurnstileEnabledLabel: Enable login protection
+  loginTurnstileSiteKeyLabel: Site Key
+  loginTurnstileSecretKeyLabel: Secret Key
+  loginTurnstileSecretKeyPlaceholder: Leave blank to keep the saved Secret Key
+  loginTurnstileSecretKeySaved: Saved
+  loginTurnstileSecretKeyNotSaved: Secret Key not saved
+  loginTurnstileModeLabel: Verification mode
+  loginTurnstileModeInvisible: Invisible
+  loginTurnstileTest: Test verification
+  loginTurnstileTesting: Verifying...
+  loginTurnstileTestPassed: Verification passed
+  loginTurnstileTestRequired: New Secret Key must be tested first
+  loginTurnstileTestMissing: Enter both Site Key and Secret Key first.
+  loginTurnstileTestFailed: Verification failed. Check the Site Key and Secret Key.
+  loginTurnstileSaved: Login Turnstile configuration saved.
+  loginTurnstileSaveFailed: Failed to save login Turnstile configuration.
+  loginTurnstileDeleted: Login Turnstile configuration deleted.
+  loginTurnstileDeleteFailed: Failed to delete login Turnstile configuration.
+  loginTurnstileDeleteConfirm: Delete the login Turnstile configuration? Login protection will be disabled.
+  loginTurnstileLoadFailed: Failed to load login Turnstile configuration.
+  loginTurnstilePrivacyNotice: Create an Invisible widget in the Cloudflare Turnstile console. For self-hosted deployments, confirm your privacy policy matches Cloudflare Turnstile requirements.
   enabledLabel: Enable email sending
   enabledOn: Enabled
   enabledOff: Disabled
@@ -1676,6 +1699,11 @@ systemPerformance:
   doDiagnosticHealthy: No abnormal buffered rows detected.
 loginForm:
   signingIn: Signing in...
+  verifyingSecurity: Verifying security...
+  securityVerificationTitle: Security verification failed
+  securityVerificationFailed: Security verification failed. Please try again.
+  retrySecurityVerification: Retry verification
+  redirecting: Redirecting...
   failed: Sign in failed. Please try again.
 logoutAction:
   pending: Signing out...

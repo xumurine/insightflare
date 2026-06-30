@@ -738,7 +738,7 @@ describe("private admin edge handler", () => {
       expect(response.status).toBe(500);
       expect(await response.json()).toMatchObject({
         ok: false,
-        error: "bootstrap_admin_failed",
+        error: { code: "login_upstream_failed" },
       });
       expect(errorSpy).toHaveBeenCalledWith("bootstrap_admin_failed", {
         message: "boom",
@@ -779,12 +779,12 @@ describe("private admin edge handler", () => {
       expect(promoteFailure.status).toBe(500);
       expect(await promoteFailure.json()).toMatchObject({
         ok: false,
-        error: "bootstrap_admin_failed",
+        error: { code: "login_upstream_failed" },
       });
       expect(createFailure.status).toBe(500);
       expect(await createFailure.json()).toMatchObject({
         ok: false,
-        error: "bootstrap_admin_failed",
+        error: { code: "login_upstream_failed" },
       });
       expect(errorSpy).toHaveBeenCalledWith("bootstrap_admin_failed", {
         message: "bootstrap admin promote failed",
@@ -794,7 +794,7 @@ describe("private admin edge handler", () => {
       });
     });
 
-    it("promotes an existing bootstrap user before validating login input", async () => {
+    it("rejects invalid public login input before bootstrap database access", async () => {
       const existing = userRow({
         id: "user-1",
         username: "bootstrap",
@@ -833,16 +833,10 @@ describe("private admin edge handler", () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toMatchObject({
         ok: false,
-        error: { message: "username/email and password are required" },
+        error: { message: "Invalid credentials" },
       });
-      expect(update.bind).toHaveBeenCalledWith(
-        "admin",
-        "admin@insightflare.local",
-        "Administrator",
-        expect.stringMatching(/^argon2id\$/),
-        "user-1",
-      );
-      expect(ownerUpsert.bind).toHaveBeenCalledWith("team-1", "user-1");
+      expect(update.bind).not.toHaveBeenCalled();
+      expect(ownerUpsert.bind).not.toHaveBeenCalled();
     });
 
     it("creates the bootstrap admin, verifies credentials, and returns profile teams", async () => {
@@ -896,11 +890,9 @@ describe("private admin edge handler", () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toMatchObject({
         ok: true,
-        data: {
-          user: publicUser(createdAdmin),
-          teams: [{ ...teamRows[0], membershipRole: "admin" }],
-        },
+        data: { next: "/app" },
       });
+      expect(response.headers.get("set-cookie")).toContain("if_session=");
     });
 
     it("denies login when stored password hashes are malformed or credentials mismatch", async () => {

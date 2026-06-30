@@ -9,7 +9,6 @@ import {
 } from "@remixicon/react";
 import { toast } from "sonner";
 
-import { PageHeading } from "@/components/dashboard/page-heading";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,6 +50,7 @@ interface NotificationEmailSettingsClientProps {
   locale: Locale;
   messages: AppMessages;
   currentUserEmail: string;
+  showHeading?: boolean;
 }
 
 interface ApiResponse<T> {
@@ -225,6 +225,7 @@ async function sendTestEmail(to: string): Promise<TestEmailResponse> {
 export function NotificationEmailSettingsClient({
   messages,
   currentUserEmail,
+  showHeading = true,
 }: NotificationEmailSettingsClientProps) {
   const copy = messages.systemSettings;
   const [config, setConfig] =
@@ -339,7 +340,14 @@ export function NotificationEmailSettingsClient({
 
   return (
     <div className="space-y-4">
-      <PageHeading title={copy.title} subtitle={copy.subtitle} />
+      {showHeading ? (
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold tracking-normal">
+            {copy.title}
+          </h1>
+          <p className="text-sm text-muted-foreground">{copy.subtitle}</p>
+        </div>
+      ) : null}
 
       <Card>
         <CardHeader>

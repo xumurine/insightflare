@@ -1004,6 +1004,29 @@ export interface AppManagementMessages {
     subtitle: string;
     notificationEmailTitle: string;
     notificationEmailDescription: string;
+    loginTurnstileTitle: string;
+    loginTurnstileDescription: string;
+    loginTurnstileEnabledLabel: string;
+    loginTurnstileSiteKeyLabel: string;
+    loginTurnstileSecretKeyLabel: string;
+    loginTurnstileSecretKeyPlaceholder: string;
+    loginTurnstileSecretKeySaved: string;
+    loginTurnstileSecretKeyNotSaved: string;
+    loginTurnstileModeLabel: string;
+    loginTurnstileModeInvisible: string;
+    loginTurnstileTest: string;
+    loginTurnstileTesting: string;
+    loginTurnstileTestPassed: string;
+    loginTurnstileTestRequired: string;
+    loginTurnstileTestMissing: string;
+    loginTurnstileTestFailed: string;
+    loginTurnstileSaved: string;
+    loginTurnstileSaveFailed: string;
+    loginTurnstileDeleted: string;
+    loginTurnstileDeleteFailed: string;
+    loginTurnstileDeleteConfirm: string;
+    loginTurnstileLoadFailed: string;
+    loginTurnstilePrivacyNotice: string;
     enabledLabel: string;
     enabledOn: string;
     enabledOff: string;
@@ -1037,6 +1060,11 @@ export interface AppManagementMessages {
   };
   loginForm: {
     signingIn: string;
+    verifyingSecurity: string;
+    securityVerificationTitle: string;
+    securityVerificationFailed: string;
+    retrySecurityVerification: string;
+    redirecting: string;
     failed: string;
   };
   logoutAction: {
