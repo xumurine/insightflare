@@ -224,6 +224,73 @@ describe("admin notification handlers", () => {
     );
   });
 
+  it("maps forbidden rule list access for ordinary team members", async () => {
+    listNotificationRules.mockRejectedValueOnce(new Error("Forbidden"));
+    const url = new URL(
+      "https://edge.test/api/private/admin/notification-rules?teamId=team-1",
+    );
+
+    const response = await handleNotificationRulesAdmin(
+      getRequest(url.pathname + url.search),
+      {} as never,
+      url,
+    );
+
+    expect(response.status).toBe(403);
+    expect(listNotificationRules).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ user: { id: "user-1" }, isAdmin: false }),
+      { teamId: "team-1", siteId: undefined },
+    );
+  });
+
+  it("allows rule list access for team owners and admins", async () => {
+    const url = new URL(
+      "https://edge.test/api/private/admin/notification-rules?teamId=team-1",
+    );
+
+    const response = await handleNotificationRulesAdmin(
+      getRequest(url.pathname + url.search),
+      {} as never,
+      url,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, data: [{ id: "rule-1" }] });
+  });
+
+  it("denies ordinary members rule management mutations", async () => {
+    createNotificationRule.mockRejectedValueOnce(new Error("Forbidden"));
+    updateNotificationRule.mockRejectedValueOnce(new Error("Forbidden"));
+    deleteNotificationRule.mockRejectedValueOnce(new Error("Forbidden"));
+
+    const create = await handleNotificationRulesAdmin(
+      request("/api/private/admin/notification-rules", { teamId: "team-1" }),
+      {} as never,
+      new URL("https://edge.test/api/private/admin/notification-rules"),
+    );
+    const update = await handleNotificationRulesAdmin(
+      patchRequest({ ruleId: "rule-1", name: "x" }),
+      {} as never,
+      new URL("https://edge.test/api/private/admin/notification-rules"),
+    );
+    const remove = await handleNotificationRulesAdmin(
+      methodRequest(
+        "DELETE",
+        "/api/private/admin/notification-rules?id=rule-1",
+      ),
+      {} as never,
+      new URL(
+        "https://edge.test/api/private/admin/notification-rules?id=rule-1",
+      ),
+    );
+
+    expect(create.status).toBe(403);
+    expect(update.status).toBe(403);
+    expect(remove.status).toBe(403);
+  });
+
   it("validates rule mutations and maps store errors", async () => {
     const missingTeam = await handleNotificationRulesAdmin(
       request("/api/private/admin/notification-rules", {}),

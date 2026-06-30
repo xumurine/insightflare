@@ -849,6 +849,25 @@ notificationCenter:
     partial: 部分完成
     failed: 失败
     skipped: 已跳过
+  channels:
+    inApp: 站内
+    email: 邮件
+  channelStatuses:
+    sent: 已发送
+    skipped: 已跳过
+    failed: 失败
+    created: 已创建
+  emailSkipReasons:
+    user_preference_disabled: 用户已关闭邮件通知
+    system_email_unconfigured: 系统邮件尚未配置
+    recipient_email_invalid: 收件人邮箱无效
+    secret_decryption_failed: 保存的邮件凭据无法解密
+    provider_failed: 邮件服务商拒绝发送
+    network_failed: 无法连接邮件服务商
+    unknown: 未知原因
+  emailAttempts: "尝试次数：{count}"
+  emailRetryCount: "重试次数：{count}"
+  emailDuration: "{duration} 毫秒"
   filtersTitle: 筛选
   filtersDescription: 按通知类型或严重程度缩小列表范围。
   typeFilterLabel: 类型
@@ -958,6 +977,8 @@ teamManagement:
     title: 事件通知
     subtitle: 管理当前团队的事件通知规则。
     empty: 当前团队还没有事件通知规则。
+    forbiddenTitle: 通知规则由团队管理员管理
+    forbiddenDescription: 你仍然可以查看自己的通知消息，并修改个人通知偏好。
     rulesTitle: 通知规则
     enabledCount: "当前团队已启用 {count} 条规则。"
     createTestRule: 创建测试规则

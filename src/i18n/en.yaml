@@ -880,6 +880,25 @@ notificationCenter:
     partial: Partial
     failed: Failed
     skipped: Skipped
+  channels:
+    inApp: In-app
+    email: Email
+  channelStatuses:
+    sent: sent
+    skipped: skipped
+    failed: failed
+    created: created
+  emailSkipReasons:
+    user_preference_disabled: email disabled by user preference
+    system_email_unconfigured: system email is not configured
+    recipient_email_invalid: recipient email is invalid
+    secret_decryption_failed: saved email credentials cannot be decrypted
+    provider_failed: provider rejected the message
+    network_failed: unable to reach email provider
+    unknown: unknown reason
+  emailAttempts: "Attempts: {count}"
+  emailRetryCount: "Retries: {count}"
+  emailDuration: "{duration} ms"
   filtersTitle: Filters
   filtersDescription: Narrow the list by notification type or severity.
   typeFilterLabel: Type
@@ -989,6 +1008,8 @@ teamManagement:
     title: Event Notifications
     subtitle: Manage event notification rules for this team.
     empty: No event notification rule exists for this team.
+    forbiddenTitle: Notification rules are managed by team admins
+    forbiddenDescription: You can still view your own notifications and update your personal notification preferences.
     rulesTitle: Notification Rules
     enabledCount: "{count} enabled rules in this team."
     createTestRule: Create test rule

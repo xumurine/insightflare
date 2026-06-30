@@ -63,6 +63,14 @@ export function EmailLayout({ children, locale, preview }: EmailLayoutProps) {
   const styles = createStyles();
   return (
     <html lang={locale}>
+      {/* eslint-disable-next-line @next/next/no-head-element */}
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="color-scheme" content="light dark" />
+        <meta name="supported-color-schemes" content="light dark" />
+        <title>{messages.common.brand}</title>
+      </head>
       <body style={styles.body}>
         <div style={styles.preview}>{preview}</div>
         <div style={styles.container}>

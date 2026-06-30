@@ -143,7 +143,7 @@ describe("notification email content", () => {
     });
   });
 
-  it("renders report, threshold, health, and fallback email text", () => {
+  it("renders report, milestone, threshold, change, health, and fallback email text", () => {
     const reportContent = buildNotificationContent({
       type: "report",
       severity: "info",
@@ -193,6 +193,62 @@ describe("notification email content", () => {
         }),
       }),
     ).toContain("Metric: visitors");
+
+    const milestoneContent = buildNotificationContent({
+      type: "milestone",
+      severity: "success",
+      locale: "zh",
+      data: {
+        siteDomain: "demo.test",
+        metric: "visitors",
+        bucket: 50000,
+        value: 50240,
+      },
+    });
+    const milestoneText = renderNotificationEmailText({
+      content: milestoneContent,
+      locale: "zh",
+      message: message({
+        type: "milestone",
+        data: { metric: "visitors", bucket: 50000, value: 50240 },
+      }),
+    });
+    expect(milestoneText).toContain("指标：访客数");
+    expect(milestoneText).toContain("里程碑：50,000");
+    expect(milestoneText).toContain("当前值：50,240");
+
+    const changeContent = buildNotificationContent({
+      type: "change",
+      severity: "warning",
+      locale: "en",
+      data: {
+        siteDomain: "demo.test",
+        metric: "visitors",
+        window: "last_24h",
+        previous: 920,
+        current: 1860,
+        change: 102.1,
+        mode: "percent",
+      },
+    });
+    const changeText = renderNotificationEmailText({
+      content: changeContent,
+      locale: "en",
+      message: message({
+        type: "change",
+        data: {
+          metric: "visitors",
+          window: "last_24h",
+          previous: 920,
+          current: 1860,
+          change: 102.1,
+          mode: "percent",
+        },
+      }),
+    });
+    expect(changeText).toContain("Previous value: 920");
+    expect(changeText).toContain("Current value: 1,860");
+    expect(changeText).toContain("Change: 102%");
 
     const healthContent = buildNotificationContent({
       type: "health",

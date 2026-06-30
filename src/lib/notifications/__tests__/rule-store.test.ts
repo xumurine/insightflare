@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { NotificationRule } from "@/lib/notifications/rule-store";
 import {
   advanceNotificationRuleSchedule,
+  applyNotificationRuleManualRunResult,
   createNotificationRule,
   deleteNotificationRule,
   listDueNotificationRules,
@@ -228,7 +229,55 @@ describe("notification rule store", () => {
     );
   });
 
-  it("lists rules with actor-scoped filters for non-admins", async () => {
+  it("applies manual run state and advances only due next run", async () => {
+    const bind = vi.fn(() => ({ run: vi.fn(() => Promise.resolve()) }));
+    const env = {
+      DB: {
+        prepare: vi.fn(() => ({ bind })),
+      },
+    };
+
+    await applyNotificationRuleManualRunResult(env as never, {
+      rule: rule({ nextRunAt: 900 }),
+      checkedAt: 1000,
+      triggeredAt: 1000,
+      cooldownUntil: 2000,
+      state: { threshold: { lastTriggerKey: "key-1" } },
+    });
+    await applyNotificationRuleManualRunResult(env as never, {
+      rule: rule({ id: "rule-future", nextRunAt: 3000 }),
+      checkedAt: 1000,
+    });
+
+    expect(bind).toHaveBeenNthCalledWith(
+      1,
+      1000,
+      1000,
+      expect.any(Number),
+      JSON.stringify({ threshold: { lastTriggerKey: "key-1" } }),
+      2000,
+      2000,
+      1000,
+      1000,
+      "rule-1",
+    );
+    const calls = bind.mock.calls as unknown[][];
+    expect(calls[0][2]).toBeGreaterThan(1000);
+    expect(bind).toHaveBeenNthCalledWith(
+      2,
+      1000,
+      null,
+      3000,
+      "{}",
+      null,
+      null,
+      1000,
+      1000,
+      "rule-future",
+    );
+  });
+
+  it("lists only manageable rules with actor-scoped filters for non-admins", async () => {
     const bind = vi.fn(() => ({
       all: vi.fn(() =>
         Promise.resolve({
@@ -269,13 +318,55 @@ describe("notification rule store", () => {
     );
 
     expect(rules).toHaveLength(1);
-    expect(bind).toHaveBeenCalledWith("user-1");
+    expect(bind).toHaveBeenCalledWith("user-1", "user-1");
     const prepareCalls = env.DB.prepare.mock.calls as unknown as Array<
       [string]
     >;
-    expect(String(prepareCalls[0]?.[0] ?? "")).toContain(
-      "team_id IN (SELECT team_id FROM team_members WHERE user_id = ?)",
-    );
+    const sql = String(prepareCalls[0]?.[0] ?? "");
+    expect(sql).toContain("LEFT JOIN teams t ON t.id = tm.team_id");
+    expect(sql).toContain("tm.role IN ('owner', 'admin')");
+    expect(sql).toContain("t.owner_user_id = ?");
+  });
+
+  it("requires manage permission when listing rules by team", async () => {
+    const preparedSql: string[] = [];
+    const env = {
+      DB: {
+        prepare: vi.fn((sql: string) => {
+          preparedSql.push(sql);
+          if (sql.includes("SELECT id,owner_user_id")) {
+            return {
+              bind: vi.fn(() => ({
+                first: vi.fn(() =>
+                  Promise.resolve({ id: "team-1", ownerUserId: "owner-1" }),
+                ),
+              })),
+            };
+          }
+          if (sql.includes("SELECT role FROM team_members")) {
+            return {
+              bind: vi.fn(() => ({
+                first: vi.fn(() => Promise.resolve({ role: "member" })),
+              })),
+            };
+          }
+          return {
+            bind: vi.fn(() => ({
+              all: vi.fn(() => Promise.resolve({ results: [] })),
+            })),
+          };
+        }),
+      },
+    };
+
+    await expect(
+      listNotificationRules(
+        env as never,
+        { user: { id: "member-1" }, isAdmin: false } as never,
+        { teamId: "team-1" },
+      ),
+    ).rejects.toThrow("Forbidden");
+    expect(preparedSql.join("\n")).not.toContain("FROM notification_rules");
   });
 
   it("deletes manageable rules and returns false for missing rules", async () => {
@@ -465,6 +556,8 @@ describe("notification rule store", () => {
       currentRow.scheduleJson,
       currentRow.conditionJson,
       currentRow.recipientJson,
+      "{}",
+      null,
       1_800_010_000,
       1_800_000_000,
       "rule-1",
@@ -538,12 +631,160 @@ describe("notification rule store", () => {
     expect(calls[0][4]).toBe("threshold");
     expect(calls[0][6]).toBe(currentRow.scheduleJson);
     expect(calls[0][8]).toBe(currentRow.recipientJson);
-    expect(calls[0][9]).toBe(1_800_010_000);
+    expect(calls[0][9]).toBe("{}");
+    expect(calls[0][10]).toBeNull();
+    expect(calls[0][11]).toBe(1_800_010_000);
     expect(calls[1][6]).toBe(
       JSON.stringify({ kind: "interval", everyMinutes: 120 }),
     );
-    expect(calls[1][9]).not.toBe(1_800_010_000);
+    expect(calls[1][9]).toBe("{}");
+    expect(calls[1][10]).toBeNull();
+    expect(calls[1][11]).not.toBe(1_800_010_000);
     expect(calls[2][8]).toBe(JSON.stringify({ mode: "creator" }));
     expect(calls[2][6]).toBe(currentRow.scheduleJson);
+  });
+
+  it("resets state and cooldown when condition, type, or site changes", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    const currentRow = {
+      id: "rule-1",
+      teamId: "team-1",
+      siteId: "site-1",
+      name: "Threshold",
+      description: "",
+      type: "threshold",
+      enabled: 1,
+      scheduleJson: JSON.stringify({ kind: "interval", everyMinutes: 60 }),
+      conditionJson: JSON.stringify({ metric: "visitors", value: 10 }),
+      recipientJson: JSON.stringify({ mode: "team_admins" }),
+      stateJson: JSON.stringify({ threshold: { lastTriggerKey: "old" } }),
+      lastCheckedAt: 10,
+      lastTriggeredAt: 20,
+      nextRunAt: 1_800_010_000,
+      cooldownUntil: 1_800_020_000,
+      createdByUserId: "user-1",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const calls: unknown[][] = [];
+    const env = {
+      DB: {
+        prepare: vi.fn((sql: string) => {
+          if (sql.includes("UPDATE notification_rules")) {
+            return {
+              bind: vi.fn((...args: unknown[]) => {
+                calls.push(args);
+                return { run: vi.fn(() => Promise.resolve()) };
+              }),
+            };
+          }
+          if (sql.includes("SELECT team_id FROM sites")) {
+            return {
+              bind: vi.fn(() => ({
+                first: vi.fn(() => Promise.resolve({ team_id: "team-1" })),
+              })),
+            };
+          }
+          return {
+            bind: vi.fn(() => ({
+              first: vi.fn(() => Promise.resolve(currentRow)),
+            })),
+          };
+        }),
+      },
+    };
+    const actor = { user: { id: "admin-1" }, isAdmin: true } as never;
+
+    await updateNotificationRule(env as never, actor, {
+      ruleId: "rule-1",
+      condition: { metric: "visitors", value: 20 },
+    });
+    await updateNotificationRule(env as never, actor, {
+      ruleId: "rule-1",
+      type: "change",
+    });
+    await updateNotificationRule(env as never, actor, {
+      ruleId: "rule-1",
+      siteId: "site-2",
+    });
+
+    for (const call of calls) {
+      expect(call[9]).toBe("{}");
+      expect(call[10]).toBeNull();
+    }
+  });
+
+  it("preserves state and cooldown for metadata and schedule-only updates", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    const stateJson = JSON.stringify({
+      threshold: { lastTriggerKey: "old" },
+    });
+    const currentRow = {
+      id: "rule-1",
+      teamId: "team-1",
+      siteId: "site-1",
+      name: "Threshold",
+      description: "",
+      type: "threshold",
+      enabled: 1,
+      scheduleJson: JSON.stringify({ kind: "interval", everyMinutes: 60 }),
+      conditionJson: JSON.stringify({ metric: "visitors", value: 10 }),
+      recipientJson: JSON.stringify({ mode: "team_admins" }),
+      stateJson,
+      lastCheckedAt: 10,
+      lastTriggeredAt: 20,
+      nextRunAt: 1_800_010_000,
+      cooldownUntil: 1_800_020_000,
+      createdByUserId: "user-1",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const calls: unknown[][] = [];
+    const env = {
+      DB: {
+        prepare: vi.fn((sql: string) => {
+          if (sql.includes("UPDATE notification_rules")) {
+            return {
+              bind: vi.fn((...args: unknown[]) => {
+                calls.push(args);
+                return { run: vi.fn(() => Promise.resolve()) };
+              }),
+            };
+          }
+          if (sql.includes("SELECT team_id FROM sites")) {
+            return {
+              bind: vi.fn(() => ({
+                first: vi.fn(() => Promise.resolve({ team_id: "team-1" })),
+              })),
+            };
+          }
+          return {
+            bind: vi.fn(() => ({
+              first: vi.fn(() => Promise.resolve(currentRow)),
+            })),
+          };
+        }),
+      },
+    };
+    const actor = { user: { id: "admin-1" }, isAdmin: true } as never;
+
+    await updateNotificationRule(env as never, actor, {
+      ruleId: "rule-1",
+      name: "Renamed",
+      description: "Updated",
+      enabled: false,
+      recipient: { mode: "creator" },
+    });
+    await updateNotificationRule(env as never, actor, {
+      ruleId: "rule-1",
+      schedule: { kind: "interval", everyMinutes: 120 },
+    });
+
+    expect(calls[0][9]).toBe(stateJson);
+    expect(calls[0][10]).toBe(1_800_020_000);
+    expect(calls[0][11]).toBe(1_800_010_000);
+    expect(calls[1][9]).toBe(stateJson);
+    expect(calls[1][10]).toBe(1_800_020_000);
+    expect(calls[1][11]).not.toBe(1_800_010_000);
   });
 });

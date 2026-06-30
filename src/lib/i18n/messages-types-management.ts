@@ -204,6 +204,28 @@ export interface AppManagementMessages {
       failed: string;
       skipped: string;
     };
+    channels: {
+      inApp: string;
+      email: string;
+    };
+    channelStatuses: {
+      sent: string;
+      skipped: string;
+      failed: string;
+      created: string;
+    };
+    emailSkipReasons: {
+      user_preference_disabled: string;
+      system_email_unconfigured: string;
+      recipient_email_invalid: string;
+      secret_decryption_failed: string;
+      provider_failed: string;
+      network_failed: string;
+      unknown: string;
+    };
+    emailAttempts: string;
+    emailRetryCount: string;
+    emailDuration: string;
     filtersTitle: string;
     filtersDescription: string;
     typeFilterLabel: string;
@@ -323,6 +345,8 @@ export interface AppManagementMessages {
       title: string;
       subtitle: string;
       empty: string;
+      forbiddenTitle: string;
+      forbiddenDescription: string;
       rulesTitle: string;
       enabledCount: string;
       createTestRule: string;

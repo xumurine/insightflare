@@ -345,6 +345,8 @@ describe("admin notification email handlers", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.messageId).toBe("email-1");
+    expect(body.data.attempts).toBe(1);
+    expect(body.data.retryCount).toBe(0);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.resend.com/emails",
       expect.objectContaining({
@@ -354,6 +356,47 @@ describe("admin notification email handlers", () => {
         }),
       }),
     );
+    fetchMock.mockRestore();
+  });
+
+  it("retries a temporary Resend failure for test emails", async () => {
+    const env = createEnv([]);
+    const encrypted = await encryptNotificationSecret(env, "re_test_secret");
+    const select = statement({
+      first: row({
+        fromName: "InsightFlare",
+        fromEmail: "noreply@example.test",
+        resend: {
+          apiKeyEncrypted: encrypted,
+          apiKeyHint: "••••cret",
+          configured: true,
+        },
+      }),
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "temporary" }), {
+          status: 500,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "email-retry" }), { status: 200 }),
+      );
+
+    const response = await handleNotificationEmailTestAdmin(
+      jsonRequest({ to: "receiver@example.test" }, "POST"),
+      createEnv([select]),
+    );
+    const body = await jsonOf(response);
+
+    expect(response.status).toBe(200);
+    expect(body.data).toMatchObject({
+      messageId: "email-retry",
+      attempts: 2,
+      retryCount: 1,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     fetchMock.mockRestore();
   });
 
@@ -484,7 +527,7 @@ describe("admin notification email handlers", () => {
     const encrypted = await encryptNotificationSecret(env, "re_test_secret");
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
-      .mockRejectedValueOnce(new TypeError("offline"));
+      .mockRejectedValue(new TypeError("offline"));
     const networkFailure = await handleNotificationEmailTestAdmin(
       jsonRequest({ to: "receiver@example.test" }, "POST"),
       createEnv([
@@ -504,6 +547,7 @@ describe("admin notification email handlers", () => {
 
     expect(networkFailure.status).toBe(400);
     expect(body.error.code).toBe("resend_request_failed");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     fetchMock.mockRestore();
   });
 

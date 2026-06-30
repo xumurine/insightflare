@@ -89,6 +89,25 @@ function dictionaryLabel<T extends Record<string, string>>(
   return value;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function compactText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function compactNumber(value: unknown): number | null {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function truncateMessage(value: string): string {
+  return value.length > 96 ? `${value.slice(0, 95)}...` : value;
+}
+
 function isUnread(item: NotificationMessageData): boolean {
   return item.readAt === null;
 }
@@ -237,70 +256,124 @@ function NotificationMessageList({
 
   return (
     <div className="space-y-3">
-      {items.map((item) => (
-        <Card key={item.id}>
-          <CardContent className="space-y-4 p-4 md:p-5">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div className="min-w-0 space-y-2">
-                <h2 className="truncate text-sm font-semibold">{item.title}</h2>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-                  <span>{shortDateTime(locale, item.createdAt * 1000)}</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={severityVariant(item.severity)}>
-                      {dictionaryLabel(copy.severities, item.severity)}
+      {items.map((item) => {
+        const email = record(item.deliveryResults.email);
+        const emailStatus = compactText(email?.status);
+        const emailReason = compactText(email?.reason);
+        const attempts = compactNumber(email?.attempts);
+        const retryCount = compactNumber(email?.retryCount);
+        const durationMs = compactNumber(email?.durationMs);
+        const errorMessage = truncateMessage(compactText(email?.errorMessage));
+        const inAppStatus =
+          compactText(record(item.deliveryResults.inApp)?.status) || "sent";
+        const reasonLabel = emailReason
+          ? dictionaryLabel(copy.emailSkipReasons, emailReason)
+          : "";
+        return (
+          <Card key={item.id}>
+            <CardContent className="space-y-4 p-4 md:p-5">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div className="min-w-0 space-y-2">
+                  <h2 className="truncate text-sm font-semibold">
+                    {item.title}
+                  </h2>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                    <span>{shortDateTime(locale, item.createdAt * 1000)}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={severityVariant(item.severity)}>
+                        {dictionaryLabel(copy.severities, item.severity)}
+                      </Badge>
+                      <Badge variant="outline">
+                        {dictionaryLabel(copy.messageTypes, item.type)}
+                      </Badge>
+                      <Badge variant="outline">
+                        {dictionaryLabel(
+                          copy.deliveryStatuses,
+                          item.deliveryStatus,
+                        )}
+                      </Badge>
+                      {item.requiresAttention ? (
+                        <Badge variant="secondary">{copy.attention}</Badge>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] leading-5 text-muted-foreground">
+                    <Badge variant="outline" className="font-normal">
+                      {copy.channels.inApp}:{" "}
+                      {dictionaryLabel(copy.channelStatuses, inAppStatus)}
                     </Badge>
-                    <Badge variant="outline">
-                      {dictionaryLabel(copy.messageTypes, item.type)}
-                    </Badge>
-                    <Badge variant="outline">
-                      {dictionaryLabel(
-                        copy.deliveryStatuses,
-                        item.deliveryStatus,
-                      )}
-                    </Badge>
-                    {item.requiresAttention ? (
-                      <Badge variant="secondary">{copy.attention}</Badge>
+                    {email ? (
+                      <Badge variant="outline" className="font-normal">
+                        {copy.channels.email}:{" "}
+                        {dictionaryLabel(
+                          copy.channelStatuses,
+                          emailStatus || "skipped",
+                        )}
+                        {reasonLabel ? `, ${reasonLabel}` : ""}
+                      </Badge>
                     ) : null}
+                    {attempts !== null ? (
+                      <span>
+                        {formatI18nTemplate(copy.emailAttempts, {
+                          count: attempts,
+                        })}
+                      </span>
+                    ) : null}
+                    {retryCount !== null && retryCount > 0 ? (
+                      <span>
+                        {formatI18nTemplate(copy.emailRetryCount, {
+                          count: retryCount,
+                        })}
+                      </span>
+                    ) : null}
+                    {durationMs !== null ? (
+                      <span>
+                        {formatI18nTemplate(copy.emailDuration, {
+                          duration: durationMs,
+                        })}
+                      </span>
+                    ) : null}
+                    {errorMessage ? <span>{errorMessage}</span> : null}
                   </div>
                 </div>
+                {item.readAt === null ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={updatingId === item.id}
+                      onClick={() => onRead(item.id)}
+                    >
+                      {updatingId === item.id ? (
+                        <Spinner className="size-4" />
+                      ) : (
+                        <RiCheckLine />
+                      )}
+                      <span>{copy.markRead}</span>
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-              {item.readAt === null ? (
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={updatingId === item.id}
-                    onClick={() => onRead(item.id)}
-                  >
-                    {updatingId === item.id ? (
-                      <Spinner className="size-4" />
-                    ) : (
-                      <RiCheckLine />
-                    )}
-                    <span>{copy.markRead}</span>
-                  </Button>
+              {item.summary || item.bodyText ? (
+                <div className="space-y-4 border-t pt-4">
+                  {item.summary ? (
+                    <blockquote className="border-l-2 border-primary/55 bg-muted/35 px-4 py-3 text-sm leading-6 text-foreground/90">
+                      <p className="whitespace-pre-wrap break-words">
+                        {item.summary}
+                      </p>
+                    </blockquote>
+                  ) : null}
+                  {item.bodyText ? (
+                    <div className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground/85">
+                      {item.bodyText}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
-            </div>
-            {item.summary || item.bodyText ? (
-              <div className="space-y-4 border-t pt-4">
-                {item.summary ? (
-                  <blockquote className="border-l-2 border-primary/55 bg-muted/35 px-4 py-3 text-sm leading-6 text-foreground/90">
-                    <p className="whitespace-pre-wrap break-words">
-                      {item.summary}
-                    </p>
-                  </blockquote>
-                ) : null}
-                {item.bodyText ? (
-                  <div className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground/85">
-                    {item.bodyText}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-      ))}
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }

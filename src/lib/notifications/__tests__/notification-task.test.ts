@@ -13,6 +13,7 @@ import type { NotificationRule } from "@/lib/notifications/rule-store";
 const listDueNotificationRules = vi.hoisted(() => vi.fn());
 const resolveNotificationRecipients = vi.hoisted(() => vi.fn());
 const advanceNotificationRuleSchedule = vi.hoisted(() => vi.fn());
+const applyNotificationRuleManualRunResult = vi.hoisted(() => vi.fn());
 const evaluateNotificationRule = vi.hoisted(() => vi.fn());
 const createNotificationMessage = vi.hoisted(() => vi.fn());
 const deliverNotificationMessage = vi.hoisted(() => vi.fn());
@@ -22,6 +23,7 @@ vi.mock("@/lib/notifications/rule-store", async (importOriginal) => ({
   listDueNotificationRules,
   resolveNotificationRecipients,
   advanceNotificationRuleSchedule,
+  applyNotificationRuleManualRunResult,
 }));
 
 vi.mock("@/lib/notifications/evaluator", () => ({
@@ -134,6 +136,7 @@ describe("notification task", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     advanceNotificationRuleSchedule.mockResolvedValue(undefined);
+    applyNotificationRuleManualRunResult.mockResolvedValue(undefined);
   });
 
   it("creates and delivers messages for triggered rules", async () => {
@@ -253,7 +256,7 @@ describe("notification task", () => {
     expect(advanceNotificationRuleSchedule).not.toHaveBeenCalled();
   });
 
-  it("manually runs a triggered rule without advancing schedule", async () => {
+  it("manually runs a triggered rule and applies manual run state", async () => {
     evaluateNotificationRule.mockResolvedValue({
       status: "triggered",
       message: {
@@ -293,6 +296,13 @@ describe("notification task", () => {
       emailSkippedInvalidRecipient: 1,
     });
     expect(advanceNotificationRuleSchedule).not.toHaveBeenCalled();
+    expect(applyNotificationRuleManualRunResult).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        rule: expect.objectContaining({ id: "rule-1" }),
+        triggeredAt: expect.any(Number),
+      }),
+    );
   });
 
   it("tracks skipped evaluation and missing recipients in manual runs", async () => {
@@ -312,6 +322,13 @@ describe("notification task", () => {
       messageCount: 0,
       summary: { rulesScanned: 1, rulesChecked: 1, rulesSkipped: 1 },
     });
+    expect(applyNotificationRuleManualRunResult).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        rule: expect.objectContaining({ id: "rule-1" }),
+        checkedAt: expect.any(Number),
+      }),
+    );
 
     evaluateNotificationRule.mockResolvedValueOnce({
       status: "triggered",

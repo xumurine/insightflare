@@ -1,8 +1,4 @@
-import {
-  canManageSite,
-  canManageTeam,
-  canReadTeam,
-} from "@/lib/edge/admin-access";
+import { canManageSite, canManageTeam } from "@/lib/edge/admin-access";
 import type { Actor } from "@/lib/edge/admin-auth";
 import type { Env } from "@/lib/edge/types";
 import { clampString } from "@/lib/edge/utils";
@@ -258,16 +254,22 @@ export async function listNotificationRules(
   const where: string[] = [];
   const bindings: string[] = [];
   if (filters.teamId) {
-    if (!(await canReadTeam(env, actor, filters.teamId))) {
+    if (!(await canManageTeam(env, actor, filters.teamId))) {
       throw new Error("Forbidden");
     }
     where.push("team_id = ?");
     bindings.push(filters.teamId);
   } else if (!actor.isAdmin) {
-    where.push(
-      "team_id IN (SELECT team_id FROM team_members WHERE user_id = ?)",
-    );
-    bindings.push(actor.user.id);
+    where.push(`
+      team_id IN (
+        SELECT tm.team_id
+        FROM team_members tm
+        LEFT JOIN teams t ON t.id = tm.team_id
+        WHERE tm.user_id = ?
+          AND (tm.role IN ('owner', 'admin') OR t.owner_user_id = ?)
+      )
+    `);
+    bindings.push(actor.user.id, actor.user.id);
   }
   if (filters.siteId) {
     where.push("site_id = ?");
@@ -302,6 +304,12 @@ export async function updateNotificationRule(
     throw new Error("Forbidden");
   }
   const now = Math.floor(Date.now() / 1000);
+  const nextType =
+    input.type !== undefined
+      ? normalizeNotificationRuleType(input.type)
+      : current.type;
+  const nextCondition =
+    input.condition !== undefined ? input.condition : current.condition;
   const schedule =
     input.schedule !== undefined
       ? normalizeNotificationSchedule(input.schedule)
@@ -314,6 +322,12 @@ export async function updateNotificationRule(
     input.recipient !== undefined
       ? normalizeNotificationRecipientConfig(input.recipient)
       : current.recipient;
+  const stateShouldReset =
+    nextType !== current.type ||
+    siteId !== current.siteId ||
+    safeJsonStringify(nextCondition) !== safeJsonStringify(current.condition);
+  const nextState = stateShouldReset ? {} : current.state;
+  const nextCooldownUntil = stateShouldReset ? null : current.cooldownUntil;
   await env.DB.prepare(
     `
       UPDATE notification_rules
@@ -327,6 +341,8 @@ export async function updateNotificationRule(
         schedule_json = ?,
         condition_json = ?,
         recipient_json = ?,
+        state_json = ?,
+        cooldown_until = ?,
         next_run_at = ?,
         updated_at = ?
       WHERE id = ?
@@ -337,15 +353,13 @@ export async function updateNotificationRule(
       siteId,
       clampString((input.name ?? current.name).trim(), 160),
       clampString((input.description ?? current.description).trim(), 1000),
-      input.type !== undefined
-        ? normalizeNotificationRuleType(input.type)
-        : current.type,
+      nextType,
       (input.enabled ?? current.enabled) ? 1 : 0,
       safeJsonStringify(schedule),
-      safeJsonStringify(
-        input.condition !== undefined ? input.condition : current.condition,
-      ),
+      safeJsonStringify(nextCondition),
       safeJsonStringify(recipient),
+      safeJsonStringify(nextState),
+      nextCooldownUntil,
       nextRunAt,
       now,
       input.ruleId,
@@ -413,6 +427,52 @@ export async function advanceNotificationRuleSchedule(
     input.rule.schedule,
     input.checkedAt,
   );
+  await env.DB.prepare(
+    `
+      UPDATE notification_rules
+      SET
+        last_checked_at = ?,
+        last_triggered_at = COALESCE(?, last_triggered_at),
+        next_run_at = ?,
+        state_json = ?,
+        cooldown_until = CASE
+          WHEN ? IS NOT NULL THEN ?
+          WHEN cooldown_until IS NOT NULL AND cooldown_until <= ? THEN NULL
+          ELSE cooldown_until
+        END,
+        updated_at = ?
+      WHERE id = ?
+    `,
+  )
+    .bind(
+      input.checkedAt,
+      input.triggeredAt ?? null,
+      nextRunAt,
+      safeJsonStringify(input.state ?? input.rule.state),
+      input.cooldownUntil ?? null,
+      input.cooldownUntil ?? null,
+      input.checkedAt,
+      input.checkedAt,
+      input.rule.id,
+    )
+    .run();
+}
+
+export async function applyNotificationRuleManualRunResult(
+  env: Env,
+  input: {
+    rule: NotificationRule;
+    checkedAt: number;
+    triggeredAt?: number | null;
+    cooldownUntil?: number | null;
+    state?: Record<string, unknown>;
+  },
+): Promise<void> {
+  const shouldAdvanceNextRunAt =
+    input.rule.nextRunAt === null || input.rule.nextRunAt <= input.checkedAt;
+  const nextRunAt = shouldAdvanceNextRunAt
+    ? computeNextNotificationRunAt(input.rule.schedule, input.checkedAt)
+    : input.rule.nextRunAt;
   await env.DB.prepare(
     `
       UPDATE notification_rules

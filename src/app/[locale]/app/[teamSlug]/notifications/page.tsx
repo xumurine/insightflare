@@ -1,6 +1,5 @@
-import { notFound } from "next/navigation";
-
 import { TeamNotificationsClient } from "@/components/dashboard/team-notifications-client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { canManageTeam } from "@/lib/dashboard/permissions";
 import { getDashboardTeamContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
@@ -31,11 +30,25 @@ export default async function TeamNotificationsPage({
   const messages = getMessages(resolvedLocale);
   const context = await getDashboardTeamContext(teamSlug);
 
+  if (!context) return null;
+
   if (
-    !context ||
     !canManageTeam(context.activeTeam.membershipRole, context.user.systemRole)
   ) {
-    notFound();
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            {messages.teamManagement.notifications.forbiddenTitle}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="max-w-prose text-sm leading-6 text-muted-foreground">
+            {messages.teamManagement.notifications.forbiddenDescription}
+          </p>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

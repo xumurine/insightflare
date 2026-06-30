@@ -10,6 +10,11 @@ import {
   validateNotificationEmailConfig,
   validateNotificationEmailUpdateInput,
 } from "@/lib/notifications/email-config";
+import {
+  buildResendFromAddress,
+  sanitizeProviderError,
+  sendResendEmailWithRetry,
+} from "@/lib/notifications/resend-client";
 
 import { requireActor } from "./admin-auth";
 import { bad, forb, jsonResponseFor, na, parseJson } from "./admin-response";
@@ -19,9 +24,7 @@ import {
 } from "./secret-encryption";
 import { deleteConfig, readConfig, upsertConfig } from "./system-config";
 import type { Env } from "./types";
-import { clampString } from "./utils";
 
-const RESEND_EMAILS_API_URL = "https://api.resend.com/emails";
 const TEST_EMAIL_SUBJECT = "InsightFlare email test";
 const TEST_EMAIL_TEXT =
   "This is a test email from InsightFlare. Your Resend email configuration is working.";
@@ -64,26 +67,6 @@ async function readNotificationEmailConfig(
 function currentActorEmail(actor: Awaited<ReturnType<typeof requireActor>>) {
   if (actor instanceof Response) return "";
   return actor.user.email || "";
-}
-
-function buildFromAddress(config: NotificationEmailConfig): string {
-  const name = config.fromName.trim();
-  if (!name) return config.fromEmail;
-  const escaped = name.replace(/["\\]/g, "");
-  return `${escaped} <${config.fromEmail}>`;
-}
-
-function sanitizeProviderError(value: unknown): string {
-  if (!value || typeof value !== "object") {
-    return clampString(String(value || "provider_error"), 180);
-  }
-  const record = value as Record<string, unknown>;
-  const message =
-    (typeof record.message === "string" && record.message) ||
-    (typeof record.error === "string" && record.error) ||
-    (typeof record.name === "string" && record.name) ||
-    "provider_error";
-  return clampString(message, 180);
 }
 
 export async function handleNotificationEmailConfigAdmin(
@@ -195,42 +178,29 @@ export async function handleNotificationEmailTestAdmin(
     );
   }
 
-  const startedAt = Date.now();
-  const resendBody: Record<string, unknown> = {
-    from: buildFromAddress(config),
+  const resendBody = {
+    from: buildResendFromAddress(config),
     to: [to],
     subject: TEST_EMAIL_SUBJECT,
     text: TEST_EMAIL_TEXT,
     html: TEST_EMAIL_HTML,
   };
-  if (config.replyTo) resendBody.reply_to = config.replyTo;
+  const emailBody = config.replyTo
+    ? { ...resendBody, reply_to: config.replyTo }
+    : resendBody;
 
-  let response: Response;
-  try {
-    response = await fetch(RESEND_EMAILS_API_URL, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(resendBody),
-    });
-  } catch {
-    return bad(
-      "Unable to reach Resend email API",
-      "resend_request_failed",
-      req,
-    );
+  const result = await sendResendEmailWithRetry({
+    apiKey,
+    body: emailBody,
+  });
+
+  if (!result.ok && result.reason === "network_failed") {
+    return bad(result.errorMessage, "resend_request_failed", req);
   }
 
-  const durationMs = Date.now() - startedAt;
-  const payload = (await response.json().catch(() => ({}))) as Record<
-    string,
-    unknown
-  >;
-  if (!response.ok) {
+  if (!result.ok) {
     return bad(
-      `Resend request failed: ${sanitizeProviderError(payload)}`,
+      `Resend request failed: ${sanitizeProviderError(result.payload)}`,
       "resend_request_failed",
       req,
     );
@@ -240,9 +210,10 @@ export async function handleNotificationEmailTestAdmin(
     ok: true,
     data: {
       provider: "resend",
-      messageId:
-        typeof payload.id === "string" ? clampString(payload.id, 120) : "",
-      durationMs,
+      messageId: result.providerMessageId,
+      durationMs: result.durationMs,
+      attempts: result.attempts,
+      retryCount: result.retryCount,
     },
   });
 }

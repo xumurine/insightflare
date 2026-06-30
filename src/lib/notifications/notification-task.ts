@@ -22,6 +22,7 @@ import {
 } from "./preferences";
 import {
   advanceNotificationRuleSchedule,
+  applyNotificationRuleManualRunResult,
   listDueNotificationRules,
   type NotificationRule,
   resolveNotificationRecipients,
@@ -350,6 +351,7 @@ export async function runNotificationRuleManually(input: {
         ...(evaluation.data ?? {}),
       },
     );
+    await applyNotificationRuleManualRunResult(env, { rule, checkedAt });
     summary.durationMs = Date.now() - context.startedAt;
     return { evaluation, messages: [], messageCount: 0, summary };
   }
@@ -365,6 +367,7 @@ export async function runNotificationRuleManually(input: {
         ...(evaluation.data ?? {}),
       },
     );
+    await applyNotificationRuleManualRunResult(env, { rule, checkedAt });
     summary.durationMs = Date.now() - context.startedAt;
     return { evaluation, messages: [], messageCount: 0, summary };
   }
@@ -377,6 +380,13 @@ export async function runNotificationRuleManually(input: {
     draft: evaluation.message,
     triggeredAt: checkedAt,
     summary,
+  });
+  await applyNotificationRuleManualRunResult(env, {
+    rule,
+    checkedAt,
+    triggeredAt: checkedAt,
+    cooldownUntil: evaluation.cooldownUntil ?? null,
+    state: evaluation.state ?? rule.state,
   });
   summary.durationMs = Date.now() - context.startedAt;
   return {

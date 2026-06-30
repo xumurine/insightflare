@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { notificationEmailPreviewMessage } from "@/components/email/notification-email-preview-data";
+import { buildNotificationContentForMessage } from "@/lib/notifications/email-renderer";
 import { renderNotificationEmail } from "@/lib/notifications/email-renderer";
+import { renderNotificationPlainText } from "@/lib/notifications/email-text";
 import type { NotificationMessage } from "@/lib/notifications/message-store";
 
 function fallbackMessage(): NotificationMessage {
@@ -32,6 +34,10 @@ describe("renderNotificationEmail", () => {
     expect(rendered.html).toContain("热门页面");
     expect(rendered.html).toContain("主要来源");
     expect(rendered.html).toContain("<!doctype html>");
+    expect(rendered.html).toContain('<html lang="zh">');
+    expect(rendered.html).toContain('<meta charSet="utf-8"/>');
+    expect(rendered.html).toContain('name="viewport"');
+    expect(rendered.html).not.toContain("stylesheet");
     expect(rendered.text).toContain("核心指标");
     expect(rendered.text).not.toContain("<html");
     expect(rendered.text).not.toContain("[object Object]");
@@ -63,6 +69,7 @@ describe("renderNotificationEmail", () => {
     expect(rendered.html).toContain("里程碑");
     expect(rendered.html).toContain("当前值");
     expect(rendered.text).toContain("已达到流量里程碑");
+    expect(rendered.text).toContain("里程碑：50,000");
   });
 
   it("renders change html with the shared email design", async () => {
@@ -77,6 +84,31 @@ describe("renderNotificationEmail", () => {
     expect(rendered.html).toContain("上一值");
     expect(rendered.html).toContain("变化");
     expect(rendered.text).toContain("变化了");
+    expect(rendered.text).toContain("上一值：920");
+    expect(rendered.text).toContain("当前值：1,860");
+    expect(rendered.text).toContain("变化：102%");
+  });
+
+  it("returns the same text as the direct plain text renderer", async () => {
+    const message = notificationEmailPreviewMessage("change", "en");
+    const rendered = await renderNotificationEmail({
+      message,
+      locale: "en",
+      timeZone: "UTC",
+    });
+    const content = buildNotificationContentForMessage({
+      message,
+      locale: "en",
+    });
+
+    expect(rendered.text).toBe(
+      renderNotificationPlainText({
+        content,
+        message,
+        locale: "en",
+        timeZone: "UTC",
+      }),
+    );
   });
 
   it("renders health html and text with timezone", async () => {

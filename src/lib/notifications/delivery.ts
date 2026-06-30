@@ -2,7 +2,6 @@ import type { ScheduledTaskLogger } from "@/lib/edge/scheduled-task-runner";
 import { decryptNotificationSecret } from "@/lib/edge/secret-encryption";
 import { readConfig } from "@/lib/edge/system-config";
 import type { Env } from "@/lib/edge/types";
-import { clampString } from "@/lib/edge/utils";
 import {
   isValidEmail,
   normalizeNotificationEmailConfig,
@@ -16,8 +15,11 @@ import {
   updateNotificationDeliveryResult,
 } from "./message-store";
 import { normalizeNotificationPreferences } from "./preferences";
+import {
+  buildResendFromAddress,
+  sendResendEmailWithRetry,
+} from "./resend-client";
 
-const RESEND_EMAILS_API_URL = "https://api.resend.com/emails";
 type NotificationDeliveryLogger = Pick<
   ScheduledTaskLogger,
   "info" | "warn" | "error"
@@ -29,26 +31,6 @@ export interface NotificationDeliveryUser {
   preferencesJson?: string | null;
   preferredLocale?: string | null;
   timeZone?: string | null;
-}
-
-function buildFromAddress(input: { fromName: string; fromEmail: string }) {
-  const name = input.fromName.trim();
-  if (!name) return input.fromEmail;
-  const escaped = name.replace(/["\\]/g, "");
-  return `${escaped} <${input.fromEmail}>`;
-}
-
-function sanitizeProviderError(value: unknown): string {
-  if (!value || typeof value !== "object") {
-    return clampString(String(value || "provider_error"), 180);
-  }
-  const record = value as Record<string, unknown>;
-  const message =
-    (typeof record.message === "string" && record.message) ||
-    (typeof record.error === "string" && record.error) ||
-    (typeof record.name === "string" && record.name) ||
-    "provider_error";
-  return clampString(message, 180);
 }
 
 function maskEmail(value: string): string {
@@ -189,7 +171,6 @@ export async function deliverNotificationMessage(
     });
   }
 
-  const startedAt = Date.now();
   await context.logger?.info("notification_delivery_attempt", "Sending email", {
     messageId: message.id,
     userId: user.id,
@@ -224,34 +205,27 @@ export async function deliverNotificationMessage(
       );
     }
 
-    const response = await fetch(RESEND_EMAILS_API_URL, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        from: buildFromAddress(config),
+    const sendResult = await sendResendEmailWithRetry({
+      apiKey,
+      body: {
+        from: buildResendFromAddress(config),
         to: [user.email],
         subject: rendered.subject,
         text: rendered.text,
         html: rendered.html,
         reply_to: config.replyTo || undefined,
-      }),
+      },
     });
-    const payload = (await response.json().catch(() => ({}))) as Record<
-      string,
-      unknown
-    >;
-    const durationMs = Date.now() - startedAt;
-    if (!response.ok) {
-      const errorMessage = sanitizeProviderError(payload);
+
+    if (!sendResult.ok) {
       results.email = {
         status: "failed",
         provider: "resend",
-        reason: "provider_failed",
-        errorMessage,
-        durationMs,
+        reason: sendResult.reason,
+        errorMessage: sendResult.errorMessage,
+        durationMs: sendResult.durationMs,
+        attempts: sendResult.attempts,
+        retryCount: sendResult.retryCount,
       };
       await context.logger?.error(
         "notification_delivery_failed",
@@ -262,8 +236,10 @@ export async function deliverNotificationMessage(
           channel: "email",
           provider: "resend",
           recipient: maskEmail(user.email),
-          errorMessage,
-          durationMs,
+          errorMessage: sendResult.errorMessage,
+          durationMs: sendResult.durationMs,
+          attempts: sendResult.attempts,
+          retryCount: sendResult.retryCount,
         },
       );
       return updateNotificationDeliveryResult(env, {
@@ -271,16 +247,16 @@ export async function deliverNotificationMessage(
         status: "failed",
         channels,
         deliveryResults: results,
-        errorMessage,
+        errorMessage: sendResult.errorMessage,
       });
     }
-    const providerMessageId =
-      typeof payload.id === "string" ? clampString(payload.id, 120) : "";
     results.email = {
       status: "sent",
       provider: "resend",
-      messageId: providerMessageId,
-      durationMs,
+      messageId: sendResult.providerMessageId,
+      durationMs: sendResult.durationMs,
+      attempts: sendResult.attempts,
+      retryCount: sendResult.retryCount,
     };
     await context.logger?.info(
       "notification_delivery_success",
@@ -291,8 +267,10 @@ export async function deliverNotificationMessage(
         channel: "email",
         provider: "resend",
         recipient: maskEmail(user.email),
-        providerMessageId,
-        durationMs,
+        providerMessageId: sendResult.providerMessageId,
+        durationMs: sendResult.durationMs,
+        attempts: sendResult.attempts,
+        retryCount: sendResult.retryCount,
       },
     );
     return updateNotificationDeliveryResult(env, {
@@ -302,14 +280,15 @@ export async function deliverNotificationMessage(
       deliveryResults: results,
     });
   } catch {
-    const durationMs = Date.now() - startedAt;
     const errorMessage = "Unable to reach Resend email API";
     results.email = {
       status: "failed",
       provider: "resend",
       reason: "network_failed",
       errorMessage,
-      durationMs,
+      durationMs: 0,
+      attempts: 0,
+      retryCount: 0,
     };
     await context.logger?.error(
       "notification_delivery_failed",
@@ -321,7 +300,7 @@ export async function deliverNotificationMessage(
         provider: "resend",
         recipient: maskEmail(user.email),
         errorMessage,
-        durationMs,
+        durationMs: 0,
       },
     );
     return updateNotificationDeliveryResult(env, {

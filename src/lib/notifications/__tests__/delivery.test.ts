@@ -191,7 +191,7 @@ describe("notification delivery", () => {
           status: 422,
         }),
       )
-      .mockResolvedValueOnce(new Response("0", { status: 500 }));
+      .mockResolvedValueOnce(new Response("0", { status: 400 }));
 
     for (const email of [
       "user@example.test",
