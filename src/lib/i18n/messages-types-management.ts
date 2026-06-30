@@ -194,6 +194,24 @@ export interface AppManagementMessages {
       failed: string;
       skipped: string;
     };
+    filtersTitle: string;
+    filtersDescription: string;
+    typeFilterLabel: string;
+    severityFilterLabel: string;
+    allTypes: string;
+    allSeverities: string;
+    preferencesTitle: string;
+    preferencesDescription: string;
+    emailNotificationsLabel: string;
+    emailNotificationsDescription: string;
+    reportsUnreadLabel: string;
+    reportsUnreadDescription: string;
+    milestonesUnreadLabel: string;
+    milestonesUnreadDescription: string;
+    alertsUnreadLabel: string;
+    alertsUnreadDescription: string;
+    preferencesSaved: string;
+    preferencesSaveFailed: string;
   };
   login: {
     title: string;
@@ -287,12 +305,56 @@ export interface AppManagementMessages {
       createTestRuleFailed: string;
       testNotificationSent: string;
       sendTestNotificationFailed: string;
+      createRule: string;
+      editRule: string;
+      dialogDescription: string;
+      nameLabel: string;
+      siteLabel: string;
+      chooseSite: string;
+      ruleTypeLabel: string;
+      recipientLabel: string;
+      enabledLabel: string;
+      enabledHint: string;
+      scheduleLabel: string;
+      timeLabel: string;
+      timezoneLabel: string;
+      intervalLabel: string;
+      metricLabel: string;
+      windowLabel: string;
+      operatorLabel: string;
+      valueLabel: string;
+      cooldownLabel: string;
+      noDataHoursLabel: string;
+      cooldownDescription: string;
+      pleaseChooseSite: string;
+      ruleCreated: string;
+      ruleUpdated: string;
+      createRuleFailed: string;
+      updateRuleFailed: string;
+      deleteConfirm: string;
+      ruleDeleted: string;
+      deleteRuleFailed: string;
+      lastChecked: string;
+      lastTriggered: string;
+      actions: string;
+      edit: string;
+      enable: string;
+      disable: string;
+      delete: string;
+      saveRule: string;
       scheduleDaily: string;
       scheduleInterval: string;
       scheduleCustom: string;
+      defaultNames: {
+        report: string;
+        threshold: string;
+        health: string;
+      };
       columns: {
         name: string;
         type: string;
+        site: string;
+        recipient: string;
         schedule: string;
         nextRun: string;
         status: string;
@@ -308,6 +370,32 @@ export interface AppManagementMessages {
         change: string;
         health: string;
         test: string;
+      };
+      recipientModes: {
+        creator: string;
+        team_admins: string;
+        all_team_members: string;
+        users: string;
+      };
+      scheduleKinds: {
+        daily: string;
+        interval: string;
+      };
+      intervalOptions: {
+        everyHour: string;
+        every6Hours: string;
+        every12Hours: string;
+        everyDay: string;
+      };
+      metrics: {
+        views: string;
+        visitors: string;
+        sessions: string;
+      };
+      windows: {
+        last_1h: string;
+        last_24h: string;
+        yesterday: string;
       };
     };
     publicLinks: {

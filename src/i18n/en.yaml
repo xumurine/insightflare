@@ -870,6 +870,24 @@ notificationCenter:
     partial: Partial
     failed: Failed
     skipped: Skipped
+  filtersTitle: Filters
+  filtersDescription: Narrow the list by notification type or severity.
+  typeFilterLabel: Type
+  severityFilterLabel: Severity
+  allTypes: All types
+  allSeverities: All severities
+  preferencesTitle: Notification preferences
+  preferencesDescription: These settings control email delivery and which messages remain unread for attention.
+  emailNotificationsLabel: Email notifications
+  emailNotificationsDescription: Send email when a rule triggers.
+  reportsUnreadLabel: Reports unread
+  reportsUnreadDescription: Keep reports unread after creation.
+  milestonesUnreadLabel: Milestones unread
+  milestonesUnreadDescription: Reserve unread state for milestones.
+  alertsUnreadLabel: Alerts unread
+  alertsUnreadDescription: Keep threshold and health alerts unread.
+  preferencesSaved: Notification preferences saved.
+  preferencesSaveFailed: Failed to save notification preferences.
 login:
   title: Sign in
   subtitle: Use your InsightFlare account.
@@ -954,12 +972,55 @@ teamManagement:
     createTestRuleFailed: Failed to create test rule.
     testNotificationSent: Test notification sent.
     sendTestNotificationFailed: Failed to send test notification.
+    createRule: Create rule
+    editRule: Edit rule
+    dialogDescription: Configure a basic notification rule for this team.
+    nameLabel: Name
+    siteLabel: Site
+    chooseSite: Choose site
+    ruleTypeLabel: Rule type
+    recipientLabel: Recipient
+    enabledLabel: Enabled
+    enabledHint: Run this rule
+    scheduleLabel: Schedule
+    timeLabel: Time
+    timezoneLabel: Timezone
+    intervalLabel: Interval
+    metricLabel: Metric
+    windowLabel: Window
+    operatorLabel: Operator
+    valueLabel: Value
+    cooldownLabel: Cooldown
+    noDataHoursLabel: No data hours
+    cooldownDescription: Minutes between repeated alerts.
+    pleaseChooseSite: Please choose a site.
+    ruleCreated: Rule created.
+    ruleUpdated: Rule updated.
+    createRuleFailed: Failed to create rule.
+    updateRuleFailed: Failed to update rule.
+    deleteConfirm: Delete "{name}"?
+    ruleDeleted: Rule deleted.
+    deleteRuleFailed: Failed to delete rule.
+    lastChecked: Last checked
+    lastTriggered: Last triggered
+    actions: Actions
+    edit: Edit
+    enable: Enable
+    disable: Disable
+    delete: Delete
+    saveRule: Save rule
     scheduleDaily: "Daily {time}"
     scheduleInterval: "Every {minutes} min"
     scheduleCustom: Custom
+    defaultNames:
+      report: "{site} daily report"
+      threshold: "{site} traffic threshold"
+      health: "{site} health check"
     columns:
       name: Name
       type: Type
+      site: Site
+      recipient: Recipient
       schedule: Schedule
       nextRun: Next Run
       status: Status
@@ -973,6 +1034,27 @@ teamManagement:
       change: Change
       health: Health
       test: Test
+    recipientModes:
+      creator: Creator
+      team_admins: Team admins
+      all_team_members: All members
+      users: Selected users
+    scheduleKinds:
+      daily: Daily
+      interval: Interval
+    intervalOptions:
+      everyHour: Every hour
+      every6Hours: Every 6 hours
+      every12Hours: Every 12 hours
+      everyDay: Every day
+    metrics:
+      views: Views
+      visitors: Visitors
+      sessions: Sessions
+    windows:
+      last_1h: Last 1h
+      last_24h: Last 24h
+      yesterday: Yesterday
   publicLinks:
     title: Public Links
     subtitle: Manage publicly accessible sharing links for this team.

@@ -147,11 +147,14 @@ function ruleTypeLabel(
   return type;
 }
 
-function recipientLabel(mode: string): string {
-  if (mode === "creator") return "Creator";
-  if (mode === "all_team_members") return "All members";
-  if (mode === "users") return "Selected users";
-  return "Team admins";
+function recipientLabel(
+  copy: AppMessages["teamManagement"]["notifications"],
+  mode: string,
+): string {
+  if (mode in copy.recipientModes) {
+    return copy.recipientModes[mode as keyof typeof copy.recipientModes];
+  }
+  return copy.recipientModes.team_admins;
 }
 
 function siteLabel(siteById: Map<string, SiteData>, siteId: string | null) {
@@ -201,16 +204,22 @@ function inferFormFromRule(rule: NotificationRuleData): RuleFormState {
   };
 }
 
-function defaultName(type: RuleFormType, site?: SiteData) {
-  const prefix = site?.name || "Site";
-  if (type === "report") return `${prefix} daily report`;
-  if (type === "threshold") return `${prefix} traffic threshold`;
-  return `${prefix} health check`;
+function defaultName(
+  copy: AppMessages["teamManagement"]["notifications"],
+  type: RuleFormType,
+  site?: SiteData,
+) {
+  const siteName = site?.name || copy.siteLabel;
+  return formatI18nTemplate(copy.defaultNames[type], { site: siteName });
 }
 
-function buildRulePayload(form: RuleFormState, sites: SiteData[]) {
+function buildRulePayload(
+  copy: AppMessages["teamManagement"]["notifications"],
+  form: RuleFormState,
+  sites: SiteData[],
+) {
   const site = sites.find((item) => item.id === form.siteId);
-  const name = form.name.trim() || defaultName(form.type, site);
+  const name = form.name.trim() || defaultName(copy, form.type, site);
   const schedule =
     form.scheduleKind === "daily"
       ? { kind: "daily", time: form.time || "08:00", timezone: form.timezone }
@@ -246,10 +255,12 @@ function buildRulePayload(form: RuleFormState, sites: SiteData[]) {
 }
 
 function RuleFormFields({
+  copy,
   form,
   sites,
   onChange,
 }: {
+  copy: AppMessages["teamManagement"]["notifications"];
   form: RuleFormState;
   sites: SiteData[];
   onChange: (patch: Partial<RuleFormState>) => void;
@@ -258,7 +269,7 @@ function RuleFormFields({
     <div className="grid gap-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <Field>
-          <FieldLabel>Name</FieldLabel>
+          <FieldLabel>{copy.nameLabel}</FieldLabel>
           <Input
             value={form.name}
             maxLength={160}
@@ -266,13 +277,13 @@ function RuleFormFields({
           />
         </Field>
         <Field>
-          <FieldLabel>Site</FieldLabel>
+          <FieldLabel>{copy.siteLabel}</FieldLabel>
           <Select
             value={form.siteId}
             onValueChange={(siteId) => onChange({ siteId })}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Choose site" />
+              <SelectValue placeholder={copy.chooseSite} />
             </SelectTrigger>
             <SelectContent>
               {sites.map((site) => (
@@ -287,7 +298,7 @@ function RuleFormFields({
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Field>
-          <FieldLabel>Rule type</FieldLabel>
+          <FieldLabel>{copy.ruleTypeLabel}</FieldLabel>
           <Select
             value={form.type}
             onValueChange={(value) => {
@@ -307,14 +318,16 @@ function RuleFormFields({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="report">Daily report</SelectItem>
-              <SelectItem value="threshold">Threshold</SelectItem>
-              <SelectItem value="health">Health</SelectItem>
+              <SelectItem value="report">{copy.ruleTypes.report}</SelectItem>
+              <SelectItem value="threshold">
+                {copy.ruleTypes.threshold}
+              </SelectItem>
+              <SelectItem value="health">{copy.ruleTypes.health}</SelectItem>
             </SelectContent>
           </Select>
         </Field>
         <Field>
-          <FieldLabel>Recipient</FieldLabel>
+          <FieldLabel>{copy.recipientLabel}</FieldLabel>
           <Select
             value={form.recipientMode}
             onValueChange={(value) => {
@@ -331,27 +344,35 @@ function RuleFormFields({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="team_admins">Team admins</SelectItem>
-              <SelectItem value="creator">Creator</SelectItem>
-              <SelectItem value="all_team_members">All members</SelectItem>
+              <SelectItem value="team_admins">
+                {copy.recipientModes.team_admins}
+              </SelectItem>
+              <SelectItem value="creator">
+                {copy.recipientModes.creator}
+              </SelectItem>
+              <SelectItem value="all_team_members">
+                {copy.recipientModes.all_team_members}
+              </SelectItem>
             </SelectContent>
           </Select>
         </Field>
         <Field>
-          <FieldLabel>Enabled</FieldLabel>
+          <FieldLabel>{copy.enabledLabel}</FieldLabel>
           <div className="flex h-8 items-center gap-2">
             <Checkbox
               checked={form.enabled}
               onCheckedChange={(checked) => onChange({ enabled: !!checked })}
             />
-            <span className="text-xs text-muted-foreground">Run this rule</span>
+            <span className="text-xs text-muted-foreground">
+              {copy.enabledHint}
+            </span>
           </div>
         </Field>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Field>
-          <FieldLabel>Schedule</FieldLabel>
+          <FieldLabel>{copy.scheduleLabel}</FieldLabel>
           <Select
             value={form.scheduleKind}
             onValueChange={(value) => {
@@ -364,15 +385,17 @@ function RuleFormFields({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="daily">Daily</SelectItem>
-              <SelectItem value="interval">Interval</SelectItem>
+              <SelectItem value="daily">{copy.scheduleKinds.daily}</SelectItem>
+              <SelectItem value="interval">
+                {copy.scheduleKinds.interval}
+              </SelectItem>
             </SelectContent>
           </Select>
         </Field>
         {form.scheduleKind === "daily" ? (
           <>
             <Field>
-              <FieldLabel>Time</FieldLabel>
+              <FieldLabel>{copy.timeLabel}</FieldLabel>
               <Input
                 type="time"
                 value={form.time}
@@ -380,7 +403,7 @@ function RuleFormFields({
               />
             </Field>
             <Field>
-              <FieldLabel>Timezone</FieldLabel>
+              <FieldLabel>{copy.timezoneLabel}</FieldLabel>
               <Input
                 value={form.timezone}
                 onChange={(event) => onChange({ timezone: event.target.value })}
@@ -389,7 +412,7 @@ function RuleFormFields({
           </>
         ) : (
           <Field>
-            <FieldLabel>Interval</FieldLabel>
+            <FieldLabel>{copy.intervalLabel}</FieldLabel>
             <Select
               value={form.everyMinutes}
               onValueChange={(everyMinutes) => onChange({ everyMinutes })}
@@ -398,10 +421,18 @@ function RuleFormFields({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="60">Every hour</SelectItem>
-                <SelectItem value="360">Every 6 hours</SelectItem>
-                <SelectItem value="720">Every 12 hours</SelectItem>
-                <SelectItem value="1440">Every day</SelectItem>
+                <SelectItem value="60">
+                  {copy.intervalOptions.everyHour}
+                </SelectItem>
+                <SelectItem value="360">
+                  {copy.intervalOptions.every6Hours}
+                </SelectItem>
+                <SelectItem value="720">
+                  {copy.intervalOptions.every12Hours}
+                </SelectItem>
+                <SelectItem value="1440">
+                  {copy.intervalOptions.everyDay}
+                </SelectItem>
               </SelectContent>
             </Select>
           </Field>
@@ -411,7 +442,7 @@ function RuleFormFields({
       {form.type === "threshold" ? (
         <div className="grid gap-4 sm:grid-cols-5">
           <Field>
-            <FieldLabel>Metric</FieldLabel>
+            <FieldLabel>{copy.metricLabel}</FieldLabel>
             <Select
               value={form.metric}
               onValueChange={(value) => {
@@ -428,14 +459,18 @@ function RuleFormFields({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="views">Views</SelectItem>
-                <SelectItem value="visitors">Visitors</SelectItem>
-                <SelectItem value="sessions">Sessions</SelectItem>
+                <SelectItem value="views">{copy.metrics.views}</SelectItem>
+                <SelectItem value="visitors">
+                  {copy.metrics.visitors}
+                </SelectItem>
+                <SelectItem value="sessions">
+                  {copy.metrics.sessions}
+                </SelectItem>
               </SelectContent>
             </Select>
           </Field>
           <Field>
-            <FieldLabel>Window</FieldLabel>
+            <FieldLabel>{copy.windowLabel}</FieldLabel>
             <Select
               value={form.window}
               onValueChange={(value) => {
@@ -452,14 +487,18 @@ function RuleFormFields({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="last_1h">Last 1h</SelectItem>
-                <SelectItem value="last_24h">Last 24h</SelectItem>
-                <SelectItem value="yesterday">Yesterday</SelectItem>
+                <SelectItem value="last_1h">{copy.windows.last_1h}</SelectItem>
+                <SelectItem value="last_24h">
+                  {copy.windows.last_24h}
+                </SelectItem>
+                <SelectItem value="yesterday">
+                  {copy.windows.yesterday}
+                </SelectItem>
               </SelectContent>
             </Select>
           </Field>
           <Field>
-            <FieldLabel>Operator</FieldLabel>
+            <FieldLabel>{copy.operatorLabel}</FieldLabel>
             <Select
               value={form.operator}
               onValueChange={(value) => {
@@ -485,7 +524,7 @@ function RuleFormFields({
             </Select>
           </Field>
           <Field>
-            <FieldLabel>Value</FieldLabel>
+            <FieldLabel>{copy.valueLabel}</FieldLabel>
             <Input
               type="number"
               min={0}
@@ -494,7 +533,7 @@ function RuleFormFields({
             />
           </Field>
           <Field>
-            <FieldLabel>Cooldown</FieldLabel>
+            <FieldLabel>{copy.cooldownLabel}</FieldLabel>
             <Input
               type="number"
               min={0}
@@ -510,7 +549,7 @@ function RuleFormFields({
       {form.type === "health" ? (
         <div className="grid gap-4 sm:grid-cols-2">
           <Field>
-            <FieldLabel>No data hours</FieldLabel>
+            <FieldLabel>{copy.noDataHoursLabel}</FieldLabel>
             <Input
               type="number"
               min={1}
@@ -519,7 +558,7 @@ function RuleFormFields({
             />
           </Field>
           <Field>
-            <FieldLabel>Cooldown</FieldLabel>
+            <FieldLabel>{copy.cooldownLabel}</FieldLabel>
             <Input
               type="number"
               min={0}
@@ -528,9 +567,7 @@ function RuleFormFields({
                 onChange({ cooldownMinutes: event.target.value })
               }
             />
-            <FieldDescription>
-              Minutes between repeated alerts.
-            </FieldDescription>
+            <FieldDescription>{copy.cooldownDescription}</FieldDescription>
           </Field>
         </div>
       ) : null}
@@ -552,6 +589,7 @@ export function TeamNotificationsClient({
   const [testing, setTesting] = useState(false);
   const [emailConfigured, setEmailConfigured] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [form, setForm] = useState<RuleFormState>(EMPTY_FORM);
 
   const siteById = useMemo(
@@ -596,7 +634,7 @@ export function TeamNotificationsClient({
       ...EMPTY_FORM,
       type,
       siteId: firstSite?.id ?? "",
-      name: defaultName(type, firstSite),
+      name: defaultName(copy, type, firstSite),
       scheduleKind: type === "report" ? "daily" : "interval",
     });
     setDialogOpen(true);
@@ -610,12 +648,12 @@ export function TeamNotificationsClient({
   async function saveRule() {
     if (saving) return;
     if (!form.siteId) {
-      toast.error("Please choose a site.");
+      toast.error(copy.pleaseChooseSite);
       return;
     }
     setSaving(true);
     try {
-      const payload = buildRulePayload(form, sites);
+      const payload = buildRulePayload(copy, form, sites);
       const saved = form.id
         ? await updateNotificationRule({ ruleId: form.id, teamId, ...payload })
         : await createNotificationRule({ teamId, ...payload });
@@ -625,11 +663,9 @@ export function TeamNotificationsClient({
           : [saved, ...current],
       );
       setDialogOpen(false);
-      toast.success(form.id ? "Rule updated." : "Rule created.");
+      toast.success(form.id ? copy.ruleUpdated : copy.ruleCreated);
     } catch {
-      toast.error(
-        form.id ? "Failed to update rule." : "Failed to create rule.",
-      );
+      toast.error(form.id ? copy.updateRuleFailed : copy.createRuleFailed);
     } finally {
       setSaving(false);
     }
@@ -645,18 +681,23 @@ export function TeamNotificationsClient({
         current.map((item) => (item.id === updated.id ? updated : item)),
       );
     } catch {
-      toast.error("Failed to update rule.");
+      toast.error(copy.updateRuleFailed);
     }
   }
 
   async function removeRule(rule: NotificationRuleData) {
-    if (!window.confirm(`Delete "${rule.name}"?`)) return;
+    if (
+      !window.confirm(
+        formatI18nTemplate(copy.deleteConfirm, { name: rule.name }),
+      )
+    )
+      return;
     try {
       await deleteNotificationRule({ ruleId: rule.id });
       setRules((current) => current.filter((item) => item.id !== rule.id));
-      toast.success("Rule deleted.");
+      toast.success(copy.ruleDeleted);
     } catch {
-      toast.error("Failed to delete rule.");
+      toast.error(copy.deleteRuleFailed);
     }
   }
 
@@ -666,6 +707,7 @@ export function TeamNotificationsClient({
     try {
       await sendNotificationTest({ teamId, userId: currentUserId });
       toast.success(copy.testNotificationSent);
+      setTestDialogOpen(false);
     } catch {
       toast.error(copy.sendTestNotificationFailed);
     } finally {
@@ -682,23 +724,21 @@ export function TeamNotificationsClient({
           <>
             <Button
               type="button"
-              variant="outline"
               size="sm"
-              onClick={handleSendTest}
-              disabled={testing}
+              onClick={() => setTestDialogOpen(true)}
             >
-              {testing ? <Spinner className="size-4" /> : <RiMailSendLine />}
+              <RiMailSendLine />
               <span>{copy.sendTestNotification}</span>
             </Button>
             <Button type="button" size="sm" onClick={() => openCreate()}>
               <RiAddLine />
-              <span>Create rule</span>
+              <span>{copy.createRule}</span>
             </Button>
           </>
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+      <div className="grid gap-4">
         <Card>
           <CardHeader>
             <CardTitle>{copy.rulesTitle}</CardTitle>
@@ -725,14 +765,14 @@ export function TeamNotificationsClient({
                   <TableRow>
                     <TableHead>{copy.columns.name}</TableHead>
                     <TableHead>{copy.columns.type}</TableHead>
-                    <TableHead>Site</TableHead>
-                    <TableHead>Recipient</TableHead>
+                    <TableHead>{copy.columns.site}</TableHead>
+                    <TableHead>{copy.columns.recipient}</TableHead>
                     <TableHead>{copy.columns.schedule}</TableHead>
-                    <TableHead>Last checked</TableHead>
-                    <TableHead>Last triggered</TableHead>
+                    <TableHead>{copy.lastChecked}</TableHead>
+                    <TableHead>{copy.lastTriggered}</TableHead>
                     <TableHead>{copy.columns.nextRun}</TableHead>
                     <TableHead>{copy.columns.status}</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead>{copy.actions}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -742,7 +782,10 @@ export function TeamNotificationsClient({
                       <TableCell>{ruleTypeLabel(copy, rule.type)}</TableCell>
                       <TableCell>{siteLabel(siteById, rule.siteId)}</TableCell>
                       <TableCell>
-                        {recipientLabel(String(rule.recipient.mode ?? ""))}
+                        {recipientLabel(
+                          copy,
+                          String(rule.recipient.mode ?? ""),
+                        )}
                       </TableCell>
                       <TableCell>{scheduleLabel(copy, rule)}</TableCell>
                       <TableCell>
@@ -767,7 +810,7 @@ export function TeamNotificationsClient({
                             type="button"
                             size="icon-xs"
                             variant="outline"
-                            title="Edit"
+                            title={copy.edit}
                             onClick={() => openEdit(rule)}
                           >
                             <RiEditLine />
@@ -776,7 +819,7 @@ export function TeamNotificationsClient({
                             type="button"
                             size="icon-xs"
                             variant="outline"
-                            title={rule.enabled ? "Disable" : "Enable"}
+                            title={rule.enabled ? copy.disable : copy.enable}
                             onClick={() => void toggleRule(rule)}
                           >
                             <RiPlayCircleLine />
@@ -785,7 +828,7 @@ export function TeamNotificationsClient({
                             type="button"
                             size="icon-xs"
                             variant="destructive"
-                            title="Delete"
+                            title={copy.delete}
                             onClick={() => void removeRule(rule)}
                           >
                             <RiDeleteBinLine />
@@ -799,47 +842,55 @@ export function TeamNotificationsClient({
             )}
           </CardContent>
         </Card>
+      </div>
 
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle>{copy.deliveryTestTitle}</CardTitle>
-            <CardDescription>{copy.deliveryTestDescription}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2 text-foreground">
-                <RiCheckboxCircleLine className="size-4 text-emerald-600" />
-                {copy.inAppTestHint}
-              </div>
-              <div className="flex items-center gap-2">
-                <RiMailSendLine className="size-4" />
-                {emailConfigured
-                  ? copy.emailTestConfiguredHint
-                  : copy.emailTestUnconfiguredHint}
-              </div>
+      <Dialog open={testDialogOpen} onOpenChange={setTestDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{copy.deliveryTestTitle}</DialogTitle>
+            <DialogDescription>
+              {copy.deliveryTestDescription}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 text-foreground">
+              <RiCheckboxCircleLine className="size-4 text-emerald-600" />
+              {copy.inAppTestHint}
             </div>
+            <div className="flex items-center gap-2">
+              <RiMailSendLine className="size-4" />
+              {emailConfigured
+                ? copy.emailTestConfiguredHint
+                : copy.emailTestUnconfiguredHint}
+            </div>
+          </div>
+          <DialogFooter>
             <Button
               type="button"
-              className="w-full"
-              onClick={handleSendTest}
+              variant="outline"
+              onClick={() => setTestDialogOpen(false)}
               disabled={testing}
             >
+              {messages.teamSelect.cancel}
+            </Button>
+            <Button type="button" onClick={handleSendTest} disabled={testing}>
               {testing ? <Spinner className="size-4" /> : <RiMailSendLine />}
               <span>{copy.sendTestNotification}</span>
             </Button>
-          </CardContent>
-        </Card>
-      </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[min(820px,calc(100vh-2rem))] max-w-3xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{form.id ? "Edit rule" : "Create rule"}</DialogTitle>
-            <DialogDescription>
-              Configure a basic notification rule for this team.
-            </DialogDescription>
+            <DialogTitle>
+              {form.id ? copy.editRule : copy.createRule}
+            </DialogTitle>
+            <DialogDescription>{copy.dialogDescription}</DialogDescription>
           </DialogHeader>
           <RuleFormFields
+            copy={copy}
             form={form}
             sites={sites}
             onChange={(patch) =>
@@ -856,7 +907,7 @@ export function TeamNotificationsClient({
               onClick={() => setDialogOpen(false)}
               disabled={saving}
             >
-              Cancel
+              {messages.teamSelect.cancel}
             </Button>
             <Button
               type="button"
@@ -864,7 +915,7 @@ export function TeamNotificationsClient({
               disabled={saving}
             >
               {saving ? <Spinner className="size-4" /> : <RiSave3Line />}
-              <span>{form.id ? "Save rule" : "Create rule"}</span>
+              <span>{form.id ? copy.saveRule : copy.createRule}</span>
             </Button>
           </DialogFooter>
         </DialogContent>

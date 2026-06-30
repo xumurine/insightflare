@@ -418,10 +418,10 @@ export function NotificationCenterClient({
     setPreferencesSaving(true);
     try {
       setPreferences(await updateNotificationPreferences(next));
-      toast.success("Notification preferences saved.");
+      toast.success(copy.preferencesSaved);
     } catch {
       setPreferences(preferences);
-      toast.error("Failed to save notification preferences.");
+      toast.error(copy.preferencesSaveFailed);
     } finally {
       setPreferencesSaving(false);
     }
@@ -490,14 +490,14 @@ export function NotificationCenterClient({
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2 text-sm font-medium">
               <RiSettings3Line className="size-4 text-muted-foreground" />
-              Filters
+              {copy.filtersTitle}
             </div>
             <p className="text-xs text-muted-foreground">
-              Narrow the list by notification type or severity.
+              {copy.filtersDescription}
             </p>
           </div>
           <Field>
-            <FieldLabel>Type</FieldLabel>
+            <FieldLabel>{copy.typeFilterLabel}</FieldLabel>
             <Select value={typeFilter} onValueChange={setTypeFilter}>
               <SelectTrigger className="w-full">
                 <SelectValue />
@@ -506,7 +506,7 @@ export function NotificationCenterClient({
                 {MESSAGE_TYPE_FILTERS.map((type) => (
                   <SelectItem key={type} value={type}>
                     {type === "all"
-                      ? "All types"
+                      ? copy.allTypes
                       : dictionaryLabel(copy.messageTypes, type)}
                   </SelectItem>
                 ))}
@@ -514,7 +514,7 @@ export function NotificationCenterClient({
             </Select>
           </Field>
           <Field>
-            <FieldLabel>Severity</FieldLabel>
+            <FieldLabel>{copy.severityFilterLabel}</FieldLabel>
             <Select value={severityFilter} onValueChange={setSeverityFilter}>
               <SelectTrigger className="w-full">
                 <SelectValue />
@@ -523,7 +523,7 @@ export function NotificationCenterClient({
                 {SEVERITY_FILTERS.map((severity) => (
                   <SelectItem key={severity} value={severity}>
                     {severity === "all"
-                      ? "All severities"
+                      ? copy.allSeverities
                       : dictionaryLabel(copy.severities, severity)}
                   </SelectItem>
                 ))}
@@ -543,11 +543,10 @@ export function NotificationCenterClient({
                 ) : (
                   <RiSave3Line className="size-4 text-muted-foreground" />
                 )}
-                Notification preferences
+                {copy.preferencesTitle}
               </div>
               <p className="text-xs text-muted-foreground">
-                These settings control email delivery and which messages remain
-                unread for attention.
+                {copy.preferencesDescription}
               </p>
             </div>
             <Field>
@@ -559,10 +558,10 @@ export function NotificationCenterClient({
                     void savePreferences({ email: !!checked })
                   }
                 />
-                <FieldLabel>Email notifications</FieldLabel>
+                <FieldLabel>{copy.emailNotificationsLabel}</FieldLabel>
               </div>
               <FieldDescription>
-                Send email when a rule triggers.
+                {copy.emailNotificationsDescription}
               </FieldDescription>
             </Field>
             <Field>
@@ -576,10 +575,10 @@ export function NotificationCenterClient({
                     })
                   }
                 />
-                <FieldLabel>Reports unread</FieldLabel>
+                <FieldLabel>{copy.reportsUnreadLabel}</FieldLabel>
               </div>
               <FieldDescription>
-                Keep reports unread after creation.
+                {copy.reportsUnreadDescription}
               </FieldDescription>
             </Field>
             <Field>
@@ -593,10 +592,10 @@ export function NotificationCenterClient({
                     })
                   }
                 />
-                <FieldLabel>Milestones unread</FieldLabel>
+                <FieldLabel>{copy.milestonesUnreadLabel}</FieldLabel>
               </div>
               <FieldDescription>
-                Reserve unread state for milestones.
+                {copy.milestonesUnreadDescription}
               </FieldDescription>
             </Field>
             <Field>
@@ -610,10 +609,10 @@ export function NotificationCenterClient({
                     })
                   }
                 />
-                <FieldLabel>Alerts unread</FieldLabel>
+                <FieldLabel>{copy.alertsUnreadLabel}</FieldLabel>
               </div>
               <FieldDescription>
-                Keep threshold and health alerts unread.
+                {copy.alertsUnreadDescription}
               </FieldDescription>
             </Field>
           </CardContent>
