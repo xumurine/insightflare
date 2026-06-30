@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   RiAddLine,
   RiCheckboxCircleLine,
@@ -8,6 +9,7 @@ import {
   RiEditLine,
   RiEyeLine,
   RiMailSendLine,
+  RiMessage2Line,
   RiNotification3Line,
   RiPauseCircleLine,
   RiPlayCircleLine,
@@ -75,6 +77,7 @@ interface TeamNotificationsClientProps {
   locale: Locale;
   messages: AppMessages;
   teamId: string;
+  teamSlug: string;
   currentUserId: string;
 }
 
@@ -620,6 +623,7 @@ export function TeamNotificationsClient({
   locale,
   messages,
   teamId,
+  teamSlug,
   currentUserId,
 }: TeamNotificationsClientProps) {
   const copy = messages.teamManagement.notifications;
@@ -805,6 +809,14 @@ export function TeamNotificationsClient({
         subtitle={copy.subtitle}
         actions={
           <>
+            <Button type="button" size="sm" variant="outline" asChild>
+              <Link
+                href={`/${locale}/app/${teamSlug}/notifications/email-preview`}
+              >
+                <RiMailSendLine />
+                <span>{copy.emailPreview}</span>
+              </Link>
+            </Button>
             <Button
               type="button"
               size="sm"
@@ -911,6 +923,19 @@ export function TeamNotificationsClient({
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
+                          <Button
+                            type="button"
+                            size="icon-xs"
+                            variant="outline"
+                            title={copy.viewMessages}
+                            asChild
+                          >
+                            <Link
+                              href={`/${locale}/app/${teamSlug}/account/notifications?ruleId=${encodeURIComponent(rule.id)}`}
+                            >
+                              <RiMessage2Line />
+                            </Link>
+                          </Button>
                           <Button
                             type="button"
                             size="icon-xs"

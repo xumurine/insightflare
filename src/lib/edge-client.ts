@@ -678,6 +678,7 @@ export async function runNotificationRuleNow(input: {
 export async function fetchNotificationMessages(input: {
   teamId?: string;
   siteId?: string;
+  ruleId?: string;
   type?: string;
   severity?: string;
   unread?: boolean;
@@ -694,6 +695,7 @@ export async function fetchNotificationMessages(input: {
     params: {
       ...(input.teamId ? { teamId: input.teamId } : {}),
       ...(input.siteId ? { siteId: input.siteId } : {}),
+      ...(input.ruleId ? { ruleId: input.ruleId } : {}),
       ...(input.type ? { type: input.type } : {}),
       ...(input.severity ? { severity: input.severity } : {}),
       ...(input.unread ? { unread: 1 } : {}),
@@ -716,6 +718,51 @@ export async function fetchNotificationMessages(input: {
         ? data.unreadAttentionCount
         : 0,
   };
+}
+
+export async function fetchNotificationEmailPreview(input: {
+  type: "test" | "report" | "threshold" | "health";
+  locale: "en" | "zh";
+  format: "html" | "text" | "json";
+}): Promise<
+  | string
+  | {
+      subject: string;
+      html: string;
+      text: string;
+    }
+> {
+  const baseUrl = await edgeBaseUrl();
+  const url = withQuery(
+    new URL("/api/private/admin/notification-email-preview", baseUrl),
+    input,
+  );
+  const headers = new Headers();
+  try {
+    const sessionToken = await getSessionToken();
+    if (sessionToken) {
+      headers.set("authorization", `Bearer ${sessionToken}`);
+    }
+  } catch {
+    // Ignore when session is unavailable outside request scope.
+  }
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers,
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Email preview failed (${res.status}): ${text}`);
+  }
+  if (input.format === "json") {
+    const payload = (await res.json()) as {
+      ok: boolean;
+      data: { subject: string; html: string; text: string };
+    };
+    return payload.data;
+  }
+  return res.text();
 }
 
 export async function markNotificationMessageRead(input: {

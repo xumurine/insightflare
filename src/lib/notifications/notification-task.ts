@@ -456,10 +456,7 @@ export async function createManualTestNotification(input: {
     summary: localized.summary,
     bodyText: localized.bodyText,
     bodyHtml: "",
-    data:
-      localized.locale === "en"
-        ? { source: "manual_test" }
-        : { source: "manual_test", locale: localized.locale },
+    data: { source: "manual_test", locale: localized.locale },
     triggeredAt: now,
   });
   summary.messagesCreated = 1;

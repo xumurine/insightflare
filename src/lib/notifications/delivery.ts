@@ -9,7 +9,7 @@ import {
   SYSTEM_NOTIFICATION_EMAIL_CONFIG_KEY,
 } from "@/lib/notifications/email-config";
 import { renderNotificationEmail } from "@/lib/notifications/email-renderer";
-import { resolveNotificationLocale } from "@/lib/notifications/locale";
+import { resolveNotificationMessageLocale } from "@/lib/notifications/locale";
 
 import {
   type NotificationMessage,
@@ -201,7 +201,10 @@ export async function deliverNotificationMessage(
   try {
     let rendered = fallbackRenderedEmail(message);
     try {
-      const locale = resolveNotificationLocale(user.preferredLocale);
+      const locale = resolveNotificationMessageLocale({
+        messageLocale: message.data.locale,
+        userLocale: user.preferredLocale,
+      });
       rendered = await renderNotificationEmail({
         message,
         locale,

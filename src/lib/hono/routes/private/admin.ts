@@ -7,6 +7,7 @@ import {
   handleNotificationEmailTestAdmin,
 } from "@/lib/edge/admin-notification-email";
 import {
+  handleNotificationEmailPreviewAdmin,
   handleNotificationRulePreviewAdmin,
   handleNotificationRuleRunAdmin,
   handleNotificationRulesAdmin,
@@ -53,6 +54,9 @@ privateAdminRoutes.all("/notification-email", (c) =>
 );
 privateAdminRoutes.all("/notification-email/test", (c) =>
   handleNotificationEmailTestAdmin(c.req.raw, c.env),
+);
+privateAdminRoutes.all("/notification-email-preview", (c) =>
+  handleNotificationEmailPreviewAdmin(c.req.raw, c.env, requestUrl(c)),
 );
 privateAdminRoutes.all("/notification-rules", (c) =>
   handleNotificationRulesAdmin(c.req.raw, c.env, requestUrl(c)),

@@ -159,6 +159,8 @@ export interface AppManagementMessages {
     markReadFailed: string;
     markAllReadSuccess: string;
     markAllReadFailed: string;
+    ruleFilterActive: string;
+    ruleFilterClear: string;
     sections: {
       importantTitle: string;
       importantDescription: string;
@@ -231,6 +233,13 @@ export interface AppManagementMessages {
       runId: string;
       batchId: string;
       deliveryStatus: string;
+      deliveryDetails: string;
+      emailStatus: string;
+      emailReason: string;
+      provider: string;
+      providerMessageId: string;
+      duration: string;
+      locale: string;
       deliveryResults: string;
       createdAt: string;
       triggeredAt: string;
@@ -368,6 +377,8 @@ export interface AppManagementMessages {
       disable: string;
       delete: string;
       saveRule: string;
+      viewMessages: string;
+      emailPreview: string;
       preview: string;
       runNow: string;
       previewFailed: string;
@@ -442,6 +453,20 @@ export interface AppManagementMessages {
         last_1h: string;
         last_24h: string;
         yesterday: string;
+      };
+      emailPreviewPage: {
+        title: string;
+        subtitle: string;
+        typeLabel: string;
+        localeLabel: string;
+        formatLabel: string;
+        html: string;
+        text: string;
+        json: string;
+        refresh: string;
+        loading: string;
+        loadFailed: string;
+        subject: string;
       };
     };
     publicLinks: {

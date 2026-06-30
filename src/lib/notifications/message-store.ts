@@ -101,6 +101,7 @@ export interface ListNotificationMessagesInput {
   userId?: string;
   teamId?: string;
   siteId?: string;
+  ruleId?: string;
   type?: string;
   severity?: string;
   unread?: boolean;
@@ -293,6 +294,10 @@ export async function listNotificationMessagesForUser(
     filters.push("site_id = ?");
     bindings.push(input.siteId);
   }
+  if (input.ruleId) {
+    filters.push("rule_id = ?");
+    bindings.push(input.ruleId);
+  }
   if (input.type) {
     filters.push("type = ?");
     bindings.push(input.type);
@@ -336,6 +341,10 @@ export async function listNotificationMessagesForTeam(
   if (input.siteId) {
     filters.push("site_id = ?");
     bindings.push(input.siteId);
+  }
+  if (input.ruleId) {
+    filters.push("rule_id = ?");
+    bindings.push(input.ruleId);
   }
   if (input.type) {
     filters.push("type = ?");

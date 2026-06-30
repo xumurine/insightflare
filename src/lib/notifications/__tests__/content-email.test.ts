@@ -194,7 +194,7 @@ describe("notification email content", () => {
           data: { lastSeenAt: 1_800_000_000 },
         }),
       }),
-    ).toContain("2027-01-15T08:00:00.000Z");
+    ).toContain("最后收到数据：2027");
 
     expect(
       renderNotificationEmailText({

@@ -25,7 +25,9 @@ vi.mock("@/lib/notifications/email-renderer", () => ({
   renderNotificationEmail,
 }));
 
-function message(): NotificationMessage {
+function message(
+  input: Partial<NotificationMessage> = {},
+): NotificationMessage {
   return {
     id: "msg-1",
     teamId: "team-1",
@@ -55,6 +57,7 @@ function message(): NotificationMessage {
     sentAt: null,
     failedAt: null,
     expiresAt: null,
+    ...input,
   };
 }
 
@@ -368,6 +371,78 @@ describe("notification delivery", () => {
     );
   });
 
+  it("uses message locale before user locale when rendering email", async () => {
+    readConfig.mockResolvedValue({
+      enabled: true,
+      provider: "resend",
+      fromEmail: "from@example.test",
+      fromName: "",
+      replyTo: "",
+      resend: {
+        configured: true,
+        apiKeyEncrypted: "encrypted",
+      },
+    });
+    decryptNotificationSecret.mockResolvedValue("re_secret");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "provider-message-1" }), {
+        status: 200,
+      }),
+    );
+
+    await deliverNotificationMessage(
+      {} as never,
+      message({ data: { locale: "zh" } }),
+      {
+        id: "user-1",
+        email: "user@example.test",
+        preferencesJson: "{}",
+        preferredLocale: "en",
+      },
+      {},
+    );
+
+    expect(renderNotificationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ locale: "zh" }),
+    );
+  });
+
+  it("falls back to user locale when message locale is missing", async () => {
+    readConfig.mockResolvedValue({
+      enabled: true,
+      provider: "resend",
+      fromEmail: "from@example.test",
+      fromName: "",
+      replyTo: "",
+      resend: {
+        configured: true,
+        apiKeyEncrypted: "encrypted",
+      },
+    });
+    decryptNotificationSecret.mockResolvedValue("re_secret");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "provider-message-1" }), {
+        status: 200,
+      }),
+    );
+
+    await deliverNotificationMessage(
+      {} as never,
+      message(),
+      {
+        id: "user-1",
+        email: "user@example.test",
+        preferencesJson: "{}",
+        preferredLocale: "zh",
+      },
+      {},
+    );
+
+    expect(renderNotificationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ locale: "zh" }),
+    );
+  });
+
   it("falls back to plain content when rendering fails", async () => {
     readConfig.mockResolvedValue({
       enabled: true,
@@ -438,6 +513,44 @@ describe("notification delivery", () => {
         }),
       }),
     );
+  });
+
+  it("uses saved message text when localized rendering fails", async () => {
+    readConfig.mockResolvedValue({
+      enabled: true,
+      provider: "resend",
+      fromEmail: "from@example.test",
+      fromName: "",
+      replyTo: "",
+      resend: {
+        configured: true,
+        apiKeyEncrypted: "encrypted",
+      },
+    });
+    decryptNotificationSecret.mockResolvedValue("re_secret");
+    renderNotificationEmail.mockRejectedValueOnce(new Error("render failed"));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "provider-message-1" }), {
+        status: 200,
+      }),
+    );
+
+    await deliverNotificationMessage(
+      {} as never,
+      message({ title: "中文标题", bodyText: "中文正文" }),
+      { id: "user-1", email: "user@example.test", preferencesJson: "{}" },
+      {},
+    );
+
+    const body = JSON.parse(
+      String(
+        (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body,
+      ),
+    ) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      subject: "中文标题",
+      text: "中文正文",
+    });
   });
 
   it("marks delivery failed when the provider cannot be reached", async () => {

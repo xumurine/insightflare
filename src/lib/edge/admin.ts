@@ -5,6 +5,7 @@ import {
   handleNotificationEmailTestAdmin,
 } from "./admin-notification-email";
 import {
+  handleNotificationEmailPreviewAdmin,
   handleNotificationPreferences,
   handleNotificationRead,
   handleNotificationRulePreviewAdmin,
@@ -63,6 +64,8 @@ export async function handlePrivateAdmin(
     return handleNotificationEmailConfigAdmin(request, env);
   if (p === "/api/private/admin/notification-email/test")
     return handleNotificationEmailTestAdmin(request, env);
+  if (p === "/api/private/admin/notification-email-preview")
+    return handleNotificationEmailPreviewAdmin(request, env, url);
   if (p === "/api/private/notifications")
     return request.method === "PATCH"
       ? handleNotificationsReadAll(request, env)

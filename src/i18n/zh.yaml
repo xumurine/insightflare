@@ -810,6 +810,8 @@ notificationCenter:
   markReadFailed: 标记通知已读失败。
   markAllReadSuccess: 通知已全部标记为已读。
   markAllReadFailed: 全部标记已读失败。
+  ruleFilterActive: 正在查看此规则产生的通知。
+  ruleFilterClear: 清除筛选
   sections:
     importantTitle: 重要通知
     importantDescription: "{count} 条未读重点通知。"
@@ -876,6 +878,13 @@ notificationCenter:
     runId: 运行 ID
     batchId: 批次 ID
     deliveryStatus: 投递状态
+    deliveryDetails: 投递详情
+    emailStatus: 邮件状态
+    emailReason: 邮件原因
+    provider: 服务商
+    providerMessageId: 服务商消息 ID
+    duration: 耗时
+    locale: 语言
     deliveryResults: 投递结果
     createdAt: 创建时间
     triggeredAt: 触发时间
@@ -1003,6 +1012,8 @@ teamManagement:
     disable: 停用
     delete: 删除
     saveRule: 保存规则
+    viewMessages: 查看消息
+    emailPreview: 邮件预览
     preview: 预览
     runNow: 立即运行
     previewFailed: 预览规则失败。
@@ -1067,6 +1078,19 @@ teamManagement:
       last_1h: 最近 1 小时
       last_24h: 最近 24 小时
       yesterday: 昨天
+    emailPreviewPage:
+      title: 通知邮件预览
+      subtitle: 不创建消息、不调用 Resend，直接渲染通知邮件。
+      typeLabel: 预览类型
+      localeLabel: 预览语言
+      formatLabel: 预览格式
+      html: HTML
+      text: 纯文本
+      json: JSON
+      refresh: 预览
+      loading: 正在渲染预览...
+      loadFailed: 渲染邮件预览失败。
+      subject: 主题
   publicLinks:
     title: 公开链接
     subtitle: 管理当前团队可公开访问的分享链接。

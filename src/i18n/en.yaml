@@ -841,6 +841,8 @@ notificationCenter:
   markReadFailed: Failed to mark notification as read.
   markAllReadSuccess: Notifications marked as read.
   markAllReadFailed: Failed to mark notifications as read.
+  ruleFilterActive: Viewing notifications created by this rule.
+  ruleFilterClear: Clear rule filter
   sections:
     importantTitle: Important Notifications
     importantDescription: "{count} unread attention items."
@@ -907,6 +909,13 @@ notificationCenter:
     runId: Run ID
     batchId: Batch ID
     deliveryStatus: Delivery status
+    deliveryDetails: Delivery details
+    emailStatus: Email status
+    emailReason: Email reason
+    provider: Provider
+    providerMessageId: Provider message ID
+    duration: Duration
+    locale: Locale
     deliveryResults: Delivery results
     createdAt: Created at
     triggeredAt: Triggered at
@@ -1034,6 +1043,8 @@ teamManagement:
     disable: Disable
     delete: Delete
     saveRule: Save rule
+    viewMessages: Messages
+    emailPreview: Email preview
     preview: Preview
     runNow: Run now
     previewFailed: Failed to preview rule.
@@ -1098,6 +1109,19 @@ teamManagement:
       last_1h: Last 1h
       last_24h: Last 24h
       yesterday: Yesterday
+    emailPreviewPage:
+      title: Notification email preview
+      subtitle: Render notification emails without creating messages or sending through Resend.
+      typeLabel: Preview type
+      localeLabel: Preview locale
+      formatLabel: Preview format
+      html: HTML
+      text: Plain text
+      json: JSON
+      refresh: Preview
+      loading: Rendering preview...
+      loadFailed: Failed to render email preview.
+      subject: Subject
   publicLinks:
     title: Public Links
     subtitle: Manage publicly accessible sharing links for this team.

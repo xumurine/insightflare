@@ -1,31 +1,33 @@
 import { notFound } from "next/navigation";
 
-import { TeamNotificationsClient } from "@/components/dashboard/team-notifications-client";
+import { NotificationEmailPreviewClient } from "@/components/dashboard/notification-email-preview-client";
 import { canManageTeam } from "@/lib/dashboard/permissions";
 import { getDashboardTeamContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 
-interface TeamNotificationsPageProps {
+interface NotificationEmailPreviewPageProps {
   params: Promise<{
     locale: string;
     teamSlug: string;
   }>;
 }
 
-export async function generateMetadata({ params }: TeamNotificationsPageProps) {
+export async function generateMetadata({
+  params,
+}: NotificationEmailPreviewPageProps) {
   const { locale } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
 
   return {
-    title: messages.teamManagement.notifications.title,
+    title: messages.teamManagement.notifications.emailPreviewPage.title,
   };
 }
 
-export default async function TeamNotificationsPage({
+export default async function NotificationEmailPreviewPage({
   params,
-}: TeamNotificationsPageProps) {
+}: NotificationEmailPreviewPageProps) {
   const { locale, teamSlug } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
@@ -39,12 +41,9 @@ export default async function TeamNotificationsPage({
   }
 
   return (
-    <TeamNotificationsClient
+    <NotificationEmailPreviewClient
       locale={resolvedLocale}
       messages={messages}
-      teamId={context.activeTeam.id}
-      teamSlug={teamSlug}
-      currentUserId={context.user.id}
     />
   );
 }

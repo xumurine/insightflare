@@ -1,3 +1,4 @@
+import type { Locale } from "@/lib/i18n/config";
 import type { NotificationMessage } from "@/lib/notifications/message-store";
 
 function baseMessage(
@@ -18,7 +19,7 @@ function baseMessage(
     summary: input.summary ?? "Preview notification",
     bodyText: input.bodyText ?? "Preview notification body.",
     bodyHtml: "",
-    data: input.data ?? {},
+    data: { locale: "en", ...(input.data ?? {}) },
     channels: { inApp: true },
     deliveryStatus: "created",
     deliveryResults: {},
@@ -42,7 +43,7 @@ export const notificationEmailPreviewMessages = {
     summary: "This is a test notification from InsightFlare.",
     bodyText:
       "This is a test notification from InsightFlare. If email is configured and enabled, this message also verifies Resend delivery.",
-    data: { source: "preview" },
+    data: { source: "preview", locale: "en" },
   }),
   report: baseMessage({
     type: "report",
@@ -59,6 +60,7 @@ export const notificationEmailPreviewMessages = {
         { referrer: "Google", visits: 520 },
         { referrer: "Direct", visits: 160 },
       ],
+      locale: "en",
     },
   }),
   threshold: baseMessage({
@@ -72,6 +74,7 @@ export const notificationEmailPreviewMessages = {
       value: 1240,
       operator: ">=",
       target: 1000,
+      locale: "en",
     },
   }),
   health: baseMessage({
@@ -81,7 +84,25 @@ export const notificationEmailPreviewMessages = {
     data: {
       siteDomain: "example.com",
       hours: 12,
-      lastSeenAt: null,
+      lastSeenAt: 1782793800,
+      locale: "en",
     },
   }),
 };
+
+export type NotificationEmailPreviewType =
+  keyof typeof notificationEmailPreviewMessages;
+
+export function notificationEmailPreviewMessage(
+  type: NotificationEmailPreviewType,
+  locale: Locale,
+): NotificationMessage {
+  const message = notificationEmailPreviewMessages[type];
+  return {
+    ...message,
+    data: {
+      ...message.data,
+      locale,
+    },
+  };
+}

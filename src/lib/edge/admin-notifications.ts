@@ -1,3 +1,9 @@
+import {
+  notificationEmailPreviewMessage,
+  type NotificationEmailPreviewType,
+} from "@/components/email/notification-email-preview-data";
+import { renderNotificationEmail } from "@/lib/notifications/email-renderer";
+import { resolveNotificationLocale } from "@/lib/notifications/locale";
 import type { NotificationMessage } from "@/lib/notifications/message-store";
 import {
   countUnreadAttentionMessages,
@@ -56,6 +62,15 @@ function parseLimit(url: URL): number {
   const raw = Math.trunc(Number(url.searchParams.get("limit") ?? 50));
   if (!Number.isFinite(raw)) return 50;
   return Math.max(1, Math.min(100, raw));
+}
+
+function isPreviewType(value: string): value is NotificationEmailPreviewType {
+  return (
+    value === "test" ||
+    value === "report" ||
+    value === "threshold" ||
+    value === "health"
+  );
 }
 
 async function getManageableRule(env: Env, actor: Actor, ruleId: string) {
@@ -219,6 +234,39 @@ export async function handleNotificationRuleRunAdmin(
   }
 }
 
+export async function handleNotificationEmailPreviewAdmin(
+  req: Request,
+  env: Env,
+  url: URL,
+): Promise<Response> {
+  const actor = await requireActor(env, req);
+  if (actor instanceof Response) return actor;
+  if (req.method !== "GET") return na(req);
+  if (!actor.isAdmin) return forb("Forbidden", undefined, req);
+
+  const rawType = url.searchParams.get("type")?.trim() || "report";
+  const type = isPreviewType(rawType) ? rawType : "report";
+  const locale = resolveNotificationLocale(url.searchParams.get("locale"));
+  const format = url.searchParams.get("format")?.trim() || "html";
+  const rendered = await renderNotificationEmail({
+    message: notificationEmailPreviewMessage(type, locale),
+    locale,
+    timeZone: "Asia/Shanghai",
+  });
+
+  if (format === "text") {
+    return new Response(rendered.text, {
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  }
+  if (format === "json") {
+    return jsonResponseFor(req, { ok: true, data: rendered });
+  }
+  return new Response(rendered.html, {
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
+}
+
 export async function handleNotifications(
   req: Request,
   env: Env,
@@ -231,6 +279,7 @@ export async function handleNotifications(
   const requestedUserId = url.searchParams.get("userId")?.trim() || "";
   const teamId = url.searchParams.get("teamId")?.trim() || "";
   const siteId = url.searchParams.get("siteId")?.trim() || "";
+  const ruleId = url.searchParams.get("ruleId")?.trim() || "";
   const type = url.searchParams.get("type")?.trim() || "";
   const severity = url.searchParams.get("severity")?.trim() || "";
   const unread = url.searchParams.get("unread") === "1";
@@ -248,6 +297,7 @@ export async function handleNotifications(
         teamId,
         userId: requestedUserId || undefined,
         siteId: siteId || undefined,
+        ruleId: ruleId || undefined,
         type: type || undefined,
         severity: severity || undefined,
         unread,
@@ -271,6 +321,7 @@ export async function handleNotifications(
       userId,
       teamId: teamId || undefined,
       siteId: siteId || undefined,
+      ruleId: ruleId || undefined,
       type: type || undefined,
       severity: severity || undefined,
       unread,

@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   type RemixiconComponentType,
   RiAlertLine,
@@ -102,6 +103,23 @@ function jsonBlock(value: unknown): string {
   } catch {
     return "{}";
   }
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function displayValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "-";
+  return String(value);
+}
+
+function durationValue(value: unknown): string {
+  const duration = Number(value);
+  if (!Number.isFinite(duration) || duration < 0) return "-";
+  return `${Math.trunc(duration)} ms`;
 }
 
 function countForTab(
@@ -313,63 +331,11 @@ function NotificationMessageList({
               </Button>
             </div>
             {expandedId === item.id ? (
-              <div className="grid gap-4 rounded-md border bg-muted/30 p-4 text-sm md:grid-cols-2">
-                <div className="space-y-1 md:col-span-2">
-                  <p className="text-xs text-muted-foreground">
-                    {copy.detailFields.bodyText}
-                  </p>
-                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap text-xs leading-5">
-                    {item.bodyText || item.summary}
-                  </pre>
-                </div>
-                <DetailField label={copy.detailFields.type}>
-                  {dictionaryLabel(copy.messageTypes, item.type)}
-                </DetailField>
-                <DetailField label={copy.detailFields.severity}>
-                  {dictionaryLabel(copy.severities, item.severity)}
-                </DetailField>
-                <DetailField label={copy.detailFields.site}>
-                  {item.siteId ?? "-"}
-                </DetailField>
-                <DetailField label={copy.detailFields.ruleId}>
-                  {item.ruleId ?? "-"}
-                </DetailField>
-                <DetailField label={copy.detailFields.runId}>
-                  {item.runId ?? "-"}
-                </DetailField>
-                <DetailField label={copy.detailFields.batchId}>
-                  {item.batchId ?? "-"}
-                </DetailField>
-                <DetailField label={copy.detailFields.deliveryStatus}>
-                  {dictionaryLabel(copy.deliveryStatuses, item.deliveryStatus)}
-                </DetailField>
-                <DetailField label={copy.detailFields.createdAt}>
-                  {shortDateTime(locale, item.createdAt * 1000)}
-                </DetailField>
-                <DetailField label={copy.detailFields.triggeredAt}>
-                  {item.triggeredAt
-                    ? shortDateTime(locale, item.triggeredAt * 1000)
-                    : "-"}
-                </DetailField>
-                <DetailField label={copy.detailFields.sentAt}>
-                  {item.sentAt
-                    ? shortDateTime(locale, item.sentAt * 1000)
-                    : "-"}
-                </DetailField>
-                <DetailField label={copy.detailFields.failedAt}>
-                  {item.failedAt
-                    ? shortDateTime(locale, item.failedAt * 1000)
-                    : "-"}
-                </DetailField>
-                <div className="space-y-1 md:col-span-2">
-                  <p className="text-xs text-muted-foreground">
-                    {copy.detailFields.deliveryResults}
-                  </p>
-                  <pre className="max-h-72 overflow-auto rounded-md bg-background p-3 text-xs leading-5">
-                    {jsonBlock(item.deliveryResults)}
-                  </pre>
-                </div>
-              </div>
+              <NotificationMessageDetails
+                copy={copy}
+                item={item}
+                locale={locale}
+              />
             ) : null}
           </CardContent>
         </Card>
@@ -393,12 +359,108 @@ function DetailField({
   );
 }
 
+function NotificationMessageDetails({
+  copy,
+  item,
+  locale,
+}: {
+  copy: NotificationCenterCopy;
+  item: NotificationMessageData;
+  locale: Locale;
+}) {
+  const emailResult = recordValue(item.deliveryResults.email);
+  return (
+    <div className="grid gap-4 rounded-md border bg-muted/30 p-4 text-sm md:grid-cols-2">
+      <div className="space-y-1 md:col-span-2">
+        <p className="text-xs text-muted-foreground">
+          {copy.detailFields.bodyText}
+        </p>
+        <pre className="max-h-72 overflow-auto whitespace-pre-wrap text-xs leading-5">
+          {item.bodyText || item.summary}
+        </pre>
+      </div>
+      <DetailField label={copy.detailFields.type}>
+        {dictionaryLabel(copy.messageTypes, item.type)}
+      </DetailField>
+      <DetailField label={copy.detailFields.severity}>
+        {dictionaryLabel(copy.severities, item.severity)}
+      </DetailField>
+      <DetailField label={copy.detailFields.site}>
+        {item.siteId ?? "-"}
+      </DetailField>
+      <DetailField label={copy.detailFields.ruleId}>
+        {item.ruleId ?? "-"}
+      </DetailField>
+      <DetailField label={copy.detailFields.runId}>
+        {item.runId ?? "-"}
+      </DetailField>
+      <DetailField label={copy.detailFields.batchId}>
+        {item.batchId ?? "-"}
+      </DetailField>
+      <DetailField label={copy.detailFields.deliveryStatus}>
+        {dictionaryLabel(copy.deliveryStatuses, item.deliveryStatus)}
+      </DetailField>
+      <DetailField label={copy.detailFields.locale}>
+        {displayValue(item.data.locale)}
+      </DetailField>
+      <DetailField label={copy.detailFields.createdAt}>
+        {shortDateTime(locale, item.createdAt * 1000)}
+      </DetailField>
+      <DetailField label={copy.detailFields.triggeredAt}>
+        {item.triggeredAt
+          ? shortDateTime(locale, item.triggeredAt * 1000)
+          : "-"}
+      </DetailField>
+      <DetailField label={copy.detailFields.sentAt}>
+        {item.sentAt ? shortDateTime(locale, item.sentAt * 1000) : "-"}
+      </DetailField>
+      <DetailField label={copy.detailFields.failedAt}>
+        {item.failedAt ? shortDateTime(locale, item.failedAt * 1000) : "-"}
+      </DetailField>
+      <div className="space-y-3 md:col-span-2">
+        <p className="text-xs font-medium text-muted-foreground">
+          {copy.detailFields.deliveryDetails}
+        </p>
+        <div className="grid gap-4 rounded-md bg-background p-3 md:grid-cols-2">
+          <DetailField label={copy.detailFields.emailStatus}>
+            {displayValue(emailResult.status)}
+          </DetailField>
+          <DetailField label={copy.detailFields.emailReason}>
+            {displayValue(emailResult.reason)}
+          </DetailField>
+          <DetailField label={copy.detailFields.provider}>
+            {displayValue(emailResult.provider)}
+          </DetailField>
+          <DetailField label={copy.detailFields.providerMessageId}>
+            {displayValue(emailResult.messageId)}
+          </DetailField>
+          <DetailField label={copy.detailFields.duration}>
+            {durationValue(emailResult.durationMs)}
+          </DetailField>
+        </div>
+      </div>
+      <div className="space-y-1 md:col-span-2">
+        <p className="text-xs text-muted-foreground">
+          {copy.detailFields.deliveryResults}
+        </p>
+        <pre className="max-h-72 overflow-auto rounded-md bg-background p-3 text-xs leading-5">
+          {jsonBlock(item.deliveryResults)}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 export function NotificationCenterClient({
   locale,
   messages,
   teamId,
 }: NotificationCenterClientProps) {
   const copy = messages.notificationCenter;
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const ruleIdFilter = searchParams.get("ruleId")?.trim() || "";
   const [messagesList, setMessagesList] = useState<NotificationMessageData[]>(
     [],
   );
@@ -448,7 +510,11 @@ export function NotificationCenterClient({
   async function loadMessages() {
     setLoading(true);
     try {
-      const data = await fetchNotificationMessages({ teamId, limit: 80 });
+      const data = await fetchNotificationMessages({
+        teamId,
+        ruleId: ruleIdFilter || undefined,
+        limit: 80,
+      });
       setMessagesList(data.messages);
       setUnreadAttentionCount(data.unreadAttentionCount);
     } catch {
@@ -460,7 +526,14 @@ export function NotificationCenterClient({
 
   useEffect(() => {
     void loadMessages();
-  }, [teamId]);
+  }, [ruleIdFilter, teamId]);
+
+  function clearRuleFilter() {
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("ruleId");
+    const query = next.toString();
+    router.push(query ? `${pathname}?${query}` : pathname);
+  }
 
   async function handleRead(messageId: string) {
     const target = messagesList.find((item) => item.id === messageId);
@@ -601,6 +674,27 @@ export function NotificationCenterClient({
           </Field>
         </CardContent>
       </Card>
+
+      {ruleIdFilter ? (
+        <Card>
+          <CardContent className="flex flex-col gap-3 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="font-medium">{copy.ruleFilterActive}</p>
+              <p className="break-all text-xs text-muted-foreground">
+                {ruleIdFilter}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={clearRuleFilter}
+            >
+              {copy.ruleFilterClear}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <AutoResizer initial>
         <AutoTransition

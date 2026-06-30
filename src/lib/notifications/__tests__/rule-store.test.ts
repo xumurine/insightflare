@@ -261,7 +261,10 @@ describe("notification rule store", () => {
 
     expect(rules).toHaveLength(1);
     expect(bind).toHaveBeenCalledWith("user-1");
-    expect(env.DB.prepare.mock.calls[0][0]).toContain(
+    const prepareCalls = env.DB.prepare.mock.calls as unknown as Array<
+      [string]
+    >;
+    expect(String(prepareCalls[0]?.[0] ?? "")).toContain(
       "team_id IN (SELECT team_id FROM team_members WHERE user_id = ?)",
     );
   });
