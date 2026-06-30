@@ -1,5 +1,4 @@
 import * as React from "react";
-import { Section, Text } from "react-email";
 
 import { emailTheme } from "./email-theme";
 
@@ -15,8 +14,8 @@ export function EmailMetricCard({
     padding: "14px 12px",
   } satisfies React.CSSProperties;
   return (
-    <Section style={cardStyle}>
-      <Text
+    <div style={cardStyle}>
+      <p
         style={{
           margin: "0 0 6px",
           color: emailTheme.colors.mutedForeground,
@@ -26,8 +25,8 @@ export function EmailMetricCard({
         }}
       >
         {label}
-      </Text>
-      <Text
+      </p>
+      <p
         style={{
           margin: "0",
           color: emailTheme.colors.foreground,
@@ -37,8 +36,8 @@ export function EmailMetricCard({
         }}
       >
         {value}
-      </Text>
-    </Section>
+      </p>
+    </div>
   );
 }
 

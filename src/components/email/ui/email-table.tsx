@@ -1,5 +1,4 @@
 import * as React from "react";
-import { Text } from "react-email";
 
 import { createEmailTextStyles, emailTheme } from "./email-theme";
 
@@ -68,11 +67,11 @@ export function EmailListTable({
   const textStyles = createEmailTextStyles();
   return (
     <>
-      <Text style={textStyles.sectionTitle}>{title}</Text>
+      <p style={textStyles.sectionTitle}>{title}</p>
       {rows.length > 0 ? (
         <EmailTable rows={rows} />
       ) : (
-        <Text
+        <p
           style={{
             margin: "8px 0 0",
             padding: "12px",
@@ -85,7 +84,7 @@ export function EmailListTable({
           }}
         >
           {empty}
-        </Text>
+        </p>
       )}
     </>
   );

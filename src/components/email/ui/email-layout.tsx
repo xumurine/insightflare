@@ -1,14 +1,5 @@
 import type { PropsWithChildren } from "react";
 import * as React from "react";
-import {
-  Body,
-  Container,
-  Head,
-  Html,
-  Preview,
-  Section,
-  Text,
-} from "react-email";
 
 import type { Locale } from "@/lib/i18n/config";
 import { NOTIFICATION_EMAIL_MESSAGES } from "@/lib/notifications/email-i18n";
@@ -50,6 +41,15 @@ function createStyles() {
       fontSize: "12px",
       lineHeight: "18px",
     },
+    preview: {
+      display: "none",
+      overflow: "hidden",
+      maxHeight: "0",
+      maxWidth: "0",
+      opacity: 0,
+      color: "transparent",
+      lineHeight: "1px",
+    },
   } satisfies Record<string, React.CSSProperties>;
 }
 
@@ -62,21 +62,20 @@ export function EmailLayout({ children, locale, preview }: EmailLayoutProps) {
   const messages = NOTIFICATION_EMAIL_MESSAGES[locale];
   const styles = createStyles();
   return (
-    <Html lang={locale}>
-      <Head />
-      <Preview>{preview}</Preview>
-      <Body style={styles.body}>
-        <Container style={styles.container}>
-          <Section style={styles.header}>
-            <Text style={styles.brandText}>
+    <html lang={locale}>
+      <body style={styles.body}>
+        <div style={styles.preview}>{preview}</div>
+        <div style={styles.container}>
+          <div style={styles.header}>
+            <p style={styles.brandText}>
               {messages.common.brand}{" "}
               <span style={styles.brandVersion}>v1</span>
-            </Text>
-          </Section>
-          <Section>{children}</Section>
-          <Text style={styles.footer}>{messages.common.footer}</Text>
-        </Container>
-      </Body>
-    </Html>
+            </p>
+          </div>
+          <div>{children}</div>
+          <p style={styles.footer}>{messages.common.footer}</p>
+        </div>
+      </body>
+    </html>
   );
 }

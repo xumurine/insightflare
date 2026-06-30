@@ -1,37 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { notificationEmailPreviewMessage } from "@/components/email/notification-email-preview-data";
 import { renderNotificationEmail } from "@/lib/notifications/email-renderer";
 import type { NotificationMessage } from "@/lib/notifications/message-store";
-
-vi.mock("@/components/email/notification-email", () => ({
-  NotificationEmail: "NotificationEmail",
-}));
-
-vi.mock("@react-email/render", () => ({
-  render: vi.fn(async (element: { props?: Record<string, unknown> }) => {
-    const props = element.props ?? {};
-    const content = props.content as { title?: string; summary?: string };
-    const message = props.message as NotificationMessage | undefined;
-    const locale = props.locale;
-    const data = message?.data ?? {};
-    return [
-      "<html>",
-      String(content?.title ?? ""),
-      String(content?.summary ?? ""),
-      String(locale),
-      message?.type === "report"
-        ? "浏览量 访客数 会话数 热门页面 主要来源"
-        : "",
-      message?.type === "threshold" ? "警告 访客数" : "",
-      message?.type === "health" ? "严重 最后收到数据" : "",
-      String(data.metric ?? ""),
-      String(data.lastSeenAt ?? ""),
-      JSON.stringify(data),
-      "</html>",
-    ].join(" ");
-  }),
-}));
 
 function fallbackMessage(): NotificationMessage {
   return {
@@ -60,7 +31,7 @@ describe("renderNotificationEmail", () => {
     expect(rendered.html).toContain("会话数");
     expect(rendered.html).toContain("热门页面");
     expect(rendered.html).toContain("主要来源");
-    expect(rendered.html).toContain('"locale":"zh"');
+    expect(rendered.html).toContain("<!doctype html>");
     expect(rendered.text).toContain("核心指标");
     expect(rendered.text).not.toContain("<html");
     expect(rendered.text).not.toContain("[object Object]");
@@ -76,7 +47,7 @@ describe("renderNotificationEmail", () => {
     expect(rendered.html).toContain("访问量达到阈值");
     expect(rendered.html).toContain("警告");
     expect(rendered.html).toContain("访客数");
-    expect(rendered.html).toContain('"metric":"visitors"');
+    expect(rendered.html).toContain("&gt;=");
     expect(rendered.text).toContain("指标：访客数");
   });
 

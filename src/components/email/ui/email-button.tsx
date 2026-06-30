@@ -1,5 +1,4 @@
 import * as React from "react";
-import { Button } from "react-email";
 
 import { emailTheme } from "./email-theme";
 
@@ -11,7 +10,7 @@ export function EmailButton({
   children: string;
 }) {
   return (
-    <Button
+    <a
       href={href}
       style={{
         display: "inline-block",
@@ -26,6 +25,6 @@ export function EmailButton({
       }}
     >
       {children}
-    </Button>
+    </a>
   );
 }

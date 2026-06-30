@@ -1,5 +1,4 @@
 import * as React from "react";
-import { Heading, Text } from "react-email";
 
 import { EmailBadge } from "@/components/email/ui/email-badge";
 import { EmailCard } from "@/components/email/ui/email-card";
@@ -77,10 +76,8 @@ function Intro({ content }: { content: NotificationContent }) {
         borderBottom: `1px solid ${emailTheme.colors.border}`,
       }}
     >
-      <Heading as="h1" style={textStyles.heading}>
-        {content.title}
-      </Heading>
-      <Text style={textStyles.body}>{content.summary}</Text>
+      <h1 style={textStyles.heading}>{content.title}</h1>
+      <p style={textStyles.body}>{content.summary}</p>
     </div>
   );
 }
@@ -190,7 +187,7 @@ function HealthEmail({
           },
         ]}
       />
-      <Text
+      <p
         style={{
           margin: "16px 0 0",
           padding: "12px",
@@ -203,14 +200,14 @@ function HealthEmail({
         }}
       >
         {content.summary}
-      </Text>
+      </p>
     </>
   );
 }
 
 function FallbackEmail({ content }: { content: NotificationContent }) {
   return (
-    <Text
+    <p
       style={{
         margin: "0",
         color: "#404040",
@@ -220,7 +217,7 @@ function FallbackEmail({ content }: { content: NotificationContent }) {
       }}
     >
       {content.bodyText}
-    </Text>
+    </p>
   );
 }
 

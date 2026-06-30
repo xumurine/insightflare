@@ -1,5 +1,5 @@
 import { createElement } from "react";
-import { render } from "@react-email/render";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import type { Locale } from "@/lib/i18n/config";
 
@@ -48,14 +48,14 @@ export async function renderNotificationEmail({
   });
   const { NotificationEmail } =
     await import("@/components/email/notification-email");
-  const html = await render(
+  const html = `<!doctype html>${renderToStaticMarkup(
     createElement(NotificationEmail, {
       locale,
       content,
       message,
       timeZone,
     }),
-  );
+  )}`;
   return {
     subject: content.subject,
     html,

@@ -1,5 +1,4 @@
 import * as React from "react";
-import { Text } from "react-email";
 
 import type { NotificationSeverity } from "@/lib/notifications/message-types";
 
@@ -42,7 +41,7 @@ export function EmailBadge({
 }) {
   const colors = severityStyles()[severity];
   return (
-    <Text
+    <p
       style={{
         display: "inline-block",
         margin: "0 0 12px",
@@ -57,6 +56,6 @@ export function EmailBadge({
       }}
     >
       {children}
-    </Text>
+    </p>
   );
 }
