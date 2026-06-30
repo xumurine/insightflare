@@ -1,8 +1,8 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useSelectedLayoutSegments } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   RiApps2Line,
   RiArrowLeftLine,
@@ -60,7 +60,13 @@ import {
   SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import type { TeamData } from "@/lib/edge-client";
+import { canManageTeam } from "@/lib/dashboard/permissions";
+import { buildTeamSections } from "@/lib/dashboard/team-sections";
+import {
+  fetchAdminSites,
+  type SiteData,
+  type TeamData,
+} from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
@@ -163,6 +169,43 @@ function normalizeLocalePath(pathname: string): string {
   return withoutLocale.endsWith("/")
     ? withoutLocale.slice(0, -1)
     : withoutLocale;
+}
+
+function safeSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function getSidebarSiteSlug(site: Pick<SiteData, "id" | "domain">): string {
+  const candidate = safeSlug(String(site.domain || ""));
+  if (candidate.length > 0) return candidate;
+  return site.id.slice(0, 8);
+}
+
+function toSidebarSite(site: SiteData): SidebarSite {
+  return {
+    id: site.id,
+    slug: getSidebarSiteSlug(site),
+    name: site.name,
+    domain: site.domain,
+    iconPath: site.iconPath,
+  };
+}
+
+function parseActiveTeamSlugFromPath(
+  pathname: string,
+  teams: TeamData[],
+): string {
+  const segments = pathname.split("/").filter((segment) => segment.length > 0);
+  const appIndex = segments.findIndex((segment) => segment === "app");
+  const candidate = appIndex >= 0 ? segments[appIndex + 1] || "" : "";
+  if (!candidate || ["account", "inbox", "manage"].includes(candidate)) {
+    return "";
+  }
+  return teams.some((team) => team.slug === candidate) ? candidate : "";
 }
 
 function buildSitePath(
@@ -342,10 +385,6 @@ function parseSidebarRouteState(
   };
 }
 
-function visibleLayoutSegments(segments: string[]): string[] {
-  return segments.filter((segment) => !segment.startsWith("("));
-}
-
 interface DashboardShellProps {
   locale: Locale;
   pathname: string;
@@ -383,14 +422,55 @@ export function DashboardShell({
   const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
     null,
   );
+  const [clientSitesByTeam, setClientSitesByTeam] = useState<
+    Record<string, SidebarSite[]>
+  >({});
   const livePathname = usePathname() || pathname;
-  const mainLayoutSegments = visibleLayoutSegments(useSelectedLayoutSegments());
-  const mainSiteSection = mainLayoutSegments[1] || "";
-  const mainSiteSubSection = mainLayoutSegments[2] || "";
-  const routeState = parseSidebarRouteState(livePathname, activeTeamSlug);
+  const liveActiveTeamSlug =
+    activeTeamSlug || parseActiveTeamSlugFromPath(livePathname, teams);
+  const activeTeam = liveActiveTeamSlug
+    ? teams.find((team) => team.slug === liveActiveTeamSlug)
+    : undefined;
+  const activeTeamId = activeTeam?.id || "";
+  const resolvedSites =
+    sites.length > 0
+      ? sites
+      : activeTeamId
+        ? (clientSitesByTeam[activeTeamId] ?? [])
+        : [];
+  const resolvedTeamSections = useMemo(() => {
+    if (teamSections) return teamSections;
+    if (!liveActiveTeamSlug || !activeTeam) return undefined;
+    return buildTeamSections(
+      locale,
+      liveActiveTeamSlug,
+      messages,
+      canManageTeam(activeTeam.membershipRole, user.systemRole),
+    );
+  }, [
+    activeTeam,
+    liveActiveTeamSlug,
+    locale,
+    messages,
+    teamSections,
+    user.systemRole,
+  ]);
+  const routeState = parseSidebarRouteState(livePathname, liveActiveTeamSlug);
+  const activeTeamLocalPath = (() => {
+    if (!liveActiveTeamSlug) return [];
+    const segments = livePathname.split("/").filter((s) => s.length > 0);
+    const teamIndex = segments.findIndex(
+      (segment, index) =>
+        segment === liveActiveTeamSlug &&
+        index > 0 &&
+        segments[index - 1] === "app",
+    );
+    return teamIndex >= 0 ? segments.slice(teamIndex + 1) : [];
+  })();
+  const mainSiteSection = activeTeamLocalPath[1] || "";
+  const mainSiteSubSection = activeTeamLocalPath[2] || "";
 
-  // Derive current analytics section from the live pathname directly
-  // (more reliable than useSelectedLayoutSegments which depends on layout nesting)
+  // Derive current analytics section from the live pathname directly.
   const VALID_ANALYTICS_SECTIONS = new Set([
     "realtime",
     "pages",
@@ -410,16 +490,7 @@ export function DashboardShell({
   const currentAnalyticsSection = (() => {
     if (routeState.mode !== "site" || !routeState.activeSiteSlug)
       return undefined;
-    const segments = livePathname.split("/").filter((s) => s.length > 0);
-    const teamIndex = segments.findIndex(
-      (segment, index) =>
-        activeTeamSlug &&
-        segment === activeTeamSlug &&
-        index > 0 &&
-        segments[index - 1] === "app",
-    );
-    const localPath = teamIndex >= 0 ? segments.slice(teamIndex + 1) : [];
-    const section = localPath[1] || "";
+    const section = activeTeamLocalPath[1] || "";
     return VALID_ANALYTICS_SECTIONS.has(section) ? section : undefined;
   })();
   const hasManagementSections = Boolean(
@@ -427,16 +498,13 @@ export function DashboardShell({
   );
   const resolvedActiveSiteSlug = routeState.activeSiteSlug || "";
   const hasActiveSite =
-    Boolean(activeTeamSlug) &&
+    Boolean(liveActiveTeamSlug) &&
     routeState.mode === "site" &&
     resolvedActiveSiteSlug.length > 0;
   const activeSiteBase =
-    hasActiveSite && activeTeamSlug
-      ? buildSitePath(locale, activeTeamSlug, resolvedActiveSiteSlug)
+    hasActiveSite && liveActiveTeamSlug
+      ? buildSitePath(locale, liveActiveTeamSlug, resolvedActiveSiteSlug)
       : null;
-  const activeTeamId = activeTeamSlug
-    ? teams.find((team) => team.slug === activeTeamSlug)?.id || ""
-    : "";
 
   const analyticsSections: Array<{
     key: AnalyticsNavKey;
@@ -468,19 +536,20 @@ export function DashboardShell({
   const accountHref = `/${locale}/app/account`;
   const notificationsHref = `/${locale}/app/inbox`;
   const appRootHref = `/${locale}/app`;
-  const teamRootHref = activeTeamSlug
-    ? `/${locale}/app/${activeTeamSlug}`
+  const teamRootHref = liveActiveTeamSlug
+    ? `/${locale}/app/${liveActiveTeamSlug}`
     : appRootHref;
   const backToTeamLabel = messages.common.backToTeam;
-  const activeTeamName = activeTeamSlug
-    ? teams.find((team) => team.slug === activeTeamSlug)?.name || activeTeamSlug
+  const activeTeamName = liveActiveTeamSlug
+    ? activeTeam?.name || liveActiveTeamSlug
     : "";
   const activeSiteName = hasActiveSite
-    ? sites.find((site) => site.slug === resolvedActiveSiteSlug)?.name ||
-      resolvedActiveSiteSlug
+    ? resolvedSites.find((site) => site.slug === resolvedActiveSiteSlug)
+        ?.name || resolvedActiveSiteSlug
     : "";
   const activeSiteId = hasActiveSite
-    ? sites.find((site) => site.slug === resolvedActiveSiteSlug)?.id || ""
+    ? resolvedSites.find((site) => site.slug === resolvedActiveSiteSlug)?.id ||
+      ""
     : "";
   const isRealtimeRoute = Boolean(
     hasActiveSite && activeSiteBase && mainSiteSection === "realtime",
@@ -517,18 +586,45 @@ export function DashboardShell({
     href: `/${locale}/app/${team.slug}`,
   }));
   const sidebarContextMode = routeState.mode === "root" ? "root" : "team";
-  const teamSelector = activeTeamSlug ? (
+  const teamSelector = liveActiveTeamSlug ? (
     <SidebarGroup className={SIDEBAR_COLLAPSE_SECTION_CLASS}>
       <SidebarGroupContent>
         <TeamSelect
           locale={locale}
           messages={messages}
           options={teamOptions}
-          activeTeamSlug={activeTeamSlug}
+          activeTeamSlug={liveActiveTeamSlug}
         />
       </SidebarGroupContent>
     </SidebarGroup>
   ) : null;
+
+  useEffect(() => {
+    if (!activeTeamId || sites.length > 0 || clientSitesByTeam[activeTeamId]) {
+      return;
+    }
+
+    let active = true;
+    fetchAdminSites(activeTeamId)
+      .then((nextSites) => {
+        if (!active) return;
+        setClientSitesByTeam((current) => ({
+          ...current,
+          [activeTeamId]: nextSites.map(toSidebarSite),
+        }));
+      })
+      .catch(() => {
+        if (!active) return;
+        setClientSitesByTeam((current) => ({
+          ...current,
+          [activeTeamId]: [],
+        }));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeTeamId, clientSitesByTeam, sites.length]);
 
   useEffect(() => {
     const host = scrollContainerRef.current;
@@ -675,7 +771,7 @@ export function DashboardShell({
                           </SidebarGroupLabel>
                           <SidebarGroupContent>
                             <SidebarMenu>
-                              {teamSections?.map((item) => {
+                              {resolvedTeamSections?.map((item) => {
                                 const isActive =
                                   routeState.activeTeamSectionKey === item.key;
                                 const SectionIcon = getTeamSectionIcon(
@@ -767,10 +863,10 @@ export function DashboardShell({
                             <SidebarSiteDetails
                               locale={locale}
                               teamId={activeTeamId}
-                              teamSlug={activeTeamSlug || ""}
+                              teamSlug={liveActiveTeamSlug || ""}
                               activeSiteSlug={resolvedActiveSiteSlug}
                               currentSection={currentAnalyticsSection}
-                              sites={sites.map((site) => ({
+                              sites={resolvedSites.map((site) => ({
                                 id: site.id,
                                 slug: site.slug,
                                 name: site.name,
