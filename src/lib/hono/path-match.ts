@@ -5,6 +5,7 @@ export function shouldUseHono(pathname: string): boolean {
     pathname === "/collect" ||
     pathname === "/script.js" ||
     pathname === "/healthz" ||
+    pathname === "/notification-email-preview" ||
     pathname.startsWith("/.well-known/") ||
     pathname.startsWith("/admin/")
   );

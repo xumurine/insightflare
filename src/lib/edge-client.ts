@@ -732,6 +732,11 @@ export async function fetchNotificationEmailPreview(input: {
       text: string;
     }
 > {
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+    const { handleDemoNotificationEmailPreview } =
+      await import("@/lib/realtime/mock");
+    return handleDemoNotificationEmailPreview(input);
+  }
   const baseUrl = await edgeBaseUrl();
   const url = withQuery(
     new URL("/api/private/admin/notification-email-preview", baseUrl),

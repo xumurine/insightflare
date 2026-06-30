@@ -140,6 +140,100 @@ async function readPayload<T>(response: Response): Promise<T> {
   return payload.data;
 }
 
+const DEMO_KEY_SCOPES: ApiKeyScope[][] = [
+  ["analytics:read", "site:read"],
+  ["analytics:read", "site_config:read"],
+  ["site:read", "site:write", "site_config:read"],
+];
+
+function demoKeyPrefix(index: number): string {
+  return `if_demo_${String(index + 1).padStart(2, "0")}_${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
+function createDemoApiKey(input: {
+  teamId: string;
+  name: string;
+  scopes: ApiKeyScope[];
+  siteIds: string[];
+  expiresInDays?: number | "never";
+  index?: number;
+  status?: ApiKeyData["status"];
+  lastUsedOffsetSeconds?: number | null;
+}): ApiKeyData {
+  const now = Math.floor(Date.now() / 1000);
+  const index = input.index ?? 0;
+  const expiresAt =
+    input.expiresInDays === "never"
+      ? null
+      : now + (input.expiresInDays ?? 180) * 24 * 60 * 60;
+  return {
+    id: `demo-api-key-${index}-${now}`,
+    teamId: input.teamId,
+    name: input.name,
+    prefix: demoKeyPrefix(index),
+    scopes: input.scopes,
+    siteIds: input.siteIds,
+    createdByUserId: "demo-user-001",
+    expiresAt,
+    revokedAt: input.status === "revoked" ? now - 2 * 24 * 60 * 60 : null,
+    revokedByUserId: input.status === "revoked" ? "demo-user-001" : "",
+    rotatedFromKeyId: "",
+    lastUsedAt:
+      input.lastUsedOffsetSeconds === null
+        ? null
+        : now - (input.lastUsedOffsetSeconds ?? (index + 1) * 3600),
+    createdAt: now - (index + 4) * 24 * 60 * 60,
+    updatedAt: now - (index + 1) * 3600,
+    status: input.status ?? "active",
+  };
+}
+
+function buildDemoApiKeys(
+  teamId: string,
+  sites: ApiKeysClientProps["sites"],
+): ApiKeyData[] {
+  return [
+    createDemoApiKey({
+      teamId,
+      name: "Dashboard reporting",
+      scopes: DEMO_KEY_SCOPES[0] ?? ["analytics:read"],
+      siteIds: [],
+      expiresInDays: 180,
+      index: 0,
+      lastUsedOffsetSeconds: 18 * 60,
+    }),
+    createDemoApiKey({
+      teamId,
+      name: "Site config automation",
+      scopes: DEMO_KEY_SCOPES[1] ?? ["site_config:read"],
+      siteIds: sites.slice(0, 2).map((site) => site.id),
+      expiresInDays: 365,
+      index: 1,
+      lastUsedOffsetSeconds: 6 * 3600,
+    }),
+    createDemoApiKey({
+      teamId,
+      name: "Legacy importer",
+      scopes: DEMO_KEY_SCOPES[2] ?? ["site:read"],
+      siteIds: sites.slice(0, 1).map((site) => site.id),
+      expiresInDays: "never",
+      index: 2,
+      status: "revoked",
+      lastUsedOffsetSeconds: null,
+    }),
+  ];
+}
+
+function demoSecret(): string {
+  const values = new Uint8Array(18);
+  crypto.getRandomValues(values);
+  return `if_demo_${Array.from(values, (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("")}`;
+}
+
 export function ApiKeysClient({
   locale,
   messages,
@@ -170,7 +264,7 @@ export function ApiKeysClient({
 
   async function loadKeys() {
     if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-      setKeys([]);
+      setKeys(buildDemoApiKeys(teamId, sites));
       setLoading(false);
       return;
     }
@@ -218,6 +312,26 @@ export function ApiKeysClient({
     }
     setSubmitting(true);
     try {
+      if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+        const created = createDemoApiKey({
+          teamId,
+          name: name.trim(),
+          scopes,
+          siteIds,
+          expiresInDays: expiration === "never" ? "never" : Number(expiration),
+          index: keys.length,
+          lastUsedOffsetSeconds: null,
+        });
+        setKeys((current) => [created, ...current]);
+        setRevealedSecret(demoSecret());
+        setSecretOpen(true);
+        setCreateOpen(false);
+        setName("");
+        setScopes(["analytics:read", "site:read"]);
+        setSiteIds([]);
+        setExpiration("180");
+        return;
+      }
       const response = await fetch("/api/private/admin/api-keys", {
         method: "POST",
         credentials: "include",
@@ -249,6 +363,22 @@ export function ApiKeysClient({
   async function revokeKey(keyId: string) {
     setBusyKeyId(keyId);
     try {
+      if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+        setKeys((current) =>
+          current.map((key) =>
+            key.id === keyId
+              ? {
+                  ...key,
+                  status: "revoked",
+                  revokedAt: Math.floor(Date.now() / 1000),
+                  revokedByUserId: "demo-user-001",
+                  updatedAt: Math.floor(Date.now() / 1000),
+                }
+              : key,
+          ),
+        );
+        return;
+      }
       const response = await fetch("/api/private/admin/api-keys", {
         method: "PATCH",
         credentials: "include",
@@ -271,6 +401,35 @@ export function ApiKeysClient({
   async function rotateKey(keyId: string) {
     setBusyKeyId(keyId);
     try {
+      if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+        const source = keys.find((key) => key.id === keyId);
+        if (!source) return;
+        const rotated = createDemoApiKey({
+          teamId,
+          name: `${source.name} rotated`,
+          scopes: source.scopes,
+          siteIds: source.siteIds,
+          expiresInDays: source.expiresAt ? 180 : "never",
+          index: keys.length,
+          lastUsedOffsetSeconds: null,
+        });
+        setKeys((current) => [
+          { ...rotated, rotatedFromKeyId: keyId },
+          ...current.map((key) =>
+            key.id === keyId
+              ? {
+                  ...key,
+                  status: "revoked" as const,
+                  revokedAt: Math.floor(Date.now() / 1000),
+                  revokedByUserId: "demo-user-001",
+                }
+              : key,
+          ),
+        ]);
+        setRevealedSecret(demoSecret());
+        setSecretOpen(true);
+        return;
+      }
       const response = await fetch("/api/private/admin/api-keys", {
         method: "PATCH",
         credentials: "include",

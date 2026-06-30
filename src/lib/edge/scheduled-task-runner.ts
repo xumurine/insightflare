@@ -47,6 +47,7 @@ export interface ScheduledTaskOutcome {
 
 const RETENTION_SECONDS = SCHEDULED_TASK_LOG_RETENTION_DAYS * 24 * 60 * 60;
 const STALE_RUNNING_MS = 6 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 
 function safeJsonStringify(value: unknown): string {
   try {
@@ -73,6 +74,17 @@ function normalizeError(error: unknown): {
     message: String(error || "Scheduled task failed"),
     stack: null,
   };
+}
+
+function normalizeScheduledAtMs(
+  scheduledTime: number | undefined,
+  triggerType: string,
+): number | null {
+  if (typeof scheduledTime !== "number" || !Number.isFinite(scheduledTime)) {
+    return null;
+  }
+  if (triggerType !== "cron") return scheduledTime;
+  return Math.floor(scheduledTime / HOUR_MS) * HOUR_MS;
 }
 
 async function bestEffortRun(
@@ -180,14 +192,11 @@ export async function runScheduledTask(
   ) => Promise<ScheduledTaskOutcome | undefined>,
 ): Promise<void> {
   const startedAt = Date.now();
-  const scheduledAt =
-    typeof scheduledTime === "number" && Number.isFinite(scheduledTime)
-      ? scheduledTime
-      : null;
+  const triggerType = definition.triggerType ?? "cron";
+  const scheduledAt = normalizeScheduledAtMs(scheduledTime, triggerType);
   const runId = crypto.randomUUID();
   const invocationId = crypto.randomUUID();
   const expiresAtSec = Math.floor(startedAt / 1000) + RETENTION_SECONDS;
-  const triggerType = definition.triggerType ?? "cron";
   await pruneExpiredScheduledTaskLogs(env);
 
   await bestEffortRun("run-start", async () => {

@@ -13,6 +13,7 @@ describe("shouldUseHono", () => {
     "/collect",
     "/script.js",
     "/healthz",
+    "/notification-email-preview",
     "/.well-known/openapi.json",
     "/.well-known/security.txt",
     "/api/private/realtime/ws",

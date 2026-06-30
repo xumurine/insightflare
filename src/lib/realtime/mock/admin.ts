@@ -1,4 +1,6 @@
 import type {
+  ApiKeyData,
+  ApiKeyScope,
   NotificationMessageData,
   NotificationRuleData,
 } from "@/lib/edge-client-types/admin";
@@ -127,6 +129,71 @@ function nextHourSeconds(now: number): number {
   return Math.floor(now / 3600) * 3600 + 3600;
 }
 
+const DEMO_API_KEY_SCOPES: ApiKeyScope[][] = [
+  ["analytics:read", "site:read"],
+  ["analytics:read", "site_config:read"],
+  ["site:read", "site:write", "site_config:read"],
+];
+
+export function generateDemoApiKeys(teamId: string): ApiKeyData[] {
+  const now = nowSeconds();
+  const tid = teamId || getDemoTeams()[0].id;
+  const sites = getDemoSites(tid);
+  return [
+    {
+      id: "demo-api-key-reporting",
+      teamId: tid,
+      name: "Dashboard reporting",
+      prefix: "if_demo_01_4f8c2a",
+      scopes: DEMO_API_KEY_SCOPES[0] ?? ["analytics:read"],
+      siteIds: [],
+      createdByUserId: getDemoUser().id,
+      expiresAt: now + 180 * 24 * 60 * 60,
+      revokedAt: null,
+      revokedByUserId: "",
+      rotatedFromKeyId: "",
+      lastUsedAt: now - 18 * 60,
+      createdAt: now - 21 * 24 * 60 * 60,
+      updatedAt: now - 18 * 60,
+      status: "active",
+    },
+    {
+      id: "demo-api-key-config",
+      teamId: tid,
+      name: "Site config automation",
+      prefix: "if_demo_02_91bd73",
+      scopes: DEMO_API_KEY_SCOPES[1] ?? ["site_config:read"],
+      siteIds: sites.slice(0, 2).map((site) => site.id),
+      createdByUserId: getDemoUser().id,
+      expiresAt: now + 365 * 24 * 60 * 60,
+      revokedAt: null,
+      revokedByUserId: "",
+      rotatedFromKeyId: "",
+      lastUsedAt: now - 6 * 60 * 60,
+      createdAt: now - 45 * 24 * 60 * 60,
+      updatedAt: now - 6 * 60 * 60,
+      status: "active",
+    },
+    {
+      id: "demo-api-key-legacy",
+      teamId: tid,
+      name: "Legacy importer",
+      prefix: "if_demo_03_c0ffee",
+      scopes: DEMO_API_KEY_SCOPES[2] ?? ["site:read"],
+      siteIds: sites.slice(0, 1).map((site) => site.id),
+      createdByUserId: getDemoUser().id,
+      expiresAt: null,
+      revokedAt: now - 2 * 24 * 60 * 60,
+      revokedByUserId: getDemoUser().id,
+      rotatedFromKeyId: "",
+      lastUsedAt: null,
+      createdAt: now - 90 * 24 * 60 * 60,
+      updatedAt: now - 2 * 24 * 60 * 60,
+      status: "revoked",
+    },
+  ];
+}
+
 function demoNotificationMessage(
   input: Partial<NotificationMessageData> & {
     teamId: string;
@@ -177,7 +244,9 @@ export function generateDemoNotificationRules(
 ): NotificationRuleData[] {
   const now = nowSeconds();
   const tid = teamId || getDemoTeams()[0].id;
-  const site = getDemoSites(tid)[0] ?? null;
+  const sites = getDemoSites(tid);
+  const site = sites[0] ?? null;
+  const secondarySite = sites[1] ?? site;
   return [
     {
       id: "demo-notification-rule-hourly",
@@ -199,6 +268,50 @@ export function generateDemoNotificationRules(
       updatedAt: now - 3600,
     },
     {
+      id: "demo-notification-rule-conversion-drop",
+      teamId: tid,
+      siteId: site?.id ?? null,
+      name: "Checkout conversion guard",
+      description: "Warns when recent purchase events fall below target.",
+      type: "threshold",
+      enabled: true,
+      schedule: { kind: "interval", everyMinutes: 60 },
+      condition: {
+        metric: "sessions",
+        window: "last_1h",
+        operator: "<",
+        value: 120,
+        cooldownMinutes: 180,
+      },
+      recipient: { mode: "team_admins" },
+      lastCheckedAt: now - 42 * 60,
+      lastTriggeredAt: now - 2 * 60 * 60,
+      nextRunAt: nextHourSeconds(now),
+      cooldownUntil: now + 36 * 60,
+      createdByUserId: getDemoUser().id,
+      createdAt: now - 10 * 24 * 60 * 60,
+      updatedAt: now - 42 * 60,
+    },
+    {
+      id: "demo-notification-rule-no-data",
+      teamId: tid,
+      siteId: secondarySite?.id ?? null,
+      name: "No data health check",
+      description: "Raises a critical alert when tracking goes quiet.",
+      type: "health",
+      enabled: true,
+      schedule: { kind: "interval", everyMinutes: 360 },
+      condition: { check: "no_data", hours: 6, cooldownMinutes: 720 },
+      recipient: { mode: "all_team_members" },
+      lastCheckedAt: now - 3 * 60 * 60,
+      lastTriggeredAt: now - 9 * 60 * 60,
+      nextRunAt: nextHourSeconds(now + 3 * 60 * 60),
+      cooldownUntil: null,
+      createdByUserId: getDemoUser().id,
+      createdAt: now - 20 * 24 * 60 * 60,
+      updatedAt: now - 3 * 60 * 60,
+    },
+    {
       id: "demo-notification-rule-daily",
       teamId: tid,
       siteId: null,
@@ -216,6 +329,25 @@ export function generateDemoNotificationRules(
       createdByUserId: getDemoUser().id,
       createdAt: now - 14 * 24 * 60 * 60,
       updatedAt: now - 24 * 60 * 60,
+    },
+    {
+      id: "demo-notification-rule-weekly-growth",
+      teamId: tid,
+      siteId: null,
+      name: "Weekly growth summary",
+      description: "Scheduled leadership report for all demo sites.",
+      type: "report",
+      enabled: false,
+      schedule: { kind: "daily", time: "09:00", timezone: "UTC" },
+      condition: { reportType: "daily" },
+      recipient: { mode: "creator" },
+      lastCheckedAt: now - 3 * 24 * 60 * 60,
+      lastTriggeredAt: now - 7 * 24 * 60 * 60,
+      nextRunAt: null,
+      cooldownUntil: null,
+      createdByUserId: getDemoUser().id,
+      createdAt: now - 34 * 24 * 60 * 60,
+      updatedAt: now - 2 * 24 * 60 * 60,
     },
   ];
 }
@@ -264,10 +396,12 @@ export function generateDemoNotificationMessages(
 ): NotificationMessageData[] {
   const now = nowSeconds();
   const tid = teamId || getDemoTeams()[0].id;
+  const sites = getDemoSites(tid);
   return [
     demoNotificationMessage({
       id: "demo-notification-message-attention",
       teamId: tid,
+      siteId: sites[0]?.id ?? null,
       ruleId: "demo-notification-rule-hourly",
       type: "threshold",
       severity: "warning",
@@ -275,9 +409,45 @@ export function generateDemoNotificationMessages(
       title: "Traffic threshold reached",
       summary: "Demo Store crossed the configured hourly views threshold.",
       bodyText:
-        "Demo Store crossed the configured hourly views threshold in the latest check.",
+        "Demo Store crossed the configured hourly views threshold in the latest check.\n\nViews reached 1,428 in the last hour, which is 18% above the configured limit. Organic search and paid social were the main contributors.",
       readAt: null,
       createdAt: now - 25 * 60,
+    }),
+    demoNotificationMessage({
+      id: "demo-notification-message-conversion-drop",
+      teamId: tid,
+      siteId: sites[0]?.id ?? null,
+      ruleId: "demo-notification-rule-conversion-drop",
+      type: "threshold",
+      severity: "critical",
+      requiresAttention: true,
+      title: "Checkout conversion dropped",
+      summary: "Checkout completions are below the demo alert threshold.",
+      bodyText:
+        "Checkout completions are below the demo alert threshold.\n\nThe latest hourly window recorded 84 completed checkout sessions against a threshold of 120. Review campaign traffic quality and payment gateway health before the next dispatch window.",
+      deliveryStatus: "partial",
+      deliveryResults: {
+        inApp: { status: "sent" },
+        email: { status: "failed", reason: "demo_provider_rejected" },
+      },
+      errorMessage: "Demo provider rejected one recipient.",
+      readAt: null,
+      createdAt: now - 58 * 60,
+    }),
+    demoNotificationMessage({
+      id: "demo-notification-message-health",
+      teamId: tid,
+      siteId: sites[1]?.id ?? sites[0]?.id ?? null,
+      ruleId: "demo-notification-rule-no-data",
+      type: "health",
+      severity: "critical",
+      requiresAttention: true,
+      title: "Tracking has gone quiet",
+      summary: "No eligible events have arrived for the demo docs site.",
+      bodyText:
+        "No eligible events have arrived for the demo docs site for more than six hours.\n\nThe rule is configured to alert all team members because this usually indicates a script deployment, CSP, or DNS issue.",
+      readAt: null,
+      createdAt: now - 9 * 60 * 60,
     }),
     demoNotificationMessage({
       id: "demo-notification-message-report",
@@ -288,9 +458,24 @@ export function generateDemoNotificationMessages(
       requiresAttention: false,
       title: "Daily traffic report is ready",
       summary: "Your demo team report was generated successfully.",
-      bodyText: "Your demo team report was generated successfully.",
+      bodyText:
+        "Your demo team report was generated successfully.\n\nAcross all demo sites, visitors increased by 12.4% day over day. The strongest gains came from the Launch Microsite and SaaS Console profiles.",
       readAt: now - 2 * 60 * 60,
       createdAt: now - 3 * 60 * 60,
+    }),
+    demoNotificationMessage({
+      id: "demo-notification-message-test",
+      teamId: tid,
+      ruleId: null,
+      type: "test",
+      severity: "success",
+      requiresAttention: false,
+      title: "Demo test notification delivered",
+      summary: "In-app delivery is available for this demo workspace.",
+      bodyText:
+        "In-app delivery is available for this demo workspace.\n\nEmail is intentionally simulated in demo mode, so this message does not require a configured Resend key.",
+      readAt: now - 65 * 60,
+      createdAt: now - 70 * 60,
     }),
   ];
 }

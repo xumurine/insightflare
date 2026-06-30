@@ -9,7 +9,6 @@ import {
   RiEditLine,
   RiEyeLine,
   RiMailSendLine,
-  RiMessage2Line,
   RiNotification3Line,
   RiPauseCircleLine,
   RiPlayCircleLine,
@@ -55,6 +54,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { shortDateTime } from "@/lib/dashboard/format";
+import { supportedTimeZones } from "@/lib/dashboard/time-zone";
 import {
   createNotificationRule,
   deleteNotificationRule,
@@ -309,6 +309,8 @@ function RuleFormFields({
   sites: SiteData[];
   onChange: (patch: Partial<RuleFormState>) => void;
 }) {
+  const timeZones = useMemo(() => supportedTimeZones(), []);
+
   return (
     <div className="grid gap-4">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -448,10 +450,21 @@ function RuleFormFields({
             </Field>
             <Field>
               <FieldLabel>{copy.timezoneLabel}</FieldLabel>
-              <Input
+              <Select
                 value={form.timezone}
-                onChange={(event) => onChange({ timezone: event.target.value })}
-              />
+                onValueChange={(timezone) => onChange({ timezone })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-80">
+                  {timeZones.map((timeZone) => (
+                    <SelectItem key={timeZone} value={timeZone}>
+                      {timeZone}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
           </>
         ) : (
@@ -923,19 +936,6 @@ export function TeamNotificationsClient({
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
-                          <Button
-                            type="button"
-                            size="icon-xs"
-                            variant="outline"
-                            title={copy.viewMessages}
-                            asChild
-                          >
-                            <Link
-                              href={`/${locale}/app/${teamSlug}/account/notifications?ruleId=${encodeURIComponent(rule.id)}`}
-                            >
-                              <RiMessage2Line />
-                            </Link>
-                          </Button>
                           <Button
                             type="button"
                             size="icon-xs"

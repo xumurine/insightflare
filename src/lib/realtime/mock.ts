@@ -1,11 +1,15 @@
+import { notificationEmailPreviewMessage } from "@/components/email/notification-email-preview-data";
 import { normalizeTimeZone } from "@/lib/dashboard/time-zone";
 import {
   defaultNotificationEmailConfig,
   redactNotificationEmailConfig,
 } from "@/lib/notifications/email-config";
+import { renderNotificationEmail } from "@/lib/notifications/email-renderer";
+import { resolveNotificationLocale } from "@/lib/notifications/locale";
 import { findSiteProfileByPublicSlug } from "@/lib/realtime/demo-site-profiles";
 import {
   createDemoNotificationRule,
+  generateDemoApiKeys,
   generateDemoDoDiagnostic,
   generateDemoNotificationMessages,
   generateDemoNotificationRules,
@@ -81,6 +85,33 @@ export type { RealtimeSocketLike } from "@/lib/realtime/mock/socket";
 export { createMockRealtimeSocket } from "@/lib/realtime/mock/socket";
 
 const DEMO_NOT_FOUND_RESPONSE = { ok: false, data: { error: "Not Found" } };
+
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+export async function handleDemoNotificationEmailPreview(input: {
+  type: "test" | "report" | "threshold" | "health";
+  locale: "en" | "zh";
+  format: "html" | "text" | "json";
+}): Promise<
+  | string
+  | {
+      subject: string;
+      html: string;
+      text: string;
+    }
+> {
+  const locale = resolveNotificationLocale(input.locale);
+  const rendered = await renderNotificationEmail({
+    message: notificationEmailPreviewMessage(input.type, locale),
+    locale,
+    timeZone: "Asia/Shanghai",
+  });
+  if (input.format === "text") return rendered.text;
+  if (input.format === "json") return rendered;
+  return rendered.html;
+}
 
 // ---------------------------------------------------------------------------
 //  Route dispatcher — the single entry point for demo mode
@@ -173,6 +204,54 @@ export function handleDemoRequest(options: {
           provider: "resend",
           messageId: "demo-email-message",
           durationMs: 128,
+        },
+      };
+    }
+    if (path.includes("/admin/api-keys")) {
+      const body =
+        options.body && typeof options.body === "object" ? options.body : {};
+      const keyBody = body as {
+        keyId?: unknown;
+        name?: unknown;
+        scopes?: unknown;
+        siteIds?: unknown;
+        teamId?: unknown;
+      };
+      const now = nowSeconds();
+      const team = String(keyBody.teamId || teamId || getDemoTeams()[0].id);
+      const keys = generateDemoApiKeys(team);
+      if (keyBody.keyId) {
+        const key = keys.find((item) => item.id === keyBody.keyId) ?? keys[0];
+        if (method === "PATCH" && key) {
+          return {
+            ok: true,
+            data: {
+              ...key,
+              status: "revoked",
+              revokedAt: now,
+              revokedByUserId: getDemoUser().id,
+              updatedAt: now,
+            },
+          };
+        }
+      }
+      return {
+        ok: true,
+        data: {
+          key: {
+            ...keys[0],
+            id: `demo-api-key-created-${now}`,
+            name: String(keyBody.name || "Demo API key"),
+            scopes: Array.isArray(keyBody.scopes)
+              ? keyBody.scopes
+              : keys[0].scopes,
+            siteIds: Array.isArray(keyBody.siteIds) ? keyBody.siteIds : [],
+            createdAt: now,
+            updatedAt: now,
+            lastUsedAt: null,
+            status: "active",
+          },
+          secret: `if_demo_${now.toString(36)}_preview_secret`,
         },
       };
     }
@@ -314,6 +393,10 @@ export function handleDemoRequest(options: {
   }
   if (path.includes("/admin/script-snippet")) {
     return { ok: true, data: getDemoScriptSnippet(siteId) };
+  }
+  if (path.includes("/admin/api-keys")) {
+    const tid = teamId || getDemoTeams()[0].id;
+    return { ok: true, data: generateDemoApiKeys(tid) };
   }
   if (path.includes("/admin/notification-rules")) {
     return {

@@ -97,31 +97,6 @@ function isReport(item: NotificationMessageData): boolean {
   return item.type === "report";
 }
 
-function jsonBlock(value: unknown): string {
-  try {
-    return JSON.stringify(value ?? {}, null, 2);
-  } catch {
-    return "{}";
-  }
-}
-
-function recordValue(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function displayValue(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "-";
-  return String(value);
-}
-
-function durationValue(value: unknown): string {
-  const duration = Number(value);
-  if (!Number.isFinite(duration) || duration < 0) return "-";
-  return `${Math.trunc(duration)} ms`;
-}
-
 function countForTab(
   messagesList: NotificationMessageData[],
   tab: NotificationTab,
@@ -237,20 +212,16 @@ function NotificationSectionHeading({
 function NotificationMessageList({
   copy,
   empty,
-  expandedId,
   items,
   locale,
   onRead,
-  onToggleDetail,
   updatingId,
 }: {
   copy: NotificationCenterCopy;
   empty: string;
-  expandedId: string;
   items: NotificationMessageData[];
   locale: Locale;
   onRead: (messageId: string) => void;
-  onToggleDetail: (messageId: string) => void;
   updatingId: string;
 }) {
   if (items.length === 0) {
@@ -269,6 +240,13 @@ function NotificationMessageList({
       {items.map((item) => (
         <Card key={item.id}>
           <CardContent className="space-y-4 p-4 md:p-5">
+            {item.summary ? (
+              <blockquote className="border-l-2 border-primary/55 bg-muted/35 px-4 py-3 text-sm leading-6 text-foreground/90">
+                <p className="whitespace-pre-wrap break-words">
+                  {item.summary}
+                </p>
+              </blockquote>
+            ) : null}
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div className="min-w-0 space-y-2">
                 <h2 className="truncate text-sm font-semibold">{item.title}</h2>
@@ -311,142 +289,16 @@ function NotificationMessageList({
                 </div>
               ) : null}
             </div>
-            {item.summary ? (
+            {item.bodyText ? (
               <div className="border-t pt-4">
-                <div className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground/90">
-                  {item.summary}
+                <div className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground/85">
+                  {item.bodyText}
                 </div>
               </div>
-            ) : null}
-            <div className="flex justify-end border-t pt-3">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => onToggleDetail(item.id)}
-              >
-                <span>
-                  {expandedId === item.id ? copy.hideDetails : copy.showDetails}
-                </span>
-              </Button>
-            </div>
-            {expandedId === item.id ? (
-              <NotificationMessageDetails
-                copy={copy}
-                item={item}
-                locale={locale}
-              />
             ) : null}
           </CardContent>
         </Card>
       ))}
-    </div>
-  );
-}
-
-function DetailField({
-  children,
-  label,
-}: {
-  children: ReactNode;
-  label: string;
-}) {
-  return (
-    <div className="min-w-0 space-y-1">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="break-words">{children}</p>
-    </div>
-  );
-}
-
-function NotificationMessageDetails({
-  copy,
-  item,
-  locale,
-}: {
-  copy: NotificationCenterCopy;
-  item: NotificationMessageData;
-  locale: Locale;
-}) {
-  const emailResult = recordValue(item.deliveryResults.email);
-  return (
-    <div className="grid gap-4 rounded-md border bg-muted/30 p-4 text-sm md:grid-cols-2">
-      <div className="space-y-1 md:col-span-2">
-        <p className="text-xs text-muted-foreground">
-          {copy.detailFields.bodyText}
-        </p>
-        <pre className="max-h-72 overflow-auto whitespace-pre-wrap text-xs leading-5">
-          {item.bodyText || item.summary}
-        </pre>
-      </div>
-      <DetailField label={copy.detailFields.type}>
-        {dictionaryLabel(copy.messageTypes, item.type)}
-      </DetailField>
-      <DetailField label={copy.detailFields.severity}>
-        {dictionaryLabel(copy.severities, item.severity)}
-      </DetailField>
-      <DetailField label={copy.detailFields.site}>
-        {item.siteId ?? "-"}
-      </DetailField>
-      <DetailField label={copy.detailFields.ruleId}>
-        {item.ruleId ?? "-"}
-      </DetailField>
-      <DetailField label={copy.detailFields.runId}>
-        {item.runId ?? "-"}
-      </DetailField>
-      <DetailField label={copy.detailFields.batchId}>
-        {item.batchId ?? "-"}
-      </DetailField>
-      <DetailField label={copy.detailFields.deliveryStatus}>
-        {dictionaryLabel(copy.deliveryStatuses, item.deliveryStatus)}
-      </DetailField>
-      <DetailField label={copy.detailFields.locale}>
-        {displayValue(item.data.locale)}
-      </DetailField>
-      <DetailField label={copy.detailFields.createdAt}>
-        {shortDateTime(locale, item.createdAt * 1000)}
-      </DetailField>
-      <DetailField label={copy.detailFields.triggeredAt}>
-        {item.triggeredAt
-          ? shortDateTime(locale, item.triggeredAt * 1000)
-          : "-"}
-      </DetailField>
-      <DetailField label={copy.detailFields.sentAt}>
-        {item.sentAt ? shortDateTime(locale, item.sentAt * 1000) : "-"}
-      </DetailField>
-      <DetailField label={copy.detailFields.failedAt}>
-        {item.failedAt ? shortDateTime(locale, item.failedAt * 1000) : "-"}
-      </DetailField>
-      <div className="space-y-3 md:col-span-2">
-        <p className="text-xs font-medium text-muted-foreground">
-          {copy.detailFields.deliveryDetails}
-        </p>
-        <div className="grid gap-4 rounded-md bg-background p-3 md:grid-cols-2">
-          <DetailField label={copy.detailFields.emailStatus}>
-            {displayValue(emailResult.status)}
-          </DetailField>
-          <DetailField label={copy.detailFields.emailReason}>
-            {displayValue(emailResult.reason)}
-          </DetailField>
-          <DetailField label={copy.detailFields.provider}>
-            {displayValue(emailResult.provider)}
-          </DetailField>
-          <DetailField label={copy.detailFields.providerMessageId}>
-            {displayValue(emailResult.messageId)}
-          </DetailField>
-          <DetailField label={copy.detailFields.duration}>
-            {durationValue(emailResult.durationMs)}
-          </DetailField>
-        </div>
-      </div>
-      <div className="space-y-1 md:col-span-2">
-        <p className="text-xs text-muted-foreground">
-          {copy.detailFields.deliveryResults}
-        </p>
-        <pre className="max-h-72 overflow-auto rounded-md bg-background p-3 text-xs leading-5">
-          {jsonBlock(item.deliveryResults)}
-        </pre>
-      </div>
     </div>
   );
 }
@@ -471,7 +323,6 @@ export function NotificationCenterClient({
   const [severityFilter, setSeverityFilter] = useState("all");
   const [updatingId, setUpdatingId] = useState("");
   const [markingAll, setMarkingAll] = useState(false);
-  const [expandedId, setExpandedId] = useState("");
 
   const filteredMessages = useMemo(() => {
     return messagesList.filter((item) => {
@@ -735,14 +586,8 @@ export function NotificationCenterClient({
                   empty={copy.sections.importantEmpty}
                   items={importantMessages}
                   locale={locale}
-                  expandedId={expandedId}
                   updatingId={updatingId}
                   onRead={(messageId) => void handleRead(messageId)}
-                  onToggleDetail={(messageId) =>
-                    setExpandedId((current) =>
-                      current === messageId ? "" : messageId,
-                    )
-                  }
                 />
               </section>
               <section className="space-y-3">
@@ -755,14 +600,8 @@ export function NotificationCenterClient({
                   empty={copy.sections.reportsEmpty}
                   items={reportMessages}
                   locale={locale}
-                  expandedId={expandedId}
                   updatingId={updatingId}
                   onRead={(messageId) => void handleRead(messageId)}
-                  onToggleDetail={(messageId) =>
-                    setExpandedId((current) =>
-                      current === messageId ? "" : messageId,
-                    )
-                  }
                 />
               </section>
             </div>

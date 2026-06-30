@@ -58,6 +58,9 @@ privateAdminRoutes.all("/notification-email/test", (c) =>
 privateAdminRoutes.all("/notification-email-preview", (c) =>
   handleNotificationEmailPreviewAdmin(c.req.raw, c.env, requestUrl(c)),
 );
+privateAdminRoutes.all("/notifications/email-preview", (c) =>
+  handleNotificationEmailPreviewAdmin(c.req.raw, c.env, requestUrl(c)),
+);
 privateAdminRoutes.all("/notification-rules", (c) =>
   handleNotificationRulesAdmin(c.req.raw, c.env, requestUrl(c)),
 );

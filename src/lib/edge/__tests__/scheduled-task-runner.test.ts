@@ -95,7 +95,7 @@ describe("runScheduledTask", () => {
     await runScheduledTask(env, definition, 1000, handler);
 
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler.mock.calls[0][0].scheduledTime).toBe(1000);
+    expect(handler.mock.calls[0][0].scheduledTime).toBe(0);
     expect(handler.mock.calls[0][0].runId).toBe("uuid-1");
     expect(updateStmt.run).toHaveBeenCalled();
   });
@@ -140,6 +140,34 @@ describe("runScheduledTask", () => {
     await runScheduledTask(env, definition, undefined, handler);
 
     expect(handler.mock.calls[0][0].scheduledTime).toBeNull();
+  });
+
+  it("normalizes cron scheduledTime to the top of the hour", async () => {
+    const pruneStmts = Array.from({ length: 3 }, () => statement());
+    const insertStmt = statement();
+    const remainingStmts = Array.from({ length: 3 }, () => statement());
+    const env = createEnv([...pruneStmts, insertStmt, ...remainingStmts]);
+    const handler = vi.fn().mockResolvedValue(undefined);
+    const delayedScheduledTime = Date.UTC(2026, 0, 1, 8, 4, 30);
+
+    await runScheduledTask(env, definition, delayedScheduledTime, handler);
+
+    expect(handler.mock.calls[0][0].scheduledTime).toBe(
+      Date.UTC(2026, 0, 1, 8, 0, 0),
+    );
+    expect(insertStmt.bind).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      definition.key,
+      definition.name,
+      "cron",
+      Date.UTC(2026, 0, 1, 8, 0, 0),
+      expect.any(Number),
+      definition.scopeType,
+      null,
+      null,
+      expect.any(Number),
+    );
   });
 
   it("re-throws handler errors after recording failure", async () => {
