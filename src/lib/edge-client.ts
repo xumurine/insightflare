@@ -40,6 +40,14 @@ interface FetchEdgeOptions {
 }
 
 async function edgeBaseUrl(): Promise<string> {
+  if (
+    typeof window !== "undefined" &&
+    process.env.VITEST !== "true" &&
+    !window.navigator.userAgent.toLowerCase().includes("jsdom")
+  ) {
+    return window.location.origin;
+  }
+
   try {
     const { headers } = await import("next/headers");
     const h = await headers();
@@ -119,6 +127,10 @@ async function fetchEdgeJson<T>(options: FetchEdgeOptions): Promise<T> {
   if (options.isPublic) {
     headers.set("x-requested-with", "fetch");
     if (typeof window === "undefined") {
+      headers.set(
+        "user-agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      );
       headers.set("referer", `${url.origin}/`);
     }
   } else {
