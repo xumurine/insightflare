@@ -1,6 +1,8 @@
 import * as React from "react";
 import { Button } from "react-email";
 
+import { emailTheme } from "./email-theme";
+
 export function EmailButton({
   href,
   children,
@@ -14,12 +16,12 @@ export function EmailButton({
       style={{
         display: "inline-block",
         marginTop: "16px",
-        padding: "10px 14px",
-        borderRadius: "6px",
-        backgroundColor: "#111827",
+        padding: "8px 10px",
+        borderRadius: emailTheme.radius,
+        backgroundColor: emailTheme.colors.primary,
         color: "#ffffff",
-        fontSize: "14px",
-        fontWeight: "700",
+        fontSize: "12px",
+        fontWeight: "500",
         textDecoration: "none",
       }}
     >

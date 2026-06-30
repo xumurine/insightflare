@@ -179,7 +179,7 @@ export function NotificationEmailPreviewClient({
               title={page.title}
               sandbox=""
               srcDoc={payload}
-              className="h-[680px] w-full rounded-md border bg-white"
+              className="h-[680px] w-full rounded-none border bg-white"
             />
           ) : (
             <pre className="max-h-[680px] overflow-auto whitespace-pre-wrap rounded-md bg-muted p-4 text-xs leading-5">

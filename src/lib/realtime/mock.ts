@@ -1,5 +1,11 @@
 import { notificationEmailPreviewMessage } from "@/components/email/notification-email-preview-data";
 import { normalizeTimeZone } from "@/lib/dashboard/time-zone";
+import type {
+  NotificationMessageData,
+  NotificationRuleData,
+  NotificationRuleEvaluationData,
+  NotificationRuleRunData,
+} from "@/lib/edge-client-types/admin";
 import {
   defaultNotificationEmailConfig,
   redactNotificationEmailConfig,
@@ -88,6 +94,209 @@ const DEMO_NOT_FOUND_RESPONSE = { ok: false, data: { error: "Not Found" } };
 
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
+}
+
+function requestRuleId(body: unknown): string {
+  if (!body || typeof body !== "object") return "";
+  const raw = body as { id?: unknown; ruleId?: unknown };
+  return String(raw.ruleId || raw.id || "").trim();
+}
+
+function findDemoNotificationRule(ruleId: string): NotificationRuleData {
+  const teams = getDemoTeams();
+  for (const team of teams) {
+    const rule = generateDemoNotificationRules(team.id).find(
+      (item) => item.id === ruleId,
+    );
+    if (rule) return rule;
+  }
+  return generateDemoNotificationRules(teams[0]?.id || "")[0]!;
+}
+
+function demoRuleEvaluation(
+  rule: NotificationRuleData,
+): NotificationRuleEvaluationData {
+  const condition = rule.condition || {};
+  if (!rule.enabled) {
+    return {
+      status: "skipped",
+      reason: "Demo rule is disabled.",
+      data: { ruleId: rule.id, type: rule.type },
+    };
+  }
+
+  if (rule.type === "report") {
+    return {
+      status: "triggered",
+      message: {
+        type: "report",
+        severity: "info",
+        requiresAttention: false,
+        title: "Daily traffic report is ready",
+        summary: "Your demo team report was generated successfully.",
+        bodyText:
+          "Your demo team report was generated successfully.\n\nAcross all demo sites, visitors increased by 12.4% day over day. The strongest gains came from the Launch Microsite and SaaS Console profiles.",
+        data: {
+          ruleId: rule.id,
+          reportType: condition.reportType || "daily",
+          range: "yesterday",
+        },
+      },
+      data: { ruleId: rule.id, type: rule.type },
+    };
+  }
+
+  if (rule.type === "health") {
+    return {
+      status: "triggered",
+      message: {
+        type: "health",
+        severity: "critical",
+        requiresAttention: true,
+        title: "Tracking has gone quiet",
+        summary: "No eligible events have arrived for the demo docs site.",
+        bodyText:
+          "No eligible events have arrived for the demo docs site for more than six hours.\n\nThe rule is configured to alert all team members because this usually indicates a script deployment, CSP, or DNS issue.",
+        data: {
+          ruleId: rule.id,
+          check: condition.check || "no_data",
+          hours: condition.hours || 6,
+        },
+      },
+      cooldownUntil:
+        Number(condition.cooldownMinutes || 0) > 0
+          ? nowSeconds() + Number(condition.cooldownMinutes) * 60
+          : null,
+      data: { ruleId: rule.id, type: rule.type },
+    };
+  }
+
+  if (rule.type === "threshold") {
+    const target = Number(condition.value || 120);
+    const currentValue =
+      condition.operator === "<" || condition.operator === "<=" ? 84 : 1428;
+    return {
+      status: "triggered",
+      message: {
+        type: "threshold",
+        severity: condition.operator === "<" ? "critical" : "warning",
+        requiresAttention: true,
+        title:
+          condition.operator === "<"
+            ? "Checkout conversion dropped"
+            : "Traffic threshold reached",
+        summary:
+          condition.operator === "<"
+            ? "Checkout completions are below the demo alert threshold."
+            : "Demo Store crossed the configured hourly threshold.",
+        bodyText:
+          condition.operator === "<"
+            ? "Checkout completions are below the demo alert threshold.\n\nThe latest hourly window recorded 84 completed checkout sessions against a threshold of 120. Review campaign traffic quality and payment gateway health before the next dispatch window."
+            : "Demo Store crossed the configured hourly threshold in the latest check.\n\nThe latest hourly window recorded 1,428 visits, which is above the configured limit.",
+        data: {
+          ruleId: rule.id,
+          metric: condition.metric || "sessions",
+          window: condition.window || "last_1h",
+          operator: condition.operator || "<",
+          value: currentValue,
+          target,
+        },
+      },
+      cooldownUntil:
+        Number(condition.cooldownMinutes || 0) > 0
+          ? nowSeconds() + Number(condition.cooldownMinutes) * 60
+          : null,
+      data: { ruleId: rule.id, type: rule.type, value: currentValue, target },
+    };
+  }
+
+  return {
+    status: "triggered",
+    message: {
+      type: "test",
+      severity: "info",
+      requiresAttention: false,
+      title: "InsightFlare notification test",
+      summary: "This is a test notification from InsightFlare.",
+      bodyText:
+        "This demo notification confirms that in-app delivery is available.",
+      data: { ruleId: rule.id, source: "demo_rule_preview" },
+    },
+    data: { ruleId: rule.id, type: rule.type },
+  };
+}
+
+function demoRunMessage(
+  rule: NotificationRuleData,
+  evaluation: NotificationRuleEvaluationData,
+): NotificationMessageData[] {
+  if (evaluation.status !== "triggered") return [];
+  const now = nowSeconds();
+  const message = evaluation.message;
+  return [
+    {
+      id: `demo-notification-run-${rule.id}-${now}`,
+      teamId: rule.teamId,
+      siteId: rule.siteId,
+      userId: getDemoUser().id,
+      ruleId: rule.id,
+      runId: `demo-run-${now}`,
+      batchId: `demo-batch-${now}`,
+      type: message.type,
+      severity: message.severity,
+      requiresAttention: message.requiresAttention,
+      title: message.title,
+      summary: message.summary,
+      bodyText: message.bodyText,
+      bodyHtml: message.bodyHtml || "",
+      data: message.data || {},
+      channels: { inApp: true, email: true },
+      deliveryStatus: "sent",
+      deliveryResults: {
+        inApp: { status: "sent" },
+        email: { status: "skipped", reason: "system_email_unconfigured" },
+      },
+      errorMessage: "",
+      readAt: null,
+      dismissedAt: null,
+      archivedAt: null,
+      triggeredAt: now,
+      createdAt: now,
+      updatedAt: now,
+      sentAt: now,
+      failedAt: null,
+      expiresAt: now + 30 * 24 * 60 * 60,
+    },
+  ];
+}
+
+function generateDemoNotificationRulePreview(
+  body: unknown,
+): NotificationRuleEvaluationData {
+  return demoRuleEvaluation(findDemoNotificationRule(requestRuleId(body)));
+}
+
+function generateDemoNotificationRuleRun(
+  body: unknown,
+): NotificationRuleRunData {
+  const rule = findDemoNotificationRule(requestRuleId(body));
+  const evaluation = demoRuleEvaluation(rule);
+  const messages = demoRunMessage(rule, evaluation);
+  return {
+    evaluation,
+    messages,
+    messageCount: messages.length,
+    summary: {
+      rulesScanned: 1,
+      rulesChecked: evaluation.status === "skipped" ? 0 : 1,
+      rulesTriggered: evaluation.status === "triggered" ? 1 : 0,
+      rulesSkipped: evaluation.status === "skipped" ? 1 : 0,
+      messagesCreated: messages.length,
+      emailSent: 0,
+      emailFailed: 0,
+      durationMs: 24,
+    },
+  };
 }
 
 export async function handleDemoNotificationEmailPreview(input: {
@@ -283,6 +492,18 @@ export function handleDemoRequest(options: {
       };
     }
     if (path.includes("/admin/notification-rules")) {
+      if (path.includes("/admin/notification-rules/preview")) {
+        return {
+          ok: true,
+          data: generateDemoNotificationRulePreview(options.body),
+        };
+      }
+      if (path.includes("/admin/notification-rules/run")) {
+        return {
+          ok: true,
+          data: generateDemoNotificationRuleRun(options.body),
+        };
+      }
       if (method === "DELETE") {
         return {
           ok: true,

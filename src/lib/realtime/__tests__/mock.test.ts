@@ -130,6 +130,34 @@ describe("mock — handleDemoRequest", () => {
       expect(
         ok(
           handleDemoRequest({
+            path: "/api/private/admin/notification-rules/preview",
+            method: "POST",
+            body: { ruleId: "demo-notification-rule-conversion-drop" },
+          }),
+        ).data,
+      ).toMatchObject({
+        status: "triggered",
+        message: {
+          title: "Checkout conversion dropped",
+          bodyText: expect.any(String),
+        },
+      });
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/admin/notification-rules/run",
+            method: "POST",
+            body: { ruleId: "demo-notification-rule-daily" },
+          }),
+        ).data,
+      ).toMatchObject({
+        evaluation: { status: "triggered" },
+        messageCount: 1,
+        messages: [expect.objectContaining({ type: "report" })],
+      });
+      expect(
+        ok(
+          handleDemoRequest({
             path: "/api/private/admin/notification-rules",
             method: "DELETE",
             params: { id: "rule-1" },

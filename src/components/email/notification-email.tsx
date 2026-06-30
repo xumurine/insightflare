@@ -13,6 +13,10 @@ import {
   EmailTable,
   type EmailTableRow,
 } from "@/components/email/ui/email-table";
+import {
+  createEmailTextStyles,
+  emailTheme,
+} from "@/components/email/ui/email-theme";
 import type { Locale } from "@/lib/i18n/config";
 import type { NotificationContent } from "@/lib/notifications/content";
 import {
@@ -64,30 +68,20 @@ function formatLastSeen(
 }
 
 function Intro({ content }: { content: NotificationContent }) {
+  const textStyles = createEmailTextStyles();
   return (
-    <>
-      <Heading
-        as="h1"
-        style={{
-          margin: "0 0 8px",
-          color: "#111827",
-          fontSize: "24px",
-          lineHeight: "30px",
-        }}
-      >
+    <div
+      style={{
+        margin: "0 0 16px",
+        padding: "0 0 14px",
+        borderBottom: `1px solid ${emailTheme.colors.border}`,
+      }}
+    >
+      <Heading as="h1" style={textStyles.heading}>
         {content.title}
       </Heading>
-      <Text
-        style={{
-          margin: "0 0 16px",
-          color: "#4b5563",
-          fontSize: "14px",
-          lineHeight: "22px",
-        }}
-      >
-        {content.summary}
-      </Text>
-    </>
+      <Text style={textStyles.body}>{content.summary}</Text>
+    </div>
   );
 }
 
@@ -199,7 +193,11 @@ function HealthEmail({
       <Text
         style={{
           margin: "16px 0 0",
-          color: "#4b5563",
+          padding: "12px",
+          border: `1px solid ${emailTheme.colors.destructiveBorder}`,
+          borderRadius: emailTheme.radius,
+          backgroundColor: emailTheme.colors.destructiveSoft,
+          color: "#525252",
           fontSize: "14px",
           lineHeight: "22px",
         }}
@@ -215,7 +213,7 @@ function FallbackEmail({ content }: { content: NotificationContent }) {
     <Text
       style={{
         margin: "0",
-        color: "#374151",
+        color: "#404040",
         fontSize: "14px",
         lineHeight: "22px",
         whiteSpace: "pre-line",

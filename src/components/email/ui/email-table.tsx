@@ -1,6 +1,8 @@
 import * as React from "react";
 import { Text } from "react-email";
 
+import { createEmailTextStyles, emailTheme } from "./email-theme";
+
 export interface EmailTableRow {
   label: string;
   value: string;
@@ -16,6 +18,7 @@ export function EmailTable({ rows }: { rows: EmailTableRow[] }) {
         width: "100%",
         borderCollapse: "collapse",
         margin: "12px 0 0",
+        borderTop: `1px solid ${emailTheme.colors.border}`,
       }}
     >
       <tbody>
@@ -23,10 +26,11 @@ export function EmailTable({ rows }: { rows: EmailTableRow[] }) {
           <tr key={row.label}>
             <td
               style={{
-                padding: "9px 0",
-                borderBottom: "1px solid #f3f4f6",
-                color: "#6b7280",
-                fontSize: "13px",
+                width: "42%",
+                padding: "9px 8px",
+                borderBottom: `1px solid ${emailTheme.colors.border}`,
+                color: emailTheme.colors.mutedForeground,
+                fontSize: "12px",
                 lineHeight: "18px",
               }}
             >
@@ -34,11 +38,11 @@ export function EmailTable({ rows }: { rows: EmailTableRow[] }) {
             </td>
             <td
               style={{
-                padding: "9px 0",
-                borderBottom: "1px solid #f3f4f6",
-                color: "#111827",
-                fontSize: "13px",
-                fontWeight: "600",
+                padding: "9px 8px",
+                borderBottom: `1px solid ${emailTheme.colors.border}`,
+                color: emailTheme.colors.foreground,
+                fontSize: "12px",
+                fontWeight: "500",
                 lineHeight: "18px",
                 textAlign: "right",
               }}
@@ -61,20 +65,28 @@ export function EmailListTable({
   rows: EmailTableRow[];
   empty: string;
 }) {
+  const textStyles = createEmailTextStyles();
   return (
     <>
-      <Text
-        style={{
-          margin: "18px 0 8px",
-          color: "#111827",
-          fontSize: "14px",
-          fontWeight: "700",
-          lineHeight: "20px",
-        }}
-      >
-        {title}
-      </Text>
-      {rows.length > 0 ? <EmailTable rows={rows} /> : <Text>{empty}</Text>}
+      <Text style={textStyles.sectionTitle}>{title}</Text>
+      {rows.length > 0 ? (
+        <EmailTable rows={rows} />
+      ) : (
+        <Text
+          style={{
+            margin: "8px 0 0",
+            padding: "12px",
+            border: `1px solid ${emailTheme.colors.border}`,
+            borderRadius: emailTheme.radius,
+            backgroundColor: emailTheme.colors.card,
+            color: emailTheme.colors.mutedForeground,
+            fontSize: "12px",
+            lineHeight: "20px",
+          }}
+        >
+          {empty}
+        </Text>
+      )}
     </>
   );
 }

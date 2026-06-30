@@ -1,12 +1,7 @@
-import type { PropsWithChildren } from "react";
 import * as React from "react";
-import { Column, Row, Section, Text } from "react-email";
+import { Section, Text } from "react-email";
 
-const cardStyle = {
-  border: "1px solid #e5e7eb",
-  borderRadius: "8px",
-  padding: "12px",
-} satisfies React.CSSProperties;
+import { emailTheme } from "./email-theme";
 
 export function EmailMetricCard({
   label,
@@ -15,13 +10,18 @@ export function EmailMetricCard({
   label: string;
   value: string;
 }) {
+  const cardStyle = {
+    backgroundColor: emailTheme.colors.card,
+    padding: "14px 12px",
+  } satisfies React.CSSProperties;
   return (
     <Section style={cardStyle}>
       <Text
         style={{
           margin: "0 0 6px",
-          color: "#6b7280",
-          fontSize: "12px",
+          color: emailTheme.colors.mutedForeground,
+          fontSize: "11px",
+          fontWeight: "500",
           lineHeight: "16px",
         }}
       >
@@ -30,9 +30,9 @@ export function EmailMetricCard({
       <Text
         style={{
           margin: "0",
-          color: "#111827",
+          color: emailTheme.colors.foreground,
           fontSize: "20px",
-          fontWeight: "700",
+          fontWeight: "600",
           lineHeight: "26px",
         }}
       >
@@ -42,19 +42,37 @@ export function EmailMetricCard({
   );
 }
 
-export function EmailMetricGrid({ children }: PropsWithChildren) {
+export function EmailMetricGrid({ children }: { children: React.ReactNode }) {
+  const items = React.Children.toArray(children);
   return (
-    <Row style={{ margin: "16px 0" }}>
-      {Array.isArray(children)
-        ? children.map((child, index) => (
-            <Column
+    <table
+      role="presentation"
+      cellPadding="0"
+      cellSpacing="0"
+      style={{
+        width: "100%",
+        margin: "16px 0",
+        border: `1px solid ${emailTheme.colors.border}`,
+        borderCollapse: "collapse",
+      }}
+    >
+      <tbody>
+        <tr>
+          {items.map((child, index) => (
+            <td
               key={index}
-              style={{ width: "33.333%", paddingRight: "8px" }}
+              style={{
+                width: `${100 / Math.max(1, items.length)}%`,
+                borderLeft:
+                  index === 0 ? "0" : `1px solid ${emailTheme.colors.border}`,
+                verticalAlign: "top",
+              }}
             >
               {child}
-            </Column>
-          ))
-        : children}
-    </Row>
+            </td>
+          ))}
+        </tr>
+      </tbody>
+    </table>
   );
 }

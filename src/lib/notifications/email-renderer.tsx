@@ -49,7 +49,12 @@ export async function renderNotificationEmail({
   const { NotificationEmail } =
     await import("@/components/email/notification-email");
   const html = await render(
-    createElement(NotificationEmail, { locale, content, message, timeZone }),
+    createElement(NotificationEmail, {
+      locale,
+      content,
+      message,
+      timeZone,
+    }),
   );
   return {
     subject: content.subject,
