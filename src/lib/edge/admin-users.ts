@@ -1,4 +1,5 @@
 import { normalizeTimeZone } from "@/lib/dashboard/time-zone";
+import { isValidLocale } from "@/lib/i18n/config";
 
 import {
   byId,
@@ -84,7 +85,7 @@ export async function handleUsersAdmin(
     return forb("Only system admin can manage accounts", undefined, req);
   if (req.method === "GET") {
     const rows = await env.DB.prepare(
-      "SELECT u.id,u.username,u.email,u.name,u.system_role AS systemRole,u.timezone AS timeZone,u.created_at AS createdAt,u.updated_at AS updatedAt,(SELECT COUNT(*) FROM team_members tm WHERE tm.user_id=u.id) AS teamCount,(SELECT COUNT(*) FROM teams t WHERE t.owner_user_id=u.id) AS ownedTeamCount FROM users u ORDER BY u.created_at ASC",
+      "SELECT u.id,u.username,u.email,u.name,u.system_role AS systemRole,u.timezone AS timeZone,u.preferred_locale AS preferredLocale,u.created_at AS createdAt,u.updated_at AS updatedAt,(SELECT COUNT(*) FROM team_members tm WHERE tm.user_id=u.id) AS teamCount,(SELECT COUNT(*) FROM teams t WHERE t.owner_user_id=u.id) AS ownedTeamCount FROM users u ORDER BY u.created_at ASC",
     ).all<Record<string, unknown>>();
     return jsonResponseFor(req, { ok: true, data: rows.results });
   }
@@ -225,12 +226,24 @@ export async function handleProfileAdmin(
       body.timeZone ?? body.timezone ?? a.user.timezone ?? "",
     ).trim();
     const timeZone = rawTimeZone ? normalizeTimeZone(rawTimeZone) : "";
+    const rawPreferredLocale = Object.prototype.hasOwnProperty.call(
+      body,
+      "preferredLocale",
+    )
+      ? String(body.preferredLocale ?? "").trim()
+      : a.user.preferred_locale || "";
+    const preferredLocale =
+      rawPreferredLocale === "" || isValidLocale(rawPreferredLocale)
+        ? rawPreferredLocale
+        : null;
     if (username.length < 3 || !/^[a-z0-9._@-]+$/.test(username))
       return bad("Invalid username", undefined, req);
     if (email.length < 3 || !email.includes("@"))
       return bad("A valid email is required", undefined, req);
     if (rawTimeZone && !timeZone)
       return bad("Invalid timezone", undefined, req);
+    if (preferredLocale === null)
+      return bad("Invalid preferred locale", undefined, req);
     if (password.length > 0) {
       if (password.length < 8)
         return bad("Password must be at least 8 characters", undefined, req);
@@ -256,9 +269,9 @@ export async function handleProfileAdmin(
     const pass =
       password.length > 0 ? await hashPassword(password) : a.user.password_hash;
     await env.DB.prepare(
-      "UPDATE users SET username=?,email=?,name=?,password_hash=?,timezone=?,updated_at=unixepoch() WHERE id=?",
+      "UPDATE users SET username=?,email=?,name=?,password_hash=?,timezone=?,preferred_locale=?,updated_at=unixepoch() WHERE id=?",
     )
-      .bind(username, email, name, pass, timeZone, a.user.id)
+      .bind(username, email, name, pass, timeZone, preferredLocale, a.user.id)
       .run();
     const u = await byId(env, a.user.id);
     if (!u) return bad("Failed to update profile", undefined, req);

@@ -439,19 +439,35 @@ export async function advanceNotificationRuleSchedule(
 export async function resolveNotificationRecipients(
   env: Env,
   rule: NotificationRule,
-): Promise<Array<{ id: string; email: string; preferencesJson: string }>> {
+): Promise<
+  Array<{
+    id: string;
+    email: string;
+    preferencesJson: string;
+    preferredLocale?: string | null;
+  }>
+> {
   if (rule.recipient.mode === "creator") {
     if (!rule.createdByUserId) return [];
     const row = await env.DB.prepare(
       `
-        SELECT id, email, notification_preferences_json AS preferencesJson
+        SELECT
+          id,
+          email,
+          notification_preferences_json AS preferencesJson,
+          preferred_locale AS preferredLocale
         FROM users
         WHERE id = ?
         LIMIT 1
       `,
     )
       .bind(rule.createdByUserId)
-      .first<{ id: string; email: string; preferencesJson: string }>();
+      .first<{
+        id: string;
+        email: string;
+        preferencesJson: string;
+        preferredLocale?: string | null;
+      }>();
     return row ? [row] : [];
   }
   if (rule.recipient.mode === "users") {
@@ -459,13 +475,22 @@ export async function resolveNotificationRecipients(
     const placeholders = rule.recipient.userIds.map(() => "?").join(", ");
     const rows = await env.DB.prepare(
       `
-        SELECT id, email, notification_preferences_json AS preferencesJson
+        SELECT
+          id,
+          email,
+          notification_preferences_json AS preferencesJson,
+          preferred_locale AS preferredLocale
         FROM users
         WHERE id IN (${placeholders})
       `,
     )
       .bind(...rule.recipient.userIds)
-      .all<{ id: string; email: string; preferencesJson: string }>();
+      .all<{
+        id: string;
+        email: string;
+        preferencesJson: string;
+        preferredLocale?: string | null;
+      }>();
     return rows.results;
   }
   const roleFilter =
@@ -477,7 +502,8 @@ export async function resolveNotificationRecipients(
       SELECT DISTINCT
         u.id,
         u.email,
-        u.notification_preferences_json AS preferencesJson
+        u.notification_preferences_json AS preferencesJson,
+        u.preferred_locale AS preferredLocale
       FROM users u
       INNER JOIN team_members tm ON tm.user_id = u.id
       INNER JOIN teams t ON t.id = tm.team_id
@@ -487,6 +513,11 @@ export async function resolveNotificationRecipients(
     `,
   )
     .bind(rule.teamId)
-    .all<{ id: string; email: string; preferencesJson: string }>();
+    .all<{
+      id: string;
+      email: string;
+      preferencesJson: string;
+      preferredLocale?: string | null;
+    }>();
   return rows.results;
 }

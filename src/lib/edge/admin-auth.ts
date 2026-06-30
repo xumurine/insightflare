@@ -16,6 +16,7 @@ export type UserRow = {
   password_hash: string | null;
   system_role: string;
   timezone: string;
+  preferred_locale?: string | null;
   created_at: number;
   updated_at: number;
 };
@@ -185,6 +186,10 @@ export const toPublicUser = (u: UserRow) => ({
   name: u.name || "",
   systemRole: u.system_role === "admin" ? "admin" : "user",
   timeZone: u.timezone || "",
+  preferredLocale:
+    u.preferred_locale === "en" || u.preferred_locale === "zh"
+      ? u.preferred_locale
+      : "",
   createdAt: u.created_at,
   updatedAt: u.updated_at,
 });
@@ -192,7 +197,7 @@ export const toPublicUser = (u: UserRow) => ({
 export async function byId(env: Env, id: string): Promise<UserRow | null> {
   return (
     (await env.DB.prepare(
-      "SELECT id,username,email,name,password_hash,system_role,timezone,created_at,updated_at FROM users WHERE id=? LIMIT 1",
+      "SELECT id,username,email,name,password_hash,system_role,timezone,preferred_locale,created_at,updated_at FROM users WHERE id=? LIMIT 1",
     )
       .bind(id)
       .first<UserRow>()) ?? null
@@ -206,7 +211,7 @@ export async function byIdentifier(
   const lowered = normU(identifier);
   return (
     (await env.DB.prepare(
-      "SELECT id,username,email,name,password_hash,system_role,timezone,created_at,updated_at FROM users WHERE lower(username)=? OR lower(email)=? LIMIT 1",
+      "SELECT id,username,email,name,password_hash,system_role,timezone,preferred_locale,created_at,updated_at FROM users WHERE lower(username)=? OR lower(email)=? LIMIT 1",
     )
       .bind(lowered, lowered)
       .first<UserRow>()) ?? null
@@ -250,7 +255,7 @@ export async function ensureDefaultTeam(
 
 export async function ensureBootstrapAdmin(env: Env): Promise<UserRow> {
   const admin = await env.DB.prepare(
-    "SELECT id,username,email,name,password_hash,system_role,timezone,created_at,updated_at FROM users WHERE system_role='admin' ORDER BY created_at ASC LIMIT 1",
+    "SELECT id,username,email,name,password_hash,system_role,timezone,preferred_locale,created_at,updated_at FROM users WHERE system_role='admin' ORDER BY created_at ASC LIMIT 1",
   ).first<UserRow>();
   if (admin) {
     await ensureDefaultTeam(env, admin);

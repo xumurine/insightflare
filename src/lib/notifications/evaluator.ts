@@ -175,6 +175,8 @@ async function evaluateDailyReportRule(
       data: {
         ruleId: rule.id,
         siteId: rule.siteId,
+        siteName: data.siteName,
+        siteDomain: data.siteDomain,
         type: "report",
         reportType: "daily",
         range: data.range,
@@ -253,6 +255,8 @@ async function evaluateThresholdRule(
   const data = {
     ruleId: rule.id,
     siteId: rule.siteId,
+    siteName: site,
+    siteDomain: site,
     metric,
     window,
     value: result.value,
@@ -310,6 +314,8 @@ async function evaluateHealthRule(
   const data = {
     ruleId: rule.id,
     siteId: rule.siteId,
+    siteName: site,
+    siteDomain: site,
     check: "no_data",
     hours,
     lastSeenAt,

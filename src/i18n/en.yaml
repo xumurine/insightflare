@@ -795,6 +795,14 @@ accountSettings:
   passwordSaving: Changing...
   passwordSaved: Password changed.
   passwordSaveFailed: Failed to change password.
+  preferredLanguageTitle: Notification Language
+  preferredLanguageDescription: Choose the language used for scheduled notification emails.
+  preferredLanguageLabel: Email language
+  preferredLanguageDefault: Default
+  preferredLanguageEnglish: English
+  preferredLanguageChinese: Chinese
+  preferredLanguageSaved: Notification language saved.
+  preferredLanguageSaveFailed: Failed to save notification language.
   timeZoneTitle: Reporting Timezone
   timeZoneDescription: Calendar ranges and aggregation buckets use this timezone
     across the dashboard.

@@ -8,6 +8,8 @@ import {
   normalizeNotificationEmailConfig,
   SYSTEM_NOTIFICATION_EMAIL_CONFIG_KEY,
 } from "@/lib/notifications/email-config";
+import { renderNotificationEmail } from "@/lib/notifications/email-renderer";
+import { resolveNotificationLocale } from "@/lib/notifications/locale";
 
 import {
   type NotificationMessage,
@@ -21,6 +23,7 @@ export interface NotificationDeliveryUser {
   id: string;
   email: string;
   preferencesJson?: string | null;
+  preferredLocale?: string | null;
 }
 
 function buildFromAddress(input: { fromName: string; fromEmail: string }) {
@@ -47,6 +50,17 @@ function maskEmail(value: string): string {
   const [local = "", domain = ""] = value.split("@");
   if (!local || !domain) return "";
   return `${local.slice(0, 2)}***@${domain}`;
+}
+
+function fallbackRenderedEmail(message: NotificationMessage) {
+  return {
+    subject: message.title,
+    text:
+      message.bodyText ||
+      message.summary ||
+      "You have a new InsightFlare notification.",
+    html: message.bodyHtml || undefined,
+  };
 }
 
 export async function deliverNotificationMessage(
@@ -180,6 +194,24 @@ export async function deliverNotificationMessage(
   });
 
   try {
+    let rendered = fallbackRenderedEmail(message);
+    try {
+      const locale = resolveNotificationLocale(user.preferredLocale);
+      rendered = await renderNotificationEmail({ message, locale });
+    } catch (error) {
+      await context.logger?.warn(
+        "notification_email_render_failed",
+        "Notification email render failed; falling back to plain text delivery",
+        {
+          messageId: message.id,
+          userId: user.id,
+          channel: "email",
+          provider: "resend",
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
+
     const response = await fetch(RESEND_EMAILS_API_URL, {
       method: "POST",
       headers: {
@@ -189,12 +221,9 @@ export async function deliverNotificationMessage(
       body: JSON.stringify({
         from: buildFromAddress(config),
         to: [user.email],
-        subject: message.title,
-        text:
-          message.bodyText ||
-          message.summary ||
-          "You have a new InsightFlare notification.",
-        html: message.bodyHtml || undefined,
+        subject: rendered.subject,
+        text: rendered.text,
+        html: rendered.html,
         reply_to: config.replyTo || undefined,
       }),
     });

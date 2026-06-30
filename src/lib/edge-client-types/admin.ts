@@ -41,6 +41,7 @@ export interface AccountUserData {
   name: string;
   systemRole: "admin" | "user";
   timeZone?: string;
+  preferredLocale: "" | "en" | "zh";
   createdAt: number;
   updatedAt: number;
   teamCount?: number;

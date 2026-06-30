@@ -766,6 +766,14 @@ accountSettings:
   passwordSaving: 修改中...
   passwordSaved: 密码已修改。
   passwordSaveFailed: 修改密码失败。
+  preferredLanguageTitle: 通知语言
+  preferredLanguageDescription: 选择定时通知邮件使用的语言。
+  preferredLanguageLabel: 邮件语言
+  preferredLanguageDefault: 默认
+  preferredLanguageEnglish: English
+  preferredLanguageChinese: 中文
+  preferredLanguageSaved: 通知语言已保存。
+  preferredLanguageSaveFailed: 保存通知语言失败。
   timeZoneTitle: 报表时区
   timeZoneDescription: 仪表盘里的自然日期范围和聚合分桶都会使用这个时区。
   activeTimeZone: 当前生效时区

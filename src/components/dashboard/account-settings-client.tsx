@@ -63,6 +63,7 @@ interface AccountSettingsClientProps {
 }
 
 type TimeZoneMode = "browser" | "custom";
+type PreferredLocale = "" | "en" | "zh";
 
 interface ProfileResponse {
   ok?: boolean;
@@ -188,6 +189,10 @@ export function AccountSettingsClient({
   const [profileName, setProfileName] = useState(user.name || "");
   const [profileUsername, setProfileUsername] = useState(user.username || "");
   const [profileEmail, setProfileEmail] = useState(user.email || "");
+  const [preferredLocale, setPreferredLocale] = useState<PreferredLocale>(
+    user.preferredLocale || "",
+  );
+  const [preferredLocaleSaving, setPreferredLocaleSaving] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [nextPassword, setNextPassword] = useState("");
@@ -266,6 +271,7 @@ export function AccountSettingsClient({
     setProfileName(user.name || "");
     setProfileUsername(user.username || "");
     setProfileEmail(user.email || "");
+    setPreferredLocale(user.preferredLocale || "");
   }, [user]);
 
   useEffect(() => {
@@ -302,6 +308,9 @@ export function AccountSettingsClient({
   }, [notificationCopy.preferencesSaveFailed]);
 
   const nextPreference = mode === "browser" ? "" : selectedCustomTimeZone;
+  const canSavePreferredLocale =
+    !preferredLocaleSaving &&
+    preferredLocale !== (profileUser.preferredLocale || "");
   const canSave =
     !saving &&
     (mode === "browser" || Boolean(nextPreference)) &&
@@ -326,6 +335,7 @@ export function AccountSettingsClient({
     setProfileName(savedUser.name || "");
     setProfileUsername(savedUser.username || "");
     setProfileEmail(savedUser.email || "");
+    setPreferredLocale(savedUser.preferredLocale || "");
   }
 
   function updateDraftNotificationPreferences(
@@ -464,6 +474,52 @@ export function AccountSettingsClient({
       toast.error(notificationCopy.preferencesSaveFailed);
     } finally {
       setNotificationPreferencesSaving(false);
+    }
+  }
+
+  async function handlePreferredLocaleSubmit(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    if (preferredLocaleSaving) return;
+    if (
+      preferredLocale !== "" &&
+      preferredLocale !== "en" &&
+      preferredLocale !== "zh"
+    ) {
+      toast.error(copy.preferredLanguageSaveFailed);
+      return;
+    }
+
+    setPreferredLocaleSaving(true);
+    try {
+      const response = await fetch("/api/private/admin/profile", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ preferredLocale }),
+      });
+      const payload = (await response
+        .json()
+        .catch(() => ({}))) as ProfileResponse;
+      if (!response.ok || payload.ok === false || !payload.data) {
+        throw new Error(
+          payload.message || payload.error || copy.preferredLanguageSaveFailed,
+        );
+      }
+      applySavedUser(payload.data);
+      toast.success(copy.preferredLanguageSaved);
+      router.refresh();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : copy.preferredLanguageSaveFailed,
+      );
+    } finally {
+      setPreferredLocaleSaving(false);
     }
   }
 
@@ -825,6 +881,82 @@ export function AccountSettingsClient({
                 </div>
               </form>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="h-full overflow-visible lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiGlobalLine className="size-4 text-muted-foreground" />
+              {copy.preferredLanguageTitle}
+            </CardTitle>
+            <CardDescription>
+              {copy.preferredLanguageDescription}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex h-full flex-col">
+            <form
+              className="flex h-full flex-col gap-5"
+              onSubmit={handlePreferredLocaleSubmit}
+            >
+              <Field>
+                <FieldLabel htmlFor="account-preferred-language">
+                  {copy.preferredLanguageLabel}
+                </FieldLabel>
+                <Select
+                  value={preferredLocale || "default"}
+                  disabled={preferredLocaleSaving}
+                  onValueChange={(value) => {
+                    if (value === "default") setPreferredLocale("");
+                    if (value === "en" || value === "zh") {
+                      setPreferredLocale(value);
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    id="account-preferred-language"
+                    className="w-full"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">
+                      {copy.preferredLanguageDefault}
+                    </SelectItem>
+                    <SelectItem value="en">
+                      {copy.preferredLanguageEnglish}
+                    </SelectItem>
+                    <SelectItem value="zh">
+                      {copy.preferredLanguageChinese}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <div className="mt-auto flex justify-start">
+                <Button type="submit" disabled={!canSavePreferredLocale}>
+                  <AutoTransition className="inline-flex items-center gap-2">
+                    {preferredLocaleSaving ? (
+                      <span
+                        key="preferred-locale-saving"
+                        className="inline-flex items-center gap-2"
+                      >
+                        <Spinner className="size-4" />
+                        {copy.saving}
+                      </span>
+                    ) : (
+                      <span
+                        key="preferred-locale-save"
+                        className="inline-flex items-center gap-2"
+                      >
+                        <RiCheckLine className="size-4" />
+                        {copy.save}
+                      </span>
+                    )}
+                  </AutoTransition>
+                </Button>
+              </div>
+            </form>
           </CardContent>
         </Card>
 

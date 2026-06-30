@@ -399,6 +399,10 @@ export async function handleLegacyAdminProfile(
   const body = await parseLegacyAdminBody(request);
   if (body instanceof Response) return body;
   const hasTimeZone = Object.prototype.hasOwnProperty.call(body, "timeZone");
+  const hasPreferredLocale = Object.prototype.hasOwnProperty.call(
+    body,
+    "preferredLocale",
+  );
   const hasName = Object.prototype.hasOwnProperty.call(body, "name");
   const result = await callPrivateAdmin(
     request,
@@ -412,6 +416,9 @@ export async function handleLegacyAdminProfile(
       currentPassword: bodyStr(body, "currentPassword") || undefined,
       password: bodyStr(body, "password") || undefined,
       ...(hasTimeZone ? { timeZone: bodyStr(body, "timeZone") } : {}),
+      ...(hasPreferredLocale
+        ? { preferredLocale: bodyStr(body, "preferredLocale") }
+        : {}),
     },
     "profile_update_failed",
   );

@@ -409,14 +409,23 @@ export async function createManualTestNotification(input: {
   const now = Math.floor(Date.now() / 1000);
   const user = await env.DB.prepare(
     `
-      SELECT id, email, notification_preferences_json AS preferencesJson
+      SELECT
+        id,
+        email,
+        notification_preferences_json AS preferencesJson,
+        preferred_locale AS preferredLocale
       FROM users
       WHERE id = ?
       LIMIT 1
     `,
   )
     .bind(userId)
-    .first<{ id: string; email: string; preferencesJson: string }>();
+    .first<{
+      id: string;
+      email: string;
+      preferencesJson: string;
+      preferredLocale?: string | null;
+    }>();
   if (!user) {
     await context.logger.warn(
       "notification_delivery_skipped",

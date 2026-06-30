@@ -116,6 +116,14 @@ export interface AppManagementMessages {
     passwordSaveFailed: string;
     timeZoneTitle: string;
     timeZoneDescription: string;
+    preferredLanguageTitle: string;
+    preferredLanguageDescription: string;
+    preferredLanguageLabel: string;
+    preferredLanguageDefault: string;
+    preferredLanguageEnglish: string;
+    preferredLanguageChinese: string;
+    preferredLanguageSaved: string;
+    preferredLanguageSaveFailed: string;
     activeTimeZone: string;
     browserTimeZone: string;
     browserUnavailable: string;
