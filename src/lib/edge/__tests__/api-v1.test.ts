@@ -2466,4 +2466,333 @@ describe("api v1 gateway", () => {
     };
     expect(body.data.src).toContain("https://edge.test/script.js");
   });
+
+  it("updates tracking, privacy, and sharing settings through PATCH branches", async () => {
+    const tracking = await authed(
+      "/api/v1/sites/site-1/tracking",
+      [siteMatch("site-1", "Blog")],
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          trackQuery: false,
+          trackHash: true,
+          autoTrackOutboundLinks: false,
+          trackingStrength: "strong",
+          allowedDomains: ["blog.test", "cdn.blog.test"],
+          excludedPaths: ["/private"],
+          trackWebVitals: false,
+        }),
+      },
+    );
+    expect(tracking.response.status).toBe(200);
+    expect(upsertSiteScriptSettingsMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "site-1",
+      expect.objectContaining({
+        siteDomain: "Blog.test",
+        settings: expect.objectContaining({
+          trackQueryParams: false,
+          domainWhitelist: ["cdn.blog.test"],
+          performanceSampleRate: 0,
+        }),
+      }),
+    );
+
+    const privacy = await authed(
+      "/api/v1/sites/site-1/privacy",
+      [siteMatch("site-1", "Blog")],
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          respectDoNotTrack: false,
+          euMode: true,
+        }),
+      },
+    );
+    expect(privacy.response.status).toBe(200);
+
+    const sharing = await authed(
+      "/api/v1/sites/site-1/sharing",
+      [siteMatch("site-1", "Blog")],
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          publicEnabled: true,
+          publicSlug: "blog-public",
+        }),
+      },
+    );
+    expect(sharing.response.status).toBe(200);
+
+    vi.mocked(ensurePublicSlugAvailable).mockResolvedValueOnce(false);
+    const conflict = await authed(
+      "/api/v1/sites/site-1/sharing",
+      [siteMatch("site-1", "Blog")],
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          publicEnabled: true,
+          publicSlug: "taken",
+        }),
+      },
+    );
+    expect(conflict.response.status).toBe(409);
+
+    const disableSharing = await authed(
+      "/api/v1/sites/site-1/sharing",
+      [siteMatch("site-1", "Blog")],
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ publicEnabled: false }),
+      },
+    );
+    expect(disableSharing.response.status).toBe(200);
+    expect(await disableSharing.response.json()).toMatchObject({
+      data: { publicEnabled: false, publicSlug: null },
+    });
+  });
+
+  it("covers site mutation conflict and restricted creation branches", async () => {
+    vi.mocked(createSiteWithDefaultSettings).mockResolvedValue("new-site");
+    vi.mocked(ensurePublicSlugAvailable).mockResolvedValueOnce(false);
+    const createConflict = await authed("/api/v1/sites", [], {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "NewSite",
+        domain: "newsite.test",
+        publicEnabled: true,
+        publicSlug: "taken",
+      }),
+    });
+    expect(createConflict.response.status).toBe(409);
+
+    const restrictedCreate = await authed(
+      "/api/v1/sites",
+      [],
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "NewSite",
+          domain: "newsite.test",
+        }),
+      },
+      { site_ids_json: JSON.stringify(["site-1"]) },
+    );
+    expect(restrictedCreate.response.status).toBe(403);
+
+    vi.mocked(ensurePublicSlugAvailable).mockResolvedValueOnce(false);
+    const updateConflict = await authed(
+      "/api/v1/sites/site-1",
+      [siteMatch("site-1", "Blog")],
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          publicEnabled: true,
+          publicSlug: "taken",
+        }),
+      },
+    );
+    expect(updateConflict.response.status).toBe(409);
+  });
+
+  it("runs analytics explore with body time range, filters, dimensions, and order", async () => {
+    const { response } = await authed(
+      "/api/v1/sites/site-1/analytics/explore",
+      [
+        siteMatch("site-1", "Blog"),
+        {
+          includes: ["event_rollup", "ORDER BY views DESC"],
+          all: [{ d0: "/pricing", views: 12, sessions: 8, visitors: 6 }],
+        },
+      ],
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          timeRange: {
+            from: "2026-06-01T00:00:00Z",
+            to: "2026-06-02T00:00:00Z",
+            timeZone: "UTC",
+          },
+          metrics: ["views", "views", "sessions", "visitors"],
+          dimensions: ["page.path"],
+          filters: [
+            { field: "page.path", op: "contains", value: "price" },
+            { field: "client.deviceType", op: "in", value: ["desktop"] },
+            { field: "geo.country", op: "exists" },
+          ],
+          orderBy: [
+            { field: "views", direction: "desc" },
+            { field: "ignored", direction: "asc" },
+          ],
+          limit: 10,
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: {
+        rows: [
+          {
+            "page.path": "/pricing",
+            views: 12,
+            sessions: 8,
+            visitors: 6,
+          },
+        ],
+        metrics: ["views", "sessions", "visitors"],
+        dimensions: ["page.path"],
+      },
+    });
+  });
+
+  it("rejects invalid analytics explore inputs", async () => {
+    for (const body of [
+      { metrics: [] },
+      { metrics: ["unknown"] },
+      {
+        dimensions: [
+          "page.path",
+          "page.title",
+          "geo.country",
+          "geo.city",
+          "client.browser",
+          "event.name",
+        ],
+      },
+      { dimensions: [42] },
+      { dimensions: ["unsupported.dimension"] },
+      { orderBy: [null] },
+      { orderBy: [{ field: "" }] },
+      { limit: 0 },
+      { filters: [{ field: "unsupported.dimension", op: "eq", value: "x" }] },
+    ]) {
+      const { response } = await authed(
+        "/api/v1/sites/site-1/analytics/explore?from=2026-06-01T00:00:00Z&to=2026-06-02T00:00:00Z",
+        [siteMatch("site-1", "Blog")],
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      expect(response.status).toBe(400);
+    }
+  });
+
+  it("covers analytics transforms and validation edge cases", async () => {
+    const badInterval = await authed(
+      "/api/v1/sites/site-1/analytics/timeseries?from=2026-06-01T00:00:00Z&to=2026-06-02T00:00:00Z&interval=decade",
+      [siteMatch("site-1", "Blog")],
+    );
+    const unsupportedBreakdown = await authed(
+      "/api/v1/sites/site-1/analytics/breakdowns/session.duration?from=2026-06-01T00:00:00Z&to=2026-06-02T00:00:00Z",
+      [siteMatch("site-1", "Blog")],
+    );
+    const invalidCross = await authed(
+      "/api/v1/sites/site-1/analytics/cross-breakdowns?from=2026-06-01T00:00:00Z&to=2026-06-02T00:00:00Z&primary=bad&secondary=page.path",
+      [siteMatch("site-1", "Blog")],
+    );
+    expect(badInterval.response.status).toBe(400);
+    expect(unsupportedBreakdown.response.status).toBe(400);
+    expect(invalidCross.response.status).toBe(400);
+  });
+
+  it("covers team analytics overview, timeseries, sites, and validation branches", async () => {
+    const teamDashboard = await import("@/lib/edge/query/team");
+    vi.spyOn(teamDashboard, "handleTeamDashboardForTeam").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            sites: [
+              {
+                id: "site-1",
+                name: "Site One",
+                overview: {
+                  views: 10,
+                  sessions: 5,
+                  visitors: 4,
+                  bounces: 1,
+                  totalDurationMs: 1000,
+                },
+              },
+            ],
+            trend: [
+              {
+                timestampMs: Date.UTC(2026, 5, 1),
+                sites: [{ views: 3, visitors: 2 }],
+              },
+            ],
+          },
+        }),
+        { headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    for (const path of [
+      "/api/v1/team",
+      "/api/v1/team/usage",
+      "/api/v1/team/analytics/overview?from=2026-06-01T00:00:00Z&to=2026-06-02T00:00:00Z",
+      "/api/v1/team/analytics/timeseries?from=2026-06-01T00:00:00Z&to=2026-06-02T00:00:00Z&interval=hour",
+      "/api/v1/team/analytics/sites?from=2026-06-01T00:00:00Z&to=2026-06-02T00:00:00Z",
+    ]) {
+      const { response } = await authed(path, [
+        teamMatch(),
+        teamSitesListMatch([{ id: "site-1", name: "One" }]),
+      ]);
+      expect(response.status).toBe(200);
+    }
+
+    const noSitesBreakdown = await authed(
+      "/api/v1/team/analytics/breakdowns/page.path?from=2026-06-01T00:00:00Z&to=2026-06-02T00:00:00Z&metrics=views&limit=2",
+      [teamSitesListMatch([])],
+    );
+    expect(noSitesBreakdown.response.status).toBe(200);
+
+    const invalidLimit = await authed(
+      "/api/v1/team/analytics/breakdowns/page.path?from=2026-06-01T00:00:00Z&to=2026-06-02T00:00:00Z&limit=0",
+      [teamSitesListMatch([{ id: "site-1", name: "One" }])],
+    );
+    expect(invalidLimit.response.status).toBe(400);
+  });
+
+  it("covers performance timeseries and invalid breakdown branches", async () => {
+    const timeseries = await authed(
+      "/api/v1/sites/site-1/performance/timeseries?from=2026-06-01T00:00:00Z&to=2026-06-02T00:00:00Z&interval=hour",
+      [
+        siteMatch("site-1", "Blog"),
+        {
+          includes: ["bucket_index"],
+          all: [{ bucket: 0, timestampMs: Date.UTC(2026, 5, 1), p75: 123 }],
+        },
+      ],
+    );
+    expect(timeseries.response.status).toBe(200);
+
+    const badMetric = await authed(
+      "/api/v1/sites/site-1/performance/breakdowns/page.path?from=2026-06-01T00:00:00Z&to=2026-06-02T00:00:00Z&metric=bad",
+      [siteMatch("site-1", "Blog")],
+    );
+    const badDimension = await authed(
+      "/api/v1/sites/site-1/performance/breakdowns/session.duration?from=2026-06-01T00:00:00Z&to=2026-06-02T00:00:00Z",
+      [siteMatch("site-1", "Blog")],
+    );
+    const unknown = await authed(
+      "/api/v1/sites/site-1/performance/unknown?from=2026-06-01T00:00:00Z&to=2026-06-02T00:00:00Z",
+      [siteMatch("site-1", "Blog")],
+    );
+    expect(badMetric.response.status).toBe(400);
+    expect(badDimension.response.status).toBe(400);
+    expect(unknown.response.status).toBe(404);
+  });
 });

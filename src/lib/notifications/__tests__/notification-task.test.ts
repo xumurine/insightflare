@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScheduledTaskContext } from "@/lib/edge/scheduled-task-runner";
 import type { NotificationMessage } from "@/lib/notifications/message-store";
 import {
+  createManualTestNotification,
   createNotificationRulePreview,
   runNotificationRuleManually,
   runNotificationTick,
@@ -291,5 +292,177 @@ describe("notification task", () => {
       emailSkippedInvalidRecipient: 1,
     });
     expect(advanceNotificationRuleSchedule).not.toHaveBeenCalled();
+  });
+
+  it("tracks skipped evaluation and missing recipients in manual runs", async () => {
+    evaluateNotificationRule.mockResolvedValueOnce({
+      status: "skipped",
+      reason: "cooldown",
+      data: { cooldownUntil: 2000 },
+    });
+
+    const skipped = await runNotificationRuleManually({
+      env: {} as never,
+      context: context(),
+      rule: rule(),
+    });
+
+    expect(skipped).toMatchObject({
+      messageCount: 0,
+      summary: { rulesScanned: 1, rulesChecked: 1, rulesSkipped: 1 },
+    });
+
+    evaluateNotificationRule.mockResolvedValueOnce({
+      status: "triggered",
+      message: {
+        type: "threshold",
+        severity: "critical",
+        requiresAttention: true,
+        title: "Traffic threshold",
+        summary: "Visitors reached the threshold",
+        bodyText: "Body",
+      },
+    });
+    resolveNotificationRecipients.mockResolvedValueOnce([]);
+
+    const noRecipients = await runNotificationRuleManually({
+      env: {} as never,
+      context: context(),
+      rule: rule({ recipient: { mode: "users", userIds: [] } }),
+    });
+
+    expect(noRecipients).toMatchObject({
+      messageCount: 0,
+      summary: {
+        rulesScanned: 1,
+        rulesChecked: 1,
+        rulesTriggered: 1,
+        rulesSkipped: 1,
+      },
+    });
+    expect(createNotificationMessage).not.toHaveBeenCalled();
+  });
+
+  it("collects delivery stats across sent, failed, and system skipped email results", async () => {
+    evaluateNotificationRule.mockResolvedValue({
+      status: "triggered",
+      message: {
+        type: "threshold",
+        severity: "warning",
+        requiresAttention: true,
+        title: "Traffic threshold",
+        summary: "Visitors reached the threshold",
+        bodyText: "Body",
+      },
+    });
+    resolveNotificationRecipients.mockResolvedValue([
+      { id: "sent", email: "sent@example.test", preferencesJson: "{}" },
+      { id: "failed", email: "failed@example.test", preferencesJson: "{}" },
+      { id: "system", email: "system@example.test", preferencesJson: "{}" },
+      { id: "none", email: "none@example.test", preferencesJson: "{}" },
+    ]);
+    createNotificationMessage.mockImplementation((_env, input) =>
+      Promise.resolve(
+        message({ id: `msg-${input.userId}`, userId: input.userId }),
+      ),
+    );
+    deliverNotificationMessage
+      .mockResolvedValueOnce(
+        message({
+          deliveryResults: { email: { status: "sent" } },
+        }),
+      )
+      .mockResolvedValueOnce(
+        message({
+          deliveryResults: { email: { status: "failed" } },
+        }),
+      )
+      .mockResolvedValueOnce(
+        message({
+          deliveryResults: {
+            email: { status: "skipped", reason: "system_email_unconfigured" },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(message({ deliveryResults: {} }));
+
+    const outcome = await runNotificationRuleManually({
+      env: {} as never,
+      context: context(),
+      rule: rule(),
+    });
+
+    expect(outcome.summary).toMatchObject({
+      messagesCreated: 4,
+      inAppCreated: 4,
+      emailAttempted: 2,
+      emailSent: 1,
+      emailFailed: 1,
+      emailSkipped: 1,
+      emailSkippedBySystem: 1,
+    });
+  });
+
+  it("creates manual test notifications and handles missing test recipients", async () => {
+    const first = vi.fn(() =>
+      Promise.resolve({
+        id: "user-1",
+        email: "user@example.test",
+        preferencesJson: "{}",
+      }),
+    );
+    const env = {
+      DB: {
+        prepare: vi.fn(() => ({
+          bind: vi.fn(() => ({ first })),
+        })),
+      },
+    };
+    createNotificationMessage.mockResolvedValue(message({ type: "test" }));
+    deliverNotificationMessage.mockResolvedValue(
+      message({
+        type: "test",
+        deliveryResults: {
+          email: { status: "skipped", reason: "secret_decryption_failed" },
+        },
+      }),
+    );
+
+    const created = await createManualTestNotification({
+      env: env as never,
+      context: context(),
+      teamId: "team-1",
+      siteId: null,
+      userId: "user-1",
+    });
+
+    expect(created.summary).toMatchObject({
+      messagesCreated: 1,
+      inAppCreated: 1,
+      emailSkipped: 1,
+      emailSkippedBySystem: 1,
+    });
+    expect(createNotificationMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        type: "test",
+        severity: "info",
+        requiresAttention: false,
+        data: { source: "manual_test" },
+      }),
+    );
+
+    first.mockResolvedValueOnce(null);
+    const missing = await createManualTestNotification({
+      env: env as never,
+      context: context(),
+      teamId: "team-1",
+      userId: "missing",
+    });
+
+    expect(missing).toMatchObject({
+      message: null,
+      summary: { messagesCreated: 0 },
+    });
   });
 });

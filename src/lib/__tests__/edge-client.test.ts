@@ -8,6 +8,8 @@ import {
   createAdminSite,
   createAdminTeam,
   createAdminUser,
+  createNotificationRule,
+  deleteNotificationRule,
   fetchAdminMe,
   fetchAdminMembers,
   fetchAdminScriptSnippet,
@@ -15,21 +17,32 @@ import {
   fetchAdminSites,
   fetchAdminTeams,
   fetchAdminUsers,
+  fetchNotificationEmailConfig,
+  fetchNotificationMessages,
+  fetchNotificationPreferences,
+  fetchNotificationRules,
   fetchPublicOverview,
   fetchPublicPages,
   fetchPublicReferrers,
   fetchPublicTrend,
   loginAdminAccount,
+  markAllNotificationMessagesRead,
+  markNotificationMessageRead,
+  previewNotificationRule,
   removeAdminMember,
   removeAdminSite,
   removeAdminTeam,
   removeAdminUser,
+  runNotificationRuleNow,
+  sendNotificationTest,
   transferAdminTeamOwner,
   updateAdminMemberRole,
   updateAdminSite,
   updateAdminTeam,
   updateAdminUser,
   updateMyProfile,
+  updateNotificationPreferences,
+  updateNotificationRule,
   upsertAdminSiteConfig,
 } from "@/lib/edge-client";
 import { handleDemoRequest } from "@/lib/realtime/mock";
@@ -410,6 +423,139 @@ describe("edge client request wrappers", () => {
     );
     expect(urls).toContain("http://127.0.0.1:8787/api/private/session");
     expect(urls).toContain("http://127.0.0.1:8787/api/private/admin/users");
+  });
+
+  it("serializes notification rule and preference wrappers", async () => {
+    await fetchNotificationRules({ teamId: "team-1" });
+    expect(lastFetchCall()[0]).toBe(
+      "http://127.0.0.1:8787/api/private/admin/notification-rules?teamId=team-1",
+    );
+
+    await fetchNotificationEmailConfig();
+    expect(lastFetchCall()[0]).toBe(
+      "http://127.0.0.1:8787/api/private/admin/notification-email",
+    );
+
+    await createNotificationRule({
+      teamId: "team-1",
+      siteId: null,
+      name: "Daily report",
+      enabled: true,
+      schedule: { kind: "daily" },
+      condition: { metric: "views" },
+      recipient: { mode: "creator" },
+    });
+    let [, init] = lastFetchCall();
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(
+      JSON.stringify({
+        teamId: "team-1",
+        siteId: null,
+        name: "Daily report",
+        enabled: true,
+        schedule: { kind: "daily" },
+        condition: { metric: "views" },
+        recipient: { mode: "creator" },
+      }),
+    );
+
+    await updateNotificationRule({ ruleId: "rule-1", enabled: false });
+    [, init] = lastFetchCall();
+    expect(init.method).toBe("PATCH");
+    expect(init.body).toBe(
+      JSON.stringify({ ruleId: "rule-1", enabled: false }),
+    );
+
+    await deleteNotificationRule({ ruleId: "rule 1" });
+    let [url] = lastFetchCall();
+    expect(url).toBe(
+      "http://127.0.0.1:8787/api/private/admin/notification-rules?id=rule+1",
+    );
+    expect(lastFetchCall()[1].method).toBe("DELETE");
+
+    await previewNotificationRule({ ruleId: "rule-1" });
+    expect(lastFetchCall()[1].method).toBe("POST");
+
+    await runNotificationRuleNow({ ruleId: "rule-1" });
+    [url, init] = lastFetchCall();
+    expect(url).toBe(
+      "http://127.0.0.1:8787/api/private/admin/notification-rules/run",
+    );
+    expect(init.body).toBe(JSON.stringify({ ruleId: "rule-1" }));
+
+    await fetchNotificationPreferences();
+    expect(lastFetchCall()[0]).toBe(
+      "http://127.0.0.1:8787/api/private/notifications/preferences",
+    );
+
+    await updateNotificationPreferences({
+      email: true,
+      attention: { alertsCreateUnread: false },
+    });
+    [, init] = lastFetchCall();
+    expect(init.method).toBe("PATCH");
+    expect(init.body).toBe(
+      JSON.stringify({
+        email: true,
+        attention: { alertsCreateUnread: false },
+      }),
+    );
+  });
+
+  it("normalizes notification message wrapper responses", async () => {
+    fetchMock().mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        data: {
+          messages: [{ id: "msg-1" }],
+          unreadAttentionCount: 5,
+        },
+      }),
+    );
+    await expect(
+      fetchNotificationMessages({
+        teamId: "team-1",
+        siteId: "site-1",
+        type: "report",
+        severity: "warning",
+        unread: true,
+        limit: 25,
+      }),
+    ).resolves.toEqual({
+      messages: [{ id: "msg-1" }],
+      unreadAttentionCount: 5,
+    });
+    expect(lastFetchCall()[0]).toBe(
+      "http://127.0.0.1:8787/api/private/notifications?teamId=team-1&siteId=site-1&type=report&severity=warning&unread=1&limit=25",
+    );
+
+    fetchMock().mockResolvedValueOnce(jsonResponse({ ok: true, data: null }));
+    await expect(fetchNotificationMessages({})).resolves.toEqual({
+      messages: [],
+      unreadAttentionCount: 0,
+    });
+
+    await markNotificationMessageRead({ messageId: "msg/1" });
+    expect(lastFetchCall()[0]).toBe(
+      "http://127.0.0.1:8787/api/private/notifications/msg%2F1",
+    );
+    expect(lastFetchCall()[1].body).toBe(JSON.stringify({ read: true }));
+
+    await markAllNotificationMessagesRead({ teamId: "team-1" });
+    expect(lastFetchCall()[0]).toBe(
+      "http://127.0.0.1:8787/api/private/notifications",
+    );
+    expect(lastFetchCall()[1].body).toBe(
+      JSON.stringify({ teamId: "team-1", read: true }),
+    );
+
+    await sendNotificationTest({ teamId: "team-1", siteId: "site-1" });
+    expect(lastFetchCall()[0]).toBe(
+      "http://127.0.0.1:8787/api/private/admin/notification-test",
+    );
+    expect(lastFetchCall()[1].body).toBe(
+      JSON.stringify({ teamId: "team-1", siteId: "site-1" }),
+    );
   });
 
   it("throws descriptive errors for non-OK edge responses", async () => {

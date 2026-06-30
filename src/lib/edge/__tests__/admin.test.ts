@@ -1675,6 +1675,7 @@ describe("private admin edge handler", () => {
         "New Name",
         expect.stringMatching(/^argon2id\$/),
         "Asia/Shanghai",
+        "",
         "user-1",
       );
     });

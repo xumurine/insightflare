@@ -329,6 +329,7 @@ describe("admin handler low branches", () => {
       "Updated Actor",
       "hash",
       "UTC",
+      "",
       "actor-1",
     );
   });

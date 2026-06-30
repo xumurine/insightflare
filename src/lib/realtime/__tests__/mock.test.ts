@@ -80,6 +80,146 @@ describe("mock — handleDemoRequest", () => {
       expect("timeZone" in data).toBe(true);
     });
 
+    it("routes demo notification write operations", () => {
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/admin/notification-email/test",
+            method: "POST",
+          }),
+        ).data,
+      ).toMatchObject({ provider: "resend" });
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/admin/notification-test",
+            method: "POST",
+            body: { teamId: "demo-team-001", userId: "demo-user-001" },
+          }),
+        ).data,
+      ).toMatchObject({ message: expect.any(Object) });
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/notifications",
+            method: "PATCH",
+          }),
+        ).data,
+      ).toEqual({ updated: 1 });
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/notifications/demo-notification-message-attention",
+            method: "PATCH",
+            params: { teamId: "demo-team-001" },
+          }),
+        ).data,
+      ).toMatchObject({ id: "demo-notification-message-attention" });
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/notifications/missing",
+            method: "PATCH",
+            params: { teamId: "demo-team-001" },
+          }),
+        ).data,
+      ).toBeNull();
+    });
+
+    it("routes demo notification rule and email config mutations", () => {
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/admin/notification-rules",
+            method: "DELETE",
+            params: { id: "rule-1" },
+          }),
+        ).data,
+      ).toEqual({ id: "rule-1", removed: true });
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/admin/notification-rules",
+            method: "POST",
+            body: { name: "New rule", teamId: "demo-team-001" },
+          }),
+        ).data,
+      ).toMatchObject({ name: "New rule" });
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/admin/notification-email",
+            method: "DELETE",
+          }),
+        ).data,
+      ).toMatchObject({ enabled: false, resend: { configured: false } });
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/admin/notification-email",
+            method: "PATCH",
+            body: {
+              enabled: true,
+              provider: "none",
+              fromName: "Demo",
+              fromEmail: "demo@example.test",
+              replyTo: "reply@example.test",
+              resendApiKey: "re_demo",
+            },
+          }),
+        ).data,
+      ).toMatchObject({
+        enabled: true,
+        provider: "none",
+        fromName: "Demo",
+        fromEmail: "demo@example.test",
+        replyTo: "reply@example.test",
+        resend: { configured: true, apiKeyHint: "••••demo" },
+      });
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/private/admin/notification-email",
+            method: "PATCH",
+            body: { resendApiKey: "re_demo", clearResendApiKey: true },
+          }),
+        ).data,
+      ).toMatchObject({ resend: { configured: false } });
+    });
+
+    it("routes demo site writes with fallback body handling", () => {
+      const updated = ok(
+        handleDemoRequest({
+          path: "/api/private/admin/site",
+          method: "PATCH",
+          body: {
+            siteId: "site-new",
+            teamId: "demo-team-001",
+            name: "Updated",
+            domain: "updated.example.test",
+            publicEnabled: false,
+            publicSlug: "updated",
+          },
+        }),
+      ).data as Record<string, unknown>;
+      expect(updated).toMatchObject({
+        id: "site-new",
+        name: "Updated",
+        domain: "updated.example.test",
+        publicEnabled: false,
+        publicSlug: "updated",
+      });
+
+      const fallback = ok(
+        handleDemoRequest({
+          path: "/api/private/admin/site",
+          method: "POST",
+          body: null,
+        }),
+      ).data as Record<string, unknown>;
+      expect(fallback.id).toBeTruthy();
+    });
+
     it("PATCH /profile tolerates non-object bodies", () => {
       const res = ok(
         handleDemoRequest({
@@ -1051,6 +1191,58 @@ describe("mock — handleDemoRequest", () => {
       );
       expect(res.ok).toBe(false);
       expect(res.data).toEqual({ error: "Not Found" });
+    });
+
+    it.each([
+      "performance",
+      "countries",
+      "filter-options",
+      "overview-geo-points",
+      "overview-client-browser",
+      "overview-client-os-version",
+      "overview-client-device-type",
+      "overview-client-language",
+      "overview-client-screen-size",
+      "overview-geo-country",
+      "overview-geo-region",
+      "overview-geo-city",
+      "overview-geo-continent",
+      "overview-geo-timezone",
+      "overview-geo-organization",
+      "browser-trend",
+      "browser-engine-trend",
+      "browser-version-breakdown",
+      "browser-cross-breakdown",
+      "browser-radar",
+      "referrer-radar",
+      "referrer-dimension-trend",
+      "client-dimension-trend",
+      "client-cross-breakdown",
+    ])("dispatches public %s routes", (subPath) => {
+      const res = handleDemoRequest({
+        path: `/api/public/share/some-token/${subPath}`,
+        params: {
+          ...params,
+          dimension: "browser",
+          filterKey: "browser",
+          primaryDimension: "browser",
+          secondaryDimension: "language",
+        },
+      });
+
+      expect(res).toBeDefined();
+      expect(ok(res).ok).toBe(true);
+    });
+
+    it("falls back for unsupported public client and geo tabs", () => {
+      expect(
+        ok(
+          handleDemoRequest({
+            path: "/api/public/share/some-token/overview-geo-unknown",
+            params,
+          }),
+        ),
+      ).toMatchObject({ ok: true });
     });
   });
 
