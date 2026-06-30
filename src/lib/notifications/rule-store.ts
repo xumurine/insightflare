@@ -297,15 +297,18 @@ export async function updateNotificationRule(
     throw new Error("Forbidden");
   }
   const now = Math.floor(Date.now() / 1000);
-  const schedule = Object.prototype.hasOwnProperty.call(input, "schedule")
-    ? normalizeNotificationSchedule(input.schedule)
-    : current.schedule;
-  const nextRunAt = Object.prototype.hasOwnProperty.call(input, "schedule")
-    ? computeNextNotificationRunAt(schedule, now)
-    : current.nextRunAt;
-  const recipient = Object.prototype.hasOwnProperty.call(input, "recipient")
-    ? normalizeNotificationRecipientConfig(input.recipient)
-    : current.recipient;
+  const schedule =
+    input.schedule !== undefined
+      ? normalizeNotificationSchedule(input.schedule)
+      : current.schedule;
+  const nextRunAt =
+    input.schedule !== undefined
+      ? computeNextNotificationRunAt(schedule, now)
+      : current.nextRunAt;
+  const recipient =
+    input.recipient !== undefined
+      ? normalizeNotificationRecipientConfig(input.recipient)
+      : current.recipient;
   await env.DB.prepare(
     `
       UPDATE notification_rules
@@ -329,10 +332,14 @@ export async function updateNotificationRule(
       siteId,
       clampString((input.name ?? current.name).trim(), 160),
       clampString((input.description ?? current.description).trim(), 1000),
-      normalizeNotificationRuleType(input.type ?? current.type),
+      input.type !== undefined
+        ? normalizeNotificationRuleType(input.type)
+        : current.type,
       (input.enabled ?? current.enabled) ? 1 : 0,
       safeJsonStringify(schedule),
-      safeJsonStringify(input.condition ?? current.condition),
+      safeJsonStringify(
+        input.condition !== undefined ? input.condition : current.condition,
+      ),
       safeJsonStringify(recipient),
       nextRunAt,
       now,

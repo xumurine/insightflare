@@ -7,6 +7,8 @@ import {
 import {
   handleNotificationPreferences,
   handleNotificationRead,
+  handleNotificationRulePreviewAdmin,
+  handleNotificationRuleRunAdmin,
   handleNotificationRulesAdmin,
   handleNotifications,
   handleNotificationsReadAll,
@@ -73,6 +75,10 @@ export async function handlePrivateAdmin(
     ).trim();
     return handleNotificationRead(request, env, messageId);
   }
+  if (p === "/api/private/admin/notification-rules/preview")
+    return handleNotificationRulePreviewAdmin(request, env);
+  if (p === "/api/private/admin/notification-rules/run")
+    return handleNotificationRuleRunAdmin(request, env);
   if (p === "/api/private/admin/notification-rules")
     return handleNotificationRulesAdmin(request, env, url);
   if (p === "/api/private/admin/notification-test")

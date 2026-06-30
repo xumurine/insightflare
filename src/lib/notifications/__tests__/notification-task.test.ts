@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScheduledTaskContext } from "@/lib/edge/scheduled-task-runner";
 import type { NotificationMessage } from "@/lib/notifications/message-store";
-import { runNotificationTick } from "@/lib/notifications/notification-task";
+import {
+  createNotificationRulePreview,
+  runNotificationRuleManually,
+  runNotificationTick,
+} from "@/lib/notifications/notification-task";
 import type { NotificationRule } from "@/lib/notifications/rule-store";
 
 const listDueNotificationRules = vi.hoisted(() => vi.fn());
@@ -227,5 +231,65 @@ describe("notification task", () => {
     });
     expect(ctx.events).toContain("notification_rule_failed");
     expect(advanceNotificationRuleSchedule).toHaveBeenCalledTimes(2);
+  });
+
+  it("previews a rule without creating messages or advancing schedule", async () => {
+    evaluateNotificationRule.mockResolvedValue({
+      status: "checked",
+      triggered: false,
+      summary: "Not triggered",
+    });
+
+    const result = await createNotificationRulePreview({} as never, rule());
+
+    expect(result).toMatchObject({
+      status: "checked",
+      triggered: false,
+    });
+    expect(createNotificationMessage).not.toHaveBeenCalled();
+    expect(deliverNotificationMessage).not.toHaveBeenCalled();
+    expect(advanceNotificationRuleSchedule).not.toHaveBeenCalled();
+  });
+
+  it("manually runs a triggered rule without advancing schedule", async () => {
+    evaluateNotificationRule.mockResolvedValue({
+      status: "triggered",
+      message: {
+        type: "threshold",
+        severity: "warning",
+        requiresAttention: true,
+        title: "Traffic threshold",
+        summary: "Visitors reached the threshold",
+        bodyText: "Body",
+      },
+    });
+    resolveNotificationRecipients.mockResolvedValue([
+      { id: "user-1", email: "user@example.test", preferencesJson: "{}" },
+    ]);
+    createNotificationMessage.mockResolvedValue(message());
+    deliverNotificationMessage.mockResolvedValue(
+      message({
+        deliveryResults: {
+          email: { status: "skipped", reason: "recipient_email_invalid" },
+        },
+      }),
+    );
+
+    const outcome = await runNotificationRuleManually({
+      env: {} as never,
+      context: context(),
+      rule: rule(),
+    });
+
+    expect(outcome.messageCount).toBe(1);
+    expect(outcome.summary).toMatchObject({
+      rulesScanned: 1,
+      rulesChecked: 1,
+      rulesTriggered: 1,
+      messagesCreated: 1,
+      emailSkipped: 1,
+      emailSkippedInvalidRecipient: 1,
+    });
+    expect(advanceNotificationRuleSchedule).not.toHaveBeenCalled();
   });
 });

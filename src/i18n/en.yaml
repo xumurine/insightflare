@@ -888,6 +888,22 @@ notificationCenter:
   alertsUnreadDescription: Keep threshold and health alerts unread.
   preferencesSaved: Notification preferences saved.
   preferencesSaveFailed: Failed to save notification preferences.
+  showDetails: Details
+  hideDetails: Hide details
+  detailFields:
+    bodyText: Body
+    type: Type
+    severity: Severity
+    site: Site
+    ruleId: Rule ID
+    runId: Run ID
+    batchId: Batch ID
+    deliveryStatus: Delivery status
+    deliveryResults: Delivery results
+    createdAt: Created at
+    triggeredAt: Triggered at
+    sentAt: Sent at
+    failedAt: Failed at
 login:
   title: Sign in
   subtitle: Use your InsightFlare account.
@@ -973,6 +989,7 @@ teamManagement:
     testNotificationSent: Test notification sent.
     sendTestNotificationFailed: Failed to send test notification.
     createRule: Create rule
+    noSitesForRules: Create a site before configuring notification rules.
     editRule: Edit rule
     dialogDescription: Configure a basic notification rule for this team.
     nameLabel: Name
@@ -1009,6 +1026,14 @@ teamManagement:
     disable: Disable
     delete: Delete
     saveRule: Save rule
+    preview: Preview
+    runNow: Run now
+    previewFailed: Failed to preview rule.
+    runFailed: Failed to run rule.
+    runResultToast: "Created {messages} messages. Email sent {sent}, failed {failed}."
+    previewDialogTitle: Rule preview
+    previewDialogDescription: Evaluate this rule without creating messages or sending email.
+    coolingDownUntil: "Cooling down until {time}"
     scheduleDaily: "Daily {time}"
     scheduleInterval: "Every {minutes} min"
     scheduleCustom: Custom
@@ -1027,6 +1052,16 @@ teamManagement:
     status:
       enabled: Enabled
       disabled: Disabled
+    nextRunStates:
+      disabled: Disabled
+      coolingDown: Cooling down
+      dueNow: Due now
+    previewFields:
+      status: Status
+      summary: Summary
+      title: Title
+      bodyText: Body text
+      data: Data
     ruleTypes:
       report: Report
       milestone: Milestone

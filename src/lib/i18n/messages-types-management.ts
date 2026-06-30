@@ -212,6 +212,23 @@ export interface AppManagementMessages {
     alertsUnreadDescription: string;
     preferencesSaved: string;
     preferencesSaveFailed: string;
+    showDetails: string;
+    hideDetails: string;
+    detailFields: {
+      bodyText: string;
+      type: string;
+      severity: string;
+      site: string;
+      ruleId: string;
+      runId: string;
+      batchId: string;
+      deliveryStatus: string;
+      deliveryResults: string;
+      createdAt: string;
+      triggeredAt: string;
+      sentAt: string;
+      failedAt: string;
+    };
   };
   login: {
     title: string;
@@ -306,6 +323,7 @@ export interface AppManagementMessages {
       testNotificationSent: string;
       sendTestNotificationFailed: string;
       createRule: string;
+      noSitesForRules: string;
       editRule: string;
       dialogDescription: string;
       nameLabel: string;
@@ -342,6 +360,14 @@ export interface AppManagementMessages {
       disable: string;
       delete: string;
       saveRule: string;
+      preview: string;
+      runNow: string;
+      previewFailed: string;
+      runFailed: string;
+      runResultToast: string;
+      previewDialogTitle: string;
+      previewDialogDescription: string;
+      coolingDownUntil: string;
       scheduleDaily: string;
       scheduleInterval: string;
       scheduleCustom: string;
@@ -362,6 +388,18 @@ export interface AppManagementMessages {
       status: {
         enabled: string;
         disabled: string;
+      };
+      nextRunStates: {
+        disabled: string;
+        coolingDown: string;
+        dueNow: string;
+      };
+      previewFields: {
+        status: string;
+        summary: string;
+        title: string;
+        bodyText: string;
+        data: string;
       };
       ruleTypes: {
         report: string;

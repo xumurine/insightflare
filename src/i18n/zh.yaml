@@ -857,6 +857,22 @@ notificationCenter:
   alertsUnreadDescription: 阈值和健康告警保持未读。
   preferencesSaved: 通知偏好已保存。
   preferencesSaveFailed: 保存通知偏好失败。
+  showDetails: 详情
+  hideDetails: 收起详情
+  detailFields:
+    bodyText: 正文
+    type: 类型
+    severity: 严重程度
+    site: 站点
+    ruleId: 规则 ID
+    runId: 运行 ID
+    batchId: 批次 ID
+    deliveryStatus: 投递状态
+    deliveryResults: 投递结果
+    createdAt: 创建时间
+    triggeredAt: 触发时间
+    sentAt: 发送时间
+    failedAt: 失败时间
 login:
   title: 登录
   subtitle: 使用 InsightFlare 账号登录。
@@ -942,6 +958,7 @@ teamManagement:
     testNotificationSent: 测试通知已发送。
     sendTestNotificationFailed: 发送测试通知失败。
     createRule: 创建规则
+    noSitesForRules: 请先创建站点，再配置通知规则。
     editRule: 编辑规则
     dialogDescription: 为当前团队配置一条基础通知规则。
     nameLabel: 名称
@@ -978,6 +995,14 @@ teamManagement:
     disable: 停用
     delete: 删除
     saveRule: 保存规则
+    preview: 预览
+    runNow: 立即运行
+    previewFailed: 预览规则失败。
+    runFailed: 运行规则失败。
+    runResultToast: "已创建 {messages} 条消息。邮件发送 {sent} 条，失败 {failed} 条。"
+    previewDialogTitle: 规则预览
+    previewDialogDescription: 仅评估规则，不创建消息，也不发送邮件。
+    coolingDownUntil: "冷却至 {time}"
     scheduleDaily: "每天 {time}"
     scheduleInterval: "每 {minutes} 分钟"
     scheduleCustom: 自定义
@@ -996,6 +1021,16 @@ teamManagement:
     status:
       enabled: 已启用
       disabled: 未启用
+    nextRunStates:
+      disabled: 未启用
+      coolingDown: 冷却中
+      dueNow: 现在到期
+    previewFields:
+      status: 状态
+      summary: 摘要
+      title: 标题
+      bodyText: 正文
+      data: 数据
     ruleTypes:
       report: 报告
       milestone: 里程碑

@@ -6,8 +6,10 @@ import {
   RiCheckboxCircleLine,
   RiDeleteBinLine,
   RiEditLine,
+  RiEyeLine,
   RiMailSendLine,
   RiNotification3Line,
+  RiPauseCircleLine,
   RiPlayCircleLine,
   RiSave3Line,
 } from "@remixicon/react";
@@ -58,6 +60,9 @@ import {
   fetchNotificationEmailConfig,
   fetchNotificationRules,
   type NotificationRuleData,
+  type NotificationRuleEvaluationData,
+  previewNotificationRule,
+  runNotificationRuleNow,
   sendNotificationTest,
   type SiteData,
   updateNotificationRule,
@@ -120,6 +125,27 @@ function formatRunAt(locale: Locale, value: number | null): string {
   return shortDateTime(locale, value * 1000);
 }
 
+function isCoolingDown(
+  rule: NotificationRuleData,
+  nowSeconds: number,
+): boolean {
+  return Boolean(rule.cooldownUntil && rule.cooldownUntil > nowSeconds);
+}
+
+function nextRunLabel(
+  copy: AppMessages["teamManagement"]["notifications"],
+  locale: Locale,
+  rule: NotificationRuleData,
+  nowSeconds: number,
+): string {
+  if (!rule.enabled) return copy.nextRunStates.disabled;
+  if (isCoolingDown(rule, nowSeconds)) return copy.nextRunStates.coolingDown;
+  if (rule.nextRunAt && rule.nextRunAt <= nowSeconds) {
+    return copy.nextRunStates.dueNow;
+  }
+  return formatRunAt(locale, rule.nextRunAt);
+}
+
 function scheduleLabel(
   copy: AppMessages["teamManagement"]["notifications"],
   rule: NotificationRuleData,
@@ -161,6 +187,21 @@ function siteLabel(siteById: Map<string, SiteData>, siteId: string | null) {
   if (!siteId) return "-";
   const site = siteById.get(siteId);
   return site ? `${site.name} (${site.domain})` : siteId;
+}
+
+function previewSummary(result: NotificationRuleEvaluationData | null): string {
+  if (!result) return "";
+  if (result.status === "triggered") return result.message.summary;
+  if (result.status === "checked") return result.summary;
+  return result.reason;
+}
+
+function jsonBlock(value: unknown): string {
+  try {
+    return JSON.stringify(value ?? {}, null, 2);
+  } catch {
+    return "{}";
+  }
 }
 
 function inferFormFromRule(rule: NotificationRuleData): RuleFormState {
@@ -587,10 +628,16 @@ export function TeamNotificationsClient({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [previewingId, setPreviewingId] = useState("");
+  const [runningId, setRunningId] = useState("");
   const [emailConfigured, setEmailConfigured] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [testDialogOpen, setTestDialogOpen] = useState(false);
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [previewResult, setPreviewResult] =
+    useState<NotificationRuleEvaluationData | null>(null);
   const [form, setForm] = useState<RuleFormState>(EMPTY_FORM);
+  const nowSeconds = Math.floor(Date.now() / 1000);
 
   const siteById = useMemo(
     () => new Map(sites.map((site) => [site.id, site])),
@@ -600,6 +647,7 @@ export function TeamNotificationsClient({
     () => rules.filter((rule) => rule.enabled).length,
     [rules],
   );
+  const canCreateRule = sites.length > 0;
 
   async function loadRules() {
     setLoading(true);
@@ -629,6 +677,7 @@ export function TeamNotificationsClient({
   }, [teamId]);
 
   function openCreate(type: RuleFormType = "report") {
+    if (!canCreateRule) return;
     const firstSite = sites[0];
     setForm({
       ...EMPTY_FORM,
@@ -715,6 +764,40 @@ export function TeamNotificationsClient({
     }
   }
 
+  async function handlePreview(rule: NotificationRuleData) {
+    if (previewingId) return;
+    setPreviewingId(rule.id);
+    try {
+      const result = await previewNotificationRule({ ruleId: rule.id });
+      setPreviewResult(result);
+      setPreviewDialogOpen(true);
+    } catch {
+      toast.error(copy.previewFailed);
+    } finally {
+      setPreviewingId("");
+    }
+  }
+
+  async function handleRunNow(rule: NotificationRuleData) {
+    if (runningId) return;
+    setRunningId(rule.id);
+    try {
+      const result = await runNotificationRuleNow({ ruleId: rule.id });
+      toast.success(
+        formatI18nTemplate(copy.runResultToast, {
+          messages: result.messageCount,
+          sent: Number(result.summary.emailSent ?? 0),
+          failed: Number(result.summary.emailFailed ?? 0),
+        }),
+      );
+      await loadRules();
+    } catch {
+      toast.error(copy.runFailed);
+    } finally {
+      setRunningId("");
+    }
+  }
+
   return (
     <div className="space-y-4">
       <PageHeading
@@ -730,7 +813,13 @@ export function TeamNotificationsClient({
               <RiMailSendLine />
               <span>{copy.sendTestNotification}</span>
             </Button>
-            <Button type="button" size="sm" onClick={() => openCreate()}>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => openCreate()}
+              disabled={!canCreateRule}
+              title={!canCreateRule ? copy.noSitesForRules : copy.createRule}
+            >
               <RiAddLine />
               <span>{copy.createRule}</span>
             </Button>
@@ -749,6 +838,11 @@ export function TeamNotificationsClient({
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {!canCreateRule ? (
+              <div className="mb-4 rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                {copy.noSitesForRules}
+              </div>
+            ) : null}
             {loading ? (
               <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
                 <Spinner className="mr-2 size-4" />
@@ -795,7 +889,18 @@ export function TeamNotificationsClient({
                         {formatRunAt(locale, rule.lastTriggeredAt)}
                       </TableCell>
                       <TableCell>
-                        {formatRunAt(locale, rule.nextRunAt)}
+                        <div className="flex flex-col gap-1">
+                          <span>
+                            {nextRunLabel(copy, locale, rule, nowSeconds)}
+                          </span>
+                          {isCoolingDown(rule, nowSeconds) ? (
+                            <Badge variant="secondary">
+                              {formatI18nTemplate(copy.coolingDownUntil, {
+                                time: formatRunAt(locale, rule.cooldownUntil),
+                              })}
+                            </Badge>
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge variant={rule.enabled ? "default" : "secondary"}>
@@ -806,6 +911,34 @@ export function TeamNotificationsClient({
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
+                          <Button
+                            type="button"
+                            size="icon-xs"
+                            variant="outline"
+                            title={copy.preview}
+                            disabled={previewingId === rule.id}
+                            onClick={() => void handlePreview(rule)}
+                          >
+                            {previewingId === rule.id ? (
+                              <Spinner className="size-3" />
+                            ) : (
+                              <RiEyeLine />
+                            )}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon-xs"
+                            variant="outline"
+                            title={copy.runNow}
+                            disabled={runningId === rule.id}
+                            onClick={() => void handleRunNow(rule)}
+                          >
+                            {runningId === rule.id ? (
+                              <Spinner className="size-3" />
+                            ) : (
+                              <RiPlayCircleLine />
+                            )}
+                          </Button>
                           <Button
                             type="button"
                             size="icon-xs"
@@ -822,7 +955,11 @@ export function TeamNotificationsClient({
                             title={rule.enabled ? copy.disable : copy.enable}
                             onClick={() => void toggleRule(rule)}
                           >
-                            <RiPlayCircleLine />
+                            {rule.enabled ? (
+                              <RiPauseCircleLine />
+                            ) : (
+                              <RiPlayCircleLine />
+                            )}
                           </Button>
                           <Button
                             type="button"
@@ -876,6 +1013,70 @@ export function TeamNotificationsClient({
             <Button type="button" onClick={handleSendTest} disabled={testing}>
               {testing ? <Spinner className="size-4" /> : <RiMailSendLine />}
               <span>{copy.sendTestNotification}</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
+        <DialogContent className="max-h-[min(760px,calc(100vh-2rem))] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{copy.previewDialogTitle}</DialogTitle>
+            <DialogDescription>
+              {copy.previewDialogDescription}
+            </DialogDescription>
+          </DialogHeader>
+          {previewResult ? (
+            <div className="grid gap-4 text-sm">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    {copy.previewFields.status}
+                  </p>
+                  <Badge variant="outline">{previewResult.status}</Badge>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    {copy.previewFields.summary}
+                  </p>
+                  <p className="break-words">{previewSummary(previewResult)}</p>
+                </div>
+              </div>
+              {previewResult.status === "triggered" ? (
+                <>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">
+                      {copy.previewFields.title}
+                    </p>
+                    <p className="font-medium">{previewResult.message.title}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">
+                      {copy.previewFields.bodyText}
+                    </p>
+                    <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-3 text-xs leading-5">
+                      {previewResult.message.bodyText}
+                    </pre>
+                  </div>
+                </>
+              ) : null}
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">
+                  {copy.previewFields.data}
+                </p>
+                <pre className="max-h-64 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">
+                  {jsonBlock(previewResult.data)}
+                </pre>
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPreviewDialogOpen(false)}
+            >
+              {messages.teamSelect.cancel}
             </Button>
           </DialogFooter>
         </DialogContent>

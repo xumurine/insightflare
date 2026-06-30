@@ -259,12 +259,21 @@ export async function loadSiteLastSeenAt(
 ): Promise<number | null> {
   const row = await env.DB.prepare(
     `
-      SELECT MAX(last_activity_at) AS lastSeenAt
-      FROM visits
-      WHERE site_id = ?
+      SELECT MAX(lastSeenAt) AS lastSeenAt
+      FROM (
+        SELECT MAX(last_activity_at) AS lastSeenAt
+        FROM visits
+        WHERE site_id = ?
+
+        UNION ALL
+
+        SELECT MAX(last_activity_at) AS lastSeenAt
+        FROM visits_archive
+        WHERE site_id = ?
+      )
     `,
   )
-    .bind(siteId)
+    .bind(siteId, siteId)
     .first<{ lastSeenAt: number | null }>();
   const value = Number(row?.lastSeenAt ?? 0);
   return Number.isFinite(value) && value > 0 ? Math.floor(value / 1000) : null;

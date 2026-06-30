@@ -4,6 +4,8 @@ import type {
   MemberData,
   NotificationMessageData,
   NotificationRuleData,
+  NotificationRuleEvaluationData,
+  NotificationRuleRunData,
   OverviewData,
   PagesData,
   QueryFilters,
@@ -641,6 +643,34 @@ export async function deleteNotificationRule(input: {
     method: "DELETE",
     path: "/api/private/admin/notification-rules",
     params: { id: input.ruleId },
+  });
+  return res.data;
+}
+
+export async function previewNotificationRule(input: {
+  ruleId: string;
+}): Promise<NotificationRuleEvaluationData> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: NotificationRuleEvaluationData;
+  }>({
+    method: "POST",
+    path: "/api/private/admin/notification-rules/preview",
+    body: input,
+  });
+  return res.data;
+}
+
+export async function runNotificationRuleNow(input: {
+  ruleId: string;
+}): Promise<NotificationRuleRunData> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: NotificationRuleRunData;
+  }>({
+    method: "POST",
+    path: "/api/private/admin/notification-rules/run",
+    body: input,
   });
   return res.data;
 }

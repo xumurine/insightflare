@@ -100,6 +100,41 @@ export interface NotificationRuleData {
   updatedAt: number;
 }
 
+export type NotificationRuleEvaluationData =
+  | {
+      status: "skipped";
+      reason: string;
+      data?: Record<string, unknown>;
+    }
+  | {
+      status: "checked";
+      triggered: false;
+      summary: string;
+      data?: Record<string, unknown>;
+    }
+  | {
+      status: "triggered";
+      message: {
+        type: string;
+        severity: string;
+        requiresAttention: boolean;
+        title: string;
+        summary: string;
+        bodyText: string;
+        bodyHtml?: string;
+        data?: Record<string, unknown>;
+      };
+      cooldownUntil?: number | null;
+      data?: Record<string, unknown>;
+    };
+
+export interface NotificationRuleRunData {
+  evaluation: NotificationRuleEvaluationData;
+  messages: NotificationMessageData[];
+  messageCount: number;
+  summary: Record<string, unknown>;
+}
+
 export interface NotificationMessageData {
   id: string;
   teamId: string;

@@ -149,7 +149,7 @@ export async function deliverNotificationMessage(
   } catch {
     results.email = {
       status: "skipped",
-      reason: "system_email_unconfigured",
+      reason: "secret_decryption_failed",
     };
     await context.logger?.warn(
       "notification_delivery_skipped",
@@ -208,6 +208,7 @@ export async function deliverNotificationMessage(
       results.email = {
         status: "failed",
         provider: "resend",
+        reason: "provider_failed",
         errorMessage,
         durationMs,
       };
@@ -265,6 +266,7 @@ export async function deliverNotificationMessage(
     results.email = {
       status: "failed",
       provider: "resend",
+      reason: "network_failed",
       errorMessage,
       durationMs,
     };

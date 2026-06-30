@@ -8,9 +8,11 @@ import {
 } from "@/lib/notifications/message-store";
 import {
   createManualTestNotification,
+  createNotificationRulePreview,
   NOTIFICATION_TASK_KEY,
   NOTIFICATION_TASK_NAME,
   type NotificationTaskSummary,
+  runNotificationRuleManually,
 } from "@/lib/notifications/notification-task";
 import {
   getUserNotificationPreferences,
@@ -19,12 +21,14 @@ import {
 import {
   createNotificationRule,
   deleteNotificationRule,
+  getNotificationRule,
   listNotificationRules,
   updateNotificationRule,
+  type UpdateNotificationRuleInput,
 } from "@/lib/notifications/rule-store";
 
-import { canManageTeam, canReadTeam } from "./admin-access";
-import { requireActor } from "./admin-auth";
+import { canManageSite, canManageTeam, canReadTeam } from "./admin-access";
+import { type Actor, requireActor } from "./admin-auth";
 import {
   bad,
   forb,
@@ -40,10 +44,30 @@ function stringParam(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function hasOwn(input: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(input, key);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function parseLimit(url: URL): number {
   const raw = Math.trunc(Number(url.searchParams.get("limit") ?? 50));
   if (!Number.isFinite(raw)) return 50;
   return Math.max(1, Math.min(100, raw));
+}
+
+async function getManageableRule(env: Env, actor: Actor, ruleId: string) {
+  const rule = await getNotificationRule(env, ruleId);
+  if (!rule) throw new Error("Not Found");
+  if (!(await canManageTeam(env, actor, rule.teamId))) {
+    throw new Error("Forbidden");
+  }
+  if (rule.siteId && !(await canManageSite(env, actor, rule.siteId))) {
+    throw new Error("Forbidden");
+  }
+  return rule;
 }
 
 function mapError(error: unknown, req: Request): Response {
@@ -96,29 +120,25 @@ export async function handleNotificationRulesAdmin(
       const body = await parseJson(req);
       const ruleId = stringParam(body.ruleId || body.id);
       if (!ruleId) return bad("ruleId is required", undefined, req);
-      const rule = await updateNotificationRule(env, actor, {
-        ruleId,
-        teamId: stringParam(body.teamId) || undefined,
-        siteId: Object.prototype.hasOwnProperty.call(body, "siteId")
-          ? stringParam(body.siteId) || null
-          : undefined,
-        name: Object.prototype.hasOwnProperty.call(body, "name")
-          ? stringParam(body.name)
-          : undefined,
-        description: Object.prototype.hasOwnProperty.call(body, "description")
-          ? stringParam(body.description)
-          : undefined,
-        type: stringParam(body.type) as never,
-        enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
-        schedule: Object.prototype.hasOwnProperty.call(body, "schedule")
-          ? body.schedule
-          : undefined,
-        condition:
-          body.condition && typeof body.condition === "object"
-            ? (body.condition as Record<string, unknown>)
-            : undefined,
-        recipient: body.recipient as never,
-      });
+      const input: UpdateNotificationRuleInput = { ruleId };
+      if (hasOwn(body, "teamId")) input.teamId = stringParam(body.teamId);
+      if (hasOwn(body, "siteId")) {
+        input.siteId = stringParam(body.siteId) || null;
+      }
+      if (hasOwn(body, "name")) input.name = stringParam(body.name);
+      if (hasOwn(body, "description")) {
+        input.description = stringParam(body.description);
+      }
+      if (hasOwn(body, "type")) input.type = stringParam(body.type) as never;
+      if (hasOwn(body, "enabled") && typeof body.enabled === "boolean") {
+        input.enabled = body.enabled;
+      }
+      if (hasOwn(body, "schedule")) input.schedule = body.schedule;
+      if (hasOwn(body, "condition") && isRecord(body.condition)) {
+        input.condition = body.condition;
+      }
+      if (hasOwn(body, "recipient")) input.recipient = body.recipient as never;
+      const rule = await updateNotificationRule(env, actor, input);
       return jsonResponseFor(req, { ok: true, data: rule });
     }
 
@@ -132,6 +152,71 @@ export async function handleNotificationRulesAdmin(
     return mapError(error, req);
   }
   return na(req);
+}
+
+export async function handleNotificationRulePreviewAdmin(
+  req: Request,
+  env: Env,
+): Promise<Response> {
+  const actor = await requireActor(env, req);
+  if (actor instanceof Response) return actor;
+  if (req.method !== "POST") return na(req);
+
+  try {
+    const body = await parseJson(req);
+    const ruleId = stringParam(body.ruleId || body.id);
+    if (!ruleId) return bad("ruleId is required", undefined, req);
+    const rule = await getManageableRule(env, actor, ruleId);
+    const evaluation = await createNotificationRulePreview(env, rule);
+    return jsonResponseFor(req, { ok: true, data: evaluation });
+  } catch (error) {
+    return mapError(error, req);
+  }
+}
+
+export async function handleNotificationRuleRunAdmin(
+  req: Request,
+  env: Env,
+): Promise<Response> {
+  const actor = await requireActor(env, req);
+  if (actor instanceof Response) return actor;
+  if (req.method !== "POST") return na(req);
+
+  try {
+    const body = await parseJson(req);
+    const ruleId = stringParam(body.ruleId || body.id);
+    if (!ruleId) return bad("ruleId is required", undefined, req);
+    const rule = await getManageableRule(env, actor, ruleId);
+    const payload: {
+      current: Awaited<ReturnType<typeof runNotificationRuleManually>> | null;
+    } = { current: null };
+    await runScheduledTask(
+      env,
+      {
+        key: NOTIFICATION_TASK_KEY,
+        name: NOTIFICATION_TASK_NAME,
+        triggerType: "manual",
+        scopeType: "notification_rule",
+        scopeId: rule.id,
+      },
+      undefined,
+      async (context) => {
+        payload.current = await runNotificationRuleManually({
+          env,
+          context,
+          rule,
+        });
+        return {
+          status:
+            payload.current.summary.emailFailed > 0 ? "partial" : "success",
+          summary: { ...payload.current.summary },
+        };
+      },
+    );
+    return jsonResponseFor(req, { ok: true, data: payload.current });
+  } catch (error) {
+    return mapError(error, req);
+  }
 }
 
 export async function handleNotifications(
