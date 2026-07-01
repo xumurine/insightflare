@@ -1521,6 +1521,13 @@ adminUsers:
   deleteConfirm: Delete this user account?
   deleteSuccess: User deleted.
   deleteFailed: Failed to delete user.
+  generateResetLink: Generate password reset link
+  resetLinkCreated: Password reset link generated.
+  resetLinkCreateFailed: Failed to generate password reset link.
+  resetLinkCopied: Password reset link copied.
+  resetLinkCopyFailed: Failed to copy password reset link.
+  copyResetLink: Copy link
+  resetLinkExpiresAt: Expires
   listTitle: Users
   listSubtitle: All users in the system.
   noData: No users found.

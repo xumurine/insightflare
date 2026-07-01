@@ -1486,6 +1486,13 @@ adminUsers:
   deleteConfirm: 确认删除该用户账号吗？
   deleteSuccess: 用户已删除。
   deleteFailed: 删除用户失败。
+  generateResetLink: 生成重置密码链接
+  resetLinkCreated: 重置密码链接已生成。
+  resetLinkCreateFailed: 生成重置密码链接失败。
+  resetLinkCopied: 重置密码链接已复制。
+  resetLinkCopyFailed: 复制重置密码链接失败。
+  copyResetLink: 复制链接
+  resetLinkExpiresAt: 过期时间
   listTitle: 用户列表
   listSubtitle: 当前系统内所有用户。
   noData: 暂无用户数据。

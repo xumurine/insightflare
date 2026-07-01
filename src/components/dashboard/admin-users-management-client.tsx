@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RiDeleteBinLine } from "@remixicon/react";
+import { RiDeleteBinLine, RiKey2Line } from "@remixicon/react";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
@@ -55,6 +55,11 @@ interface ApiResponse<T> {
   message?: string;
 }
 
+interface CreatedAccountLink {
+  url: string;
+  expiresAt: number;
+}
+
 async function getUsers(): Promise<AccountUserData[]> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
@@ -98,6 +103,13 @@ export function AdminUsersManagementClient({
   const [teamName, setTeamName] = useState("");
   const [teamNameTouched, setTeamNameTouched] = useState(false);
   const [teamSlug, setTeamSlug] = useState("");
+  const [resetLinkUrl, setResetLinkUrl] = useState("");
+  const [resetLinkExpiresAt, setResetLinkExpiresAt] = useState<number | null>(
+    null,
+  );
+  const [generatingResetUserId, setGeneratingResetUserId] = useState<
+    string | null
+  >(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [pendingDeleteUserId, setPendingDeleteUserId] = useState<string | null>(
     null,
@@ -233,6 +245,49 @@ export function AdminUsersManagementClient({
     }
   }
 
+  async function handleGenerateResetLink(userId: string) {
+    setGeneratingResetUserId(userId);
+    try {
+      const response = await fetch("/api/private/admin/account-links", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "password_reset",
+          userId,
+        }),
+      });
+      const payload =
+        (await response.json()) as ApiResponse<CreatedAccountLink>;
+      if (!response.ok || !payload.ok || !payload.data) {
+        throw new Error(
+          payload.message || payload.error || t.resetLinkCreateFailed,
+        );
+      }
+      setResetLinkUrl(payload.data.url);
+      setResetLinkExpiresAt(payload.data.expiresAt);
+      toast.success(t.resetLinkCreated);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : t.resetLinkCreateFailed;
+      toast.error(message || t.resetLinkCreateFailed);
+    } finally {
+      setGeneratingResetUserId(null);
+    }
+  }
+
+  async function handleCopyResetLink() {
+    if (!resetLinkUrl) return;
+    try {
+      await navigator.clipboard.writeText(resetLinkUrl);
+      toast.success(t.resetLinkCopied);
+    } catch {
+      toast.error(t.resetLinkCopyFailed);
+    }
+  }
+
   const noDataText = t.noData;
 
   return (
@@ -359,7 +414,29 @@ export function AdminUsersManagementClient({
           <CardTitle>{t.listTitle}</CardTitle>
           <CardDescription>{t.listSubtitle}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {resetLinkUrl ? (
+            <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Input value={resetLinkUrl} readOnly className="font-mono" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    void handleCopyResetLink();
+                  }}
+                >
+                  {t.copyResetLink}
+                </Button>
+              </div>
+              {resetLinkExpiresAt ? (
+                <p className="text-xs text-muted-foreground">
+                  {t.resetLinkExpiresAt}:{" "}
+                  {shortDateTime(locale, resetLinkExpiresAt, timeZone)}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <DataTableSwitch
             loading={loading}
             hasContent={users.length > 0}
@@ -401,27 +478,47 @@ export function AdminUsersManagementClient({
                 <TableCell>
                   {shortDateTime(locale, user.createdAt, timeZone)}
                 </TableCell>
-                <TableCell className="text-right">
-                  <TableActionButton
-                    onClick={() => {
-                      setPendingDeleteUserId(user.id);
-                      setDeleteUserDialogOpen(true);
-                    }}
-                    disabled={
-                      deletingUserId !== null || user.id === currentUserId
-                    }
-                    label={t.delete}
-                    tone="destructive"
-                    transitionKey={
-                      deletingUserId === user.id ? "deleting" : "delete"
-                    }
-                  >
-                    {deletingUserId === user.id ? (
-                      <Spinner className="size-3.5" />
-                    ) : (
-                      <RiDeleteBinLine className="size-4" />
-                    )}
-                  </TableActionButton>
+                <TableCell>
+                  <div className="flex justify-end gap-1.5">
+                    <TableActionButton
+                      onClick={() => {
+                        void handleGenerateResetLink(user.id);
+                      }}
+                      disabled={generatingResetUserId !== null}
+                      label={t.generateResetLink}
+                      transitionKey={
+                        generatingResetUserId === user.id
+                          ? "generating-reset"
+                          : "generate-reset"
+                      }
+                    >
+                      {generatingResetUserId === user.id ? (
+                        <Spinner className="size-3.5" />
+                      ) : (
+                        <RiKey2Line className="size-4" />
+                      )}
+                    </TableActionButton>
+                    <TableActionButton
+                      onClick={() => {
+                        setPendingDeleteUserId(user.id);
+                        setDeleteUserDialogOpen(true);
+                      }}
+                      disabled={
+                        deletingUserId !== null || user.id === currentUserId
+                      }
+                      label={t.delete}
+                      tone="destructive"
+                      transitionKey={
+                        deletingUserId === user.id ? "deleting" : "delete"
+                      }
+                    >
+                      {deletingUserId === user.id ? (
+                        <Spinner className="size-3.5" />
+                      ) : (
+                        <RiDeleteBinLine className="size-4" />
+                      )}
+                    </TableActionButton>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

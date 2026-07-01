@@ -887,6 +887,13 @@ export interface AppManagementMessages {
     deleteConfirm: string;
     deleteSuccess: string;
     deleteFailed: string;
+    generateResetLink: string;
+    resetLinkCreated: string;
+    resetLinkCreateFailed: string;
+    resetLinkCopied: string;
+    resetLinkCopyFailed: string;
+    copyResetLink: string;
+    resetLinkExpiresAt: string;
     listTitle: string;
     listSubtitle: string;
     noData: string;
