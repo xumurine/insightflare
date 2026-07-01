@@ -1473,12 +1473,16 @@ adminUsers:
   title: User Management
   subtitle: Only system admins can create and manage dashboard users.
   createTitle: Create User
-  createSubtitle: The new account can sign in immediately.
+  createSubtitle: The new account gets its own Team and can sign in immediately.
+  createTeamNotice: Creating a user here will also create a new Team owned by that user. To add someone to an existing team, create an invite link from that team's settings.
   username: Username
   email: Email
   name: Display Name (optional)
   password: Password (min 8 chars)
   role: System Role
+  teamName: Team Name
+  teamSlug: Team Slug (optional)
+  defaultTeamName: "{name}'s team"
   create: Create User
   creating: Creating...
   delete: Delete

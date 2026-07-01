@@ -1,6 +1,7 @@
 import { normalizeTimeZone } from "@/lib/dashboard/time-zone";
 import { isValidLocale } from "@/lib/i18n/config";
 
+import { uniqueTeamSlug } from "./admin-access";
 import {
   byId,
   byIdentifier,
@@ -27,6 +28,14 @@ import {
 } from "./admin-response";
 import type { Env } from "./types";
 import { clampString } from "./utils";
+
+function defaultOwnedTeamName(input: { name: string; username: string }) {
+  const displayName = clampString(
+    (input.name || input.username || "User").trim(),
+    100,
+  );
+  return `${displayName}'s team`;
+}
 
 export async function handleAuthLoginAdmin(
   req: Request,
@@ -98,12 +107,20 @@ export async function handleUsersAdmin(
     const name = clampString(String(body.name || ""), 120);
     const password = String(body.password || "");
     const systemRole = toRole(body.systemRole);
+    const teamName = clampString(
+      String(body.teamName || "").trim() ||
+        defaultOwnedTeamName({ name, username }),
+      120,
+    );
+    const teamSlugInput = clampString(String(body.teamSlug || "").trim(), 80);
     if (username.length < 3 || !/^[a-z0-9._@-]+$/.test(username))
       return bad("Invalid username", undefined, req);
     if (email.length < 3 || !email.includes("@"))
       return bad("A valid email is required", undefined, req);
     if (password.length < 8)
       return bad("Password must be at least 8 characters", undefined, req);
+    if (teamName.length < 2)
+      return bad("Team name is required", undefined, req);
     if (
       await env.DB.prepare(
         "SELECT 1 AS ok FROM users WHERE lower(username)=? LIMIT 1",
@@ -121,16 +138,40 @@ export async function handleUsersAdmin(
     )
       return bad("Email already exists", undefined, req);
     const id = crypto.randomUUID();
+    const teamId = crypto.randomUUID();
+    const teamSlug = await uniqueTeamSlug(
+      env,
+      teamSlugInput || `${username}-team`,
+    );
     const pass = await hashPassword(password);
-    await env.DB.prepare(
-      "INSERT INTO users (id,username,email,name,password_hash,system_role,created_at,updated_at) VALUES (?,?,?,?,?,?,unixepoch(),unixepoch())",
-    )
-      .bind(id, username, email, name, pass, systemRole)
-      .run();
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO users (id,username,email,name,password_hash,system_role,created_at,updated_at) VALUES (?,?,?,?,?,?,unixepoch(),unixepoch())",
+      ).bind(id, username, email, name, pass, systemRole),
+      env.DB.prepare(
+        "INSERT INTO teams (id,name,slug,owner_user_id,created_at,updated_at) VALUES (?,?,?,?,unixepoch(),unixepoch())",
+      ).bind(teamId, teamName, teamSlug, id),
+      env.DB.prepare(
+        "INSERT INTO team_members (team_id,user_id,role,joined_at) VALUES (?,?,'owner',unixepoch())",
+      ).bind(teamId, id),
+    ]);
     const created = await byId(env, id);
     if (!created) return bad("Failed to create account", undefined, req);
-    await ensureDefaultTeam(env, created);
-    return jsonResponseFor(req, { ok: true, data: toPublicUser(created) });
+    return jsonResponseFor(req, {
+      ok: true,
+      data: {
+        ...toPublicUser(created),
+        team: {
+          id: teamId,
+          name: teamName,
+          slug: teamSlug,
+          ownerUserId: id,
+          membershipRole: "owner",
+          siteCount: 0,
+          memberCount: 1,
+        },
+      },
+    });
   }
   if (req.method === "PATCH") {
     const body = await parseJson(req);

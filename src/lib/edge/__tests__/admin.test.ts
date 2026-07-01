@@ -1146,17 +1146,16 @@ describe("private admin edge handler", () => {
       const insertUser = statement();
       const insertTeam = statement();
       const insertMember = statement();
-      const { env } = createEnv([
+      const { env, batch } = createEnv([
         statement({ first: userRow() }),
         statement({ first: null }),
         statement({ first: null }),
-        insertUser,
-        statement({ first: created }),
-        statement({ first: null }),
         statement({ first: { ok: 1 } }),
         statement({ first: null }),
+        insertUser,
         insertTeam,
         insertMember,
+        statement({ first: created }),
       ]);
 
       const response = await dispatch(
@@ -1194,6 +1193,7 @@ describe("private admin edge handler", () => {
         "00000000-0000-4000-8000-000000000102",
         "00000000-0000-4000-8000-000000000101",
       );
+      expect(batch).toHaveBeenCalledOnce();
     });
 
     it("rejects duplicate usernames and duplicate emails during user creation", async () => {
@@ -1475,6 +1475,9 @@ describe("private admin edge handler", () => {
         statement({ first: userRow() }),
         statement({ first: null }),
         statement({ first: null }),
+        statement(),
+        statement(),
+        statement(),
         statement(),
         statement({ first: null }),
       ]).env;

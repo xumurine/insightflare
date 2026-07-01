@@ -839,11 +839,15 @@ export interface AppManagementMessages {
     subtitle: string;
     createTitle: string;
     createSubtitle: string;
+    createTeamNotice: string;
     username: string;
     email: string;
     name: string;
     password: string;
     role: string;
+    teamName: string;
+    teamSlug: string;
+    defaultTeamName: string;
     create: string;
     creating: string;
     delete: string;

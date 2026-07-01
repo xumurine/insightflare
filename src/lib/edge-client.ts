@@ -526,6 +526,8 @@ export async function createAdminUser(input: {
   name?: string;
   password: string;
   systemRole?: "admin" | "user";
+  teamName?: string;
+  teamSlug?: string;
 }): Promise<AccountUserData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: AccountUserData }>({
     method: "POST",

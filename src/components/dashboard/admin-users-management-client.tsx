@@ -75,6 +75,10 @@ async function getUsers(): Promise<AccountUserData[]> {
   return payload.data;
 }
 
+function formatDefaultTeamName(template: string, name: string) {
+  return template.replace("{name}", name);
+}
+
 export function AdminUsersManagementClient({
   locale,
   messages,
@@ -82,6 +86,7 @@ export function AdminUsersManagementClient({
 }: AdminUsersManagementClientProps) {
   const { timeZone } = useDashboardQueryControls();
   const t = messages.adminUsers;
+  const defaultTeamNameTemplate = t.defaultTeamName;
   const [users, setUsers] = useState<AccountUserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -90,6 +95,9 @@ export function AdminUsersManagementClient({
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [systemRole, setSystemRole] = useState<"admin" | "user">("user");
+  const [teamName, setTeamName] = useState("");
+  const [teamNameTouched, setTeamNameTouched] = useState(false);
+  const [teamSlug, setTeamSlug] = useState("");
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [pendingDeleteUserId, setPendingDeleteUserId] = useState<string | null>(
     null,
@@ -119,6 +127,14 @@ export function AdminUsersManagementClient({
     };
   }, [t.loadFailed]);
 
+  useEffect(() => {
+    if (teamNameTouched) return;
+    const base = (name.trim() || username.trim()).trim();
+    setTeamName(
+      base ? formatDefaultTeamName(defaultTeamNameTemplate, base) : "",
+    );
+  }, [defaultTeamNameTemplate, name, teamNameTouched, username]);
+
   async function refreshUsers() {
     const data = await getUsers();
     setUsers(data);
@@ -127,11 +143,18 @@ export function AdminUsersManagementClient({
   async function handleCreateUser() {
     const normalizedUsername = username.trim();
     const normalizedEmail = email.trim();
+    const normalizedTeamName =
+      teamName.trim() ||
+      formatDefaultTeamName(
+        defaultTeamNameTemplate,
+        (name.trim() || normalizedUsername || "User").trim(),
+      );
     if (
       normalizedUsername.length < 2 ||
       normalizedEmail.length < 3 ||
       !normalizedEmail.includes("@") ||
-      password.length < 8
+      password.length < 8 ||
+      normalizedTeamName.length < 2
     ) {
       toast.error(t.invalidInput);
       return;
@@ -151,6 +174,8 @@ export function AdminUsersManagementClient({
           name: name.trim() || undefined,
           password,
           systemRole,
+          teamName: normalizedTeamName,
+          teamSlug: teamSlug.trim() || undefined,
         }),
       });
       const payload = (await response.json()) as ApiResponse<AccountUserData>;
@@ -162,6 +187,9 @@ export function AdminUsersManagementClient({
       setName("");
       setPassword("");
       setSystemRole("user");
+      setTeamName("");
+      setTeamNameTouched(false);
+      setTeamSlug("");
       await refreshUsers();
       toast.success(t.createSuccess);
     } catch (error) {
@@ -220,6 +248,9 @@ export function AdminUsersManagementClient({
           <CardDescription>{t.createSubtitle}</CardDescription>
         </CardHeader>
         <CardContent>
+          <p className="mb-4 text-sm text-muted-foreground">
+            {t.createTeamNotice}
+          </p>
           <form
             className="grid gap-3 md:grid-cols-2"
             onSubmit={(event) => {
@@ -281,6 +312,26 @@ export function AdminUsersManagementClient({
                   <SelectItem value="admin">{messages.common.admin}</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="admin-user-team-name">{t.teamName}</Label>
+              <Input
+                id="admin-user-team-name"
+                value={teamName}
+                onChange={(event) => {
+                  setTeamNameTouched(true);
+                  setTeamName(event.target.value);
+                }}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="admin-user-team-slug">{t.teamSlug}</Label>
+              <Input
+                id="admin-user-team-slug"
+                value={teamSlug}
+                onChange={(event) => setTeamSlug(event.target.value)}
+              />
             </div>
             <div className="md:col-span-2">
               <Button type="submit" disabled={submitting}>
