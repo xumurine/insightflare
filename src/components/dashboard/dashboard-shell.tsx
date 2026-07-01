@@ -44,7 +44,10 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { isAppleDeviceScrollbarHost } from "@/components/ui/overlay-scrollbar";
+import {
+  prepareNativeScrollbarHost,
+  useNativeScrollbars,
+} from "@/components/ui/overlay-scrollbar";
 import {
   Sidebar,
   SidebarContent,
@@ -426,6 +429,7 @@ export function DashboardShell({
   const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
     null,
   );
+  const nativeScrollbars = useNativeScrollbars();
   const [clientSitesByTeam, setClientSitesByTeam] = useState<
     Record<string, SidebarSite[]>
   >({});
@@ -658,10 +662,7 @@ export function DashboardShell({
   useEffect(() => {
     const host = scrollContainerRef.current;
     if (!host) return;
-    if (isAppleDeviceScrollbarHost()) {
-      host.removeAttribute("data-overlayscrollbars-initialize");
-      return;
-    }
+    if (prepareNativeScrollbarHost(host)) return;
 
     const existing = OverlayScrollbars(host);
     const instance =
@@ -939,7 +940,7 @@ export function DashboardShell({
         <SidebarInset
           ref={scrollContainerRef}
           data-dashboard-scroll-container=""
-          data-overlayscrollbars-initialize
+          data-overlayscrollbars-initialize={nativeScrollbars ? undefined : ""}
           className={sidebarInsetClassName}
         >
           <div className="sticky top-0 z-20 border-b bg-background/90 backdrop-blur">

@@ -66,6 +66,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  prepareNativeScrollbarHost,
+  useNativeScrollbars,
+} from "@/components/ui/overlay-scrollbar";
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -604,10 +608,12 @@ function PanelScrollbar({
   const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
     null,
   );
+  const nativeScrollbars = useNativeScrollbars();
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    if (prepareNativeScrollbarHost(host)) return;
 
     const existing = OverlayScrollbars(host);
     const instance =
@@ -635,8 +641,11 @@ function PanelScrollbar({
   return (
     <div
       ref={hostRef}
-      className={cn("overflow-hidden", className)}
-      data-overlayscrollbars-initialize
+      className={cn(
+        nativeScrollbars ? "overflow-y-auto" : "overflow-hidden",
+        className,
+      )}
+      data-overlayscrollbars-initialize={nativeScrollbars ? undefined : ""}
     >
       {children}
     </div>

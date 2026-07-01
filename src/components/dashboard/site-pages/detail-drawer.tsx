@@ -24,6 +24,11 @@ import {
   setDetailDrawerLayer,
   subscribeDetailDrawerLayers,
 } from "@/components/dashboard/site-pages/floating-layer";
+import {
+  prepareNativeScrollbarHost,
+  shouldUseNativeScrollbars,
+  useNativeScrollbars,
+} from "@/components/ui/overlay-scrollbar";
 import { cn } from "@/lib/utils";
 
 export const DETAIL_QUERY_PARAM = "detail";
@@ -115,6 +120,7 @@ export function DetailDrawer({
   const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
     null,
   );
+  const nativeScrollbars = useNativeScrollbars();
   const isPreparingCloseRef = useRef(false);
   const layerIdRef = useRef<string | null>(null);
   if (layerIdRef.current === null) {
@@ -166,6 +172,7 @@ export function DetailDrawer({
   const getScrollElement = useCallback(() => {
     const scrollContainer = scrollContainerRef.current;
     if (!scrollContainer) return null;
+    if (shouldUseNativeScrollbars()) return scrollContainer;
 
     return (
       scrollbarRef.current?.elements().viewport ??
@@ -421,6 +428,7 @@ export function DetailDrawer({
 
     const host = scrollContainerRef.current;
     if (!host) return;
+    if (prepareNativeScrollbarHost(host)) return;
 
     const existing = OverlayScrollbars(host);
     const instance =
@@ -514,7 +522,9 @@ export function DetailDrawer({
           <div className="fixed inset-y-0 z-10" style={contentAreaStyle}>
             <div
               ref={scrollContainerRef}
-              data-overlayscrollbars-initialize
+              data-overlayscrollbars-initialize={
+                nativeScrollbars ? undefined : ""
+              }
               className="h-full min-h-0 overflow-y-auto overscroll-contain"
               onClick={handleClose}
             >

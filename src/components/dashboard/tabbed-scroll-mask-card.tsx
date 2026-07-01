@@ -5,6 +5,10 @@ import type { PartialOptions } from "overlayscrollbars";
 import { OverlayScrollbars } from "overlayscrollbars";
 
 import { Card } from "@/components/ui/card";
+import {
+  prepareNativeScrollbarHost,
+  useNativeScrollbars,
+} from "@/components/ui/overlay-scrollbar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +66,7 @@ export function TabbedScrollMaskCard<T extends string = string>({
   const topVisibleRef = useRef(false);
   const bottomVisibleRef = useRef(false);
   const frameRef = useRef<number | null>(null);
+  const nativeScrollbars = useNativeScrollbars();
 
   const applyMaskVisibility = (showTop: boolean, showBottom: boolean) => {
     if (showTop !== topVisibleRef.current) {
@@ -80,8 +85,7 @@ export function TabbedScrollMaskCard<T extends string = string>({
     const current =
       container ??
       (scrollbarRef.current?.elements().viewport as
-        | HTMLDivElement
-        | undefined) ??
+        HTMLDivElement | undefined) ??
       scrollHostRef.current;
     if (!current) {
       applyMaskVisibility(false, false);
@@ -114,6 +118,20 @@ export function TabbedScrollMaskCard<T extends string = string>({
   useEffect(() => {
     const host = scrollHostRef.current;
     if (!host) return;
+    if (prepareNativeScrollbarHost(host)) {
+      const sync = () => scheduleMaskSync(host);
+      host.addEventListener("scroll", sync);
+      const animationFrame = requestAnimationFrame(() => syncMasks(host));
+
+      return () => {
+        host.removeEventListener("scroll", sync);
+        cancelAnimationFrame(animationFrame);
+        if (frameRef.current !== null) {
+          cancelAnimationFrame(frameRef.current);
+          frameRef.current = null;
+        }
+      };
+    }
 
     const existing = OverlayScrollbars(host);
     const instance =
@@ -206,10 +224,12 @@ export function TabbedScrollMaskCard<T extends string = string>({
         <div
           ref={scrollHostRef}
           className={cn(
-            "max-h-[60vh] overflow-hidden pt-1.5",
+            nativeScrollbars
+              ? "max-h-[60vh] overflow-y-auto pt-1.5"
+              : "max-h-[60vh] overflow-hidden pt-1.5",
             viewportClassName,
           )}
-          data-overlayscrollbars-initialize
+          data-overlayscrollbars-initialize={nativeScrollbars ? undefined : ""}
         >
           {children}
         </div>

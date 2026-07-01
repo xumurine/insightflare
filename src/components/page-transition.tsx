@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { OverlayScrollbars } from "overlayscrollbars";
 
+import { shouldUseNativeScrollbars } from "@/components/ui/overlay-scrollbar";
 import {
   type NavigateRequest,
   registerPageTransitionHandler,
@@ -24,7 +25,9 @@ function scrollPageToTop(behavior: ScrollBehavior) {
 
   if (dashboardScrollContainer) {
     const scrollTarget =
-      OverlayScrollbars(dashboardScrollContainer)?.elements().viewport ??
+      (shouldUseNativeScrollbars()
+        ? null
+        : OverlayScrollbars(dashboardScrollContainer)?.elements().viewport) ??
       dashboardScrollContainer;
 
     scrollTarget.scrollTo({

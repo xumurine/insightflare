@@ -4,7 +4,10 @@ import { useEffect } from "react";
 import type { PartialOptions } from "overlayscrollbars";
 import { OverlayScrollbars } from "overlayscrollbars";
 
-import { isAppleDeviceScrollbarHost } from "@/components/ui/overlay-scrollbar";
+import {
+  prepareNativeScrollbarHost,
+  shouldUseNativeScrollbars,
+} from "@/components/ui/overlay-scrollbar";
 
 const globalScrollbarOptions = {
   overflow: {
@@ -21,7 +24,9 @@ const globalScrollbarOptions = {
 
 export function GlobalScrollbars() {
   useEffect(() => {
-    if (isAppleDeviceScrollbarHost()) {
+    if (shouldUseNativeScrollbars()) {
+      prepareNativeScrollbarHost(document.documentElement);
+      prepareNativeScrollbarHost(document.body);
       document.documentElement.dataset.nativeScrollbars = "true";
       return () => {
         delete document.documentElement.dataset.nativeScrollbars;

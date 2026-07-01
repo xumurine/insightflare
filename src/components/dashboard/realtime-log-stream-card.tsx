@@ -35,6 +35,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  prepareNativeScrollbarHost,
+  useNativeScrollbars,
+} from "@/components/ui/overlay-scrollbar";
 import { Spinner } from "@/components/ui/spinner";
 import { intlLocale, shortDateTime } from "@/lib/dashboard/format";
 import { parseGeoLocationValue } from "@/lib/dashboard/geo-location";
@@ -408,7 +412,17 @@ function maybeReachScrollEnd(
   onReachEnd?: (() => void) | null,
 ): void {
   if (!instance || !onReachEnd) return;
-  const scrollElement = instance.elements().scrollOffsetElement;
+  maybeReachScrollElementEnd(
+    instance.elements().scrollOffsetElement,
+    onReachEnd,
+  );
+}
+
+function maybeReachScrollElementEnd(
+  scrollElement: HTMLElement | null,
+  onReachEnd?: (() => void) | null,
+): void {
+  if (!scrollElement || !onReachEnd) return;
   const remaining =
     scrollElement.scrollHeight -
     scrollElement.clientHeight -
@@ -434,6 +448,7 @@ function LogStreamScrollbar({
     null,
   );
   const onReachEndRef = useRef<(() => void) | null>(onReachEnd ?? null);
+  const nativeScrollbars = useNativeScrollbars();
 
   useEffect(() => {
     onReachEndRef.current = onReachEnd ?? null;
@@ -442,6 +457,20 @@ function LogStreamScrollbar({
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    if (prepareNativeScrollbarHost(host)) {
+      const handleScroll = () => {
+        maybeReachScrollElementEnd(host, onReachEndRef.current);
+      };
+
+      host.addEventListener("scroll", handleScroll);
+      requestAnimationFrame(() => {
+        maybeReachScrollElementEnd(host, onReachEndRef.current);
+      });
+
+      return () => {
+        host.removeEventListener("scroll", handleScroll);
+      };
+    }
 
     const existing = OverlayScrollbars(host);
     const instance =
@@ -472,7 +501,12 @@ function LogStreamScrollbar({
 
   useEffect(() => {
     const instance = scrollbarRef.current;
-    if (!instance) return;
+    if (!instance) {
+      requestAnimationFrame(() => {
+        maybeReachScrollElementEnd(hostRef.current, onReachEndRef.current);
+      });
+      return;
+    }
     instance.update();
     requestAnimationFrame(() => {
       maybeReachScrollEnd(instance, onReachEndRef.current);
@@ -482,8 +516,11 @@ function LogStreamScrollbar({
   return (
     <div
       ref={hostRef}
-      className={cn("overflow-hidden", className)}
-      data-overlayscrollbars-initialize
+      className={cn(
+        nativeScrollbars ? "overflow-y-auto" : "overflow-hidden",
+        className,
+      )}
+      data-overlayscrollbars-initialize={nativeScrollbars ? undefined : ""}
     >
       {children}
     </div>
