@@ -1443,7 +1443,11 @@ export function TeamManagementClient({
                 )}
               </TableCell>
               <TableCell>
-                {shortDateTime(locale, member.joinedAt, window.timeZone)}
+                {shortDateTime(
+                  locale,
+                  epochSecondsToMs(member.joinedAt),
+                  window.timeZone,
+                )}
               </TableCell>
               <TableCell className="text-right">
                 {member.role === "owner" ? null : (
