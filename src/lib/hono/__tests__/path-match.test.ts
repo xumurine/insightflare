@@ -30,6 +30,8 @@ describe("shouldUseHono", () => {
     "/_next/static/chunk.js",
     "/favicon.ico",
     "/collect/",
+    "/admin/ws",
+    "/admin/users",
   ])("leaves %s on the OpenNext path", (pathname) => {
     expect(shouldUseHono(pathname)).toBe(false);
   });

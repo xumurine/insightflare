@@ -35,7 +35,7 @@ checklist; it is not an OpenAPI contract.
 | GET | `/api/public/share/:slug/site` | `routes/public/query.ts` | inline metadata handler | none | public enabled slug | public cache | Public site data |
 | GET | `/api/public/share/:slug/:queryPath` | `routes/public/query.ts` | `dispatchQueryRoute` | none | public enabled slug | public cache | Allowlist via `PUBLIC_QUERY_PATHS` |
 | POST/PATCH/DELETE | `/api/public/share/:slug/:queryPath` | `routes/public/query.ts` | method middleware | none | none if method rejected first | 405 JSON | Public API is GET-only |
-| POST | `/api/public/session` | `routes/auth.ts` | `handleLegacyAuthLogin` | credentials | none | Set-Cookie | Hono path avoids internal HTTP |
+| POST | `/api/public/session` | `routes/public/session.ts` | `handleLegacyAuthLogin` | credentials | none | Set-Cookie | Hono path avoids internal HTTP |
 | DELETE | `/api/public/session` | `routes/public/session.ts` | `handleLegacyAuthLogout` | none | none | Clear Set-Cookie | Idempotent logout |
 | GET | `/api/private/session` | `routes/private/session.ts` | `handleAuthMeAdmin` | session | user teams/profile | JSON | Current dashboard profile |
 | GET | `/api/v1` | `routes/v1/index.ts` | `handleApiV1` | none | none | JSON v1 envelope | Root docs/capabilities links |

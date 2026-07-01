@@ -53,11 +53,6 @@ vi.mock("@/lib/edge/collect", () => ({
   handleCollectRequest: vi.fn(),
 }));
 
-vi.mock("@/lib/edge/legacy-archive", () => ({
-  handleLegacyArchiveFile: vi.fn(),
-  handleLegacyArchiveManifest: vi.fn(),
-}));
-
 vi.mock("@/lib/edge/legacy-auth", () => ({
   handleLegacyAuthLogin: vi.fn(),
   handleLegacyAuthLogout: vi.fn(),
