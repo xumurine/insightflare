@@ -329,6 +329,14 @@ export interface AppManagementMessages {
       roleChangeFailed: string;
       invalidTeamName: string;
       invalidMemberIdentifier: string;
+      inviteCreated: string;
+      inviteCreateFailed: string;
+      inviteRevoked: string;
+      inviteRevokeFailed: string;
+      inviteCopied: string;
+      inviteCopyFailed: string;
+      invalidInviteEmail: string;
+      invalidInviteExpiry: string;
       ownerTransferred: string;
       ownerTransferFailed: string;
       invalidTransferTarget: string;
@@ -702,12 +710,36 @@ export interface AppManagementMessages {
       adding: string;
       remove: string;
       noMembers: string;
+      invitesTitle: string;
+      invitesSubtitle: string;
+      inviteEmailLabel: string;
+      inviteEmailPlaceholder: string;
+      inviteExpiresLabel: string;
+      createInvite: string;
+      creatingInvite: string;
+      copyInvite: string;
+      inviteNotice: string;
+      inviteLinksTitle: string;
+      inviteLinksSubtitle: string;
+      noInvites: string;
+      anyEmail: string;
+      revokeInvite: string;
+      inviteStatuses: {
+        active: string;
+        used: string;
+        revoked: string;
+        expired: string;
+      };
       columns: {
         name: string;
         username: string;
         email: string;
         role: string;
         joinedAt: string;
+        createdAt: string;
+        expiresAt: string;
+        usedAt: string;
+        status: string;
         action: string;
       };
       roleLabels: {

@@ -994,6 +994,14 @@ teamManagement:
     roleChangeFailed: Failed to update member role.
     invalidTeamName: Team name must be at least 2 characters.
     invalidMemberIdentifier: Please provide a valid username or email.
+    inviteCreated: Invite link created.
+    inviteCreateFailed: Failed to create invite link.
+    inviteRevoked: Invite revoked.
+    inviteRevokeFailed: Failed to revoke invite.
+    inviteCopied: Invite link copied.
+    inviteCopyFailed: Failed to copy invite link.
+    invalidInviteEmail: Please provide a valid invite email.
+    invalidInviteExpiry: Invite expiry must be at least 1 hour.
     ownerTransferred: Ownership transferred.
     ownerTransferFailed: Failed to transfer ownership.
     invalidTransferTarget: Please choose a new owner.
@@ -1342,19 +1350,42 @@ teamManagement:
     noTransferableMembers: No other members are available to transfer to. Add a member first.
   members:
     title: Members
-    subtitle: Add members or remove existing members.
+    subtitle: Invite members or remove existing members.
     identifierLabel: Username or Email
     identifierPlaceholder: "For example: alice or alice@example.com"
     add: Add member
     adding: Adding...
     remove: Remove
     noMembers: No members found for this team.
+    invitesTitle: Create invite link
+    invitesSubtitle: Users join this team only after accepting an invite.
+    inviteEmailLabel: Email restriction (optional)
+    inviteEmailPlaceholder: user@example.com
+    inviteExpiresLabel: Expires in hours
+    createInvite: Create invite link
+    creatingInvite: Creating...
+    copyInvite: Copy link
+    inviteNotice: Users invited from team settings will not get a personal team automatically. The full invite link is shown only once after creation.
+    inviteLinksTitle: Invite links
+    inviteLinksSubtitle: Review invite status and revoke active links.
+    noInvites: No invite links exist for this team.
+    anyEmail: Any email
+    revokeInvite: Revoke invite
+    inviteStatuses:
+      active: Active
+      used: Used
+      revoked: Revoked
+      expired: Expired
     columns:
       name: Name
       username: Username
       email: Email
       role: Role
       joinedAt: Joined
+      createdAt: Created
+      expiresAt: Expires
+      usedAt: Used
+      status: Status
       action: Action
     roleLabels:
       owner: Owner

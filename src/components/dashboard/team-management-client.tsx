@@ -248,6 +248,26 @@ interface TeamDashboardData {
   trend: TeamDashboardTrendPoint[];
 }
 
+interface TeamInviteData {
+  id: string;
+  email: string;
+  payload: {
+    teamRole?: "member" | "admin";
+  };
+  createdByUserId: string;
+  createdAt: number;
+  expiresAt: number;
+  usedAt: number | null;
+  usedByUserId: string;
+  revokedAt: number | null;
+  status: "active" | "used" | "revoked" | "expired";
+}
+
+interface CreatedTeamInviteData {
+  invite: TeamInviteData;
+  url: string;
+}
+
 const SITE_CARD_MAX_TREND_POINTS = 120;
 
 async function fetchTeamDashboard(
@@ -328,6 +348,22 @@ async function fetchTeamMembers(teamId: string): Promise<MemberData[]> {
   return Array.isArray(payload.data) ? payload.data : [];
 }
 
+async function fetchTeamInvites(teamId: string): Promise<TeamInviteData[]> {
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") return [];
+  const url = `/api/private/admin/team-invites?teamId=${encodeURIComponent(teamId)}`;
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error("fetch_team_invites_failed");
+  const payload = (await response.json()) as {
+    ok: boolean;
+    data?: TeamInviteData[];
+  };
+  return Array.isArray(payload.data) ? payload.data : [];
+}
+
 interface ActionResponse<T> {
   ok: boolean;
   data?: T;
@@ -389,14 +425,18 @@ export function TeamManagementClient({
   const [currentTeamName, setCurrentTeamName] = useState(activeTeam.name);
   const [teamName, setTeamName] = useState(activeTeam.name);
   const [teamSlug, setTeamSlug] = useState(activeTeam.slug);
-  const [memberIdentifier, setMemberIdentifier] = useState("");
+  const [invites, setInvites] = useState<TeamInviteData[]>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"admin" | "member">("member");
+  const [inviteExpiresInHours, setInviteExpiresInHours] = useState("72");
+  const [latestInviteUrl, setLatestInviteUrl] = useState("");
   const [savingTeam, setSavingTeam] = useState(false);
   const [deletingTeam, setDeletingTeam] = useState(false);
   const [deleteTeamDialogOpen, setDeleteTeamDialogOpen] = useState(false);
-  const [addingMember, setAddingMember] = useState(false);
+  const [creatingInvite, setCreatingInvite] = useState(false);
+  const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [changingRoleId, setChangingRoleId] = useState<string | null>(null);
-  const [addRole, setAddRole] = useState<"admin" | "member">("member");
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [siteOverviewById, setSiteOverviewById] = useState<
     Record<string, SiteOverviewMetrics>
@@ -433,14 +473,19 @@ export function TeamManagementClient({
     let active = true;
     setLoading(true);
 
-    fetchTeamMembers(activeTeam.id)
-      .then((nextMembers) => {
+    Promise.all([
+      fetchTeamMembers(activeTeam.id),
+      canManage ? fetchTeamInvites(activeTeam.id) : Promise.resolve([]),
+    ])
+      .then(([nextMembers, nextInvites]) => {
         if (!active) return;
         setMembers(nextMembers);
+        setInvites(nextInvites);
       })
       .catch(() => {
         if (!active) return;
         setMembers([]);
+        setInvites([]);
       })
       .finally(() => {
         if (!active) return;
@@ -450,7 +495,7 @@ export function TeamManagementClient({
     return () => {
       active = false;
     };
-  }, [activeTeam.id, activeTab]);
+  }, [activeTeam.id, activeTab, canManage]);
 
   useEffect(() => {
     setCreateSiteDialogOpen(false);
@@ -461,10 +506,14 @@ export function TeamManagementClient({
     setCurrentTeamName(activeTeam.name);
     setTeamName(activeTeam.name);
     setTeamSlug(activeTeam.slug);
-    setMemberIdentifier("");
+    setInviteEmail("");
+    setInviteRole("member");
+    setInviteExpiresInHours("72");
+    setLatestInviteUrl("");
     setSites([]);
     setSiteOrder([]);
     setMembers([]);
+    setInvites([]);
     setSiteOverviewById({});
     setSiteChangeRatesById({});
     setTeamTrend([]);
@@ -576,6 +625,15 @@ export function TeamManagementClient({
     setMembers(nextMembers);
   }
 
+  async function refreshInvites() {
+    if (!canManage) {
+      setInvites([]);
+      return;
+    }
+    const nextInvites = await fetchTeamInvites(activeTeam.id);
+    setInvites(nextInvites);
+  }
+
   async function handleCreateSite() {
     const team = activeTeam;
     const name = createSiteName.trim();
@@ -656,30 +714,74 @@ export function TeamManagementClient({
     }
   }
 
-  async function handleAddMember() {
-    const identifier = memberIdentifier.trim();
-    if (identifier.length < 2) {
-      toast.error(copy.toasts.invalidMemberIdentifier);
+  async function handleCreateInvite() {
+    const email = inviteEmail.trim();
+    const expiresInHours = Number(inviteExpiresInHours);
+    if (email.length > 0 && !email.includes("@")) {
+      toast.error(copy.toasts.invalidInviteEmail);
+      return;
+    }
+    if (!Number.isFinite(expiresInHours) || expiresInHours < 1) {
+      toast.error(copy.toasts.invalidInviteExpiry);
       return;
     }
 
-    setAddingMember(true);
+    setCreatingInvite(true);
     try {
-      await postJson("/api/private/admin/members", {
-        teamId: activeTeam.id,
-        identifier,
-        role: addRole,
-      });
-      setMemberIdentifier("");
-      setAddRole("member");
-      await refreshMembers();
-      toast.success(copy.toasts.memberAdded);
+      const created = await postJson<CreatedTeamInviteData>(
+        "/api/private/admin/team-invites",
+        {
+          teamId: activeTeam.id,
+          email: email || undefined,
+          role: inviteRole,
+          expiresInHours,
+        },
+      );
+      setInviteEmail("");
+      setInviteRole("member");
+      setInviteExpiresInHours("72");
+      setLatestInviteUrl(created.url);
+      await refreshInvites();
+      toast.success(copy.toasts.inviteCreated);
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : copy.toasts.memberAddFailed;
-      toast.error(message || copy.toasts.memberAddFailed);
+        error instanceof Error ? error.message : copy.toasts.inviteCreateFailed;
+      toast.error(message || copy.toasts.inviteCreateFailed);
     } finally {
-      setAddingMember(false);
+      setCreatingInvite(false);
+    }
+  }
+
+  async function handleRevokeInvite(inviteId: string) {
+    setRevokingInviteId(inviteId);
+    try {
+      await postJson<TeamInviteData>(
+        "/api/private/admin/team-invites",
+        {
+          intent: "revoke",
+          inviteId,
+          teamId: activeTeam.id,
+        },
+        "PATCH",
+      );
+      await refreshInvites();
+      toast.success(copy.toasts.inviteRevoked);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : copy.toasts.inviteRevokeFailed;
+      toast.error(message || copy.toasts.inviteRevokeFailed);
+    } finally {
+      setRevokingInviteId(null);
+    }
+  }
+
+  async function handleCopyLatestInviteUrl() {
+    if (!latestInviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(latestInviteUrl);
+      toast.success(copy.toasts.inviteCopied);
+    } catch {
+      toast.error(copy.toasts.inviteCopyFailed);
     }
   }
 
@@ -1031,43 +1133,39 @@ export function TeamManagementClient({
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>{copy.members.title}</CardTitle>
-          <CardDescription>{copy.members.subtitle}</CardDescription>
+          <CardTitle>{copy.members.invitesTitle}</CardTitle>
+          <CardDescription>{copy.members.invitesSubtitle}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <form
             className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end"
             onSubmit={(event) => {
               event.preventDefault();
-              void handleAddMember();
+              void handleCreateInvite();
             }}
           >
             <div className="space-y-2">
-              <Label htmlFor="member-identifier">
-                {copy.members.identifierLabel}
+              <Label htmlFor="invite-email">
+                {copy.members.inviteEmailLabel}
               </Label>
               <Input
-                id="member-identifier"
-                value={memberIdentifier}
-                onChange={(event) => setMemberIdentifier(event.target.value)}
-                placeholder={copy.members.identifierPlaceholder}
-                minLength={2}
-                required
+                id="invite-email"
+                value={inviteEmail}
+                onChange={(event) => setInviteEmail(event.target.value)}
+                placeholder={copy.members.inviteEmailPlaceholder}
                 disabled={!canManage}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="member-add-role">
-                {copy.members.columns.role}
-              </Label>
+              <Label htmlFor="invite-role">{copy.members.columns.role}</Label>
               <Select
-                value={addRole}
+                value={inviteRole}
                 onValueChange={(value) => {
-                  setAddRole(value === "admin" ? "admin" : "member");
+                  setInviteRole(value === "admin" ? "admin" : "member");
                 }}
                 disabled={!canManage}
               >
-                <SelectTrigger id="member-add-role" className="w-32">
+                <SelectTrigger id="invite-role" className="w-32">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1080,19 +1178,132 @@ export function TeamManagementClient({
                 </SelectContent>
               </Select>
             </div>
-            <Button type="submit" disabled={addingMember || !canManage}>
+            <div className="space-y-2">
+              <Label htmlFor="invite-expires">
+                {copy.members.inviteExpiresLabel}
+              </Label>
+              <Input
+                id="invite-expires"
+                value={inviteExpiresInHours}
+                onChange={(event) =>
+                  setInviteExpiresInHours(event.target.value)
+                }
+                inputMode="numeric"
+                disabled={!canManage}
+                className="w-28"
+              />
+            </div>
+            <Button type="submit" disabled={creatingInvite || !canManage}>
               <AutoTransition className="inline-flex items-center gap-2">
-                {addingMember ? (
-                  <span key="adding" className="inline-flex items-center gap-2">
+                {creatingInvite ? (
+                  <span
+                    key="creating"
+                    className="inline-flex items-center gap-2"
+                  >
                     <Spinner className="size-4" />
-                    {copy.members.adding}
+                    {copy.members.creatingInvite}
                   </span>
                 ) : (
-                  <span key="add">{copy.members.add}</span>
+                  <span key="create">{copy.members.createInvite}</span>
                 )}
               </AutoTransition>
             </Button>
           </form>
+
+          {latestInviteUrl ? (
+            <div className="flex flex-col gap-2 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center">
+              <Input value={latestInviteUrl} readOnly className="font-mono" />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  void handleCopyLatestInviteUrl();
+                }}
+              >
+                {copy.members.copyInvite}
+              </Button>
+            </div>
+          ) : null}
+
+          <p className="text-xs text-muted-foreground">
+            {copy.members.inviteNotice}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{copy.members.inviteLinksTitle}</CardTitle>
+          <CardDescription>{copy.members.inviteLinksSubtitle}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DataTableSwitch
+            loading={loading}
+            hasContent={invites.length > 0}
+            loadingLabel={messages.common.loading}
+            emptyLabel={copy.members.noInvites}
+            colSpan={7}
+            header={
+              <TableRow>
+                <TableHead>{copy.members.columns.email}</TableHead>
+                <TableHead>{copy.members.columns.role}</TableHead>
+                <TableHead>{copy.members.columns.status}</TableHead>
+                <TableHead>{copy.members.columns.createdAt}</TableHead>
+                <TableHead>{copy.members.columns.expiresAt}</TableHead>
+                <TableHead>{copy.members.columns.usedAt}</TableHead>
+                <TableHead className="text-right">
+                  {copy.members.columns.action}
+                </TableHead>
+              </TableRow>
+            }
+            rows={invites.map((invite) => (
+              <TableRow key={invite.id}>
+                <TableCell>{invite.email || copy.members.anyEmail}</TableCell>
+                <TableCell>
+                  {invite.payload.teamRole === "admin"
+                    ? copy.members.roleLabels.admin
+                    : copy.members.roleLabels.member}
+                </TableCell>
+                <TableCell>
+                  {copy.members.inviteStatuses[invite.status]}
+                </TableCell>
+                <TableCell>
+                  {shortDateTime(locale, invite.createdAt, window.timeZone)}
+                </TableCell>
+                <TableCell>
+                  {shortDateTime(locale, invite.expiresAt, window.timeZone)}
+                </TableCell>
+                <TableCell>
+                  {invite.usedAt
+                    ? shortDateTime(locale, invite.usedAt, window.timeZone)
+                    : "-"}
+                </TableCell>
+                <TableCell className="text-right">
+                  <TableActionButton
+                    onClick={() => {
+                      void handleRevokeInvite(invite.id);
+                    }}
+                    disabled={
+                      !canManage ||
+                      invite.status !== "active" ||
+                      revokingInviteId === invite.id
+                    }
+                    label={copy.members.revokeInvite}
+                    tone="destructive"
+                    transitionKey={
+                      revokingInviteId === invite.id ? "revoking" : "revoke"
+                    }
+                  >
+                    {revokingInviteId === invite.id ? (
+                      <Spinner className="size-3.5" />
+                    ) : (
+                      <RiDeleteBinLine className="size-4" />
+                    )}
+                  </TableActionButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          />
         </CardContent>
       </Card>
 
@@ -1870,118 +2081,7 @@ export function TeamManagementClient({
           </div>
         ) : null}
 
-        {activeTab === "members" ? (
-          <div className="space-y-4">
-            <Card className="max-w-2xl">
-              <CardHeader>
-                <CardTitle>{copy.members.title}</CardTitle>
-                <CardDescription>{copy.members.subtitle}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form
-                  className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void handleAddMember();
-                  }}
-                >
-                  <div className="space-y-2">
-                    <Label htmlFor="member-identifier">
-                      {copy.members.identifierLabel}
-                    </Label>
-                    <Input
-                      id="member-identifier"
-                      value={memberIdentifier}
-                      onChange={(event) =>
-                        setMemberIdentifier(event.target.value)
-                      }
-                      placeholder={copy.members.identifierPlaceholder}
-                      minLength={2}
-                      required
-                    />
-                  </div>
-                  <Button type="submit" disabled={addingMember}>
-                    <AutoTransition className="inline-flex items-center gap-2">
-                      {addingMember ? (
-                        <span
-                          key="adding"
-                          className="inline-flex items-center gap-2"
-                        >
-                          <Spinner className="size-4" />
-                          {copy.members.adding}
-                        </span>
-                      ) : (
-                        <span key="add">{copy.members.add}</span>
-                      )}
-                    </AutoTransition>
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-4">
-                <DataTableSwitch
-                  loading={loading}
-                  hasContent={members.length > 0}
-                  loadingLabel={messages.common.loading}
-                  emptyLabel={copy.members.noMembers}
-                  colSpan={6}
-                  header={
-                    <TableRow>
-                      <TableHead>{copy.members.columns.name}</TableHead>
-                      <TableHead>{copy.members.columns.username}</TableHead>
-                      <TableHead>{copy.members.columns.email}</TableHead>
-                      <TableHead>{copy.members.columns.role}</TableHead>
-                      <TableHead>{copy.members.columns.joinedAt}</TableHead>
-                      <TableHead className="text-right">
-                        {copy.members.columns.action}
-                      </TableHead>
-                    </TableRow>
-                  }
-                  rows={members.map((member) => (
-                    <TableRow key={member.userId}>
-                      <TableCell className="font-medium">
-                        {member.name || member.username}
-                      </TableCell>
-                      <TableCell>{member.username}</TableCell>
-                      <TableCell>{member.email}</TableCell>
-                      <TableCell>{member.role}</TableCell>
-                      <TableCell>
-                        {shortDateTime(
-                          locale,
-                          member.joinedAt,
-                          window.timeZone,
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <TableActionButton
-                          onClick={() => {
-                            void handleRemoveMember(member.userId);
-                          }}
-                          disabled={removingMemberId === member.userId}
-                          label={copy.members.remove}
-                          tone="destructive"
-                          transitionKey={
-                            removingMemberId === member.userId
-                              ? "removing"
-                              : "remove"
-                          }
-                        >
-                          {removingMemberId === member.userId ? (
-                            <Spinner className="size-3.5" />
-                          ) : (
-                            <RiDeleteBinLine className="size-4" />
-                          )}
-                        </TableActionButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                />
-              </CardContent>
-            </Card>
-          </div>
-        ) : null}
+        {activeTab === "members" ? memberManagementSection : null}
       </div>
     </div>
   );
