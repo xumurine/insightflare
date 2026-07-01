@@ -38,6 +38,7 @@ import {
   handleUsersAdmin,
 } from "./admin-users";
 import { handleLegacyAuthLogin } from "./legacy-auth";
+import { handlePublicAccountLinks } from "./public-account-links";
 import type { Env } from "./types";
 
 /**
@@ -50,6 +51,8 @@ export async function handlePrivateAdmin(
 ): Promise<Response> {
   const p = url.pathname;
   if (p === "/api/public/session") return handleLegacyAuthLogin(request, env);
+  if (p.startsWith("/api/public/account-links/"))
+    return handlePublicAccountLinks(request, env, url);
   if (p === "/api/private/session") return handleAuthMeAdmin(request, env);
   if (p === "/api/private/admin/users") return handleUsersAdmin(request, env);
   if (p === "/api/private/admin/profile")
