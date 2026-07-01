@@ -6,7 +6,6 @@ import {
   byId,
   byIdentifier,
   ensureBootstrapAdmin,
-  ensureDefaultTeam,
   hashPassword,
   normE,
   normU,
@@ -65,7 +64,6 @@ export async function handleAuthLoginAdmin(
   if (!user) return una("Invalid credentials", undefined, req);
   const verified = await verifyPassword(password, user.password_hash);
   if (!verified) return una("Invalid credentials", undefined, req);
-  await ensureDefaultTeam(env, user);
   return jsonResponseFor(req, {
     ok: true,
     data: { user: toPublicUser(user), teams: await teamsFor(env, user.id) },

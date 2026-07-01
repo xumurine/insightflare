@@ -870,8 +870,6 @@ describe("private admin edge handler", () => {
           statement(),
           statement(),
           statement({ first: createdAdmin }),
-          statement({ first: { id: "team-1" } }),
-          statement(),
           statement({ all: teamRows }),
         ],
         {
@@ -893,6 +891,49 @@ describe("private admin edge handler", () => {
         data: { next: "/app" },
       });
       expect(response.headers.get("set-cookie")).toContain("if_session=");
+    });
+
+    it("logs in existing users without creating a default team", async () => {
+      const bootstrapAdmin = userRow({
+        id: "admin-existing",
+        username: "admin",
+        email: "admin@example.test",
+        system_role: "admin",
+      });
+      const existingUser = userRow({
+        id: "user-without-team",
+        username: "lonely",
+        email: "lonely@example.test",
+        password_hash: argonHash("secret-password"),
+        system_role: "user",
+      });
+      const bootstrapOwnerUpsert = statement();
+      const teamsStatement = statement({ all: [] });
+      const { env, prepare } = createEnv([
+        statement({ first: bootstrapAdmin }),
+        statement({ first: { id: "admin-team" } }),
+        bootstrapOwnerUpsert,
+        statement({ first: existingUser }),
+        teamsStatement,
+      ]);
+
+      const response = await dispatch(
+        "/api/public/session",
+        env,
+        jsonInit({ username: "lonely", password: "secret-password" }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        ok: true,
+        data: { next: "/app" },
+      });
+      expect(bootstrapOwnerUpsert.bind).toHaveBeenCalledWith(
+        "admin-team",
+        "admin-existing",
+      );
+      expect(teamsStatement.bind).toHaveBeenCalledWith("user-without-team");
+      expect(prepare).toHaveBeenCalledTimes(5);
     });
 
     it("denies login when stored password hashes are malformed or credentials mismatch", async () => {
