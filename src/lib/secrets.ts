@@ -1,4 +1,5 @@
 export const SECRET_PURPOSES = {
+  accountActionTokenHash: "insightflare:account-action-token-hash:v1",
   dashboardSession: "insightflare:dashboard-session:v1",
   apiKeyHash: "insightflare:api-key-hash:v1",
   visitorDailySalt: "insightflare:visitor-daily-salt:v1",
@@ -75,6 +76,15 @@ export async function apiKeyHashSecret(
 ): Promise<string | null> {
   const root = rootSecret(source);
   return root ? deriveSecret(root, SECRET_PURPOSES.apiKeyHash) : null;
+}
+
+export async function accountActionTokenHashSecret(
+  source: SecretSource,
+): Promise<string | null> {
+  const root = rootSecret(source);
+  return root
+    ? deriveSecret(root, SECRET_PURPOSES.accountActionTokenHash)
+    : null;
 }
 
 export async function visitorDailySaltSecret(
