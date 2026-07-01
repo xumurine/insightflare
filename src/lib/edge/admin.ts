@@ -1,3 +1,4 @@
+import { handleAccountLinksAdmin } from "./admin-account-links";
 import { handleApiKeysAdmin } from "./admin-api-keys";
 import { requireActor } from "./admin-auth";
 import {
@@ -54,6 +55,8 @@ export async function handlePrivateAdmin(
   if (p.startsWith("/api/public/account-links/"))
     return handlePublicAccountLinks(request, env, url);
   if (p === "/api/private/session") return handleAuthMeAdmin(request, env);
+  if (p === "/api/private/admin/account-links")
+    return handleAccountLinksAdmin(request, env);
   if (p === "/api/private/admin/users") return handleUsersAdmin(request, env);
   if (p === "/api/private/admin/profile")
     return handleProfileAdmin(request, env);

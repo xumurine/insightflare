@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 
+import { handleAccountLinksAdmin } from "@/lib/edge/admin-account-links";
 import { handleApiKeysAdmin } from "@/lib/edge/admin-api-keys";
 import { requireActor } from "@/lib/edge/admin-auth";
 import {
@@ -36,6 +37,9 @@ import { requestUrl } from "@/lib/hono/utils/context";
 
 export const privateAdminRoutes = new Hono<AppEnv>();
 
+privateAdminRoutes.all("/account-links", (c) =>
+  handleAccountLinksAdmin(c.req.raw, c.env),
+);
 privateAdminRoutes.all("/users", (c) => handleUsersAdmin(c.req.raw, c.env));
 privateAdminRoutes.all("/profile", (c) => handleProfileAdmin(c.req.raw, c.env));
 privateAdminRoutes.all("/teams", (c) => handleTeamsAdmin(c.req.raw, c.env));
