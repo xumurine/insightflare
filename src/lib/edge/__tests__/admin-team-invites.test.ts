@@ -9,6 +9,10 @@ import {
 import { canManageTeam, teamById } from "@/lib/edge/admin-access";
 import { requireActor } from "@/lib/edge/admin-auth";
 import { handleTeamInvitesAdmin } from "@/lib/edge/admin-team-invites";
+import {
+  decryptTeamInviteToken,
+  encryptTeamInviteToken,
+} from "@/lib/edge/secret-encryption";
 import { readConfig } from "@/lib/edge/system-config";
 import type { Env } from "@/lib/edge/types";
 
@@ -60,6 +64,15 @@ vi.mock("@/lib/edge/system-config", () => ({
   readConfig: vi.fn(),
 }));
 
+vi.mock("@/lib/edge/secret-encryption", () => ({
+  decryptTeamInviteToken: vi.fn(async (_env: Env, encrypted: string) =>
+    encrypted.replace(/^encrypted:/, ""),
+  ),
+  encryptTeamInviteToken: vi.fn(
+    async (_env: Env, token: string) => `encrypted:${token}`,
+  ),
+}));
+
 const actor = {
   user: {
     id: "actor-1",
@@ -81,7 +94,11 @@ const inviteRecord = {
   teamId: "team-1",
   userId: "",
   email: "friend@example.test",
-  payload: { teamRole: "member", siteAccess: { mode: "all" } },
+  payload: {
+    teamRole: "member",
+    siteAccess: { mode: "all" },
+    tokenEncrypted: "encrypted:plain-token",
+  },
   createdByUserId: "actor-1",
   createdAt: 10,
   expiresAt: 20,
@@ -115,6 +132,8 @@ const createAccountActionTokenMock = vi.mocked(createAccountActionToken);
 const listTeamInviteTokensMock = vi.mocked(listTeamInviteTokens);
 const getAccountActionTokenByIdMock = vi.mocked(getAccountActionTokenById);
 const revokeAccountActionTokenMock = vi.mocked(revokeAccountActionToken);
+const decryptTeamInviteTokenMock = vi.mocked(decryptTeamInviteToken);
+const encryptTeamInviteTokenMock = vi.mocked(encryptTeamInviteToken);
 
 function env(): Env {
   return { DB: {} as D1Database } as Env;
@@ -175,26 +194,41 @@ describe("team invite admin handler", () => {
     expect(payload).toMatchObject({
       ok: true,
       data: {
-        invite: { id: "invite-1", email: "friend@example.test" },
+        invite: {
+          id: "invite-1",
+          email: "friend@example.test",
+          code: "plain-token",
+          url: "https://app.example.test/invite#token=plain-token",
+        },
         url: "https://app.example.test/invite#token=plain-token",
       },
     });
     expect(JSON.stringify(payload.data)).not.toContain("stored-hash");
+    expect(JSON.stringify(payload.data)).not.toContain("encrypted:");
+    expect(encryptTeamInviteTokenMock).not.toHaveBeenCalled();
     expect(createAccountActionTokenMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         type: "team_invite",
         teamId: "team-1",
         email: "friend@example.test",
-        payload: expect.objectContaining({
-          teamRole: "admin",
-          allowRegistration: true,
-        }),
+        tokenPayload: expect.any(Function),
       }),
+    );
+    const createInput = createAccountActionTokenMock.mock.calls[0]?.[1];
+    const payloadFromToken = await createInput?.tokenPayload?.("created-token");
+    expect(payloadFromToken).toMatchObject({
+      teamRole: "admin",
+      allowRegistration: true,
+      tokenEncrypted: "encrypted:created-token",
+    });
+    expect(encryptTeamInviteTokenMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "created-token",
     );
   });
 
-  it("lists team invites for team admins", async () => {
+  it("lists team invites for team admins with copyable invite urls", async () => {
     const response = await handleTeamInvitesAdmin(
       request("/api/private/admin/team-invites?teamId=team-1", {
         method: "GET",
@@ -206,10 +240,23 @@ describe("team invite admin handler", () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(jsonOf(response)).resolves.toMatchObject({
+    const payload = await jsonOf(response);
+    expect(payload).toMatchObject({
       ok: true,
-      data: [{ id: "invite-1", status: "active" }],
+      data: [
+        {
+          id: "invite-1",
+          status: "active",
+          code: "plain-token",
+          url: "https://app.example.test/invite#token=plain-token",
+        },
+      ],
     });
+    expect(JSON.stringify(payload)).not.toContain("encrypted:");
+    expect(decryptTeamInviteTokenMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "encrypted:plain-token",
+    );
     expect(listTeamInviteTokensMock).toHaveBeenCalledWith(
       expect.anything(),
       "team-1",

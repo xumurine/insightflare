@@ -1083,7 +1083,6 @@ teamManagement:
     testNotificationSent: Test notification sent.
     sendTestNotificationFailed: Failed to send test notification.
     createRule: Create rule
-    noSitesForRules: Create a site before configuring notification rules.
     editRule: Edit rule
     dialogDescription: Configure a basic notification rule for this team.
     ruleInfoSection: Rule info
@@ -1408,7 +1407,6 @@ teamManagement:
     createInvite: Create invite link
     creatingInvite: Creating...
     copyInvite: Copy link
-    inviteNotice: Users invited from team settings will not get a personal team automatically. The full invite link is shown only once after creation.
     inviteLinksTitle: Invite links
     inviteLinksSubtitle: Review invite status and revoke active links.
     noInvites: No invite links exist for this team.
@@ -1423,6 +1421,7 @@ teamManagement:
       name: Name
       username: Username
       email: Email
+      inviteCode: Invite token
       role: Role
       joinedAt: Joined
       createdAt: Created
@@ -1547,7 +1546,6 @@ adminUsers:
   title: User Management
   subtitle: Only system admins can create and manage dashboard users.
   createTitle: Create User
-  createSubtitle: The new account gets its own Team and can sign in immediately.
   createTeamNotice: Creating a user here will also create a new Team owned by that user. To add someone to an existing team, create an invite link from that team's settings.
   username: Username
   email: Email

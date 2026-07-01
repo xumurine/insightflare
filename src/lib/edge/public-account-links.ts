@@ -49,6 +49,14 @@ function allowsRegistration(payload: Record<string, unknown>): boolean {
   return payload.allowRegistration !== false;
 }
 
+function publicInvitePayload(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const safePayload = { ...payload };
+  delete safePayload.tokenEncrypted;
+  return safePayload;
+}
+
 function maskEmail(email: string): string {
   const [local = "", domain = ""] = email.split("@");
   if (!local || !domain) return "";
@@ -133,7 +141,7 @@ export async function handlePublicAccountLinks(
         type: "team_invite",
         team,
         email: publicToken.email,
-        payload: publicToken.payload,
+        payload: publicInvitePayload(publicToken.payload),
         requiresLogin: !user && !registrationAllowed,
         allowsRegistration: registrationAllowed,
         expiresAt: publicToken.expiresAt,

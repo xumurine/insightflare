@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { PageHeading } from "@/components/dashboard/page-heading";
 import { TableActionButton } from "@/components/dashboard/table-action-button";
 import {
   AlertDialog,
@@ -296,15 +297,11 @@ export function AdminUsersManagementClient({
 
   return (
     <div className="space-y-4">
-      <div className="space-y-1">
-        <h2 className="text-base font-semibold tracking-tight">{t.title}</h2>
-        <p className="text-sm text-muted-foreground">{t.subtitle}</p>
-      </div>
+      <PageHeading title={t.title} subtitle={t.subtitle} />
 
       <Card className="max-w-3xl">
         <CardHeader>
           <CardTitle>{t.createTitle}</CardTitle>
-          <CardDescription>{t.createSubtitle}</CardDescription>
         </CardHeader>
         <CardContent>
           <p className="mb-4 text-sm text-muted-foreground">

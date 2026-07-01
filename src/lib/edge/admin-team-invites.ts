@@ -15,6 +15,10 @@ import {
   nf,
   parseJson,
 } from "./admin-response";
+import {
+  decryptTeamInviteToken,
+  encryptTeamInviteToken,
+} from "./secret-encryption";
 import { readConfig } from "./system-config";
 import type { Env } from "./types";
 import { clampString, nowEpochSeconds } from "./utils";
@@ -75,6 +79,57 @@ function inviteUrl(req: Request, token: string): string {
   return `${url.origin}/invite#token=${encodeURIComponent(token)}`;
 }
 
+function inviteCodeFromToken(token: string): string {
+  return token;
+}
+
+function publicPayload(payload: Record<string, unknown>) {
+  const safePayload = { ...payload };
+  delete safePayload.tokenEncrypted;
+  return safePayload;
+}
+
+async function encryptedInviteTokenPayload(
+  env: Env,
+  token: string,
+): Promise<Record<string, unknown>> {
+  try {
+    return { tokenEncrypted: await encryptTeamInviteToken(env, token) };
+  } catch {
+    return {};
+  }
+}
+
+async function withInviteUrls(
+  req: Request,
+  env: Env,
+  invites: Awaited<ReturnType<typeof listTeamInviteTokens>>,
+) {
+  return Promise.all(
+    invites.map(async (invite) => {
+      const baseInvite = {
+        ...invite,
+        payload: publicPayload(invite.payload),
+      };
+      const encrypted =
+        typeof invite.payload.tokenEncrypted === "string"
+          ? invite.payload.tokenEncrypted
+          : "";
+      if (!encrypted) return baseInvite;
+      try {
+        const token = await decryptTeamInviteToken(env, encrypted);
+        return {
+          ...baseInvite,
+          code: inviteCodeFromToken(token),
+          url: inviteUrl(req, token),
+        };
+      } catch {
+        return baseInvite;
+      }
+    }),
+  );
+}
+
 async function readTeamInvitesConfig(env: Env): Promise<TeamInvitesConfig> {
   const config = (await readConfig(env, TEAM_INVITES_CONFIG_KEY)) ?? {};
   return {
@@ -109,7 +164,11 @@ export async function handleTeamInvitesAdmin(
     }
     return jsonResponseFor(req, {
       ok: true,
-      data: await listTeamInviteTokens(env, teamId),
+      data: await withInviteUrls(
+        req,
+        env,
+        await listTeamInviteTokens(env, teamId),
+      ),
     });
   }
 
@@ -147,11 +206,12 @@ export async function handleTeamInvitesAdmin(
       type: "team_invite",
       teamId,
       email: email || null,
-      payload: {
+      tokenPayload: async (token) => ({
         teamRole: role,
         siteAccess: safeSiteAccess(body.siteAccess),
         allowRegistration: actor.isAdmin || config.allowTeamAdminCreateUsers,
-      },
+        ...(await encryptedInviteTokenPayload(env, token)),
+      }),
       createdByUserId: actor.user.id,
       expiresAt: nowEpochSeconds() + expiresInHours * 60 * 60,
     });
@@ -159,7 +219,12 @@ export async function handleTeamInvitesAdmin(
     return jsonResponseFor(req, {
       ok: true,
       data: {
-        invite: created.record,
+        invite: {
+          ...created.record,
+          payload: publicPayload(created.record.payload),
+          code: inviteCodeFromToken(created.token),
+          url: inviteUrl(req, created.token),
+        },
         url: inviteUrl(req, created.token),
       },
     });

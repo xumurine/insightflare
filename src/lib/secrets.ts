@@ -7,6 +7,7 @@ export const SECRET_PURPOSES = {
     "insightflare:notification-secret-encryption:v1",
   loginTurnstileSecretEncryption:
     "insightflare:login-turnstile-secret-encryption:v1",
+  teamInviteTokenEncryption: "insightflare:team-invite-token-encryption:v1",
 } as const;
 
 export interface SecretSource {

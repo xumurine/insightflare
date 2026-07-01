@@ -209,12 +209,18 @@ export async function createAccountActionToken(
     userId?: string | null;
     email?: string | null;
     payload?: Record<string, unknown> | null;
+    tokenPayload?: (
+      token: string,
+    ) => Promise<Record<string, unknown> | null | undefined>;
     createdByUserId?: string | null;
   },
 ): Promise<CreatedAccountActionToken> {
   const token = generateAccountActionToken();
   const tokenHash = await hashAccountActionToken(env, token);
   const id = crypto.randomUUID();
+  const payload = input.tokenPayload
+    ? await input.tokenPayload(token)
+    : input.payload;
   await env.DB.prepare(
     `
       INSERT INTO account_action_tokens (
@@ -231,7 +237,7 @@ export async function createAccountActionToken(
       normalizeNullableString(input.teamId),
       normalizeNullableString(input.userId),
       normalizeEmail(input.email),
-      JSON.stringify(safePayload(input.payload)),
+      JSON.stringify(safePayload(payload)),
       normalizeNullableString(input.createdByUserId),
       Math.max(0, Math.floor(input.expiresAt)),
     )

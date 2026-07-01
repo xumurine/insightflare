@@ -2042,7 +2042,7 @@ export function TeamNotificationsClient({
               type="button"
               onClick={() => openCreate()}
               disabled={!canCreateRule}
-              title={!canCreateRule ? copy.noSitesForRules : copy.createRule}
+              title={copy.createRule}
             >
               <RiAddLine />
               <span>{copy.createRule}</span>
@@ -2062,11 +2062,6 @@ export function TeamNotificationsClient({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {!canCreateRule ? (
-              <div className="mb-4 rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                {copy.noSitesForRules}
-              </div>
-            ) : null}
             <AutoResizer initial>
               <AutoTransition
                 transitionKey={

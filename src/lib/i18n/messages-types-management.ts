@@ -425,7 +425,6 @@ export interface AppManagementMessages {
       testNotificationSent: string;
       sendTestNotificationFailed: string;
       createRule: string;
-      noSitesForRules: string;
       editRule: string;
       dialogDescription: string;
       ruleInfoSection: string;
@@ -765,7 +764,6 @@ export interface AppManagementMessages {
       createInvite: string;
       creatingInvite: string;
       copyInvite: string;
-      inviteNotice: string;
       inviteLinksTitle: string;
       inviteLinksSubtitle: string;
       noInvites: string;
@@ -781,6 +779,7 @@ export interface AppManagementMessages {
         name: string;
         username: string;
         email: string;
+        inviteCode: string;
         role: string;
         joinedAt: string;
         createdAt: string;
@@ -917,7 +916,6 @@ export interface AppManagementMessages {
     title: string;
     subtitle: string;
     createTitle: string;
-    createSubtitle: string;
     createTeamNotice: string;
     username: string;
     email: string;

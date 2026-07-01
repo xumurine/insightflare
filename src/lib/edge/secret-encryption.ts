@@ -149,3 +149,21 @@ export async function decryptLoginTurnstileSecret(
     SECRET_PURPOSES.loginTurnstileSecretEncryption,
   );
 }
+
+export async function encryptTeamInviteToken(
+  env: Pick<Env, "MAIN_SECRET" | "DAILY_SALT_SECRET">,
+  token: string,
+): Promise<string> {
+  return encryptSecret(env, token, SECRET_PURPOSES.teamInviteTokenEncryption);
+}
+
+export async function decryptTeamInviteToken(
+  env: Pick<Env, "MAIN_SECRET" | "DAILY_SALT_SECRET">,
+  encrypted: string,
+): Promise<string> {
+  return decryptSecret(
+    env,
+    encrypted,
+    SECRET_PURPOSES.teamInviteTokenEncryption,
+  );
+}

@@ -258,6 +258,8 @@ interface TeamInviteData {
   payload: {
     teamRole?: "member" | "admin";
   };
+  code?: string;
+  url?: string;
   createdByUserId: string;
   createdAt: number;
   expiresAt: number;
@@ -789,6 +791,16 @@ export function TeamManagementClient({
     }
   }
 
+  async function handleCopyInviteUrl(invite: TeamInviteData) {
+    if (!invite.url) return;
+    try {
+      await navigator.clipboard.writeText(invite.url);
+      toast.success(copy.toasts.inviteCopied);
+    } catch {
+      toast.error(copy.toasts.inviteCopyFailed);
+    }
+  }
+
   async function handleDeleteTeam() {
     setDeletingTeam(true);
     try {
@@ -1133,33 +1145,33 @@ export function TeamManagementClient({
         : copy.members.subtitle;
   const isSitesChartsLoading =
     activeTab === "sites" && (loading || analyticsLoading);
-  const memberManagementSection = (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>{copy.members.invitesTitle}</CardTitle>
-          <CardDescription>{copy.members.invitesSubtitle}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form
-            className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleCreateInvite();
-            }}
-          >
-            <div className="space-y-2">
-              <Label htmlFor="invite-email">
-                {copy.members.inviteEmailLabel}
-              </Label>
-              <Input
-                id="invite-email"
-                value={inviteEmail}
-                onChange={(event) => setInviteEmail(event.target.value)}
-                placeholder={copy.members.inviteEmailPlaceholder}
-                disabled={!canManage}
-              />
-            </div>
+  const inviteCreateCard = (
+    <Card className="h-full">
+      <CardHeader>
+        <CardTitle>{copy.members.invitesTitle}</CardTitle>
+        <CardDescription>{copy.members.invitesSubtitle}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex h-full flex-col gap-4">
+        <form
+          className="flex h-full flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleCreateInvite();
+          }}
+        >
+          <div className="space-y-2">
+            <Label htmlFor="invite-email">
+              {copy.members.inviteEmailLabel}
+            </Label>
+            <Input
+              id="invite-email"
+              value={inviteEmail}
+              onChange={(event) => setInviteEmail(event.target.value)}
+              placeholder={copy.members.inviteEmailPlaceholder}
+              disabled={!canManage}
+            />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="invite-role">{copy.members.columns.role}</Label>
               <Select
@@ -1169,7 +1181,7 @@ export function TeamManagementClient({
                 }}
                 disabled={!canManage}
               >
-                <SelectTrigger id="invite-role" className="w-32">
+                <SelectTrigger id="invite-role" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1194,250 +1206,271 @@ export function TeamManagementClient({
                 }
                 inputMode="numeric"
                 disabled={!canManage}
-                className="w-28"
               />
             </div>
-            <Button type="submit" disabled={creatingInvite || !canManage}>
-              <AutoTransition className="inline-flex items-center gap-2">
-                {creatingInvite ? (
-                  <span
-                    key="creating"
-                    className="inline-flex items-center gap-2"
+          </div>
+          <Button
+            type="submit"
+            className="mt-auto self-start"
+            disabled={creatingInvite || !canManage}
+          >
+            <AutoTransition className="inline-flex items-center gap-2">
+              {creatingInvite ? (
+                <span key="creating" className="inline-flex items-center gap-2">
+                  <Spinner className="size-4" />
+                  {copy.members.creatingInvite}
+                </span>
+              ) : (
+                <span key="create">{copy.members.createInvite}</span>
+              )}
+            </AutoTransition>
+          </Button>
+        </form>
+
+        {latestInviteUrl ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input value={latestInviteUrl} readOnly className="font-mono" />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                void handleCopyLatestInviteUrl();
+              }}
+            >
+              {copy.members.copyInvite}
+            </Button>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+
+  const inviteLinksCard = (
+    <Card>
+      <CardHeader>
+        <CardTitle>{copy.members.inviteLinksTitle}</CardTitle>
+        <CardDescription>{copy.members.inviteLinksSubtitle}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <DataTableSwitch
+          loading={loading}
+          hasContent={invites.length > 0}
+          loadingLabel={messages.common.loading}
+          emptyLabel={copy.members.noInvites}
+          colSpan={8}
+          header={
+            <TableRow>
+              <TableHead>{copy.members.columns.email}</TableHead>
+              <TableHead>{copy.members.columns.inviteCode}</TableHead>
+              <TableHead>{copy.members.columns.role}</TableHead>
+              <TableHead>{copy.members.columns.status}</TableHead>
+              <TableHead>{copy.members.columns.createdAt}</TableHead>
+              <TableHead>{copy.members.columns.expiresAt}</TableHead>
+              <TableHead>{copy.members.columns.usedAt}</TableHead>
+              <TableHead className="text-right">
+                {copy.members.columns.action}
+              </TableHead>
+            </TableRow>
+          }
+          rows={invites.map((invite) => (
+            <TableRow key={invite.id}>
+              <TableCell>{invite.email || copy.members.anyEmail}</TableCell>
+              <TableCell>
+                {invite.code ? (
+                  <button
+                    type="button"
+                    className="font-mono text-xs text-primary underline-offset-4 hover:underline disabled:pointer-events-none disabled:text-muted-foreground"
+                    disabled={!invite.url}
+                    onClick={() => {
+                      void handleCopyInviteUrl(invite);
+                    }}
                   >
-                    <Spinner className="size-4" />
-                    {copy.members.creatingInvite}
+                    {invite.code}
+                  </button>
+                ) : (
+                  "-"
+                )}
+              </TableCell>
+              <TableCell>
+                {invite.payload.teamRole === "admin"
+                  ? copy.members.roleLabels.admin
+                  : copy.members.roleLabels.member}
+              </TableCell>
+              <TableCell>
+                {copy.members.inviteStatuses[invite.status]}
+              </TableCell>
+              <TableCell>
+                {shortDateTime(
+                  locale,
+                  epochSecondsToMs(invite.createdAt),
+                  window.timeZone,
+                )}
+              </TableCell>
+              <TableCell>
+                {shortDateTime(
+                  locale,
+                  epochSecondsToMs(invite.expiresAt),
+                  window.timeZone,
+                )}
+              </TableCell>
+              <TableCell>
+                {invite.usedAt
+                  ? shortDateTime(
+                      locale,
+                      epochSecondsToMs(invite.usedAt),
+                      window.timeZone,
+                    )
+                  : "-"}
+              </TableCell>
+              <TableCell className="text-right">
+                <TableActionButton
+                  onClick={() => {
+                    void handleRevokeInvite(invite.id);
+                  }}
+                  disabled={
+                    !canManage ||
+                    invite.status !== "active" ||
+                    revokingInviteId === invite.id
+                  }
+                  label={copy.members.revokeInvite}
+                  tone="destructive"
+                  transitionKey={
+                    revokingInviteId === invite.id ? "revoking" : "revoke"
+                  }
+                >
+                  {revokingInviteId === invite.id ? (
+                    <Spinner className="size-3.5" />
+                  ) : (
+                    <RiDeleteBinLine className="size-4" />
+                  )}
+                </TableActionButton>
+              </TableCell>
+            </TableRow>
+          ))}
+        />
+      </CardContent>
+    </Card>
+  );
+
+  const membersTableCard = (
+    <Card>
+      <CardContent className="pt-4">
+        <DataTableSwitch
+          loading={loading}
+          hasContent={members.length > 0}
+          loadingLabel={messages.common.loading}
+          emptyLabel={copy.members.noMembers}
+          colSpan={6}
+          header={
+            <TableRow>
+              <TableHead>{copy.members.columns.name}</TableHead>
+              <TableHead>{copy.members.columns.username}</TableHead>
+              <TableHead>{copy.members.columns.email}</TableHead>
+              <TableHead>{copy.members.columns.role}</TableHead>
+              <TableHead>{copy.members.columns.joinedAt}</TableHead>
+              <TableHead className="text-right">
+                {copy.members.columns.action}
+              </TableHead>
+            </TableRow>
+          }
+          rows={members.map((member) => (
+            <TableRow key={member.userId}>
+              <TableCell className="font-medium">
+                {member.name || member.username}
+              </TableCell>
+              <TableCell>{member.username}</TableCell>
+              <TableCell>{member.email}</TableCell>
+              <TableCell>
+                {member.role === "owner" ? (
+                  <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                    <RiLockLine className="size-3.5" />
+                    {copy.members.roleLabels.owner}
                   </span>
                 ) : (
-                  <span key="create">{copy.members.createInvite}</span>
+                  <Select
+                    value={member.role === "admin" ? "admin" : "member"}
+                    disabled={!canManage || changingRoleId === member.userId}
+                    onValueChange={(value) => {
+                      const next: "admin" | "member" =
+                        value === "admin" ? "admin" : "member";
+                      const current: "admin" | "member" =
+                        member.role === "admin" ? "admin" : "member";
+                      if (next === current) return;
+                      const isSelfDemote =
+                        member.userId === currentUserId &&
+                        systemRole !== "admin" &&
+                        activeTeam.ownerUserId !== currentUserId &&
+                        next === "member";
+                      if (isSelfDemote) {
+                        toast.error(copy.toasts.roleChangeFailed);
+                        return;
+                      }
+                      void handleChangeMemberRole(member.userId, next);
+                    }}
+                  >
+                    <SelectTrigger className="h-8 w-28 text-xs">
+                      <AutoTransition className="inline-flex items-center gap-1.5">
+                        {changingRoleId === member.userId ? (
+                          <span
+                            key="role-changing"
+                            className="inline-flex items-center gap-1.5"
+                          >
+                            <Spinner className="size-3" />
+                          </span>
+                        ) : (
+                          <span key="role-value">
+                            <SelectValue />
+                          </span>
+                        )}
+                      </AutoTransition>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="member">
+                        {copy.members.roleLabels.member}
+                      </SelectItem>
+                      <SelectItem value="admin">
+                        {copy.members.roleLabels.admin}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 )}
-              </AutoTransition>
-            </Button>
-          </form>
-
-          {latestInviteUrl ? (
-            <div className="flex flex-col gap-2 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center">
-              <Input value={latestInviteUrl} readOnly className="font-mono" />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  void handleCopyLatestInviteUrl();
-                }}
-              >
-                {copy.members.copyInvite}
-              </Button>
-            </div>
-          ) : null}
-
-          <p className="text-xs text-muted-foreground">
-            {copy.members.inviteNotice}
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{copy.members.inviteLinksTitle}</CardTitle>
-          <CardDescription>{copy.members.inviteLinksSubtitle}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <DataTableSwitch
-            loading={loading}
-            hasContent={invites.length > 0}
-            loadingLabel={messages.common.loading}
-            emptyLabel={copy.members.noInvites}
-            colSpan={7}
-            header={
-              <TableRow>
-                <TableHead>{copy.members.columns.email}</TableHead>
-                <TableHead>{copy.members.columns.role}</TableHead>
-                <TableHead>{copy.members.columns.status}</TableHead>
-                <TableHead>{copy.members.columns.createdAt}</TableHead>
-                <TableHead>{copy.members.columns.expiresAt}</TableHead>
-                <TableHead>{copy.members.columns.usedAt}</TableHead>
-                <TableHead className="text-right">
-                  {copy.members.columns.action}
-                </TableHead>
-              </TableRow>
-            }
-            rows={invites.map((invite) => (
-              <TableRow key={invite.id}>
-                <TableCell>{invite.email || copy.members.anyEmail}</TableCell>
-                <TableCell>
-                  {invite.payload.teamRole === "admin"
-                    ? copy.members.roleLabels.admin
-                    : copy.members.roleLabels.member}
-                </TableCell>
-                <TableCell>
-                  {copy.members.inviteStatuses[invite.status]}
-                </TableCell>
-                <TableCell>
-                  {shortDateTime(
-                    locale,
-                    epochSecondsToMs(invite.createdAt),
-                    window.timeZone,
-                  )}
-                </TableCell>
-                <TableCell>
-                  {shortDateTime(
-                    locale,
-                    epochSecondsToMs(invite.expiresAt),
-                    window.timeZone,
-                  )}
-                </TableCell>
-                <TableCell>
-                  {invite.usedAt
-                    ? shortDateTime(
-                        locale,
-                        epochSecondsToMs(invite.usedAt),
-                        window.timeZone,
-                      )
-                    : "-"}
-                </TableCell>
-                <TableCell className="text-right">
+              </TableCell>
+              <TableCell>
+                {shortDateTime(locale, member.joinedAt, window.timeZone)}
+              </TableCell>
+              <TableCell className="text-right">
+                {member.role === "owner" ? null : (
                   <TableActionButton
                     onClick={() => {
-                      void handleRevokeInvite(invite.id);
+                      void handleRemoveMember(member.userId);
                     }}
-                    disabled={
-                      !canManage ||
-                      invite.status !== "active" ||
-                      revokingInviteId === invite.id
-                    }
-                    label={copy.members.revokeInvite}
+                    disabled={!canManage || removingMemberId === member.userId}
+                    label={copy.members.remove}
                     tone="destructive"
                     transitionKey={
-                      revokingInviteId === invite.id ? "revoking" : "revoke"
+                      removingMemberId === member.userId ? "removing" : "remove"
                     }
                   >
-                    {revokingInviteId === invite.id ? (
+                    {removingMemberId === member.userId ? (
                       <Spinner className="size-3.5" />
                     ) : (
                       <RiDeleteBinLine className="size-4" />
                     )}
                   </TableActionButton>
-                </TableCell>
-              </TableRow>
-            ))}
-          />
-        </CardContent>
-      </Card>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        />
+      </CardContent>
+    </Card>
+  );
 
-      <Card>
-        <CardContent className="pt-4">
-          <DataTableSwitch
-            loading={loading}
-            hasContent={members.length > 0}
-            loadingLabel={messages.common.loading}
-            emptyLabel={copy.members.noMembers}
-            colSpan={6}
-            header={
-              <TableRow>
-                <TableHead>{copy.members.columns.name}</TableHead>
-                <TableHead>{copy.members.columns.username}</TableHead>
-                <TableHead>{copy.members.columns.email}</TableHead>
-                <TableHead>{copy.members.columns.role}</TableHead>
-                <TableHead>{copy.members.columns.joinedAt}</TableHead>
-                <TableHead className="text-right">
-                  {copy.members.columns.action}
-                </TableHead>
-              </TableRow>
-            }
-            rows={members.map((member) => (
-              <TableRow key={member.userId}>
-                <TableCell className="font-medium">
-                  {member.name || member.username}
-                </TableCell>
-                <TableCell>{member.username}</TableCell>
-                <TableCell>{member.email}</TableCell>
-                <TableCell>
-                  {member.role === "owner" ? (
-                    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                      <RiLockLine className="size-3.5" />
-                      {copy.members.roleLabels.owner}
-                    </span>
-                  ) : (
-                    <Select
-                      value={member.role === "admin" ? "admin" : "member"}
-                      disabled={!canManage || changingRoleId === member.userId}
-                      onValueChange={(value) => {
-                        const next: "admin" | "member" =
-                          value === "admin" ? "admin" : "member";
-                        const current: "admin" | "member" =
-                          member.role === "admin" ? "admin" : "member";
-                        if (next === current) return;
-                        const isSelfDemote =
-                          member.userId === currentUserId &&
-                          systemRole !== "admin" &&
-                          activeTeam.ownerUserId !== currentUserId &&
-                          next === "member";
-                        if (isSelfDemote) {
-                          toast.error(copy.toasts.roleChangeFailed);
-                          return;
-                        }
-                        void handleChangeMemberRole(member.userId, next);
-                      }}
-                    >
-                      <SelectTrigger className="h-8 w-28 text-xs">
-                        <AutoTransition className="inline-flex items-center gap-1.5">
-                          {changingRoleId === member.userId ? (
-                            <span
-                              key="role-changing"
-                              className="inline-flex items-center gap-1.5"
-                            >
-                              <Spinner className="size-3" />
-                            </span>
-                          ) : (
-                            <span key="role-value">
-                              <SelectValue />
-                            </span>
-                          )}
-                        </AutoTransition>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="member">
-                          {copy.members.roleLabels.member}
-                        </SelectItem>
-                        <SelectItem value="admin">
-                          {copy.members.roleLabels.admin}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {shortDateTime(locale, member.joinedAt, window.timeZone)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {member.role === "owner" ? null : (
-                    <TableActionButton
-                      onClick={() => {
-                        void handleRemoveMember(member.userId);
-                      }}
-                      disabled={
-                        !canManage || removingMemberId === member.userId
-                      }
-                      label={copy.members.remove}
-                      tone="destructive"
-                      transitionKey={
-                        removingMemberId === member.userId
-                          ? "removing"
-                          : "remove"
-                      }
-                    >
-                      {removingMemberId === member.userId ? (
-                        <Spinner className="size-3.5" />
-                      ) : (
-                        <RiDeleteBinLine className="size-4" />
-                      )}
-                    </TableActionButton>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          />
-        </CardContent>
-      </Card>
+  const memberManagementSection = (
+    <div className="space-y-4">
+      {inviteCreateCard}
+      {inviteLinksCard}
+      {membersTableCard}
     </div>
   );
 
@@ -1825,8 +1858,6 @@ export function TeamManagementClient({
 
         {activeTab === "settings" ? (
           <div className="space-y-4">
-            {memberManagementSection}
-
             <div className="grid gap-4 lg:grid-cols-2">
               <Card className="h-full">
                 <CardHeader>
@@ -1887,7 +1918,12 @@ export function TeamManagementClient({
                   </form>
                 </CardContent>
               </Card>
+              {inviteCreateCard}
+            </div>
 
+            {inviteLinksCard}
+
+            <div className="grid gap-4 lg:grid-cols-2">
               {isRealOwner ? (
                 <AlertDialog
                   open={transferDialogOpen}
