@@ -417,7 +417,7 @@ export function AdminUsersManagementClient({
         </CardHeader>
         <CardContent className="space-y-4">
           {resetLinkUrl ? (
-            <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+            <div className="space-y-2">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Input value={resetLinkUrl} readOnly className="font-mono" />
                 <Button
