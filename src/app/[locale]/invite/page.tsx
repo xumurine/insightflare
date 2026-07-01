@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RiMailSendLine } from "@remixicon/react";
 
 import { AccountLinkPageActions } from "@/components/auth/account-link-page-actions";
 import { InviteLinkForm } from "@/components/auth/invite-link-form";
@@ -41,7 +42,8 @@ export default async function InvitePage({ params }: InvitePageProps) {
             </Link>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <CardTitle className="text-xl">
+            <CardTitle className="inline-flex items-center gap-2 text-xl">
+              <RiMailSendLine className="size-5" />
               {t.accountLinks.invite.title}
             </CardTitle>
             <AccountLinkPageActions

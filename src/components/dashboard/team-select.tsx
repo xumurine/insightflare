@@ -189,7 +189,7 @@ export function TeamSelect({
     >
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{copy.createTitle}</DialogTitle>
+          <DialogTitle icon={RiAddLine}>{copy.createTitle}</DialogTitle>
           <DialogDescription>{copy.createDescription}</DialogDescription>
         </DialogHeader>
         <form

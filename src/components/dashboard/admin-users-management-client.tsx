@@ -6,6 +6,7 @@ import {
   RiCloseLine,
   RiDeleteBinLine,
   RiFileCopyLine,
+  RiFileList3Line,
   RiKey2Line,
 } from "@remixicon/react";
 import { toast } from "sonner";
@@ -307,7 +308,10 @@ export function AdminUsersManagementClient({
 
       <Card className="max-w-3xl">
         <CardHeader>
-          <CardTitle>{t.createTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiAddLine className="size-4" />
+            {t.createTitle}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="mb-4 text-sm text-muted-foreground">
@@ -424,7 +428,10 @@ export function AdminUsersManagementClient({
 
       <Card>
         <CardHeader>
-          <CardTitle>{t.listTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiFileList3Line className="size-4" />
+            {t.listTitle}
+          </CardTitle>
           <CardDescription>{t.listSubtitle}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -556,7 +563,9 @@ export function AdminUsersManagementClient({
       >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>{t.delete}</AlertDialogTitle>
+            <AlertDialogTitle icon={RiDeleteBinLine}>
+              {t.delete}
+            </AlertDialogTitle>
             <AlertDialogDescription>{t.deleteConfirm}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

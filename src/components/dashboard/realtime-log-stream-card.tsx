@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import { Icon } from "@iconify/react";
-import { RiGlobalLine } from "@remixicon/react";
+import { RiGlobalLine, RiPulseLine } from "@remixicon/react";
 import Avatar from "boring-avatars";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { PartialOptions } from "overlayscrollbars";
@@ -1467,7 +1467,9 @@ function RealtimeLogEventDetailsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl gap-0 p-0">
         <DialogHeader className="border-b px-4 py-4 sm:px-5">
-          <DialogTitle>{messages.realtime.detailsTitle}</DialogTitle>
+          <DialogTitle icon={RiPulseLine}>
+            {messages.realtime.detailsTitle}
+          </DialogTitle>
         </DialogHeader>
         <LogStreamScrollbar
           className="max-h-[min(78vh,44rem)]"
@@ -1571,7 +1573,10 @@ export function RealtimeLogStreamCard({
     <>
       <Card>
         <CardHeader>
-          <CardTitle>{messages.realtime.recentEvents}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiPulseLine className="size-4" />
+            {messages.realtime.recentEvents}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <AutoResizer initial duration={0.22}>

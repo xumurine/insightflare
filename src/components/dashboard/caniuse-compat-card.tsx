@@ -8,7 +8,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { RiArrowLeftLine, RiExternalLinkLine } from "@remixicon/react";
+import {
+  RiArrowLeftLine,
+  RiExternalLinkLine,
+  RiInformationLine,
+} from "@remixicon/react";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -476,7 +480,10 @@ export function CanIUseCompatCard({
     <section className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>{m.caniuseTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiInformationLine className="size-4" />
+            {m.caniuseTitle}
+          </CardTitle>
           <CardDescription>{m.caniuseSubtitle}</CardDescription>
           <CardAction>
             <div ref={wrapperRef} className="relative w-56">

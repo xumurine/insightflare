@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { RiCloseLine } from "@remixicon/react";
+import type { RemixiconComponentType } from "@remixicon/react";
+import { RiCloseLine, RiInformationLine } from "@remixicon/react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 
 import { Button } from "@/components/ui/button";
@@ -128,14 +129,26 @@ function DialogFooter({
 
 function DialogTitle({
   className,
+  children,
+  icon: Icon = RiInformationLine,
+  iconClassName,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Title>) {
+}: React.ComponentProps<typeof DialogPrimitive.Title> & {
+  icon?: RemixiconComponentType | null;
+  iconClassName?: string;
+}) {
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn("text-sm font-medium", className)}
+      className={cn(
+        "inline-flex items-center gap-2 text-sm font-medium",
+        className,
+      )}
       {...props}
-    />
+    >
+      {Icon ? <Icon className={cn("size-4 shrink-0", iconClassName)} /> : null}
+      <span className="min-w-0">{children}</span>
+    </DialogPrimitive.Title>
   );
 }
 

@@ -163,9 +163,7 @@ function PageTrafficCard({
                     ))}
                   </>
                 ) : (
-                  <CardTitle className="text-muted-foreground">
-                    {messages.pages.untitled}
-                  </CardTitle>
+                  <CardTitle>{messages.pages.untitled}</CardTitle>
                 )}
                 <p className="break-all font-mono text-[11px] text-muted-foreground">
                   {displayPathname}

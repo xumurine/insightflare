@@ -41,7 +41,7 @@ export default async function TeamNotificationsPage({
       <Card>
         <CardHeader>
           <CardTitle className="inline-flex items-center gap-2">
-            <RiNotification3Line className="size-4 text-muted-foreground" />
+            <RiNotification3Line className="size-4" />
             {messages.teamManagement.notifications.forbiddenTitle}
           </CardTitle>
         </CardHeader>

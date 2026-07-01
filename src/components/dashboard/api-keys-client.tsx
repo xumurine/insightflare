@@ -599,7 +599,7 @@ export function ApiKeysClient({
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>
+                                  <AlertDialogTitle icon={RiRefreshLine}>
                                     {copy.rotate}
                                   </AlertDialogTitle>
                                   <AlertDialogDescription>
@@ -642,7 +642,7 @@ export function ApiKeysClient({
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>
+                                  <AlertDialogTitle icon={RiDeleteBinLine}>
                                     {copy.revoke}
                                   </AlertDialogTitle>
                                   <AlertDialogDescription>
@@ -679,7 +679,7 @@ export function ApiKeysClient({
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{copy.createTitle}</DialogTitle>
+            <DialogTitle icon={RiKey2Line}>{copy.createTitle}</DialogTitle>
             <DialogDescription>{copy.createSubtitle}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
@@ -809,7 +809,9 @@ export function ApiKeysClient({
       <Dialog open={secretOpen} onOpenChange={setSecretOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>{copy.oneTimeSecretTitle}</DialogTitle>
+            <DialogTitle icon={RiKey2Line}>
+              {copy.oneTimeSecretTitle}
+            </DialogTitle>
             <DialogDescription>
               {copy.oneTimeSecretDescription}
             </DialogDescription>

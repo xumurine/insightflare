@@ -634,7 +634,10 @@ function SessionPerformancePanel({
       <CardHeader>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <CardTitle>{labels.performanceTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiPulseLine className="size-4" />
+              {labels.performanceTitle}
+            </CardTitle>
           </div>
           <div
             className={cn(
@@ -1144,7 +1147,10 @@ function VisitDetailsTab({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{labels.visitDetailsTitle}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiCalendarEventLine className="size-4" />
+          {labels.visitDetailsTitle}
+        </CardTitle>
         <CardDescription>{labels.visitDetailsSubtitle}</CardDescription>
       </CardHeader>
       <CardContent className="px-4">

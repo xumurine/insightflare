@@ -497,7 +497,7 @@ export function AccountSettingsClient({
         <Card className="h-full">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiUserSettingsLine className="size-4 text-muted-foreground" />
+              <RiUserSettingsLine className="size-4" />
               {copy.profileTitle}
             </CardTitle>
             <CardDescription>{copy.profileDescription}</CardDescription>
@@ -587,7 +587,7 @@ export function AccountSettingsClient({
         <Card className="h-full">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiLockPasswordLine className="size-4 text-muted-foreground" />
+              <RiLockPasswordLine className="size-4" />
               {copy.passwordTitle}
             </CardTitle>
             <CardDescription>{copy.passwordDescription}</CardDescription>
@@ -674,7 +674,7 @@ export function AccountSettingsClient({
         <Card className="h-full lg:col-span-2">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiNotification3Line className="size-4 text-muted-foreground" />
+              <RiNotification3Line className="size-4" />
               {notificationCopy.preferencesTitle}
             </CardTitle>
             <CardDescription>
@@ -814,7 +814,7 @@ export function AccountSettingsClient({
         <Card className="h-full overflow-visible lg:col-span-2">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiGlobalLine className="size-4 text-muted-foreground" />
+              <RiGlobalLine className="size-4" />
               {copy.preferredLanguageTitle}
             </CardTitle>
             <CardDescription>
@@ -892,7 +892,7 @@ export function AccountSettingsClient({
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-1">
                 <CardTitle className="inline-flex items-center gap-2">
-                  <RiGlobalLine className="size-4 text-muted-foreground" />
+                  <RiGlobalLine className="size-4" />
                   {copy.timeZoneTitle}
                 </CardTitle>
                 <CardDescription>{copy.timeZoneDescription}</CardDescription>

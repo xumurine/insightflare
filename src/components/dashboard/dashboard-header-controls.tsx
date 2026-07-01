@@ -1651,7 +1651,9 @@ export function DashboardHeaderControls({
       <Dialog open={customDialogOpen} onOpenChange={setCustomDialogOpen}>
         <DialogContent className="w-fit">
           <DialogHeader>
-            <DialogTitle>{messages.ranges.custom}</DialogTitle>
+            <DialogTitle icon={RiCalendarLine}>
+              {messages.ranges.custom}
+            </DialogTitle>
             <DialogDescription>
               {formatDateSpan(
                 locale,

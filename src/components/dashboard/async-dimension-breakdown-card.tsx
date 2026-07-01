@@ -452,7 +452,7 @@ export function AsyncDimensionBreakdownCard<T extends string>({
     >
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{searchPlaceholder}</DialogTitle>
+          <DialogTitle icon={RiSearchLine}>{searchPlaceholder}</DialogTitle>
         </DialogHeader>
         {searchContent}
       </DialogContent>

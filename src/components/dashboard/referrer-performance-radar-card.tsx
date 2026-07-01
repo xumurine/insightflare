@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { RiShareForwardLine } from "@remixicon/react";
 import {
   PolarAngleAxis,
   PolarGrid,
@@ -38,12 +39,7 @@ const CHART_COLORS = [
 ] as const;
 
 type RadarMetricKey =
-  | "duration"
-  | "engagement"
-  | "depth"
-  | "loyalty"
-  | "frequency"
-  | "traffic";
+  "duration" | "engagement" | "depth" | "loyalty" | "frequency" | "traffic";
 
 const METRIC_KEYS: RadarMetricKey[] = [
   "duration",
@@ -541,7 +537,10 @@ export function ReferrerPerformanceRadarCard({
   return (
     <section className="space-y-4">
       <div className="space-y-1">
-        <CardTitle>{messages.referrers.radarTitle}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiShareForwardLine className="size-4" />
+          {messages.referrers.radarTitle}
+        </CardTitle>
         <p className="text-sm text-muted-foreground">
           {messages.referrers.radarSubtitle}
         </p>

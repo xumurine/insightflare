@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { RiArrowRightSLine, RiLoginBoxLine } from "@remixicon/react";
+import {
+  RiArrowRightSLine,
+  RiLoginBoxLine,
+  RiTeamLine,
+} from "@remixicon/react";
 
 import { LogoutActionButton } from "@/components/auth/logout-action-button";
 import { Button } from "@/components/ui/button";
@@ -39,7 +43,10 @@ export default async function AppRootPage({ params }: AppRootPageProps) {
       <div className="grid h-[calc(100svh-8rem)] min-h-0 place-items-center overflow-hidden">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>{t.teamEntry.title}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiTeamLine className="size-4" />
+              {t.teamEntry.title}
+            </CardTitle>
             <CardDescription>{t.teamEntry.description}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 p-4">
@@ -68,7 +75,10 @@ export default async function AppRootPage({ params }: AppRootPageProps) {
     <main className="grid min-h-svh place-items-center p-4">
       <Card className="w-full max-w-lg">
         <CardHeader>
-          <CardTitle>{t.appName}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiTeamLine className="size-4" />
+            {t.appName}
+          </CardTitle>
           <CardDescription>
             {noTeams ? t.empty.noTeams : t.empty.noSites}
           </CardDescription>

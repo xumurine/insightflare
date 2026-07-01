@@ -205,8 +205,7 @@ interface VisitorActivityDayItem {
 }
 
 type VisitorActivityCalendarCell =
-  | { type: "empty"; key: string }
-  | VisitorActivityCalendarDayCell;
+  { type: "empty"; key: string } | VisitorActivityCalendarDayCell;
 
 interface VisitorActivityCalendarDayCell extends VisitorActivityDayItem {
   type: "day";
@@ -413,7 +412,10 @@ function VisitorPerformancePanel({
       <CardHeader>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <CardTitle>{labels.performanceTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiPulseLine className="size-4" />
+              {labels.performanceTitle}
+            </CardTitle>
           </div>
           <div
             className={cn(
@@ -1582,7 +1584,10 @@ function VisitDetailsCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{labels.visitDetailsTitle}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiCalendarEventLine className="size-4" />
+          {labels.visitDetailsTitle}
+        </CardTitle>
         <CardDescription>{labels.visitDetailsSubtitle}</CardDescription>
       </CardHeader>
       <CardContent className="px-4">
@@ -1688,7 +1693,10 @@ function ActivityAndSessionsSection({
     <section className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>{labels.activity}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiPulseLine className="size-4" />
+            {labels.activity}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <ActivityGrid

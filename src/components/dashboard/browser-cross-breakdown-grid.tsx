@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { RiBarChartBoxLine } from "@remixicon/react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
@@ -211,7 +212,10 @@ function BrowserCrossStackedBarCard({
   return (
     <Card className="overflow-hidden">
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiBarChartBoxLine className="size-4" />
+          {title}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <ContentSwitch
@@ -257,8 +261,7 @@ function BrowserCrossStackedBarCard({
                   cursor={false}
                   content={({ active, payload }) => {
                     const row = payload?.[0]?.payload as
-                      | BrowserCrossChartRow
-                      | undefined;
+                      BrowserCrossChartRow | undefined;
                     if (!active || !payload?.length || !row) return null;
 
                     const payloadByKey = new Map(

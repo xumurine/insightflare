@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { RiBarChartBoxLine } from "@remixicon/react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
@@ -176,7 +177,10 @@ function CrossBreakdownCard({
   return (
     <Card className="overflow-hidden">
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiBarChartBoxLine className="size-4" />
+          {title}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <ContentSwitch
@@ -221,8 +225,7 @@ function CrossBreakdownCard({
                 cursor={false}
                 content={({ active, payload }) => {
                   const row = payload?.[0]?.payload as
-                    | CrossChartRow
-                    | undefined;
+                    CrossChartRow | undefined;
                   if (!active || !payload?.length || !row) return null;
                   const payloadByKey = new Map(
                     payload.map((item) => [String(item.dataKey ?? ""), item]),

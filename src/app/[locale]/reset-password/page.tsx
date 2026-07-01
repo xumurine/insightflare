@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RiLockPasswordLine } from "@remixicon/react";
 
 import { AccountLinkPageActions } from "@/components/auth/account-link-page-actions";
 import { ResetPasswordLinkForm } from "@/components/auth/reset-password-link-form";
@@ -43,7 +44,8 @@ export default async function ResetPasswordPage({
             </Link>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <CardTitle className="text-xl">
+            <CardTitle className="inline-flex items-center gap-2 text-xl">
+              <RiLockPasswordLine className="size-5" />
               {t.accountLinks.resetPassword.title}
             </CardTitle>
             <AccountLinkPageActions

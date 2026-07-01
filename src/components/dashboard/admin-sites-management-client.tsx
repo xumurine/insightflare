@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RiAddLine, RiLineChartLine } from "@remixicon/react";
+import { RiAddLine, RiFileList3Line, RiLineChartLine } from "@remixicon/react";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
@@ -173,7 +173,10 @@ export function AdminSitesManagementClient({
 
       <Card className="max-w-3xl">
         <CardHeader>
-          <CardTitle>{t.createTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiAddLine className="size-4" />
+            {t.createTitle}
+          </CardTitle>
           <CardDescription>{t.createSubtitle}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -243,7 +246,10 @@ export function AdminSitesManagementClient({
 
       <Card>
         <CardHeader>
-          <CardTitle>{t.listTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiFileList3Line className="size-4" />
+            {t.listTitle}
+          </CardTitle>
           <CardDescription>{t.listSubtitle}</CardDescription>
         </CardHeader>
         <CardContent>

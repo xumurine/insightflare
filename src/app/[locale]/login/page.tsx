@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { RiTranslate2 } from "@remixicon/react";
+import { RiLoginBoxLine, RiTranslate2 } from "@remixicon/react";
 
 import { LoginForm } from "@/components/auth/login-form";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -74,7 +74,10 @@ export default async function LoginPage({
             </Link>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <CardTitle className="text-xl">{t.login.title}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2 text-xl">
+              <RiLoginBoxLine className="size-5" />
+              {t.login.title}
+            </CardTitle>
             <div className="flex items-center gap-1">
               <ThemeToggle
                 lightLabel={t.actions.switchToLight}

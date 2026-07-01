@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { RiCopyrightLine } from "@remixicon/react";
+import { RiCopyrightLine, RiMapPin2Line } from "@remixicon/react";
 
 import {
   type GeoPointsMapCountryCount,
@@ -112,7 +112,10 @@ export function OverviewGeoPointsMapCard({
     <Card className="overflow-hidden">
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          <CardTitle>{messages.geo.mapTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiMapPin2Line className="size-4" />
+            {messages.geo.mapTitle}
+          </CardTitle>
         </div>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <RiCopyrightLine aria-hidden="true" size="1em" />

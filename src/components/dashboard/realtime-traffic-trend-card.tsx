@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { RiPulseLine } from "@remixicon/react";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import {
@@ -103,7 +104,10 @@ export function RealtimeTrafficTrendCard({
   return (
     <Card className="overflow-visible">
       <CardHeader>
-        <CardTitle>{messages.overview.trendTitle}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiPulseLine className="size-4" />
+          {messages.overview.trendTitle}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="relative">

@@ -728,7 +728,7 @@ export function SettingsClientPage({
         <Card className="h-full order-1">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiSettings3Line className="size-4 text-muted-foreground" />
+              <RiSettings3Line className="size-4" />
               {copy.editTitle}
             </CardTitle>
             <CardDescription>{copy.editSubtitle}</CardDescription>
@@ -813,7 +813,7 @@ export function SettingsClientPage({
         <Card className="h-full order-3">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiShareForwardLine className="size-4 text-muted-foreground" />
+              <RiShareForwardLine className="size-4" />
               {copy.publicSharingTitle}
             </CardTitle>
             <CardDescription>{copy.publicSharingSubtitle}</CardDescription>
@@ -948,7 +948,7 @@ export function SettingsClientPage({
         <Card className="h-full order-2">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiCodeLine className="size-4 text-muted-foreground" />
+              <RiCodeLine className="size-4" />
               {copy.scriptTitle}
             </CardTitle>
             <CardDescription>{copy.scriptSubtitle}</CardDescription>
@@ -987,7 +987,7 @@ export function SettingsClientPage({
         <Card className="h-full order-3">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiBarChartBoxLine className="size-4 text-muted-foreground" />
+              <RiBarChartBoxLine className="size-4" />
               {copy.trackingStrengthGroupTitle}
             </CardTitle>
             <CardDescription>
@@ -1103,7 +1103,7 @@ export function SettingsClientPage({
         <Card className="h-full order-4">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiLinksLine className="size-4 text-muted-foreground" />
+              <RiLinksLine className="size-4" />
               {copy.queryHashGroupTitle}
             </CardTitle>
             <CardDescription>{copy.queryHashGroupDescription}</CardDescription>
@@ -1231,7 +1231,7 @@ export function SettingsClientPage({
         <Card className="h-full order-4">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiRouteLine className="size-4 text-muted-foreground" />
+              <RiRouteLine className="size-4" />
               {copy.autoTrackGroupTitle}
             </CardTitle>
             <CardDescription>{copy.autoTrackGroupDescription}</CardDescription>
@@ -1310,7 +1310,7 @@ export function SettingsClientPage({
         <Card className="h-full order-5">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiSpeedUpLine className="size-4 text-muted-foreground" />
+              <RiSpeedUpLine className="size-4" />
               {copy.performanceGroupTitle}
             </CardTitle>
             <CardDescription>
@@ -1394,7 +1394,7 @@ export function SettingsClientPage({
         <Card className="h-full order-6">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiGlobalLine className="size-4 text-muted-foreground" />
+              <RiGlobalLine className="size-4" />
               {copy.domainWhitelistTitle}
             </CardTitle>
             <CardDescription>{copy.domainWhitelistDescription}</CardDescription>
@@ -1466,7 +1466,7 @@ export function SettingsClientPage({
         <Card className="h-full order-7">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiRouteLine className="size-4 text-muted-foreground" />
+              <RiRouteLine className="size-4" />
               {copy.pathBlacklistTitle}
             </CardTitle>
             <CardDescription>{copy.pathBlacklistDescription}</CardDescription>
@@ -1536,7 +1536,7 @@ export function SettingsClientPage({
         <Card className="h-full order-8">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiArrowRightLine className="size-4 text-muted-foreground" />
+              <RiArrowRightLine className="size-4" />
               {copy.transferTitle}
             </CardTitle>
             <CardDescription>{copy.transferSubtitle}</CardDescription>
@@ -1618,7 +1618,7 @@ export function SettingsClientPage({
           <Card className="h-full border-destructive/40 order-9">
             <CardHeader>
               <CardTitle className="inline-flex items-center gap-2">
-                <RiDeleteBinLine className="size-4 text-muted-foreground" />
+                <RiDeleteBinLine className="size-4" />
                 {copy.deleteTitle}
               </CardTitle>
               <CardDescription>{copy.deleteSubtitle}</CardDescription>
@@ -1658,7 +1658,9 @@ export function SettingsClientPage({
 
           <AlertDialogContent size="sm">
             <AlertDialogHeader>
-              <AlertDialogTitle>{copy.deleteTitle}</AlertDialogTitle>
+              <AlertDialogTitle icon={RiDeleteBinLine}>
+                {copy.deleteTitle}
+              </AlertDialogTitle>
               <AlertDialogDescription>
                 {copy.deleteConfirm}
               </AlertDialogDescription>

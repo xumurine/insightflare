@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   type RemixiconComponentType,
   RiAlarmWarningLine,
+  RiBarChartBoxLine,
   RiCpuLine,
   RiDatabase2Line,
   RiRefreshLine,
@@ -100,8 +101,7 @@ async function fetchSystemPerformance(
     },
   );
   const payload = (await response.json()) as
-    | SystemPerformanceData
-    | ApiErrorResponse;
+    SystemPerformanceData | ApiErrorResponse;
   if (!response.ok || payload.ok !== true) {
     throw new Error(
       ("message" in payload && payload.message) ||
@@ -127,8 +127,7 @@ async function fetchDoDiagnostic(): Promise<DoDiagnosticAggregate> {
     cache: "no-store",
   });
   const payload = (await response.json()) as
-    | DoDiagnosticAggregate
-    | ApiErrorResponse;
+    DoDiagnosticAggregate | ApiErrorResponse;
   if (!response.ok || payload.ok !== true) {
     throw new Error(
       ("message" in payload && payload.message) ||
@@ -323,7 +322,10 @@ function LatencyPercentileChart({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t.latencyPercentileTrend}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiSpeedUpLine className="size-4" />
+          {t.latencyPercentileTrend}
+        </CardTitle>
         <CardDescription>{t.latencyPercentileTrendDescription}</CardDescription>
       </CardHeader>
       <CardContent>
@@ -1068,7 +1070,10 @@ export function SystemPerformanceClient({
 
       <Card>
         <CardHeader>
-          <CardTitle>{t.throughputTrend}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiCpuLine className="size-4" />
+            {t.throughputTrend}
+          </CardTitle>
           <CardDescription>{t.throughputTrendDescription}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -1150,7 +1155,10 @@ export function SystemPerformanceClient({
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>{t.openVisitHealth}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiTimeLine className="size-4" />
+              {t.openVisitHealth}
+            </CardTitle>
             <CardDescription>{t.openVisitHealthDescription}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1249,7 +1257,10 @@ export function SystemPerformanceClient({
 
         <Card>
           <CardHeader>
-            <CardTitle>{t.latencySampleHealth}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiSpeedUpLine className="size-4" />
+              {t.latencySampleHealth}
+            </CardTitle>
             <CardDescription>
               {t.latencySampleHealthDescription}
             </CardDescription>
@@ -1335,7 +1346,10 @@ export function SystemPerformanceClient({
 
       <Card>
         <CardHeader>
-          <CardTitle>{t.topSitesTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiBarChartBoxLine className="size-4" />
+            {t.topSitesTitle}
+          </CardTitle>
           <CardDescription>{t.topSitesDescription}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -1392,7 +1406,10 @@ export function SystemPerformanceClient({
 
       <Card>
         <CardHeader>
-          <CardTitle>{t.slowestEventsTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiAlarmWarningLine className="size-4" />
+            {t.slowestEventsTitle}
+          </CardTitle>
           <CardDescription>{t.slowestEventsDescription}</CardDescription>
         </CardHeader>
         <CardContent>

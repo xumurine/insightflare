@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   RiArrowDownSLine,
   RiArrowUpSLine,
+  RiPriceTag3Line,
   RiSearchLine,
 } from "@remixicon/react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
@@ -351,7 +352,7 @@ export function CampaignBreakdownCard({
     >
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{searchPlaceholder}</DialogTitle>
+          <DialogTitle icon={RiSearchLine}>{searchPlaceholder}</DialogTitle>
         </DialogHeader>
         {searchContent}
       </DialogContent>
@@ -361,7 +362,8 @@ export function CampaignBreakdownCard({
   return (
     <section className="space-y-3">
       <div className="space-y-1">
-        <h2 className="text-sm font-medium tracking-tight">
+        <h2 className="inline-flex items-center gap-2 text-sm font-medium tracking-tight">
+          <RiPriceTag3Line className="size-4 shrink-0" />
           {messages.campaigns.breakdownTitle}
         </h2>
       </div>

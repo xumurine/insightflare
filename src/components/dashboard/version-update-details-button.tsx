@@ -162,7 +162,9 @@ export function VersionUpdateDetailsButton({
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="max-h-[86svh] max-w-3xl overflow-hidden">
           <DialogHeader className="pr-8">
-            <DialogTitle>{labels.detailsTitle}</DialogTitle>
+            <DialogTitle icon={RiGitCommitLine}>
+              {labels.detailsTitle}
+            </DialogTitle>
             <DialogDescription>
               {labels.detailsDescription.replace("{range}", title)}
             </DialogDescription>

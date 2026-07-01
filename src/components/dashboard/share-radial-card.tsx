@@ -1,6 +1,7 @@
 "use client";
 
 import { type ComponentType, useMemo } from "react";
+import { RiDonutChartLine } from "@remixicon/react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -91,7 +92,10 @@ export function ShareRadialCard({
   return (
     <Card>
       <CardHeader className="gap-2">
-        <CardTitle>{title}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiDonutChartLine className="size-4" />
+          {title}
+        </CardTitle>
         {loading ? (
           <div className="flex items-baseline gap-2">
             <Skeleton className="h-6 w-20" />

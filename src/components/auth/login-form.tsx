@@ -438,8 +438,10 @@ export function LoginForm({
       <Dialog open={securityDialogOpen} onOpenChange={setSecurityDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <RiShieldCrossLine className="size-4 text-destructive" />
+            <DialogTitle
+              icon={RiShieldCrossLine}
+              iconClassName="text-destructive"
+            >
               {securityVerificationTitleLabel}
             </DialogTitle>
             <DialogDescription>

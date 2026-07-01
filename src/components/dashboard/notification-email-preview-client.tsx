@@ -204,7 +204,7 @@ export function NotificationEmailPreviewClient({
       <Card>
         <CardHeader>
           <CardTitle className="inline-flex items-center gap-2 text-base">
-            <RiMailSendLine className="size-4 text-muted-foreground" />
+            <RiMailSendLine className="size-4" />
             {subject ? `${page.subject}: ${subject}` : page.title}
           </CardTitle>
         </CardHeader>

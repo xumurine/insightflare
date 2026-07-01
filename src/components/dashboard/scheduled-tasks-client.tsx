@@ -1270,7 +1270,10 @@ export function ScheduledTasksClient({
 
       <Card>
         <CardHeader>
-          <CardTitle>{t.taskListTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiCalendarScheduleLine className="size-4" />
+            {t.taskListTitle}
+          </CardTitle>
           <CardDescription>{t.taskListDescription}</CardDescription>
         </CardHeader>
         <CardContent>

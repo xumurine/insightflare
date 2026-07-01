@@ -633,7 +633,9 @@ export function LoginTurnstileSettingsClient({
               </AlertDialogTrigger>
               <AlertDialogContent size="sm">
                 <AlertDialogHeader>
-                  <AlertDialogTitle>{copy.delete}</AlertDialogTitle>
+                  <AlertDialogTitle icon={RiDeleteBinLine}>
+                    {copy.delete}
+                  </AlertDialogTitle>
                   <AlertDialogDescription>
                     {copy.loginTurnstileDeleteConfirm}
                   </AlertDialogDescription>

@@ -18,6 +18,7 @@ import {
   RiArrowRightUpLine,
   RiArrowUpLine,
   RiArrowUpSLine,
+  RiLineChartLine,
   RiSearchLine,
 } from "@remixicon/react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
@@ -3716,7 +3717,7 @@ export function OverviewPagesSection({
     <Dialog open={sourceCardSearchOpen} onOpenChange={setSourceCardSearchOpen}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{sourceCardSearchTitle}</DialogTitle>
+          <DialogTitle icon={RiSearchLine}>{sourceCardSearchTitle}</DialogTitle>
         </DialogHeader>
         {sourceCardSearchContent}
       </DialogContent>
@@ -3887,7 +3888,9 @@ export function OverviewPagesSection({
     >
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{clientDimensionCardSearchTitle}</DialogTitle>
+          <DialogTitle icon={RiSearchLine}>
+            {clientDimensionCardSearchTitle}
+          </DialogTitle>
         </DialogHeader>
         {clientDimensionCardSearchContent}
       </DialogContent>
@@ -4127,7 +4130,9 @@ export function OverviewPagesSection({
     >
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{geoDimensionCardSearchTitle}</DialogTitle>
+          <DialogTitle icon={RiSearchLine}>
+            {geoDimensionCardSearchTitle}
+          </DialogTitle>
         </DialogHeader>
         {geoDimensionCardSearchContent}
       </DialogContent>
@@ -4179,7 +4184,7 @@ export function OverviewPagesSection({
     <Dialog open={pageCardSearchOpen} onOpenChange={setPageCardSearchOpen}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{pageCardSearchTitle}</DialogTitle>
+          <DialogTitle icon={RiSearchLine}>{pageCardSearchTitle}</DialogTitle>
         </DialogHeader>
         {pageCardSearchContent}
       </DialogContent>
@@ -4649,7 +4654,10 @@ export function OverviewTrendSection({
   return (
     <Card className="overflow-visible">
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>{messages.overview.trendTitle}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiLineChartLine className="size-4" />
+          {messages.overview.trendTitle}
+        </CardTitle>
         <span className="text-xs text-muted-foreground">
           {messages.common.lastUpdated}:{" "}
           {shortDateTime(locale, Date.now(), dataWindow.timeZone)}

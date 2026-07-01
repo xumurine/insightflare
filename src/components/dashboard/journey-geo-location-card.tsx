@@ -1,7 +1,11 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { RiExternalLinkLine, RiInformationLine } from "@remixicon/react";
+import {
+  RiExternalLinkLine,
+  RiInformationLine,
+  RiMapPin2Line,
+} from "@remixicon/react";
 
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -878,7 +882,10 @@ export function JourneyGeoLocationCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiMapPin2Line className="size-4" />
+          {title}
+        </CardTitle>
       </CardHeader>
       <CardContent className="px-0 pb-0">
         <JourneyGeoSelector

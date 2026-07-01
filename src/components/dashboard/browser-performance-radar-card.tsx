@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { RiPulseLine } from "@remixicon/react";
 import {
   PolarAngleAxis,
   PolarGrid,
@@ -35,12 +36,7 @@ const CHART_COLORS = [
 ] as const;
 
 type RadarMetricKey =
-  | "duration"
-  | "engagement"
-  | "depth"
-  | "loyalty"
-  | "frequency"
-  | "traffic";
+  "duration" | "engagement" | "depth" | "loyalty" | "frequency" | "traffic";
 
 const METRIC_KEYS: RadarMetricKey[] = [
   "duration",
@@ -221,7 +217,10 @@ export function BrowserPerformanceRadarCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{messages.browsers.radarTitle}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiPulseLine className="size-4" />
+          {messages.browsers.radarTitle}
+        </CardTitle>
         <p className="text-sm text-muted-foreground">
           {messages.browsers.radarSubtitle}
         </p>

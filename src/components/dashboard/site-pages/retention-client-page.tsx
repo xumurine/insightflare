@@ -778,7 +778,10 @@ function RetentionMatrix({
     <Card>
       <CardHeader className="gap-3 md:grid-cols-[1fr_auto]">
         <div className="space-y-1">
-          <CardTitle>{labels.matrixTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiRepeat2Line className="size-4" />
+            {labels.matrixTitle}
+          </CardTitle>
           <CardDescription>{labels.matrixSubtitle}</CardDescription>
         </div>
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground md:justify-self-end">

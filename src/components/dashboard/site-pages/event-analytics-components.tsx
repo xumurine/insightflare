@@ -768,7 +768,10 @@ export function EventTrendStackedBarCard({
     <Card className="overflow-visible">
       <CardHeader className="gap-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <CardTitle>{title}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiPulseLine className="size-4" />
+            {title}
+          </CardTitle>
           <div className="flex flex-wrap gap-2">
             {series.map((item) => (
               <button
@@ -1886,7 +1889,10 @@ export function EventRecordsSection({
     <section className="space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-sm font-medium">{labels.recordsTitle}</h2>
+          <h2 className="inline-flex items-center gap-2 text-sm font-medium">
+            <RiFileList3Line className="size-4 shrink-0" />
+            {labels.recordsTitle}
+          </h2>
         </div>
         <div className="relative w-full sm:max-w-xs">
           <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -2442,7 +2448,10 @@ export function EventFieldsCard({
       <section className="space-y-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-sm font-medium">{labels.fieldsTitle}</h2>
+            <h2 className="inline-flex items-center gap-2 text-sm font-medium">
+              <RiFileList3Line className="size-4 shrink-0" />
+              {labels.fieldsTitle}
+            </h2>
           </div>
           <PayloadFilterButton
             labels={labels}
@@ -2456,7 +2465,10 @@ export function EventFieldsCard({
             <CardHeader className="space-y-2 pt-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <CardTitle>{labels.payloadFields}</CardTitle>
+                  <CardTitle className="inline-flex items-center gap-2">
+                    <RiDatabase2Line className="size-4" />
+                    {labels.payloadFields}
+                  </CardTitle>
                   {fieldListLoading ? <Spinner className="size-3.5" /> : null}
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -2494,7 +2506,10 @@ export function EventFieldsCard({
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <CardTitle>{labels.fieldValuesTitle}</CardTitle>
+                    <CardTitle className="inline-flex items-center gap-2">
+                      <RiStackLine className="size-4" />
+                      {labels.fieldValuesTitle}
+                    </CardTitle>
                     {fieldValuesLoading ? (
                       <Spinner className="size-3.5" />
                     ) : null}
@@ -2560,7 +2575,9 @@ export function EventFieldsCard({
           }}
         >
           <DialogHeader>
-            <DialogTitle>{labels.payloadFilterTitle}</DialogTitle>
+            <DialogTitle icon={RiFilter3Line}>
+              {labels.payloadFilterTitle}
+            </DialogTitle>
             <DialogDescription>
               {labels.payloadFilterSubtitle}
             </DialogDescription>

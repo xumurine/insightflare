@@ -240,7 +240,10 @@ function FunnelList({
     <Card className="min-w-0">
       <CardHeader className="min-w-0 gap-1 md:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0">
-          <CardTitle>{labels.listTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiFilter2Line className="size-4" />
+            {labels.listTitle}
+          </CardTitle>
           <CardDescription className="break-words">
             {labels.listSubtitle}
           </CardDescription>
@@ -372,7 +375,7 @@ function CreateFunnelDialog({
       <DialogContent className="max-w-2xl">
         <form onSubmit={submit} className="space-y-5">
           <DialogHeader>
-            <DialogTitle>{labels.createTitle}</DialogTitle>
+            <DialogTitle icon={RiFilter2Line}>{labels.createTitle}</DialogTitle>
             <DialogDescription>{labels.createDescription}</DialogDescription>
           </DialogHeader>
 
@@ -614,7 +617,10 @@ function FunnelDetailLoading({ labels }: { labels: FunnelCopy }) {
       </Card>
       <Card className="min-w-0">
         <CardHeader>
-          <CardTitle>{labels.step}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiArrowRightLine className="size-4" />
+            {labels.step}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {Array.from({ length: 4 }, (_, index) => (
@@ -714,7 +720,10 @@ function FunnelDetailContent({
 
       <Card className="min-w-0">
         <CardHeader>
-          <CardTitle>{labels.step}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiArrowRightLine className="size-4" />
+            {labels.step}
+          </CardTitle>
           <CardDescription>{labels.listSubtitle}</CardDescription>
         </CardHeader>
         <CardContent className="px-0 py-0">
@@ -1068,7 +1077,9 @@ export function FunnelsClientPage({
       >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>{labels.deleteTitle}</AlertDialogTitle>
+            <AlertDialogTitle icon={RiDeleteBinLine}>
+              {labels.deleteTitle}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {labels.deleteDescription}
             </AlertDialogDescription>

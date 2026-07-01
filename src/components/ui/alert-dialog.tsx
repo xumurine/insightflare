@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import type { RemixiconComponentType } from "@remixicon/react";
+import { RiInformationLine } from "@remixicon/react";
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui";
 
 import { Button } from "@/components/ui/button";
@@ -117,17 +119,26 @@ function AlertDialogMedia({
 
 function AlertDialogTitle({
   className,
+  children,
+  icon: Icon = RiInformationLine,
+  iconClassName,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Title>) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Title> & {
+  icon?: RemixiconComponentType | null;
+  iconClassName?: string;
+}) {
   return (
     <AlertDialogPrimitive.Title
       data-slot="alert-dialog-title"
       className={cn(
-        "text-sm font-medium sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2",
+        "inline-flex items-center gap-2 text-sm font-medium sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2",
         className,
       )}
       {...props}
-    />
+    >
+      {Icon ? <Icon className={cn("size-4 shrink-0", iconClassName)} /> : null}
+      <span className="min-w-0">{children}</span>
+    </AlertDialogPrimitive.Title>
   );
 }
 

@@ -2051,7 +2051,7 @@ export function TeamNotificationsClient({
         <Card>
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiNotification3Line className="size-4 text-muted-foreground" />
+              <RiNotification3Line className="size-4" />
               {copy.rulesTitle}
             </CardTitle>
             <CardDescription>
@@ -2223,7 +2223,9 @@ export function TeamNotificationsClient({
       <Dialog open={testDialogOpen} onOpenChange={setTestDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{copy.deliveryTestTitle}</DialogTitle>
+            <DialogTitle icon={RiMailSendLine}>
+              {copy.deliveryTestTitle}
+            </DialogTitle>
             <DialogDescription>
               {copy.deliveryTestDescription}
             </DialogDescription>
@@ -2270,7 +2272,9 @@ export function TeamNotificationsClient({
       <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
         <DialogContent className="max-h-[min(860px,calc(100vh-2rem))] max-w-5xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{copy.previewDialogTitle}</DialogTitle>
+            <DialogTitle icon={RiEyeLine}>
+              {copy.previewDialogTitle}
+            </DialogTitle>
             <DialogDescription>
               {copy.previewDialogDescription}
             </DialogDescription>
@@ -2474,7 +2478,7 @@ export function TeamNotificationsClient({
         <DialogContent className="flex max-h-[min(860px,calc(100vh-1rem))] max-w-6xl flex-col overflow-hidden p-0">
           <div className="border-b p-4 sm:p-6">
             <DialogHeader>
-              <DialogTitle>
+              <DialogTitle icon={RiNotification3Line}>
                 {form.id ? copy.editRule : copy.createRule}
               </DialogTitle>
               <DialogDescription>{copy.dialogDescription}</DialogDescription>

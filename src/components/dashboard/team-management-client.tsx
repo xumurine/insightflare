@@ -1164,7 +1164,7 @@ export function TeamManagementClient({
     <Card className="h-full">
       <CardHeader>
         <CardTitle className="inline-flex items-center gap-2">
-          <RiMailSendLine className="size-4 text-muted-foreground" />
+          <RiMailSendLine className="size-4" />
           {copy.members.invitesTitle}
         </CardTitle>
         <CardDescription>{copy.members.invitesSubtitle}</CardDescription>
@@ -1271,7 +1271,7 @@ export function TeamManagementClient({
     <Card>
       <CardHeader>
         <CardTitle className="inline-flex items-center gap-2">
-          <RiLinksLine className="size-4 text-muted-foreground" />
+          <RiLinksLine className="size-4" />
           {copy.members.inviteLinksTitle}
         </CardTitle>
         <CardDescription>{copy.members.inviteLinksSubtitle}</CardDescription>
@@ -1601,7 +1601,9 @@ export function TeamManagementClient({
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{siteCreateCopy.createTitle}</DialogTitle>
+            <DialogTitle icon={RiGlobalLine}>
+              {siteCreateCopy.createTitle}
+            </DialogTitle>
             <DialogDescription>
               {siteCreateCopy.createSubtitle}
             </DialogDescription>
@@ -1698,7 +1700,7 @@ export function TeamManagementClient({
             <Card className="overflow-visible">
               <CardHeader>
                 <CardTitle className="inline-flex items-center gap-2">
-                  <RiBarChartBoxLine className="size-4 text-muted-foreground" />
+                  <RiBarChartBoxLine className="size-4" />
                   {copy.sites.aggregateTitle}
                 </CardTitle>
               </CardHeader>
@@ -1901,7 +1903,7 @@ export function TeamManagementClient({
               <Card className="h-full">
                 <CardHeader>
                   <CardTitle className="inline-flex items-center gap-2">
-                    <RiSettings3Line className="size-4 text-muted-foreground" />
+                    <RiSettings3Line className="size-4" />
                     {copy.settings.title}
                   </CardTitle>
                   <CardDescription>{copy.settings.subtitle}</CardDescription>
@@ -1985,7 +1987,7 @@ export function TeamManagementClient({
                   <Card className="h-full border-amber-500/40">
                     <CardHeader>
                       <CardTitle className="inline-flex items-center gap-2">
-                        <RiArrowRightLine className="size-4 text-muted-foreground" />
+                        <RiArrowRightLine className="size-4" />
                         {copy.settings.transferTitle}
                       </CardTitle>
                       <CardDescription>
@@ -2067,7 +2069,7 @@ export function TeamManagementClient({
                   </Card>
                   <AlertDialogContent size="sm">
                     <AlertDialogHeader>
-                      <AlertDialogTitle>
+                      <AlertDialogTitle icon={RiArrowRightLine}>
                         {copy.settings.transferTitle}
                       </AlertDialogTitle>
                       <AlertDialogDescription>
@@ -2122,7 +2124,7 @@ export function TeamManagementClient({
                   <Card className="h-full border-destructive/40">
                     <CardHeader>
                       <CardTitle className="inline-flex items-center gap-2">
-                        <RiDeleteBinLine className="size-4 text-muted-foreground" />
+                        <RiDeleteBinLine className="size-4" />
                         {copy.settings.delete}
                       </CardTitle>
                       <CardDescription>
@@ -2161,7 +2163,7 @@ export function TeamManagementClient({
                   </Card>
                   <AlertDialogContent size="sm">
                     <AlertDialogHeader>
-                      <AlertDialogTitle>
+                      <AlertDialogTitle icon={RiDeleteBinLine}>
                         {copy.settings.delete}
                       </AlertDialogTitle>
                       <AlertDialogDescription>

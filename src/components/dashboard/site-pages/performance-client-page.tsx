@@ -8,6 +8,7 @@ import {
   RiCheckboxCircleFill,
   RiCloseCircleFill,
   RiErrorWarningFill,
+  RiMapPin2Line,
   RiPulseLine,
   RiRouteLine,
   RiSpeedUpLine,
@@ -1008,8 +1009,8 @@ function gapConnectorPaths(
 ): string[] {
   const paths: string[] = [];
   let previous:
-    | (TrendConnectorLinePoint & { x: number; y: number; index: number })
-    | null = null;
+    (TrendConnectorLinePoint & { x: number; y: number; index: number }) | null =
+    null;
 
   points.forEach((point, index) => {
     if (!isRenderedTrendPoint(point, seriesKey)) return;
@@ -1656,7 +1657,10 @@ function PerformanceTrendCard({
       <CardHeader className="pb-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
-            <CardTitle>{messages.performance.chartTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiSpeedUpLine className="size-4" />
+              {messages.performance.chartTitle}
+            </CardTitle>
             <p className="text-sm text-muted-foreground">
               {panelLabel(messages, activePanel)}
             </p>
@@ -1941,7 +1945,10 @@ function PerformanceHealthMapCard({
       <CardHeader className="pb-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
-            <CardTitle>{messages.performance.countryHealthTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiMapPin2Line className="size-4" />
+              {messages.performance.countryHealthTitle}
+            </CardTitle>
             <p className="text-sm text-muted-foreground">
               {formatI18nTemplate(messages.performance.countryHealthSubtitle, {
                 metric: panelLabel(messages, activePanel),
@@ -2503,7 +2510,7 @@ function PathPerformanceTable({
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <CardTitle className="inline-flex items-center gap-2">
-              <RiRouteLine className="size-4 text-muted-foreground" />
+              <RiRouteLine className="size-4" />
               {messages.performance.pathsTitle}
             </CardTitle>
             <p className="text-sm text-muted-foreground">
