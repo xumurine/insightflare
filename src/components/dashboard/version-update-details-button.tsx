@@ -8,6 +8,8 @@ import {
   RiListCheck2,
 } from "@remixicon/react";
 
+import { AutoResizer } from "@/components/ui/auto-resizer";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -140,6 +142,16 @@ export function VersionUpdateDetailsButton({
     }
   }
 
+  const detailStateKey = loading
+    ? "loading"
+    : error
+      ? "error"
+      : details
+        ? details.commits.length > 0
+          ? "details"
+          : "empty"
+        : "idle";
+
   return (
     <>
       <Button variant="outline" onClick={() => handleOpenChange(true)}>
@@ -156,106 +168,108 @@ export function VersionUpdateDetailsButton({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="min-h-0 space-y-3">
-            {loading ? (
-              <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-                <Spinner />
-                {labels.detailsLoading}
-              </div>
-            ) : null}
-
-            {error ? (
-              <div className="border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-                {error}
-              </div>
-            ) : null}
-
-            {details && !loading ? (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-y py-2 text-xs text-muted-foreground">
-                  <span>
-                    {labels.commitCount}: {details.totalCommits}
-                  </span>
-                  {details.htmlUrl ? (
-                    <Button variant="ghost" size="xs" asChild>
-                      <Link
-                        href={details.htmlUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <RiExternalLinkLine />
-                        {labels.openCompare}
-                      </Link>
-                    </Button>
-                  ) : null}
+          <AutoResizer className="min-h-0" initial duration={0.22}>
+            <AutoTransition
+              initial={false}
+              duration={0.2}
+              transitionKey={detailStateKey}
+            >
+              {loading ? (
+                <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
+                  <Spinner />
+                  {labels.detailsLoading}
                 </div>
+              ) : error ? (
+                <div className="border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                  {error}
+                </div>
+              ) : details ? (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-y py-2 text-xs text-muted-foreground">
+                    <span>
+                      {labels.commitCount}: {details.totalCommits}
+                    </span>
+                    {details.htmlUrl ? (
+                      <Button variant="ghost" size="xs" asChild>
+                        <Link
+                          href={details.htmlUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <RiExternalLinkLine />
+                          {labels.openCompare}
+                        </Link>
+                      </Button>
+                    ) : null}
+                  </div>
 
-                {details.commits.length > 0 ? (
-                  <div className="max-h-[56svh] overflow-y-auto pr-2">
-                    <div className="space-y-2">
-                      {details.commits.map((commit) => {
-                        const isCurrent = isCommitMatch(
-                          commit.sha,
-                          currentCommit,
-                        );
+                  {details.commits.length > 0 ? (
+                    <div className="max-h-[56svh] overflow-y-auto pr-2">
+                      <div className="space-y-2">
+                        {details.commits.map((commit) => {
+                          const isCurrent = isCommitMatch(
+                            commit.sha,
+                            currentCommit,
+                          );
 
-                        return (
-                          <div
-                            key={commit.sha}
-                            className={cn(
-                              "border p-3 transition-colors",
-                              isCurrent
-                                ? "border-primary bg-primary/5"
-                                : "border-border",
-                            )}
-                          >
-                            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                              <div className="min-w-0 space-y-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <RiGitCommitLine className="size-4 text-muted-foreground" />
-                                  <span className="break-words text-sm font-medium">
-                                    {commit.title}
-                                  </span>
-                                  {isCurrent ? (
-                                    <Badge variant="outline">
-                                      {labels.currentCommitBadge}
-                                    </Badge>
-                                  ) : null}
+                          return (
+                            <div
+                              key={commit.sha}
+                              className={cn(
+                                "border p-3 transition-colors",
+                                isCurrent
+                                  ? "border-primary bg-primary/5"
+                                  : "border-border",
+                              )}
+                            >
+                              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                <div className="min-w-0 space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <RiGitCommitLine className="size-4 text-muted-foreground" />
+                                    <span className="break-words text-sm font-medium">
+                                      {commit.title}
+                                    </span>
+                                    {isCurrent ? (
+                                      <Badge variant="outline">
+                                        {labels.currentCommitBadge}
+                                      </Badge>
+                                    ) : null}
+                                  </div>
+                                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                    <span className="font-mono">
+                                      {commit.shortSha}
+                                    </span>
+                                    <span>{commit.authorName}</span>
+                                    {commit.authoredAt ? (
+                                      <span>{commit.authoredAt}</span>
+                                    ) : null}
+                                  </div>
                                 </div>
-                                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                                  <span className="font-mono">
-                                    {commit.shortSha}
-                                  </span>
-                                  <span>{commit.authorName}</span>
-                                  {commit.authoredAt ? (
-                                    <span>{commit.authoredAt}</span>
-                                  ) : null}
-                                </div>
+                                <Button variant="ghost" size="xs" asChild>
+                                  <Link
+                                    href={commit.htmlUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    <RiExternalLinkLine />
+                                    {labels.openCommit}
+                                  </Link>
+                                </Button>
                               </div>
-                              <Button variant="ghost" size="xs" asChild>
-                                <Link
-                                  href={commit.htmlUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  <RiExternalLinkLine />
-                                  {labels.openCommit}
-                                </Link>
-                              </Button>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="py-8 text-sm text-muted-foreground">
-                    {labels.detailsEmpty}
-                  </div>
-                )}
-              </div>
-            ) : null}
-          </div>
+                  ) : (
+                    <div className="py-8 text-sm text-muted-foreground">
+                      {labels.detailsEmpty}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </AutoTransition>
+          </AutoResizer>
         </DialogContent>
       </Dialog>
     </>

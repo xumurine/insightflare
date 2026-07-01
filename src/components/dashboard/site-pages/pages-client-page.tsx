@@ -14,6 +14,7 @@ import { PagesShareTrendCard } from "@/components/dashboard/pages-share-trend-ca
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import { TrafficPairBarChart } from "@/components/dashboard/site-traffic-charts";
 import { AutoResizer } from "@/components/ui/auto-resizer";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -409,6 +410,13 @@ export function PagesClientPage({
 
   const shouldShowLoadMoreSkeletons =
     !loadingInitial && !error && items.length > 0 && meta.hasMore;
+  const contentStateKey = loadingInitial
+    ? "loading"
+    : error
+      ? "error"
+      : items.length === 0
+        ? "empty"
+        : "content";
 
   return (
     <div className="space-y-6">
@@ -426,7 +434,11 @@ export function PagesClientPage({
       />
 
       <AutoResizer className="w-full" initial duration={0.24}>
-        <div className="space-y-4">
+        <AutoTransition
+          initial={false}
+          duration={0.22}
+          transitionKey={contentStateKey}
+        >
           {loadingInitial ? (
             <section
               className="grid gap-4 xl:grid-cols-2"
@@ -437,25 +449,19 @@ export function PagesClientPage({
                 <PageTrafficCardSkeleton key={`initial-skeleton-${index}`} />
               ))}
             </section>
-          ) : null}
-
-          {!loadingInitial && error ? (
+          ) : error ? (
             <Card>
               <CardContent className="py-8 text-sm text-muted-foreground">
                 {error}
               </CardContent>
             </Card>
-          ) : null}
-
-          {!loadingInitial && !error && items.length === 0 ? (
+          ) : items.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-sm text-muted-foreground">
                 {messages.pages.empty}
               </CardContent>
             </Card>
-          ) : null}
-
-          {items.length > 0 ? (
+          ) : (
             <>
               <section className="grid gap-4 xl:grid-cols-2">
                 {items.map((item) => (
@@ -497,8 +503,8 @@ export function PagesClientPage({
                 </div>
               ) : null}
             </>
-          ) : null}
-        </div>
+          )}
+        </AutoTransition>
       </AutoResizer>
     </div>
   );

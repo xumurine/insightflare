@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { RiCloseLine, RiLoginBoxLine } from "@remixicon/react";
 import { toast } from "sonner";
 
+import { AutoResizer } from "@/components/ui/auto-resizer";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -148,88 +150,107 @@ export function ResetPasswordLinkForm({
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <Spinner className="size-4" />
-        {copy.loading}
-      </div>
-    );
-  }
-
-  if (error || !resetInfo) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-start gap-2 border border-destructive/30 bg-destructive/5 p-3 text-destructive">
-          <RiCloseLine className="mt-0.5 size-4 shrink-0" />
-          <p>{error || copy.loadFailed}</p>
-        </div>
-        <Button asChild variant="outline" className="w-full">
-          <Link href={`/${locale}/login`}>
-            <RiLoginBoxLine className="size-4" />
-            {copy.signIn}
-          </Link>
-        </Button>
-      </div>
-    );
-  }
+  const contentKey = loading
+    ? "loading"
+    : error || !resetInfo
+      ? "error"
+      : "form";
 
   return (
-    <form
-      className="space-y-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void resetPassword();
-      }}
-    >
-      <div className="grid gap-2 border bg-muted/20 p-3">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">{copy.accountLabel}</span>
-          <span className="text-right font-medium">
-            {resetInfo.user.username}
-          </span>
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">{copy.emailLabel}</span>
-          <span className="text-right">{resetInfo.user.email}</span>
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">{copy.expiresLabel}</span>
-          <span className="text-right">
-            {shortDateTime(locale, epochSecondsToMs(resetInfo.expiresAt))}
-          </span>
-        </div>
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="reset-password">{copy.passwordLabel}</Label>
-        <Input
-          id="reset-password"
-          value={password}
-          type="password"
-          autoComplete="new-password"
-          minLength={8}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="reset-confirm-password">
-          {copy.confirmPasswordLabel}
-        </Label>
-        <Input
-          id="reset-confirm-password"
-          value={confirmPassword}
-          type="password"
-          autoComplete="new-password"
-          minLength={8}
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          required
-        />
-      </div>
-      <Button type="submit" className="w-full" disabled={submitting}>
-        {submitting ? <Spinner className="size-4" /> : null}
-        {submitting ? copy.resetting : copy.reset}
-      </Button>
-    </form>
+    <AutoResizer initial>
+      <AutoTransition initial duration={0.22} transitionKey={contentKey}>
+        {loading ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Spinner className="size-4" />
+            {copy.loading}
+          </div>
+        ) : error || !resetInfo ? (
+          <div className="space-y-4">
+            <div className="flex items-start gap-2 border border-destructive/30 bg-destructive/5 p-3 text-destructive">
+              <RiCloseLine className="mt-0.5 size-4 shrink-0" />
+              <p>{error || copy.loadFailed}</p>
+            </div>
+            <Button asChild variant="outline" className="w-full">
+              <Link href={`/${locale}/login`}>
+                <RiLoginBoxLine className="size-4" />
+                {copy.signIn}
+              </Link>
+            </Button>
+          </div>
+        ) : (
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void resetPassword();
+            }}
+          >
+            <div className="grid gap-2 border bg-muted/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">
+                  {copy.accountLabel}
+                </span>
+                <span className="text-right font-medium">
+                  {resetInfo.user.username}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">{copy.emailLabel}</span>
+                <span className="text-right">{resetInfo.user.email}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">
+                  {copy.expiresLabel}
+                </span>
+                <span className="text-right">
+                  {shortDateTime(locale, epochSecondsToMs(resetInfo.expiresAt))}
+                </span>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="reset-password">{copy.passwordLabel}</Label>
+              <Input
+                id="reset-password"
+                value={password}
+                type="password"
+                autoComplete="new-password"
+                minLength={8}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="reset-confirm-password">
+                {copy.confirmPasswordLabel}
+              </Label>
+              <Input
+                id="reset-confirm-password"
+                value={confirmPassword}
+                type="password"
+                autoComplete="new-password"
+                minLength={8}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={submitting}>
+              <AutoTransition
+                className="inline-flex items-center gap-2"
+                transitionKey={submitting ? "submitting" : "idle"}
+              >
+                {submitting ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner className="size-4" />
+                    {copy.resetting}
+                  </span>
+                ) : (
+                  <span>{copy.reset}</span>
+                )}
+              </AutoTransition>
+            </Button>
+          </form>
+        )}
+      </AutoTransition>
+    </AutoResizer>
   );
 }

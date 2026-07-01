@@ -27,6 +27,8 @@ import {
   resolveDeviceTypeMeta,
 } from "@/components/dashboard/journey-display";
 import { useGeoStateTranslationBundle } from "@/components/dashboard/lazy-geo-location-label";
+import { AutoResizer } from "@/components/ui/auto-resizer";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clickable } from "@/components/ui/clickable";
 import {
@@ -948,6 +950,7 @@ function RealtimeVisitorHistorySection({
     (sum, visit) => sum + visit.events.length,
     0,
   );
+  const historyStateKey = visitHistory.length === 0 ? "empty" : "history";
 
   return (
     <section className="space-y-2">
@@ -969,77 +972,103 @@ function RealtimeVisitorHistorySection({
           </span>
         </div>
       </div>
-      {visitHistory.length === 0 ? (
-        <div className="flex min-h-24 items-center justify-center rounded-sm border border-dashed border-border text-[11px] text-muted-foreground">
-          {messages.realtime.visitorHistoryEmpty}
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {visitHistory.map((visit) => (
-            <Card key={visit.visitId} size="sm">
-              <CardContent className="space-y-3 px-3 sm:px-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 space-y-1">
-                    <p className="truncate text-sm font-medium text-foreground">
-                      {visit.title}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                      <span className="truncate">
-                        {messages.common.path}:{" "}
-                        {formatPathWithHash(visit.pathname, visit.hash)}
-                      </span>
-                      <span className="truncate">
-                        {messages.common.hostname}:{" "}
-                        {visit.hostname || messages.common.unknown}
-                      </span>
+      <AutoResizer initial duration={0.22}>
+        <AutoTransition
+          initial={false}
+          duration={0.2}
+          transitionKey={historyStateKey}
+        >
+          {visitHistory.length === 0 ? (
+            <div className="flex min-h-24 items-center justify-center rounded-sm border border-dashed border-border text-[11px] text-muted-foreground">
+              {messages.realtime.visitorHistoryEmpty}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {visitHistory.map((visit) => (
+                <Card key={visit.visitId} size="sm">
+                  <CardContent className="space-y-3 px-3 sm:px-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 space-y-1">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {visit.title}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                          <span className="truncate">
+                            {messages.common.path}:{" "}
+                            {formatPathWithHash(visit.pathname, visit.hash)}
+                          </span>
+                          <span className="truncate">
+                            {messages.common.hostname}:{" "}
+                            {visit.hostname || messages.common.unknown}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="font-mono text-[11px] text-foreground">
+                          {formatRelativeTime(
+                            locale,
+                            visit.lastActivityAt,
+                            now,
+                          )}
+                        </p>
+                        <p className="font-mono text-[11px] text-muted-foreground">
+                          {shortDateTime(
+                            locale,
+                            visit.lastActivityAt,
+                            timeZone,
+                          )}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="font-mono text-[11px] text-foreground">
-                      {formatRelativeTime(locale, visit.lastActivityAt, now)}
-                    </p>
-                    <p className="font-mono text-[11px] text-muted-foreground">
-                      {shortDateTime(locale, visit.lastActivityAt, timeZone)}
-                    </p>
-                  </div>
-                </div>
-                <div className="grid gap-2 text-[11px] text-muted-foreground sm:grid-cols-3">
-                  <span>
-                    {messages.common.startedAt}:{" "}
-                    {formatDetailDateTime(locale, visit.startedAt, timeZone)}
-                  </span>
-                  <span>
-                    {messages.realtime.visitId}: {visit.visitId}
-                  </span>
-                  <span>
-                    {messages.realtime.sessionId}:{" "}
-                    {visit.sessionId || messages.common.unknown}
-                  </span>
-                </div>
-                <div className="space-y-1.5 border-t border-border/70 pt-3">
-                  {visit.events.map((visitEvent) => (
-                    <div
-                      key={visitEvent.id}
-                      className="flex items-center justify-between gap-3 rounded-sm bg-muted/25 px-2 py-1.5"
-                    >
-                      <p className="min-w-0 truncate text-[11px] text-foreground">
-                        {formatLogTitle(
-                          messages,
-                          visitEvent,
-                          classifyRealtimeLogEvent(visitEvent.eventType.trim()),
+                    <div className="grid gap-2 text-[11px] text-muted-foreground sm:grid-cols-3">
+                      <span>
+                        {messages.common.startedAt}:{" "}
+                        {formatDetailDateTime(
+                          locale,
+                          visit.startedAt,
+                          timeZone,
                         )}
-                      </p>
-                      <p className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                        {shortDateTime(locale, visitEvent.eventAt, timeZone)}
-                      </p>
+                      </span>
+                      <span>
+                        {messages.realtime.visitId}: {visit.visitId}
+                      </span>
+                      <span>
+                        {messages.realtime.sessionId}:{" "}
+                        {visit.sessionId || messages.common.unknown}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                    <div className="space-y-1.5 border-t border-border/70 pt-3">
+                      {visit.events.map((visitEvent) => (
+                        <div
+                          key={visitEvent.id}
+                          className="flex items-center justify-between gap-3 rounded-sm bg-muted/25 px-2 py-1.5"
+                        >
+                          <p className="min-w-0 truncate text-[11px] text-foreground">
+                            {formatLogTitle(
+                              messages,
+                              visitEvent,
+                              classifyRealtimeLogEvent(
+                                visitEvent.eventType.trim(),
+                              ),
+                            )}
+                          </p>
+                          <p className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                            {shortDateTime(
+                              locale,
+                              visitEvent.eventAt,
+                              timeZone,
+                            )}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </AutoTransition>
+      </AutoResizer>
     </section>
   );
 }
@@ -1505,6 +1534,11 @@ export function RealtimeLogStreamCard({
   const visibleEvents = events.slice(0, visibleCount);
   const hasMoreEvents = visibleCount < events.length;
   const isInitialLoading = !hasConnected && visibleEvents.length === 0;
+  const logStateKey = isInitialLoading
+    ? "loading"
+    : visibleEvents.length === 0
+      ? "empty"
+      : "events";
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -1540,43 +1574,51 @@ export function RealtimeLogStreamCard({
           <CardTitle>{messages.realtime.recentEvents}</CardTitle>
         </CardHeader>
         <CardContent>
-          {isInitialLoading ? (
-            <div className="flex min-h-56 items-center justify-center text-muted-foreground">
-              <span className="inline-flex items-center gap-2">
-                <Spinner className="size-3.5" />
-                {messages.common.loading}
-              </span>
-            </div>
-          ) : visibleEvents.length === 0 ? (
-            <div className="flex min-h-56 items-center justify-center text-muted-foreground">
-              {messages.common.noData}
-            </div>
-          ) : (
-            <LogStreamScrollbar
-              className="max-h-[30rem]"
-              syncKey={`${visibleEvents.length}:${events.length}`}
-              onReachEnd={hasMoreEvents ? loadMoreEvents : null}
+          <AutoResizer initial duration={0.22}>
+            <AutoTransition
+              initial={false}
+              duration={0.2}
+              transitionKey={logStateKey}
             >
-              <div className="p-1">
-                <ul className="m-0 list-none space-y-2 p-0">
-                  <AnimatePresence initial={false} mode="popLayout">
-                    {visibleEvents.map((event) => (
-                      <RealtimeLogStreamItem
-                        key={event.id}
-                        event={event}
-                        locale={locale}
-                        messages={messages}
-                        now={now}
-                        timeZone={timeZone}
-                        onSelect={setSelectedEvent}
-                        reduceMotion={reduceLogItemMotion}
-                      />
-                    ))}
-                  </AnimatePresence>
-                </ul>
-              </div>
-            </LogStreamScrollbar>
-          )}
+              {isInitialLoading ? (
+                <div className="flex min-h-56 items-center justify-center text-muted-foreground">
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner className="size-3.5" />
+                    {messages.common.loading}
+                  </span>
+                </div>
+              ) : visibleEvents.length === 0 ? (
+                <div className="flex min-h-56 items-center justify-center text-muted-foreground">
+                  {messages.common.noData}
+                </div>
+              ) : (
+                <LogStreamScrollbar
+                  className="max-h-[30rem]"
+                  syncKey={`${visibleEvents.length}:${events.length}`}
+                  onReachEnd={hasMoreEvents ? loadMoreEvents : null}
+                >
+                  <div className="p-1">
+                    <ul className="m-0 list-none space-y-2 p-0">
+                      <AnimatePresence initial={false} mode="popLayout">
+                        {visibleEvents.map((event) => (
+                          <RealtimeLogStreamItem
+                            key={event.id}
+                            event={event}
+                            locale={locale}
+                            messages={messages}
+                            now={now}
+                            timeZone={timeZone}
+                            onSelect={setSelectedEvent}
+                            reduceMotion={reduceLogItemMotion}
+                          />
+                        ))}
+                      </AnimatePresence>
+                    </ul>
+                  </div>
+                </LogStreamScrollbar>
+              )}
+            </AutoTransition>
+          </AutoResizer>
         </CardContent>
       </Card>
       <RealtimeLogEventDetailsDialog

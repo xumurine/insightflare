@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { RiCheckLine, RiCloseLine, RiLoginBoxLine } from "@remixicon/react";
 import { toast } from "sonner";
 
+import { AutoResizer } from "@/components/ui/auto-resizer";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -180,135 +182,183 @@ export function InviteLinkForm({ locale, copy }: InviteLinkFormProps) {
   const requiresLogin =
     Boolean(invite?.requiresLogin) || (!signedIn && !canRegister);
 
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <Spinner className="size-4" />
-        {copy.loading}
-      </div>
-    );
-  }
-
-  if (error || !invite) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-start gap-2 border border-destructive/30 bg-destructive/5 p-3 text-destructive">
-          <RiCloseLine className="mt-0.5 size-4 shrink-0" />
-          <p>{error || copy.loadFailed}</p>
-        </div>
-        <Button asChild variant="outline" className="w-full">
-          <Link href={`/${locale}/login`}>
-            <RiLoginBoxLine className="size-4" />
-            {copy.signIn}
-          </Link>
-        </Button>
-      </div>
-    );
-  }
+  const contentKey = loading ? "loading" : error || !invite ? "error" : "form";
+  const accountActionKey = signedIn
+    ? "signed-in"
+    : requiresLogin
+      ? "requires-login"
+      : "register";
 
   return (
-    <form
-      className="space-y-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void completeInvite();
-      }}
-    >
-      <div className="grid gap-2 border bg-muted/20 p-3">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">{copy.teamLabel}</span>
-          <span className="font-medium text-right">
-            {invite.team.name || invite.team.slug || invite.team.id}
-          </span>
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">{copy.roleLabel}</span>
-          <Badge
-            variant={
-              invite.payload?.teamRole === "admin" ? "default" : "secondary"
-            }
+    <AutoResizer initial>
+      <AutoTransition initial duration={0.22} transitionKey={contentKey}>
+        {loading ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Spinner className="size-4" />
+            {copy.loading}
+          </div>
+        ) : error || !invite ? (
+          <div className="space-y-4">
+            <div className="flex items-start gap-2 border border-destructive/30 bg-destructive/5 p-3 text-destructive">
+              <RiCloseLine className="mt-0.5 size-4 shrink-0" />
+              <p>{error || copy.loadFailed}</p>
+            </div>
+            <Button asChild variant="outline" className="w-full">
+              <Link href={`/${locale}/login`}>
+                <RiLoginBoxLine className="size-4" />
+                {copy.signIn}
+              </Link>
+            </Button>
+          </div>
+        ) : (
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void completeInvite();
+            }}
           >
-            {role}
-          </Badge>
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">{copy.emailLabel}</span>
-          <span className="text-right">{invite.email || copy.anyEmail}</span>
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">{copy.expiresLabel}</span>
-          <span className="text-right">
-            {shortDateTime(locale, epochSecondsToMs(invite.expiresAt))}
-          </span>
-        </div>
-      </div>
+            <div className="grid gap-2 border bg-muted/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">{copy.teamLabel}</span>
+                <span className="text-right font-medium">
+                  {invite.team.name || invite.team.slug || invite.team.id}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">{copy.roleLabel}</span>
+                <Badge
+                  variant={
+                    invite.payload?.teamRole === "admin"
+                      ? "default"
+                      : "secondary"
+                  }
+                >
+                  {role}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">{copy.emailLabel}</span>
+                <span className="text-right">
+                  {invite.email || copy.anyEmail}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">
+                  {copy.expiresLabel}
+                </span>
+                <span className="text-right">
+                  {shortDateTime(locale, epochSecondsToMs(invite.expiresAt))}
+                </span>
+              </div>
+            </div>
 
-      {signedIn ? (
-        <div className="flex items-start gap-2 border border-primary/20 bg-primary/5 p-3 text-primary">
-          <RiCheckLine className="mt-0.5 size-4 shrink-0" />
-          <p>{copy.signedInNotice}</p>
-        </div>
-      ) : requiresLogin ? (
-        <Button asChild className="w-full">
-          <Link href={loginHref}>
-            <RiLoginBoxLine className="size-4" />
-            {copy.signIn}
-          </Link>
-        </Button>
-      ) : (
-        <div className="space-y-4">
-          <div className="grid gap-2">
-            <Label htmlFor="invite-username">{copy.usernameLabel}</Label>
-            <Input
-              id="invite-username"
-              value={username}
-              autoComplete="username"
-              onChange={(event) => setUsername(event.target.value)}
-              required
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="invite-email">{copy.accountEmailLabel}</Label>
-            <Input
-              id="invite-email"
-              value={email}
-              type="email"
-              autoComplete="email"
-              onChange={(event) => setEmail(event.target.value)}
-              disabled={Boolean(invite.email)}
-              required
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="invite-name">{copy.nameLabel}</Label>
-            <Input
-              id="invite-name"
-              value={name}
-              autoComplete="name"
-              onChange={(event) => setName(event.target.value)}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="invite-password">{copy.passwordLabel}</Label>
-            <Input
-              id="invite-password"
-              value={password}
-              type="password"
-              autoComplete="new-password"
-              minLength={8}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-          </div>
-        </div>
-      )}
+            <AutoResizer initial>
+              <AutoTransition
+                initial={false}
+                duration={0.2}
+                transitionKey={accountActionKey}
+              >
+                {signedIn ? (
+                  <div className="flex items-start gap-2 border border-primary/20 bg-primary/5 p-3 text-primary">
+                    <RiCheckLine className="mt-0.5 size-4 shrink-0" />
+                    <p>{copy.signedInNotice}</p>
+                  </div>
+                ) : requiresLogin ? (
+                  <Button asChild className="w-full">
+                    <Link href={loginHref}>
+                      <RiLoginBoxLine className="size-4" />
+                      {copy.signIn}
+                    </Link>
+                  </Button>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="invite-username">
+                        {copy.usernameLabel}
+                      </Label>
+                      <Input
+                        id="invite-username"
+                        value={username}
+                        autoComplete="username"
+                        onChange={(event) => setUsername(event.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="invite-email">
+                        {copy.accountEmailLabel}
+                      </Label>
+                      <Input
+                        id="invite-email"
+                        value={email}
+                        type="email"
+                        autoComplete="email"
+                        onChange={(event) => setEmail(event.target.value)}
+                        disabled={Boolean(invite.email)}
+                        required
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="invite-name">{copy.nameLabel}</Label>
+                      <Input
+                        id="invite-name"
+                        value={name}
+                        autoComplete="name"
+                        onChange={(event) => setName(event.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="invite-password">
+                        {copy.passwordLabel}
+                      </Label>
+                      <Input
+                        id="invite-password"
+                        value={password}
+                        type="password"
+                        autoComplete="new-password"
+                        minLength={8}
+                        onChange={(event) => setPassword(event.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+              </AutoTransition>
+            </AutoResizer>
 
-      {!requiresLogin ? (
-        <Button type="submit" className="w-full" disabled={submitting}>
-          {submitting ? <Spinner className="size-4" /> : null}
-          {submitting ? copy.accepting : copy.accept}
-        </Button>
-      ) : null}
-    </form>
+            <AutoResizer initial>
+              <AutoTransition
+                initial={false}
+                duration={0.2}
+                transitionKey={requiresLogin ? "empty" : "submit"}
+              >
+                {!requiresLogin ? (
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={submitting}
+                  >
+                    <AutoTransition
+                      className="inline-flex items-center gap-2"
+                      transitionKey={submitting ? "submitting" : "idle"}
+                    >
+                      {submitting ? (
+                        <span className="inline-flex items-center gap-2">
+                          <Spinner className="size-4" />
+                          {copy.accepting}
+                        </span>
+                      ) : (
+                        <span>{copy.accept}</span>
+                      )}
+                    </AutoTransition>
+                  </Button>
+                ) : null}
+              </AutoTransition>
+            </AutoResizer>
+          </form>
+        )}
+      </AutoTransition>
+    </AutoResizer>
   );
 }
