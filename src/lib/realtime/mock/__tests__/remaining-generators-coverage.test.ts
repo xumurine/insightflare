@@ -7,12 +7,14 @@ import {
 import {
   generateDemoDoDiagnostic,
   generateDemoSystemPerformance,
+  generateDemoTeamInvites,
   getDemoMembers,
   getDemoScriptSnippet,
   getDemoSiteConfig,
   getDemoSites,
   getDemoTeams,
   getDemoUser,
+  getDemoUsers,
 } from "@/lib/realtime/mock/admin";
 import {
   generateDemoPerformance,
@@ -94,6 +96,7 @@ describe("mock remaining generator coverage", () => {
       systemRole: "admin",
       teamCount: 1,
     });
+    expect(getDemoUsers().length).toBeGreaterThan(1);
     expect(teams[0]).toMatchObject({
       id: "demo-team-001",
       siteCount: expect.any(Number),
@@ -102,6 +105,17 @@ describe("mock remaining generator coverage", () => {
     expect(sites.length).toBeGreaterThan(0);
     expect(getDemoMembers(teams[0].id)).toEqual([
       expect.objectContaining({ teamId: teams[0].id, role: "owner" }),
+      expect.objectContaining({ teamId: teams[0].id, role: "member" }),
+      expect.objectContaining({ teamId: teams[0].id, role: "member" }),
+      expect.objectContaining({ teamId: teams[0].id, role: "admin" }),
+    ]);
+    expect(generateDemoTeamInvites(teams[0].id)).toEqual([
+      expect.objectContaining({ status: "active", code: expect.any(String) }),
+      expect.objectContaining({ status: "active", url: expect.any(String) }),
+      expect.objectContaining({
+        status: "used",
+        usedByUserId: "demo-user-002",
+      }),
     ]);
     expect(getDemoSiteConfig()).toMatchObject({
       trackingStrength: "smart",

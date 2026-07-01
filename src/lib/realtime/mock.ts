@@ -30,12 +30,14 @@ import {
   generateDemoNotificationTest,
   generateDemoScheduledTasks,
   generateDemoSystemPerformance,
+  generateDemoTeamInvites,
   getDemoMembers,
   getDemoScriptSnippet,
   getDemoSiteConfig,
   getDemoSites,
   getDemoTeams,
   getDemoUser,
+  getDemoUsers,
 } from "@/lib/realtime/mock/admin";
 import {
   generateDemoDimension,
@@ -609,6 +611,37 @@ export function handleDemoRequest(options: {
         },
       };
     }
+    if (path.includes("/admin/team-invites")) {
+      const now = nowSeconds();
+      const inviteTeamId = String(
+        bodyRecord.teamId || teamId || getDemoTeams()[0].id,
+      );
+      const role = bodyRecord.role === "admin" ? "admin" : "member";
+      const token = `demo_created_${role}_${now.toString(36)}`;
+      return {
+        ok: true,
+        data: {
+          invite: {
+            id: `demo-team-invite-created-${now}`,
+            type: "team_invite",
+            teamId: inviteTeamId,
+            userId: "",
+            email: String(bodyRecord.email || ""),
+            payload: { teamRole: role, siteAccess: { mode: "all" } },
+            code: token,
+            url: `https://demo.insightflare.app/invite#token=${token}`,
+            createdByUserId: getDemoUser().id,
+            createdAt: now,
+            expiresAt: now + Number(bodyRecord.expiresInHours || 72) * 60 * 60,
+            usedAt: null,
+            usedByUserId: "",
+            revokedAt: null,
+            status: "active",
+          },
+          url: `https://demo.insightflare.app/invite#token=${token}`,
+        },
+      };
+    }
     if (path.includes("/admin/notification-test")) {
       return {
         ok: true,
@@ -742,10 +775,14 @@ export function handleDemoRequest(options: {
     return { ok: true, data: { user: getDemoUser(), teams: getDemoTeams() } };
   }
   if (path.includes("/admin/users")) {
-    return { ok: true, data: [getDemoUser()] };
+    return { ok: true, data: getDemoUsers() };
   }
   if (path.includes("/admin/teams")) {
     return { ok: true, data: getDemoTeams() };
+  }
+  if (path.includes("/admin/team-invites")) {
+    const tid = teamId || getDemoTeams()[0].id;
+    return { ok: true, data: generateDemoTeamInvites(tid) };
   }
   if (path.includes("/admin/sites")) {
     const tid = teamId || getDemoTeams()[0].id;

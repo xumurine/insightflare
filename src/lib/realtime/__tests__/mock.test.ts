@@ -400,6 +400,7 @@ describe("mock — handleDemoRequest", () => {
     it("returns users", () => {
       const res = ok(handleDemoRequest({ path: "/api/private/admin/users" }));
       expect(Array.isArray(res.data)).toBe(true);
+      expect((res.data as unknown[]).length).toBeGreaterThan(1);
     });
 
     it("returns teams", () => {
@@ -415,6 +416,23 @@ describe("mock — handleDemoRequest", () => {
     it("returns members", () => {
       const res = ok(handleDemoRequest({ path: "/api/private/admin/members" }));
       expect(Array.isArray(res.data)).toBe(true);
+    });
+
+    it("returns team invites", () => {
+      const res = ok(
+        handleDemoRequest({
+          path: "/api/private/admin/team-invites",
+          params: { teamId: "demo-team-001" },
+        }),
+      );
+      expect(res.data).toEqual([
+        expect.objectContaining({
+          code: expect.stringContaining("demo_"),
+          url: expect.stringContaining("/invite#token="),
+        }),
+        expect.any(Object),
+        expect.any(Object),
+      ]);
     });
 
     it("returns site config", () => {

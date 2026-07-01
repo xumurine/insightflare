@@ -355,7 +355,14 @@ async function fetchTeamMembers(teamId: string): Promise<MemberData[]> {
 }
 
 async function fetchTeamInvites(teamId: string): Promise<TeamInviteData[]> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") return [];
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+    const { handleDemoRequest } = await import("@/lib/realtime/mock");
+    const result = handleDemoRequest({
+      path: "/api/private/admin/team-invites",
+      params: { teamId },
+    }) as { ok: boolean; data?: TeamInviteData[] };
+    return Array.isArray(result.data) ? result.data : [];
+  }
   const url = `/api/private/admin/team-invites?teamId=${encodeURIComponent(teamId)}`;
   const response = await fetch(url, {
     method: "GET",
