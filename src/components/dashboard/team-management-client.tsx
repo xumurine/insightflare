@@ -133,6 +133,10 @@ function formatChangeRate(value: number | null): string | null {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
+function epochSecondsToMs(value: number): number {
+  return value > 0 && value < 100_000_000_000 ? value * 1000 : value;
+}
+
 function changeRateClass(value: number | null, lowerIsBetter = false): string {
   if (value === null) return "text-muted-foreground";
   const isImprovement = lowerIsBetter ? value <= 0 : value >= 0;
@@ -1268,14 +1272,26 @@ export function TeamManagementClient({
                   {copy.members.inviteStatuses[invite.status]}
                 </TableCell>
                 <TableCell>
-                  {shortDateTime(locale, invite.createdAt, window.timeZone)}
+                  {shortDateTime(
+                    locale,
+                    epochSecondsToMs(invite.createdAt),
+                    window.timeZone,
+                  )}
                 </TableCell>
                 <TableCell>
-                  {shortDateTime(locale, invite.expiresAt, window.timeZone)}
+                  {shortDateTime(
+                    locale,
+                    epochSecondsToMs(invite.expiresAt),
+                    window.timeZone,
+                  )}
                 </TableCell>
                 <TableCell>
                   {invite.usedAt
-                    ? shortDateTime(locale, invite.usedAt, window.timeZone)
+                    ? shortDateTime(
+                        locale,
+                        epochSecondsToMs(invite.usedAt),
+                        window.timeZone,
+                      )
                     : "-"}
                 </TableCell>
                 <TableCell className="text-right">

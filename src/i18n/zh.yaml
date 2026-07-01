@@ -916,6 +916,49 @@ login:
   password: 密码
   signIn: 登录
   invalidCredentials: 用户名或密码错误。
+accountLinks:
+  invite:
+    title: 团队邀请
+    subtitle: 接受邀请后加入该团队。
+    loading: 正在加载邀请...
+    missingToken: 缺少邀请 token。
+    loadFailed: 加载邀请失败。
+    accept: 接受邀请
+    accepting: 正在接受...
+    accepted: 已接受邀请。
+    acceptFailed: 接受邀请失败。
+    signIn: 登录后接受
+    signedInNotice: 当前已登录。接受后会将当前账号加入该团队。
+    teamLabel: 团队
+    roleLabel: 角色
+    emailLabel: 邀请邮箱
+    accountEmailLabel: 账号邮箱
+    anyEmail: 任意账号
+    expiresLabel: 过期时间
+    usernameLabel: 用户名
+    nameLabel: 显示名称
+    passwordLabel: 密码
+    roles:
+      admin: 管理员
+      member: 成员
+  resetPassword:
+    title: 重置密码
+    subtitle: 为该账号设置新密码。
+    loading: 正在加载重置链接...
+    missingToken: 缺少重置 token。
+    loadFailed: 加载重置链接失败。
+    reset: 重置密码
+    resetting: 正在重置...
+    resetDone: 密码已重置，请使用新密码登录。
+    resetFailed: 重置密码失败。
+    signIn: 返回登录
+    accountLabel: 账号
+    emailLabel: 邮箱
+    expiresLabel: 过期时间
+    passwordLabel: 新密码
+    confirmPasswordLabel: 确认密码
+    passwordTooShort: 密码至少 8 个字符。
+    passwordMismatch: 两次输入的密码不一致。
 empty:
   noTeams: 当前账号还没有可访问的团队。
   noSites: 该团队下暂无可访问站点。

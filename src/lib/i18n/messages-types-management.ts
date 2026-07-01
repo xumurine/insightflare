@@ -277,6 +277,53 @@ export interface AppManagementMessages {
     signIn: string;
     invalidCredentials: string;
   };
+  accountLinks: {
+    invite: {
+      title: string;
+      subtitle: string;
+      loading: string;
+      missingToken: string;
+      loadFailed: string;
+      accept: string;
+      accepting: string;
+      accepted: string;
+      acceptFailed: string;
+      signIn: string;
+      signedInNotice: string;
+      teamLabel: string;
+      roleLabel: string;
+      emailLabel: string;
+      accountEmailLabel: string;
+      anyEmail: string;
+      expiresLabel: string;
+      usernameLabel: string;
+      nameLabel: string;
+      passwordLabel: string;
+      roles: {
+        admin: string;
+        member: string;
+      };
+    };
+    resetPassword: {
+      title: string;
+      subtitle: string;
+      loading: string;
+      missingToken: string;
+      loadFailed: string;
+      reset: string;
+      resetting: string;
+      resetDone: string;
+      resetFailed: string;
+      signIn: string;
+      accountLabel: string;
+      emailLabel: string;
+      expiresLabel: string;
+      passwordLabel: string;
+      confirmPasswordLabel: string;
+      passwordTooShort: string;
+      passwordMismatch: string;
+    };
+  };
   empty: {
     noTeams: string;
     noSites: string;

@@ -60,6 +60,10 @@ interface CreatedAccountLink {
   expiresAt: number;
 }
 
+function epochSecondsToMs(value: number): number {
+  return value > 0 && value < 100_000_000_000 ? value * 1000 : value;
+}
+
 async function getUsers(): Promise<AccountUserData[]> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
@@ -432,7 +436,11 @@ export function AdminUsersManagementClient({
               {resetLinkExpiresAt ? (
                 <p className="text-xs text-muted-foreground">
                   {t.resetLinkExpiresAt}:{" "}
-                  {shortDateTime(locale, resetLinkExpiresAt, timeZone)}
+                  {shortDateTime(
+                    locale,
+                    epochSecondsToMs(resetLinkExpiresAt),
+                    timeZone,
+                  )}
                 </p>
               ) : null}
             </div>

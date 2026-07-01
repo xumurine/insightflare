@@ -947,6 +947,49 @@ login:
   password: Password
   signIn: Sign in
   invalidCredentials: Invalid username or password.
+accountLinks:
+  invite:
+    title: Team invitation
+    subtitle: Accept the invitation to join this team.
+    loading: Loading invitation...
+    missingToken: Invitation token is missing.
+    loadFailed: Failed to load invitation.
+    accept: Accept invitation
+    accepting: Accepting...
+    accepted: Invitation accepted.
+    acceptFailed: Failed to accept invitation.
+    signIn: Sign in to accept
+    signedInNotice: You are signed in. Accepting will add your account to this team.
+    teamLabel: Team
+    roleLabel: Role
+    emailLabel: Invite email
+    accountEmailLabel: Account email
+    anyEmail: Any account
+    expiresLabel: Expires
+    usernameLabel: Username
+    nameLabel: Display name
+    passwordLabel: Password
+    roles:
+      admin: Admin
+      member: Member
+  resetPassword:
+    title: Reset password
+    subtitle: Set a new password for this account.
+    loading: Loading reset link...
+    missingToken: Reset token is missing.
+    loadFailed: Failed to load reset link.
+    reset: Reset password
+    resetting: Resetting...
+    resetDone: Password reset. Sign in with the new password.
+    resetFailed: Failed to reset password.
+    signIn: Back to sign in
+    accountLabel: Account
+    emailLabel: Email
+    expiresLabel: Expires
+    passwordLabel: New password
+    confirmPasswordLabel: Confirm password
+    passwordTooShort: Password must be at least 8 characters.
+    passwordMismatch: Passwords do not match.
 empty:
   noTeams: No team available yet.
   noSites: No site is available under this team.
