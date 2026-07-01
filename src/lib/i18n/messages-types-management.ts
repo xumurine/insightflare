@@ -291,6 +291,12 @@ export interface AppManagementMessages {
   };
   teamSelect: {
     groupLabel: string;
+    groups: {
+      created: string;
+      managed: string;
+      member: string;
+      system: string;
+    };
     createHint: string;
     createTitle: string;
     createDescription: string;

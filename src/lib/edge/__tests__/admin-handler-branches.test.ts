@@ -15,6 +15,7 @@ import {
   ensureDefaultTeam,
   hashPassword,
   requireActor,
+  teamGroupsForSession,
   teamsFor,
   verifyPassword,
 } from "@/lib/edge/admin-auth";
@@ -41,6 +42,7 @@ vi.mock("@/lib/edge/admin-auth", () => ({
   normE: (s: string) => s.trim().toLowerCase().slice(0, 200),
   normU: (s: string) => s.trim().toLowerCase().slice(0, 80),
   requireActor: vi.fn(),
+  teamGroupsForSession: vi.fn(),
   teamsFor: vi.fn(),
   toPublicUser: (u: {
     id: string;
@@ -149,6 +151,7 @@ const byIdMock = vi.mocked(byId);
 const byIdentifierMock = vi.mocked(byIdentifier);
 const ensureDefaultTeamMock = vi.mocked(ensureDefaultTeam);
 const hashPasswordMock = vi.mocked(hashPassword);
+const teamGroupsForSessionMock = vi.mocked(teamGroupsForSession);
 const teamsForMock = vi.mocked(teamsFor);
 const verifyPasswordMock = vi.mocked(verifyPassword);
 const deleteSiteScriptSettingsMock = vi.mocked(deleteSiteScriptSettings);
@@ -233,6 +236,10 @@ describe("admin handler low branches", () => {
     byIdentifierMock.mockResolvedValue(actor.user);
     ensureDefaultTeamMock.mockResolvedValue();
     hashPasswordMock.mockResolvedValue("new-hash");
+    teamGroupsForSessionMock.mockResolvedValue({
+      teams: [],
+      teamGroups: { created: [], managed: [], member: [], system: [] },
+    });
     teamsForMock.mockResolvedValue([]);
     verifyPasswordMock.mockResolvedValue(true);
     deleteSiteScriptSettingsMock.mockResolvedValue(undefined);

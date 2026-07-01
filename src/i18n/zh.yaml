@@ -928,6 +928,11 @@ actions:
   switchToDark: 深色
 teamSelect:
   groupLabel: 团队
+  groups:
+    created: 创建的团队
+    managed: 管理的团队
+    member: 所属的团队
+    system: 系统全部团队
   createHint: 新建团队
   createTitle: 新建团队
   createDescription: 创建后会自动切换到新团队。

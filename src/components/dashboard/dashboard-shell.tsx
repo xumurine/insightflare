@@ -65,6 +65,7 @@ import { canManageTeam } from "@/lib/dashboard/permissions";
 import { buildTeamSections } from "@/lib/dashboard/team-sections";
 import {
   fetchAdminSites,
+  type SessionTeamGroups,
   type SiteData,
   type TeamData,
 } from "@/lib/edge-client";
@@ -398,6 +399,7 @@ interface DashboardShellProps {
     timeZone?: string;
   };
   teams: TeamData[];
+  teamGroups?: SessionTeamGroups;
   activeTeamSlug?: string;
   sites?: SidebarSite[];
   unreadAttentionCount?: number;
@@ -412,6 +414,7 @@ export function DashboardShell({
   messages,
   user,
   teams,
+  teamGroups,
   activeTeamSlug,
   sites = [],
   unreadAttentionCount = 0,
@@ -586,6 +589,30 @@ export function DashboardShell({
     name: team.name,
     href: `/${locale}/app/${team.slug}`,
   }));
+  const teamOptionGroups = teamGroups
+    ? {
+        created: teamGroups.created.map((team) => ({
+          slug: team.slug,
+          name: team.name,
+          href: `/${locale}/app/${team.slug}`,
+        })),
+        managed: teamGroups.managed.map((team) => ({
+          slug: team.slug,
+          name: team.name,
+          href: `/${locale}/app/${team.slug}`,
+        })),
+        member: teamGroups.member.map((team) => ({
+          slug: team.slug,
+          name: team.name,
+          href: `/${locale}/app/${team.slug}`,
+        })),
+        system: teamGroups.system.map((team) => ({
+          slug: team.slug,
+          name: team.name,
+          href: `/${locale}/app/${team.slug}`,
+        })),
+      }
+    : undefined;
   const sidebarContextMode = routeState.mode === "root" ? "root" : "team";
   const teamSelector = liveActiveTeamSlug ? (
     <SidebarGroup className={SIDEBAR_COLLAPSE_SECTION_CLASS}>
@@ -594,6 +621,7 @@ export function DashboardShell({
           locale={locale}
           messages={messages}
           options={teamOptions}
+          groups={teamOptionGroups}
           activeTeamSlug={liveActiveTeamSlug}
         />
       </SidebarGroupContent>

@@ -11,6 +11,7 @@ import type {
   QueryFilters,
   ReferrersData,
   ScriptSnippetData,
+  SessionTeamGroups,
   SiteConfigData,
   SiteData,
   TeamData,
@@ -497,12 +498,14 @@ export async function loginAdminAccount(input: {
 export async function fetchAdminMe(): Promise<{
   user: AccountUserData;
   teams: TeamData[];
+  teamGroups?: SessionTeamGroups;
 }> {
   const res = await fetchEdgeJson<{
     ok: boolean;
     data: {
       user: AccountUserData;
       teams: TeamData[];
+      teamGroups?: SessionTeamGroups;
     };
   }>({
     path: "/api/private/session",

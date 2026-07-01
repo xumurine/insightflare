@@ -10,6 +10,7 @@ import {
   normE,
   normU,
   requireActor,
+  teamGroupsForSession,
   teamsFor,
   toPublicUser,
   verifyPassword,
@@ -69,9 +70,10 @@ export async function handleAuthMeAdmin(
   if (req.method !== "GET") return na(req);
   const a = await requireActor(env, req);
   if (a instanceof Response) return a;
+  const sessionTeams = await teamGroupsForSession(env, a);
   return jsonResponseFor(req, {
     ok: true,
-    data: { user: toPublicUser(a.user), teams: await teamsFor(env, a.user.id) },
+    data: { user: toPublicUser(a.user), ...sessionTeams },
   });
 }
 

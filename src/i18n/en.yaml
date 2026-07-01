@@ -959,6 +959,11 @@ actions:
   switchToDark: Dark
 teamSelect:
   groupLabel: Team
+  groups:
+    created: Created teams
+    managed: Managed teams
+    member: Member teams
+    system: System teams
   createHint: Create team
   createTitle: Create Team
   createDescription: You will be switched to the new team after creation.

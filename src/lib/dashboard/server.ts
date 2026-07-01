@@ -6,6 +6,7 @@ import {
   fetchAdminMe,
   fetchAdminSites,
   fetchNotificationMessages,
+  type SessionTeamGroups,
   type SiteData,
   type TeamData,
 } from "@/lib/edge-client";
@@ -25,6 +26,7 @@ export interface DashboardContext {
     timeZone?: string;
   };
   teams: TeamData[];
+  teamGroups: SessionTeamGroups;
   activeTeam: TeamData;
   sites: SiteWithSlug[];
   activeSite: SiteWithSlug;
@@ -40,6 +42,7 @@ export interface DashboardTeamContext {
     timeZone?: string;
   };
   teams: TeamData[];
+  teamGroups: SessionTeamGroups;
   activeTeam: TeamData;
   sites: SiteWithSlug[];
   unreadAttentionCount: number;
@@ -55,6 +58,7 @@ export interface DashboardRootContext {
     timeZone?: string;
   };
   teams: TeamData[];
+  teamGroups: SessionTeamGroups;
   unreadAttentionCount: number;
 }
 
@@ -98,6 +102,17 @@ const getMe = cache(async () => {
   }
 });
 
+function teamGroupsForProfile(me: Awaited<ReturnType<typeof fetchAdminMe>>) {
+  return (
+    me.teamGroups ?? {
+      created: [],
+      managed: [],
+      member: me.teams,
+      system: [],
+    }
+  );
+}
+
 export const getDashboardProfile = cache(async () => {
   return getMe();
 });
@@ -116,6 +131,7 @@ export const getDashboardRootContext = cache(
     return {
       user: me.user,
       teams: me.teams,
+      teamGroups: teamGroupsForProfile(me),
       unreadAttentionCount,
     };
   },
@@ -150,6 +166,7 @@ export const getDashboardTeamContext = cache(
     return {
       user: me.user,
       teams: me.teams,
+      teamGroups: teamGroupsForProfile(me),
       activeTeam,
       sites,
       unreadAttentionCount,
@@ -171,6 +188,7 @@ export const getTeamSiteContext = cache(
     return {
       user: teamContext.user,
       teams: teamContext.teams,
+      teamGroups: teamContext.teamGroups,
       activeTeam: teamContext.activeTeam,
       sites: teamContext.sites,
       activeSite,

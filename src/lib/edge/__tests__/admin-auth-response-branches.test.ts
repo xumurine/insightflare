@@ -6,6 +6,7 @@ import {
   normE,
   normU,
   requireActor,
+  teamGroupsForSession,
   teamsFor,
   toPublicUser,
   verifyPassword,
@@ -385,5 +386,48 @@ describe("admin auth low branches", () => {
       "00000000-0000-4000-8000-000000000001",
       "blank-user",
     );
+  });
+
+  it("builds categorized session team groups", async () => {
+    const createdRows = [
+      { id: "created-team", slug: "created", membershipRole: "owner" },
+    ];
+    const managedRows = [
+      { id: "managed-team", slug: "managed", membershipRole: "admin" },
+    ];
+    const memberRows = [
+      { id: "member-team", slug: "member", membershipRole: "member" },
+    ];
+    const systemRows = [
+      { id: "created-team", slug: "created", membershipRole: "owner" },
+      { id: "system-team", slug: "system", membershipRole: null },
+    ];
+
+    const result = await teamGroupsForSession(
+      createEnv([
+        statement({ all: createdRows }),
+        statement({ all: managedRows }),
+        statement({ all: memberRows }),
+        statement({ all: systemRows }),
+      ]).env,
+      { user: userRow({ id: "admin-1" }), isAdmin: true },
+    );
+
+    expect(result.teamGroups).toMatchObject({
+      created: [{ id: "created-team", membershipRole: "owner" }],
+      managed: [{ id: "managed-team", membershipRole: "admin" }],
+      member: [{ id: "member-team", membershipRole: "member" }],
+      system: [
+        { id: "created-team", membershipRole: "owner" },
+        { id: "system-team" },
+      ],
+    });
+    expect(result.teamGroups.system[1]).not.toHaveProperty("membershipRole");
+    expect(result.teams.map((team) => team.id)).toEqual([
+      "created-team",
+      "managed-team",
+      "member-team",
+      "system-team",
+    ]);
   });
 });

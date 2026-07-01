@@ -141,6 +141,40 @@ describe("dashboard server helpers", () => {
     expect(fetchAdminSitesMock).toHaveBeenCalledWith("team-1");
   });
 
+  it("lets system admins resolve teams they do not belong to", async () => {
+    fetchAdminMeMock.mockResolvedValue({
+      user: {
+        id: "admin-1",
+        username: "admin",
+        email: "admin@example.test",
+        name: "Admin User",
+        systemRole: "admin",
+      },
+      teams: [team("team-1", "owned-by-someone-else")],
+      teamGroups: {
+        created: [],
+        managed: [],
+        member: [],
+        system: [team("team-1", "owned-by-someone-else")],
+      },
+    } as any);
+    fetchAdminSitesMock.mockResolvedValue([]);
+
+    const { getDashboardProfile, getDashboardTeamContext } =
+      await loadServerModule();
+
+    await expect(getDashboardProfile()).resolves.toMatchObject({
+      teams: [expect.objectContaining({ id: "team-1" })],
+    });
+    await expect(
+      getDashboardTeamContext("owned-by-someone-else"),
+    ).resolves.toMatchObject({
+      activeTeam: { id: "team-1" },
+      user: { id: "admin-1", systemRole: "admin" },
+    });
+    expect(fetchAdminSitesMock).toHaveBeenCalledWith("team-1");
+  });
+
   it("returns null or empty defaults when profile, team, or sites are missing", async () => {
     fetchAdminMeMock.mockResolvedValueOnce(null as any);
     const { getDashboardTeamContext } = await loadServerModule();

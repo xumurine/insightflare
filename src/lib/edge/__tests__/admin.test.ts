@@ -923,25 +923,55 @@ describe("private admin edge handler", () => {
     it("returns current user and teams for authenticated auth/me requests", async () => {
       setSession(adminSession);
       const actor = userRow();
-      const teams = [
+      const createdTeams = [
         {
           id: "team-1",
           name: "Team",
+          slug: "team",
           membershipRole: "owner",
           siteCount: 1,
           memberCount: 1,
         },
+      ];
+      const managedTeams = [
         {
           id: "team-2",
           name: "Other",
-          membershipRole: "bogus",
+          slug: "other",
+          membershipRole: "admin",
           siteCount: 0,
           memberCount: 2,
         },
       ];
+      const memberTeams = [
+        {
+          id: "team-3",
+          name: "Member",
+          slug: "member",
+          membershipRole: "bogus",
+          siteCount: 0,
+          memberCount: 3,
+        },
+      ];
+      const systemTeams = [
+        ...createdTeams,
+        ...managedTeams,
+        ...memberTeams,
+        {
+          id: "team-4",
+          name: "System",
+          slug: "system",
+          membershipRole: null,
+          siteCount: 0,
+          memberCount: 1,
+        },
+      ];
       const { env } = createEnv([
         statement({ first: actor }),
-        statement({ all: teams }),
+        statement({ all: createdTeams }),
+        statement({ all: managedTeams }),
+        statement({ all: memberTeams }),
+        statement({ all: systemTeams }),
       ]);
 
       const response = await dispatch("/api/private/session", env);
@@ -952,9 +982,22 @@ describe("private admin edge handler", () => {
         data: {
           user: publicUser(actor),
           teams: [
-            { ...teams[0], membershipRole: "owner" },
-            { ...teams[1], membershipRole: "member" },
+            { ...createdTeams[0], membershipRole: "owner" },
+            { ...managedTeams[0], membershipRole: "admin" },
+            { ...memberTeams[0], membershipRole: "member" },
+            {
+              id: "team-4",
+              name: "System",
+              slug: "system",
+              siteCount: 0,
+              memberCount: 1,
+            },
           ],
+          teamGroups: {
+            created: [{ ...createdTeams[0], membershipRole: "owner" }],
+            managed: [{ ...managedTeams[0], membershipRole: "admin" }],
+            member: [{ ...memberTeams[0], membershipRole: "member" }],
+          },
         },
       });
       expect(requireSessionMock).toHaveBeenCalledOnce();

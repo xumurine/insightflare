@@ -32,6 +32,7 @@ export async function RootDashboardShell({
       messages={messages}
       user={context.user}
       teams={context.teams}
+      teamGroups={context.teamGroups}
       unreadAttentionCount={context.unreadAttentionCount}
       managementSections={
         context.user.systemRole === "admin"

@@ -12,6 +12,13 @@ export interface TeamData {
   membershipRole?: TeamRole;
 }
 
+export interface SessionTeamGroups {
+  created: TeamData[];
+  managed: TeamData[];
+  member: TeamData[];
+  system: TeamData[];
+}
+
 export interface SiteData {
   id: string;
   teamId: string;

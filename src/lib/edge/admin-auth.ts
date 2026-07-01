@@ -318,3 +318,92 @@ export async function teamsFor(
     membershipRole: toTeamRole(row.membershipRole),
   }));
 }
+
+export interface SessionTeamGroups {
+  created: Array<Record<string, unknown>>;
+  managed: Array<Record<string, unknown>>;
+  member: Array<Record<string, unknown>>;
+  system: Array<Record<string, unknown>>;
+}
+
+function mapTeamRows(
+  rows: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  return rows.map((row) => {
+    const role = row.membershipRole;
+    const mapped = { ...row };
+    if (role === null || role === undefined) {
+      delete mapped.membershipRole;
+      return mapped;
+    }
+    return {
+      ...mapped,
+      membershipRole: toTeamRole(role),
+    };
+  });
+}
+
+function flattenTeamGroups(groups: SessionTeamGroups) {
+  const seen = new Set<string>();
+  const out: Array<Record<string, unknown>> = [];
+
+  for (const group of [
+    groups.created,
+    groups.managed,
+    groups.member,
+    groups.system,
+  ]) {
+    for (const team of group) {
+      const id = String(team.id || "");
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      out.push(team);
+    }
+  }
+
+  return out;
+}
+
+export async function teamGroupsForSession(
+  env: Env,
+  actor: Actor,
+): Promise<{
+  teams: Array<Record<string, unknown>>;
+  teamGroups: SessionTeamGroups;
+}> {
+  const userId = actor.user.id;
+  const createdRows = await env.DB.prepare(
+    "SELECT t.id,t.name,t.slug,t.owner_user_id AS ownerUserId,t.created_at AS createdAt,t.updated_at AS updatedAt,COALESCE(tm.role,'owner') AS membershipRole,(SELECT COUNT(*) FROM sites s WHERE s.team_id=t.id) AS siteCount,(SELECT COUNT(*) FROM team_members x WHERE x.team_id=t.id) AS memberCount FROM teams t LEFT JOIN team_members tm ON tm.team_id=t.id AND tm.user_id=? WHERE t.owner_user_id=? ORDER BY t.created_at DESC",
+  )
+    .bind(userId, userId)
+    .all<Record<string, unknown>>();
+  const managedRows = await env.DB.prepare(
+    "SELECT t.id,t.name,t.slug,t.owner_user_id AS ownerUserId,t.created_at AS createdAt,t.updated_at AS updatedAt,tm.role AS membershipRole,(SELECT COUNT(*) FROM sites s WHERE s.team_id=t.id) AS siteCount,(SELECT COUNT(*) FROM team_members x WHERE x.team_id=t.id) AS memberCount FROM teams t INNER JOIN team_members tm ON tm.team_id=t.id WHERE tm.user_id=? AND tm.role IN ('owner','admin') AND t.owner_user_id<>? ORDER BY t.created_at DESC",
+  )
+    .bind(userId, userId)
+    .all<Record<string, unknown>>();
+  const memberRows = await env.DB.prepare(
+    "SELECT t.id,t.name,t.slug,t.owner_user_id AS ownerUserId,t.created_at AS createdAt,t.updated_at AS updatedAt,tm.role AS membershipRole,(SELECT COUNT(*) FROM sites s WHERE s.team_id=t.id) AS siteCount,(SELECT COUNT(*) FROM team_members x WHERE x.team_id=t.id) AS memberCount FROM teams t INNER JOIN team_members tm ON tm.team_id=t.id WHERE tm.user_id=? AND tm.role NOT IN ('owner','admin') AND t.owner_user_id<>? ORDER BY t.created_at DESC",
+  )
+    .bind(userId, userId)
+    .all<Record<string, unknown>>();
+  const systemRows = actor.isAdmin
+    ? await env.DB.prepare(
+        "SELECT t.id,t.name,t.slug,t.owner_user_id AS ownerUserId,t.created_at AS createdAt,t.updated_at AS updatedAt,tm.role AS membershipRole,(SELECT COUNT(*) FROM sites s WHERE s.team_id=t.id) AS siteCount,(SELECT COUNT(*) FROM team_members x WHERE x.team_id=t.id) AS memberCount FROM teams t LEFT JOIN team_members tm ON tm.team_id=t.id AND tm.user_id=? ORDER BY t.created_at DESC",
+      )
+        .bind(userId)
+        .all<Record<string, unknown>>()
+    : { results: [] };
+
+  const teamGroups: SessionTeamGroups = {
+    created: mapTeamRows(createdRows.results),
+    managed: mapTeamRows(managedRows.results),
+    member: mapTeamRows(memberRows.results),
+    system: mapTeamRows(systemRows.results),
+  };
+
+  return {
+    teams: flattenTeamGroups(teamGroups),
+    teamGroups,
+  };
+}
