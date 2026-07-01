@@ -30,6 +30,7 @@ import {
   handleDoDiagnosticAdmin,
   handleSystemPerformanceAdmin,
 } from "./admin-system";
+import { handleTeamInvitesAdmin } from "./admin-team-invites";
 import { handleMembersAdmin, handleTeamsAdmin } from "./admin-teams";
 import {
   handleAuthMeAdmin,
@@ -54,6 +55,8 @@ export async function handlePrivateAdmin(
   if (p === "/api/private/admin/profile")
     return handleProfileAdmin(request, env);
   if (p === "/api/private/admin/teams") return handleTeamsAdmin(request, env);
+  if (p === "/api/private/admin/team-invites")
+    return handleTeamInvitesAdmin(request, env, url);
   if (p === "/api/private/admin/sites")
     return handleSitesAdmin(request, env, url);
   if (p === "/api/private/admin/members")

@@ -28,6 +28,7 @@ import {
   handleDoDiagnosticAdmin,
   handleSystemPerformanceAdmin,
 } from "@/lib/edge/admin-system";
+import { handleTeamInvitesAdmin } from "@/lib/edge/admin-team-invites";
 import { handleMembersAdmin, handleTeamsAdmin } from "@/lib/edge/admin-teams";
 import { handleProfileAdmin, handleUsersAdmin } from "@/lib/edge/admin-users";
 import type { AppEnv } from "@/lib/hono/types";
@@ -38,6 +39,9 @@ export const privateAdminRoutes = new Hono<AppEnv>();
 privateAdminRoutes.all("/users", (c) => handleUsersAdmin(c.req.raw, c.env));
 privateAdminRoutes.all("/profile", (c) => handleProfileAdmin(c.req.raw, c.env));
 privateAdminRoutes.all("/teams", (c) => handleTeamsAdmin(c.req.raw, c.env));
+privateAdminRoutes.all("/team-invites", (c) =>
+  handleTeamInvitesAdmin(c.req.raw, c.env, requestUrl(c)),
+);
 privateAdminRoutes.all("/sites", (c) =>
   handleSitesAdmin(c.req.raw, c.env, requestUrl(c)),
 );
