@@ -1,3 +1,5 @@
+import { RiNotification3Line } from "@remixicon/react";
+
 import { TeamNotificationsClient } from "@/components/dashboard/team-notifications-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { canManageTeam } from "@/lib/dashboard/permissions";
@@ -38,7 +40,8 @@ export default async function TeamNotificationsPage({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiNotification3Line className="size-4 text-muted-foreground" />
             {messages.teamManagement.notifications.forbiddenTitle}
           </CardTitle>
         </CardHeader>

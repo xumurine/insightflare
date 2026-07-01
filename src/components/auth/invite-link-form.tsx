@@ -349,7 +349,10 @@ export function InviteLinkForm({ locale, copy }: InviteLinkFormProps) {
                           {copy.accepting}
                         </span>
                       ) : (
-                        <span>{copy.accept}</span>
+                        <span className="inline-flex items-center gap-2">
+                          <RiCheckLine className="size-4" />
+                          {copy.accept}
+                        </span>
                       )}
                     </AutoTransition>
                   </Button>

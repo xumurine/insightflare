@@ -8,6 +8,7 @@ import {
   RiCheckDoubleLine,
   RiCheckLine,
   RiFileList3Line,
+  RiFilterOffLine,
   RiInboxLine,
   RiMailUnreadLine,
   RiNotification3Line,
@@ -623,7 +624,8 @@ export function NotificationCenterClient({
               size="sm"
               onClick={clearRuleFilter}
             >
-              {copy.ruleFilterClear}
+              <RiFilterOffLine className="size-4" />
+              <span>{copy.ruleFilterClear}</span>
             </Button>
           </CardContent>
         </Card>

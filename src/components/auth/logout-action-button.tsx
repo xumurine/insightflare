@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { RiLogoutBoxLine } from "@remixicon/react";
 import { toast } from "sonner";
 
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -61,7 +62,10 @@ export function LogoutActionButton({
             {pendingLabel}
           </span>
         ) : (
-          <span key="idle">{label}</span>
+          <span key="idle" className="inline-flex items-center gap-2">
+            <RiLogoutBoxLine className="size-4" />
+            {label}
+          </span>
         )}
       </AutoTransition>
     </Button>

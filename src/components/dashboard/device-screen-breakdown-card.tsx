@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { RiArrowDownSLine, RiArrowUpSLine } from "@remixicon/react";
+import {
+  RiArrowDownSLine,
+  RiArrowUpSLine,
+  RiExternalLinkLine,
+} from "@remixicon/react";
 import {
   AnimatePresence,
   type HTMLMotionProps,
@@ -190,8 +194,7 @@ function ScreenCategoryPieCard({
               cursor={false}
               content={({ active, payload }) => {
                 const item = payload?.[0]?.payload as
-                  | (typeof chartData)[number]
-                  | undefined;
+                  (typeof chartData)[number] | undefined;
                 if (!active || !item) return null;
 
                 return (
@@ -539,7 +542,8 @@ function ScreenPreviewCard({
           {previewUrl ? (
             <Button asChild variant="outline" size="sm">
               <a href={previewUrl} target="_blank" rel="noreferrer">
-                {messages.devices.openSiteLabel}
+                <RiExternalLinkLine className="size-4" />
+                <span>{messages.devices.openSiteLabel}</span>
               </a>
             </Button>
           ) : null}

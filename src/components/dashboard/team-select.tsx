@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RiAddLine } from "@remixicon/react";
+import { RiAddLine, RiCloseLine } from "@remixicon/react";
 import { toast } from "sonner";
 
 import { AutoResizer } from "@/components/ui/auto-resizer";
@@ -237,7 +237,8 @@ export function TeamSelect({
               onClick={() => setOpenCreateDialog(false)}
               disabled={submitting}
             >
-              {copy.cancel}
+              <RiCloseLine className="size-4" />
+              <span>{copy.cancel}</span>
             </Button>
             <Button type="submit" disabled={submitting}>
               <AutoTransition className="inline-flex items-center gap-2">
@@ -250,7 +251,10 @@ export function TeamSelect({
                     {copy.creating}
                   </span>
                 ) : (
-                  <span key="create">{copy.create}</span>
+                  <span key="create" className="inline-flex items-center gap-2">
+                    <RiAddLine className="size-4" />
+                    {copy.create}
+                  </span>
                 )}
               </AutoTransition>
             </Button>

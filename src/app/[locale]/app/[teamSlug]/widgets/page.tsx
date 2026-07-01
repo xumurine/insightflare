@@ -61,8 +61,9 @@ export default async function TeamWidgetsPage({
               <Card className="h-full transition-colors group-hover:border-primary/40">
                 <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
                   <div className="min-w-0 space-y-1">
-                    <CardTitle className="truncate text-base">
-                      {site.name}
+                    <CardTitle className="inline-flex max-w-full items-center gap-2 text-base">
+                      <RiApps2Line className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{site.name}</span>
                     </CardTitle>
                     <p className="truncate font-mono text-xs text-muted-foreground">
                       {site.domain}

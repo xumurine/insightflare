@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   RiAddLine,
   RiCheckboxCircleLine,
+  RiCloseLine,
   RiDeleteBinLine,
   RiEditLine,
   RiEyeLine,
@@ -98,12 +99,7 @@ type RuleFormType = "report" | "milestone" | "threshold" | "change" | "health";
 type RecipientKind = "preset" | "custom";
 type RecipientPreset = "creator" | "team_admins" | "all_team_members";
 type ScheduleKind =
-  | "daily"
-  | "weekly"
-  | "monthly"
-  | "quarterly"
-  | "yearly"
-  | "interval";
+  "daily" | "weekly" | "monthly" | "quarterly" | "yearly" | "interval";
 type ReportType = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 type ConditionCombinator = "all" | "any";
 type ChangeMode = "absolute" | "percent";
@@ -2054,7 +2050,10 @@ export function TeamNotificationsClient({
       <div className="grid gap-4">
         <Card>
           <CardHeader>
-            <CardTitle>{copy.rulesTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiNotification3Line className="size-4 text-muted-foreground" />
+              {copy.rulesTitle}
+            </CardTitle>
             <CardDescription>
               {formatI18nTemplate(copy.enabledCount, {
                 count: enabledCount,
@@ -2252,7 +2251,8 @@ export function TeamNotificationsClient({
               onClick={() => setTestDialogOpen(false)}
               disabled={testing}
             >
-              {messages.teamSelect.cancel}
+              <RiCloseLine className="size-4" />
+              <span>{messages.teamSelect.cancel}</span>
             </Button>
             <Button
               type="button"
@@ -2463,7 +2463,8 @@ export function TeamNotificationsClient({
               variant="outline"
               onClick={() => setPreviewDialogOpen(false)}
             >
-              {messages.teamSelect.cancel}
+              <RiCloseLine className="size-4" />
+              <span>{messages.teamSelect.cancel}</span>
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2502,7 +2503,8 @@ export function TeamNotificationsClient({
               onClick={() => setDialogOpen(false)}
               disabled={saving}
             >
-              {messages.teamSelect.cancel}
+              <RiCloseLine className="size-4" />
+              <span>{messages.teamSelect.cancel}</span>
             </Button>
             <Button
               type="button"

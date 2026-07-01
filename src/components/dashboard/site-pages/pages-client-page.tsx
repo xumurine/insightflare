@@ -6,6 +6,7 @@ import {
   RiArrowDownLine,
   RiArrowRightSLine,
   RiArrowUpLine,
+  RiRefreshLine,
 } from "@remixicon/react";
 import { motion } from "motion/react";
 
@@ -498,7 +499,8 @@ export function PagesClientPage({
                       void loadPage(meta.nextPage!, "append");
                     }}
                   >
-                    {messages.pages.retry}
+                    <RiRefreshLine className="size-4" />
+                    <span>{messages.pages.retry}</span>
                   </Button>
                 </div>
               ) : null}

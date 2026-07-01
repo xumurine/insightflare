@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  RiCheckLine,
   RiComputerLine,
   RiGlobalLine,
   RiLockPasswordLine,
   RiNotification3Line,
+  RiSave3Line,
   RiUserSettingsLine,
 } from "@remixicon/react";
 import { toast } from "sonner";
@@ -573,7 +573,7 @@ export function AccountSettingsClient({
                         key="profile-save"
                         className="inline-flex items-center gap-2"
                       >
-                        <RiCheckLine className="size-4" />
+                        <RiSave3Line className="size-4" />
                         {copy.profileSave}
                       </span>
                     )}
@@ -660,7 +660,7 @@ export function AccountSettingsClient({
                         key="password-save"
                         className="inline-flex items-center gap-2"
                       >
-                        <RiCheckLine className="size-4" />
+                        <RiSave3Line className="size-4" />
                         {copy.passwordSave}
                       </span>
                     )}
@@ -799,7 +799,7 @@ export function AccountSettingsClient({
                           key="notification-preferences-save"
                           className="inline-flex items-center gap-2"
                         >
-                          <RiCheckLine className="size-4" />
+                          <RiSave3Line className="size-4" />
                           {copy.save}
                         </span>
                       )}
@@ -876,7 +876,7 @@ export function AccountSettingsClient({
                         key="preferred-locale-save"
                         className="inline-flex items-center gap-2"
                       >
-                        <RiCheckLine className="size-4" />
+                        <RiSave3Line className="size-4" />
                         {copy.save}
                       </span>
                     )}
@@ -996,7 +996,7 @@ export function AccountSettingsClient({
                         key="save"
                         className="inline-flex items-center gap-2"
                       >
-                        <RiCheckLine className="size-4" />
+                        <RiSave3Line className="size-4" />
                         {copy.save}
                       </span>
                     )}

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  RiCloseLine,
   RiDeleteBinLine,
   RiMailSendLine,
   RiSave3Line,
@@ -578,7 +579,8 @@ export function NotificationEmailSettingsClient({
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel disabled={deletingConfig}>
-                      {messages.teamSelect.cancel}
+                      <RiCloseLine className="size-4" />
+                      <span>{messages.teamSelect.cancel}</span>
                     </AlertDialogCancel>
                     <AlertDialogAction
                       variant="destructive"
@@ -598,7 +600,13 @@ export function NotificationEmailSettingsClient({
                             {copy.deleting}
                           </span>
                         ) : (
-                          <span key="confirm-delete-config">{copy.delete}</span>
+                          <span
+                            key="confirm-delete-config"
+                            className="inline-flex items-center gap-2"
+                          >
+                            <RiDeleteBinLine className="size-4" />
+                            {copy.delete}
+                          </span>
                         )}
                       </AutoTransition>
                     </AlertDialogAction>

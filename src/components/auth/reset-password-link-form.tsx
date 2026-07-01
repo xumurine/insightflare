@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { RiCloseLine, RiLoginBoxLine } from "@remixicon/react";
+import { RiCloseLine, RiLoginBoxLine, RiSave3Line } from "@remixicon/react";
 import { toast } from "sonner";
 
 import { AutoResizer } from "@/components/ui/auto-resizer";
@@ -244,7 +244,10 @@ export function ResetPasswordLinkForm({
                     {copy.resetting}
                   </span>
                 ) : (
-                  <span>{copy.reset}</span>
+                  <span className="inline-flex items-center gap-2">
+                    <RiSave3Line className="size-4" />
+                    {copy.reset}
+                  </span>
                 )}
               </AutoTransition>
             </Button>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RiRefreshLine } from "@remixicon/react";
+import { RiMailSendLine, RiRefreshLine } from "@remixicon/react";
 import { toast } from "sonner";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -23,12 +23,7 @@ import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
 type PreviewType =
-  | "test"
-  | "report"
-  | "milestone"
-  | "threshold"
-  | "change"
-  | "health";
+  "test" | "report" | "milestone" | "threshold" | "change" | "health";
 type PreviewFormat = "html" | "text" | "json";
 
 const PREVIEW_TYPES: PreviewType[] = [
@@ -208,7 +203,8 @@ export function NotificationEmailPreviewClient({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
+          <CardTitle className="inline-flex items-center gap-2 text-base">
+            <RiMailSendLine className="size-4 text-muted-foreground" />
             {subject ? `${page.subject}: ${subject}` : page.title}
           </CardTitle>
         </CardHeader>

@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RiDeleteBinLine, RiKey2Line } from "@remixicon/react";
+import {
+  RiAddLine,
+  RiCloseLine,
+  RiDeleteBinLine,
+  RiFileCopyLine,
+  RiKey2Line,
+} from "@remixicon/react";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
@@ -401,7 +407,13 @@ export function AdminUsersManagementClient({
                       {t.creating}
                     </span>
                   ) : (
-                    <span key="create">{t.create}</span>
+                    <span
+                      key="create"
+                      className="inline-flex items-center gap-2"
+                    >
+                      <RiAddLine className="size-4" />
+                      {t.create}
+                    </span>
                   )}
                 </AutoTransition>
               </Button>
@@ -427,7 +439,8 @@ export function AdminUsersManagementClient({
                     void handleCopyResetLink();
                   }}
                 >
-                  {t.copyResetLink}
+                  <RiFileCopyLine className="size-4" />
+                  <span>{t.copyResetLink}</span>
                 </Button>
               </div>
               {resetLinkExpiresAt ? (
@@ -548,7 +561,8 @@ export function AdminUsersManagementClient({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deletingUserId !== null}>
-              {messages.teamSelect.cancel}
+              <RiCloseLine className="size-4" />
+              <span>{messages.teamSelect.cancel}</span>
             </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
@@ -569,7 +583,13 @@ export function AdminUsersManagementClient({
                     {t.deleting}
                   </span>
                 ) : (
-                  <span key="delete-confirm">{t.delete}</span>
+                  <span
+                    key="delete-confirm"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiDeleteBinLine className="size-4" />
+                    {t.delete}
+                  </span>
                 )}
               </AutoTransition>
             </AlertDialogAction>

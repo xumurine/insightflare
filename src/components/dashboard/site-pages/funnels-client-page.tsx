@@ -12,8 +12,10 @@ import {
 import {
   RiAddLine,
   RiArrowRightLine,
+  RiCloseLine,
   RiDeleteBinLine,
   RiFilter2Line,
+  RiSave3Line,
 } from "@remixicon/react";
 import { toast } from "sonner";
 
@@ -62,6 +64,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import {
   pushUrlWithoutNavigation,
   replaceUrlWithoutNavigation,
@@ -481,11 +484,22 @@ function CreateFunnelDialog({
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={submitting}>
-                {labels.cancel}
+                <RiCloseLine className="size-4" />
+                <span>{labels.cancel}</span>
               </Button>
             </DialogClose>
             <Button type="submit" disabled={!canSubmit}>
-              {submitting ? labels.creating : labels.save}
+              {submitting ? (
+                <>
+                  <Spinner className="size-4" />
+                  <span>{labels.creating}</span>
+                </>
+              ) : (
+                <>
+                  <RiSave3Line className="size-4" />
+                  <span>{labels.save}</span>
+                </>
+              )}
             </Button>
           </DialogFooter>
         </form>
@@ -1061,7 +1075,8 @@ export function FunnelsClientPage({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>
-              {labels.cancel}
+              <RiCloseLine className="size-4" />
+              <span>{labels.cancel}</span>
             </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
@@ -1071,7 +1086,17 @@ export function FunnelsClientPage({
                 void handleDelete();
               }}
             >
-              {deleting ? labels.deleting : labels.deleteConfirm}
+              {deleting ? (
+                <>
+                  <Spinner className="size-4" />
+                  <span>{labels.deleting}</span>
+                </>
+              ) : (
+                <>
+                  <RiDeleteBinLine className="size-4" />
+                  <span>{labels.deleteConfirm}</span>
+                </>
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

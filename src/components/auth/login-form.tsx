@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RiRefreshLine, RiShieldCrossLine } from "@remixicon/react";
+import {
+  RiLoginBoxLine,
+  RiRefreshLine,
+  RiShieldCrossLine,
+} from "@remixicon/react";
 import { toast } from "sonner";
 
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -47,16 +51,10 @@ interface LoginResponse {
 }
 
 type LoginTurnstileClientConfig =
-  | { enabled: false }
-  | { enabled: true; siteKey: string; mode: "invisible" };
+  { enabled: false } | { enabled: true; siteKey: string; mode: "invisible" };
 
 type TurnstileStatus =
-  | "checking"
-  | "disabled"
-  | "loading"
-  | "running"
-  | "verified"
-  | "error";
+  "checking" | "disabled" | "loading" | "running" | "verified" | "error";
 
 interface TurnstilePublicResponse {
   ok?: boolean;
@@ -425,7 +423,10 @@ export function LoginForm({
                 {buttonLabel}
               </span>
             ) : (
-              <span key="idle">{buttonLabel}</span>
+              <span key="idle" className="inline-flex items-center gap-2">
+                <RiLoginBoxLine className="size-4" />
+                {buttonLabel}
+              </span>
             )}
           </AutoTransition>
         </Button>

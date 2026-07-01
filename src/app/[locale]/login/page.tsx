@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RiTranslate2 } from "@remixicon/react";
 
 import { LoginForm } from "@/components/auth/login-form";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -86,7 +87,8 @@ export default async function LoginPage({
                 asChild
               >
                 <Link href={withNext("/en/login", nextPath)}>
-                  {t.actions.switchToEnglish}
+                  <RiTranslate2 className="size-3" />
+                  <span>{t.actions.switchToEnglish}</span>
                 </Link>
               </Button>
               <Button
@@ -95,7 +97,8 @@ export default async function LoginPage({
                 asChild
               >
                 <Link href={withNext("/zh/login", nextPath)}>
-                  {t.actions.switchToChinese}
+                  <RiTranslate2 className="size-3" />
+                  <span>{t.actions.switchToChinese}</span>
                 </Link>
               </Button>
             </div>

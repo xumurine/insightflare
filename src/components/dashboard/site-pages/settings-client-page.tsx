@@ -2,6 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  RiArrowRightLine,
+  RiBarChartBoxLine,
+  RiCloseLine,
+  RiCodeLine,
+  RiDeleteBinLine,
+  RiFileCopyLine,
+  RiGlobalLine,
+  RiLinksLine,
+  RiRouteLine,
+  RiSave3Line,
+  RiSettings3Line,
+  RiShareForwardLine,
+  RiSpeedUpLine,
+} from "@remixicon/react";
 import { toast } from "sonner";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -712,7 +727,10 @@ export function SettingsClientPage({
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="h-full order-1">
           <CardHeader>
-            <CardTitle>{copy.editTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiSettings3Line className="size-4 text-muted-foreground" />
+              {copy.editTitle}
+            </CardTitle>
             <CardDescription>{copy.editSubtitle}</CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col">
@@ -781,7 +799,10 @@ export function SettingsClientPage({
                       {copy.saving}
                     </span>
                   ) : (
-                    <span key="save">{copy.save}</span>
+                    <span key="save" className="inline-flex items-center gap-2">
+                      <RiSave3Line className="size-4" />
+                      {copy.save}
+                    </span>
                   )}
                 </AutoTransition>
               </Button>
@@ -791,7 +812,10 @@ export function SettingsClientPage({
 
         <Card className="h-full order-3">
           <CardHeader>
-            <CardTitle>{copy.publicSharingTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiShareForwardLine className="size-4 text-muted-foreground" />
+              {copy.publicSharingTitle}
+            </CardTitle>
             <CardDescription>{copy.publicSharingSubtitle}</CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col gap-4">
@@ -874,7 +898,8 @@ export function SettingsClientPage({
                   }}
                   disabled={!publicLink}
                 >
-                  {messages.teamManagement.publicLinks.copyLink}
+                  <RiFileCopyLine className="size-4" />
+                  <span>{messages.teamManagement.publicLinks.copyLink}</span>
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
@@ -907,7 +932,13 @@ export function SettingsClientPage({
                     {copy.saving}
                   </span>
                 ) : (
-                  <span key="save-public-sharing">{copy.save}</span>
+                  <span
+                    key="save-public-sharing"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiSave3Line className="size-4" />
+                    {copy.save}
+                  </span>
                 )}
               </AutoTransition>
             </Button>
@@ -916,7 +947,10 @@ export function SettingsClientPage({
 
         <Card className="h-full order-2">
           <CardHeader>
-            <CardTitle>{copy.scriptTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiCodeLine className="size-4 text-muted-foreground" />
+              {copy.scriptTitle}
+            </CardTitle>
             <CardDescription>{copy.scriptSubtitle}</CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col gap-3">
@@ -944,14 +978,18 @@ export function SettingsClientPage({
               }}
               disabled={loadingScript || !scriptSnippet}
             >
-              {copy.copyScript}
+              <RiFileCopyLine className="size-4" />
+              <span>{copy.copyScript}</span>
             </Button>
           </CardContent>
         </Card>
 
         <Card className="h-full order-3">
           <CardHeader>
-            <CardTitle>{copy.trackingStrengthGroupTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiBarChartBoxLine className="size-4 text-muted-foreground" />
+              {copy.trackingStrengthGroupTitle}
+            </CardTitle>
             <CardDescription>
               {copy.trackingStrengthDescription}
             </CardDescription>
@@ -1049,7 +1087,13 @@ export function SettingsClientPage({
                     {copy.savingTracking}
                   </span>
                 ) : (
-                  <span key="save-strength">{copy.saveTracking}</span>
+                  <span
+                    key="save-strength"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiSave3Line className="size-4" />
+                    {copy.saveTracking}
+                  </span>
                 )}
               </AutoTransition>
             </Button>
@@ -1058,7 +1102,10 @@ export function SettingsClientPage({
 
         <Card className="h-full order-4">
           <CardHeader>
-            <CardTitle>{copy.queryHashGroupTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiLinksLine className="size-4 text-muted-foreground" />
+              {copy.queryHashGroupTitle}
+            </CardTitle>
             <CardDescription>{copy.queryHashGroupDescription}</CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col gap-4">
@@ -1168,7 +1215,13 @@ export function SettingsClientPage({
                     {copy.savingTracking}
                   </span>
                 ) : (
-                  <span key="save-query-hash">{copy.saveTracking}</span>
+                  <span
+                    key="save-query-hash"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiSave3Line className="size-4" />
+                    {copy.saveTracking}
+                  </span>
                 )}
               </AutoTransition>
             </Button>
@@ -1177,7 +1230,10 @@ export function SettingsClientPage({
 
         <Card className="h-full order-4">
           <CardHeader>
-            <CardTitle>{copy.autoTrackGroupTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiRouteLine className="size-4 text-muted-foreground" />
+              {copy.autoTrackGroupTitle}
+            </CardTitle>
             <CardDescription>{copy.autoTrackGroupDescription}</CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col gap-4">
@@ -1238,7 +1294,13 @@ export function SettingsClientPage({
                     {copy.savingTracking}
                   </span>
                 ) : (
-                  <span key="save-auto-tracking">{copy.saveTracking}</span>
+                  <span
+                    key="save-auto-tracking"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiSave3Line className="size-4" />
+                    {copy.saveTracking}
+                  </span>
                 )}
               </AutoTransition>
             </Button>
@@ -1247,7 +1309,10 @@ export function SettingsClientPage({
 
         <Card className="h-full order-5">
           <CardHeader>
-            <CardTitle>{copy.performanceGroupTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiSpeedUpLine className="size-4 text-muted-foreground" />
+              {copy.performanceGroupTitle}
+            </CardTitle>
             <CardDescription>
               {copy.performanceGroupDescription}
             </CardDescription>
@@ -1313,7 +1378,13 @@ export function SettingsClientPage({
                     {copy.savingTracking}
                   </span>
                 ) : (
-                  <span key="save-performance">{copy.saveTracking}</span>
+                  <span
+                    key="save-performance"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiSave3Line className="size-4" />
+                    {copy.saveTracking}
+                  </span>
                 )}
               </AutoTransition>
             </Button>
@@ -1322,7 +1393,10 @@ export function SettingsClientPage({
 
         <Card className="h-full order-6">
           <CardHeader>
-            <CardTitle>{copy.domainWhitelistTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiGlobalLine className="size-4 text-muted-foreground" />
+              {copy.domainWhitelistTitle}
+            </CardTitle>
             <CardDescription>{copy.domainWhitelistDescription}</CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col gap-4">
@@ -1376,7 +1450,13 @@ export function SettingsClientPage({
                     {copy.savingTracking}
                   </span>
                 ) : (
-                  <span key="save-domain-whitelist">{copy.saveTracking}</span>
+                  <span
+                    key="save-domain-whitelist"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiSave3Line className="size-4" />
+                    {copy.saveTracking}
+                  </span>
                 )}
               </AutoTransition>
             </Button>
@@ -1385,7 +1465,10 @@ export function SettingsClientPage({
 
         <Card className="h-full order-7">
           <CardHeader>
-            <CardTitle>{copy.pathBlacklistTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiRouteLine className="size-4 text-muted-foreground" />
+              {copy.pathBlacklistTitle}
+            </CardTitle>
             <CardDescription>{copy.pathBlacklistDescription}</CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col gap-4">
@@ -1437,7 +1520,13 @@ export function SettingsClientPage({
                     {copy.savingTracking}
                   </span>
                 ) : (
-                  <span key="save-path-blacklist">{copy.saveTracking}</span>
+                  <span
+                    key="save-path-blacklist"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiSave3Line className="size-4" />
+                    {copy.saveTracking}
+                  </span>
                 )}
               </AutoTransition>
             </Button>
@@ -1446,7 +1535,10 @@ export function SettingsClientPage({
 
         <Card className="h-full order-8">
           <CardHeader>
-            <CardTitle>{copy.transferTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiArrowRightLine className="size-4 text-muted-foreground" />
+              {copy.transferTitle}
+            </CardTitle>
             <CardDescription>{copy.transferSubtitle}</CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col">
@@ -1502,7 +1594,13 @@ export function SettingsClientPage({
                       {copy.transferring}
                     </span>
                   ) : (
-                    <span key="transfer">{copy.transfer}</span>
+                    <span
+                      key="transfer"
+                      className="inline-flex items-center gap-2"
+                    >
+                      <RiArrowRightLine className="size-4" />
+                      {copy.transfer}
+                    </span>
                   )}
                 </AutoTransition>
               </Button>
@@ -1519,7 +1617,10 @@ export function SettingsClientPage({
         >
           <Card className="h-full border-destructive/40 order-9">
             <CardHeader>
-              <CardTitle>{copy.deleteTitle}</CardTitle>
+              <CardTitle className="inline-flex items-center gap-2">
+                <RiDeleteBinLine className="size-4 text-muted-foreground" />
+                {copy.deleteTitle}
+              </CardTitle>
               <CardDescription>{copy.deleteSubtitle}</CardDescription>
             </CardHeader>
             <CardContent className="flex h-full items-end">
@@ -1541,7 +1642,13 @@ export function SettingsClientPage({
                         {copy.deleting}
                       </span>
                     ) : (
-                      <span key="delete">{copy.delete}</span>
+                      <span
+                        key="delete"
+                        className="inline-flex items-center gap-2"
+                      >
+                        <RiDeleteBinLine className="size-4" />
+                        {copy.delete}
+                      </span>
                     )}
                   </AutoTransition>
                 </Button>
@@ -1560,7 +1667,8 @@ export function SettingsClientPage({
               <AlertDialogCancel
                 disabled={trackingSaving || transferring || deleting}
               >
-                {messages.teamSelect.cancel}
+                <RiCloseLine className="size-4" />
+                <span>{messages.teamSelect.cancel}</span>
               </AlertDialogCancel>
               <AlertDialogAction
                 variant="destructive"
@@ -1580,7 +1688,13 @@ export function SettingsClientPage({
                       {copy.deleting}
                     </span>
                   ) : (
-                    <span key="confirm-delete">{copy.delete}</span>
+                    <span
+                      key="confirm-delete"
+                      className="inline-flex items-center gap-2"
+                    >
+                      <RiDeleteBinLine className="size-4" />
+                      {copy.delete}
+                    </span>
                   )}
                 </AutoTransition>
               </AlertDialogAction>

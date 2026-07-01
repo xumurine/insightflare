@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RiArrowRightLine, RiSettings3Line } from "@remixicon/react";
+import { RiAddLine, RiArrowRightLine, RiSettings3Line } from "@remixicon/react";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
@@ -184,7 +184,13 @@ export function AdminTeamsManagementClient({
                       {t.creating}
                     </span>
                   ) : (
-                    <span key="create">{t.create}</span>
+                    <span
+                      key="create"
+                      className="inline-flex items-center gap-2"
+                    >
+                      <RiAddLine className="size-4" />
+                      {t.create}
+                    </span>
                   )}
                 </AutoTransition>
               </Button>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { RiTranslate2 } from "@remixicon/react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -42,14 +43,20 @@ export function AccountLinkPageActions({
         size="xs"
         asChild
       >
-        <Link href={`/en${path}${hash}`}>{englishLabel}</Link>
+        <Link href={`/en${path}${hash}`}>
+          <RiTranslate2 className="size-3" />
+          <span>{englishLabel}</span>
+        </Link>
       </Button>
       <Button
         variant={locale === "zh" ? "default" : "outline"}
         size="xs"
         asChild
       >
-        <Link href={`/zh${path}${hash}`}>{chineseLabel}</Link>
+        <Link href={`/zh${path}${hash}`}>
+          <RiTranslate2 className="size-3" />
+          <span>{chineseLabel}</span>
+        </Link>
       </Button>
     </div>
   );

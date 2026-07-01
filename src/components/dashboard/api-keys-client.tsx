@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   RiAddLine,
+  RiCheckboxBlankCircleLine,
+  RiCheckLine,
+  RiCloseLine,
   RiDeleteBinLine,
   RiFileCopyLine,
   RiKey2Line,
@@ -605,12 +608,14 @@ export function ApiKeysClient({
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>
-                                    {cancelLabel}
+                                    <RiCloseLine className="size-4" />
+                                    <span>{cancelLabel}</span>
                                   </AlertDialogCancel>
                                   <AlertDialogAction
                                     onClick={() => void rotateKey(key.id)}
                                   >
-                                    {copy.rotate}
+                                    <RiRefreshLine className="size-4" />
+                                    <span>{copy.rotate}</span>
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
@@ -646,13 +651,15 @@ export function ApiKeysClient({
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>
-                                    {cancelLabel}
+                                    <RiCloseLine className="size-4" />
+                                    <span>{cancelLabel}</span>
                                   </AlertDialogCancel>
                                   <AlertDialogAction
                                     variant="destructive"
                                     onClick={() => void revokeKey(key.id)}
                                   >
-                                    {copy.revoke}
+                                    <RiDeleteBinLine className="size-4" />
+                                    <span>{copy.revoke}</span>
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
@@ -730,7 +737,12 @@ export function ApiKeysClient({
                   size="sm"
                   onClick={() => setSiteIds([])}
                 >
-                  {copy.allSites}
+                  {siteIds.length === 0 ? (
+                    <RiCheckLine />
+                  ) : (
+                    <RiCheckboxBlankCircleLine />
+                  )}
+                  <span>{copy.allSites}</span>
                 </Button>
                 {sites.map((site) => (
                   <Button
@@ -740,7 +752,12 @@ export function ApiKeysClient({
                     size="sm"
                     onClick={() => toggleSite(site.id)}
                   >
-                    {site.name}
+                    {siteIds.includes(site.id) ? (
+                      <RiCheckLine />
+                    ) : (
+                      <RiCheckboxBlankCircleLine />
+                    )}
+                    <span>{site.name}</span>
                   </Button>
                 ))}
               </div>
@@ -778,7 +795,10 @@ export function ApiKeysClient({
                     {copy.creating}
                   </span>
                 ) : (
-                  <span key="create">{copy.create}</span>
+                  <span key="create" className="inline-flex items-center gap-2">
+                    <RiAddLine className="size-4" />
+                    {copy.create}
+                  </span>
                 )}
               </AutoTransition>
             </Button>

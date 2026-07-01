@@ -11,6 +11,7 @@ import {
   RiGlobalLine,
   RiMoonLine,
   RiSunLine,
+  RiTranslate2,
 } from "@remixicon/react";
 
 import { DashboardHeaderControls } from "@/components/dashboard/dashboard-header-controls";
@@ -248,7 +249,8 @@ export function ShareHeader({
                   className="justify-start"
                   onClick={() => switchLocale("en")}
                 >
-                  {messages.actions.switchToEnglish}
+                  <RiTranslate2 className="size-4" />
+                  <span>{messages.actions.switchToEnglish}</span>
                 </Button>
               </DrawerClose>
               <DrawerClose asChild>
@@ -258,7 +260,8 @@ export function ShareHeader({
                   className="justify-start"
                   onClick={() => switchLocale("zh")}
                 >
-                  {messages.actions.switchToChinese}
+                  <RiTranslate2 className="size-4" />
+                  <span>{messages.actions.switchToChinese}</span>
                 </Button>
               </DrawerClose>
             </div>

@@ -16,8 +16,10 @@ import {
   RiArrowLeftSLine,
   RiArrowRightSLine,
   RiCalendarLine,
+  RiCheckLine,
   RiCloseLine,
   RiFilter3Line,
+  RiFilterOffLine,
   RiTimeLine,
 } from "@remixicon/react";
 import type { PartialOptions } from "overlayscrollbars";
@@ -1333,10 +1335,14 @@ export function DashboardHeaderControls({
 
               <DrawerFooter>
                 <Button variant="outline" onClick={clearAllFilterQueryValues}>
-                  {messages.filters.clear}
+                  <RiFilterOffLine className="size-4" />
+                  <span>{messages.filters.clear}</span>
                 </Button>
                 <DrawerClose asChild>
-                  <Button>{closeLabel}</Button>
+                  <Button>
+                    <RiCloseLine className="size-4" />
+                    <span>{closeLabel}</span>
+                  </Button>
                 </DrawerClose>
               </DrawerFooter>
             </DrawerContent>
@@ -1406,7 +1412,8 @@ export function DashboardHeaderControls({
                               handleRangeValueChange(item, "mobile");
                             }}
                           >
-                            {rangeLabel(messages, item)}
+                            <RiCalendarLine className="size-3.5" />
+                            <span>{rangeLabel(messages, item)}</span>
                           </Button>
                         ))}
                       </div>
@@ -1438,7 +1445,8 @@ export function DashboardHeaderControls({
                             handleIntervalValueChange(item);
                           }}
                         >
-                          {intervalLabel(messages, item)}
+                          <RiTimeLine className="size-3.5" />
+                          <span>{intervalLabel(messages, item)}</span>
                         </Button>
                       );
                     })}
@@ -1448,7 +1456,10 @@ export function DashboardHeaderControls({
 
               <DrawerFooter>
                 <DrawerClose asChild>
-                  <Button>{closeLabel}</Button>
+                  <Button>
+                    <RiCloseLine className="size-4" />
+                    <span>{closeLabel}</span>
+                  </Button>
                 </DrawerClose>
               </DrawerFooter>
             </DrawerContent>
@@ -1503,7 +1514,8 @@ export function DashboardHeaderControls({
                   />
 
                   <Button variant="outline" onClick={clearAllFilterQueryValues}>
-                    {messages.filters.clear}
+                    <RiFilterOffLine className="size-4" />
+                    <span>{messages.filters.clear}</span>
                   </Button>
                 </div>
               </PanelScrollbar>
@@ -1671,7 +1683,8 @@ export function DashboardHeaderControls({
               }}
               disabled={!pendingNormalized}
             >
-              {messages.dashboardHeader.customApply}
+              <RiCheckLine className="size-4" />
+              <span>{messages.dashboardHeader.customApply}</span>
             </Button>
           </DialogFooter>
         </DialogContent>

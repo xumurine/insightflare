@@ -999,10 +999,7 @@ export function DashboardShell({
                     locale={locale}
                     messages={messages}
                     siteId={activeSiteId}
-                    showControls={
-                      hasActiveSite ||
-                      routeState.activeTeamSectionKey === "sites"
-                    }
+                    showControls={Boolean(liveActiveTeamSlug)}
                     showFilterSheet={hasActiveSite}
                   />
                 </div>

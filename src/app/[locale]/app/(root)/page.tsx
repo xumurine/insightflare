@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RiArrowRightSLine, RiLoginBoxLine } from "@remixicon/react";
 
 import { LogoutActionButton } from "@/components/auth/logout-action-button";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,7 @@ export default async function AppRootPage({ params }: AppRootPageProps) {
               >
                 <Link href={`/${resolvedLocale}/app/${team.slug}`}>
                   <span className="truncate">{team.name}</span>
+                  <RiArrowRightSLine className="size-4 text-muted-foreground" />
                 </Link>
               </Button>
             ))}
@@ -73,7 +75,10 @@ export default async function AppRootPage({ params }: AppRootPageProps) {
         </CardHeader>
         <CardContent className="flex items-center gap-2">
           <Button asChild>
-            <a href={`/${resolvedLocale}/login`}>{t.login.title}</a>
+            <a href={`/${resolvedLocale}/login`}>
+              <RiLoginBoxLine className="size-4" />
+              <span>{t.login.title}</span>
+            </a>
           </Button>
           <LogoutActionButton
             locale={resolvedLocale}

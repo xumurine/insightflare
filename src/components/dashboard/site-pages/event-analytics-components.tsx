@@ -17,10 +17,12 @@ import {
   RiArrowDownSLine,
   RiArrowLeftLine,
   RiArrowUpSLine,
+  RiCheckLine,
   RiDatabase2Line,
   RiExternalLinkLine,
   RiFileList3Line,
   RiFilter3Line,
+  RiFilterOffLine,
   RiPulseLine,
   RiSearchLine,
   RiStackLine,
@@ -2583,10 +2585,12 @@ export function EventFieldsCard({
               variant="outline"
               onClick={clearPayloadFilters}
             >
-              {labels.payloadFilterClear}
+              <RiFilterOffLine className="size-4" />
+              <span>{labels.payloadFilterClear}</span>
             </Button>
             <Button type="button" onClick={applyPayloadFilterDraft}>
-              {labels.payloadFilterApply}
+              <RiCheckLine className="size-4" />
+              <span>{labels.payloadFilterApply}</span>
             </Button>
           </DialogFooter>
         </DialogContent>

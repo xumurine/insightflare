@@ -6,12 +6,20 @@ import { useRouter } from "next/navigation";
 import {
   RiAddLine,
   RiArrowDownLine,
+  RiArrowRightLine,
   RiArrowRightSLine,
   RiArrowUpLine,
+  RiBarChartBoxLine,
+  RiCloseLine,
   RiDeleteBinLine,
+  RiFileCopyLine,
   RiGlobalLine,
   RiGroupLine,
+  RiLinksLine,
   RiLockLine,
+  RiMailSendLine,
+  RiSave3Line,
+  RiSettings3Line,
 } from "@remixicon/react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
@@ -1155,7 +1163,10 @@ export function TeamManagementClient({
   const inviteCreateCard = (
     <Card className="h-full">
       <CardHeader>
-        <CardTitle>{copy.members.invitesTitle}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiMailSendLine className="size-4 text-muted-foreground" />
+          {copy.members.invitesTitle}
+        </CardTitle>
         <CardDescription>{copy.members.invitesSubtitle}</CardDescription>
       </CardHeader>
       <CardContent className="flex h-full flex-col gap-4">
@@ -1228,7 +1239,10 @@ export function TeamManagementClient({
                   {copy.members.creatingInvite}
                 </span>
               ) : (
-                <span key="create">{copy.members.createInvite}</span>
+                <span key="create" className="inline-flex items-center gap-2">
+                  <RiAddLine className="size-4" />
+                  {copy.members.createInvite}
+                </span>
               )}
             </AutoTransition>
           </Button>
@@ -1244,7 +1258,8 @@ export function TeamManagementClient({
                 void handleCopyLatestInviteUrl();
               }}
             >
-              {copy.members.copyInvite}
+              <RiFileCopyLine className="size-4" />
+              <span>{copy.members.copyInvite}</span>
             </Button>
           </div>
         ) : null}
@@ -1255,7 +1270,10 @@ export function TeamManagementClient({
   const inviteLinksCard = (
     <Card>
       <CardHeader>
-        <CardTitle>{copy.members.inviteLinksTitle}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiLinksLine className="size-4 text-muted-foreground" />
+          {copy.members.inviteLinksTitle}
+        </CardTitle>
         <CardDescription>{copy.members.inviteLinksSubtitle}</CardDescription>
       </CardHeader>
       <CardContent>
@@ -1645,7 +1663,8 @@ export function TeamManagementClient({
                 onClick={() => setCreateSiteDialogOpen(false)}
                 disabled={creatingSite}
               >
-                {messages.teamSelect.cancel}
+                <RiCloseLine className="size-4" />
+                <span>{messages.teamSelect.cancel}</span>
               </Button>
               <Button type="submit" disabled={creatingSite}>
                 <AutoTransition className="inline-flex items-center gap-2">
@@ -1658,7 +1677,13 @@ export function TeamManagementClient({
                       {siteCreateCopy.creating}
                     </span>
                   ) : (
-                    <span key="create-site">{siteCreateCopy.create}</span>
+                    <span
+                      key="create-site"
+                      className="inline-flex items-center gap-2"
+                    >
+                      <RiAddLine className="size-4" />
+                      {siteCreateCopy.create}
+                    </span>
                   )}
                 </AutoTransition>
               </Button>
@@ -1672,7 +1697,10 @@ export function TeamManagementClient({
           <div className="space-y-4">
             <Card className="overflow-visible">
               <CardHeader>
-                <CardTitle>{copy.sites.aggregateTitle}</CardTitle>
+                <CardTitle className="inline-flex items-center gap-2">
+                  <RiBarChartBoxLine className="size-4 text-muted-foreground" />
+                  {copy.sites.aggregateTitle}
+                </CardTitle>
               </CardHeader>
 
               <CardContent className="space-y-3">
@@ -1872,7 +1900,10 @@ export function TeamManagementClient({
             <div className="grid gap-4 lg:grid-cols-2">
               <Card className="h-full">
                 <CardHeader>
-                  <CardTitle>{copy.settings.title}</CardTitle>
+                  <CardTitle className="inline-flex items-center gap-2">
+                    <RiSettings3Line className="size-4 text-muted-foreground" />
+                    {copy.settings.title}
+                  </CardTitle>
                   <CardDescription>{copy.settings.subtitle}</CardDescription>
                 </CardHeader>
                 <CardContent className="flex h-full flex-col">
@@ -1922,7 +1953,13 @@ export function TeamManagementClient({
                             {copy.settings.saving}
                           </span>
                         ) : (
-                          <span key="save">{copy.settings.save}</span>
+                          <span
+                            key="save"
+                            className="inline-flex items-center gap-2"
+                          >
+                            <RiSave3Line className="size-4" />
+                            {copy.settings.save}
+                          </span>
                         )}
                       </AutoTransition>
                     </Button>
@@ -1947,7 +1984,10 @@ export function TeamManagementClient({
                 >
                   <Card className="h-full border-amber-500/40">
                     <CardHeader>
-                      <CardTitle>{copy.settings.transferTitle}</CardTitle>
+                      <CardTitle className="inline-flex items-center gap-2">
+                        <RiArrowRightLine className="size-4 text-muted-foreground" />
+                        {copy.settings.transferTitle}
+                      </CardTitle>
                       <CardDescription>
                         {copy.settings.transferSubtitle}
                       </CardDescription>
@@ -2011,7 +2051,11 @@ export function TeamManagementClient({
                                   {copy.settings.transferring}
                                 </span>
                               ) : (
-                                <span key="transfer">
+                                <span
+                                  key="transfer"
+                                  className="inline-flex items-center gap-2"
+                                >
+                                  <RiArrowRightLine className="size-4" />
                                   {copy.settings.transfer}
                                 </span>
                               )}
@@ -2032,7 +2076,8 @@ export function TeamManagementClient({
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel disabled={transferring}>
-                        {messages.teamSelect.cancel}
+                        <RiCloseLine className="size-4" />
+                        <span>{messages.teamSelect.cancel}</span>
                       </AlertDialogCancel>
                       <AlertDialogAction
                         disabled={transferring}
@@ -2051,7 +2096,11 @@ export function TeamManagementClient({
                               {copy.settings.transferring}
                             </span>
                           ) : (
-                            <span key="confirm-transfer-dialog">
+                            <span
+                              key="confirm-transfer-dialog"
+                              className="inline-flex items-center gap-2"
+                            >
+                              <RiArrowRightLine className="size-4" />
                               {copy.settings.transfer}
                             </span>
                           )}
@@ -2072,7 +2121,10 @@ export function TeamManagementClient({
                 >
                   <Card className="h-full border-destructive/40">
                     <CardHeader>
-                      <CardTitle>{copy.settings.delete}</CardTitle>
+                      <CardTitle className="inline-flex items-center gap-2">
+                        <RiDeleteBinLine className="size-4 text-muted-foreground" />
+                        {copy.settings.delete}
+                      </CardTitle>
                       <CardDescription>
                         {copy.settings.deleteConfirm}
                       </CardDescription>
@@ -2094,7 +2146,13 @@ export function TeamManagementClient({
                                 {copy.settings.deleting}
                               </span>
                             ) : (
-                              <span key="delete">{copy.settings.delete}</span>
+                              <span
+                                key="delete"
+                                className="inline-flex items-center gap-2"
+                              >
+                                <RiDeleteBinLine className="size-4" />
+                                {copy.settings.delete}
+                              </span>
                             )}
                           </AutoTransition>
                         </Button>
@@ -2112,7 +2170,8 @@ export function TeamManagementClient({
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel disabled={deletingTeam}>
-                        {messages.teamSelect.cancel}
+                        <RiCloseLine className="size-4" />
+                        <span>{messages.teamSelect.cancel}</span>
                       </AlertDialogCancel>
                       <AlertDialogAction
                         variant="destructive"
@@ -2132,7 +2191,11 @@ export function TeamManagementClient({
                               {copy.settings.deleting}
                             </span>
                           ) : (
-                            <span key="confirm-delete-dialog">
+                            <span
+                              key="confirm-delete-dialog"
+                              className="inline-flex items-center gap-2"
+                            >
+                              <RiDeleteBinLine className="size-4" />
                               {copy.settings.delete}
                             </span>
                           )}

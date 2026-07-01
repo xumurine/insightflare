@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  RiCloseLine,
   RiDeleteBinLine,
   RiSave3Line,
   RiShieldCheckLine,
@@ -639,7 +640,8 @@ export function LoginTurnstileSettingsClient({
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel disabled={deletingConfig}>
-                    {messages.teamSelect.cancel}
+                    <RiCloseLine className="size-4" />
+                    <span>{messages.teamSelect.cancel}</span>
                   </AlertDialogCancel>
                   <AlertDialogAction
                     variant="destructive"
@@ -659,7 +661,13 @@ export function LoginTurnstileSettingsClient({
                           {copy.deleting}
                         </span>
                       ) : (
-                        <span key="confirm-delete-config">{copy.delete}</span>
+                        <span
+                          key="confirm-delete-config"
+                          className="inline-flex items-center gap-2"
+                        >
+                          <RiDeleteBinLine className="size-4" />
+                          {copy.delete}
+                        </span>
                       )}
                     </AutoTransition>
                   </AlertDialogAction>
