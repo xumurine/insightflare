@@ -141,6 +141,49 @@ describe("dashboard server helpers", () => {
     expect(fetchAdminSitesMock).toHaveBeenCalledWith("team-1");
   });
 
+  it("returns root context and falls back when notification counts fail", async () => {
+    fetchAdminMeMock.mockResolvedValue({
+      user: {
+        id: "user-1",
+        username: "admin",
+        email: "admin@example.test",
+        name: "Admin User",
+        systemRole: "admin",
+        timeZone: "Asia/Shanghai",
+      },
+      teams: [team("team-1", "team-a")],
+      teamGroups: {
+        created: [team("team-1", "team-a")],
+        managed: [],
+        member: [],
+        system: [],
+      },
+    } as any);
+    fetchNotificationMessagesMock.mockResolvedValueOnce({
+      messages: [],
+      unreadAttentionCount: 3,
+    });
+
+    const { getDashboardRootContext, getDashboardTeamContext } =
+      await loadServerModule();
+
+    await expect(getDashboardRootContext()).resolves.toMatchObject({
+      user: { id: "user-1", timeZone: "Asia/Shanghai" },
+      teamGroups: {
+        created: [expect.objectContaining({ id: "team-1" })],
+      },
+      unreadAttentionCount: 3,
+    });
+
+    fetchNotificationMessagesMock.mockRejectedValueOnce(
+      new Error("notifications unavailable"),
+    );
+    fetchAdminSitesMock.mockResolvedValueOnce([]);
+    await expect(getDashboardTeamContext("team-a")).resolves.toMatchObject({
+      unreadAttentionCount: 0,
+    });
+  });
+
   it("lets system admins resolve teams they do not belong to", async () => {
     fetchAdminMeMock.mockResolvedValue({
       user: {
@@ -177,7 +220,9 @@ describe("dashboard server helpers", () => {
 
   it("returns null or empty defaults when profile, team, or sites are missing", async () => {
     fetchAdminMeMock.mockResolvedValueOnce(null as any);
-    const { getDashboardTeamContext } = await loadServerModule();
+    const { getDashboardRootContext, getDashboardTeamContext } =
+      await loadServerModule();
+    await expect(getDashboardRootContext()).resolves.toBeNull();
     await expect(getDashboardTeamContext("team-a")).resolves.toBeNull();
 
     fetchAdminMeMock.mockResolvedValue({

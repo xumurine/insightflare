@@ -212,6 +212,87 @@ describe("public account link handler", () => {
     expect(toPublicAccountActionToken).toHaveBeenCalledWith(teamInviteRow);
   });
 
+  it("rejects malformed public account link requests", async () => {
+    const env = createEnv().env;
+
+    const wrongMethod = await handlePublicAccountLinks(
+      new Request("https://app.test/api/public/account-links/inspect", {
+        method: "GET",
+      }),
+      env,
+      new URL("https://app.test/api/public/account-links/inspect"),
+    );
+    expect(wrongMethod.status).toBe(405);
+    expect(wrongMethod.headers.get("cache-control")).toBe("no-store");
+
+    const unknownAction = await handlePublicAccountLinks(
+      request("/api/public/account-links/unknown", { token: "plain-token" }),
+      env,
+      new URL("https://app.test/api/public/account-links/unknown"),
+    );
+    await expect(jsonOf(unknownAction)).resolves.toMatchObject({
+      ok: false,
+      error: "Not Found",
+    });
+
+    const missingToken = await handlePublicAccountLinks(
+      request("/api/public/account-links/inspect", { token: "   " }),
+      env,
+      new URL("https://app.test/api/public/account-links/inspect"),
+    );
+    await expect(jsonOf(missingToken)).resolves.toMatchObject({
+      ok: false,
+      error: "token is required",
+    });
+
+    getValidAccountActionTokenMock.mockResolvedValueOnce(null);
+    const expired = await handlePublicAccountLinks(
+      request("/api/public/account-links/inspect", { token: "expired" }),
+      env,
+      new URL("https://app.test/api/public/account-links/inspect"),
+    );
+    await expect(jsonOf(expired)).resolves.toMatchObject({
+      ok: false,
+      error: "Invalid or expired link",
+    });
+  });
+
+  it("inspects password reset links with masked account details", async () => {
+    getValidAccountActionTokenMock.mockResolvedValue(resetRow);
+
+    const response = await handlePublicAccountLinks(
+      request("/api/public/account-links/inspect", { token: "plain-token" }),
+      createEnv().env,
+      new URL("https://app.test/api/public/account-links/inspect"),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(jsonOf(response)).resolves.toMatchObject({
+      ok: true,
+      data: {
+        type: "password_reset",
+        user: {
+          username: "friend",
+          email: "fr****@example.test",
+        },
+      },
+    });
+  });
+
+  it("rejects invite inspection when the team is missing", async () => {
+    const response = await handlePublicAccountLinks(
+      request("/api/public/account-links/inspect", { token: "plain-token" }),
+      createEnv([statement(null)]).env,
+      new URL("https://app.test/api/public/account-links/inspect"),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(jsonOf(response)).resolves.toMatchObject({
+      ok: false,
+      error: "Team not found",
+    });
+  });
+
   it("lets a signed-in matching user accept a team invite", async () => {
     requireSessionMock.mockResolvedValue({ userId: "user-1" } as Awaited<
       ReturnType<typeof requireSession>
@@ -235,6 +316,42 @@ describe("public account link handler", () => {
       expect.anything(),
       { tokenId: "invite-1", usedByUserId: "user-1" },
     );
+  });
+
+  it("rejects signed-in users whose email does not match the invite", async () => {
+    requireSessionMock.mockResolvedValue({ userId: "user-1" } as Awaited<
+      ReturnType<typeof requireSession>
+    >);
+    byIdMock.mockResolvedValue({
+      ...user,
+      email: "other@example.test",
+    });
+
+    const response = await handlePublicAccountLinks(
+      request("/api/public/account-links/complete", { token: "plain-token" }),
+      createEnv([statement({ id: "team-1", name: "Team", slug: "team" })]).env,
+      new URL("https://app.test/api/public/account-links/complete"),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(jsonOf(response)).resolves.toMatchObject({
+      ok: false,
+      error: "Invite email does not match the signed-in user",
+    });
+  });
+
+  it("rejects invite registration when registration is disabled", async () => {
+    const response = await handlePublicAccountLinks(
+      request("/api/public/account-links/complete", { token: "plain-token" }),
+      createEnv([statement({ id: "team-1", name: "Team", slug: "team" })]).env,
+      new URL("https://app.test/api/public/account-links/complete"),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(jsonOf(response)).resolves.toMatchObject({
+      ok: false,
+      error: "This invite requires an existing account",
+    });
   });
 
   it("registers a new invited user without creating a personal team", async () => {
@@ -312,5 +429,41 @@ describe("public account link handler", () => {
     expect(normE(" Friend@Example.Test ")).toBe("friend@example.test");
     expect(normU(" New_User ")).toBe("new_user");
     expect(toPublicUser).toBeDefined();
+  });
+
+  it("rejects invalid password reset completions", async () => {
+    getValidAccountActionTokenMock.mockResolvedValue(resetRow);
+
+    const shortPassword = await handlePublicAccountLinks(
+      request("/api/public/account-links/complete", {
+        token: "plain-token",
+        password: "short",
+      }),
+      createEnv().env,
+      new URL("https://app.test/api/public/account-links/complete"),
+    );
+    expect(shortPassword.status).toBe(400);
+    await expect(jsonOf(shortPassword)).resolves.toMatchObject({
+      ok: false,
+      error: "Password must be at least 8 characters",
+    });
+
+    getValidAccountActionTokenMock.mockResolvedValue({
+      ...resetRow,
+      user_id: null,
+    });
+    const missingUser = await handlePublicAccountLinks(
+      request("/api/public/account-links/complete", {
+        token: "plain-token",
+        password: "new-password",
+      }),
+      createEnv().env,
+      new URL("https://app.test/api/public/account-links/complete"),
+    );
+    expect(missingUser.status).toBe(404);
+    await expect(jsonOf(missingUser)).resolves.toMatchObject({
+      ok: false,
+      error: "User not found",
+    });
   });
 });

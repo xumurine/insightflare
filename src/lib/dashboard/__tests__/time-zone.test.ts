@@ -5,7 +5,10 @@ import {
   addCalendarMonths,
   addZonedInterval,
   browserTimeZone,
+  buildTimeZoneOptions,
   endOfZonedDay,
+  formatTimeZoneOptionLabel,
+  formatUtcOffset,
   isValidTimeZone,
   normalizeTimeZone,
   resolveReportingTimeZone,
@@ -380,6 +383,30 @@ describe("Timezone & Calendar Calculation Utilities", () => {
   });
 
   describe("browserTimeZone & supportedTimeZones errors (Line 87)", () => {
+    it("formats offsets and timezone option labels across fallback branches", () => {
+      const timestampMs = Date.UTC(2026, 0, 1, 0, 0, 0);
+
+      expect(formatUtcOffset(0)).toBe("UTC+00:00");
+      expect(formatUtcOffset(-330)).toBe("UTC-05:30");
+      expect(
+        formatTimeZoneOptionLabel({
+          locale: "en-US",
+          timeZone: "UTC",
+          timestampMs,
+        }),
+      ).toContain("UTC+00:00");
+      expect(
+        buildTimeZoneOptions({
+          locale: "en-US",
+          supported: ["UTC", "Invalid/Zone"],
+          selected: " Asia/Shanghai ",
+          active: "UTC",
+          browser: "Asia/Shanghai",
+          timestampMs,
+        }).map((option) => option.value),
+      ).toEqual(["Asia/Shanghai", "UTC"]);
+    });
+
     it("should gracefully handle browserTimeZone retrieval error", () => {
       const originalDateTimeFormat = globalThis.Intl.DateTimeFormat;
       try {
@@ -408,6 +435,27 @@ describe("Timezone & Calendar Calculation Utilities", () => {
       expect(zones).toBeInstanceOf(Array);
       expect(zones.length).toBeGreaterThan(0);
       expect(zones).toContain("Asia/Shanghai");
+    });
+
+    it("should fall back to common timezones when supportedValuesOf is unavailable", () => {
+      const originalSupportedValuesOf = Intl.supportedValuesOf;
+      try {
+        Object.defineProperty(Intl, "supportedValuesOf", {
+          value: undefined,
+          writable: true,
+          configurable: true,
+        });
+
+        const zones = supportedTimeZones();
+        expect(zones).toContain("UTC");
+        expect(zones).toContain("Asia/Shanghai");
+      } finally {
+        Object.defineProperty(Intl, "supportedValuesOf", {
+          value: originalSupportedValuesOf,
+          writable: true,
+          configurable: true,
+        });
+      }
     });
   });
 });

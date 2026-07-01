@@ -6,6 +6,7 @@ import {
   normalizeLoginTurnstileConfig,
   redactLoginTurnstileConfig,
   toLoginTurnstileRuntimeConfig,
+  toPublicLoginTurnstileConfig,
   validateLoginTurnstileConfig,
   validateLoginTurnstileUpdateInput,
 } from "@/lib/auth/login-turnstile-config";
@@ -89,9 +90,40 @@ describe("login Turnstile config", () => {
 
   it("validates update payloads and generates secret hints", () => {
     expect(makeSecretHint("secret-value")).toBe("••••alue");
+    expect(makeSecretHint("   ")).toBe("");
+    expect(validateLoginTurnstileUpdateInput(null)).toEqual({
+      ok: false,
+      message: "Invalid request body",
+    });
     expect(validateLoginTurnstileUpdateInput({ enabled: "yes" })).toEqual({
       ok: false,
       message: "enabled must be a boolean",
+    });
+    expect(validateLoginTurnstileUpdateInput({ siteKey: 123 })).toEqual({
+      ok: false,
+      message: "siteKey must be a string",
+    });
+    expect(validateLoginTurnstileUpdateInput({ secretKey: false })).toEqual({
+      ok: false,
+      message: "secretKey must be a string",
+    });
+    expect(
+      validateLoginTurnstileUpdateInput({ siteKey: "x".repeat(257) }),
+    ).toEqual({
+      ok: false,
+      message: "siteKey is too long",
+    });
+    expect(
+      validateLoginTurnstileUpdateInput({ secretKey: "x".repeat(513) }),
+    ).toEqual({
+      ok: false,
+      message: "secretKey is too long",
+    });
+    expect(
+      validateLoginTurnstileUpdateInput({ extra: "x".repeat(4100) }),
+    ).toEqual({
+      ok: false,
+      message: "Request body is too large",
     });
     expect(
       validateLoginTurnstileUpdateInput({
@@ -107,5 +139,55 @@ describe("login Turnstile config", () => {
         secretKey: "secret",
       },
     });
+  });
+
+  it("normalizes public runtime output and disabled validation branches", () => {
+    expect(toPublicLoginTurnstileConfig(null)).toEqual({
+      enabled: false,
+      siteKey: "",
+      mode: "invisible",
+    });
+    expect(
+      toPublicLoginTurnstileConfig({
+        enabled: true,
+        siteKey: "",
+        mode: "invisible",
+        secretKeyEncrypted: "encrypted",
+        updatedAt: 1,
+      }),
+    ).toEqual({
+      enabled: false,
+      siteKey: "",
+      mode: "invisible",
+    });
+    expect(
+      toPublicLoginTurnstileConfig({
+        enabled: true,
+        siteKey: "0xsite",
+        mode: "invisible",
+        secretKeyEncrypted: "encrypted",
+        updatedAt: 1,
+      }),
+    ).toEqual({
+      enabled: true,
+      siteKey: "0xsite",
+      mode: "invisible",
+    });
+
+    expect(validateLoginTurnstileConfig(defaultLoginTurnstileConfig())).toBe(
+      null,
+    );
+    expect(
+      validateLoginTurnstileConfig({
+        ...defaultLoginTurnstileConfig(),
+        siteKey: "x".repeat(257),
+      }),
+    ).toBe("siteKey is too long");
+    expect(
+      validateLoginTurnstileConfig({
+        ...defaultLoginTurnstileConfig(),
+        mode: "managed" as "invisible",
+      }),
+    ).toBe("Unsupported Turnstile mode");
   });
 });
