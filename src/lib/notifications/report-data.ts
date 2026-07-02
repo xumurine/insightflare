@@ -9,11 +9,7 @@ import type { Env } from "@/lib/edge/types";
 export type NotificationMetric = "views" | "visitors" | "sessions";
 export type NotificationMetricWindow = "last_1h" | "last_24h" | "yesterday";
 export type NotificationReportType =
-  | "daily"
-  | "weekly"
-  | "monthly"
-  | "quarterly"
-  | "yearly";
+  "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 
 export interface NotificationReportRange {
   from: number;

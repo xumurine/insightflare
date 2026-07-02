@@ -33,6 +33,21 @@ export const emailTheme = {
   shadow: "none",
 } as const;
 
+export const emailTableResetStyle = {
+  borderCollapse: "collapse",
+  borderSpacing: "0",
+} satisfies React.CSSProperties;
+
+export const emailBreakTextStyle = {
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
+  wordWrap: "break-word",
+} satisfies React.CSSProperties;
+
+export const emailNoWrapStyle = {
+  whiteSpace: "nowrap",
+} satisfies React.CSSProperties;
+
 export function createEmailTextStyles(theme: typeof emailTheme = emailTheme) {
   return {
     heading: {
@@ -41,6 +56,7 @@ export function createEmailTextStyles(theme: typeof emailTheme = emailTheme) {
       fontSize: "24px",
       fontWeight: "600",
       lineHeight: "32px",
+      ...emailBreakTextStyle,
     },
     eyebrow: {
       margin: "0 0 8px",
@@ -56,6 +72,7 @@ export function createEmailTextStyles(theme: typeof emailTheme = emailTheme) {
       color: theme.colors.mutedForeground,
       fontSize: "14px",
       lineHeight: "22px",
+      ...emailBreakTextStyle,
     },
     sectionTitle: {
       margin: "18px 0 0",
@@ -63,6 +80,7 @@ export function createEmailTextStyles(theme: typeof emailTheme = emailTheme) {
       fontSize: "14px",
       fontWeight: "500",
       lineHeight: "20px",
+      ...emailBreakTextStyle,
     },
   } satisfies Record<string, React.CSSProperties>;
 }

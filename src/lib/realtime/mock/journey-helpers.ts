@@ -504,10 +504,7 @@ export function demoAverageGapMs(values: number[]): number {
 }
 
 export type DemoVisitorSortKey =
-  | "firstSeenAt"
-  | "lastSeenAt"
-  | "sessions"
-  | "views";
+  "firstSeenAt" | "lastSeenAt" | "sessions" | "views";
 export type DemoSessionSortKey = "startedAt" | "durationMs" | "views";
 
 function parseDemoSortDirection(

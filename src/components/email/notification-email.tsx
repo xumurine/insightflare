@@ -14,6 +14,8 @@ import {
 } from "@/components/email/ui/email-table";
 import {
   createEmailTextStyles,
+  emailBreakTextStyle,
+  emailTableResetStyle,
   emailTheme,
 } from "@/components/email/ui/email-theme";
 import type { Locale } from "@/lib/i18n/config";
@@ -69,16 +71,31 @@ function formatLastSeen(
 function Intro({ content }: { content: NotificationContent }) {
   const textStyles = createEmailTextStyles();
   return (
-    <div
+    <table
+      role="presentation"
+      cellPadding="0"
+      cellSpacing="0"
+      width="100%"
       style={{
+        width: "100%",
         margin: "0 0 16px",
-        padding: "0 0 14px",
-        borderBottom: `1px solid ${emailTheme.colors.border}`,
+        ...emailTableResetStyle,
       }}
     >
-      <h1 style={textStyles.heading}>{content.title}</h1>
-      <p style={textStyles.body}>{content.summary}</p>
-    </div>
+      <tbody>
+        <tr>
+          <td
+            style={{
+              padding: "0 0 14px",
+              borderBottom: `1px solid ${emailTheme.colors.border}`,
+            }}
+          >
+            <h1 style={textStyles.heading}>{content.title}</h1>
+            <p style={textStyles.body}>{content.summary}</p>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   );
 }
 
@@ -251,37 +268,68 @@ function HealthEmail({
           },
         ]}
       />
-      <p
+      <table
+        role="presentation"
+        cellPadding="0"
+        cellSpacing="0"
+        width="100%"
         style={{
+          width: "100%",
           margin: "16px 0 0",
-          padding: "12px",
-          border: `1px solid ${emailTheme.colors.destructiveBorder}`,
-          borderRadius: emailTheme.radius,
-          backgroundColor: emailTheme.colors.destructiveSoft,
-          color: "#525252",
-          fontSize: "14px",
-          lineHeight: "22px",
+          ...emailTableResetStyle,
         }}
       >
-        {content.summary}
-      </p>
+        <tbody>
+          <tr>
+            <td
+              style={{
+                padding: "12px",
+                border: `1px solid ${emailTheme.colors.destructiveBorder}`,
+                borderRadius: emailTheme.radius,
+                backgroundColor: emailTheme.colors.destructiveSoft,
+                color: "#525252",
+                fontSize: "14px",
+                lineHeight: "22px",
+                ...emailBreakTextStyle,
+              }}
+            >
+              {content.summary}
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </>
   );
 }
 
 function FallbackEmail({ content }: { content: NotificationContent }) {
   return (
-    <p
+    <table
+      role="presentation"
+      cellPadding="0"
+      cellSpacing="0"
+      width="100%"
       style={{
-        margin: "0",
-        color: "#404040",
-        fontSize: "14px",
-        lineHeight: "22px",
-        whiteSpace: "pre-line",
+        width: "100%",
+        ...emailTableResetStyle,
       }}
     >
-      {content.bodyText}
-    </p>
+      <tbody>
+        <tr>
+          <td
+            style={{
+              color: "#404040",
+              fontSize: "14px",
+              lineHeight: "22px",
+              whiteSpace: "pre-line",
+              ...emailBreakTextStyle,
+            }}
+          >
+            {content.bodyText}
+          </td>
+        </tr>
+      </tbody>
+    </table>
   );
 }
 

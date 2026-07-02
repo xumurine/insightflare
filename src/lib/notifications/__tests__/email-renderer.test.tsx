@@ -37,10 +37,57 @@ describe("renderNotificationEmail", () => {
     expect(rendered.html).toContain('<html lang="zh">');
     expect(rendered.html).toContain('<meta charSet="utf-8"/>');
     expect(rendered.html).toContain('name="viewport"');
+    expect(rendered.html).toContain('name="color-scheme" content="light"');
+    expect(rendered.html).toContain(
+      'name="supported-color-schemes" content="light"',
+    );
+    expect(rendered.html).toContain(
+      'name="x-apple-disable-message-reformatting"',
+    );
+    expect(rendered.html).toContain('role="presentation"');
+    expect(rendered.html).toContain("table-layout:fixed");
+    expect(rendered.html).toContain("overflow-wrap:anywhere");
+    expect(rendered.html).toContain("max-width:640px");
+    expect(rendered.html).not.toContain("max-width:680px");
+    expect(rendered.html).not.toContain("light dark");
     expect(rendered.html).not.toContain("stylesheet");
     expect(rendered.text).toContain("核心指标");
     expect(rendered.text).not.toContain("<html");
     expect(rendered.text).not.toContain("[object Object]");
+  });
+
+  it("renders long report rows with wrapping-safe table styles", async () => {
+    const previewMessage = notificationEmailPreviewMessage("report", "zh");
+    const message: NotificationMessage = {
+      ...previewMessage,
+      data: {
+        ...previewMessage.data,
+        topPages: [
+          {
+            path: "/posts/very-long-path-without-natural-breaks-abcdefghijklmnopqrstuvwxyz-0123456789",
+            views: 123,
+          },
+        ],
+        topReferrers: [
+          {
+            referrer:
+              "very-long-referrer-domain-without-natural-breaks.example.test",
+            visits: 45,
+          },
+        ],
+      },
+    };
+
+    const rendered = await renderNotificationEmail({
+      message,
+      locale: "zh",
+      timeZone: "Asia/Shanghai",
+    });
+
+    expect(rendered.html).toContain("very-long-path-without-natural-breaks");
+    expect(rendered.html).toContain("overflow-wrap:anywhere");
+    expect(rendered.html).toContain("word-break:break-word");
+    expect(rendered.html).toContain("width:116px");
   });
 
   it("renders threshold html and text in Chinese", async () => {

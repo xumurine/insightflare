@@ -1,23 +1,41 @@
 import * as React from "react";
 
-import { createEmailTextStyles, emailTheme } from "./email-theme";
+import {
+  createEmailTextStyles,
+  emailBreakTextStyle,
+  emailNoWrapStyle,
+  emailTableResetStyle,
+  emailTheme,
+} from "./email-theme";
 
 export interface EmailTableRow {
   label: string;
   value: string;
 }
 
-export function EmailTable({ rows }: { rows: EmailTableRow[] }) {
+export interface EmailTableProps {
+  rows: EmailTableRow[];
+  valueWidth?: string;
+  valueNoWrap?: boolean;
+}
+
+export function EmailTable({
+  rows,
+  valueWidth,
+  valueNoWrap = false,
+}: EmailTableProps) {
   return (
     <table
       role="presentation"
       cellPadding="0"
       cellSpacing="0"
+      width="100%"
       style={{
         width: "100%",
-        borderCollapse: "collapse",
         margin: "12px 0 0",
         borderTop: `1px solid ${emailTheme.colors.border}`,
+        tableLayout: "fixed",
+        ...emailTableResetStyle,
       }}
     >
       <tbody>
@@ -25,18 +43,20 @@ export function EmailTable({ rows }: { rows: EmailTableRow[] }) {
           <tr key={row.label}>
             <td
               style={{
-                width: "42%",
                 padding: "9px 8px",
                 borderBottom: `1px solid ${emailTheme.colors.border}`,
                 color: emailTheme.colors.mutedForeground,
                 fontSize: "12px",
                 lineHeight: "18px",
+                verticalAlign: "top",
+                ...emailBreakTextStyle,
               }}
             >
               {row.label}
             </td>
             <td
               style={{
+                width: valueWidth,
                 padding: "9px 8px",
                 borderBottom: `1px solid ${emailTheme.colors.border}`,
                 color: emailTheme.colors.foreground,
@@ -44,6 +64,8 @@ export function EmailTable({ rows }: { rows: EmailTableRow[] }) {
                 fontWeight: "500",
                 lineHeight: "18px",
                 textAlign: "right",
+                verticalAlign: "top",
+                ...(valueNoWrap ? emailNoWrapStyle : emailBreakTextStyle),
               }}
             >
               {row.value}
@@ -69,22 +91,38 @@ export function EmailListTable({
     <>
       <p style={textStyles.sectionTitle}>{title}</p>
       {rows.length > 0 ? (
-        <EmailTable rows={rows} />
+        <EmailTable rows={rows} valueWidth="116px" valueNoWrap />
       ) : (
-        <p
+        <table
+          role="presentation"
+          cellPadding="0"
+          cellSpacing="0"
+          width="100%"
           style={{
+            width: "100%",
             margin: "8px 0 0",
-            padding: "12px",
-            border: `1px solid ${emailTheme.colors.border}`,
-            borderRadius: emailTheme.radius,
-            backgroundColor: emailTheme.colors.card,
-            color: emailTheme.colors.mutedForeground,
-            fontSize: "12px",
-            lineHeight: "20px",
+            ...emailTableResetStyle,
           }}
         >
-          {empty}
-        </p>
+          <tbody>
+            <tr>
+              <td
+                style={{
+                  padding: "12px",
+                  border: `1px solid ${emailTheme.colors.border}`,
+                  borderRadius: emailTheme.radius,
+                  backgroundColor: emailTheme.colors.card,
+                  color: emailTheme.colors.mutedForeground,
+                  fontSize: "12px",
+                  lineHeight: "20px",
+                  ...emailBreakTextStyle,
+                }}
+              >
+                {empty}
+              </td>
+            </tr>
+          </tbody>
+        </table>
       )}
     </>
   );

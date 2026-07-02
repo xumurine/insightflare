@@ -2,7 +2,7 @@ import * as React from "react";
 
 import type { NotificationSeverity } from "@/lib/notifications/message-types";
 
-import { emailTheme } from "./email-theme";
+import { emailTableResetStyle, emailTheme } from "./email-theme";
 
 function severityStyles() {
   return {
@@ -41,21 +41,33 @@ export function EmailBadge({
 }) {
   const colors = severityStyles()[severity];
   return (
-    <p
+    <table
+      role="presentation"
+      cellPadding="0"
+      cellSpacing="0"
       style={{
-        display: "inline-block",
         margin: "0 0 12px",
-        padding: "3px 8px",
-        border: `1px solid ${colors.border}`,
-        borderRadius: emailTheme.radius,
-        backgroundColor: colors.backgroundColor,
-        color: colors.color,
-        fontSize: "12px",
-        fontWeight: "500",
-        lineHeight: "18px",
+        ...emailTableResetStyle,
       }}
     >
-      {children}
-    </p>
+      <tbody>
+        <tr>
+          <td
+            style={{
+              padding: "3px 8px",
+              border: `1px solid ${colors.border}`,
+              borderRadius: emailTheme.radius,
+              backgroundColor: colors.backgroundColor,
+              color: colors.color,
+              fontSize: "12px",
+              fontWeight: "500",
+              lineHeight: "18px",
+            }}
+          >
+            {children}
+          </td>
+        </tr>
+      </tbody>
+    </table>
   );
 }

@@ -1,6 +1,10 @@
 import * as React from "react";
 
-import { emailTheme } from "./email-theme";
+import {
+  emailBreakTextStyle,
+  emailTableResetStyle,
+  emailTheme,
+} from "./email-theme";
 
 export function EmailMetricCard({
   label,
@@ -9,35 +13,53 @@ export function EmailMetricCard({
   label: string;
   value: string;
 }) {
-  const cardStyle = {
-    backgroundColor: emailTheme.colors.card,
+  const cardTableStyle = {
+    width: "100%",
+    ...emailTableResetStyle,
+  } satisfies React.CSSProperties;
+  const cardCellStyle = {
     padding: "14px 12px",
+    backgroundColor: emailTheme.colors.card,
   } satisfies React.CSSProperties;
   return (
-    <div style={cardStyle}>
-      <p
-        style={{
-          margin: "0 0 6px",
-          color: emailTheme.colors.mutedForeground,
-          fontSize: "11px",
-          fontWeight: "500",
-          lineHeight: "16px",
-        }}
-      >
-        {label}
-      </p>
-      <p
-        style={{
-          margin: "0",
-          color: emailTheme.colors.foreground,
-          fontSize: "20px",
-          fontWeight: "600",
-          lineHeight: "26px",
-        }}
-      >
-        {value}
-      </p>
-    </div>
+    <table
+      role="presentation"
+      cellPadding="0"
+      cellSpacing="0"
+      width="100%"
+      style={cardTableStyle}
+    >
+      <tbody>
+        <tr>
+          <td style={cardCellStyle}>
+            <p
+              style={{
+                margin: "0 0 6px",
+                color: emailTheme.colors.mutedForeground,
+                fontSize: "11px",
+                fontWeight: "500",
+                lineHeight: "16px",
+                ...emailBreakTextStyle,
+              }}
+            >
+              {label}
+            </p>
+            <p
+              style={{
+                margin: "0",
+                color: emailTheme.colors.foreground,
+                fontSize: "20px",
+                fontWeight: "600",
+                lineHeight: "26px",
+                ...emailBreakTextStyle,
+              }}
+            >
+              {value}
+            </p>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   );
 }
 
@@ -48,11 +70,13 @@ export function EmailMetricGrid({ children }: { children: React.ReactNode }) {
       role="presentation"
       cellPadding="0"
       cellSpacing="0"
+      width="100%"
       style={{
         width: "100%",
         margin: "16px 0",
         border: `1px solid ${emailTheme.colors.border}`,
-        borderCollapse: "collapse",
+        tableLayout: "fixed",
+        ...emailTableResetStyle,
       }}
     >
       <tbody>
