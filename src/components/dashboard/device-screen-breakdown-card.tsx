@@ -198,7 +198,8 @@ function ScreenCategoryPieCard({
               cursor={false}
               content={({ active, payload }) => {
                 const item = payload?.[0]?.payload as
-                  (typeof chartData)[number] | undefined;
+                  | (typeof chartData)[number]
+                  | undefined;
                 if (!active || !item) return null;
 
                 return (

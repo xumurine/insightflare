@@ -101,7 +101,8 @@ async function fetchSystemPerformance(
     },
   );
   const payload = (await response.json()) as
-    SystemPerformanceData | ApiErrorResponse;
+    | SystemPerformanceData
+    | ApiErrorResponse;
   if (!response.ok || payload.ok !== true) {
     throw new Error(
       ("message" in payload && payload.message) ||
@@ -127,7 +128,8 @@ async function fetchDoDiagnostic(): Promise<DoDiagnosticAggregate> {
     cache: "no-store",
   });
   const payload = (await response.json()) as
-    DoDiagnosticAggregate | ApiErrorResponse;
+    | DoDiagnosticAggregate
+    | ApiErrorResponse;
   if (!response.ok || payload.ok !== true) {
     throw new Error(
       ("message" in payload && payload.message) ||

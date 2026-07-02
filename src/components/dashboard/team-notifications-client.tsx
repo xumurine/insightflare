@@ -99,7 +99,12 @@ type RuleFormType = "report" | "milestone" | "threshold" | "change" | "health";
 type RecipientKind = "preset" | "custom";
 type RecipientPreset = "creator" | "team_admins" | "all_team_members";
 type ScheduleKind =
-  "daily" | "weekly" | "monthly" | "quarterly" | "yearly" | "interval";
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "quarterly"
+  | "yearly"
+  | "interval";
 type ReportType = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 type ConditionCombinator = "all" | "any";
 type ChangeMode = "absolute" | "percent";

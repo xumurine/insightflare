@@ -23,7 +23,12 @@ import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
 type PreviewType =
-  "test" | "report" | "milestone" | "threshold" | "change" | "health";
+  | "test"
+  | "report"
+  | "milestone"
+  | "threshold"
+  | "change"
+  | "health";
 type PreviewFormat = "html" | "text" | "json";
 
 const PREVIEW_TYPES: PreviewType[] = [

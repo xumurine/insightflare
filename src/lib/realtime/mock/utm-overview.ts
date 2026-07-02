@@ -491,7 +491,12 @@ export function generateDemoOverviewGeoTab(
   siteId: string,
   params: Record<string, string | number>,
   tab:
-    "country" | "region" | "city" | "continent" | "timezone" | "organization",
+    | "country"
+    | "region"
+    | "city"
+    | "continent"
+    | "timezone"
+    | "organization",
 ): Record<string, unknown> {
   const payload = generateDemoGeoDimensionTabs(siteId, params, {
     ignoreGeo: tab === "country",

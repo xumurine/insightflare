@@ -72,7 +72,10 @@ export interface EventPayloadFilterRule {
 
 export type SortDirection = "asc" | "desc";
 export type VisitorListSortKey =
-  "firstSeenAt" | "lastSeenAt" | "sessions" | "views";
+  | "firstSeenAt"
+  | "lastSeenAt"
+  | "sessions"
+  | "views";
 export type SessionListSortKey = "startedAt" | "durationMs" | "views";
 export type EventRecordSortKey = "occurredAt" | "eventName" | "pathname";
 
@@ -554,9 +557,18 @@ export type ClientDimensionKey =
   | "screenSize";
 
 export type UtmDimensionKey =
-  "source" | "medium" | "campaign" | "term" | "content";
+  | "source"
+  | "medium"
+  | "campaign"
+  | "term"
+  | "content";
 export type OverviewGeoTabKey =
-  "country" | "region" | "city" | "continent" | "timezone" | "organization";
+  | "country"
+  | "region"
+  | "city"
+  | "continent"
+  | "timezone"
+  | "organization";
 
 export interface ClientDimensionTabs {
   browser: DimensionRow[];

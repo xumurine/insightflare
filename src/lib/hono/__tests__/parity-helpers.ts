@@ -1,7 +1,12 @@
 import { expect } from "vitest";
 
 type JsonValue =
-  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
 export interface NormalizedResponse {
   status: number;

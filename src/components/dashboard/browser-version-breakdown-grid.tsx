@@ -135,7 +135,8 @@ function BrowserVersionDonutCard({
                   cursor={false}
                   content={({ active, payload }) => {
                     const item = payload?.[0]?.payload as
-                      BrowserVersionSliceDisplay | undefined;
+                      | BrowserVersionSliceDisplay
+                      | undefined;
                     if (!active || !item) return null;
 
                     return (

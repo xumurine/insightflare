@@ -1,5 +1,8 @@
 export type RealtimeConnectionState =
-  "connecting" | "connected" | "disconnected" | "failed";
+  | "connecting"
+  | "connected"
+  | "disconnected"
+  | "failed";
 
 export interface RealtimeEvent {
   id: string;

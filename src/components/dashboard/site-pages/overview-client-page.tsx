@@ -349,9 +349,18 @@ type PageCardDetailTab = "path" | "entry" | "exit";
 type SourceCardTab = "domain" | "link";
 type OverviewPagesSectionCardKind = "page" | "source" | "client" | "geo";
 type ClientDimensionCardTab =
-  "browser" | "osVersion" | "deviceType" | "language" | "screenSize";
+  | "browser"
+  | "osVersion"
+  | "deviceType"
+  | "language"
+  | "screenSize";
 type GeoDimensionCardTab =
-  "country" | "region" | "city" | "continent" | "timezone" | "organization";
+  | "country"
+  | "region"
+  | "city"
+  | "continent"
+  | "timezone"
+  | "organization";
 type GeoLocationTab = Extract<
   GeoDimensionCardTab,
   "country" | "region" | "city"
@@ -1873,7 +1882,8 @@ function MetricAreaMap({
               content={({ active, payload }) => {
                 if (!active || !payload || payload.length === 0) return null;
                 const item = payload[0]?.payload as
-                  { timestampMs?: number; value?: number } | undefined;
+                  | { timestampMs?: number; value?: number }
+                  | undefined;
                 const timestampMs = Number(item?.timestampMs ?? 0);
                 const value = Number(item?.value ?? 0);
 

@@ -261,7 +261,8 @@ function BrowserCrossStackedBarCard({
                   cursor={false}
                   content={({ active, payload }) => {
                     const row = payload?.[0]?.payload as
-                      BrowserCrossChartRow | undefined;
+                      | BrowserCrossChartRow
+                      | undefined;
                     if (!active || !payload?.length || !row) return null;
 
                     const payloadByKey = new Map(

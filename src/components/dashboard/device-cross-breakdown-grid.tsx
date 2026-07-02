@@ -225,7 +225,8 @@ function CrossBreakdownCard({
                 cursor={false}
                 content={({ active, payload }) => {
                   const row = payload?.[0]?.payload as
-                    CrossChartRow | undefined;
+                    | CrossChartRow
+                    | undefined;
                   if (!active || !payload?.length || !row) return null;
                   const payloadByKey = new Map(
                     payload.map((item) => [String(item.dataKey ?? ""), item]),

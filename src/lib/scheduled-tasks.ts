@@ -1,7 +1,11 @@
 export const SCHEDULED_TASK_LOG_RETENTION_DAYS = 30;
 
 export type ScheduledTaskStatus =
-  "running" | "success" | "partial" | "failed" | "skipped";
+  | "running"
+  | "success"
+  | "partial"
+  | "failed"
+  | "skipped";
 
 export type ScheduledTaskLogLevel = "debug" | "info" | "warn" | "error";
 

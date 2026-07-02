@@ -31,7 +31,11 @@ export interface IngestTracePayload {
 }
 
 export type TrackerPayloadKind =
-  "pageview" | "leave" | "visibility" | "custom_event" | "identify";
+  | "pageview"
+  | "leave"
+  | "visibility"
+  | "custom_event"
+  | "identify";
 
 export interface TrackerPerformancePayload {
   ttfb?: number;

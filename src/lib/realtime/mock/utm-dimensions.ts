@@ -312,7 +312,11 @@ function buildDemoUtmLabelPool(
 }
 
 export type DemoUtmDimensionKey =
-  "source" | "medium" | "campaign" | "term" | "content";
+  | "source"
+  | "medium"
+  | "campaign"
+  | "term"
+  | "content";
 
 function parseDemoUtmDimensionKey(
   value: string | number | undefined,

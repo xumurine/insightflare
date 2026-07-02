@@ -36,7 +36,12 @@ const CHART_COLORS = [
 ] as const;
 
 type RadarMetricKey =
-  "duration" | "engagement" | "depth" | "loyalty" | "frequency" | "traffic";
+  | "duration"
+  | "engagement"
+  | "depth"
+  | "loyalty"
+  | "frequency"
+  | "traffic";
 
 const METRIC_KEYS: RadarMetricKey[] = [
   "duration",
