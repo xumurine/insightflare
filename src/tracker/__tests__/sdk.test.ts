@@ -358,6 +358,34 @@ describe("Tracker Browser SDK Integration Suite", () => {
     }
   });
 
+  it("should delay the first pageview until DOMContentLoaded while the document is loading", async () => {
+    Object.defineProperty(document, "readyState", {
+      value: "loading",
+      writable: true,
+      configurable: true,
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    await import("../sdk.ts");
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    Object.defineProperty(document, "readyState", {
+      value: "interactive",
+      writable: true,
+      configurable: true,
+    });
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const body = decodeFetchBody(fetchSpy);
+    expect(body.kind).toBe("pageview");
+  });
+
   it("should reject re-installation when an SDK instance is already mounted on window", async () => {
     // First successful boot
     await import("../sdk.ts");

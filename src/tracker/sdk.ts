@@ -469,7 +469,22 @@ function debug(): void {
 
 // ── Initialization ──
 
-startVisit(window.location.href, document.referrer || "", Date.now());
+function startInitialVisitWhenReady(): void {
+  const startInitialVisit = () => {
+    startVisit(window.location.href, document.referrer || "", Date.now());
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startInitialVisit, {
+      once: true,
+    });
+    return;
+  }
+
+  startInitialVisit();
+}
+
+startInitialVisitWhenReady();
 
 wrapHistoryMethod("pushState");
 wrapHistoryMethod("replaceState");

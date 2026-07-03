@@ -80,43 +80,54 @@ function parseLimit(url: URL): number {
   return Math.max(1, Math.min(MAX_LIMIT, Math.trunc(value)));
 }
 
+function quoteAnalyticsIdentifier(value: string): string {
+  const name = value.trim();
+  if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}$/.test(name)) {
+    throw new Error("Invalid Analytics Engine dataset name");
+  }
+  return `\`${name}\``;
+}
+
 function buildBotAnalyticsSql(input: {
   dataset: string;
   since: number;
   limit: number;
 }) {
+  const dataset = quoteAnalyticsIdentifier(input.dataset);
+  const sinceSeconds = Math.floor(input.since / 1000);
   return `
     SELECT
       timestamp,
-      _blob1 AS siteId,
-      _blob2 AS kind,
-      _blob3 AS confidence,
-      _blob4 AS reasons,
-      _blob5 AS ip,
-      _blob6 AS userAgent,
-      _blob7 AS origin,
-      _blob8 AS hostname,
-      _blob9 AS pathname,
-      _blob10 AS country,
-      _blob11 AS region,
-      _blob12 AS city,
-      _blob13 AS continent,
-      _blob14 AS colo,
-      _blob15 AS asnText,
-      _blob16 AS asOrganization,
-      _blob17 AS verifiedBotCategory,
-      _blob18 AS rayId,
-      _blob19 AS traceId,
-      _blob20 AS metadataJson,
-      _double1 AS receivedAt,
-      _double2 AS asn,
-      _double3 AS latitude,
-      _double4 AS longitude,
-      _double5 AS botScore,
-      _double6 AS userAgentLength
-    FROM ${input.dataset}
-    WHERE _double1 >= ${input.since}
-    ORDER BY _double1 DESC
+      blob1 AS siteId,
+      blob2 AS kind,
+      blob3 AS confidence,
+      blob4 AS reasons,
+      blob5 AS ip,
+      blob6 AS userAgent,
+      blob7 AS origin,
+      blob8 AS hostname,
+      blob9 AS pathname,
+      blob10 AS country,
+      blob11 AS region,
+      blob12 AS city,
+      blob13 AS continent,
+      blob14 AS colo,
+      blob15 AS asnText,
+      blob16 AS asOrganization,
+      blob17 AS verifiedBotCategory,
+      blob18 AS rayId,
+      blob19 AS traceId,
+      blob20 AS metadataJson,
+      double1 AS receivedAt,
+      double2 AS asn,
+      double3 AS latitude,
+      double4 AS longitude,
+      double5 AS botScore,
+      double6 AS userAgentLength
+    FROM ${dataset}
+    WHERE timestamp >= toDateTime(${sinceSeconds})
+      AND double1 >= ${input.since}
+    ORDER BY double1 DESC
     LIMIT ${input.limit}
     FORMAT JSONEachRow
   `;
@@ -364,6 +375,33 @@ async function queryCloudflareAnalyticsEngine(input: {
   return { ok: true as const, body: text };
 }
 
+function cloudflareAnalyticsErrorMessage(input: {
+  status: number;
+  body: string;
+}): string {
+  const fallback = `Cloudflare Analytics Engine query failed (${input.status})`;
+  const body = input.body.trim();
+  if (!body) return fallback;
+
+  try {
+    const parsed = JSON.parse(body) as {
+      errors?: Array<{ message?: unknown; code?: unknown }>;
+      error?: unknown;
+      message?: unknown;
+    };
+    const details =
+      parsed.errors
+        ?.map((error) => [error.code, error.message].filter(Boolean).join(": "))
+        .filter(Boolean)
+        .join("; ") ||
+      (typeof parsed.message === "string" ? parsed.message : "") ||
+      (typeof parsed.error === "string" ? parsed.error : "");
+    if (details) return `${fallback}: ${clampString(details, 500)}`;
+  } catch {}
+
+  return `${fallback}: ${clampString(body, 500)}`;
+}
+
 export async function handleBotAnalyticsConfigAdmin(
   req: Request,
   env: Env,
@@ -482,7 +520,7 @@ export async function handleBotAnalyticsAdmin(
   });
   if (!result.ok) {
     return bad(
-      `Cloudflare Analytics Engine query failed (${result.status})`,
+      cloudflareAnalyticsErrorMessage(result),
       "bot_analytics_query_failed",
       req,
     );
