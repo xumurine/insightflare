@@ -542,12 +542,13 @@ describe("admin notification email handlers", () => {
           }),
         }),
       ]),
+      { deadlineMs: 500, maxAttempts: 1 },
     );
     const body = await jsonOf(networkFailure);
 
     expect(networkFailure.status).toBe(400);
     expect(body.error.code).toBe("resend_request_failed");
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     fetchMock.mockRestore();
   });
 

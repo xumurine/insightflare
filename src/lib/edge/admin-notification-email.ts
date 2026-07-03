@@ -31,6 +31,12 @@ const TEST_EMAIL_TEXT =
 const TEST_EMAIL_HTML =
   "<p>This is a test email from InsightFlare.</p><p>Your Resend email configuration is working.</p>";
 
+type NotificationEmailTestOptions = {
+  fetchImpl?: typeof fetch;
+  deadlineMs?: number;
+  maxAttempts?: number;
+};
+
 function applyUpdateInput(
   current: NotificationEmailConfig,
   input: NotificationEmailConfigUpdateInput,
@@ -135,6 +141,7 @@ export async function handleNotificationEmailConfigAdmin(
 export async function handleNotificationEmailTestAdmin(
   req: Request,
   env: Env,
+  options: NotificationEmailTestOptions = {},
 ): Promise<Response> {
   const actor = await requireActor(env, req);
   if (actor instanceof Response) return actor;
@@ -192,6 +199,7 @@ export async function handleNotificationEmailTestAdmin(
   const result = await sendResendEmailWithRetry({
     apiKey,
     body: emailBody,
+    ...options,
   });
 
   if (!result.ok && result.reason === "network_failed") {
