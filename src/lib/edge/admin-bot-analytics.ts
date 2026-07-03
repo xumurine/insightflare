@@ -92,9 +92,24 @@ function buildBotAnalyticsSql(input: {
   dataset: string;
   since: number;
   limit: number;
+  includeDoubles?: boolean;
 }) {
   const dataset = analyticsDatasetIdentifier(input.dataset);
   const sinceSeconds = Math.floor(input.since / 1000);
+  const doubleSelect = input.includeDoubles
+    ? `,
+      double1 AS receivedAt,
+      double2 AS asn,
+      double3 AS latitude,
+      double4 AS longitude,
+      double5 AS botScore,
+      double6 AS userAgentLength`
+    : "";
+  const doubleFilter = input.includeDoubles
+    ? `
+      AND double1 >= ${input.since}`
+    : "";
+  const orderBy = input.includeDoubles ? "double1" : "timestamp";
   return `
     SELECT
       timestamp,
@@ -117,17 +132,10 @@ function buildBotAnalyticsSql(input: {
       blob17 AS verifiedBotCategory,
       blob18 AS rayId,
       blob19 AS traceId,
-      blob20 AS metadataJson,
-      double1 AS receivedAt,
-      double2 AS asn,
-      double3 AS latitude,
-      double4 AS longitude,
-      double5 AS botScore,
-      double6 AS userAgentLength
+      blob20 AS metadataJson${doubleSelect}
     FROM ${dataset}
-    WHERE timestamp >= toDateTime(${sinceSeconds})
-      AND double1 >= ${input.since}
-    ORDER BY double1 DESC
+    WHERE timestamp >= toDateTime(${sinceSeconds})${doubleFilter}
+    ORDER BY ${orderBy} DESC
     LIMIT ${input.limit}
     FORMAT JSONEachRow
   `;
@@ -184,6 +192,16 @@ function parseJsonEachRow(text: string): Record<string, unknown>[] {
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
+function parseAnalyticsTimestampMs(value: unknown): number {
+  const text = String(value || "").trim();
+  if (!text) return 0;
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(text)
+    ? `${text.replace(" ", "T")}Z`
+    : text;
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function normalizeBotRow(
   row: Record<string, unknown>,
   sites: Map<string, { name: string; domain: string }>,
@@ -195,9 +213,11 @@ function normalizeBotRow(
     .map((reason) => reason.trim())
     .filter(Boolean);
   const botScore = toFiniteNumber(row.botScore, 0);
+  const receivedAt =
+    toFiniteNumber(row.receivedAt) || parseAnalyticsTimestampMs(row.timestamp);
   return {
     timestamp: clampString(String(row.timestamp || ""), 64),
-    receivedAt: toFiniteNumber(row.receivedAt),
+    receivedAt,
     siteId,
     siteName: clampString(site?.name || siteId || "Unknown site", 160),
     siteDomain: clampString(site?.domain || "", 255),
@@ -224,6 +244,17 @@ function normalizeBotRow(
     botScore: botScore > 0 ? botScore : null,
     userAgentLength: Math.trunc(toFiniteNumber(row.userAgentLength)),
   };
+}
+
+function shouldRetryBotAnalyticsWithoutDoubles(result: {
+  status: number;
+  body: string;
+}): boolean {
+  if (result.status !== 422) return false;
+  const body = result.body.toLowerCase();
+  return (
+    body.includes("unable to find type of column") && /double\d+/.test(body)
+  );
 }
 
 function bucketSizeMs(minutes: number): number {
@@ -512,12 +543,25 @@ export async function handleBotAnalyticsAdmin(
     dataset: config.dataset,
     since: from,
     limit,
+    includeDoubles: true,
   });
-  const result = await queryCloudflareAnalyticsEngine({
+  let result = await queryCloudflareAnalyticsEngine({
     accountId: config.accountId,
     token,
     sql,
   });
+  if (!result.ok && shouldRetryBotAnalyticsWithoutDoubles(result)) {
+    result = await queryCloudflareAnalyticsEngine({
+      accountId: config.accountId,
+      token,
+      sql: buildBotAnalyticsSql({
+        dataset: config.dataset,
+        since: from,
+        limit,
+        includeDoubles: false,
+      }),
+    });
+  }
   if (!result.ok) {
     return bad(
       cloudflareAnalyticsErrorMessage(result),

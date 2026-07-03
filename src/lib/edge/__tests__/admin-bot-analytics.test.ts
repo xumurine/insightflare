@@ -329,4 +329,100 @@ describe("admin bot analytics handlers", () => {
       pointCount: 1,
     });
   });
+
+  it("falls back to blob-only Analytics Engine queries when double columns are unavailable", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    const encrypted = await import("@/lib/edge/secret-encryption").then(
+      ({ encryptBotAnalyticsSecret }) =>
+        encryptBotAnalyticsSecret(
+          { MAIN_SECRET: "main-secret" },
+          "cf_reader_token",
+        ),
+    );
+    const configSelect = statement({
+      first: row({
+        apiTokenEncrypted: encrypted,
+        apiTokenHint: "••••oken",
+        configured: true,
+      }),
+    });
+    const siteSelect = statement({
+      all: [{ id: "site-1", name: "Blog", domain: "example.test" }],
+    });
+    const env = createEnv([configSelect, siteSelect]);
+    const fallbackBody = [
+      JSON.stringify({
+        timestamp: "2026-07-03 10:00:00",
+        siteId: "site-1",
+        kind: "pageview",
+        confidence: "medium",
+        reasons: "hosting_asn",
+        ip: "203.0.113.8",
+        userAgent: "Mozilla/5.0",
+        origin: "https://example.test",
+        hostname: "example.test",
+        pathname: "/post",
+        country: "JP",
+        region: "Tokyo",
+        city: "Tokyo",
+        continent: "AS",
+        colo: "NRT",
+        asnText: "16509",
+        asOrganization: "Amazon.com, Inc.",
+        verifiedBotCategory: "",
+        rayId: "ray-1",
+        traceId: "trace-1",
+        metadataJson: "{}",
+      }),
+      "",
+    ].join("\n");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            errors: [
+              {
+                message:
+                  'Input was invalid: unable to find type of column: "double1"',
+              },
+            ],
+          }),
+          { status: 422 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(fallbackBody, { status: 200 }));
+
+    const response = await handleBotAnalyticsAdmin(
+      request("/api/private/admin/bot-analytics?minutes=60&limit=10"),
+      env,
+      new URL(
+        "https://app.test/api/private/admin/bot-analytics?minutes=60&limit=10",
+      ),
+    );
+    const body = await jsonOf(response);
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const firstSql = String(
+      (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body || "",
+    );
+    const fallbackSql = String(
+      (fetchMock.mock.calls[1]?.[1] as RequestInit | undefined)?.body || "",
+    );
+    expect(firstSql).toContain("double1 AS receivedAt");
+    expect(fallbackSql).not.toContain("double1");
+    expect(fallbackSql).toContain("ORDER BY timestamp DESC");
+    expect(body.events[0]).toMatchObject({
+      siteName: "Blog",
+      asn: 16509,
+      receivedAt: Date.UTC(2026, 6, 3, 10, 0, 0),
+    });
+    expect(body.summary).toMatchObject({
+      total: 1,
+      mediumConfidence: 1,
+      uniqueAsns: 1,
+      uniqueCountries: 1,
+    });
+  });
 });
