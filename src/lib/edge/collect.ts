@@ -1,4 +1,4 @@
-import { isBot } from "ua-parser-js/bot-detection";
+import { isbot } from "isbot";
 
 import { normalizeTrackerUaClientHints } from "@/lib/edge/client-hints";
 import { expandCustomEventData } from "@/lib/edge/custom-event-json";
@@ -161,7 +161,7 @@ function toCorsHeaders(origin: string | null): Record<string, string> {
 
 function isBotRequest(request: Request): boolean {
   const ua = request.headers.get("user-agent") || "";
-  if (!ua || !isBot(ua)) return false;
+  if (!ua || !isbot(ua)) return false;
   console.log(`[Bot] UA: ${ua}`);
   return true;
 }

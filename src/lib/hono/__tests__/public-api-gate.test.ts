@@ -8,7 +8,7 @@ import {
   checkOriginOrReferer,
   getTargetOrigin,
   isBadSimpleUA,
-  isBotByUAParser,
+  isBotByIsbot,
   publicApiGate,
 } from "@/lib/hono/middleware/public-api-gate";
 import type { AppEnv } from "@/lib/hono/types";
@@ -112,19 +112,17 @@ describe("publicApiGate", () => {
     expect(checkFetchMetadata(imageWithoutResourceAllowance)).toBe("fail");
   });
 
-  it("covers ua-parser bot helper boundary branches", () => {
-    expect(isBotByUAParser(request("/api/public/share/demo/overview"))).toBe(
-      true,
-    );
+  it("covers isbot helper boundary branches", () => {
+    expect(isBotByIsbot(request("/api/public/share/demo/overview"))).toBe(true);
     expect(
-      isBotByUAParser(
+      isBotByIsbot(
         request("/api/public/share/demo/overview", {
           headers: { "user-agent": "a".repeat(513) },
         }),
       ),
     ).toBe(true);
     expect(
-      isBotByUAParser(
+      isBotByIsbot(
         request("/api/public/share/demo/overview", {
           headers: { "user-agent": CHROME_UA },
         }),

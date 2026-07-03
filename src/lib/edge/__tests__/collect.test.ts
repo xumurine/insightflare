@@ -1,4 +1,4 @@
-import { isBot } from "ua-parser-js/bot-detection";
+import { isbot } from "isbot";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -19,12 +19,12 @@ vi.mock("@/lib/edge/site-settings-store", async () => {
   };
 });
 
-vi.mock("ua-parser-js/bot-detection", () => ({
-  isBot: vi.fn(),
+vi.mock("isbot", () => ({
+  isbot: vi.fn(),
 }));
 
 const readSiteTrackingConfigMock = vi.mocked(readSiteTrackingConfig);
-const isBotMock = vi.mocked(isBot);
+const isBotMock = vi.mocked(isbot);
 
 const baseSettings: SiteTrackingConfig = {
   siteId: "site-1",

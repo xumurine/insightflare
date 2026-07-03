@@ -1,5 +1,5 @@
 import { createMiddleware } from "hono/factory";
-import { isBot } from "ua-parser-js/bot-detection";
+import { isbot } from "isbot";
 
 import type { AppEnv } from "@/lib/hono/types";
 
@@ -89,11 +89,11 @@ export function checkOriginOrReferer(req: Request): boolean {
   return getRefererOrigin(req) === targetOrigin;
 }
 
-export function isBotByUAParser(req: Request): boolean {
+export function isBotByIsbot(req: Request): boolean {
   const ua = req.headers.get("user-agent") ?? "";
   if (!ua) return true;
   if (ua.length > 512) return true;
-  return isBot(ua);
+  return isbot(ua);
 }
 
 function publicPreflight(req: Request): Response {
@@ -126,7 +126,7 @@ export function publicApiGate(options: PublicApiGateOptions = {}) {
     if (fetchMetadataResult === "missing" && !checkOriginOrReferer(req)) {
       return forbidden();
     }
-    if (isBotByUAParser(req)) return forbidden();
+    if (isBotByIsbot(req)) return forbidden();
 
     await next();
   });
