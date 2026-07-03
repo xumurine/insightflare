@@ -298,6 +298,7 @@ describe("scheduled task runner and admin API", () => {
       successCount: 2,
       skippedCount: 1,
     });
+    expect(payload.health.totalRuns24h).toBe(1);
     expect(payload.health.successRate24h).toBe(1);
     d1.close();
   });
