@@ -96,6 +96,7 @@ export interface TrackerClientPayload {
   utmTerm?: string;
   utmContent?: string;
   uaClientHints?: TrackerUaClientHints;
+  collectToken?: string;
 }
 
 export interface IngestEnvelope {

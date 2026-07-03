@@ -3,6 +3,7 @@ import {
   writeBotAnalyticsEvent,
 } from "@/lib/edge/bot-protection";
 import { normalizeTrackerUaClientHints } from "@/lib/edge/client-hints";
+import { requestIp, verifyCollectToken } from "@/lib/edge/collect-token";
 import { expandCustomEventData } from "@/lib/edge/custom-event-json";
 import {
   normalizeSiteSettingsKey,
@@ -54,6 +55,10 @@ function sanitizeInputPayload(payload: unknown): TrackerClientPayload | null {
     return null;
   }
   return payload as TrackerClientPayload;
+}
+
+function collectTokenFromPayload(payload: TrackerClientPayload): string {
+  return coerceTrimmedString(payload.collectToken, 4096);
 }
 
 function coerceTrimmedString(input: unknown, maxLength: number): string {
@@ -309,6 +314,7 @@ function normalizeForwardPayload(
     kind,
     visitId,
   };
+  delete normalizedPayload.collectToken;
   const uaClientHints = normalizeTrackerUaClientHints(payload.uaClientHints);
   if (uaClientHints) {
     normalizedPayload.uaClientHints = uaClientHints;
@@ -492,6 +498,23 @@ export async function handleCollectRequest(
     const siteId = normalizeSiteSettingsKey(
       pickSiteIdFromPayload(payload, url),
     );
+    const verification = await verifyCollectToken({
+      env,
+      token: collectTokenFromPayload(payload),
+      siteId,
+      ip: requestIp(requestWithCf),
+    });
+    if (!verification.ok) {
+      logIngestTrace("collect_rejected", {
+        traceId: trace.id,
+        reason: verification.reason,
+        origin,
+        siteId,
+        ...compactPayloadForLog(payload),
+      });
+      return noContent(origin);
+    }
+
     const classification = classifyCollectBotTraffic({
       request: requestWithCf,
       payload,
@@ -559,7 +582,10 @@ export async function handleCollectRequest(
   const stub = env.INGEST_DO.get(doId);
 
   const envelope: IngestEnvelopePayload = {
-    request: serializeRequestPayload(requestWithCf, body),
+    request: serializeRequestPayload(
+      requestWithCf,
+      JSON.stringify(decision.payload),
+    ),
     client: decision.payload,
     trace,
   };

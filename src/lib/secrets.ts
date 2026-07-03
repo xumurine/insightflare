@@ -9,6 +9,7 @@ export const SECRET_PURPOSES = {
     "insightflare:login-turnstile-secret-encryption:v1",
   botAnalyticsSecretEncryption:
     "insightflare:bot-analytics-secret-encryption:v1",
+  collectTokenSigning: "insightflare:collect-token-signing:v1",
   teamInviteTokenEncryption: "insightflare:team-invite-token-encryption:v1",
 } as const;
 
@@ -95,4 +96,11 @@ export async function visitorDailySaltSecret(
 ): Promise<string | null> {
   const root = rootSecret(source);
   return root ? deriveSecret(root, SECRET_PURPOSES.visitorDailySalt) : null;
+}
+
+export async function collectTokenSigningSecret(
+  source: SecretSource,
+): Promise<string | null> {
+  const root = rootSecret(source);
+  return root ? deriveSecret(root, SECRET_PURPOSES.collectTokenSigning) : null;
 }

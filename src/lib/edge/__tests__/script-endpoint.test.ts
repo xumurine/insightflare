@@ -8,12 +8,12 @@ import type { SiteTrackingConfig } from "@/lib/site-settings";
 
 vi.mock("@/tracker/sdk.min", () => ({
   SDK_MIN:
-    'full:"__IF_SITE_ID__","__IF_IS_EU_MODE__","__IF_TRACK_QUERY_PARAMS__","__IF_TRACK_HASH__","__IF_IGNORE_DO_NOT_TRACK__","__IF_AUTO_TRACK_OUTBOUND_LINKS__","__IF_PERFORMANCE_SAMPLE_RATE__","__IF_SESSION_WINDOW_MS__"',
+    'full:"__IF_SITE_ID__","__IF_IS_EU_MODE__","__IF_TRACK_QUERY_PARAMS__","__IF_TRACK_HASH__","__IF_IGNORE_DO_NOT_TRACK__","__IF_AUTO_TRACK_OUTBOUND_LINKS__","__IF_PERFORMANCE_SAMPLE_RATE__","__IF_SESSION_WINDOW_MS__","__IF_COLLECT_TOKEN__"',
 }));
 
 vi.mock("@/tracker/sdk.no-perf.min", () => ({
   SDK_MIN:
-    'no-perf:"__IF_SITE_ID__","__IF_IS_EU_MODE__","__IF_TRACK_QUERY_PARAMS__","__IF_TRACK_HASH__","__IF_IGNORE_DO_NOT_TRACK__","__IF_AUTO_TRACK_OUTBOUND_LINKS__","__IF_PERFORMANCE_SAMPLE_RATE__","__IF_SESSION_WINDOW_MS__"',
+    'no-perf:"__IF_SITE_ID__","__IF_IS_EU_MODE__","__IF_TRACK_QUERY_PARAMS__","__IF_TRACK_HASH__","__IF_IGNORE_DO_NOT_TRACK__","__IF_AUTO_TRACK_OUTBOUND_LINKS__","__IF_PERFORMANCE_SAMPLE_RATE__","__IF_SESSION_WINDOW_MS__","__IF_COLLECT_TOKEN__"',
 }));
 
 vi.mock("@/lib/edge/site-settings-store", async () => {
@@ -55,10 +55,13 @@ function makeRequest(input: {
   url?: string;
   method?: string;
   isEUCountry?: boolean;
+  ip?: string;
 }): Request {
+  const headers = new Headers();
+  if (input.ip) headers.set("cf-connecting-ip", input.ip);
   const request = new Request(
     input.url ?? "https://example.com/script.js?siteId=site-1",
-    { method: input.method ?? "GET" },
+    { method: input.method ?? "GET", headers },
   );
   if (input.isEUCountry !== undefined) {
     Object.defineProperty(request, "cf", {
@@ -150,8 +153,10 @@ describe("edge script endpoint", () => {
       makeRequest({
         url: "https://example.com/script.js?siteId=%20site-1%20",
         isEUCountry: true,
+        ip: "203.0.113.9",
       }),
       makeEnv({
+        MAIN_SECRET: "main-secret",
         SCRIPT_CACHE_TTL_SECONDS: "12.9",
         SESSION_WINDOW_MINUTES: "0",
       }),
@@ -166,7 +171,9 @@ describe("edge script endpoint", () => {
     expect(response.headers.get("cache-control")).toBe(
       "public, max-age=12, s-maxage=12",
     );
-    expect(script).toBe('full:"site-1",true,false,true,false,true,100,1800000');
+    expect(script).toMatch(
+      /^full:"site-1",true,false,true,false,true,100,1800000,"eyJ/,
+    );
     expect(storage.open).toHaveBeenCalledWith("insightflare-script-cache");
     expect(cache.match).toHaveBeenCalledTimes(1);
     expect(cache.put).toHaveBeenCalledTimes(1);
@@ -187,7 +194,7 @@ describe("edge script endpoint", () => {
 
     const response = await handleTrackerScriptRequest(
       makeRequest({}),
-      makeEnv(),
+      makeEnv({ MAIN_SECRET: "main-secret" }),
     );
 
     await expect(response.text()).resolves.toBe("cached script");
@@ -208,16 +215,17 @@ describe("edge script endpoint", () => {
     const response = await handleTrackerScriptRequest(
       makeRequest({ isEUCountry: false }),
       makeEnv({
+        MAIN_SECRET: "main-secret",
         SCRIPT_CACHE_TTL_SECONDS: "999999",
         SESSION_WINDOW_MINUTES: "99999",
       }),
     );
 
-    await expect(response.text()).resolves.toBe(
-      'no-perf:"site-1",true,true,false,true,false,0,86400000',
+    await expect(response.text()).resolves.toMatch(
+      /^no-perf:"site-1",true,true,false,true,false,0,86400000,"eyJ/,
     );
     expect(response.headers.get("cache-control")).toBe(
-      "public, max-age=86400, s-maxage=86400",
+      "public, max-age=43200, s-maxage=43200",
     );
   });
 
@@ -235,6 +243,7 @@ describe("edge script endpoint", () => {
     const response = await handleTrackerScriptRequest(
       makeRequest({ isEUCountry: true }),
       makeEnv({
+        MAIN_SECRET: "main-secret",
         SCRIPT_CACHE_TTL_SECONDS: "-1",
         SESSION_WINDOW_MINUTES: "abc",
       }),
@@ -244,5 +253,26 @@ describe("edge script endpoint", () => {
     expect(response.headers.get("cache-control")).toBe(
       "public, max-age=3600, s-maxage=3600",
     );
+  });
+
+  it("varies script cache entries by client IP because collect tokens are IP-bound", async () => {
+    const cache = {
+      match: vi.fn().mockResolvedValue(null),
+      put: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.stubGlobal("caches", cacheStorageWith(cache));
+
+    await handleTrackerScriptRequest(
+      makeRequest({ ip: "203.0.113.1" }),
+      makeEnv({ MAIN_SECRET: "main-secret" }),
+    );
+    await handleTrackerScriptRequest(
+      makeRequest({ ip: "203.0.113.2" }),
+      makeEnv({ MAIN_SECRET: "main-secret" }),
+    );
+
+    const firstKey = (cache.match.mock.calls[0]![0] as Request).url;
+    const secondKey = (cache.match.mock.calls[1]![0] as Request).url;
+    expect(firstKey).not.toBe(secondKey);
   });
 });

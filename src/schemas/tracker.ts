@@ -75,6 +75,7 @@ export const TrackerClientPayloadSchema = z
     utmTerm: z.string().max(255).optional(),
     utmContent: z.string().max(255).optional(),
     uaClientHints: UaClientHintsSchema.optional(),
+    collectToken: z.string().max(4096).optional(),
   })
   .strict()
   .describe("Payload sent by the InsightFlare client SDK for event tracking");

@@ -16,6 +16,7 @@ const IGNORE_DO_NOT_TRACK = "__IF_IGNORE_DO_NOT_TRACK__";
 const AUTO_TRACK_OUTBOUND_LINKS = "__IF_AUTO_TRACK_OUTBOUND_LINKS__";
 const PERFORMANCE_SAMPLE_RATE = "__IF_PERFORMANCE_SAMPLE_RATE__";
 const SESSION_WINDOW_MS = "__IF_SESSION_WINDOW_MS__";
+const COLLECT_TOKEN = "__IF_COLLECT_TOKEN__";
 
 // ── Static constants ──
 const INSTALL_KEY = "__insightflare_tracker_v6__";
@@ -147,7 +148,15 @@ function pagePayloadBase(
 function send(payload: any, useBeacon: boolean): void {
   let body = "";
   try {
-    body = JSON.stringify(withUaClientHints(payload, uaClientHints));
+    body = JSON.stringify(
+      withUaClientHints(
+        {
+          ...payload,
+          collectToken: COLLECT_TOKEN,
+        },
+        uaClientHints,
+      ),
+    );
   } catch {
     return;
   }
