@@ -54,7 +54,7 @@ export async function deliverNotificationMessage(
   env: Env,
   message: NotificationMessage,
   user: NotificationDeliveryUser,
-  context: { logger?: NotificationDeliveryLogger },
+  context: { logger?: NotificationDeliveryLogger; fetchImpl?: typeof fetch },
 ): Promise<NotificationMessage | null> {
   const preferences = normalizeNotificationPreferences(user.preferencesJson);
   const channels = { inApp: true, email: preferences.email };
@@ -207,6 +207,7 @@ export async function deliverNotificationMessage(
 
     const sendResult = await sendResendEmailWithRetry({
       apiKey,
+      fetchImpl: context.fetchImpl,
       body: {
         from: buildResendFromAddress(config),
         to: [user.email],

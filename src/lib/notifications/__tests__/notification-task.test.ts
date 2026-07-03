@@ -128,6 +128,7 @@ function context(): ScheduledTaskContext & {
     scheduledTime: null,
     startedAt: Date.now(),
     logger,
+    externalFetch: fetch.bind(globalThis),
     events,
   };
 }

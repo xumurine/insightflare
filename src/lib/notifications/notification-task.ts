@@ -189,6 +189,7 @@ async function createAndDeliverMessages(input: {
     );
     const delivered = await deliverNotificationMessage(env, message, user, {
       logger: context.logger,
+      fetchImpl: context.externalFetch,
     });
     collectDeliveryStats(summary, delivered);
     if (delivered) messages.push(delivered);
@@ -479,6 +480,7 @@ export async function createManualTestNotification(input: {
   );
   const delivered = await deliverNotificationMessage(env, message, user, {
     logger: context.logger,
+    fetchImpl: context.externalFetch,
   });
   collectDeliveryStats(summary, delivered);
   summary.durationMs = Date.now() - context.startedAt;

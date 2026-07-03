@@ -2,6 +2,9 @@ import { clampString } from "@/lib/edge/utils";
 
 const RESEND_EMAILS_API_URL = "https://api.resend.com/emails";
 const NETWORK_ERROR_MESSAGE = "Unable to reach Resend email API";
+const DEFAULT_RETRY_DEADLINE_MS = 15_000;
+const DEFAULT_MAX_ATTEMPTS = 15;
+const RETRY_INTERVAL_MS = 1_000;
 
 export interface ResendEmailPayload {
   from: string;
@@ -47,18 +50,21 @@ export function sanitizeProviderError(value: unknown): string {
   return clampString(message, 180);
 }
 
+function sanitizeNetworkError(error: unknown): string {
+  if (error instanceof Error) {
+    const name = error.name || "Error";
+    const message = error.message || "network_failed";
+    return clampString(`${name}: ${message}`, 180);
+  }
+  return clampString(String(error || "network_failed"), 180);
+}
+
 function isRetryableStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function backoffMs(attempts: number): number {
-  const base = attempts <= 1 ? 450 : 1_350;
-  const jitter = Math.floor(Math.random() * (attempts <= 1 ? 151 : 451));
-  return base + jitter;
 }
 
 async function fetchWithTimeout(input: {
@@ -92,8 +98,12 @@ export async function sendResendEmailWithRetry(input: {
   maxAttempts?: number;
 }): Promise<ResendSendResult> {
   const startedAt = Date.now();
-  const deadlineAt = startedAt + Math.max(500, input.deadlineMs ?? 9_000);
-  const maxAttempts = Math.max(1, Math.trunc(input.maxAttempts ?? 3));
+  const deadlineAt =
+    startedAt + Math.max(500, input.deadlineMs ?? DEFAULT_RETRY_DEADLINE_MS);
+  const maxAttempts = Math.max(
+    1,
+    Math.trunc(input.maxAttempts ?? DEFAULT_MAX_ATTEMPTS),
+  );
   const fetchImpl = input.fetchImpl ?? fetch;
   let attempts = 0;
   let status = 0;
@@ -145,15 +155,15 @@ export async function sendResendEmailWithRetry(input: {
           reason,
         };
       }
-    } catch {
+    } catch (error) {
       status = 0;
       payload = {};
       reason = "network_failed";
-      errorMessage = NETWORK_ERROR_MESSAGE;
+      errorMessage = `${NETWORK_ERROR_MESSAGE}: ${sanitizeNetworkError(error)}`;
     }
 
     if (attempts >= maxAttempts) break;
-    const waitMs = backoffMs(attempts);
+    const waitMs = RETRY_INTERVAL_MS;
     if (Date.now() + waitMs >= deadlineAt) break;
     await delay(waitMs);
   }

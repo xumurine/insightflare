@@ -10,12 +10,12 @@ const payload = {
   html: "<p>Text</p>",
 };
 
-async function send(fetchImpl: typeof fetch, deadlineMs = 9_000) {
+async function send(fetchImpl: typeof fetch, deadlineMs?: number) {
   const promise = sendResendEmailWithRetry({
     apiKey: "re_secret",
     body: payload,
     fetchImpl,
-    deadlineMs,
+    ...(deadlineMs === undefined ? {} : { deadlineMs }),
   });
   await vi.runAllTimersAsync();
   return promise;
@@ -24,7 +24,6 @@ async function send(fetchImpl: typeof fetch, deadlineMs = 9_000) {
 describe("sendResendEmailWithRetry", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.spyOn(Math, "random").mockReturnValue(0);
   });
 
   afterEach(() => {
@@ -47,6 +46,7 @@ describe("sendResendEmailWithRetry", () => {
       attempts: 2,
       retryCount: 1,
       providerMessageId: "email-1",
+      durationMs: 1_000,
     });
   });
 
@@ -113,11 +113,13 @@ describe("sendResendEmailWithRetry", () => {
 
     expect(result).toMatchObject({
       ok: false,
-      attempts: 3,
-      retryCount: 2,
+      attempts: 15,
+      retryCount: 14,
       reason: "network_failed",
-      errorMessage: "Unable to reach Resend email API",
     });
+    expect(result.durationMs).toBe(14_000);
+    expect(result.errorMessage).toContain("Unable to reach Resend email API");
+    expect(result.errorMessage).toContain("Error: network");
   });
 
   it("stops when a short deadline leaves no retry budget", async () => {

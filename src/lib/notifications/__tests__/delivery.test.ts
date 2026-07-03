@@ -568,7 +568,8 @@ describe("notification delivery", () => {
     decryptNotificationSecret.mockResolvedValue("re_secret");
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("offline"));
 
-    await deliverNotificationMessage(
+    vi.useFakeTimers();
+    const delivery = deliverNotificationMessage(
       {} as never,
       message(),
       {
@@ -578,13 +579,21 @@ describe("notification delivery", () => {
       },
       {},
     );
+    await vi.runAllTimersAsync();
+    await delivery;
+    vi.useRealTimers();
 
     expect(updateNotificationDeliveryResult).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         status: "failed",
-        errorMessage: "Unable to reach Resend email API",
+        errorMessage: expect.stringContaining(
+          "Unable to reach Resend email API",
+        ),
       }),
     );
+    expect(
+      updateNotificationDeliveryResult.mock.calls[0]?.[1].errorMessage,
+    ).toContain("TypeError: offline");
   });
 });

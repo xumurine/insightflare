@@ -30,6 +30,7 @@ export interface ScheduledTaskContext {
   scheduledTime: number | null;
   startedAt: number;
   logger: ScheduledTaskLogger;
+  externalFetch: typeof fetch;
 }
 
 export interface ScheduledTaskDefinition {
@@ -236,6 +237,7 @@ export async function runScheduledTask(
       scheduledTime: scheduledAt,
       startedAt,
       logger,
+      externalFetch: fetch.bind(globalThis),
     })) ?? { status: "success" as const };
     const finishedAt = Date.now();
     const status = outcome.status ?? "success";
