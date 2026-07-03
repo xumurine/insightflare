@@ -1509,15 +1509,13 @@ managementPages:
     trigger: Trigger
     tasks: Tasks
     taskCount: Tasks
+    subtaskCount: Subtasks
     taskResult: Task result
     statusLabel: Status
     duration: Duration
     sites: Sites
     hours: Hours
     rows: Rows
-    summaryMetric1: Metric 1
-    summaryMetric2: Metric 2
-    summaryMetric3: Metric 3
     rulesScanned: Rules
     messagesCreated: Messages
     emailFailed: Email failed

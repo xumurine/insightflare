@@ -873,15 +873,13 @@ export interface AppManagementMessages {
       trigger: string;
       tasks: string;
       taskCount: string;
+      subtaskCount: string;
       taskResult: string;
       statusLabel: string;
       duration: string;
       sites: string;
       hours: string;
       rows: string;
-      summaryMetric1: string;
-      summaryMetric2: string;
-      summaryMetric3: string;
       rulesScanned: string;
       messagesCreated: string;
       emailFailed: string;

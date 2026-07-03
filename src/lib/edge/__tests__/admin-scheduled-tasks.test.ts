@@ -287,6 +287,10 @@ describe("handleScheduledTasksAdmin", () => {
     expect(body.runs).toHaveLength(50);
     expect(body.runsMeta.hasMore).toBe(true);
     expect(body.runsMeta.nextPage).toBe(2);
+    const runHistorySql = (env.DB.prepare as ReturnType<typeof vi.fn>).mock
+      .calls[3]?.[0] as string;
+    expect(runHistorySql).toContain("GROUP BY");
+    expect(runHistorySql).not.toContain("GROUP BY id");
   });
 
   it("filters by runId when provided", async () => {

@@ -270,6 +270,12 @@ const RUN_GROUP_KEY_SQL = `
         ELSE invocation_id
       END
 `;
+const RUNS_GROUP_KEY_SQL = RUN_GROUP_KEY_SQL.replaceAll(
+  "scheduled_",
+  "runs.scheduled_",
+)
+  .replaceAll("trigger_type", "runs.trigger_type")
+  .replaceAll("invocation_id", "runs.invocation_id");
 
 function runGroupSelectSql(whereClause: string): string {
   return `
@@ -292,7 +298,7 @@ function runGroupSelectSql(whereClause: string): string {
         SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS runningCount
       FROM scheduled_task_runs
       ${whereClause}
-      GROUP BY id
+      GROUP BY ${RUN_GROUP_KEY_SQL}
     ),
     normalized AS (
       SELECT
@@ -314,9 +320,7 @@ function runGroupSelectSql(whereClause: string): string {
         FROM scheduled_task_run_logs logs
         INNER JOIN scheduled_task_runs runs
           ON runs.id = logs.run_id
-        WHERE ${RUN_GROUP_KEY_SQL.replaceAll("scheduled_", "runs.scheduled_")
-          .replaceAll("trigger_type", "runs.trigger_type")
-          .replaceAll("invocation_id", "runs.invocation_id")} = normalized.id
+        WHERE ${RUNS_GROUP_KEY_SQL} = normalized.id
       ) AS logsCount
     FROM normalized
   `;
@@ -525,9 +529,7 @@ export async function handleScheduledTasksAdmin(
           FROM scheduled_task_run_logs logs
           INNER JOIN scheduled_task_runs runs
             ON runs.id = logs.run_id
-          WHERE ${RUN_GROUP_KEY_SQL.replaceAll("scheduled_", "runs.scheduled_")
-            .replaceAll("trigger_type", "runs.trigger_type")
-            .replaceAll("invocation_id", "runs.invocation_id")} = ?
+          WHERE ${RUNS_GROUP_KEY_SQL} = ?
           ORDER BY runs.started_at_ms ASC, logs.sequence ASC
           LIMIT 1000
         `,

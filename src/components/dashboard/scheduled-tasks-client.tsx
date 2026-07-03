@@ -98,7 +98,7 @@ const STATUS_OPTIONS: Array<ScheduledTaskStatus | "all"> = [
 ];
 const RUN_PAGE_SIZE = 50;
 const RUN_SKELETON_ROWS = 8;
-const RUN_TABLE_COLUMN_COUNT = 11;
+const RUN_TABLE_COLUMN_COUNT = 10;
 const INITIAL_RUN_META: ScheduledTaskRunsMeta = {
   page: 1,
   pageSize: RUN_PAGE_SIZE,
@@ -253,6 +253,35 @@ function summaryValue(
   return "--";
 }
 
+function numericSummaryValue(
+  run: ScheduledTaskRun | ScheduledTaskRunGroup,
+  key: string,
+): number {
+  const value = run.summary[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function runSubtaskCount(
+  run: ScheduledTaskRun | ScheduledTaskRunGroup,
+): number {
+  if ("runs" in run) {
+    return run.runs.reduce(
+      (total, taskRun) => total + runSubtaskCount(taskRun),
+      0,
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(run.summary, "rulesScanned")) {
+    return numericSummaryValue(run, "rulesScanned");
+  }
+  if (Object.prototype.hasOwnProperty.call(run.summary, "candidateSites")) {
+    return numericSummaryValue(run, "candidateSites");
+  }
+  if (Object.prototype.hasOwnProperty.call(run.summary, "sitesProcessed")) {
+    return numericSummaryValue(run, "sitesProcessed");
+  }
+  return 0;
+}
+
 function runSummaryMetric(
   labels: AppMessages["managementPages"]["scheduledTasks"],
   run: ScheduledTaskRun | ScheduledTaskRunGroup,
@@ -277,28 +306,6 @@ function runSummaryMetric(
   ] as const;
   const metric = metrics[index];
   return { label: metric.label, value: summaryValue(run, metric.key) };
-}
-
-function SummaryMetricCell({
-  metric,
-  align = "right",
-}: {
-  metric: { label: string; value: string };
-  align?: "left" | "right";
-}) {
-  return (
-    <div
-      className={cn(
-        "min-w-20 space-y-0.5",
-        align === "right" ? "text-right" : "text-left",
-      )}
-    >
-      <div className="text-[10px] uppercase text-muted-foreground">
-        {metric.label}
-      </div>
-      <div className="font-mono">{metric.value}</div>
-    </div>
-  );
 }
 
 function localizedTaskInfo(
@@ -345,8 +352,6 @@ function ScheduledRunRowSkeleton({
     "w-20",
     "w-24",
     "w-16",
-    "w-16",
-    "w-20",
     "w-20",
   ];
   return (
@@ -422,14 +427,9 @@ function ScheduledTaskRunsTable({
               <TableHead>{labels.statusLabel}</TableHead>
               <TableHead className="text-right">{labels.duration}</TableHead>
               <TableHead>{labels.taskResult}</TableHead>
+              <TableHead className="text-right">{labels.taskCount}</TableHead>
               <TableHead className="text-right">
-                {labels.summaryMetric1}
-              </TableHead>
-              <TableHead className="text-right">
-                {labels.summaryMetric2}
-              </TableHead>
-              <TableHead className="text-right">
-                {labels.summaryMetric3}
+                {labels.subtaskCount}
               </TableHead>
               <TableHead className="pr-4 text-right">{labels.logs}</TableHead>
             </TableRow>
@@ -546,19 +546,10 @@ function ScheduledTaskRunsTable({
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        <SummaryMetricCell
-                          metric={runSummaryMetric(labels, run, 0)}
-                        />
+                        {numberFormat(locale, run.taskCount)}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        <SummaryMetricCell
-                          metric={runSummaryMetric(labels, run, 1)}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        <SummaryMetricCell
-                          metric={runSummaryMetric(labels, run, 2)}
-                        />
+                        {numberFormat(locale, runSubtaskCount(run))}
                       </TableCell>
                       <TableCell className="pr-4 text-right">
                         <TableActionButton
@@ -670,6 +661,7 @@ function ScheduledTaskRunLogDrawer({
     }
     return grouped;
   }, [logs]);
+  const bodyTransitionKey = loading ? "loading" : run ? run.id : "empty";
   const overlay =
     open && typeof document !== "undefined"
       ? createPortal(
@@ -735,13 +727,13 @@ function ScheduledTaskRunLogDrawer({
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
             <AutoResizer initial>
               <AutoTransition
-                transitionKey={run ? run.id : loading ? "loading" : "empty"}
+                transitionKey={bodyTransitionKey}
                 initial={false}
                 duration={0.18}
                 type="fade"
                 presenceMode="wait"
               >
-                {loading && !run ? (
+                {loading ? (
                   <div
                     key="loading"
                     className="flex h-64 items-center justify-center text-muted-foreground"

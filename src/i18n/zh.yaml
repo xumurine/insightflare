@@ -1474,15 +1474,13 @@ managementPages:
     trigger: 触发
     tasks: 任务
     taskCount: 任务数
+    subtaskCount: 子任务数
     taskResult: 任务结果
     statusLabel: 状态
     duration: 耗时
     sites: 站点
     hours: 小时
     rows: 行数
-    summaryMetric1: 指标 1
-    summaryMetric2: 指标 2
-    summaryMetric3: 指标 3
     rulesScanned: 规则
     messagesCreated: 消息
     emailFailed: 邮件失败
