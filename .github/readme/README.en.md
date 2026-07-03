@@ -163,6 +163,12 @@ After filling in the variables, wait about 3 minutes for the deployment to finis
 
 ![054](/.github/screenshot/054.webp)
 
+### Receive Scheduled or Conditional Email Notifications
+
+![055](/.github/screenshot/055.webp)
+![056](/.github/screenshot/056.webp)
+![057](/.github/screenshot/057.webp)
+
 ---
 
 ## Advanced Configuration
