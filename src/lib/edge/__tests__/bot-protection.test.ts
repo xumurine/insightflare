@@ -1,4 +1,4 @@
-import { isHostingASN } from "asn-blocklist";
+import { classifyASN } from "asn-blocklist";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -10,7 +10,13 @@ import {
 import type { Env, TrackerClientPayload } from "@/lib/edge/types";
 
 vi.mock("asn-blocklist", () => ({
-  isHostingASN: vi.fn((asn: unknown) => Number(asn) === 13335),
+  classifyASN: vi.fn((asn: unknown) => {
+    if (Number(asn) === 13335) return "hosting";
+    if (Number(asn) === 9009) return "network_service";
+    if (Number(asn) === 4134) return "transit";
+    if (Number(asn) === 7922) return "access";
+    return "unknown";
+  }),
 }));
 
 const CHROME_UA =
@@ -103,11 +109,11 @@ describe("bot protection", () => {
       confidence: "medium",
     });
     expect(result.reasons).toContain("hosting_asn");
-    expect(vi.mocked(isHostingASN)).toHaveBeenCalledWith(13335);
+    expect(vi.mocked(classifyASN)).toHaveBeenCalledWith(13335);
   });
 
-  it("does not classify AS organization names without a blocked ASN", () => {
-    vi.mocked(isHostingASN).mockReturnValueOnce(false);
+  it("does not classify AS organization names without a risky ASN class", () => {
+    vi.mocked(classifyASN).mockReturnValueOnce("unknown");
     const result = classifyCollectBotTraffic({
       request: request(
         {
@@ -128,6 +134,99 @@ describe("bot protection", () => {
       isBot: false,
       confidence: "low",
       reasons: [],
+    });
+  });
+
+  it("keeps network-service ASNs on the main lane when browser provenance is present", () => {
+    const result = classifyCollectBotTraffic({
+      request: request(
+        {
+          "user-agent": CHROME_UA,
+          origin: "https://example.com",
+          "sec-fetch-site": "cross-site",
+        },
+        {
+          asn: 9009,
+          asOrganization: "M247 Global",
+        },
+      ),
+      payload,
+      origin: "https://example.com",
+    });
+
+    expect(result).toEqual({
+      isBot: false,
+      confidence: "low",
+      reasons: ["network_service_asn"],
+    });
+  });
+
+  it("classifies network-service ASNs with missing browser provenance as medium confidence", () => {
+    const result = classifyCollectBotTraffic({
+      request: request(
+        {
+          "user-agent": CHROME_UA,
+        },
+        {
+          asn: 9009,
+          asOrganization: "M247 Global",
+        },
+      ),
+      payload,
+      origin: "https://example.com",
+    });
+
+    expect(result).toMatchObject({
+      isBot: true,
+      confidence: "medium",
+    });
+    expect(result.reasons).toEqual([
+      "network_service_asn",
+      "missing_browser_provenance",
+    ]);
+  });
+
+  it("does not divert transit or access ASNs on ASN class alone", () => {
+    const transit = classifyCollectBotTraffic({
+      request: request(
+        {
+          "user-agent": CHROME_UA,
+          origin: "https://example.com",
+          "sec-fetch-site": "cross-site",
+        },
+        {
+          asn: 4134,
+          asOrganization: "China Telecom",
+        },
+      ),
+      payload,
+      origin: "https://example.com",
+    });
+    const access = classifyCollectBotTraffic({
+      request: request(
+        {
+          "user-agent": CHROME_UA,
+          origin: "https://example.com",
+          "sec-fetch-site": "cross-site",
+        },
+        {
+          asn: 7922,
+          asOrganization: "Comcast",
+        },
+      ),
+      payload,
+      origin: "https://example.com",
+    });
+
+    expect(transit).toEqual({
+      isBot: false,
+      confidence: "low",
+      reasons: ["transit_asn"],
+    });
+    expect(access).toEqual({
+      isBot: false,
+      confidence: "low",
+      reasons: ["access_asn"],
     });
   });
 

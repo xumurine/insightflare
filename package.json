@@ -69,7 +69,7 @@
     "@noble/hashes": "^2.2.0",
     "@number-flow/react": "^0.6.0",
     "@remixicon/react": "^4.9.0",
-    "asn-blocklist": "^1.20260703.2",
+    "asn-blocklist": "^1.20260703.3",
     "boring-avatars": "^2.0.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

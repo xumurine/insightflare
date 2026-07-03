@@ -1,4 +1,4 @@
-import { isHostingASN } from "asn-blocklist";
+import { classifyASN } from "asn-blocklist";
 import { isbot } from "isbot";
 
 import type { Env, TrackerClientPayload } from "./types";
@@ -169,10 +169,16 @@ export function classifyCollectBotTraffic(input: {
   if (score !== null && score <= 29) reasons.push("cf_bot_score_low");
   if (cfVerifiedBotCategory(cf)) reasons.push("cf_verified_bot_category");
 
-  const hostedByAsn = typeof asn === "number" && isHostingASN(asn);
+  const asnClass = typeof asn === "number" ? classifyASN(asn) : "unknown";
+  const hostedByAsn = asnClass === "hosting";
+  const networkServiceAsn = asnClass === "network_service";
   if (hostedByAsn) reasons.push("hosting_asn");
+  else if (networkServiceAsn) reasons.push("network_service_asn");
+  else if (asnClass === "transit") reasons.push("transit_asn");
+  else if (asnClass === "access") reasons.push("access_asn");
 
-  if (!hasBrowserProvenance(input.request)) {
+  const missingBrowserProvenance = !hasBrowserProvenance(input.request);
+  if (missingBrowserProvenance) {
     reasons.push("missing_browser_provenance");
   }
 
@@ -194,6 +200,12 @@ export function classifyCollectBotTraffic(input: {
   }
 
   if (hostedByAsn) {
+    return { isBot: true, confidence: "medium", reasons };
+  }
+  if (
+    networkServiceAsn &&
+    (missingBrowserProvenance || reasons.includes("origin_hostname_mismatch"))
+  ) {
     return { isBot: true, confidence: "medium", reasons };
   }
 
