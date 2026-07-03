@@ -30,6 +30,7 @@ const RETENTION_MS = SCHEDULED_TASK_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const STALE_RUNNING_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_RUN_PAGE_SIZE = 50;
 const MAX_RUN_PAGE_SIZE = 100;
+const RUN_GROUP_STARTED_AT_BUCKET_MS = 10 * 60 * 1000;
 
 interface RunRow {
   id: string;
@@ -266,7 +267,7 @@ function runSelectSql(whereClause: string): string {
 
 const RUN_GROUP_KEY_SQL = `
       CASE
-        WHEN scheduled_at_ms IS NOT NULL THEN trigger_type || ':' || scheduled_at_ms
+        WHEN scheduled_at_ms IS NOT NULL THEN trigger_type || ':' || scheduled_at_ms || ':' || CAST(started_at_ms / ${RUN_GROUP_STARTED_AT_BUCKET_MS} AS INTEGER)
         ELSE invocation_id
       END
 `;
@@ -328,6 +329,15 @@ function runGroupSelectSql(whereClause: string): string {
 
 function successRate(success: number, total: number): number | null {
   return total > 0 ? success / total : null;
+}
+
+function scheduledRunGroupId(run: ScheduledTaskRun): string {
+  if (run.scheduledAt === null) return run.invocationId;
+  return [
+    run.triggerType,
+    run.scheduledAt,
+    Math.trunc(run.startedAt / RUN_GROUP_STARTED_AT_BUCKET_MS),
+  ].join(":");
 }
 
 function parseIntegerParam(
@@ -460,10 +470,7 @@ export async function handleScheduledTasksAdmin(
       : { results: [] as RunRow[] };
   const taskRunsByGroup = new Map<string, ScheduledTaskRun[]>();
   for (const run of pageTaskRows.results.map(mapRun)) {
-    const groupId =
-      run.scheduledAt !== null
-        ? `${run.triggerType}:${run.scheduledAt}`
-        : run.invocationId;
+    const groupId = scheduledRunGroupId(run);
     const groupRuns = taskRunsByGroup.get(groupId) ?? [];
     groupRuns.push(run);
     taskRunsByGroup.set(groupId, groupRuns);
