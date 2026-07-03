@@ -1439,6 +1439,7 @@ managementNav:
   teams: Team Management
   versionUpdates: Version Updates
   scheduledTasks: Scheduled Tasks
+  botProtection: Bot Protection
   systemPerformance: System Performance
   systemSettings: System Settings
 managementPages:
@@ -1632,9 +1633,59 @@ adminTeams:
     members: Members
     created: Created
     action: Action
+botProtection:
+  title: Bot Protection
+  subtitle: Review traffic diverted before it reaches the primary DO/D1 analytics pipeline.
+  refresh: Refresh
+  loadFailed: Failed to load bot protection data.
+  notConfiguredTitle: Analytics Engine reader is not configured
+  notConfiguredDescription: Add a Cloudflare Account ID and API token in System Settings to read the bot diversion dataset.
+  openSettings: Open settings
+  range1h: Last 1 hour
+  range6h: Last 6 hours
+  range24h: Last 24 hours
+  range7d: Last 7 days
+  total: Diverted Requests
+  highConfidence: High Confidence
+  mediumConfidence: ASN Diversions
+  uniqueAsns: Unique ASNs
+  uniqueCountries: Countries
+  mapTitle: Bot Traffic Map
+  mapDescription: Recent diverted requests grouped by Cloudflare edge geolocation.
+  noData: No bot traffic in this window.
+  trendTitle: Diversion Trend
+  trendDescription: Requests diverted before the primary analytics path.
+  reasonsTitle: Detection Reasons
+  reasonsDescription: Signals that triggered diversion.
+  asnTitle: Source Networks
+  asnDescription: Hosting and cloud ASNs seen most often.
+  recentTitle: Recent Bot Requests
+  recentDescription: Detailed records written only to the bot Analytics Engine dataset.
+  time: Time
+  site: Site
+  location: Location
+  network: Network
+  reason: Reason
+  request: Request
+  ip: IP
+  userAgent: User agent
+  confidence: Confidence
 systemSettings:
   title: System Settings
   subtitle: Manage instance-wide configuration for this InsightFlare deployment.
+  botAnalyticsTitle: Bot Analytics Engine
+  botAnalyticsDescription: Configure the Cloudflare credentials used to read the bot diversion Analytics Engine dataset.
+  botAnalyticsAccountIdLabel: Cloudflare Account ID
+  botAnalyticsDatasetLabel: Analytics Engine dataset
+  botAnalyticsApiTokenLabel: Cloudflare API token
+  botAnalyticsApiTokenPlaceholder: Leave blank to keep the saved API token
+  botAnalyticsTokenSaved: Token saved
+  botAnalyticsTokenNotSaved: Token not saved
+  botAnalyticsSaved: Bot analytics configuration saved.
+  botAnalyticsSaveFailed: Failed to save bot analytics configuration.
+  botAnalyticsDeleted: Bot analytics configuration deleted.
+  botAnalyticsDeleteFailed: Failed to delete bot analytics configuration.
+  botAnalyticsDeleteConfirm: Delete the bot analytics read configuration? The Bot Protection page will show configuration required until it is restored.
   notificationEmailTitle: Email Notifications
   notificationEmailDescription: Configure the email service used for reports, alerts, and test messages.
   loginTurnstileTitle: Login Turnstile Protection
@@ -1682,6 +1733,7 @@ systemSettings:
   saveFailed: Failed to save email configuration.
   delete: Delete configuration
   deleting: Deleting...
+  cancel: Cancel
   deleted: Email configuration deleted.
   deleteFailed: Failed to delete email configuration.
   deleteConfirm: Delete the email notification configuration? The system will treat email as unconfigured and disabled.

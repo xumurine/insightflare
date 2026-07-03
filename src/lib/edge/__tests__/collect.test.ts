@@ -1,4 +1,3 @@
-import { isbot } from "isbot";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -19,12 +18,7 @@ vi.mock("@/lib/edge/site-settings-store", async () => {
   };
 });
 
-vi.mock("isbot", () => ({
-  isbot: vi.fn(),
-}));
-
 const readSiteTrackingConfigMock = vi.mocked(readSiteTrackingConfig);
-const isBotMock = vi.mocked(isbot);
 
 const baseSettings: SiteTrackingConfig = {
   siteId: "site-1",
@@ -44,6 +38,9 @@ const env = {
   INGEST_DO: {
     idFromName: vi.fn(),
     get: vi.fn(),
+  },
+  BOT_ANALYTICS: {
+    writeDataPoint: vi.fn(),
   },
   SITE_SETTINGS_KV: {},
 };
@@ -119,8 +116,7 @@ describe("collect route", () => {
   beforeEach(() => {
     vi.useRealTimers();
     readSiteTrackingConfigMock.mockReset();
-    isBotMock.mockReset();
-    isBotMock.mockReturnValue(false);
+    env.BOT_ANALYTICS.writeDataPoint.mockReset();
     env.INGEST_DO.idFromName.mockReset();
     env.INGEST_DO.get.mockReset();
     env.INGEST_DO.idFromName.mockReturnValue("do-id");
@@ -306,8 +302,7 @@ describe("collect route", () => {
     stringifySpy.mockRestore();
   });
 
-  it("drops bot traffic without looking up settings", async () => {
-    isBotMock.mockReturnValue(true);
+  it("diverts bot traffic to Analytics Engine without looking up settings or forwarding", async () => {
     const request = makeRuntimeRequest({
       origin: "https://example.com",
       body: makePayload(),
@@ -324,7 +319,20 @@ describe("collect route", () => {
     );
 
     expect(response.status).toBe(204);
-    expect(isBotMock).toHaveBeenCalledWith("Googlebot/2.1");
+    expect(env.BOT_ANALYTICS.writeDataPoint).toHaveBeenCalledTimes(1);
+    const dataPoint = env.BOT_ANALYTICS.writeDataPoint.mock.calls[0]?.[0];
+    expect(dataPoint).toMatchObject({
+      indexes: ["site-1"],
+    });
+    expect(dataPoint?.blobs).toEqual(
+      expect.arrayContaining([
+        "site-1",
+        "pageview",
+        "high",
+        expect.stringContaining("ua_isbot"),
+        "Googlebot/2.1",
+      ]),
+    );
     expect(readSiteTrackingConfigMock).not.toHaveBeenCalled();
     expect(ctx.waitUntil).not.toHaveBeenCalled();
   });

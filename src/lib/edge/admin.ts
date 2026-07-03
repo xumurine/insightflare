@@ -2,6 +2,10 @@ import { handleAccountLinksAdmin } from "./admin-account-links";
 import { handleApiKeysAdmin } from "./admin-api-keys";
 import { requireActor } from "./admin-auth";
 import {
+  handleBotAnalyticsAdmin,
+  handleBotAnalyticsConfigAdmin,
+} from "./admin-bot-analytics";
+import {
   handleLoginTurnstileConfigAdmin,
   handleLoginTurnstileTestAdmin,
 } from "./admin-login-turnstile";
@@ -81,6 +85,10 @@ export async function handlePrivateAdmin(
     return handleLoginTurnstileConfigAdmin(request, env);
   if (p === "/api/private/admin/login-turnstile/test")
     return handleLoginTurnstileTestAdmin(request, env);
+  if (p === "/api/private/admin/bot-analytics-config")
+    return handleBotAnalyticsConfigAdmin(request, env);
+  if (p === "/api/private/admin/bot-analytics")
+    return handleBotAnalyticsAdmin(request, env, url);
   if (p === "/api/private/admin/notification-email-preview")
     return handleNotificationEmailPreviewAdmin(request, env, url);
   if (p === "/api/private/notifications")

@@ -25,3 +25,7 @@ migrations_dir = "./migrations"
 [[kv_namespaces]]
 binding = "SITE_SETTINGS_KV"
 id = "local-dev"
+
+[[analytics_engine_datasets]]
+binding = "BOT_ANALYTICS"
+dataset = "insightflare_bot_events"

@@ -150,6 +150,28 @@ export async function decryptLoginTurnstileSecret(
   );
 }
 
+export async function encryptBotAnalyticsSecret(
+  env: Pick<Env, "MAIN_SECRET" | "DAILY_SALT_SECRET">,
+  secret: string,
+): Promise<string> {
+  return encryptSecret(
+    env,
+    secret,
+    SECRET_PURPOSES.botAnalyticsSecretEncryption,
+  );
+}
+
+export async function decryptBotAnalyticsSecret(
+  env: Pick<Env, "MAIN_SECRET" | "DAILY_SALT_SECRET">,
+  encrypted: string,
+): Promise<string> {
+  return decryptSecret(
+    env,
+    encrypted,
+    SECRET_PURPOSES.botAnalyticsSecretEncryption,
+  );
+}
+
 export async function encryptTeamInviteToken(
   env: Pick<Env, "MAIN_SECRET" | "DAILY_SALT_SECRET">,
   token: string,

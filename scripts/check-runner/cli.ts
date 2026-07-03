@@ -25,6 +25,11 @@ interface TaskResult extends StepResult {
   failedStep?: string;
 }
 
+interface CheckOptions {
+  verbose: boolean;
+  skipBuild: boolean;
+}
+
 export const rlog = createScriptLogger({
   silent: true,
 });
@@ -163,33 +168,43 @@ async function runTask(task: CheckTask, verbose: boolean): Promise<TaskResult> {
   };
 }
 
-function parseArgs(argv: string[]): { verbose: boolean } {
-  const knownArgs = new Set(["--verbose", "--help", "-h"]);
+function parseArgs(argv: string[]): CheckOptions {
+  const knownArgs = new Set([
+    "--verbose",
+    "--skip-build",
+    "--no-build",
+    "--help",
+    "-h",
+  ]);
   const unknownArgs = argv.filter((arg) => !knownArgs.has(arg));
 
   if (argv.includes("--help") || argv.includes("-h")) {
-    rlog.info("Usage: tsx scripts/check.ts [--verbose]");
+    rlog.info("Usage: tsx scripts/check.ts [--verbose] [--skip-build]");
     rlog.info(
-      "Runs the same quality, coverage, spec, and build checks used by CI.",
+      "Runs the same quality, coverage, spec, and build checks used by CI. Use --skip-build for commit-time checks.",
     );
     process.exit(0);
   }
 
   if (unknownArgs.length > 0) {
     rlog.error(`Unknown option: ${unknownArgs.join(", ")}`);
-    rlog.info("Usage: tsx scripts/check.ts [--verbose]");
+    rlog.info("Usage: tsx scripts/check.ts [--verbose] [--skip-build]");
     process.exit(1);
   }
 
   return {
     verbose: argv.includes("--verbose"),
+    skipBuild: argv.includes("--skip-build") || argv.includes("--no-build"),
   };
 }
 
 export async function runCli(argv = process.argv.slice(2)): Promise<void> {
-  const { verbose } = parseArgs(argv);
+  const { verbose, skipBuild } = parseArgs(argv);
+  const selectedTasks = skipBuild
+    ? tasks.filter((task) => task.name !== "Build")
+    : tasks;
   const results = await Promise.all(
-    tasks.map((task) => runTask(task, verbose)),
+    selectedTasks.map((task) => runTask(task, verbose)),
   );
   const failures = results.filter((result) => !result.ok);
 

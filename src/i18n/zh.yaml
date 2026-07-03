@@ -1404,6 +1404,7 @@ managementNav:
   teams: 团队管理
   versionUpdates: 版本更新
   scheduledTasks: 定时任务
+  botProtection: 机器人防护
   systemPerformance: 系统性能
   systemSettings: 系统设置
 managementPages:
@@ -1597,9 +1598,59 @@ adminTeams:
     members: 成员数
     created: 创建时间
     action: 操作
+botProtection:
+  title: 机器人防护
+  subtitle: 查看进入主 DO/D1 分析链路前已被分流的流量。
+  refresh: 刷新
+  loadFailed: 加载机器人防护数据失败。
+  notConfiguredTitle: 尚未配置 Analytics Engine 读取凭据
+  notConfiguredDescription: 请先在系统设置中填写 Cloudflare Account ID 和 API Token，用于读取机器人分流数据集。
+  openSettings: 打开设置
+  range1h: 最近 1 小时
+  range6h: 最近 6 小时
+  range24h: 最近 24 小时
+  range7d: 最近 7 天
+  total: 已分流请求
+  highConfidence: 高置信度
+  mediumConfidence: ASN 分流
+  uniqueAsns: ASN 数
+  uniqueCountries: 国家/地区
+  mapTitle: 机器人流量地图
+  mapDescription: 按 Cloudflare 边缘地理信息聚合最近分流请求。
+  noData: 当前时间窗口内没有机器人流量。
+  trendTitle: 分流趋势
+  trendDescription: 进入主分析链路前被分流的请求数量。
+  reasonsTitle: 判定原因
+  reasonsDescription: 触发分流的信号。
+  asnTitle: 来源网络
+  asnDescription: 最常出现的托管和云服务 ASN。
+  recentTitle: 最近机器人请求
+  recentDescription: 这些详细记录只写入机器人 Analytics Engine 数据集。
+  time: 时间
+  site: 站点
+  location: 位置
+  network: 网络
+  reason: 原因
+  request: 请求
+  ip: IP
+  userAgent: User-Agent
+  confidence: 置信度
 systemSettings:
   title: 系统设置
   subtitle: 管理当前 InsightFlare 实例的全站配置。
+  botAnalyticsTitle: 机器人分析引擎
+  botAnalyticsDescription: 配置用于读取机器人分流 Analytics Engine 数据集的 Cloudflare 凭据。
+  botAnalyticsAccountIdLabel: Cloudflare Account ID
+  botAnalyticsDatasetLabel: Analytics Engine 数据集
+  botAnalyticsApiTokenLabel: Cloudflare API Token
+  botAnalyticsApiTokenPlaceholder: 留空表示保留已保存的 API Token
+  botAnalyticsTokenSaved: Token 已保存
+  botAnalyticsTokenNotSaved: 尚未保存 Token
+  botAnalyticsSaved: 机器人分析配置已保存。
+  botAnalyticsSaveFailed: 保存机器人分析配置失败。
+  botAnalyticsDeleted: 机器人分析配置已删除。
+  botAnalyticsDeleteFailed: 删除机器人分析配置失败。
+  botAnalyticsDeleteConfirm: 确认删除机器人分析读取配置吗？删除后机器人防护页面会显示需要配置。
   notificationEmailTitle: 邮件通知
   notificationEmailDescription: 配置系统用于发送报告、告警和测试邮件的邮件服务。
   loginTurnstileTitle: 登录 Turnstile 保护
@@ -1647,6 +1698,7 @@ systemSettings:
   saveFailed: 保存邮件配置失败。
   delete: 删除配置
   deleting: 删除中...
+  cancel: 取消
   deleted: 邮件配置已删除。
   deleteFailed: 删除邮件配置失败。
   deleteConfirm: 确认删除邮件通知配置吗？删除后系统将视为未配置并关闭邮件发送。

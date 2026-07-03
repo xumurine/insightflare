@@ -1,5 +1,7 @@
-import { isbot } from "isbot";
-
+import {
+  classifyCollectBotTraffic,
+  writeBotAnalyticsEvent,
+} from "@/lib/edge/bot-protection";
 import { normalizeTrackerUaClientHints } from "@/lib/edge/client-hints";
 import { expandCustomEventData } from "@/lib/edge/custom-event-json";
 import {
@@ -157,13 +159,6 @@ function toCorsHeaders(origin: string | null): Record<string, string> {
     "access-control-allow-origin": origin,
     vary: "Origin",
   };
-}
-
-function isBotRequest(request: Request): boolean {
-  const ua = request.headers.get("user-agent") || "";
-  if (!ua || !isbot(ua)) return false;
-  console.log(`[Bot] UA: ${ua}`);
-  return true;
 }
 
 type CollectionDecision =
@@ -472,16 +467,6 @@ export async function handleCollectRequest(
     acceptedAt: Date.now(),
   };
 
-  if (isBotRequest(requestWithCf)) {
-    logIngestTrace("collect_rejected", {
-      traceId: trace.id,
-      reason: "bot",
-      origin,
-      userAgent: requestWithCf.headers.get("user-agent") || "",
-    });
-    return noContent(origin);
-  }
-
   const body = await requestWithCf.text();
   let payload: TrackerClientPayload | null = null;
   if (body) {
@@ -500,6 +485,38 @@ export async function handleCollectRequest(
         "warn",
       );
       return jsonError(origin, "Invalid JSON payload", 400);
+    }
+  }
+
+  if (payload) {
+    const siteId = normalizeSiteSettingsKey(
+      pickSiteIdFromPayload(payload, url),
+    );
+    const classification = classifyCollectBotTraffic({
+      request: requestWithCf,
+      payload,
+      origin,
+    });
+
+    if (classification.isBot) {
+      logIngestTrace("collect_bot_diverted", {
+        traceId: trace.id,
+        siteId,
+        origin,
+        confidence: classification.confidence,
+        reasons: classification.reasons,
+        ...compactPayloadForLog(payload),
+      });
+      writeBotAnalyticsEvent(env, {
+        request: requestWithCf,
+        payload,
+        siteId,
+        origin,
+        traceId: trace.id,
+        receivedAt: trace.acceptedAt,
+        classification,
+      });
+      return noContent(origin);
     }
   }
 

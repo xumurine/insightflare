@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
+import { BotAnalyticsSettingsClient } from "@/components/dashboard/system-settings/bot-analytics-settings-client";
 import { LoginTurnstileSettingsClient } from "@/components/dashboard/system-settings/login-turnstile-settings-client";
 import { NotificationEmailSettingsClient } from "@/components/dashboard/system-settings/notification-email-settings-client";
 import { getDashboardProfile } from "@/lib/dashboard/server";
@@ -41,6 +42,7 @@ export default async function SystemSettingsPage({
         title={messages.systemSettings.title}
         subtitle={messages.systemSettings.subtitle}
       />
+      <BotAnalyticsSettingsClient messages={messages} />
       <LoginTurnstileSettingsClient messages={messages} />
       <NotificationEmailSettingsClient
         locale={resolvedLocale}
