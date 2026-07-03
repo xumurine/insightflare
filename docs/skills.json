@@ -1,6 +1,6 @@
 {
   "api": "InsightFlare Analytics API",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Privacy-focused web analytics platform.",
   "baseUrl": "${baseUrl}",
   "openapiUrl": "/.well-known/openapi.json",
