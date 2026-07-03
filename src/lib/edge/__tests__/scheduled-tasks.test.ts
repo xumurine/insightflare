@@ -106,6 +106,10 @@ function createEnv() {
   };
 }
 
+function scheduledGroupId(timestamp: number): string {
+  return `cron:${timestamp}:${Math.trunc(timestamp / (10 * 60 * 1000))}`;
+}
+
 describe("scheduled task runner and admin API", () => {
   it("records successful runs and exposes logs through the admin API", async () => {
     const { env, d1 } = createEnv();
@@ -220,7 +224,7 @@ describe("scheduled task runner and admin API", () => {
 
     expect(response.status).toBe(200);
     expect(payload.runs.map((run) => run.id)).toEqual(
-      [5, 6, 7, 8, 9].map((index) => `cron:${now - index * 60_000}`),
+      [5, 6, 7, 8, 9].map((index) => scheduledGroupId(now - index * 60_000)),
     );
     expect(payload.runsMeta).toEqual({
       page: 2,
@@ -229,8 +233,72 @@ describe("scheduled task runner and admin API", () => {
       hasMore: true,
       nextPage: 3,
     });
-    expect(payload.selectedRun?.id).toBe(`cron:${now - 10 * 60_000}`);
+    expect(payload.selectedRun?.id).toBe(scheduledGroupId(now - 10 * 60_000));
     expect(payload.selectedRun?.runs[0]?.id).toBe("run-10");
+    d1.close();
+  });
+
+  it("counts skipped runs as successful in run groups", async () => {
+    const { env, d1 } = createEnv();
+    const now = Date.now();
+    const scheduledAt = now - 60_000;
+    const expiresAt = Math.floor((now + 30 * 24 * 60 * 60 * 1000) / 1000);
+
+    for (const [index, status] of ["success", "skipped"].entries()) {
+      d1.db
+        .prepare(
+          `
+            INSERT INTO scheduled_task_runs (
+              id,
+              invocation_id,
+              task_key,
+              task_name,
+              trigger_type,
+              status,
+              scheduled_at_ms,
+              started_at_ms,
+              finished_at_ms,
+              duration_ms,
+              summary_json,
+              created_at,
+              expires_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+        )
+        .run(
+          `run-${index}`,
+          `invocation-${index}`,
+          index === 0 ? "notification_tick" : "visit_hourly_rollup",
+          index === 0 ? "Notification dispatch" : "Hourly visit aggregation",
+          "cron",
+          status,
+          scheduledAt,
+          scheduledAt + index * 1_000,
+          scheduledAt + index * 1_000 + 250,
+          250,
+          "{}",
+          Math.floor(now / 1000),
+          expiresAt,
+        );
+    }
+
+    const response = await handleScheduledTasksAdmin(
+      new Request("https://edge.test/api/private/admin/scheduled-tasks"),
+      env,
+      new URL("https://edge.test/api/private/admin/scheduled-tasks"),
+      async () => ({ isAdmin: true }),
+    );
+    const payload = (await response.json()) as ScheduledTasksData;
+
+    expect(response.status).toBe(200);
+    expect(payload.runs[0]).toMatchObject({
+      status: "success",
+      taskCount: 2,
+      successCount: 2,
+      skippedCount: 1,
+    });
+    expect(payload.health.successRate24h).toBe(1);
     d1.close();
   });
 

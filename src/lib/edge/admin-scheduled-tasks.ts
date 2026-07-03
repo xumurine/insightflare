@@ -292,7 +292,7 @@ function runGroupSelectSql(whereClause: string): string {
           ELSE MAX(finished_at_ms)
         END AS finishedAt,
         COUNT(*) AS taskCount,
-        SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successCount,
+        SUM(CASE WHEN status IN ('success', 'skipped') THEN 1 ELSE 0 END) AS successCount,
         SUM(CASE WHEN status = 'partial' THEN 1 ELSE 0 END) AS partialCount,
         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failedCount,
         SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) AS skippedCount,
@@ -308,8 +308,6 @@ function runGroupSelectSql(whereClause: string): string {
           WHEN failedCount > 0 THEN 'failed'
           WHEN runningCount > 0 THEN 'running'
           WHEN partialCount > 0 THEN 'partial'
-          WHEN successCount > 0 AND skippedCount > 0 THEN 'partial'
-          WHEN skippedCount = taskCount THEN 'skipped'
           ELSE 'success'
         END AS status
       FROM grouped
@@ -400,7 +398,7 @@ export async function handleScheduledTasksAdmin(
           SUM(CASE WHEN status = 'partial' THEN 1 ELSE 0 END) AS partialRuns24h,
           SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS runningRuns,
           SUM(CASE WHEN status = 'running' AND started_at_ms < ? THEN 1 ELSE 0 END) AS staleRunningRuns,
-          SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successRuns24h,
+          SUM(CASE WHEN status IN ('success', 'skipped') THEN 1 ELSE 0 END) AS successRuns24h,
           MAX(started_at_ms) AS lastRunAt
         FROM scheduled_task_runs
         WHERE started_at_ms >= ?
@@ -413,7 +411,7 @@ export async function handleScheduledTasksAdmin(
         SELECT
           task_key AS taskKey,
           COUNT(*) AS runs30d,
-          SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success30d,
+          SUM(CASE WHEN status IN ('success', 'skipped') THEN 1 ELSE 0 END) AS success30d,
           SUM(CASE WHEN status = 'partial' THEN 1 ELSE 0 END) AS partial30d,
           SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed30d,
           SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) AS skipped30d,

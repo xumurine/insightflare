@@ -537,12 +537,6 @@ function ScheduledTaskRunsTable({
                               {numberFormat(locale, run.runningCount)}
                             </span>
                           ) : null}
-                          {run.skippedCount > 0 ? (
-                            <span className="font-mono text-muted-foreground">
-                              {labels.status.skipped}:
-                              {numberFormat(locale, run.skippedCount)}
-                            </span>
-                          ) : null}
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-mono">
