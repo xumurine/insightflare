@@ -307,6 +307,10 @@ describe("admin bot analytics handlers", () => {
         }),
       }),
     );
+    const [, fetchInit] = fetchMock.mock.calls[0] ?? [];
+    const sql = String((fetchInit as RequestInit | undefined)?.body || "");
+    expect(sql).toContain("FROM insightflare_bot_events");
+    expect(sql).not.toContain("`insightflare_bot_events`");
     expect(body.configured).toBe(true);
     expect(body.summary).toMatchObject({
       total: 1,

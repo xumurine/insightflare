@@ -80,12 +80,12 @@ function parseLimit(url: URL): number {
   return Math.max(1, Math.min(MAX_LIMIT, Math.trunc(value)));
 }
 
-function quoteAnalyticsIdentifier(value: string): string {
+function analyticsDatasetIdentifier(value: string): string {
   const name = value.trim();
   if (!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}$/.test(name)) {
     throw new Error("Invalid Analytics Engine dataset name");
   }
-  return `\`${name}\``;
+  return name;
 }
 
 function buildBotAnalyticsSql(input: {
@@ -93,7 +93,7 @@ function buildBotAnalyticsSql(input: {
   since: number;
   limit: number;
 }) {
-  const dataset = quoteAnalyticsIdentifier(input.dataset);
+  const dataset = analyticsDatasetIdentifier(input.dataset);
   const sinceSeconds = Math.floor(input.since / 1000);
   return `
     SELECT
