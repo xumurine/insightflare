@@ -1,0 +1,129 @@
+#!/usr/bin/env tsx
+
+import { execSync } from "child_process";
+import { readFileSync, writeFileSync } from "fs";
+import { resolve } from "path";
+
+import { createScriptLogger } from "./shared/logger";
+
+const ROOT = resolve(import.meta.dirname, "..");
+const OUTPUT_PATH = resolve(ROOT, "docs/skills.json");
+const rlog = createScriptLogger();
+
+function getAppVersion(): string {
+  const pkg = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8"));
+  return pkg.version;
+}
+
+function generate() {
+  const manifest = {
+    api: "InsightFlare Analytics API",
+    version: getAppVersion(),
+    description: "Privacy-focused web analytics platform.",
+    baseUrl: "${baseUrl}",
+    openapiUrl: "/.well-known/openapi.json",
+    discovery: {
+      root: "/api/v1",
+      token: "/api/v1/token",
+      capabilities: "/api/v1/capabilities",
+      analyticsSchema: "/api/v1/sites/{siteId}/analytics/schema",
+    },
+    agentGuidance: {
+      authentication: {
+        required: true,
+        instruction:
+          "Use a user-provided API key as a Bearer token. Do not guess or fabricate credentials.",
+      },
+      defaultWorkflow: [
+        "Call GET /api/v1/token to inspect the token.",
+        "Call GET /api/v1/sites to list accessible sites.",
+        "Call GET /api/v1/sites/{siteId}/analytics/schema before advanced analytics.",
+        "Use overview, timeseries, and breakdowns for most analysis tasks.",
+        "Use explore for multi-dimensional or complex filtering.",
+        "Use batch to reduce round trips when multiple GET requests are needed.",
+      ],
+      timeRanges: {
+        format: "ISO 8601 strings",
+        semantics: "[from, to)",
+        default:
+          "If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time. The default timeZone is UTC.",
+        presets: [
+          "today",
+          "yesterday",
+          "last_7_days",
+          "last_30_days",
+          "this_week",
+          "last_week",
+          "this_month",
+          "last_month",
+        ],
+      },
+      filters:
+        "Use filter[field]=value for simple equality filters. Call analyticsSchema to discover supported fields.",
+    },
+    taskRecipes: [
+      {
+        intent: "traffic_overview",
+        description: "Summarize traffic for a site over a time range.",
+        calls: [
+          "GET /api/v1/sites/{siteId}/analytics/overview",
+          "GET /api/v1/sites/{siteId}/analytics/timeseries",
+        ],
+      },
+      {
+        intent: "traffic_drop_analysis",
+        description: "Find likely causes of a traffic drop.",
+        calls: [
+          "GET /api/v1/sites/{siteId}/analytics/compare",
+          "GET /api/v1/sites/{siteId}/analytics/timeseries",
+          "GET /api/v1/sites/{siteId}/analytics/breakdowns/referrer.domain",
+          "GET /api/v1/sites/{siteId}/analytics/breakdowns/page.path",
+          "GET /api/v1/sites/{siteId}/analytics/breakdowns/geo.country",
+          "GET /api/v1/sites/{siteId}/analytics/breakdowns/client.browser",
+        ],
+      },
+      {
+        intent: "performance_analysis",
+        description:
+          "Analyze Core Web Vitals and identify weak pages or regions.",
+        calls: [
+          "GET /api/v1/sites/{siteId}/performance/summary",
+          "GET /api/v1/sites/{siteId}/performance/timeseries",
+          "GET /api/v1/sites/{siteId}/performance/breakdowns/page.path",
+          "GET /api/v1/sites/{siteId}/performance/breakdowns/geo.country",
+        ],
+      },
+      {
+        intent: "custom_event_analysis",
+        description: "Analyze custom events and event payload fields.",
+        calls: [
+          "GET /api/v1/sites/{siteId}/event-types",
+          "GET /api/v1/sites/{siteId}/events/summary",
+          "GET /api/v1/sites/{siteId}/events/timeseries",
+          "POST /api/v1/sites/{siteId}/events/search",
+        ],
+      },
+    ],
+    errorHandling: {
+      "400":
+        "Check request parameters or JSON body against the OpenAPI schema.",
+      "401": "Ask the user to provide a valid API key.",
+      "403": "Explain that the API key lacks the required scope.",
+      "404": "Treat inaccessible sites as not found.",
+      "409": "Explain the conflict and ask the user for a different value.",
+      "413": "Reduce the request body size or number of batched items.",
+      "500":
+        "Retry later or report that the service returned an internal error.",
+    },
+  };
+
+  writeFileSync(OUTPUT_PATH, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  try {
+    execSync(`npx prettier --write "${OUTPUT_PATH}"`, { stdio: "pipe" });
+  } catch {
+    // File remains valid JSON if formatting fails.
+  }
+  rlog.success(`Generated ${OUTPUT_PATH}`);
+}
+
+generate();

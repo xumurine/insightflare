@@ -1,11 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RiDeleteBinLine } from "@remixicon/react";
+import {
+  RiAddLine,
+  RiCloseLine,
+  RiDeleteBinLine,
+  RiFileCopyLine,
+  RiFileList3Line,
+  RiKey2Line,
+} from "@remixicon/react";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { PageHeading } from "@/components/dashboard/page-heading";
+import { TableActionButton } from "@/components/dashboard/table-action-button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,7 +34,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Clickable } from "@/components/ui/clickable";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -55,6 +63,15 @@ interface ApiResponse<T> {
   message?: string;
 }
 
+interface CreatedAccountLink {
+  url: string;
+  expiresAt: number;
+}
+
+function epochSecondsToMs(value: number): number {
+  return value > 0 && value < 100_000_000_000 ? value * 1000 : value;
+}
+
 async function getUsers(): Promise<AccountUserData[]> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
@@ -75,6 +92,10 @@ async function getUsers(): Promise<AccountUserData[]> {
   return payload.data;
 }
 
+function formatDefaultTeamName(template: string, name: string) {
+  return template.replace("{name}", name);
+}
+
 export function AdminUsersManagementClient({
   locale,
   messages,
@@ -82,6 +103,7 @@ export function AdminUsersManagementClient({
 }: AdminUsersManagementClientProps) {
   const { timeZone } = useDashboardQueryControls();
   const t = messages.adminUsers;
+  const defaultTeamNameTemplate = t.defaultTeamName;
   const [users, setUsers] = useState<AccountUserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -90,6 +112,16 @@ export function AdminUsersManagementClient({
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [systemRole, setSystemRole] = useState<"admin" | "user">("user");
+  const [teamName, setTeamName] = useState("");
+  const [teamNameTouched, setTeamNameTouched] = useState(false);
+  const [teamSlug, setTeamSlug] = useState("");
+  const [resetLinkUrl, setResetLinkUrl] = useState("");
+  const [resetLinkExpiresAt, setResetLinkExpiresAt] = useState<number | null>(
+    null,
+  );
+  const [generatingResetUserId, setGeneratingResetUserId] = useState<
+    string | null
+  >(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [pendingDeleteUserId, setPendingDeleteUserId] = useState<string | null>(
     null,
@@ -119,6 +151,14 @@ export function AdminUsersManagementClient({
     };
   }, [t.loadFailed]);
 
+  useEffect(() => {
+    if (teamNameTouched) return;
+    const base = (name.trim() || username.trim()).trim();
+    setTeamName(
+      base ? formatDefaultTeamName(defaultTeamNameTemplate, base) : "",
+    );
+  }, [defaultTeamNameTemplate, name, teamNameTouched, username]);
+
   async function refreshUsers() {
     const data = await getUsers();
     setUsers(data);
@@ -127,11 +167,18 @@ export function AdminUsersManagementClient({
   async function handleCreateUser() {
     const normalizedUsername = username.trim();
     const normalizedEmail = email.trim();
+    const normalizedTeamName =
+      teamName.trim() ||
+      formatDefaultTeamName(
+        defaultTeamNameTemplate,
+        (name.trim() || normalizedUsername || "User").trim(),
+      );
     if (
       normalizedUsername.length < 2 ||
       normalizedEmail.length < 3 ||
       !normalizedEmail.includes("@") ||
-      password.length < 8
+      password.length < 8 ||
+      normalizedTeamName.length < 2
     ) {
       toast.error(t.invalidInput);
       return;
@@ -139,7 +186,7 @@ export function AdminUsersManagementClient({
 
     setSubmitting(true);
     try {
-      const response = await fetch("/api/admin/user", {
+      const response = await fetch("/api/private/admin/users", {
         method: "POST",
         credentials: "include",
         headers: {
@@ -151,6 +198,8 @@ export function AdminUsersManagementClient({
           name: name.trim() || undefined,
           password,
           systemRole,
+          teamName: normalizedTeamName,
+          teamSlug: teamSlug.trim() || undefined,
         }),
       });
       const payload = (await response.json()) as ApiResponse<AccountUserData>;
@@ -162,6 +211,9 @@ export function AdminUsersManagementClient({
       setName("");
       setPassword("");
       setSystemRole("user");
+      setTeamName("");
+      setTeamNameTouched(false);
+      setTeamSlug("");
       await refreshUsers();
       toast.success(t.createSuccess);
     } catch (error) {
@@ -175,8 +227,8 @@ export function AdminUsersManagementClient({
   async function handleDeleteUser(userId: string) {
     setDeletingUserId(userId);
     try {
-      const response = await fetch("/api/admin/user", {
-        method: "POST",
+      const response = await fetch("/api/private/admin/users", {
+        method: "PATCH",
         credentials: "include",
         headers: {
           "content-type": "application/json",
@@ -205,21 +257,66 @@ export function AdminUsersManagementClient({
     }
   }
 
+  async function handleGenerateResetLink(userId: string) {
+    setGeneratingResetUserId(userId);
+    try {
+      const response = await fetch("/api/private/admin/account-links", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "password_reset",
+          userId,
+        }),
+      });
+      const payload =
+        (await response.json()) as ApiResponse<CreatedAccountLink>;
+      if (!response.ok || !payload.ok || !payload.data) {
+        throw new Error(
+          payload.message || payload.error || t.resetLinkCreateFailed,
+        );
+      }
+      setResetLinkUrl(payload.data.url);
+      setResetLinkExpiresAt(payload.data.expiresAt);
+      toast.success(t.resetLinkCreated);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : t.resetLinkCreateFailed;
+      toast.error(message || t.resetLinkCreateFailed);
+    } finally {
+      setGeneratingResetUserId(null);
+    }
+  }
+
+  async function handleCopyResetLink() {
+    if (!resetLinkUrl) return;
+    try {
+      await navigator.clipboard.writeText(resetLinkUrl);
+      toast.success(t.resetLinkCopied);
+    } catch {
+      toast.error(t.resetLinkCopyFailed);
+    }
+  }
+
   const noDataText = t.noData;
 
   return (
     <div className="space-y-4">
-      <div className="space-y-1">
-        <h2 className="text-base font-semibold tracking-tight">{t.title}</h2>
-        <p className="text-sm text-muted-foreground">{t.subtitle}</p>
-      </div>
+      <PageHeading title={t.title} subtitle={t.subtitle} />
 
       <Card className="max-w-3xl">
         <CardHeader>
-          <CardTitle>{t.createTitle}</CardTitle>
-          <CardDescription>{t.createSubtitle}</CardDescription>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiAddLine className="size-4" />
+            {t.createTitle}
+          </CardTitle>
         </CardHeader>
         <CardContent>
+          <p className="mb-4 text-sm text-muted-foreground">
+            {t.createTeamNotice}
+          </p>
           <form
             className="grid gap-3 md:grid-cols-2"
             onSubmit={(event) => {
@@ -282,6 +379,26 @@ export function AdminUsersManagementClient({
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="admin-user-team-name">{t.teamName}</Label>
+              <Input
+                id="admin-user-team-name"
+                value={teamName}
+                onChange={(event) => {
+                  setTeamNameTouched(true);
+                  setTeamName(event.target.value);
+                }}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="admin-user-team-slug">{t.teamSlug}</Label>
+              <Input
+                id="admin-user-team-slug"
+                value={teamSlug}
+                onChange={(event) => setTeamSlug(event.target.value)}
+              />
+            </div>
             <div className="md:col-span-2">
               <Button type="submit" disabled={submitting}>
                 <AutoTransition className="inline-flex items-center gap-2">
@@ -294,7 +411,13 @@ export function AdminUsersManagementClient({
                       {t.creating}
                     </span>
                   ) : (
-                    <span key="create">{t.create}</span>
+                    <span
+                      key="create"
+                      className="inline-flex items-center gap-2"
+                    >
+                      <RiAddLine className="size-4" />
+                      {t.create}
+                    </span>
                   )}
                 </AutoTransition>
               </Button>
@@ -305,10 +428,40 @@ export function AdminUsersManagementClient({
 
       <Card>
         <CardHeader>
-          <CardTitle>{t.listTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiFileList3Line className="size-4" />
+            {t.listTitle}
+          </CardTitle>
           <CardDescription>{t.listSubtitle}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {resetLinkUrl ? (
+            <div className="space-y-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Input value={resetLinkUrl} readOnly className="font-mono" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    void handleCopyResetLink();
+                  }}
+                >
+                  <RiFileCopyLine className="size-4" />
+                  <span>{t.copyResetLink}</span>
+                </Button>
+              </div>
+              {resetLinkExpiresAt ? (
+                <p className="text-xs text-muted-foreground">
+                  {t.resetLinkExpiresAt}:{" "}
+                  {shortDateTime(
+                    locale,
+                    epochSecondsToMs(resetLinkExpiresAt),
+                    timeZone,
+                  )}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <DataTableSwitch
             loading={loading}
             hasContent={users.length > 0}
@@ -350,37 +503,47 @@ export function AdminUsersManagementClient({
                 <TableCell>
                   {shortDateTime(locale, user.createdAt, timeZone)}
                 </TableCell>
-                <TableCell className="text-right">
-                  <Clickable
-                    onClick={() => {
-                      setPendingDeleteUserId(user.id);
-                      setDeleteUserDialogOpen(true);
-                    }}
-                    disabled={
-                      deletingUserId !== null || user.id === currentUserId
-                    }
-                    className="size-6 text-destructive/80 hover:text-destructive"
-                    aria-label={t.delete}
-                    title={t.delete}
-                  >
-                    <AutoTransition className="inline-flex items-center justify-center">
-                      {deletingUserId === user.id ? (
-                        <span
-                          key="deleting"
-                          className="inline-flex items-center justify-center"
-                        >
-                          <Spinner className="size-3.5" />
-                        </span>
+                <TableCell>
+                  <div className="flex justify-end gap-1.5">
+                    <TableActionButton
+                      onClick={() => {
+                        void handleGenerateResetLink(user.id);
+                      }}
+                      disabled={generatingResetUserId !== null}
+                      label={t.generateResetLink}
+                      transitionKey={
+                        generatingResetUserId === user.id
+                          ? "generating-reset"
+                          : "generate-reset"
+                      }
+                    >
+                      {generatingResetUserId === user.id ? (
+                        <Spinner className="size-3.5" />
                       ) : (
-                        <span
-                          key="delete"
-                          className="inline-flex items-center justify-center"
-                        >
-                          <RiDeleteBinLine className="size-4" />
-                        </span>
+                        <RiKey2Line className="size-4" />
                       )}
-                    </AutoTransition>
-                  </Clickable>
+                    </TableActionButton>
+                    <TableActionButton
+                      onClick={() => {
+                        setPendingDeleteUserId(user.id);
+                        setDeleteUserDialogOpen(true);
+                      }}
+                      disabled={
+                        deletingUserId !== null || user.id === currentUserId
+                      }
+                      label={t.delete}
+                      tone="destructive"
+                      transitionKey={
+                        deletingUserId === user.id ? "deleting" : "delete"
+                      }
+                    >
+                      {deletingUserId === user.id ? (
+                        <Spinner className="size-3.5" />
+                      ) : (
+                        <RiDeleteBinLine className="size-4" />
+                      )}
+                    </TableActionButton>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -400,12 +563,15 @@ export function AdminUsersManagementClient({
       >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>{t.delete}</AlertDialogTitle>
+            <AlertDialogTitle icon={RiDeleteBinLine}>
+              {t.delete}
+            </AlertDialogTitle>
             <AlertDialogDescription>{t.deleteConfirm}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deletingUserId !== null}>
-              {messages.teamSelect.cancel}
+              <RiCloseLine className="size-4" />
+              <span>{messages.teamSelect.cancel}</span>
             </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
@@ -426,7 +592,13 @@ export function AdminUsersManagementClient({
                     {t.deleting}
                   </span>
                 ) : (
-                  <span key="delete-confirm">{t.delete}</span>
+                  <span
+                    key="delete-confirm"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiDeleteBinLine className="size-4" />
+                    {t.delete}
+                  </span>
                 )}
               </AutoTransition>
             </AlertDialogAction>

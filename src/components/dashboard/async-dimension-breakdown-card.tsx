@@ -1,6 +1,7 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Icon } from "@iconify/react";
 import {
   RiArrowDownSLine,
   RiArrowUpSLine,
@@ -10,6 +11,11 @@ import { AnimatePresence, useReducedMotion } from "motion/react";
 
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import {
+  LazyGeoCityBreadcrumbLabel,
+  LazyGeoRegionBreadcrumbLabel,
+} from "@/components/dashboard/lazy-geo-location-label";
+import { LabelWithOptionalIcon } from "@/components/dashboard/referrer-utils";
 import { TabbedScrollMaskCard } from "@/components/dashboard/tabbed-scroll-mask-card";
 import { Clickable } from "@/components/ui/clickable";
 import {
@@ -45,12 +51,44 @@ const DEFAULT_SORT: SortState = {
   direction: "desc",
 };
 
+export type AsyncDimensionBreakdownLabelAppearance =
+  | {
+      type: "favicon";
+      iconLabel?: string;
+    }
+  | {
+      type: "leadingIcon";
+      iconName: string | null;
+    }
+  | {
+      type: "geoRegion";
+      countryLabel: string;
+      countryIconName: string | null;
+      regionLabel: string;
+      countryCode: string;
+      stateCode: string;
+      hideRegion: boolean;
+    }
+  | {
+      type: "geoCity";
+      countryLabel: string;
+      countryIconName: string | null;
+      regionLabel: string;
+      cityLabel: string;
+      countryCode: string;
+      stateCode: string;
+      cityNameDefault: string;
+      hideRegion: boolean;
+      hideCity: boolean;
+    };
+
 export interface AsyncDimensionBreakdownRow {
   key: string;
   label: string;
   views: number;
   visitors: number;
   mono?: boolean;
+  labelAppearance?: AsyncDimensionBreakdownLabelAppearance;
 }
 
 export interface AsyncDimensionBreakdownTab<T extends string = string> {
@@ -68,6 +106,7 @@ interface AsyncDimensionBreakdownCardProps<T extends string> {
   requestKey: string;
   className?: string;
   showVisitors?: boolean;
+  secondaryMetricLabel?: string;
   emptyLabel?: string;
 }
 
@@ -94,7 +133,40 @@ function normalizeRows(
     views: Math.max(0, Number(row.views ?? 0)),
     visitors: Math.max(0, Number(row.visitors ?? 0)),
     mono: Boolean(row.mono),
+    labelAppearance: row.labelAppearance,
   }));
+}
+
+function LabelWithLeadingIcon({
+  label,
+  iconName,
+}: {
+  label: string;
+  iconName: string | null;
+}) {
+  if (!iconName) {
+    return <span className="break-words">{label}</span>;
+  }
+
+  const isFlag = iconName.startsWith("flagpack:");
+
+  return (
+    <span className="relative inline-block max-w-full break-words pl-6">
+      <span className="pointer-events-none absolute inset-y-0 left-0 inline-flex w-4 items-center justify-center">
+        {isFlag ? (
+          <Icon
+            icon={iconName}
+            style={{
+              width: 16,
+              height: 12,
+            }}
+            className="block shrink-0"
+          />
+        ) : null}
+      </span>
+      <span className="break-words">{label}</span>
+    </span>
+  );
 }
 
 export function AsyncDimensionBreakdownCard<T extends string>({
@@ -105,6 +177,7 @@ export function AsyncDimensionBreakdownCard<T extends string>({
   requestKey,
   className,
   showVisitors = true,
+  secondaryMetricLabel,
   emptyLabel,
 }: AsyncDimensionBreakdownCardProps<T>) {
   const isMobile = useIsMobile();
@@ -116,6 +189,7 @@ export function AsyncDimensionBreakdownCard<T extends string>({
   const [loadingByTab, setLoadingByTab] = useState<Record<T, boolean>>(() =>
     createRecord(tabs, () => false),
   );
+  const [loadVersion, setLoadVersion] = useState(0);
   const [sortByTab, setSortByTab] = useState<Record<T, SortState>>(() =>
     createRecord(tabs, () => ({ ...DEFAULT_SORT })),
   );
@@ -123,12 +197,19 @@ export function AsyncDimensionBreakdownCard<T extends string>({
   const [searchTerm, setSearchTerm] = useState("");
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const latestLoadRowsRef = useRef(loadRows);
+  const rowsByTabRef = useRef(rowsByTab);
+  const loadingByTabRef = useRef(loadingByTab);
+
+  rowsByTabRef.current = rowsByTab;
+  loadingByTabRef.current = loadingByTab;
 
   const activeRows = rowsByTab[activeTab];
   const isActiveTabLoading = loadingByTab[activeTab];
   const activeLoading = isActiveTabLoading || activeRows === null;
   const tableColumnSpan = showVisitors ? 3 : 2;
   const resolvedEmptyLabel = emptyLabel ?? messages.common.noData;
+  const resolvedSecondaryMetricLabel =
+    secondaryMetricLabel ?? messages.common.visitors;
 
   useEffect(() => {
     latestLoadRowsRef.current = loadRows;
@@ -141,10 +222,16 @@ export function AsyncDimensionBreakdownCard<T extends string>({
     setSortByTab(createRecord(tabs, () => ({ ...DEFAULT_SORT })));
     setSearchTab(null);
     setSearchTerm("");
+    setLoadVersion((previous) => previous + 1);
   }, [requestKey, tabs]);
 
   useEffect(() => {
-    if (activeRows !== null || isActiveTabLoading) return;
+    if (
+      rowsByTabRef.current[activeTab] !== null ||
+      loadingByTabRef.current[activeTab]
+    ) {
+      return;
+    }
 
     let active = true;
     setLoadingByTab((previous) => ({
@@ -180,7 +267,7 @@ export function AsyncDimensionBreakdownCard<T extends string>({
     return () => {
       active = false;
     };
-  }, [activeTab, requestKey]);
+  }, [activeTab, loadVersion, requestKey]);
 
   useEffect(() => {
     if (searchTab !== null) return;
@@ -332,7 +419,7 @@ export function AsyncDimensionBreakdownCard<T extends string>({
                 )}
                 onClick={() => toggleSort(tab, "visitors")}
               >
-                {messages.common.visitors}
+                {resolvedSecondaryMetricLabel}
                 {renderSortIndicator(tab, "visitors")}
               </button>
             </div>
@@ -340,6 +427,63 @@ export function AsyncDimensionBreakdownCard<T extends string>({
         ) : null}
       </TableRow>
     );
+  }
+
+  function renderRowLabel(row: AsyncDimensionBreakdownRow) {
+    const appearance = row.labelAppearance;
+
+    if (appearance?.type === "favicon") {
+      return (
+        <LabelWithOptionalIcon
+          label={row.label}
+          iconLabel={appearance.iconLabel}
+          showIcon
+          unknownLabel={resolvedEmptyLabel}
+        />
+      );
+    }
+
+    if (appearance?.type === "leadingIcon") {
+      return (
+        <LabelWithLeadingIcon
+          label={row.label}
+          iconName={appearance.iconName}
+        />
+      );
+    }
+
+    if (appearance?.type === "geoRegion") {
+      return (
+        <LazyGeoRegionBreadcrumbLabel
+          locale={locale}
+          countryLabel={appearance.countryLabel}
+          countryIconName={appearance.countryIconName}
+          regionLabel={appearance.regionLabel}
+          countryCode={appearance.countryCode}
+          stateCode={appearance.stateCode}
+          hideRegion={appearance.hideRegion}
+        />
+      );
+    }
+
+    if (appearance?.type === "geoCity") {
+      return (
+        <LazyGeoCityBreadcrumbLabel
+          locale={locale}
+          countryLabel={appearance.countryLabel}
+          countryIconName={appearance.countryIconName}
+          regionLabel={appearance.regionLabel}
+          cityLabel={appearance.cityLabel}
+          countryCode={appearance.countryCode}
+          stateCode={appearance.stateCode}
+          cityNameDefault={appearance.cityNameDefault}
+          hideRegion={appearance.hideRegion}
+          hideCity={appearance.hideCity}
+        />
+      );
+    }
+
+    return row.label;
   }
 
   function renderRows(
@@ -376,10 +520,13 @@ export function AsyncDimensionBreakdownCard<T extends string>({
                 <div
                   className={cn(
                     "px-4 py-2 leading-5 whitespace-normal break-words",
+                    (row.labelAppearance?.type === "geoRegion" ||
+                      row.labelAppearance?.type === "geoCity") &&
+                      "flex min-h-8 items-center",
                     row.mono && "font-mono",
                   )}
                 >
-                  {row.label}
+                  {renderRowLabel(row)}
                 </div>
               </TableCell>
               <TableCell className="p-0">
@@ -452,7 +599,7 @@ export function AsyncDimensionBreakdownCard<T extends string>({
     >
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{searchPlaceholder}</DialogTitle>
+          <DialogTitle icon={RiSearchLine}>{searchPlaceholder}</DialogTitle>
         </DialogHeader>
         {searchContent}
       </DialogContent>

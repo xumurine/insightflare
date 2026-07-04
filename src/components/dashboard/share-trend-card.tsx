@@ -7,6 +7,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { RiLineChartLine } from "@remixicon/react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
@@ -294,7 +295,10 @@ export function ShareTrendCard({
   return (
     <Card className="overflow-visible">
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiLineChartLine className="size-4" />
+          {title}
+        </CardTitle>
         {headerBelow ? <div>{headerBelow}</div> : null}
       </CardHeader>
       <CardContent>

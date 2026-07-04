@@ -24,11 +24,7 @@ const SOCKET_STATE = {
   OPEN: 1,
 } as const;
 
-const USE_REALTIME_MOCK =
-  process.env.NEXT_PUBLIC_DEMO_MODE === "1" ||
-  process.env.NEXT_PUBLIC_REALTIME_MOCK === "1" ||
-  (process.env.NEXT_PUBLIC_REALTIME_MOCK !== "0" &&
-    process.env.NODE_ENV !== "production");
+const USE_REALTIME_MOCK = process.env.NEXT_PUBLIC_DEMO_MODE === "1";
 
 interface ChannelContext {
   siteId: string;
@@ -742,16 +738,8 @@ function decodeRealtimeEnvelope(data: unknown): {
 }
 
 function toRealtimeWsUrl(siteId: string): string {
-  const configuredBase = process.env.NEXT_PUBLIC_INSIGHTFLARE_EDGE_URL || "";
-  const origin =
-    configuredBase.length > 0 ? configuredBase : window.location.origin;
-  const url = new URL("/admin/ws", origin);
+  const url = new URL("/api/private/realtime/ws", window.location.origin);
   url.searchParams.set("siteId", siteId);
-
-  const wsToken = process.env.NEXT_PUBLIC_ADMIN_WS_TOKEN || "";
-  if (wsToken) {
-    url.searchParams.set("token", wsToken);
-  }
 
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.toString();

@@ -6,6 +6,7 @@ import {
   RiArrowDownLine,
   RiArrowRightSLine,
   RiArrowUpLine,
+  RiRefreshLine,
 } from "@remixicon/react";
 import { motion } from "motion/react";
 
@@ -14,6 +15,7 @@ import { PagesShareTrendCard } from "@/components/dashboard/pages-share-trend-ca
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import { TrafficPairBarChart } from "@/components/dashboard/site-traffic-charts";
 import { AutoResizer } from "@/components/ui/auto-resizer";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -161,9 +163,7 @@ function PageTrafficCard({
                     ))}
                   </>
                 ) : (
-                  <CardTitle className="text-muted-foreground">
-                    {messages.pages.untitled}
-                  </CardTitle>
+                  <CardTitle>{messages.pages.untitled}</CardTitle>
                 )}
                 <p className="break-all font-mono text-[11px] text-muted-foreground">
                   {displayPathname}
@@ -184,6 +184,7 @@ function PageTrafficCard({
               range={range}
               viewsLabel={messages.common.views}
               visitorsLabel={messages.common.visitors}
+              messages={messages}
               maxPoints={PAGE_CARD_CHART_MAX_POINTS}
               className="h-[116px]"
             />
@@ -270,7 +271,7 @@ export function PagesClientPage({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [appendError, setAppendError] = useState<string | null>(null);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const [sentinelNode, setSentinelNode] = useState<HTMLDivElement | null>(null);
   const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const requestKey = useMemo(
@@ -357,12 +358,13 @@ export function PagesClientPage({
   }, [requestKey]);
 
   useEffect(() => {
-    const target = sentinelRef.current;
+    const target = sentinelNode;
     if (
       !target ||
       loadingInitial ||
       loadingMore ||
       appendError !== null ||
+      error !== null ||
       !meta.hasMore ||
       typeof IntersectionObserver === "undefined"
     ) {
@@ -384,13 +386,36 @@ export function PagesClientPage({
     );
 
     observer.observe(target);
+    const frameId = globalThis.requestAnimationFrame(() => {
+      const rect = target.getBoundingClientRect();
+      if (rect.top <= globalThis.innerHeight + 480 && rect.bottom >= -480) {
+        loadNextPage();
+      }
+    });
+
     return () => {
+      globalThis.cancelAnimationFrame(frameId);
       observer.disconnect();
     };
-  }, [appendError, loadingInitial, loadingMore, meta.hasMore]);
+  }, [
+    appendError,
+    error,
+    loadingInitial,
+    loadingMore,
+    meta.hasMore,
+    meta.nextPage,
+    sentinelNode,
+  ]);
 
   const shouldShowLoadMoreSkeletons =
     !loadingInitial && !error && items.length > 0 && meta.hasMore;
+  const contentStateKey = loadingInitial
+    ? "loading"
+    : error
+      ? "error"
+      : items.length === 0
+        ? "empty"
+        : "content";
 
   return (
     <div className="space-y-6">
@@ -408,7 +433,11 @@ export function PagesClientPage({
       />
 
       <AutoResizer className="w-full" initial duration={0.24}>
-        <div className="space-y-4">
+        <AutoTransition
+          initial={false}
+          duration={0.22}
+          transitionKey={contentStateKey}
+        >
           {loadingInitial ? (
             <section
               className="grid gap-4 xl:grid-cols-2"
@@ -419,25 +448,19 @@ export function PagesClientPage({
                 <PageTrafficCardSkeleton key={`initial-skeleton-${index}`} />
               ))}
             </section>
-          ) : null}
-
-          {!loadingInitial && error ? (
+          ) : error ? (
             <Card>
               <CardContent className="py-8 text-sm text-muted-foreground">
                 {error}
               </CardContent>
             </Card>
-          ) : null}
-
-          {!loadingInitial && !error && items.length === 0 ? (
+          ) : items.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-sm text-muted-foreground">
                 {messages.pages.empty}
               </CardContent>
             </Card>
-          ) : null}
-
-          {items.length > 0 ? (
+          ) : (
             <>
               <section className="grid gap-4 xl:grid-cols-2">
                 {items.map((item) => (
@@ -456,7 +479,7 @@ export function PagesClientPage({
                   ? Array.from({ length: 2 }, (_, index) => (
                       <div
                         key={`append-skeleton-${meta.nextPage ?? "pending"}-${index}`}
-                        ref={index === 0 ? sentinelRef : null}
+                        ref={index === 0 ? setSentinelNode : null}
                       >
                         <PageTrafficCardSkeleton />
                       </div>
@@ -474,13 +497,14 @@ export function PagesClientPage({
                       void loadPage(meta.nextPage!, "append");
                     }}
                   >
-                    {messages.pages.retry}
+                    <RiRefreshLine className="size-4" />
+                    <span>{messages.pages.retry}</span>
                   </Button>
                 </div>
               ) : null}
             </>
-          ) : null}
-        </div>
+          )}
+        </AutoTransition>
       </AutoResizer>
     </div>
   );

@@ -1,4 +1,4 @@
-// Edge-cache helper for read-only private dashboard queries.
+// Edge-cache helper for read-only dashboard and public share queries.
 //
 // Goal: hot dashboards (Devices, Browsers, Geo, etc.) currently fan out into
 // 10–20 D1 statements per page load and re-issue the same SQL on every
@@ -13,6 +13,14 @@
 
 const DASHBOARD_CACHE_NAME = "insightflare-dashboard-query";
 const DEFAULT_TTL_SECONDS = 60;
+const PUBLIC_QUERY_CACHE_NAME = "insightflare-public-query";
+export const PUBLIC_QUERY_CACHE_TTL_SECONDS = 300;
+export const PUBLIC_QUERY_CACHE_OPTIONS = {
+  ttlSeconds: PUBLIC_QUERY_CACHE_TTL_SECONDS,
+  cacheName: PUBLIC_QUERY_CACHE_NAME,
+  applyCacheHeadersOnBypass: true,
+  clientCacheScope: "public",
+} as const;
 
 function openCacheStorage(): CacheStorage | null {
   if (typeof globalThis !== "object" || !("caches" in globalThis)) {
@@ -25,11 +33,11 @@ function openCacheStorage(): CacheStorage | null {
   return maybeCaches;
 }
 
-async function openEdgeCache(): Promise<Cache | null> {
+async function openEdgeCache(cacheName: string): Promise<Cache | null> {
   const storage = openCacheStorage();
   if (!storage) return null;
   try {
-    return await storage.open(DASHBOARD_CACHE_NAME);
+    return await storage.open(cacheName);
   } catch {
     return null;
   }
@@ -51,16 +59,22 @@ function buildCacheKeyRequest(url: URL): Request {
 function withCacheControlHeaders(
   response: Response,
   ttlSeconds: number,
-  marker: "HIT" | "MISS",
+  marker?: "HIT" | "MISS",
+  scope: "private" | "public" = "private",
 ): Response {
   const headers = new Headers(response.headers);
-  headers.set(
-    "cache-control",
-    `public, max-age=${ttlSeconds}, s-maxage=${ttlSeconds}`,
-  );
+  headers.set("cache-control", `${scope}, max-age=${ttlSeconds}`);
+  if (scope === "public") {
+    headers.set(
+      "cache-control",
+      `public, max-age=${ttlSeconds}, s-maxage=${ttlSeconds}`,
+    );
+  }
   // Strip per-user vary so the edge can actually share the entry.
   headers.delete("vary");
-  headers.set("x-edge-cache", marker);
+  if (marker) {
+    headers.set("x-edge-cache", marker);
+  }
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -70,15 +84,18 @@ function withCacheControlHeaders(
 
 export interface DashboardCacheOptions {
   ttlSeconds?: number;
+  cacheName?: string;
+  applyCacheHeadersOnBypass?: boolean;
+  clientCacheScope?: "private" | "public";
 }
 
 /**
  * Wraps a response generator with edge cache lookup. The generator is only
  * invoked on cache miss. Successful (HTTP 2xx) responses are stored back into
- * the cache with `cache-control: public, max-age=N, s-maxage=N` so that both
- * the Cloudflare edge and downstream browsers cache the result for `N`
- * seconds. Non-2xx responses bypass the cache entirely so error pages never
- * poison the cache.
+ * the cache with internal public cache headers so the Cloudflare Cache API can
+ * reuse the entry. Client-facing responses default to private cache headers;
+ * public share routes opt into public headers. Non-2xx responses bypass the
+ * cache entirely so error pages never poison the cache.
  */
 export async function withDashboardCache(
   ctx: ExecutionContext | undefined,
@@ -90,16 +107,31 @@ export async function withDashboardCache(
     1,
     Math.floor(options.ttlSeconds ?? DEFAULT_TTL_SECONDS),
   );
-  const cache = await openEdgeCache();
+  const clientCacheScope = options.clientCacheScope ?? "private";
+  const cache = await openEdgeCache(options.cacheName ?? DASHBOARD_CACHE_NAME);
   if (!cache) {
-    return generate();
+    const fresh = await generate();
+    if (options.applyCacheHeadersOnBypass && fresh.ok) {
+      return withCacheControlHeaders(
+        fresh,
+        ttlSeconds,
+        undefined,
+        clientCacheScope,
+      );
+    }
+    return fresh;
   }
   const cacheKey = buildCacheKeyRequest(url);
 
   try {
     const cached = await cache.match(cacheKey);
     if (cached) {
-      return withCacheControlHeaders(cached, ttlSeconds, "HIT");
+      return withCacheControlHeaders(
+        cached,
+        ttlSeconds,
+        "HIT",
+        clientCacheScope,
+      );
     }
   } catch {
     // Fall through to fresh generation on cache read failure.
@@ -110,11 +142,16 @@ export async function withDashboardCache(
     return fresh;
   }
 
-  const cacheable = withCacheControlHeaders(fresh.clone(), ttlSeconds, "HIT");
+  const cacheable = withCacheControlHeaders(
+    fresh.clone(),
+    ttlSeconds,
+    "HIT",
+    "public",
+  );
   const putPromise = cache.put(cacheKey, cacheable).catch(() => undefined);
   if (ctx && typeof ctx.waitUntil === "function") {
     ctx.waitUntil(putPromise);
   }
 
-  return withCacheControlHeaders(fresh, ttlSeconds, "MISS");
+  return withCacheControlHeaders(fresh, ttlSeconds, "MISS", clientCacheScope);
 }

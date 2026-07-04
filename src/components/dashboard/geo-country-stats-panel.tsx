@@ -16,6 +16,10 @@ import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card } from "@/components/ui/card";
 import { Clickable } from "@/components/ui/clickable";
+import {
+  prepareNativeScrollbarHost,
+  useNativeScrollbars,
+} from "@/components/ui/overlay-scrollbar";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { numberFormat } from "@/lib/dashboard/format";
 import type { Locale } from "@/lib/i18n/config";
@@ -93,6 +97,7 @@ export function GeoCountryStatsPanel({
   const scrollbarsRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
     null,
   );
+  const nativeScrollbars = useNativeScrollbars();
 
   useEffect(() => {
     if (stacked) {
@@ -103,6 +108,7 @@ export function GeoCountryStatsPanel({
 
     const host = scrollHostRef.current;
     if (!host) return;
+    if (prepareNativeScrollbarHost(host)) return;
 
     const existing = OverlayScrollbars(host);
     const instance =
@@ -300,7 +306,9 @@ export function GeoCountryStatsPanel({
     : "pointer-events-auto h-full overflow-hidden border-x-0 border-y border-border/70 bg-background/75 py-0 ring-0 backdrop-blur-xl";
   const scrollHostClassName = stacked
     ? "overflow-visible"
-    : "h-full overflow-hidden";
+    : nativeScrollbars
+      ? "h-full overflow-y-auto"
+      : "h-full overflow-hidden";
 
   return (
     <aside className={wrapperClassName}>
@@ -308,7 +316,9 @@ export function GeoCountryStatsPanel({
         <div
           ref={scrollHostRef}
           className={scrollHostClassName}
-          data-overlayscrollbars-initialize
+          data-overlayscrollbars-initialize={
+            stacked || nativeScrollbars ? undefined : ""
+          }
         >
           <div className="min-h-full">
             <AutoResizer initial className="shrink-0">

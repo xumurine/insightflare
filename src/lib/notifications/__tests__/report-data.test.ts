@@ -1,0 +1,236 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const queryOverviewAggregate = vi.hoisted(() => vi.fn());
+const queryPagesAggregate = vi.hoisted(() => vi.fn());
+const queryReferrerAggregate = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/edge/query/overview", () => ({
+  queryOverviewAggregate,
+}));
+
+vi.mock("@/lib/edge/query/pages", () => ({
+  queryPagesAggregate,
+  queryReferrerAggregate,
+}));
+
+import {
+  loadDailyReportData,
+  loadMetricValue,
+  loadSiteLastSeenAt,
+  notificationReportWindowFor,
+  notificationWindowFor,
+} from "@/lib/notifications/report-data";
+
+function envWithLastSeen(lastSeenAt: number | null) {
+  const bind = vi.fn(() => ({
+    first: vi.fn(() => Promise.resolve({ lastSeenAt })),
+  }));
+  return {
+    env: {
+      DB: {
+        prepare: vi.fn(() => ({ bind })),
+      },
+    },
+    bind,
+  };
+}
+
+describe("notification report data", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("builds rolling and timezone-aware report windows", () => {
+    expect(
+      notificationWindowFor({
+        window: "last_1h",
+        now: 3_600,
+        timezone: "Mars/Base",
+      }),
+    ).toMatchObject({
+      fromMs: 0,
+      toMs: 3_600_000,
+      nowMs: 3_600_000,
+      timeZone: "UTC",
+      label: "last 1 hour",
+    });
+    expect(
+      notificationWindowFor({
+        window: "last_24h",
+        now: 90_000,
+        timezone: "Asia/Shanghai",
+      }),
+    ).toMatchObject({
+      fromMs: 3_600_000,
+      toMs: 90_000_000,
+      timeZone: "Asia/Shanghai",
+      label: "last 24 hours",
+    });
+    expect(
+      notificationWindowFor({
+        window: "yesterday",
+        now: Date.UTC(2026, 5, 30, 12) / 1000,
+        timezone: "UTC",
+      }),
+    ).toMatchObject({
+      label: "2026-06-29",
+    });
+  });
+
+  it("builds calendar report windows for previous complete periods", () => {
+    const now = Date.UTC(2026, 6, 15, 12) / 1000;
+
+    expect(
+      notificationReportWindowFor({
+        reportType: "weekly",
+        now,
+        timezone: "UTC",
+      }).label,
+    ).toBe("2026-07-06 to 2026-07-12");
+    expect(
+      notificationReportWindowFor({
+        reportType: "monthly",
+        now,
+        timezone: "UTC",
+      }).label,
+    ).toBe("2026-06");
+    expect(
+      notificationReportWindowFor({
+        reportType: "quarterly",
+        now,
+        timezone: "UTC",
+      }).label,
+    ).toBe("2026 Q2");
+    expect(
+      notificationReportWindowFor({
+        reportType: "yearly",
+        now,
+        timezone: "UTC",
+      }).label,
+    ).toBe("2025");
+  });
+
+  it("loads daily report data from site metadata and aggregate queries", async () => {
+    queryOverviewAggregate.mockResolvedValue({
+      value: { views: 100, visitors: 40, sessions: 55 },
+    });
+    queryPagesAggregate.mockResolvedValue([
+      { pathname: "/pricing", views: 20 },
+      { pathname: "", views: 10 },
+    ]);
+    queryReferrerAggregate.mockResolvedValue([
+      { referrer: "example.com", sessions: 8 },
+      { referrer: "", sessions: 4 },
+    ]);
+    const env = {
+      DB: {
+        prepare: vi.fn(() => ({
+          bind: vi.fn(() => ({
+            first: vi.fn(() =>
+              Promise.resolve({ name: "Demo", domain: "example.test" }),
+            ),
+          })),
+        })),
+      },
+    };
+
+    const report = await loadDailyReportData(env as never, {
+      siteId: "site-1",
+      now: Date.UTC(2026, 5, 30, 12) / 1000,
+      timezone: "UTC",
+    });
+
+    expect(report).toMatchObject({
+      siteName: "Demo",
+      siteDomain: "example.test",
+      range: { label: "2026-06-29" },
+      metrics: { views: 100, visitors: 40, sessions: 55 },
+      topPages: [
+        { path: "/pricing", views: 20 },
+        { path: "/", views: 10 },
+      ],
+      topReferrers: [
+        { referrer: "example.com", visits: 8 },
+        { referrer: "Direct", visits: 4 },
+      ],
+    });
+    expect(queryPagesAggregate).toHaveBeenCalledWith(
+      env,
+      "site-1",
+      expect.objectContaining({ label: "2026-06-29" }),
+      {},
+      5,
+      false,
+    );
+  });
+
+  it("returns null daily report data when the site is missing", async () => {
+    const env = {
+      DB: {
+        prepare: vi.fn(() => ({
+          bind: vi.fn(() => ({
+            first: vi.fn(() => Promise.resolve(null)),
+          })),
+        })),
+      },
+    };
+
+    await expect(
+      loadDailyReportData(env as never, { siteId: "missing", now: 1 }),
+    ).resolves.toBeNull();
+    expect(queryOverviewAggregate).not.toHaveBeenCalled();
+  });
+
+  it("loads a selected metric value for a window", async () => {
+    queryOverviewAggregate.mockResolvedValue({
+      value: { views: 100, visitors: 40, sessions: 55 },
+    });
+
+    await expect(
+      loadMetricValue({} as never, {
+        siteId: "site-1",
+        metric: "sessions",
+        window: "last_1h",
+        now: 3_600,
+      }),
+    ).resolves.toMatchObject({
+      metric: "sessions",
+      window: "last_1h",
+      value: 55,
+      range: { from: 0, to: 3_600 },
+    });
+  });
+
+  it("queries visits and visits_archive when loading site last seen time", async () => {
+    const { env, bind } = envWithLastSeen(1_800_000_123_000);
+
+    await expect(loadSiteLastSeenAt(env as never, "site-1")).resolves.toBe(
+      1_800_000_123,
+    );
+    expect(bind).toHaveBeenCalledWith("site-1", "site-1");
+  });
+
+  it("returns the latest visits timestamp in seconds", async () => {
+    const { env } = envWithLastSeen(1_800_000_100_000);
+
+    await expect(loadSiteLastSeenAt(env as never, "site-1")).resolves.toBe(
+      1_800_000_100,
+    );
+  });
+
+  it("returns archive timestamps when live visits are empty", async () => {
+    const { env } = envWithLastSeen(1_700_000_000_000);
+
+    await expect(loadSiteLastSeenAt(env as never, "site-1")).resolves.toBe(
+      1_700_000_000,
+    );
+  });
+
+  it("returns null when neither table has data", async () => {
+    const { env } = envWithLastSeen(null);
+
+    await expect(
+      loadSiteLastSeenAt(env as never, "site-1"),
+    ).resolves.toBeNull();
+  });
+});

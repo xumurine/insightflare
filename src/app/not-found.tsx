@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { RiFileWarningLine } from "@remixicon/react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -95,7 +96,10 @@ export default async function SiteNotFound() {
       <Card className="w-full max-w-xl border-border/80 shadow-lg">
         <CardHeader className="space-y-3">
           <div className="flex items-start justify-between gap-3">
-            <CardTitle>{t.empty.siteNotFound}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiFileWarningLine className="size-4" />
+              {t.empty.siteNotFound}
+            </CardTitle>
             <Badge variant="destructive">404</Badge>
           </div>
           <CardDescription>{t.appName}</CardDescription>

@@ -42,3 +42,40 @@ export async function parseRequestBody(
 export function bodyStr(body: Record<string, unknown>, key: string): string {
   return String(body[key] ?? "").trim();
 }
+
+// Body 大小限制常量
+export const BODY_SIZE_LIMITS = {
+  COLLECT: 48 * 1024, // 48KB - 采集端
+  LOGIN: 4 * 1024, // 4KB - 登录接口
+  ADMIN_API: 256 * 1024, // 256KB - 管理 API
+} as const;
+
+/**
+ * 检查请求 body 大小是否超过限制
+ * @param request - 请求对象
+ * @param maxSize - 最大允许的字节数
+ * @returns 如果超过限制返回错误响应，否则返回 null
+ */
+export function assertContentSize(
+  request: Request,
+  maxSize: number,
+): Response | null {
+  const contentLength = request.headers.get("content-length");
+  if (contentLength) {
+    const size = Number(contentLength);
+    if (Number.isFinite(size) && size > maxSize) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "Payload Too Large",
+          maxSize,
+        }),
+        {
+          status: 413,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }
+  }
+  return null;
+}

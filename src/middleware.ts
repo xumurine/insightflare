@@ -9,7 +9,8 @@ import {
   SUPPORTED_LOCALES,
 } from "@/lib/i18n/config";
 import { isValidLocale } from "@/lib/i18n/config";
-import { configuredSessionSecret, verifySessionToken } from "@/lib/session";
+import { dashboardSessionSecret } from "@/lib/secrets";
+import { hasConfiguredSessionSecret, verifySessionToken } from "@/lib/session";
 
 type AuthState = "authenticated" | "unauthenticated" | "unknown";
 
@@ -21,20 +22,28 @@ interface RedirectProfile {
   }>;
 }
 
+function forwardedOrigin(request: NextRequest): string {
+  const host =
+    request.headers.get("x-forwarded-host") || request.headers.get("host");
+  const proto = request.headers.get("x-forwarded-proto") || "https";
+  if (!host) return request.nextUrl.origin;
+  return `${proto}://${host}`;
+}
+
 async function resolveSessionSecretForMiddleware(): Promise<string | null> {
-  const fromProcess = configuredSessionSecret();
-  if (fromProcess) return fromProcess;
+  if (hasConfiguredSessionSecret()) {
+    const fromProcess = await dashboardSessionSecret({
+      MAIN_SECRET: process.env.MAIN_SECRET,
+      DAILY_SALT_SECRET: process.env.DAILY_SALT_SECRET,
+    });
+    if (fromProcess) return fromProcess;
+  }
 
   try {
     const { getCloudflareContext } = await import("@opennextjs/cloudflare");
     const context = await getCloudflareContext({ async: true });
     const env = context.env as Record<string, unknown>;
-    const fromCloudflare = String(
-      env.DASHBOARD_SESSION_SECRET || env.SESSION_SECRET || "",
-    );
-    if (fromCloudflare.length > 0) {
-      return fromCloudflare;
-    }
+    return dashboardSessionSecret(env);
   } catch {
     // No Cloudflare runtime context available.
   }
@@ -61,10 +70,14 @@ async function fetchRedirectProfile(
 
   try {
     const url = request.nextUrl.clone();
-    url.pathname = "/api/private/admin/auth/me";
+    url.pathname = "/api/private/session";
     url.search = "";
+    const fetchUrl = new URL(
+      `${url.pathname}${url.search}`,
+      forwardedOrigin(request),
+    );
 
-    const response = await fetch(url.toString(), {
+    const response = await fetch(fetchUrl.toString(), {
       method: "GET",
       headers: {
         authorization: `Bearer ${token}`,
@@ -157,8 +170,8 @@ function redirectWithPath(
   pathname: string,
   options?: { preserveSearch?: boolean },
 ): NextResponse {
-  const url = request.nextUrl.clone();
-  url.pathname = pathname;
+  const url = new URL(request.url);
+  url.pathname = normalizePathname(pathname);
   if (!options?.preserveSearch) {
     url.search = "";
   }
@@ -184,11 +197,8 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
   // Demo mode: skip all auth checks
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    if (pathname === "/admin/ws") return NextResponse.next();
-    if (
-      pathname.startsWith("/api/admin") ||
-      pathname.startsWith("/api/archive")
-    ) {
+    if (pathname === "/api/private/realtime/ws") return NextResponse.next();
+    if (pathname.startsWith("/api/private")) {
       return NextResponse.next();
     }
     if (!pathnameHasLocale(pathname)) {
@@ -251,28 +261,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     ? pathname.split("/")[1]
     : null;
 
-  if (pathname === "/admin/ws") {
-    return NextResponse.next();
-  }
-
-  // API routes — no locale handling, just auth checks
-  if (pathname.startsWith("/api/admin")) {
-    if ((await ensureAuthState()) !== "authenticated") {
-      return NextResponse.json(
-        { ok: false, error: "unauthorized" },
-        { status: 401 },
-      );
-    }
-    return NextResponse.next();
-  }
-
-  if (pathname.startsWith("/api/archive")) {
-    if ((await ensureAuthState()) !== "authenticated") {
-      return NextResponse.json(
-        { ok: false, error: "unauthorized" },
-        { status: 401 },
-      );
-    }
+  // API 鉴权必须在各自 route handler 内完成（matcher 排除了 /api 路径，此处不会命中）。
+  // WebSocket 认证在 Worker 层 (cf-worker.js) 处理，此处直接放行。
+  if (pathname === "/api/private/realtime/ws") {
     return NextResponse.next();
   }
 
@@ -362,6 +353,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|collect|script\\.js|healthz|favicon\\.ico|admin/ws|.*\\..*).*)",
+    "/((?!api|_next/static|_next/image|collect|script\\.js|healthz|favicon\\.ico|.*\\..*).*)",
   ],
 };

@@ -28,15 +28,14 @@ Just click the button below:
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2FRavelloH%2FInsightFlare)
 
-Cloudflare will automatically clone this repository and create and bind the required resources. You need to fill in the following three variables:
+Cloudflare will automatically clone this repository and create and bind the required resources. You need to fill in the following two secrets:
 
-| Name                       | Purpose                                |
-| -------------------------- | -------------------------------------- |
-| `DAILY_SALT_SECRET`        | Daily visitor identifier salt          |
-| `DASHBOARD_SESSION_SECRET` | Dashboard login session signing secret |
-| `BOOTSTRAP_ADMIN_PASSWORD` | Initial administrator password         |
+| Name                       | Purpose                                                                       |
+| -------------------------- | -----------------------------------------------------------------------       |
+| `MAIN_SECRET`              | Root secret used to derive visitor salts, session keys, and API key hash keys |
+| `BOOTSTRAP_ADMIN_PASSWORD` | Initial administrator password                                                |
 
-The first two secrets are used for security-related features and must be random strings longer than 16 characters. You can generate one at [https://random.ravelloh.com/str/32](https://random.ravelloh.com/str/32). Refresh the page to get a new random string.
+`MAIN_SECRET` is used for security-related features and must be a random string longer than 16 characters. You can generate one at [https://random.ravelloh.com/str/32](https://random.ravelloh.com/str/32). Refresh the page to get a new random string.
 
 `BOOTSTRAP_ADMIN_PASSWORD` is the default administrator password. Sign in to the dashboard with the `admin` account and this password. You can change the username and password later on the personal settings page.
 
@@ -139,9 +138,76 @@ After filling in the variables, wait about 3 minutes for the deployment to finis
 ![043](/.github/screenshot/043.webp)
 ![044](/.github/screenshot/044.webp)
 
+### Public Sharing System
+
+![045](/.github/screenshot/045.webp)
+![046](/.github/screenshot/046.webp)
+
+### Clearly Scoped API System
+
+![047](/.github/screenshot/047.webp)
+
+### Scheduled Tasks
+
+![048](/.github/screenshot/048.webp)
+
+### Deep Analysis for JSON Custom Events
+
+![049](/.github/screenshot/049.webp)
+![050](/.github/screenshot/050.webp)
+![051](/.github/screenshot/051.webp)
+![052](/.github/screenshot/052.webp)
+![053](/.github/screenshot/053.webp)
+
+### Analyze Visits and Events with Funnels
+
+![054](/.github/screenshot/054.webp)
+
+### Receive Scheduled or Conditional Email Notifications
+
+![055](/.github/screenshot/055.webp)
+![056](/.github/screenshot/056.webp)
+![057](/.github/screenshot/057.webp)
+
 ---
 
 ## Advanced Configuration
+
+### Connect AI Agents for Analysis
+
+InsightFlare exposes Skills for AI Agents. You can connect your InsightFlare deployment to agents such as OpenClaw, Codex, Claude Code, and others, so they can access InsightFlare data directly for analysis and report generation.  
+Send the following instruction to your Agent, replacing the domain with your deployed InsightFlare instance. Your Agent will guide you to the dashboard to create a dedicated API key for accessing InsightFlare data.
+
+```txt
+Read https://<your InsightFlare domain>/.well-known/skills.json, connect to this web analytics system, and guide me through authorization.
+```
+
+Then you can ask your Agent questions in natural language, for example:
+
+```txt
+"How did my site perform last month? Where did most visitors come from among the highest-traffic sites? Which pages were the most popular?"
+```
+
+### Override Wrangler Configuration with Cloudflare Variables
+
+In Cloudflare build environments, you can use project variables and secrets to override deployment-specific values from `wrangler.toml`. `build:pre` reads these values before deployment, writes them into the active Wrangler config, and the following `wrangler deploy` uses the resolved config.
+
+Common variables:
+
+| Name                                       | Overrides                             |
+| -------------------------------------      | ------------------------------------- |
+| `INSIGHTFLARE_WORKER_NAME`                 | Worker name                           |
+| `INSIGHTFLARE_D1_DATABASE`                 | D1 database name                      |
+| `INSIGHTFLARE_D1_DATABASE_ID`              | D1 database ID for the `DB` binding   |
+| `INSIGHTFLARE_SITE_SETTINGS_KV_ID`         | KV namespace ID for `SITE_SETTINGS_KV`|
+| `INSIGHTFLARE_ARCHIVE_BUCKET_NAME`         | R2 bucket for `ARCHIVE_BUCKET`        |
+| `INSIGHTFLARE_ARCHIVE_PREVIEW_BUCKET_NAME` | R2 preview bucket                     |
+| `SESSION_WINDOW_MINUTES`                   | Session window in minutes             |
+| `SCRIPT_CACHE_TTL_SECONDS`                 | `/script.js` CDN cache TTL            |
+| `PARQUET_WASM_URL`                         | Parquet wasm URL                      |
+| `INSIGHTFLARE_EDGE_URL`                    | InsightFlare service base URL         |
+
+You can also write arbitrary `[vars]` entries with `INSIGHTFLARE_VAR_<NAME>`. For example, `INSIGHTFLARE_VAR_FEATURE_FLAG=1` becomes `FEATURE_FLAG = "1"`. When deploying with `--env production`, environment-specific names such as `INSIGHTFLARE_PRODUCTION_D1_DATABASE_ID` and `INSIGHTFLARE_PRODUCTION_VAR_INSIGHTFLARE_EDGE_URL` target `[env.production]`.
 
 ### Configure an R2 Bucket for Cold Archive
 
@@ -272,18 +338,19 @@ Set `NEXT_PUBLIC_DEMO_MODE=1` to make the development server automatically enabl
 
 ## Common Commands
 
-| Command                           | Purpose                                     |
-| --------------------------------- | ------------------------------------------- |
-| `npm run dev`                     | Local dashboard development                 |
-| `npm run check`                   | Run typecheck + lint + format + i18n checks |
-| `npm run typecheck`               | TypeScript type checking                    |
-| `npm run lint` / `lint:fix`       | ESLint                                      |
-| `npm run format` / `format:check` | Prettier                                    |
-| `npm run check:i18n`              | Validate translation key completeness       |
-| `npm run d1:migrate:local`        | Local D1 migration                          |
-| `npm run d1:migrate:remote`       | Remote D1 migration                         |
-| `npm run d1:migration:create`     | Create a new migration file                 |
-| `npm run cf:tail`                 | View online Worker logs                     |
+| Command                           | Purpose                                                            |
+| --------------------------------- | ------------------------------------------------------------------ |
+| `npm run dev`                     | Local Worker + dashboard development (use `http://127.0.0.1:8787`) |
+| `npm run dev:ui`                  | Start only the Next.js UI dev server in Demo Mode                  |
+| `npm run check`                   | Run typecheck + lint + format + i18n + tests + spec checks         |
+| `npm run typecheck`               | TypeScript type checking                                           |
+| `npm run lint` / `lint:fix`       | ESLint                                                             |
+| `npm run format` / `format:check` | Prettier                                                           |
+| `npm run check:i18n`              | Validate translation key completeness                              |
+| `npm run d1:migrate:local`        | Local D1 migration                                                 |
+| `npm run d1:migrate:remote`       | Remote D1 migration                                                |
+| `npm run d1:migration:create`     | Create a new migration file                                        |
+| `npm run cf:tail`                 | View online Worker logs                                            |
 
 ---
 
@@ -295,9 +362,10 @@ Set `NEXT_PUBLIC_DEMO_MODE=1` to make the development server automatically enabl
 | `SCRIPT_CACHE_TTL_SECONDS`          | CDN cache TTL for `/script.js`           |
 | `PARQUET_WASM_URL`                  | Parquet wasm download URL                |
 | `INSIGHTFLARE_EDGE_URL`             | InsightFlare service base URL            |
-| `DAILY_SALT_SECRET` (Secret)        | Daily visitor identifier salt            |
-| `DASHBOARD_SESSION_SECRET` (Secret) | Dashboard session signing secret         |
+| `MAIN_SECRET` (Secret)              | Root secret for derived security keys    |
 | `BOOTSTRAP_ADMIN_PASSWORD` (Secret) | Initial administrator password           |
+| `DAILY_SALT_SECRET` (Secret)        | Legacy fallback for `MAIN_SECRET`        |
+| `DASHBOARD_SESSION_SECRET` (Secret) | Optional session signing override        |
 
 ---
 

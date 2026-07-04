@@ -16,8 +16,10 @@ import {
   RiArrowLeftSLine,
   RiArrowRightSLine,
   RiCalendarLine,
+  RiCheckLine,
   RiCloseLine,
   RiFilter3Line,
+  RiFilterOffLine,
   RiTimeLine,
 } from "@remixicon/react";
 import type { PartialOptions } from "overlayscrollbars";
@@ -65,6 +67,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  prepareNativeScrollbarHost,
+  useNativeScrollbars,
+} from "@/components/ui/overlay-scrollbar";
 import {
   Sheet,
   SheetContent,
@@ -118,6 +124,7 @@ interface DashboardHeaderControlsProps {
   siteId?: string;
   showControls: boolean;
   showFilterSheet: boolean;
+  showRealtimeBadge?: boolean;
 }
 
 const FILTER_QUERY_KEYS = [
@@ -232,6 +239,7 @@ function rangeLabel(messages: AppMessages, range: RangePreset): string {
   if (range === "thisMonth") return messages.ranges.thisMonth;
   if (range === "thisYear") return messages.ranges.thisYear;
   if (range === "24h") return messages.ranges.last24h;
+  if (range === "7d") return messages.ranges.last7d;
   if (range === "30d") return messages.ranges.last30d;
   if (range === "90d") return messages.ranges.last90d;
   if (range === "6m") return messages.ranges.last6m;
@@ -470,8 +478,7 @@ function omitFilterKey(
   filters: DashboardFilters,
   key: FilterQueryKey,
 ): DashboardFilters {
-  const next = { ...filters };
-  delete next[key];
+  const { [key]: _, ...next } = filters;
   return next;
 }
 
@@ -603,10 +610,12 @@ function PanelScrollbar({
   const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
     null,
   );
+  const nativeScrollbars = useNativeScrollbars();
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    if (prepareNativeScrollbarHost(host)) return;
 
     const existing = OverlayScrollbars(host);
     const instance =
@@ -634,8 +643,11 @@ function PanelScrollbar({
   return (
     <div
       ref={hostRef}
-      className={cn("overflow-hidden", className)}
-      data-overlayscrollbars-initialize
+      className={cn(
+        nativeScrollbars ? "overflow-y-auto" : "overflow-hidden",
+        className,
+      )}
+      data-overlayscrollbars-initialize={nativeScrollbars ? undefined : ""}
     >
       {children}
     </div>
@@ -1015,6 +1027,7 @@ export function DashboardHeaderControls({
   siteId,
   showControls,
   showFilterSheet,
+  showRealtimeBadge: shouldShowRealtimeBadge = true,
 }: DashboardHeaderControlsProps) {
   const searchParams = useLiveSearchParams();
   const livePathname = usePathname() || "/";
@@ -1028,6 +1041,7 @@ export function DashboardHeaderControls({
     setUiFilters,
     allowedIntervals,
     timeZone,
+    maxRangeDays,
   } = useDashboardQueryControls();
   const searchParamsKey = searchParams.toString();
   const queryFilters = useMemo(
@@ -1075,7 +1089,9 @@ export function DashboardHeaderControls({
   const realtimeSiteId =
     siteId || (USE_REALTIME_MOCK ? "local-mock-site" : undefined);
   const showRealtimeBadge =
-    showFilterSheet && (Boolean(siteId) || USE_REALTIME_MOCK);
+    shouldShowRealtimeBadge &&
+    showFilterSheet &&
+    (Boolean(siteId) || USE_REALTIME_MOCK);
   const realtime = useRealtimeChannel(realtimeSiteId, {
     enabled: showControls && showRealtimeBadge,
   });
@@ -1085,6 +1101,14 @@ export function DashboardHeaderControls({
 
   const orderedAllowedIntervals = INTERVAL_ORDER.filter((value) =>
     allowedIntervals.includes(value),
+  );
+  const rangeGroups = useMemo(
+    () =>
+      RANGE_GROUPS.map((group) => ({
+        ...group,
+        items: group.items.filter((item) => !(maxRangeDays && item === "all")),
+      })).filter((group) => group.items.length > 0),
+    [maxRangeDays],
   );
   const rangeLabelText = rangeLabel(messages, range);
   const intervalLabelText = intervalLabel(messages, window.interval);
@@ -1278,7 +1302,7 @@ export function DashboardHeaderControls({
                 className={filterTriggerClassName}
                 style={filterTriggerStyle}
               >
-                <RiFilter3Line className="size-4" />
+                <RiFilter3Line className="size-4 text-muted-foreground" />
                 {messages.dashboardHeader.filters}
                 <FilterActiveCountBadge count={activeFilterCount} />
               </Button>
@@ -1311,10 +1335,14 @@ export function DashboardHeaderControls({
 
               <DrawerFooter>
                 <Button variant="outline" onClick={clearAllFilterQueryValues}>
-                  {messages.filters.clear}
+                  <RiFilterOffLine className="size-4" />
+                  <span>{messages.filters.clear}</span>
                 </Button>
                 <DrawerClose asChild>
-                  <Button>{closeLabel}</Button>
+                  <Button>
+                    <RiCloseLine className="size-4" />
+                    <span>{closeLabel}</span>
+                  </Button>
                 </DrawerClose>
               </DrawerFooter>
             </DrawerContent>
@@ -1367,7 +1395,7 @@ export function DashboardHeaderControls({
 
                 <div className="space-y-3">
                   <Label>{messages.dashboardHeader.range}</Label>
-                  {RANGE_GROUPS.map((group) => (
+                  {rangeGroups.map((group) => (
                     <div key={group.key} className="space-y-2">
                       <p className="text-[11px] text-muted-foreground">
                         {rangeGroupLabel(messages, group.key)}
@@ -1384,7 +1412,8 @@ export function DashboardHeaderControls({
                               handleRangeValueChange(item, "mobile");
                             }}
                           >
-                            {rangeLabel(messages, item)}
+                            <RiCalendarLine className="size-3.5" />
+                            <span>{rangeLabel(messages, item)}</span>
                           </Button>
                         ))}
                       </div>
@@ -1416,7 +1445,8 @@ export function DashboardHeaderControls({
                             handleIntervalValueChange(item);
                           }}
                         >
-                          {intervalLabel(messages, item)}
+                          <RiTimeLine className="size-3.5" />
+                          <span>{intervalLabel(messages, item)}</span>
                         </Button>
                       );
                     })}
@@ -1426,7 +1456,10 @@ export function DashboardHeaderControls({
 
               <DrawerFooter>
                 <DrawerClose asChild>
-                  <Button>{closeLabel}</Button>
+                  <Button>
+                    <RiCloseLine className="size-4" />
+                    <span>{closeLabel}</span>
+                  </Button>
                 </DrawerClose>
               </DrawerFooter>
             </DrawerContent>
@@ -1450,7 +1483,7 @@ export function DashboardHeaderControls({
                 className={filterTriggerClassName}
                 style={filterTriggerStyle}
               >
-                <RiFilter3Line className="size-4" />
+                <RiFilter3Line className="size-4 text-muted-foreground" />
                 {messages.dashboardHeader.filters}
                 <FilterActiveCountBadge count={activeFilterCount} />
               </Button>
@@ -1481,7 +1514,8 @@ export function DashboardHeaderControls({
                   />
 
                   <Button variant="outline" onClick={clearAllFilterQueryValues}>
-                    {messages.filters.clear}
+                    <RiFilterOffLine className="size-4" />
+                    <span>{messages.filters.clear}</span>
                   </Button>
                 </div>
               </PanelScrollbar>
@@ -1538,7 +1572,7 @@ export function DashboardHeaderControls({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
-              {RANGE_GROUPS.map((group, groupIndex) => (
+              {rangeGroups.map((group, groupIndex) => (
                 <div key={group.key}>
                   {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
                   <DropdownMenuLabel>
@@ -1617,7 +1651,9 @@ export function DashboardHeaderControls({
       <Dialog open={customDialogOpen} onOpenChange={setCustomDialogOpen}>
         <DialogContent className="w-fit">
           <DialogHeader>
-            <DialogTitle>{messages.ranges.custom}</DialogTitle>
+            <DialogTitle icon={RiCalendarLine}>
+              {messages.ranges.custom}
+            </DialogTitle>
             <DialogDescription>
               {formatDateSpan(
                 locale,
@@ -1649,7 +1685,8 @@ export function DashboardHeaderControls({
               }}
               disabled={!pendingNormalized}
             >
-              {messages.dashboardHeader.customApply}
+              <RiCheckLine className="size-4" />
+              <span>{messages.dashboardHeader.customApply}</span>
             </Button>
           </DialogFooter>
         </DialogContent>

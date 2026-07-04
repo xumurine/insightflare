@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RiAddLine } from "@remixicon/react";
+import { RiAddLine, RiCloseLine } from "@remixicon/react";
 import { toast } from "sonner";
 
 import { AutoResizer } from "@/components/ui/auto-resizer";
@@ -44,6 +44,12 @@ interface TeamSelectProps {
   locale: Locale;
   messages: AppMessages;
   options: TeamSelectOption[];
+  groups?: {
+    created: TeamSelectOption[];
+    managed: TeamSelectOption[];
+    member: TeamSelectOption[];
+    system: TeamSelectOption[];
+  };
   activeTeamSlug: string;
 }
 
@@ -60,6 +66,7 @@ export function TeamSelect({
   locale,
   messages,
   options,
+  groups,
   activeTeamSlug,
 }: TeamSelectProps) {
   const router = useRouter();
@@ -80,6 +87,25 @@ export function TeamSelect({
         : options[0]?.slug || "",
     [options, activeTeamSlug],
   );
+  const groupedOptions = useMemo(() => {
+    if (!groups) return [];
+    const seen = new Set<string>();
+    return [
+      { key: "created", label: copy.groups.created, options: groups.created },
+      { key: "managed", label: copy.groups.managed, options: groups.managed },
+      { key: "member", label: copy.groups.member, options: groups.member },
+      { key: "system", label: copy.groups.system, options: groups.system },
+    ]
+      .map((group) => {
+        const uniqueOptions = group.options.filter((option) => {
+          if (seen.has(option.slug)) return false;
+          seen.add(option.slug);
+          return true;
+        });
+        return { ...group, options: uniqueOptions };
+      })
+      .filter((group) => group.options.length > 0);
+  }, [copy.groups, groups]);
 
   useEffect(() => {
     return () => {
@@ -118,7 +144,7 @@ export function TeamSelect({
     setSubmitting(true);
     setSubmitError("");
     try {
-      const response = await fetch("/api/admin/team", {
+      const response = await fetch("/api/private/admin/teams", {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -163,7 +189,7 @@ export function TeamSelect({
     >
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{copy.createTitle}</DialogTitle>
+          <DialogTitle icon={RiAddLine}>{copy.createTitle}</DialogTitle>
           <DialogDescription>{copy.createDescription}</DialogDescription>
         </DialogHeader>
         <form
@@ -211,7 +237,8 @@ export function TeamSelect({
               onClick={() => setOpenCreateDialog(false)}
               disabled={submitting}
             >
-              {copy.cancel}
+              <RiCloseLine className="size-4" />
+              <span>{copy.cancel}</span>
             </Button>
             <Button type="submit" disabled={submitting}>
               <AutoTransition className="inline-flex items-center gap-2">
@@ -224,7 +251,10 @@ export function TeamSelect({
                     {copy.creating}
                   </span>
                 ) : (
-                  <span key="create">{copy.create}</span>
+                  <span key="create" className="inline-flex items-center gap-2">
+                    <RiAddLine className="size-4" />
+                    {copy.create}
+                  </span>
                 )}
               </AutoTransition>
             </Button>
@@ -270,14 +300,28 @@ export function TeamSelect({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectGroup>
-            <SelectLabel>{copy.groupLabel}</SelectLabel>
-            {options.map((option) => (
-              <SelectItem key={option.slug} value={option.slug}>
-                {option.name}
-              </SelectItem>
-            ))}
-          </SelectGroup>
+          {groupedOptions.length > 0 ? (
+            groupedOptions.map((group, index) => (
+              <SelectGroup key={group.key}>
+                {index > 0 ? <SelectSeparator /> : null}
+                <SelectLabel>{group.label}</SelectLabel>
+                {group.options.map((option) => (
+                  <SelectItem key={option.slug} value={option.slug}>
+                    {option.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            ))
+          ) : (
+            <SelectGroup>
+              <SelectLabel>{copy.groupLabel}</SelectLabel>
+              {options.map((option) => (
+                <SelectItem key={option.slug} value={option.slug}>
+                  {option.name}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          )}
           <SelectSeparator />
           <SelectItem value={CREATE_TEAM_VALUE}>
             <RiAddLine />

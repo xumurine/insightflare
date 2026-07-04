@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RiLineChartLine } from "@remixicon/react";
+import { RiAddLine, RiFileList3Line, RiLineChartLine } from "@remixicon/react";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { TableActionButton } from "@/components/dashboard/table-action-button";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +17,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Clickable } from "@/components/ui/clickable";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
@@ -49,10 +49,8 @@ function safeSlug(value: string): string {
 }
 
 function siteSlug(site: SiteData): string {
-  const primary = String(site.publicSlug || "").trim();
   const domain = String(site.domain || "").trim();
-  const name = String(site.name || "").trim();
-  const candidate = safeSlug(primary || domain || name);
+  const candidate = safeSlug(domain);
   if (candidate.length > 0) return candidate;
   return site.id.slice(0, 8);
 }
@@ -120,12 +118,6 @@ export function AdminSitesManagementClient({
     };
   }, [activeTeam.id, t.loadFailed]);
 
-  async function refreshSites() {
-    if (!activeTeam.id) return;
-    const data = await fetchSites(activeTeam.id);
-    setSites(data);
-  }
-
   async function handleCreateSite() {
     const team = activeTeam;
     if (!team?.id) return;
@@ -136,7 +128,7 @@ export function AdminSitesManagementClient({
 
     setSubmitting(true);
     try {
-      const response = await fetch("/api/admin/site", {
+      const response = await fetch("/api/private/admin/sites", {
         method: "POST",
         credentials: "include",
         headers: {
@@ -161,6 +153,7 @@ export function AdminSitesManagementClient({
         router,
         `/${locale}/app/${team.slug}/${siteSlug(payload.data)}/settings`,
       );
+      router.refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : t.createFailed;
       toast.error(message || t.createFailed);
@@ -180,7 +173,10 @@ export function AdminSitesManagementClient({
 
       <Card className="max-w-3xl">
         <CardHeader>
-          <CardTitle>{t.createTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiAddLine className="size-4" />
+            {t.createTitle}
+          </CardTitle>
           <CardDescription>{t.createSubtitle}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -233,7 +229,13 @@ export function AdminSitesManagementClient({
                       {t.creating}
                     </span>
                   ) : (
-                    <span key="create">{t.create}</span>
+                    <span
+                      key="create"
+                      className="inline-flex items-center gap-2"
+                    >
+                      <RiAddLine className="size-4" />
+                      {t.create}
+                    </span>
                   )}
                 </AutoTransition>
               </Button>
@@ -244,7 +246,10 @@ export function AdminSitesManagementClient({
 
       <Card>
         <CardHeader>
-          <CardTitle>{t.listTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiFileList3Line className="size-4" />
+            {t.listTitle}
+          </CardTitle>
           <CardDescription>{t.listSubtitle}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -273,19 +278,17 @@ export function AdminSitesManagementClient({
                 </TableCell>
                 <TableCell className="text-right">
                   {activeTeam ? (
-                    <Clickable
+                    <TableActionButton
                       onClick={() => {
                         navigateWithTransition(
                           router,
                           `/${locale}/app/${activeTeam.slug}/${siteSlug(site)}`,
                         );
                       }}
-                      className="size-6 text-muted-foreground hover:text-foreground"
-                      aria-label={t.open}
-                      title={t.open}
+                      label={t.open}
                     >
                       <RiLineChartLine className="size-4" />
-                    </Clickable>
+                    </TableActionButton>
                   ) : null}
                 </TableCell>
               </TableRow>

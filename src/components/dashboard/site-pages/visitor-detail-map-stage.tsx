@@ -36,7 +36,7 @@ const VISITOR_MAP_POINT_BASE_RADIUS_PX = 4.8;
 function buildRasterStyle(theme: VisitorDetailMapTheme): StyleSpecification {
   const sourceId = `insightflare-visitor-map-source-${theme}`;
   const layerId = `insightflare-visitor-map-layer-${theme}`;
-  const endpoint = `/api/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
+  const endpoint = `/api/public/resources/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
 
   return {
     version: 8,

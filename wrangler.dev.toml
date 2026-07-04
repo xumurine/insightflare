@@ -1,0 +1,31 @@
+name = "insightflare-dev"
+main = "./workers/dev-worker.js"
+compatibility_date = "2026-03-01"
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
+
+[vars]
+SESSION_WINDOW_MINUTES = "30"
+SCRIPT_CACHE_TTL_SECONDS = "3600"
+PARQUET_WASM_URL = "https://cdn.jsdelivr.net/npm/parquet-wasm@0.7.1/esm/parquet_wasm_bg.wasm"
+
+[[durable_objects.bindings]]
+name = "INGEST_DO"
+class_name = "IngestDurableObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["IngestDurableObject"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "insightflare"
+database_id = "local-dev"
+migrations_dir = "./migrations"
+
+[[kv_namespaces]]
+binding = "SITE_SETTINGS_KV"
+id = "local-dev"
+
+[[analytics_engine_datasets]]
+binding = "BOT_ANALYTICS"
+dataset = "insightflare_bot_events"

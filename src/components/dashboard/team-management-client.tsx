@@ -6,12 +6,20 @@ import { useRouter } from "next/navigation";
 import {
   RiAddLine,
   RiArrowDownLine,
-  RiArrowDownSLine,
+  RiArrowRightLine,
   RiArrowRightSLine,
   RiArrowUpLine,
-  RiArrowUpSLine,
+  RiBarChartBoxLine,
+  RiCloseLine,
   RiDeleteBinLine,
+  RiFileCopyLine,
+  RiGlobalLine,
+  RiGroupLine,
+  RiLinksLine,
   RiLockLine,
+  RiMailSendLine,
+  RiSave3Line,
+  RiSettings3Line,
 } from "@remixicon/react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
@@ -24,6 +32,7 @@ import {
   SiteTrafficStackChart,
   TrafficPairBarChart,
 } from "@/components/dashboard/site-traffic-charts";
+import { TableActionButton } from "@/components/dashboard/table-action-button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,8 +44,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -45,7 +54,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Clickable } from "@/components/ui/clickable";
 import {
   Dialog,
   DialogContent,
@@ -72,11 +80,7 @@ import {
   percentFormat,
   shortDateTime,
 } from "@/lib/dashboard/format";
-import {
-  canAdministerTeam,
-  canManageTeam,
-  type TeamRole,
-} from "@/lib/dashboard/permissions";
+import { canAdministerTeam, canManageTeam } from "@/lib/dashboard/permissions";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
 import {
   addZonedInterval,
@@ -137,6 +141,10 @@ function formatChangeRate(value: number | null): string | null {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
+function epochSecondsToMs(value: number): number {
+  return value > 0 && value < 100_000_000_000 ? value * 1000 : value;
+}
+
 function changeRateClass(value: number | null, lowerIsBetter = false): string {
   if (value === null) return "text-muted-foreground";
   const isImprovement = lowerIsBetter ? value <= 0 : value >= 0;
@@ -180,10 +188,8 @@ function safeSlug(value: string): string {
 }
 
 function getSiteSlug(site: SiteData): string {
-  const primary = String(site.publicSlug || "").trim();
   const domain = String(site.domain || "").trim();
-  const name = String(site.name || "").trim();
-  const candidate = safeSlug(primary || domain || name);
+  const candidate = safeSlug(domain);
   if (candidate.length > 0) return candidate;
   return site.id.slice(0, 8);
 }
@@ -252,6 +258,28 @@ interface TeamDashboardSite extends SiteData {
 interface TeamDashboardData {
   sites: TeamDashboardSite[];
   trend: TeamDashboardTrendPoint[];
+}
+
+interface TeamInviteData {
+  id: string;
+  email: string;
+  payload: {
+    teamRole?: "member" | "admin";
+  };
+  code?: string;
+  url?: string;
+  createdByUserId: string;
+  createdAt: number;
+  expiresAt: number;
+  usedAt: number | null;
+  usedByUserId: string;
+  revokedAt: number | null;
+  status: "active" | "used" | "revoked" | "expired";
+}
+
+interface CreatedTeamInviteData {
+  invite: TeamInviteData;
+  url: string;
 }
 
 const SITE_CARD_MAX_TREND_POINTS = 120;
@@ -334,6 +362,29 @@ async function fetchTeamMembers(teamId: string): Promise<MemberData[]> {
   return Array.isArray(payload.data) ? payload.data : [];
 }
 
+async function fetchTeamInvites(teamId: string): Promise<TeamInviteData[]> {
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+    const { handleDemoRequest } = await import("@/lib/realtime/mock");
+    const result = handleDemoRequest({
+      path: "/api/private/admin/team-invites",
+      params: { teamId },
+    }) as { ok: boolean; data?: TeamInviteData[] };
+    return Array.isArray(result.data) ? result.data : [];
+  }
+  const url = `/api/private/admin/team-invites?teamId=${encodeURIComponent(teamId)}`;
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error("fetch_team_invites_failed");
+  const payload = (await response.json()) as {
+    ok: boolean;
+    data?: TeamInviteData[];
+  };
+  return Array.isArray(payload.data) ? payload.data : [];
+}
+
 interface ActionResponse<T> {
   ok: boolean;
   data?: T;
@@ -344,18 +395,19 @@ interface ActionResponse<T> {
 async function postJson<T>(
   url: string,
   body: Record<string, unknown>,
+  method: "POST" | "PATCH" = "POST",
 ): Promise<T> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: url,
-      method: "POST",
+      method,
       body,
     }) as ActionResponse<T>;
     return (result.data ?? {}) as T;
   }
   const response = await fetch(url, {
-    method: "POST",
+    method,
     credentials: "include",
     headers: {
       "content-type": "application/json",
@@ -394,14 +446,18 @@ export function TeamManagementClient({
   const [currentTeamName, setCurrentTeamName] = useState(activeTeam.name);
   const [teamName, setTeamName] = useState(activeTeam.name);
   const [teamSlug, setTeamSlug] = useState(activeTeam.slug);
-  const [memberIdentifier, setMemberIdentifier] = useState("");
+  const [invites, setInvites] = useState<TeamInviteData[]>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"admin" | "member">("member");
+  const [inviteExpiresInHours, setInviteExpiresInHours] = useState("72");
+  const [latestInviteUrl, setLatestInviteUrl] = useState("");
   const [savingTeam, setSavingTeam] = useState(false);
   const [deletingTeam, setDeletingTeam] = useState(false);
   const [deleteTeamDialogOpen, setDeleteTeamDialogOpen] = useState(false);
-  const [addingMember, setAddingMember] = useState(false);
+  const [creatingInvite, setCreatingInvite] = useState(false);
+  const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [changingRoleId, setChangingRoleId] = useState<string | null>(null);
-  const [addRole, setAddRole] = useState<"admin" | "member">("member");
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [siteOverviewById, setSiteOverviewById] = useState<
     Record<string, SiteOverviewMetrics>
@@ -438,14 +494,19 @@ export function TeamManagementClient({
     let active = true;
     setLoading(true);
 
-    fetchTeamMembers(activeTeam.id)
-      .then((nextMembers) => {
+    Promise.all([
+      fetchTeamMembers(activeTeam.id),
+      canManage ? fetchTeamInvites(activeTeam.id) : Promise.resolve([]),
+    ])
+      .then(([nextMembers, nextInvites]) => {
         if (!active) return;
         setMembers(nextMembers);
+        setInvites(nextInvites);
       })
       .catch(() => {
         if (!active) return;
         setMembers([]);
+        setInvites([]);
       })
       .finally(() => {
         if (!active) return;
@@ -455,7 +516,7 @@ export function TeamManagementClient({
     return () => {
       active = false;
     };
-  }, [activeTeam.id, activeTab]);
+  }, [activeTeam.id, activeTab, canManage]);
 
   useEffect(() => {
     setCreateSiteDialogOpen(false);
@@ -466,10 +527,14 @@ export function TeamManagementClient({
     setCurrentTeamName(activeTeam.name);
     setTeamName(activeTeam.name);
     setTeamSlug(activeTeam.slug);
-    setMemberIdentifier("");
+    setInviteEmail("");
+    setInviteRole("member");
+    setInviteExpiresInHours("72");
+    setLatestInviteUrl("");
     setSites([]);
     setSiteOrder([]);
     setMembers([]);
+    setInvites([]);
     setSiteOverviewById({});
     setSiteChangeRatesById({});
     setTeamTrend([]);
@@ -581,6 +646,15 @@ export function TeamManagementClient({
     setMembers(nextMembers);
   }
 
+  async function refreshInvites() {
+    if (!canManage) {
+      setInvites([]);
+      return;
+    }
+    const nextInvites = await fetchTeamInvites(activeTeam.id);
+    setInvites(nextInvites);
+  }
+
   async function handleCreateSite() {
     const team = activeTeam;
     const name = createSiteName.trim();
@@ -597,7 +671,7 @@ export function TeamManagementClient({
     setCreatingSite(true);
     setCreateSiteError("");
     try {
-      const created = await postJson<SiteData>("/api/admin/site", {
+      const created = await postJson<SiteData>("/api/private/admin/sites", {
         teamId: team.id,
         name,
         domain,
@@ -612,6 +686,7 @@ export function TeamManagementClient({
         router,
         `${buildSitePath(locale, team.slug, getSiteSlug(created))}/settings`,
       );
+      router.refresh();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : siteCreateCopy.createFailed;
@@ -632,11 +707,15 @@ export function TeamManagementClient({
 
     setSavingTeam(true);
     try {
-      const updated = await postJson<TeamData>("/api/admin/team", {
-        teamId: activeTeam.id,
-        name,
-        slug: slug || undefined,
-      });
+      const updated = await postJson<TeamData>(
+        "/api/private/admin/teams",
+        {
+          teamId: activeTeam.id,
+          name,
+          slug: slug || undefined,
+        },
+        "PATCH",
+      );
       setCurrentTeamName(updated.name);
       setTeamName(updated.name);
       setTeamSlug(updated.slug);
@@ -656,40 +735,98 @@ export function TeamManagementClient({
     }
   }
 
-  async function handleAddMember() {
-    const identifier = memberIdentifier.trim();
-    if (identifier.length < 2) {
-      toast.error(copy.toasts.invalidMemberIdentifier);
+  async function handleCreateInvite() {
+    const email = inviteEmail.trim();
+    const expiresInHours = Number(inviteExpiresInHours);
+    if (email.length > 0 && !email.includes("@")) {
+      toast.error(copy.toasts.invalidInviteEmail);
+      return;
+    }
+    if (!Number.isFinite(expiresInHours) || expiresInHours < 1) {
+      toast.error(copy.toasts.invalidInviteExpiry);
       return;
     }
 
-    setAddingMember(true);
+    setCreatingInvite(true);
     try {
-      await postJson("/api/admin/member", {
-        teamId: activeTeam.id,
-        identifier,
-        role: addRole,
-      });
-      setMemberIdentifier("");
-      setAddRole("member");
-      await refreshMembers();
-      toast.success(copy.toasts.memberAdded);
+      const created = await postJson<CreatedTeamInviteData>(
+        "/api/private/admin/team-invites",
+        {
+          teamId: activeTeam.id,
+          email: email || undefined,
+          role: inviteRole,
+          expiresInHours,
+        },
+      );
+      setInviteEmail("");
+      setInviteRole("member");
+      setInviteExpiresInHours("72");
+      setLatestInviteUrl(created.url);
+      await refreshInvites();
+      toast.success(copy.toasts.inviteCreated);
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : copy.toasts.memberAddFailed;
-      toast.error(message || copy.toasts.memberAddFailed);
+        error instanceof Error ? error.message : copy.toasts.inviteCreateFailed;
+      toast.error(message || copy.toasts.inviteCreateFailed);
     } finally {
-      setAddingMember(false);
+      setCreatingInvite(false);
+    }
+  }
+
+  async function handleRevokeInvite(inviteId: string) {
+    setRevokingInviteId(inviteId);
+    try {
+      await postJson<TeamInviteData>(
+        "/api/private/admin/team-invites",
+        {
+          intent: "revoke",
+          inviteId,
+          teamId: activeTeam.id,
+        },
+        "PATCH",
+      );
+      await refreshInvites();
+      toast.success(copy.toasts.inviteRevoked);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : copy.toasts.inviteRevokeFailed;
+      toast.error(message || copy.toasts.inviteRevokeFailed);
+    } finally {
+      setRevokingInviteId(null);
+    }
+  }
+
+  async function handleCopyLatestInviteUrl() {
+    if (!latestInviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(latestInviteUrl);
+      toast.success(copy.toasts.inviteCopied);
+    } catch {
+      toast.error(copy.toasts.inviteCopyFailed);
+    }
+  }
+
+  async function handleCopyInviteUrl(invite: TeamInviteData) {
+    if (!invite.url) return;
+    try {
+      await navigator.clipboard.writeText(invite.url);
+      toast.success(copy.toasts.inviteCopied);
+    } catch {
+      toast.error(copy.toasts.inviteCopyFailed);
     }
   }
 
   async function handleDeleteTeam() {
     setDeletingTeam(true);
     try {
-      await postJson("/api/admin/team", {
-        intent: "remove",
-        teamId: activeTeam.id,
-      });
+      await postJson(
+        "/api/private/admin/teams",
+        {
+          intent: "remove",
+          teamId: activeTeam.id,
+        },
+        "PATCH",
+      );
       toast.success(copy.toasts.teamDeleted);
       setDeleteTeamDialogOpen(false);
       navigateWithTransition(router, `/${locale}/app`);
@@ -710,11 +847,15 @@ export function TeamManagementClient({
     }
     setTransferring(true);
     try {
-      await postJson<TeamData>("/api/admin/team", {
-        intent: "transfer_owner",
-        teamId: activeTeam.id,
-        newOwnerUserId: transferTargetId,
-      });
+      await postJson<TeamData>(
+        "/api/private/admin/teams",
+        {
+          intent: "transfer_owner",
+          teamId: activeTeam.id,
+          newOwnerUserId: transferTargetId,
+        },
+        "PATCH",
+      );
       toast.success(copy.toasts.ownerTransferred);
       setTransferDialogOpen(false);
       setTransferTargetId("");
@@ -737,12 +878,16 @@ export function TeamManagementClient({
   ) {
     setChangingRoleId(userId);
     try {
-      await postJson("/api/admin/member", {
-        intent: "update_role",
-        teamId: activeTeam.id,
-        userId,
-        role: nextRole,
-      });
+      await postJson(
+        "/api/private/admin/members",
+        {
+          intent: "update_role",
+          teamId: activeTeam.id,
+          userId,
+          role: nextRole,
+        },
+        "PATCH",
+      );
       await refreshMembers();
       toast.success(copy.toasts.roleChanged);
     } catch (error) {
@@ -757,11 +902,15 @@ export function TeamManagementClient({
   async function handleRemoveMember(userId: string) {
     setRemovingMemberId(userId);
     try {
-      await postJson("/api/admin/member", {
-        intent: "remove",
-        teamId: activeTeam.id,
-        userId,
-      });
+      await postJson(
+        "/api/private/admin/members",
+        {
+          intent: "remove",
+          teamId: activeTeam.id,
+          userId,
+        },
+        "PATCH",
+      );
       await refreshMembers();
       toast.success(copy.toasts.memberRemoved);
     } catch (error) {
@@ -1011,47 +1160,46 @@ export function TeamManagementClient({
         : copy.members.subtitle;
   const isSitesChartsLoading =
     activeTab === "sites" && (loading || analyticsLoading);
-  const memberManagementSection = (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>{copy.members.title}</CardTitle>
-          <CardDescription>{copy.members.subtitle}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form
-            className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleAddMember();
-            }}
-          >
+  const inviteCreateCard = (
+    <Card className="h-full">
+      <CardHeader>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiMailSendLine className="size-4" />
+          {copy.members.invitesTitle}
+        </CardTitle>
+        <CardDescription>{copy.members.invitesSubtitle}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex h-full flex-col gap-4">
+        <form
+          className="flex h-full flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleCreateInvite();
+          }}
+        >
+          <div className="space-y-2">
+            <Label htmlFor="invite-email">
+              {copy.members.inviteEmailLabel}
+            </Label>
+            <Input
+              id="invite-email"
+              value={inviteEmail}
+              onChange={(event) => setInviteEmail(event.target.value)}
+              placeholder={copy.members.inviteEmailPlaceholder}
+              disabled={!canManage}
+            />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="member-identifier">
-                {copy.members.identifierLabel}
-              </Label>
-              <Input
-                id="member-identifier"
-                value={memberIdentifier}
-                onChange={(event) => setMemberIdentifier(event.target.value)}
-                placeholder={copy.members.identifierPlaceholder}
-                minLength={2}
-                required
-                disabled={!canManage}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="member-add-role">
-                {copy.members.columns.role}
-              </Label>
+              <Label htmlFor="invite-role">{copy.members.columns.role}</Label>
               <Select
-                value={addRole}
+                value={inviteRole}
                 onValueChange={(value) => {
-                  setAddRole(value === "admin" ? "admin" : "member");
+                  setInviteRole(value === "admin" ? "admin" : "member");
                 }}
                 disabled={!canManage}
               >
-                <SelectTrigger id="member-add-role" className="w-32">
+                <SelectTrigger id="invite-role" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1064,145 +1212,294 @@ export function TeamManagementClient({
                 </SelectContent>
               </Select>
             </div>
-            <Button type="submit" disabled={addingMember || !canManage}>
-              <AutoTransition className="inline-flex items-center gap-2">
-                {addingMember ? (
-                  <span key="adding" className="inline-flex items-center gap-2">
-                    <Spinner className="size-4" />
-                    {copy.members.adding}
+            <div className="space-y-2">
+              <Label htmlFor="invite-expires">
+                {copy.members.inviteExpiresLabel}
+              </Label>
+              <Input
+                id="invite-expires"
+                value={inviteExpiresInHours}
+                onChange={(event) =>
+                  setInviteExpiresInHours(event.target.value)
+                }
+                inputMode="numeric"
+                disabled={!canManage}
+              />
+            </div>
+          </div>
+          <Button
+            type="submit"
+            className="mt-auto self-start"
+            disabled={creatingInvite || !canManage}
+          >
+            <AutoTransition className="inline-flex items-center gap-2">
+              {creatingInvite ? (
+                <span key="creating" className="inline-flex items-center gap-2">
+                  <Spinner className="size-4" />
+                  {copy.members.creatingInvite}
+                </span>
+              ) : (
+                <span key="create" className="inline-flex items-center gap-2">
+                  <RiAddLine className="size-4" />
+                  {copy.members.createInvite}
+                </span>
+              )}
+            </AutoTransition>
+          </Button>
+        </form>
+
+        {latestInviteUrl ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input value={latestInviteUrl} readOnly className="font-mono" />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                void handleCopyLatestInviteUrl();
+              }}
+            >
+              <RiFileCopyLine className="size-4" />
+              <span>{copy.members.copyInvite}</span>
+            </Button>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+
+  const inviteLinksCard = (
+    <Card>
+      <CardHeader>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiLinksLine className="size-4" />
+          {copy.members.inviteLinksTitle}
+        </CardTitle>
+        <CardDescription>{copy.members.inviteLinksSubtitle}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <DataTableSwitch
+          loading={loading}
+          hasContent={invites.length > 0}
+          loadingLabel={messages.common.loading}
+          emptyLabel={copy.members.noInvites}
+          colSpan={8}
+          header={
+            <TableRow>
+              <TableHead>{copy.members.columns.email}</TableHead>
+              <TableHead>{copy.members.columns.inviteCode}</TableHead>
+              <TableHead>{copy.members.columns.role}</TableHead>
+              <TableHead>{copy.members.columns.status}</TableHead>
+              <TableHead>{copy.members.columns.createdAt}</TableHead>
+              <TableHead>{copy.members.columns.expiresAt}</TableHead>
+              <TableHead>{copy.members.columns.usedAt}</TableHead>
+              <TableHead className="text-right">
+                {copy.members.columns.action}
+              </TableHead>
+            </TableRow>
+          }
+          rows={invites.map((invite) => (
+            <TableRow key={invite.id}>
+              <TableCell>{invite.email || copy.members.anyEmail}</TableCell>
+              <TableCell>
+                {invite.code ? (
+                  <button
+                    type="button"
+                    className="font-mono text-xs text-primary underline-offset-4 hover:underline disabled:pointer-events-none disabled:text-muted-foreground"
+                    disabled={!invite.url}
+                    onClick={() => {
+                      void handleCopyInviteUrl(invite);
+                    }}
+                  >
+                    {invite.code}
+                  </button>
+                ) : (
+                  "-"
+                )}
+              </TableCell>
+              <TableCell>
+                {invite.payload.teamRole === "admin"
+                  ? copy.members.roleLabels.admin
+                  : copy.members.roleLabels.member}
+              </TableCell>
+              <TableCell>
+                {copy.members.inviteStatuses[invite.status]}
+              </TableCell>
+              <TableCell>
+                {shortDateTime(
+                  locale,
+                  epochSecondsToMs(invite.createdAt),
+                  window.timeZone,
+                )}
+              </TableCell>
+              <TableCell>
+                {shortDateTime(
+                  locale,
+                  epochSecondsToMs(invite.expiresAt),
+                  window.timeZone,
+                )}
+              </TableCell>
+              <TableCell>
+                {invite.usedAt
+                  ? shortDateTime(
+                      locale,
+                      epochSecondsToMs(invite.usedAt),
+                      window.timeZone,
+                    )
+                  : "-"}
+              </TableCell>
+              <TableCell className="text-right">
+                <TableActionButton
+                  onClick={() => {
+                    void handleRevokeInvite(invite.id);
+                  }}
+                  disabled={
+                    !canManage ||
+                    invite.status !== "active" ||
+                    revokingInviteId === invite.id
+                  }
+                  label={copy.members.revokeInvite}
+                  tone="destructive"
+                  transitionKey={
+                    revokingInviteId === invite.id ? "revoking" : "revoke"
+                  }
+                >
+                  {revokingInviteId === invite.id ? (
+                    <Spinner className="size-3.5" />
+                  ) : (
+                    <RiDeleteBinLine className="size-4" />
+                  )}
+                </TableActionButton>
+              </TableCell>
+            </TableRow>
+          ))}
+        />
+      </CardContent>
+    </Card>
+  );
+
+  const membersTableCard = (
+    <Card>
+      <CardContent className="pt-4">
+        <DataTableSwitch
+          loading={loading}
+          hasContent={members.length > 0}
+          loadingLabel={messages.common.loading}
+          emptyLabel={copy.members.noMembers}
+          colSpan={6}
+          header={
+            <TableRow>
+              <TableHead>{copy.members.columns.name}</TableHead>
+              <TableHead>{copy.members.columns.username}</TableHead>
+              <TableHead>{copy.members.columns.email}</TableHead>
+              <TableHead>{copy.members.columns.role}</TableHead>
+              <TableHead>{copy.members.columns.joinedAt}</TableHead>
+              <TableHead className="text-right">
+                {copy.members.columns.action}
+              </TableHead>
+            </TableRow>
+          }
+          rows={members.map((member) => (
+            <TableRow key={member.userId}>
+              <TableCell className="font-medium">
+                {member.name || member.username}
+              </TableCell>
+              <TableCell>{member.username}</TableCell>
+              <TableCell>{member.email}</TableCell>
+              <TableCell>
+                {member.role === "owner" ? (
+                  <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                    <RiLockLine className="size-3.5" />
+                    {copy.members.roleLabels.owner}
                   </span>
                 ) : (
-                  <span key="add">{copy.members.add}</span>
-                )}
-              </AutoTransition>
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="pt-4">
-          <DataTableSwitch
-            loading={loading}
-            hasContent={members.length > 0}
-            loadingLabel={messages.common.loading}
-            emptyLabel={copy.members.noMembers}
-            colSpan={6}
-            header={
-              <TableRow>
-                <TableHead>{copy.members.columns.name}</TableHead>
-                <TableHead>{copy.members.columns.username}</TableHead>
-                <TableHead>{copy.members.columns.email}</TableHead>
-                <TableHead>{copy.members.columns.role}</TableHead>
-                <TableHead>{copy.members.columns.joinedAt}</TableHead>
-                <TableHead className="text-right">
-                  {copy.members.columns.action}
-                </TableHead>
-              </TableRow>
-            }
-            rows={members.map((member) => (
-              <TableRow key={member.userId}>
-                <TableCell className="font-medium">
-                  {member.name || member.username}
-                </TableCell>
-                <TableCell>{member.username}</TableCell>
-                <TableCell>{member.email}</TableCell>
-                <TableCell>
-                  {member.role === "owner" ? (
-                    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                      <RiLockLine className="size-3.5" />
-                      {copy.members.roleLabels.owner}
-                    </span>
-                  ) : (
-                    <Select
-                      value={member.role === "admin" ? "admin" : "member"}
-                      disabled={!canManage || changingRoleId === member.userId}
-                      onValueChange={(value) => {
-                        const next: "admin" | "member" =
-                          value === "admin" ? "admin" : "member";
-                        const current: "admin" | "member" =
-                          member.role === "admin" ? "admin" : "member";
-                        if (next === current) return;
-                        const isSelfDemote =
-                          member.userId === currentUserId &&
-                          systemRole !== "admin" &&
-                          activeTeam.ownerUserId !== currentUserId &&
-                          next === "member";
-                        if (isSelfDemote) {
-                          toast.error(copy.toasts.roleChangeFailed);
-                          return;
-                        }
-                        void handleChangeMemberRole(member.userId, next);
-                      }}
-                    >
-                      <SelectTrigger className="h-8 w-28 text-xs">
-                        <AutoTransition className="inline-flex items-center gap-1.5">
-                          {changingRoleId === member.userId ? (
-                            <span
-                              key="role-changing"
-                              className="inline-flex items-center gap-1.5"
-                            >
-                              <Spinner className="size-3" />
-                            </span>
-                          ) : (
-                            <span key="role-value">
-                              <SelectValue />
-                            </span>
-                          )}
-                        </AutoTransition>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="member">
-                          {copy.members.roleLabels.member}
-                        </SelectItem>
-                        <SelectItem value="admin">
-                          {copy.members.roleLabels.admin}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {shortDateTime(locale, member.joinedAt, window.timeZone)}
-                </TableCell>
-                <TableCell className="text-right">
-                  {member.role === "owner" ? null : (
-                    <Clickable
-                      onClick={() => {
-                        void handleRemoveMember(member.userId);
-                      }}
-                      disabled={
-                        !canManage || removingMemberId === member.userId
+                  <Select
+                    value={member.role === "admin" ? "admin" : "member"}
+                    disabled={!canManage || changingRoleId === member.userId}
+                    onValueChange={(value) => {
+                      const next: "admin" | "member" =
+                        value === "admin" ? "admin" : "member";
+                      const current: "admin" | "member" =
+                        member.role === "admin" ? "admin" : "member";
+                      if (next === current) return;
+                      const isSelfDemote =
+                        member.userId === currentUserId &&
+                        systemRole !== "admin" &&
+                        activeTeam.ownerUserId !== currentUserId &&
+                        next === "member";
+                      if (isSelfDemote) {
+                        toast.error(copy.toasts.roleChangeFailed);
+                        return;
                       }
-                      className="size-6 text-destructive/80 hover:text-destructive"
-                      aria-label={copy.members.remove}
-                      title={copy.members.remove}
-                    >
-                      <AutoTransition className="inline-flex items-center justify-center">
-                        {removingMemberId === member.userId ? (
+                      void handleChangeMemberRole(member.userId, next);
+                    }}
+                  >
+                    <SelectTrigger className="h-8 w-28 text-xs">
+                      <AutoTransition className="inline-flex items-center gap-1.5">
+                        {changingRoleId === member.userId ? (
                           <span
-                            key="removing"
-                            className="inline-flex items-center justify-center"
+                            key="role-changing"
+                            className="inline-flex items-center gap-1.5"
                           >
-                            <Spinner className="size-3.5" />
+                            <Spinner className="size-3" />
                           </span>
                         ) : (
-                          <span
-                            key="remove"
-                            className="inline-flex items-center justify-center"
-                          >
-                            <RiDeleteBinLine className="size-4" />
+                          <span key="role-value">
+                            <SelectValue />
                           </span>
                         )}
                       </AutoTransition>
-                    </Clickable>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          />
-        </CardContent>
-      </Card>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="member">
+                        {copy.members.roleLabels.member}
+                      </SelectItem>
+                      <SelectItem value="admin">
+                        {copy.members.roleLabels.admin}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              </TableCell>
+              <TableCell>
+                {shortDateTime(
+                  locale,
+                  epochSecondsToMs(member.joinedAt),
+                  window.timeZone,
+                )}
+              </TableCell>
+              <TableCell className="text-right">
+                {member.role === "owner" ? null : (
+                  <TableActionButton
+                    onClick={() => {
+                      void handleRemoveMember(member.userId);
+                    }}
+                    disabled={!canManage || removingMemberId === member.userId}
+                    label={copy.members.remove}
+                    tone="destructive"
+                    transitionKey={
+                      removingMemberId === member.userId ? "removing" : "remove"
+                    }
+                  >
+                    {removingMemberId === member.userId ? (
+                      <Spinner className="size-3.5" />
+                    ) : (
+                      <RiDeleteBinLine className="size-4" />
+                    )}
+                  </TableActionButton>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        />
+      </CardContent>
+    </Card>
+  );
+
+  const memberManagementSection = (
+    <div className="space-y-4">
+      {inviteCreateCard}
+      {inviteLinksCard}
+      {membersTableCard}
     </div>
   );
 
@@ -1213,40 +1510,66 @@ export function TeamManagementClient({
         subtitle={panelSubtitle}
         actions={
           <>
-            <Badge variant="outline">
-              <span className="inline-flex items-center gap-1.5">
-                {copy.stats.sites}:
-                <AutoTransition initial className="inline-flex items-center">
-                  {loading ? (
-                    <span
-                      key="sites-loading"
+            <Button variant="outline" asChild>
+              <Link href={`/${locale}/app/${activeTeam.slug}`}>
+                <RiGlobalLine />
+                <span className="inline-flex items-center gap-1.5">
+                  {copy.stats.sites}:
+                  <AutoResizer
+                    initial
+                    animateWidth
+                    animateHeight={false}
+                    className="inline-flex items-center"
+                  >
+                    <AutoTransition
+                      initial
                       className="inline-flex items-center"
                     >
-                      <Spinner className="size-3.5" />
-                    </span>
-                  ) : (
-                    <span key="sites-value">{siteCount}</span>
-                  )}
-                </AutoTransition>
-              </span>
-            </Badge>
-            <Badge variant="outline">
-              <span className="inline-flex items-center gap-1.5">
-                {copy.stats.members}:
-                <AutoTransition initial className="inline-flex items-center">
-                  {loading ? (
-                    <span
-                      key="members-loading"
+                      {loading ? (
+                        <span
+                          key="sites-loading"
+                          className="inline-flex items-center"
+                        >
+                          <Spinner className="size-3.5" />
+                        </span>
+                      ) : (
+                        <span key="sites-value">{siteCount}</span>
+                      )}
+                    </AutoTransition>
+                  </AutoResizer>
+                </span>
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href={`/${locale}/app/${activeTeam.slug}/members`}>
+                <RiGroupLine />
+                <span className="inline-flex items-center gap-1.5">
+                  {copy.stats.members}:
+                  <AutoResizer
+                    initial
+                    animateWidth
+                    animateHeight={false}
+                    className="inline-flex items-center"
+                  >
+                    <AutoTransition
+                      initial
                       className="inline-flex items-center"
                     >
-                      <Spinner className="size-3.5" />
-                    </span>
-                  ) : (
-                    <span key="members-value">{memberCount}</span>
-                  )}
-                </AutoTransition>
-              </span>
-            </Badge>
+                      {loading ? (
+                        <span
+                          key="members-loading"
+                          className="inline-flex items-center"
+                        >
+                          <Spinner className="size-3.5" />
+                        </span>
+                      ) : (
+                        <span key="members-value">{memberCount}</span>
+                      )}
+                    </AutoTransition>
+                  </AutoResizer>
+                </span>
+              </Link>
+            </Button>
             {activeTab === "sites" && canManageSites ? (
               <Button
                 type="button"
@@ -1278,7 +1601,9 @@ export function TeamManagementClient({
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{siteCreateCopy.createTitle}</DialogTitle>
+            <DialogTitle icon={RiGlobalLine}>
+              {siteCreateCopy.createTitle}
+            </DialogTitle>
             <DialogDescription>
               {siteCreateCopy.createSubtitle}
             </DialogDescription>
@@ -1340,7 +1665,8 @@ export function TeamManagementClient({
                 onClick={() => setCreateSiteDialogOpen(false)}
                 disabled={creatingSite}
               >
-                {messages.teamSelect.cancel}
+                <RiCloseLine className="size-4" />
+                <span>{messages.teamSelect.cancel}</span>
               </Button>
               <Button type="submit" disabled={creatingSite}>
                 <AutoTransition className="inline-flex items-center gap-2">
@@ -1353,7 +1679,13 @@ export function TeamManagementClient({
                       {siteCreateCopy.creating}
                     </span>
                   ) : (
-                    <span key="create-site">{siteCreateCopy.create}</span>
+                    <span
+                      key="create-site"
+                      className="inline-flex items-center gap-2"
+                    >
+                      <RiAddLine className="size-4" />
+                      {siteCreateCopy.create}
+                    </span>
                   )}
                 </AutoTransition>
               </Button>
@@ -1367,7 +1699,10 @@ export function TeamManagementClient({
           <div className="space-y-4">
             <Card className="overflow-visible">
               <CardHeader>
-                <CardTitle>{copy.sites.aggregateTitle}</CardTitle>
+                <CardTitle className="inline-flex items-center gap-2">
+                  <RiBarChartBoxLine className="size-4" />
+                  {copy.sites.aggregateTitle}
+                </CardTitle>
               </CardHeader>
 
               <CardContent className="space-y-3">
@@ -1380,6 +1715,8 @@ export function TeamManagementClient({
                     interval={chartWindow.interval}
                     viewsLabel={messages.common.views}
                     visitorsLabel={messages.common.visitors}
+                    messages={messages}
+                    loading={isSitesChartsLoading}
                     className={isSitesChartsLoading ? "opacity-40" : undefined}
                   />
                   <AutoTransition
@@ -1471,6 +1808,7 @@ export function TeamManagementClient({
                                   interval={chartWindow.interval}
                                   viewsLabel={messages.common.views}
                                   visitorsLabel={messages.common.visitors}
+                                  messages={messages}
                                   maxPoints={SITE_CARD_MAX_TREND_POINTS}
                                 />
                               </div>
@@ -1561,12 +1899,13 @@ export function TeamManagementClient({
 
         {activeTab === "settings" ? (
           <div className="space-y-4">
-            {memberManagementSection}
-
             <div className="grid gap-4 lg:grid-cols-2">
               <Card className="h-full">
                 <CardHeader>
-                  <CardTitle>{copy.settings.title}</CardTitle>
+                  <CardTitle className="inline-flex items-center gap-2">
+                    <RiSettings3Line className="size-4" />
+                    {copy.settings.title}
+                  </CardTitle>
                   <CardDescription>{copy.settings.subtitle}</CardDescription>
                 </CardHeader>
                 <CardContent className="flex h-full flex-col">
@@ -1616,14 +1955,27 @@ export function TeamManagementClient({
                             {copy.settings.saving}
                           </span>
                         ) : (
-                          <span key="save">{copy.settings.save}</span>
+                          <span
+                            key="save"
+                            className="inline-flex items-center gap-2"
+                          >
+                            <RiSave3Line className="size-4" />
+                            {copy.settings.save}
+                          </span>
                         )}
                       </AutoTransition>
                     </Button>
                   </form>
                 </CardContent>
               </Card>
+              {inviteCreateCard}
+            </div>
 
+            {inviteLinksCard}
+
+            {membersTableCard}
+
+            <div className="grid gap-4 lg:grid-cols-2">
               {isRealOwner ? (
                 <AlertDialog
                   open={transferDialogOpen}
@@ -1634,7 +1986,10 @@ export function TeamManagementClient({
                 >
                   <Card className="h-full border-amber-500/40">
                     <CardHeader>
-                      <CardTitle>{copy.settings.transferTitle}</CardTitle>
+                      <CardTitle className="inline-flex items-center gap-2">
+                        <RiArrowRightLine className="size-4" />
+                        {copy.settings.transferTitle}
+                      </CardTitle>
                       <CardDescription>
                         {copy.settings.transferSubtitle}
                       </CardDescription>
@@ -1654,7 +2009,10 @@ export function TeamManagementClient({
                             onValueChange={setTransferTargetId}
                             disabled={transferring}
                           >
-                            <SelectTrigger id="transfer-target">
+                            <SelectTrigger
+                              id="transfer-target"
+                              className="w-full"
+                            >
                               <SelectValue
                                 placeholder={
                                   copy.settings.transferTargetPlaceholder
@@ -1695,7 +2053,11 @@ export function TeamManagementClient({
                                   {copy.settings.transferring}
                                 </span>
                               ) : (
-                                <span key="transfer">
+                                <span
+                                  key="transfer"
+                                  className="inline-flex items-center gap-2"
+                                >
+                                  <RiArrowRightLine className="size-4" />
                                   {copy.settings.transfer}
                                 </span>
                               )}
@@ -1707,7 +2069,7 @@ export function TeamManagementClient({
                   </Card>
                   <AlertDialogContent size="sm">
                     <AlertDialogHeader>
-                      <AlertDialogTitle>
+                      <AlertDialogTitle icon={RiArrowRightLine}>
                         {copy.settings.transferTitle}
                       </AlertDialogTitle>
                       <AlertDialogDescription>
@@ -1716,7 +2078,8 @@ export function TeamManagementClient({
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel disabled={transferring}>
-                        {messages.teamSelect.cancel}
+                        <RiCloseLine className="size-4" />
+                        <span>{messages.teamSelect.cancel}</span>
                       </AlertDialogCancel>
                       <AlertDialogAction
                         disabled={transferring}
@@ -1735,7 +2098,11 @@ export function TeamManagementClient({
                               {copy.settings.transferring}
                             </span>
                           ) : (
-                            <span key="confirm-transfer-dialog">
+                            <span
+                              key="confirm-transfer-dialog"
+                              className="inline-flex items-center gap-2"
+                            >
+                              <RiArrowRightLine className="size-4" />
                               {copy.settings.transfer}
                             </span>
                           )}
@@ -1756,7 +2123,10 @@ export function TeamManagementClient({
                 >
                   <Card className="h-full border-destructive/40">
                     <CardHeader>
-                      <CardTitle>{copy.settings.delete}</CardTitle>
+                      <CardTitle className="inline-flex items-center gap-2">
+                        <RiDeleteBinLine className="size-4" />
+                        {copy.settings.delete}
+                      </CardTitle>
                       <CardDescription>
                         {copy.settings.deleteConfirm}
                       </CardDescription>
@@ -1778,7 +2148,13 @@ export function TeamManagementClient({
                                 {copy.settings.deleting}
                               </span>
                             ) : (
-                              <span key="delete">{copy.settings.delete}</span>
+                              <span
+                                key="delete"
+                                className="inline-flex items-center gap-2"
+                              >
+                                <RiDeleteBinLine className="size-4" />
+                                {copy.settings.delete}
+                              </span>
                             )}
                           </AutoTransition>
                         </Button>
@@ -1787,7 +2163,7 @@ export function TeamManagementClient({
                   </Card>
                   <AlertDialogContent size="sm">
                     <AlertDialogHeader>
-                      <AlertDialogTitle>
+                      <AlertDialogTitle icon={RiDeleteBinLine}>
                         {copy.settings.delete}
                       </AlertDialogTitle>
                       <AlertDialogDescription>
@@ -1796,7 +2172,8 @@ export function TeamManagementClient({
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel disabled={deletingTeam}>
-                        {messages.teamSelect.cancel}
+                        <RiCloseLine className="size-4" />
+                        <span>{messages.teamSelect.cancel}</span>
                       </AlertDialogCancel>
                       <AlertDialogAction
                         variant="destructive"
@@ -1816,7 +2193,11 @@ export function TeamManagementClient({
                               {copy.settings.deleting}
                             </span>
                           ) : (
-                            <span key="confirm-delete-dialog">
+                            <span
+                              key="confirm-delete-dialog"
+                              className="inline-flex items-center gap-2"
+                            >
+                              <RiDeleteBinLine className="size-4" />
                               {copy.settings.delete}
                             </span>
                           )}
@@ -1830,126 +2211,7 @@ export function TeamManagementClient({
           </div>
         ) : null}
 
-        {activeTab === "members" ? (
-          <div className="space-y-4">
-            <Card className="max-w-2xl">
-              <CardHeader>
-                <CardTitle>{copy.members.title}</CardTitle>
-                <CardDescription>{copy.members.subtitle}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form
-                  className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void handleAddMember();
-                  }}
-                >
-                  <div className="space-y-2">
-                    <Label htmlFor="member-identifier">
-                      {copy.members.identifierLabel}
-                    </Label>
-                    <Input
-                      id="member-identifier"
-                      value={memberIdentifier}
-                      onChange={(event) =>
-                        setMemberIdentifier(event.target.value)
-                      }
-                      placeholder={copy.members.identifierPlaceholder}
-                      minLength={2}
-                      required
-                    />
-                  </div>
-                  <Button type="submit" disabled={addingMember}>
-                    <AutoTransition className="inline-flex items-center gap-2">
-                      {addingMember ? (
-                        <span
-                          key="adding"
-                          className="inline-flex items-center gap-2"
-                        >
-                          <Spinner className="size-4" />
-                          {copy.members.adding}
-                        </span>
-                      ) : (
-                        <span key="add">{copy.members.add}</span>
-                      )}
-                    </AutoTransition>
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-4">
-                <DataTableSwitch
-                  loading={loading}
-                  hasContent={members.length > 0}
-                  loadingLabel={messages.common.loading}
-                  emptyLabel={copy.members.noMembers}
-                  colSpan={6}
-                  header={
-                    <TableRow>
-                      <TableHead>{copy.members.columns.name}</TableHead>
-                      <TableHead>{copy.members.columns.username}</TableHead>
-                      <TableHead>{copy.members.columns.email}</TableHead>
-                      <TableHead>{copy.members.columns.role}</TableHead>
-                      <TableHead>{copy.members.columns.joinedAt}</TableHead>
-                      <TableHead className="text-right">
-                        {copy.members.columns.action}
-                      </TableHead>
-                    </TableRow>
-                  }
-                  rows={members.map((member) => (
-                    <TableRow key={member.userId}>
-                      <TableCell className="font-medium">
-                        {member.name || member.username}
-                      </TableCell>
-                      <TableCell>{member.username}</TableCell>
-                      <TableCell>{member.email}</TableCell>
-                      <TableCell>{member.role}</TableCell>
-                      <TableCell>
-                        {shortDateTime(
-                          locale,
-                          member.joinedAt,
-                          window.timeZone,
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Clickable
-                          onClick={() => {
-                            void handleRemoveMember(member.userId);
-                          }}
-                          disabled={removingMemberId === member.userId}
-                          className="size-6 text-destructive/80 hover:text-destructive"
-                          aria-label={copy.members.remove}
-                          title={copy.members.remove}
-                        >
-                          <AutoTransition className="inline-flex items-center justify-center">
-                            {removingMemberId === member.userId ? (
-                              <span
-                                key="removing"
-                                className="inline-flex items-center justify-center"
-                              >
-                                <Spinner className="size-3.5" />
-                              </span>
-                            ) : (
-                              <span
-                                key="remove"
-                                className="inline-flex items-center justify-center"
-                              >
-                                <RiDeleteBinLine className="size-4" />
-                              </span>
-                            )}
-                          </AutoTransition>
-                        </Clickable>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                />
-              </CardContent>
-            </Card>
-          </div>
-        ) : null}
+        {activeTab === "members" ? memberManagementSection : null}
       </div>
     </div>
   );

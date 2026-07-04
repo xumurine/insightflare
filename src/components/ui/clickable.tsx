@@ -2,11 +2,14 @@
 
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { forwardRef } from "react";
-import { motion } from "motion/react";
+import { type HTMLMotionProps, motion } from "motion/react";
 
 import { cn } from "@/lib/utils";
 
-interface ClickableProps {
+interface ClickableProps extends Omit<
+  HTMLMotionProps<"div">,
+  "children" | "onClick" | "onKeyDown"
+> {
   children: ReactNode;
   onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   className?: string;
@@ -32,6 +35,7 @@ export const Clickable = forwardRef<HTMLDivElement, ClickableProps>(
       duration = 0.16,
       title,
       "aria-label": ariaLabel,
+      ...props
     },
     ref,
   ) => {
@@ -63,6 +67,7 @@ export const Clickable = forwardRef<HTMLDivElement, ClickableProps>(
         )}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
+        {...props}
         whileHover={
           !disabled && enableHoverScale ? { scale: hoverScale } : undefined
         }

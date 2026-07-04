@@ -8,7 +8,7 @@ import { GeoJsonLayer, ScatterplotLayer } from "@deck.gl/layers";
 import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
 import type { Feature, GeoJSON, Geometry } from "geojson";
 import isoCountries from "i18n-iso-countries";
-import type { StyleSpecification } from "maplibre-gl";
+import type { Map as MaplibreMap, StyleSpecification } from "maplibre-gl";
 import { animate, AnimatePresence, motion } from "motion/react";
 
 import { AutoResizer } from "@/components/ui/auto-resizer";
@@ -24,6 +24,7 @@ export interface GeoPointsMapPoint {
   latitude: number;
   longitude: number;
   country: string;
+  pointCount?: number;
 }
 
 export interface GeoPointsMapCountryCount {
@@ -41,6 +42,10 @@ interface GeoPointsMapProps {
   loading?: boolean;
   emptyLabel?: string;
   heightClassName?: string;
+  countryHoverEnabled?: boolean;
+  pointColor?: [number, number, number];
+  projectionMode?: "mercator" | "globe";
+  autoRotate?: boolean;
   selectedCountryCode?: string | null;
   onCountrySelect?: (countryCode: string | null) => void;
 }
@@ -59,6 +64,19 @@ const MAP_POINT_ALPHA_VISIBLE = 112;
 const CLUSTER_RADIUS_PX = 26;
 const CLUSTER_ZOOM_STEP = 0.25;
 const CLUSTER_CROSSFADE_DURATION_S = 0.22;
+const GLOBE_VIEW_STATE: MapViewState = {
+  longitude: 0,
+  latitude: 30,
+  zoom: 2.25,
+  minZoom: 1.5,
+  maxZoom: 3,
+  pitch: 0,
+  bearing: 0,
+};
+const GLOBE_ROTATION_DEGREES_PER_SECOND = 10;
+const GLOBE_USER_INTERACTION_PAUSE_MS = 5000;
+const GLOBE_RECOVERY_DURATION_MS = 1200;
+const GLOBE_ROTATION_ACCELERATION_MS = 1600;
 const EMPTY_COUNTRY_FEATURES = {
   type: "FeatureCollection",
   features: [],
@@ -66,14 +84,34 @@ const EMPTY_COUNTRY_FEATURES = {
 
 type CountryFeature = Feature<Geometry, Record<string, unknown>>;
 
-function buildRasterStyle(theme: EffectiveMapTheme): StyleSpecification {
+function buildRasterStyle(
+  theme: EffectiveMapTheme,
+  projectionMode: "mercator" | "globe",
+): StyleSpecification {
   const sourceId = `insightflare-raster-source-${theme}`;
   const layerId = `insightflare-raster-layer-${theme}`;
-  const endpoint = `/api/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
+  const endpoint = `/api/public/resources/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
+  const isGlobe = projectionMode === "globe";
 
   return {
     version: 8,
     name: `insightflare-raster-${theme}`,
+    projection: {
+      type: projectionMode,
+    },
+    ...(isGlobe
+      ? {
+          sky: {
+            "sky-color":
+              theme === "dark" ? "rgb(8, 12, 18)" : "rgb(244, 247, 250)",
+            "horizon-color":
+              theme === "dark" ? "rgb(17, 24, 39)" : "rgb(233, 238, 244)",
+            "fog-color":
+              theme === "dark" ? "rgb(8, 12, 18)" : "rgb(244, 247, 250)",
+            "atmosphere-blend": 0.18,
+          },
+        }
+      : {}),
     sources: {
       [sourceId]: {
         type: "raster",
@@ -83,6 +121,19 @@ function buildRasterStyle(theme: EffectiveMapTheme): StyleSpecification {
       },
     },
     layers: [
+      ...(isGlobe
+        ? [
+            {
+              id: "insightflare-globe-ocean",
+              type: "background" as const,
+              paint: {
+                "background-color":
+                  theme === "dark" ? "rgb(15, 23, 42)" : "rgb(226, 233, 241)",
+                "background-opacity": theme === "dark" ? 0.88 : 0.82,
+              },
+            },
+          ]
+        : []),
       {
         id: layerId,
         type: "raster",
@@ -106,6 +157,15 @@ const DEFAULT_VIEW_STATE: MapViewState = {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function normalizeLongitude(longitude: number): number {
+  return ((((longitude + 180) % 360) + 360) % 360) - 180;
+}
+
+function smoothstep(progress: number): number {
+  const normalized = clamp(progress, 0, 1);
+  return normalized * normalized * (3 - 2 * normalized);
 }
 
 function computeInitialViewState(points: GeoPointsMapPoint[]): MapViewState {
@@ -329,9 +389,11 @@ function clusterGeoPoints(
       sumLatitude: 0,
       sumLongitude: 0,
     };
-    bucket.count += 1;
-    bucket.sumLatitude += point.latitude;
-    bucket.sumLongitude += point.longitude;
+    // Use pointCount if available, otherwise count as 1
+    const pointWeight = point.pointCount ?? 1;
+    bucket.count += pointWeight;
+    bucket.sumLatitude += point.latitude * pointWeight;
+    bucket.sumLongitude += point.longitude * pointWeight;
     buckets.set(key, bucket);
   }
 
@@ -374,6 +436,10 @@ export function GeoPointsMap({
   loading = false,
   emptyLabel,
   heightClassName = DEFAULT_MAP_HEIGHT_CLASS,
+  countryHoverEnabled = true,
+  pointColor = MAP_ACCENT_RGB,
+  projectionMode = "mercator",
+  autoRotate = false,
   selectedCountryCode,
   onCountrySelect,
 }: GeoPointsMapProps) {
@@ -392,6 +458,19 @@ export function GeoPointsMap({
     normalizeClusterZoom(DEFAULT_VIEW_STATE.zoom),
   );
   const hasClusterCrossfadeInitialized = useRef(false);
+  const isGlobe = projectionMode === "globe";
+  const autoRotateEnabled = autoRotate && isGlobe;
+  const rotationPauseUntilRef = useRef(0);
+  const rotationFrameRef = useRef<number | null>(null);
+  const rotationPreviousTimeRef = useRef<number | null>(null);
+  const rotationAccelerationStartRef = useRef<number | null>(null);
+  const rotationRecoveryStartRef = useRef<number | null>(null);
+  const rotationRecoveryFromRef = useRef<{
+    longitude: number;
+    latitude: number;
+    zoom: number;
+  } | null>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -400,7 +479,7 @@ export function GeoPointsMap({
   useEffect(() => {
     let active = true;
 
-    fetch("/api/world-countries", { cache: "force-cache" })
+    fetch("/api/public/resources/world-countries", { cache: "force-cache" })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (!active) return;
@@ -449,8 +528,9 @@ export function GeoPointsMap({
   }, [countryCounts]);
 
   const initialViewState = useMemo(
-    () => computeInitialViewState(normalizedPoints),
-    [normalizedPoints],
+    () =>
+      isGlobe ? GLOBE_VIEW_STATE : computeInitialViewState(normalizedPoints),
+    [isGlobe, normalizedPoints],
   );
   const mobileMinZoom =
     initialViewState.minZoom ?? DEFAULT_VIEW_STATE.minZoom ?? 0;
@@ -528,8 +608,8 @@ export function GeoPointsMap({
   const effectiveMapTheme: EffectiveMapTheme =
     mounted && resolvedTheme === "dark" ? "dark" : "light";
   const mapStyle = useMemo(
-    () => buildRasterStyle(effectiveMapTheme),
-    [effectiveMapTheme],
+    () => buildRasterStyle(effectiveMapTheme, projectionMode),
+    [effectiveMapTheme, projectionMode],
   );
   const normalizedSelectedCountryCode = useMemo(
     () => normalizeCountryCode(selectedCountryCode),
@@ -559,7 +639,7 @@ export function GeoPointsMap({
       new ScatterplotLayer<ClusteredGeoPoint>({
         id,
         data,
-        getFillColor: withAlpha(MAP_ACCENT_RGB, alpha),
+        getFillColor: withAlpha(pointColor, alpha),
         getPosition: (item) => [item.longitude, item.latitude],
         getRadius: (item) => computeClusterPointRadius(item.count, currentZoom),
         radiusUnits: "pixels",
@@ -597,29 +677,35 @@ export function GeoPointsMap({
         lineWidthUnits: "pixels",
         lineWidthMinPixels: 0,
         getFillColor: (feature) =>
+          countryHoverEnabled &&
           normalizedSelectedCountryCode &&
           resolveCountryCodeFromFeature(feature) ===
             normalizedSelectedCountryCode
             ? withAlpha(MAP_ACCENT_RGB, 80)
             : [0, 0, 0, 0],
         getLineColor: (feature) =>
+          countryHoverEnabled &&
           normalizedSelectedCountryCode &&
           resolveCountryCodeFromFeature(feature) ===
             normalizedSelectedCountryCode
             ? withAlpha(MAP_ACCENT_RGB, 255)
-            : resolveCountryFeatureKey(feature) === hoveredCountryKey
+            : countryHoverEnabled &&
+                resolveCountryFeatureKey(feature) === hoveredCountryKey
               ? withAlpha(MAP_ACCENT_RGB, 240)
               : [0, 0, 0, 0],
         getLineWidth: (feature) =>
+          countryHoverEnabled &&
           normalizedSelectedCountryCode &&
           resolveCountryCodeFromFeature(feature) ===
             normalizedSelectedCountryCode
             ? 3
-            : resolveCountryFeatureKey(feature) === hoveredCountryKey
+            : countryHoverEnabled &&
+                resolveCountryFeatureKey(feature) === hoveredCountryKey
               ? 2.5
               : 0,
-        pickable: true,
+        pickable: countryHoverEnabled,
         onHover: (info) => {
+          if (!countryHoverEnabled) return;
           const feature = (info.object as CountryFeature | undefined) ?? null;
           const nextKey = resolveCountryFeatureKey(feature);
           const nextCode = resolveCountryCodeFromFeature(feature);
@@ -636,6 +722,7 @@ export function GeoPointsMap({
           );
         },
         onClick: (info) => {
+          if (!countryHoverEnabled) return;
           const feature = (info.object as CountryFeature | undefined) ?? null;
           handleCountryClick(feature);
         },
@@ -650,6 +737,7 @@ export function GeoPointsMap({
     return result;
   }, [
     countryGeoJson,
+    countryHoverEnabled,
     currentZoom,
     handleCountryClick,
     hoveredCountryKey,
@@ -658,6 +746,7 @@ export function GeoPointsMap({
     normalizedSelectedCountryCode,
     outgoingAlpha,
     outgoingClusters,
+    pointColor,
   ]);
 
   const hoveredCountryLabel = useMemo(() => {
@@ -685,7 +774,34 @@ export function GeoPointsMap({
     locale,
     hoveredCountryCounts?.sessions ?? 0,
   );
-  const showCountryToolbar = Boolean(hoveredCountryKey);
+  const showCountryToolbar = countryHoverEnabled && Boolean(hoveredCountryKey);
+
+  const pauseAutoRotate = useCallback(() => {
+    rotationPauseUntilRef.current =
+      performance.now() + GLOBE_USER_INTERACTION_PAUSE_MS;
+    rotationPreviousTimeRef.current = null;
+    rotationAccelerationStartRef.current = null;
+    rotationRecoveryStartRef.current = null;
+    rotationRecoveryFromRef.current = null;
+  }, []);
+
+  const applyProjectionMode = useCallback(
+    (map: MaplibreMap) => {
+      if (!map.isStyleLoaded()) return false;
+      map.setProjection({ type: isGlobe ? "globe" : "mercator" });
+      if (isGlobe) {
+        map.jumpTo({
+          center: [GLOBE_VIEW_STATE.longitude, GLOBE_VIEW_STATE.latitude],
+          zoom: GLOBE_VIEW_STATE.zoom,
+          bearing: 0,
+          pitch: 0,
+        });
+        setCurrentZoom(normalizeClusterZoom(GLOBE_VIEW_STATE.zoom));
+      }
+      return true;
+    },
+    [isGlobe],
+  );
 
   useEffect(() => {
     const map = mapRef.current?.getMap();
@@ -693,6 +809,114 @@ export function GeoPointsMap({
     map.jumpTo({ zoom: mobileMinZoom });
     setCurrentZoom(normalizeClusterZoom(mobileMinZoom));
   }, [isMobile, mobileMinZoom]);
+
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map || !mapLoaded || applyProjectionMode(map)) return;
+
+    const handleStyleReady = () => {
+      applyProjectionMode(map);
+    };
+    map.once("styledata", handleStyleReady);
+    return () => {
+      map.off("styledata", handleStyleReady);
+    };
+  }, [applyProjectionMode, mapLoaded]);
+
+  useEffect(() => {
+    if (!autoRotateEnabled) return;
+
+    const rotate = (timestamp: number) => {
+      const map = mapRef.current?.getMap();
+      if (!map) {
+        rotationFrameRef.current = window.requestAnimationFrame(rotate);
+        return;
+      }
+
+      const previous = rotationPreviousTimeRef.current ?? timestamp;
+      rotationPreviousTimeRef.current = timestamp;
+      if (timestamp < rotationPauseUntilRef.current) {
+        rotationPreviousTimeRef.current = null;
+        rotationRecoveryStartRef.current = null;
+        rotationRecoveryFromRef.current = null;
+      } else {
+        const deltaSeconds = Math.min(0.08, (timestamp - previous) / 1000);
+        const center = map.getCenter();
+        const paused = rotationPauseUntilRef.current > 0;
+        const recoveryStart =
+          rotationRecoveryStartRef.current ?? (paused ? timestamp : null);
+        if (paused && rotationRecoveryStartRef.current === null) {
+          rotationRecoveryStartRef.current = recoveryStart;
+          rotationRecoveryFromRef.current = {
+            longitude: center.lng,
+            latitude: center.lat,
+            zoom: map.getZoom(),
+          };
+        }
+
+        const recoveryElapsed = recoveryStart ? timestamp - recoveryStart : 0;
+        const recoveryProgress = smoothstep(
+          recoveryElapsed / GLOBE_RECOVERY_DURATION_MS,
+        );
+        if (!paused && rotationAccelerationStartRef.current === null) {
+          rotationAccelerationStartRef.current = timestamp;
+        }
+        const accelerationElapsed = paused
+          ? recoveryElapsed
+          : timestamp - (rotationAccelerationStartRef.current ?? timestamp);
+        const speedProgress = clamp(
+          accelerationElapsed / GLOBE_ROTATION_ACCELERATION_MS,
+          0,
+          1,
+        );
+        const recoveryFrom = rotationRecoveryFromRef.current;
+        const nextLatitude = recoveryFrom
+          ? recoveryFrom.latitude +
+            (GLOBE_VIEW_STATE.latitude - recoveryFrom.latitude) *
+              recoveryProgress
+          : GLOBE_VIEW_STATE.latitude;
+        const nextZoom = recoveryFrom
+          ? recoveryFrom.zoom +
+            (GLOBE_VIEW_STATE.zoom - recoveryFrom.zoom) * recoveryProgress
+          : GLOBE_VIEW_STATE.zoom;
+        const nextLongitude = normalizeLongitude(
+          center.lng +
+            deltaSeconds * GLOBE_ROTATION_DEGREES_PER_SECOND * speedProgress,
+        );
+
+        map.jumpTo({
+          center: [nextLongitude, nextLatitude],
+          zoom: nextZoom,
+          bearing: 0,
+          pitch: 0,
+        });
+
+        if (
+          paused &&
+          recoveryElapsed >=
+            Math.max(GLOBE_RECOVERY_DURATION_MS, GLOBE_ROTATION_ACCELERATION_MS)
+        ) {
+          rotationPauseUntilRef.current = 0;
+          rotationAccelerationStartRef.current =
+            timestamp - GLOBE_ROTATION_ACCELERATION_MS;
+          rotationRecoveryStartRef.current = null;
+          rotationRecoveryFromRef.current = null;
+        }
+      }
+
+      rotationFrameRef.current = window.requestAnimationFrame(rotate);
+    };
+
+    rotationPreviousTimeRef.current = null;
+    rotationAccelerationStartRef.current = null;
+    rotationFrameRef.current = window.requestAnimationFrame(rotate);
+    return () => {
+      if (rotationFrameRef.current !== null) {
+        window.cancelAnimationFrame(rotationFrameRef.current);
+        rotationFrameRef.current = null;
+      }
+    };
+  }, [autoRotateEnabled]);
 
   if (loading) {
     return (
@@ -714,7 +938,9 @@ export function GeoPointsMap({
 
   return (
     <div
-      className={`relative ${heightClassName} w-full overflow-hidden rounded-md border border-border/70`}
+      className={`relative ${heightClassName} w-full overflow-hidden ${
+        isGlobe ? "bg-background" : "rounded-md border border-border/70"
+      }`}
       style={MAP_VIEWPORT_RENDER_ISOLATION_STYLE}
     >
       <Map
@@ -726,11 +952,34 @@ export function GeoPointsMap({
         maxPitch={0}
         dragRotate={false}
         pitchWithRotate={false}
+        renderWorldCopies={!isGlobe}
+        onDragStart={(event) => {
+          if (event.originalEvent) pauseAutoRotate();
+        }}
+        onDrag={(event) => {
+          if (event.originalEvent) pauseAutoRotate();
+        }}
+        onZoomStart={(event) => {
+          if (event.originalEvent) pauseAutoRotate();
+        }}
+        onMove={(event) => {
+          if (event.originalEvent) pauseAutoRotate();
+        }}
+        onMoveEnd={(event) => {
+          if (event.originalEvent) pauseAutoRotate();
+        }}
         onZoom={(event) => {
+          if (event.originalEvent) pauseAutoRotate();
           const nextZoom = normalizeClusterZoom(event.viewState.zoom);
           setCurrentZoom((prev) =>
             Math.abs(prev - nextZoom) > 0.0001 ? nextZoom : prev,
           );
+        }}
+        onMouseDown={pauseAutoRotate}
+        onTouchStart={pauseAutoRotate}
+        onLoad={(event) => {
+          setMapLoaded(true);
+          applyProjectionMode(event.target);
         }}
       >
         <DeckOverlay interleaved={false} layers={layers} />

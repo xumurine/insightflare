@@ -1,6 +1,11 @@
 "use client";
 
-import { type ComponentPropsWithoutRef, useEffect, useRef } from "react";
+import {
+  type ComponentPropsWithoutRef,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { PartialOptions } from "overlayscrollbars";
 import { OverlayScrollbars } from "overlayscrollbars";
 
@@ -19,6 +24,41 @@ export const HORIZONTAL_SCROLLBAR_OPTIONS = {
   },
 } satisfies PartialOptions;
 
+export function shouldUseNativeScrollbars(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const uaData = (
+    navigator as Navigator & { userAgentData?: { platform?: string } }
+  ).userAgentData;
+  const platform = uaData?.platform || navigator.platform || "";
+  const userAgent = navigator.userAgent || "";
+  const vendor = navigator.vendor || "";
+  const isApplePlatform =
+    /Mac|iPhone|iPad|iPod/i.test(platform) ||
+    /iPhone|iPad|iPod/i.test(userAgent);
+  const isSafari =
+    /Safari/i.test(userAgent) &&
+    /Apple/i.test(vendor) &&
+    !/Android|Chrome|Chromium|CriOS|FxiOS|Edg|OPR|Opera/i.test(userAgent);
+
+  return isApplePlatform || isSafari;
+}
+
+export function prepareNativeScrollbarHost(host: HTMLElement): boolean {
+  if (!shouldUseNativeScrollbars()) return false;
+  host.removeAttribute("data-overlayscrollbars-initialize");
+  return true;
+}
+
+export function useNativeScrollbars() {
+  const [nativeScrollbars, setNativeScrollbars] = useState(false);
+
+  useEffect(() => {
+    setNativeScrollbars(shouldUseNativeScrollbars());
+  }, []);
+
+  return nativeScrollbars;
+}
+
 interface OverlayScrollbarProps extends ComponentPropsWithoutRef<"div"> {
   options?: PartialOptions;
   syncKey?: string | number | boolean | null;
@@ -36,10 +76,12 @@ export function OverlayScrollbar({
   const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
     null,
   );
+  const nativeScrollbars = useNativeScrollbars();
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    if (prepareNativeScrollbarHost(host)) return;
 
     const slot = document.createElement("div");
     slot.style.position = "fixed";
@@ -136,8 +178,11 @@ export function OverlayScrollbar({
     <div
       {...props}
       ref={hostRef}
-      className={cn("overflow-hidden", className)}
-      data-overlayscrollbars-initialize
+      className={cn(
+        nativeScrollbars ? "overflow-x-auto" : "overflow-hidden",
+        className,
+      )}
+      data-overlayscrollbars-initialize={nativeScrollbars ? undefined : ""}
     >
       {children}
     </div>

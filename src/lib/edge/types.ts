@@ -1,20 +1,19 @@
 export interface Env {
   DB: D1Database;
   INGEST_DO: DurableObjectNamespace;
+  BOT_ANALYTICS?: AnalyticsEngineDataset;
   ARCHIVE_BUCKET?: R2Bucket;
-  DAILY_SALT_SECRET: string;
+  MAIN_SECRET?: string;
+  DAILY_SALT_SECRET?: string;
+  NEXT_PUBLIC_DEMO_MODE?: string;
+  DISABLE_CRON_TASKS?: string;
   ADMIN_WS_TOKEN?: string;
-  DASHBOARD_SESSION_SECRET?: string;
-  SESSION_SECRET?: string;
-  EDGE_PUBLIC_BASE_URL?: string;
   PARQUET_WASM_URL?: string;
-  BOOTSTRAP_ADMIN_USERNAME?: string;
   BOOTSTRAP_ADMIN_PASSWORD?: string;
-  BOOTSTRAP_ADMIN_EMAIL?: string;
-  BOOTSTRAP_ADMIN_NAME?: string;
   SESSION_WINDOW_MINUTES?: string;
   SCRIPT_CACHE_TTL_SECONDS?: string;
   SITE_SETTINGS_KV?: KVNamespace;
+  INSIGHTFLARE_LOGIN_TURNSTILE_DISABLED?: string;
 }
 
 export interface SerializedRequestPayload {
@@ -35,6 +34,7 @@ export interface IngestTracePayload {
 export type TrackerPayloadKind =
   | "pageview"
   | "leave"
+  | "visibility"
   | "custom_event"
   | "identify";
 
@@ -65,7 +65,7 @@ export interface TrackerClientPayload {
   siteId?: string;
   kind?: TrackerPayloadKind;
   visitId?: string;
-  sessionId?: string;
+  previousVisitId?: string;
   performanceVisitId?: string;
   eventId?: string;
   sequence?: number;
@@ -86,6 +86,7 @@ export interface TrackerClientPayload {
   userName?: string;
   durationMs?: number;
   exitReason?: string;
+  visibilityState?: string;
   eventName?: string;
   eventData?: unknown;
   performance?: TrackerPerformancePayload;
@@ -95,6 +96,7 @@ export interface TrackerClientPayload {
   utmTerm?: string;
   utmContent?: string;
   uaClientHints?: TrackerUaClientHints;
+  collectToken?: string;
 }
 
 export interface IngestEnvelope {
@@ -155,6 +157,7 @@ export interface NormalizedVisitContext {
 
 export interface NormalizedPageview extends NormalizedVisitContext {
   kind: "pageview";
+  previousVisitId: string;
   receivedAt: number;
 }
 
@@ -163,12 +166,22 @@ export interface NormalizedLeave {
   traceId?: string;
   siteId: string;
   visitId: string;
-  sessionId: string;
   performanceVisitId: string;
   receivedAt: number;
   leaveAt: number;
   durationMs: number | null;
+  exitReason: string;
   performance: TrackerPerformancePayload | null;
+}
+
+export interface NormalizedVisibility {
+  kind: "visibility";
+  traceId?: string;
+  siteId: string;
+  visitId: string;
+  visibilityState: "hidden" | "visible";
+  receivedAt: number;
+  eventAt: number;
 }
 
 export interface NormalizedCustomEvent extends NormalizedVisitContext {
@@ -186,7 +199,6 @@ export interface NormalizedIdentify {
   traceId?: string;
   siteId: string;
   visitId: string;
-  sessionId: string;
   userId: string;
   userName: string;
   receivedAt: number;
@@ -195,5 +207,6 @@ export interface NormalizedIdentify {
 export type NormalizedIngestRecord =
   | NormalizedPageview
   | NormalizedLeave
+  | NormalizedVisibility
   | NormalizedCustomEvent
   | NormalizedIdentify;

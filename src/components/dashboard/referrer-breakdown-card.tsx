@@ -7,6 +7,7 @@ import {
   RiArrowRightUpLine,
   RiArrowUpSLine,
   RiSearchLine,
+  RiShareForwardLine,
 } from "@remixicon/react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 
@@ -431,7 +432,7 @@ export function ReferrerBreakdownCard({
     >
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{searchPlaceholder}</DialogTitle>
+          <DialogTitle icon={RiSearchLine}>{searchPlaceholder}</DialogTitle>
         </DialogHeader>
         {searchContent}
       </DialogContent>
@@ -441,7 +442,8 @@ export function ReferrerBreakdownCard({
   return (
     <section className="space-y-3">
       <div className="space-y-1">
-        <h2 className="text-sm font-medium tracking-tight">
+        <h2 className="inline-flex items-center gap-2 text-sm font-medium tracking-tight">
+          <RiShareForwardLine className="size-4 shrink-0" />
           {messages.referrers.breakdownTitle}
         </h2>
       </div>

@@ -1,10 +1,38 @@
 import type { TeamRole } from "@/lib/dashboard/permissions";
+import type {
+  AccountUserData,
+  MemberData,
+  NotificationMessageData,
+  NotificationRuleData,
+  NotificationRuleEvaluationData,
+  NotificationRuleRunData,
+  OverviewData,
+  PagesData,
+  QueryFilters,
+  ReferrersData,
+  ScriptSnippetData,
+  SessionTeamGroups,
+  SiteConfigData,
+  SiteData,
+  TeamData,
+  TrendData,
+} from "@/lib/edge-client-types";
+import type { PublicNotificationEmailConfig } from "@/lib/notifications/email-config";
 import type { SiteScriptSettings } from "@/lib/site-settings";
 
 import { getSessionToken } from "./auth";
 import { DEFAULT_EDGE_BASE_URL } from "./constants";
 
-type HttpMethod = "GET" | "POST" | "PATCH";
+export type * from "@/lib/edge-client-types";
+
+type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+
+export interface PublicSiteData {
+  id: string;
+  slug: string;
+  name: string;
+  domain: string;
+}
 
 interface FetchEdgeOptions {
   method?: HttpMethod;
@@ -14,33 +42,13 @@ interface FetchEdgeOptions {
   isPublic?: boolean;
 }
 
-export interface QueryFilters {
-  country?: string;
-  device?: string;
-  browser?: string;
-  path?: string;
-  query?: string;
-  title?: string;
-  hostname?: string;
-  entry?: string;
-  exit?: string;
-  sourceDomain?: string;
-  sourceLink?: string;
-  clientBrowser?: string;
-  clientOsVersion?: string;
-  clientDeviceType?: string;
-  clientLanguage?: string;
-  clientScreenSize?: string;
-  geo?: string;
-  geoContinent?: string;
-  geoTimezone?: string;
-  geoOrganization?: string;
-}
-
 async function edgeBaseUrl(): Promise<string> {
-  const configured = (process.env.INSIGHTFLARE_EDGE_URL || "").trim();
-  if (configured.length > 0) {
-    return configured;
+  if (
+    typeof window !== "undefined" &&
+    process.env.VITEST !== "true" &&
+    !window.navigator.userAgent.toLowerCase().includes("jsdom")
+  ) {
+    return window.location.origin;
   }
 
   try {
@@ -98,6 +106,9 @@ function withFilters(
   if (filters.geoContinent) next.geoContinent = filters.geoContinent;
   if (filters.geoTimezone) next.geoTimezone = filters.geoTimezone;
   if (filters.geoOrganization) next.geoOrganization = filters.geoOrganization;
+  if (filters.eventPayloadFilters?.length) {
+    next.eventPayloadFilters = JSON.stringify(filters.eventPayloadFilters);
+  }
   return next;
 }
 
@@ -116,7 +127,16 @@ async function fetchEdgeJson<T>(options: FetchEdgeOptions): Promise<T> {
   const url = withQuery(new URL(options.path, baseUrl), options.params);
 
   const headers = new Headers();
-  if (!options.isPublic) {
+  if (options.isPublic) {
+    headers.set("x-requested-with", "fetch");
+    if (typeof window === "undefined") {
+      headers.set(
+        "user-agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      );
+      headers.set("referer", `${url.origin}/`);
+    }
+  } else {
     try {
       const sessionToken = await getSessionToken();
       if (sessionToken) {
@@ -147,947 +167,36 @@ async function fetchEdgeJson<T>(options: FetchEdgeOptions): Promise<T> {
   return (await res.json()) as T;
 }
 
-export interface OverviewMetrics {
-  views: number;
-  sessions: number;
-  visitors: number;
-  bounces: number;
-  totalDurationMs: number;
-  avgDurationMs: number;
-  bounceRate: number;
-  approximateVisitors?: boolean;
-}
-
-export interface OverviewChangeRates {
-  views: number | null;
-  sessions: number | null;
-  visitors: number | null;
-  bounces: number | null;
-  bounceRate: number | null;
-  avgDurationMs: number | null;
-}
-
-export interface OverviewDetailPoint {
-  bucket: number;
-  timestampMs: number;
-  views: number;
-  visitors: number;
-  sessions: number;
-  bounces: number;
-  totalDurationMs: number;
-  avgDurationMs: number;
-  source: "detail" | "archive" | "mixed";
-}
-
-export interface OverviewDetailData {
-  interval: "minute" | "hour" | "day" | "week" | "month";
-  data: OverviewDetailPoint[];
-}
-
-export interface OverviewData {
-  ok: boolean;
-  data: OverviewMetrics;
-  previousData?: OverviewMetrics;
-  changeRates?: OverviewChangeRates;
-  detail?: OverviewDetailData;
-}
-
-export interface TrendPoint {
-  bucket: number;
-  timestampMs: number;
-  views: number;
-  visitors: number;
-  sessions: number;
-  bounces: number;
-  totalDurationMs: number;
-  avgDurationMs: number;
-  source: "detail" | "archive" | "mixed";
-}
-
-export interface TrendData {
-  ok: boolean;
-  interval: "minute" | "hour" | "day" | "week" | "month";
-  data: TrendPoint[];
-}
-
-export type ClientDimensionKey =
-  | "browser"
-  | "operatingSystem"
-  | "osVersion"
-  | "deviceType"
-  | "language"
-  | "screenSize";
-
-export interface BrowserTrendSeries {
-  key: string;
-  label: string;
-  views: number;
-  visitors: number;
-  sessions: number;
-  isOther?: boolean;
-}
-
-export interface BrowserTrendPoint {
-  bucket: number;
-  timestampMs: number;
-  totalVisitors: number;
-  visitorsBySeries: Record<string, number>;
-}
-
-export interface BrowserTrendData {
-  ok: boolean;
-  interval: "minute" | "hour" | "day" | "week" | "month";
-  series: BrowserTrendSeries[];
-  data: BrowserTrendPoint[];
-}
-
-export type PerformanceMetricKey = "ttfb" | "fcp" | "lcp" | "cls" | "inp";
-
-export interface VisitPerformanceMetrics {
-  ttfb: number | null;
-  fcp: number | null;
-  lcp: number | null;
-  cls: number | null;
-  inp: number | null;
-}
-
-export interface JourneyPerformanceMetricSummary {
-  avg: number | null;
-  p75: number | null;
-  min: number | null;
-  max: number | null;
-  samples: number;
-}
-
-export type JourneyPerformanceSummary = Record<
-  PerformanceMetricKey,
-  JourneyPerformanceMetricSummary
->;
-
-export interface PerformanceSummary {
-  avg: number | null;
-  p50: number | null;
-  p75: number | null;
-  p95: number | null;
-  samples: number;
-}
-
-export interface PerformanceTrendPoint {
-  bucket: number;
-  timestampMs: number;
-  avg: number | null;
-  p50: number | null;
-  p75: number | null;
-  p95: number | null;
-  samples: number;
-}
-
-export interface PerformanceRouteMetricSummary {
-  avg: number | null;
-  p50: number | null;
-  p75: number | null;
-  p95: number | null;
-  samples: number;
-}
-
-export interface PerformanceRouteSummary {
-  pathname: string;
-  views: number;
-  metrics: Record<PerformanceMetricKey, PerformanceRouteMetricSummary>;
-}
-
-export interface PerformanceCountrySummary {
-  country: string;
-  views: number;
-  metrics: Record<PerformanceMetricKey, PerformanceRouteMetricSummary>;
-}
-
-export interface PerformanceData {
-  ok: boolean;
-  interval: "minute" | "hour" | "day" | "week" | "month";
-  summaries: Record<PerformanceMetricKey, PerformanceSummary>;
-  trends: Record<PerformanceMetricKey, PerformanceTrendPoint[]>;
-  routes: PerformanceRouteSummary[];
-  countries: PerformanceCountrySummary[];
-}
-
-export interface BrowserVersionSlice {
-  key: string;
-  label: string;
-  views: number;
-  visitors: number;
-  sessions: number;
-  isOther?: boolean;
-  isUnknown?: boolean;
-}
-
-export interface BrowserVersionBreakdownBrowser {
-  browser: string;
-  views: number;
-  visitors: number;
-  sessions: number;
-  versions: BrowserVersionSlice[];
-}
-
-export interface BrowserVersionBreakdownData {
-  ok: boolean;
-  data: BrowserVersionBreakdownBrowser[];
-}
-
-export interface BrowserCrossBreakdownItem {
-  key: string;
-  label: string;
-  views: number;
-  visitors: number;
-  sessions: number;
-  isOther?: boolean;
-  isUnknown?: boolean;
-}
-
-export interface BrowserCrossBreakdownRow extends BrowserCrossBreakdownItem {
-  cells: BrowserCrossBreakdownItem[];
-}
-
-export interface BrowserCrossBreakdownDimensionData {
-  columns: BrowserCrossBreakdownItem[];
-  rows: BrowserCrossBreakdownRow[];
-  totalVisitors: number;
-}
-
-export interface BrowserCrossBreakdownData {
-  ok: boolean;
-  operatingSystem: BrowserCrossBreakdownDimensionData;
-  deviceType: BrowserCrossBreakdownDimensionData;
-}
-
-export interface BrowserRadarMetrics {
-  /** Average session duration in ms */
-  duration: number;
-  /** Non-bounce rate (0..1) */
-  engagement: number;
-  /** Average pages per session */
-  depth: number;
-  /** Return visitor rate (0..1) */
-  loyalty: number;
-  /** Average sessions per visitor */
-  frequency: number;
-  /** Visitor share of total (0..1) */
-  traffic: number;
-}
-
-export interface BrowserRadarItem {
-  browser: string;
-  visitors: number;
-  sessions: number;
-  metrics: BrowserRadarMetrics;
-}
-
-export interface BrowserRadarData {
-  ok: boolean;
-  data: BrowserRadarItem[];
-}
-
-export interface ReferrerRadarMetrics {
-  /** Average session duration in ms */
-  duration: number;
-  /** Non-bounce rate (0..1) */
-  engagement: number;
-  /** Average pages per session */
-  depth: number;
-  /** Return visitor rate (0..1) */
-  loyalty: number;
-  /** Average sessions per visitor */
-  frequency: number;
-  /** Visitor share of total (0..1) */
-  traffic: number;
-}
-
-export interface ReferrerRadarItem {
-  referrer: string;
-  visitors: number;
-  sessions: number;
-  metrics: ReferrerRadarMetrics;
-}
-
-export interface ReferrerRadarData {
-  ok: boolean;
-  data: ReferrerRadarItem[];
-}
-
-export interface PagesData {
-  ok: boolean;
-  data: Array<{
-    pathname: string;
-    query?: string;
-    hash?: string;
-    views: number;
-    sessions: number;
-  }>;
-  tabs?: {
-    path: Array<{
-      label: string;
-      views: number;
-      sessions: number;
-    }>;
-    title: Array<{
-      label: string;
-      views: number;
-      sessions: number;
-    }>;
-    hostname: Array<{
-      label: string;
-      views: number;
-      sessions: number;
-    }>;
-    entry: Array<{
-      label: string;
-      views: number;
-      sessions: number;
-    }>;
-    exit: Array<{
-      label: string;
-      views: number;
-      sessions: number;
-    }>;
-  };
-}
-
-export interface PagesDashboardMetrics {
-  views: number;
-  visitors: number;
-  sessions: number;
-  bounceRate: number;
-  pagesPerSession: number;
-  avgDurationMs: number;
-}
-
-export interface PagesDashboardChangeRates {
-  views: number | null;
-  visitors: number | null;
-  sessions: number | null;
-  bounceRate: number | null;
-  pagesPerSession: number | null;
-  avgDurationMs: number | null;
-}
-
-export interface PagesDashboardItem {
-  pathname: string;
-  titles: string[];
-  trend: Array<{
-    timestampMs: number;
-    views: number;
-    visitors: number;
-  }>;
-  metrics: PagesDashboardMetrics;
-  changeRates: PagesDashboardChangeRates;
-}
-
-export interface PagesDashboardData {
-  ok: boolean;
-  interval: "minute" | "hour" | "day" | "week" | "month";
-  data: PagesDashboardItem[];
-  meta: {
-    page: number;
-    pageSize: number;
-    returned: number;
-    hasMore: boolean;
-    nextPage: number | null;
-  };
-}
-
-export interface ReferrersData {
-  ok: boolean;
-  data: Array<{
-    referrer: string;
-    views: number;
-    sessions: number;
-  }>;
-}
-
-export interface VisitorsMeta {
-  page: number;
-  pageSize: number;
-  returned: number;
-  hasMore: boolean;
-  nextPage: number | null;
-}
-
-export interface VisitorsData {
-  ok: boolean;
-  data: Array<{
-    visitorId: string;
-    sessionId?: string;
-    firstSeenAt: number;
-    lastSeenAt: number;
-    views: number;
-    sessions: number;
-    events?: number;
-    country?: string;
-    region?: string;
-    regionCode?: string;
-    city?: string;
-    referrerHost?: string;
-    referrerUrl?: string;
-    browser?: string;
-    browserVersion?: string;
-    os?: string;
-    osVersion?: string;
-    deviceType?: string;
-    screenWidth?: number | null;
-    screenHeight?: number | null;
-  }>;
-  meta: VisitorsMeta;
-}
-
-export interface JourneySession {
-  sessionId: string;
-  visitorId: string;
-  startedAt: number;
-  endedAt: number;
-  durationMs: number;
-  active: boolean;
-  views: number;
-  events: number;
-  bounce: boolean;
-  entryPath: string;
-  exitPath: string;
-  referrerHost: string;
-  referrerUrl: string;
-  country: string;
-  region: string;
-  regionCode: string;
-  city: string;
-  latitude: number | null;
-  longitude: number | null;
-  browser: string;
-  browserVersion: string;
-  os: string;
-  osVersion: string;
-  deviceType: string;
-  screenWidth: number | null;
-  screenHeight: number | null;
-}
-
-export interface JourneyLocationPoint {
-  latitude: number;
-  longitude: number;
-  timestampMs: number;
-  country: string;
-  region?: string;
-  regionCode?: string;
-  city?: string;
-}
-
-export interface JourneyEvent {
-  id: string;
-  kind: "session_start" | "pageview" | "leave" | "custom";
-  eventType: string;
-  occurredAt: number;
-  visitId: string;
-  sessionId: string;
-  visitorId: string;
-  pathname: string;
-  hash: string;
-  title: string;
-  hostname: string;
-  referrerHost: string;
-  referrerUrl: string;
-  country: string;
-  region: string;
-  city: string;
-  browser: string;
-  browserVersion: string;
-  os: string;
-  osVersion: string;
-  deviceType: string;
-  screenWidth: number | null;
-  screenHeight: number | null;
-  durationMs: number;
-  performance: VisitPerformanceMetrics;
-}
-
-export interface JourneyPageCount {
-  pathname: string;
-  views: number;
-}
-
-export interface JourneyEventCount {
-  eventType: string;
-  count: number;
-}
-
-export interface VisitorActivityDay {
-  date: string;
-  count: number;
-}
-
-export interface VisitorDetailData {
-  ok: boolean;
-  data: {
-    visitor: VisitorsData["data"][number];
-    metrics: {
-      totalEvents: number;
-      sessions: number;
-      views: number;
-      avgEventsPerSession: number;
-      bounceRate: number;
-      avgDurationMs: number;
-      p90DurationMs: number;
-      firstSeenAt: number;
-      lastSeenAt: number;
-      daysActive: number;
-      conversionEvents: number;
-      avgTimeBetweenSessionsMs: number;
-    };
-    sessions: JourneySession[];
-    events: JourneyEvent[];
-    visitedPages: JourneyPageCount[];
-    eventDistribution: JourneyEventCount[];
-    activity: VisitorActivityDay[];
-    performance: JourneyPerformanceSummary;
-  } | null;
-}
-
-export interface SessionsMeta {
-  page: number;
-  pageSize: number;
-  returned: number;
-  hasMore: boolean;
-  nextPage: number | null;
-}
-
-export interface SessionsData {
-  ok: boolean;
-  data: JourneySession[];
-  meta: SessionsMeta;
-}
-
-export interface SessionDetailData {
-  ok: boolean;
-  data: {
-    session: JourneySession;
-    locationPoints: JourneyLocationPoint[];
-    events: JourneyEvent[];
-    visitedPages: JourneyPageCount[];
-    eventDistribution: JourneyEventCount[];
-    performance: JourneyPerformanceSummary;
-  } | null;
-}
-
-export interface EventDimensionRow {
-  label: string;
-  views: number;
-  sessions: number;
-  visitors: number;
-}
-
-export interface EventGeoDimensionRow extends EventDimensionRow {
-  value: string;
-}
-
-export interface EventBreakdownsData {
-  pages: EventDimensionRow[];
-  countries: EventDimensionRow[];
-  devices: EventDimensionRow[];
-  browsers: EventDimensionRow[];
-}
-
-export interface EventAnalyticsContextCardsData {
-  page: {
-    path: EventDimensionRow[];
-    query: EventDimensionRow[];
-    title: EventDimensionRow[];
-    hostname: EventDimensionRow[];
-    entry: EventDimensionRow[];
-    exit: EventDimensionRow[];
-  };
-  source: {
-    domain: EventDimensionRow[];
-    link: EventDimensionRow[];
-  };
-  client: {
-    browser: EventDimensionRow[];
-    osVersion: EventDimensionRow[];
-    deviceType: EventDimensionRow[];
-    language: EventDimensionRow[];
-    screenSize: EventDimensionRow[];
-  };
-  geo: {
-    country: EventGeoDimensionRow[];
-    region: EventGeoDimensionRow[];
-    city: EventGeoDimensionRow[];
-    continent: EventGeoDimensionRow[];
-    timezone: EventGeoDimensionRow[];
-    organization: EventGeoDimensionRow[];
-  };
-}
-
-export interface EventAnalyticsCardsData extends EventAnalyticsContextCardsData {
-  event: {
-    name: EventDimensionRow[];
-  };
-}
-
-export interface EventAnalyticsSummaryCardsData {
-  event: {
-    name: EventDimensionRow[];
-  };
-  page: {
-    path: EventDimensionRow[];
-    title: EventDimensionRow[];
-    hostname: EventDimensionRow[];
-  };
-}
-
-export interface EventSummaryMetrics {
-  events: number;
-  eventTypes: number;
-  sessions: number;
-  visitors: number;
-  avgEventsPerSession: number;
-}
-
-export interface EventsSummaryData {
-  ok: boolean;
-  summary: EventSummaryMetrics;
-  cards: EventAnalyticsSummaryCardsData;
-}
-
-export interface EventTrendSeries {
-  key: string;
-  eventName: string;
-  label: string;
-  events: number;
-  sessions: number;
-  visitors: number;
-  isOther?: boolean;
-}
-
-export interface EventTrendPoint {
-  bucket: number;
-  timestampMs: number;
-  totalEvents: number;
-  eventsBySeries: Record<string, number>;
-}
-
-export interface EventsTrendData {
-  ok: boolean;
-  interval: "minute" | "hour" | "day" | "week" | "month";
-  series: EventTrendSeries[];
-  data: EventTrendPoint[];
-}
-
-export interface EventRecord {
-  eventId: string;
-  eventName: string;
-  occurredAt: number;
-  receivedAt: number;
-  sequence: number;
-  visitId: string;
-  sessionId: string;
-  visitorId: string;
-  pathname: string;
-  title: string;
-  hostname: string;
-  referrerHost: string;
-  country: string;
-  region: string;
-  browser: string;
-  browserVersion: string;
-  os: string;
-  osVersion: string;
-  deviceType: string;
-  nodeCount: number;
-  valueCount: number;
-}
-
-export interface EventsRecordsMeta {
-  page: number;
-  pageSize: number;
-  returned: number;
-  hasMore: boolean;
-  nextPage: number | null;
-}
-
-export interface EventsRecordsData {
-  ok: boolean;
-  data: EventRecord[];
-  meta: EventsRecordsMeta;
-}
-
-export interface EventTypeSummaryMetrics extends EventSummaryMetrics {
-  shareOfAllEvents: number;
-}
-
-export interface EventField {
-  path: string;
-  valueType: "string" | "number" | "boolean" | "object" | "array" | "null";
-  events: number;
-  occurrences: number;
-  firstSeenAt: number;
-  lastSeenAt: number;
-  exampleValue?: string | number | boolean | null;
-}
-
-export interface EventTypeTrendPoint {
-  bucket: number;
-  timestampMs: number;
-  events: number;
-  visitors: number;
-}
-
-export interface EventTypeDetailData {
-  ok: boolean;
-  eventName: string;
-  summary: EventTypeSummaryMetrics;
-  trend: {
-    data: EventTypeTrendPoint[];
-  };
-  breakdowns: EventBreakdownsData;
-  cards: EventAnalyticsContextCardsData;
-  fields: EventField[];
-}
-
-export interface EventRecordDetailData {
-  ok: boolean;
-  data: {
-    event: EventRecord;
-    context: {
-      visitId: string;
-      sessionId: string;
-      visitorId: string;
-      pathname: string;
-      title: string;
-      hostname: string;
-      referrerHost: string;
-      country: string;
-      region: string;
-      browser: string;
-      browserVersion: string;
-      os: string;
-      osVersion: string;
-      deviceType: string;
-    };
-    eventData: unknown;
-  } | null;
-}
-
-export interface DimensionData {
-  ok: boolean;
-  data: Array<{
-    value: string;
-    views: number;
-    sessions: number;
-  }>;
-}
-
-export interface RetentionData {
-  ok: boolean;
-  granularity: string;
-  cohorts: Array<{
-    bucket: number;
-    size: number;
-    periods: Array<{
-      index: number;
-      visitors: number;
-      rate: number;
-    }>;
-  }>;
-}
-
-export interface FunnelStep {
-  type: "pageview" | "event";
-  value: string;
-}
-
-export interface FunnelDefinition {
-  id: string;
-  siteId: string;
-  name: string;
-  steps: FunnelStep[];
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface FunnelListData {
-  ok: boolean;
-  funnels: FunnelDefinition[];
-}
-
-export interface FunnelAnalysisData {
-  ok: boolean;
-  steps: Array<{
-    index: number;
-    label: string;
-    type: string;
-    sessions: number;
-    conversionRate: number;
-    dropOffRate: number;
-  }>;
-  overallConversionRate: number;
-}
-
-export interface OverviewClientDimensionTabsData {
-  ok: boolean;
-  tabs: {
-    browser: Array<{ label: string; views: number; sessions: number }>;
-    osVersion: Array<{ label: string; views: number; sessions: number }>;
-    deviceType: Array<{ label: string; views: number; sessions: number }>;
-    language: Array<{ label: string; views: number; sessions: number }>;
-    screenSize: Array<{ label: string; views: number; sessions: number }>;
-  };
-}
-
-export interface OverviewGeoDimensionTabsData {
-  ok: boolean;
-  tabs: {
-    country: Array<{ label: string; views: number; sessions: number }>;
-    region: Array<{ label: string; views: number; sessions: number }>;
-    city: Array<{ label: string; views: number; sessions: number }>;
-    continent: Array<{ label: string; views: number; sessions: number }>;
-    timezone: Array<{ label: string; views: number; sessions: number }>;
-    organization: Array<{ label: string; views: number; sessions: number }>;
-  };
-}
-
-export interface OverviewGeoPointsData {
-  ok: boolean;
-  data: Array<{
-    latitude: number;
-    longitude: number;
-    timestampMs: number;
-    country: string;
-    region?: string;
-    regionCode?: string;
-    city?: string;
-  }>;
-  countryCounts: Array<{
-    country: string;
-    views: number;
-    sessions: number;
-    visitors: number;
-  }>;
-  regionCounts: Array<{
-    value: string;
-    label: string;
-    views: number;
-    sessions: number;
-    visitors: number;
-  }>;
-  cityCounts: Array<{
-    value: string;
-    label: string;
-    views: number;
-    sessions: number;
-    visitors: number;
-  }>;
-}
-
-export interface OverviewTabData {
-  ok: boolean;
-  data: Array<{
-    label: string;
-    views: number;
-    sessions: number;
-    visitors: number;
-  }>;
-}
-
-export interface OverviewGeoTabData {
-  ok: boolean;
-  data: Array<{
-    value: string;
-    label: string;
-    views: number;
-    sessions: number;
-    visitors: number;
-  }>;
-}
-
-export interface DashboardFilterOption {
-  value: string;
-  label: string;
-  group?: "country" | "region" | "city";
-}
-
-export interface DashboardFilterOptionsData {
-  ok: boolean;
-  data: DashboardFilterOption[];
-}
-
-export interface TeamData {
-  id: string;
-  name: string;
-  slug: string;
-  ownerUserId: string;
-  createdAt: number;
-  updatedAt?: number;
-  siteCount: number;
-  memberCount: number;
-  membershipRole?: TeamRole;
-}
-
-export interface SiteData {
-  id: string;
-  teamId: string;
-  name: string;
-  domain: string;
-  iconPath?: string;
-  publicEnabled: number | boolean;
-  publicSlug: string | null;
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface MemberData {
-  teamId: string;
-  userId: string;
-  role: TeamRole;
-  joinedAt: number;
-  username: string;
-  email: string;
-  name: string | null;
-}
-
-export interface AccountUserData {
-  id: string;
-  username: string;
-  email: string;
-  name: string;
-  systemRole: "admin" | "user";
-  timeZone?: string;
-  createdAt: number;
-  updatedAt: number;
-  teamCount?: number;
-  ownedTeamCount?: number;
-}
-
-export interface SiteConfigData {
-  ok: boolean;
-  data: SiteScriptSettings;
-}
-
-export interface ScriptSnippetData {
-  ok: boolean;
-  data: {
-    siteId: string;
-    src: string;
-    snippet: string;
-  };
-}
-
 export async function fetchPublicOverview(
   slug: string,
   params: {
     from: number;
     to: number;
+    filters?: QueryFilters;
   },
 ): Promise<OverviewData> {
   return fetchEdgeJson<OverviewData>({
-    path: `/api/public/${encodeURIComponent(slug)}/overview`,
-    params,
+    path: `/api/public/share/${encodeURIComponent(slug)}/overview`,
+    params: withFilters(
+      {
+        from: params.from,
+        to: params.to,
+      },
+      params.filters,
+    ),
     isPublic: true,
   });
+}
+
+export async function fetchPublicSite(slug: string): Promise<PublicSiteData> {
+  const res = await fetchEdgeJson<{ ok: boolean; data: PublicSiteData }>({
+    path: `/api/public/share/${encodeURIComponent(slug)}/site`,
+    isPublic: true,
+  });
+  if (!res.ok || !res.data) {
+    throw new Error("Public site not found");
+  }
+  return res.data;
 }
 
 export async function fetchPublicTrend(
@@ -1095,14 +204,19 @@ export async function fetchPublicTrend(
   params: {
     from: number;
     to: number;
+    filters?: QueryFilters;
   },
 ): Promise<TrendData> {
   return fetchEdgeJson<TrendData>({
-    path: `/api/public/${encodeURIComponent(slug)}/trend`,
-    params: {
-      ...params,
-      interval: "day",
-    },
+    path: `/api/public/share/${encodeURIComponent(slug)}/trend`,
+    params: withFilters(
+      {
+        from: params.from,
+        to: params.to,
+        interval: "day",
+      },
+      params.filters,
+    ),
     isPublic: true,
   });
 }
@@ -1112,14 +226,19 @@ export async function fetchPublicPages(
   params: {
     from: number;
     to: number;
+    filters?: QueryFilters;
   },
 ): Promise<PagesData> {
   return fetchEdgeJson<PagesData>({
-    path: `/api/public/${encodeURIComponent(slug)}/pages`,
-    params: {
-      ...params,
-      limit: 8,
-    },
+    path: `/api/public/share/${encodeURIComponent(slug)}/pages`,
+    params: withFilters(
+      {
+        from: params.from,
+        to: params.to,
+        limit: 8,
+      },
+      params.filters,
+    ),
     isPublic: true,
   });
 }
@@ -1129,14 +248,19 @@ export async function fetchPublicReferrers(
   params: {
     from: number;
     to: number;
+    filters?: QueryFilters;
   },
 ): Promise<ReferrersData> {
   return fetchEdgeJson<ReferrersData>({
-    path: `/api/public/${encodeURIComponent(slug)}/referrers`,
-    params: {
-      ...params,
-      limit: 8,
-    },
+    path: `/api/public/share/${encodeURIComponent(slug)}/referrers`,
+    params: withFilters(
+      {
+        from: params.from,
+        to: params.to,
+        limit: 8,
+      },
+      params.filters,
+    ),
     isPublic: true,
   });
 }
@@ -1365,7 +489,7 @@ export async function loginAdminAccount(input: {
     };
   }>({
     method: "POST",
-    path: "/api/private/admin/auth/login",
+    path: "/api/public/session",
     body: input,
   });
   return res.data;
@@ -1374,15 +498,17 @@ export async function loginAdminAccount(input: {
 export async function fetchAdminMe(): Promise<{
   user: AccountUserData;
   teams: TeamData[];
+  teamGroups?: SessionTeamGroups;
 }> {
   const res = await fetchEdgeJson<{
     ok: boolean;
     data: {
       user: AccountUserData;
       teams: TeamData[];
+      teamGroups?: SessionTeamGroups;
     };
   }>({
-    path: "/api/private/admin/auth/me",
+    path: "/api/private/session",
   });
   return res.data;
 }
@@ -1400,6 +526,8 @@ export async function createAdminUser(input: {
   name?: string;
   password: string;
   systemRole?: "admin" | "user";
+  teamName?: string;
+  teamSlug?: string;
 }): Promise<AccountUserData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: AccountUserData }>({
     method: "POST",
@@ -1442,6 +570,347 @@ export async function removeAdminUser(input: {
   return res.data;
 }
 
+export async function fetchNotificationRules(input: {
+  teamId: string;
+}): Promise<NotificationRuleData[]> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: unknown;
+  }>({
+    path: "/api/private/admin/notification-rules",
+    params: { teamId: input.teamId },
+  });
+  return Array.isArray(res.data) ? (res.data as NotificationRuleData[]) : [];
+}
+
+export async function fetchNotificationEmailConfig(): Promise<PublicNotificationEmailConfig> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: PublicNotificationEmailConfig;
+  }>({
+    path: "/api/private/admin/notification-email",
+  });
+  return res.data;
+}
+
+export async function createNotificationRule(input: {
+  teamId: string;
+  name: string;
+  siteId?: string | null;
+  description?: string;
+  type?: string;
+  enabled?: boolean;
+  schedule?: Record<string, unknown>;
+  condition?: Record<string, unknown>;
+  recipient?: Record<string, unknown>;
+}): Promise<NotificationRuleData> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: NotificationRuleData;
+  }>({
+    method: "POST",
+    path: "/api/private/admin/notification-rules",
+    body: input,
+  });
+  return res.data;
+}
+
+export async function updateNotificationRule(input: {
+  ruleId: string;
+  teamId?: string;
+  siteId?: string | null;
+  name?: string;
+  description?: string;
+  type?: string;
+  enabled?: boolean;
+  schedule?: Record<string, unknown>;
+  condition?: Record<string, unknown>;
+  recipient?: Record<string, unknown>;
+}): Promise<NotificationRuleData> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: NotificationRuleData;
+  }>({
+    method: "PATCH",
+    path: "/api/private/admin/notification-rules",
+    body: input,
+  });
+  return res.data;
+}
+
+export async function deleteNotificationRule(input: {
+  ruleId: string;
+}): Promise<{ id: string; removed: boolean }> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: { id: string; removed: boolean };
+  }>({
+    method: "DELETE",
+    path: "/api/private/admin/notification-rules",
+    params: { id: input.ruleId },
+  });
+  return res.data;
+}
+
+export async function previewNotificationRule(input: {
+  ruleId: string;
+}): Promise<NotificationRuleEvaluationData> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: NotificationRuleEvaluationData;
+  }>({
+    method: "POST",
+    path: "/api/private/admin/notification-rules/preview",
+    body: input,
+  });
+  return res.data;
+}
+
+export async function runNotificationRuleNow(input: {
+  ruleId: string;
+}): Promise<NotificationRuleRunData> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: NotificationRuleRunData;
+  }>({
+    method: "POST",
+    path: "/api/private/admin/notification-rules/run",
+    body: input,
+  });
+  return res.data;
+}
+
+export async function fetchNotificationMessages(input: {
+  teamId?: string;
+  siteId?: string;
+  ruleId?: string;
+  type?: string;
+  severity?: string;
+  unread?: boolean;
+  locale?: "en" | "zh";
+  limit?: number;
+}): Promise<{
+  messages: NotificationMessageData[];
+  unreadAttentionCount: number;
+}> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: unknown;
+  }>({
+    path: "/api/private/notifications",
+    params: {
+      ...(input.teamId ? { teamId: input.teamId } : {}),
+      ...(input.siteId ? { siteId: input.siteId } : {}),
+      ...(input.ruleId ? { ruleId: input.ruleId } : {}),
+      ...(input.type ? { type: input.type } : {}),
+      ...(input.severity ? { severity: input.severity } : {}),
+      ...(input.unread ? { unread: 1 } : {}),
+      ...(input.locale ? { locale: input.locale } : {}),
+      ...(input.limit ? { limit: input.limit } : {}),
+    },
+  });
+  const data =
+    res.data && typeof res.data === "object"
+      ? (res.data as {
+          messages?: unknown;
+          unreadAttentionCount?: unknown;
+        })
+      : {};
+  return {
+    messages: Array.isArray(data.messages)
+      ? (data.messages as NotificationMessageData[])
+      : [],
+    unreadAttentionCount:
+      typeof data.unreadAttentionCount === "number"
+        ? data.unreadAttentionCount
+        : 0,
+  };
+}
+
+export async function fetchNotificationEmailPreview(input: {
+  type: "test" | "report" | "milestone" | "threshold" | "change" | "health";
+  locale: "en" | "zh";
+  format: "html" | "text" | "json";
+}): Promise<
+  | string
+  | {
+      subject: string;
+      html: string;
+      text: string;
+    }
+> {
+  const baseUrl = await edgeBaseUrl();
+  const url = withQuery(
+    new URL("/api/private/admin/notification-email-preview", baseUrl),
+    input,
+  );
+  const headers = new Headers();
+  try {
+    const sessionToken = await getSessionToken();
+    if (sessionToken) {
+      headers.set("authorization", `Bearer ${sessionToken}`);
+    }
+  } catch {
+    // Ignore when session is unavailable outside request scope.
+  }
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers,
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Email preview failed (${res.status}): ${text}`);
+  }
+  if (input.format === "json") {
+    const payload = (await res.json()) as {
+      ok: boolean;
+      data: { subject: string; html: string; text: string };
+    };
+    return payload.data;
+  }
+  return res.text();
+}
+
+export async function markNotificationMessageRead(input: {
+  messageId: string;
+  locale?: "en" | "zh";
+}): Promise<NotificationMessageData | null> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: NotificationMessageData | null;
+  }>({
+    method: "PATCH",
+    path: `/api/private/notifications/${encodeURIComponent(input.messageId)}`,
+    body: { read: true, ...(input.locale ? { locale: input.locale } : {}) },
+  });
+  return res.data;
+}
+
+export async function markAllNotificationMessagesRead(input: {
+  teamId?: string;
+}): Promise<{ updated: number }> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: { updated: number };
+  }>({
+    method: "PATCH",
+    path: "/api/private/notifications",
+    body: { ...input, read: true },
+  });
+  return res.data;
+}
+
+export interface NotificationPreferencesData {
+  inApp: boolean;
+  email: boolean;
+  webPush: boolean;
+  attention: {
+    reportsCreateUnread: boolean;
+    milestonesCreateUnread: boolean;
+    alertsCreateUnread: boolean;
+  };
+}
+
+export const DEFAULT_NOTIFICATION_PREFERENCES_DATA: NotificationPreferencesData =
+  {
+    inApp: true,
+    email: true,
+    webPush: false,
+    attention: {
+      reportsCreateUnread: false,
+      milestonesCreateUnread: false,
+      alertsCreateUnread: true,
+    },
+  };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function booleanOr(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+export function normalizeNotificationPreferencesData(
+  input: unknown,
+): NotificationPreferencesData {
+  const raw = isRecord(input) ? input : {};
+  const attention = isRecord(raw.attention) ? raw.attention : {};
+  const defaults = DEFAULT_NOTIFICATION_PREFERENCES_DATA;
+  return {
+    inApp: true,
+    email: booleanOr(raw.email, defaults.email),
+    webPush: booleanOr(raw.webPush, defaults.webPush),
+    attention: {
+      reportsCreateUnread: booleanOr(
+        attention.reportsCreateUnread,
+        defaults.attention.reportsCreateUnread,
+      ),
+      milestonesCreateUnread: booleanOr(
+        attention.milestonesCreateUnread,
+        defaults.attention.milestonesCreateUnread,
+      ),
+      alertsCreateUnread: booleanOr(
+        attention.alertsCreateUnread,
+        defaults.attention.alertsCreateUnread,
+      ),
+    },
+  };
+}
+
+export type NotificationPreferencesUpdate = Partial<
+  Omit<NotificationPreferencesData, "attention">
+> & {
+  attention?: Partial<NotificationPreferencesData["attention"]>;
+};
+
+export async function fetchNotificationPreferences(): Promise<NotificationPreferencesData> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: NotificationPreferencesData;
+  }>({
+    path: "/api/private/notifications/preferences",
+  });
+  return normalizeNotificationPreferencesData(res.data);
+}
+
+export async function updateNotificationPreferences(
+  input: NotificationPreferencesUpdate,
+): Promise<NotificationPreferencesData> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: NotificationPreferencesData;
+  }>({
+    method: "PATCH",
+    path: "/api/private/notifications/preferences",
+    body: input,
+  });
+  return normalizeNotificationPreferencesData(res.data);
+}
+
+export async function sendNotificationTest(input: {
+  teamId: string;
+  siteId?: string;
+  userId?: string;
+}): Promise<{
+  message: NotificationMessageData | null;
+  summary: Record<string, unknown> | null;
+}> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: {
+      message: NotificationMessageData | null;
+      summary: Record<string, unknown> | null;
+    };
+  }>({
+    method: "POST",
+    path: "/api/private/admin/notification-test",
+    body: input,
+  });
+  return res.data;
+}
+
 export async function updateMyProfile(input: {
   username?: string;
   email?: string;
@@ -1449,6 +918,7 @@ export async function updateMyProfile(input: {
   currentPassword?: string;
   password?: string;
   timeZone?: string;
+  preferredLocale?: "" | "en" | "zh";
 }): Promise<AccountUserData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: AccountUserData }>({
     method: "POST",

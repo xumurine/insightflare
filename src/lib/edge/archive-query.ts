@@ -1,36 +1,14 @@
+import {
+  bad as badRequest,
+  j as jsonResponse,
+  na as notAllowed,
+  nf as notFound,
+  una as unauthorized,
+} from "@/lib/response";
+
 import { requireSession } from "./session-auth";
 import type { Env } from "./types";
 import { coerceNumber, ONE_HOUR_MS } from "./utils";
-
-function jsonResponse(
-  payload: unknown,
-  status = 200,
-  extraHeaders?: Record<string, string>,
-): Response {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...(extraHeaders ?? {}),
-    },
-  });
-}
-
-function badRequest(message: string): Response {
-  return jsonResponse({ ok: false, error: message }, 400);
-}
-
-function unauthorized(message = "Unauthorized"): Response {
-  return jsonResponse({ ok: false, error: message }, 401);
-}
-
-function notFound(message = "Not Found"): Response {
-  return jsonResponse({ ok: false, error: message }, 404);
-}
-
-function notAllowed(message = "Method Not Allowed"): Response {
-  return jsonResponse({ ok: false, error: message }, 405);
-}
 
 function normalizeRange(
   range: R2Range | undefined,
@@ -85,12 +63,18 @@ function parseWindowHours(
 ): { fromHour: number; toHour: number } | null {
   const nowMs = Date.now();
   const defaultFrom = nowMs - 365 * 24 * ONE_HOUR_MS;
-  const fromMs = Math.floor(
-    coerceNumber(url.searchParams.get("from"), defaultFrom) ?? defaultFrom,
-  );
-  const toMs = Math.floor(
-    coerceNumber(url.searchParams.get("to"), nowMs) ?? nowMs,
-  );
+  const rawFrom = url.searchParams.get("from");
+  const rawTo = url.searchParams.get("to");
+  const parsedFrom = coerceNumber(rawFrom, null);
+  const parsedTo = coerceNumber(rawTo, null);
+  if (
+    (rawFrom !== null && parsedFrom === null) ||
+    (rawTo !== null && parsedTo === null)
+  ) {
+    return null;
+  }
+  const fromMs = Math.floor(parsedFrom ?? defaultFrom);
+  const toMs = Math.floor(parsedTo ?? nowMs);
   if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs < fromMs) {
     return null;
   }
@@ -100,7 +84,7 @@ function parseWindowHours(
   };
 }
 
-async function handleManifest(
+export async function handlePrivateArchiveManifest(
   request: Request,
   env: Env,
   url: URL,
@@ -177,7 +161,7 @@ async function handleManifest(
   });
 }
 
-async function handleFile(
+export async function handlePrivateArchiveFile(
   request: Request,
   env: Env,
   url: URL,
@@ -263,6 +247,9 @@ async function handleFile(
   return new Response(object.body, { status, headers });
 }
 
+/**
+ * Compatibility wrapper. Production routing lives in src/lib/hono/routes.
+ */
 export async function handlePrivateArchive(
   request: Request,
   env: Env,
@@ -270,10 +257,10 @@ export async function handlePrivateArchive(
 ): Promise<Response> {
   const pathname = url.pathname;
   if (pathname === "/api/private/archive/manifest") {
-    return handleManifest(request, env, url);
+    return handlePrivateArchiveManifest(request, env, url);
   }
   if (pathname === "/api/private/archive/file") {
-    return handleFile(request, env, url);
+    return handlePrivateArchiveFile(request, env, url);
   }
 
   return notFound();

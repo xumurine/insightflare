@@ -10,6 +10,7 @@ import {
   RiGlobalLine,
   RiLogoutBoxRLine,
   RiMoonLine,
+  RiNotification3Line,
   RiSettings3Line,
   RiSunLine,
 } from "@remixicon/react";
@@ -37,6 +38,8 @@ interface SidebarFooterMenusProps {
   switchToEn: string;
   switchToZh: string;
   accountHref: string;
+  notificationsHref: string;
+  unreadAttentionCount?: number;
   user: {
     username: string;
     name: string;
@@ -69,6 +72,8 @@ export function SidebarFooterMenus({
   switchToEn,
   switchToZh,
   accountHref,
+  notificationsHref,
+  unreadAttentionCount = 0,
   user,
   messages,
 }: SidebarFooterMenusProps) {
@@ -100,13 +105,9 @@ export function SidebarFooterMenus({
     if (loggingOut) return;
     setLoggingOut(true);
     try {
-      const response = await fetch("/api/auth/logout", {
-        method: "POST",
+      const response = await fetch("/api/public/session", {
+        method: "DELETE",
         credentials: "include",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({}),
       });
       if (!response.ok) throw new Error(messages.sidebarFooter.logoutFailed);
       toast.success(messages.sidebarFooter.logoutSuccess);
@@ -195,11 +196,16 @@ export function SidebarFooterMenus({
 
       <DropdownMenu>
         <DropdownMenuTrigger
-          className={triggerBaseClass}
+          className={cn(triggerBaseClass, "relative")}
           aria-label={messages.common.account}
         >
-          <span className="inline-flex size-6 items-center justify-center rounded-full border border-sidebar-border bg-transparent text-xs">
-            {initial}
+          <span className="relative inline-flex size-6 items-center justify-center">
+            <span className="inline-flex size-6 items-center justify-center rounded-full border border-sidebar-border bg-transparent text-xs">
+              {initial}
+            </span>
+            {unreadAttentionCount > 0 ? (
+              <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-destructive ring-2 ring-sidebar" />
+            ) : null}
           </span>
         </DropdownMenuTrigger>
         <DropdownMenuContent sideOffset={8} className="!w-64 !min-w-64">
@@ -219,6 +225,17 @@ export function SidebarFooterMenus({
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link href={notificationsHref}>
+              <RiNotification3Line />
+              <span>{messages.notificationCenter.title}</span>
+              {unreadAttentionCount > 0 ? (
+                <span className="ml-auto font-mono text-xs text-destructive tabular-nums pr-2">
+                  {unreadAttentionCount > 99 ? "99+" : unreadAttentionCount}
+                </span>
+              ) : null}
+            </Link>
+          </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link href={accountHref}>
               <RiSettings3Line />

@@ -1,8 +1,7 @@
-import { notFound } from "next/navigation";
 import { RiNotification3Line } from "@remixicon/react";
 
-import { PageHeading } from "@/components/dashboard/page-heading";
-import { Card, CardContent } from "@/components/ui/card";
+import { TeamNotificationsClient } from "@/components/dashboard/team-notifications-client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { canManageTeam } from "@/lib/dashboard/permissions";
 import { getDashboardTeamContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
@@ -33,24 +32,35 @@ export default async function TeamNotificationsPage({
   const messages = getMessages(resolvedLocale);
   const context = await getDashboardTeamContext(teamSlug);
 
+  if (!context) return null;
+
   if (
-    !context ||
     !canManageTeam(context.activeTeam.membershipRole, context.user.systemRole)
   ) {
-    notFound();
-  }
-
-  const copy = messages.teamManagement.notifications;
-
-  return (
-    <div className="space-y-4">
-      <PageHeading title={copy.title} subtitle={copy.subtitle} />
+    return (
       <Card>
-        <CardContent className="flex flex-col items-center gap-3 py-12 text-center text-sm text-muted-foreground">
-          <RiNotification3Line className="size-8 text-muted-foreground/70" />
-          <p>{copy.empty}</p>
+        <CardHeader>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiNotification3Line className="size-4" />
+            {messages.teamManagement.notifications.forbiddenTitle}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="max-w-prose text-sm leading-6 text-muted-foreground">
+            {messages.teamManagement.notifications.forbiddenDescription}
+          </p>
         </CardContent>
       </Card>
-    </div>
+    );
+  }
+
+  return (
+    <TeamNotificationsClient
+      locale={resolvedLocale}
+      messages={messages}
+      teamId={context.activeTeam.id}
+      teamSlug={teamSlug}
+      currentUserId={context.user.id}
+    />
   );
 }

@@ -112,9 +112,25 @@ function collectUnique(values: Iterable<string>): string[] {
 export function expandCustomEventData(
   input: unknown,
 ): CustomEventDataValidation {
-  let json = "";
+  if (input === undefined) {
+    return {
+      ok: false,
+      status: 422,
+      error: "eventData is required",
+    };
+  }
+
+  let json: string;
   try {
-    json = JSON.stringify(input);
+    const serialized = JSON.stringify(input);
+    if (typeof serialized !== "string") {
+      return {
+        ok: false,
+        status: 422,
+        error: "eventData contains unsupported JSON value",
+      };
+    }
+    json = serialized;
   } catch {
     return {
       ok: false,

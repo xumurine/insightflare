@@ -18,9 +18,10 @@ import {
   RiArrowRightUpLine,
   RiArrowUpLine,
   RiArrowUpSLine,
+  RiLineChartLine,
   RiSearchLine,
 } from "@remixicon/react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, useReducedMotion } from "motion/react";
 import type { PartialOptions } from "overlayscrollbars";
 import { OverlayScrollbars } from "overlayscrollbars";
 import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
@@ -57,6 +58,10 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
+import {
+  prepareNativeScrollbarHost,
+  useNativeScrollbars,
+} from "@/components/ui/overlay-scrollbar";
 import { Spinner } from "@/components/ui/spinner";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -282,14 +287,23 @@ function normalizeTrendData(
 }
 
 function metricCellBorderClasses(index: number): string {
+  // Mobile (1-col): top border for all except first
   const mobileHasTop = index >= 1;
-  const wideHasLeft = index % 3 !== 0;
-  const wideHasTop = index >= 3;
+  // md (2-col): left border on odd indices, top border for row 2+
+  const mdHasLeft = index % 2 !== 0;
+  const mdHasTop = index >= 2;
+  // lg (3-col): left border on col 2/3, top border for row 2+
+  const lgHasLeft = index % 3 !== 0;
+  const lgHasTop = index >= 3;
 
   return cn(
     mobileHasTop ? "border-t" : "",
-    wideHasLeft ? "sm:border-l" : "sm:border-l-0",
-    wideHasTop ? "sm:border-t" : "sm:border-t-0",
+    // md (2-col): reset mobile top for row 2+, apply left + top
+    mdHasTop ? "md:border-t" : "md:border-t-0",
+    mdHasLeft ? "md:border-l" : "md:border-l-0",
+    // lg (3-col): override md borders
+    lgHasTop ? "lg:border-t" : "lg:border-t-0",
+    lgHasLeft ? "lg:border-l" : "lg:border-l-0",
   );
 }
 
@@ -1671,10 +1685,12 @@ function PanelScrollbar({
   const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
     null,
   );
+  const nativeScrollbars = useNativeScrollbars();
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    if (prepareNativeScrollbarHost(host)) return;
 
     const existing = OverlayScrollbars(host);
     const instance =
@@ -1702,8 +1718,11 @@ function PanelScrollbar({
   return (
     <div
       ref={hostRef}
-      className={cn("overflow-hidden", className)}
-      data-overlayscrollbars-initialize
+      className={cn(
+        nativeScrollbars ? "overflow-y-auto" : "overflow-hidden",
+        className,
+      )}
+      data-overlayscrollbars-initialize={nativeScrollbars ? undefined : ""}
     >
       {children}
     </div>
@@ -3708,7 +3727,7 @@ export function OverviewPagesSection({
     <Dialog open={sourceCardSearchOpen} onOpenChange={setSourceCardSearchOpen}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{sourceCardSearchTitle}</DialogTitle>
+          <DialogTitle icon={RiSearchLine}>{sourceCardSearchTitle}</DialogTitle>
         </DialogHeader>
         {sourceCardSearchContent}
       </DialogContent>
@@ -3879,7 +3898,9 @@ export function OverviewPagesSection({
     >
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{clientDimensionCardSearchTitle}</DialogTitle>
+          <DialogTitle icon={RiSearchLine}>
+            {clientDimensionCardSearchTitle}
+          </DialogTitle>
         </DialogHeader>
         {clientDimensionCardSearchContent}
       </DialogContent>
@@ -4119,7 +4140,9 @@ export function OverviewPagesSection({
     >
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{geoDimensionCardSearchTitle}</DialogTitle>
+          <DialogTitle icon={RiSearchLine}>
+            {geoDimensionCardSearchTitle}
+          </DialogTitle>
         </DialogHeader>
         {geoDimensionCardSearchContent}
       </DialogContent>
@@ -4171,7 +4194,7 @@ export function OverviewPagesSection({
     <Dialog open={pageCardSearchOpen} onOpenChange={setPageCardSearchOpen}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{pageCardSearchTitle}</DialogTitle>
+          <DialogTitle icon={RiSearchLine}>{pageCardSearchTitle}</DialogTitle>
         </DialogHeader>
         {pageCardSearchContent}
       </DialogContent>
@@ -4499,7 +4522,7 @@ export function OverviewMetricsSection({
   return (
     <Card className="gap-0 py-0">
       <CardContent className="px-0">
-        <section className="grid grid-cols-1 sm:grid-cols-3">
+        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           {metrics.map((item, index) => {
             const hasDelta =
               typeof item.delta === "number" && Number.isFinite(item.delta);
@@ -4641,7 +4664,10 @@ export function OverviewTrendSection({
   return (
     <Card className="overflow-visible">
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>{messages.overview.trendTitle}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiLineChartLine className="size-4" />
+          {messages.overview.trendTitle}
+        </CardTitle>
         <span className="text-xs text-muted-foreground">
           {messages.common.lastUpdated}:{" "}
           {shortDateTime(locale, Date.now(), dataWindow.timeZone)}

@@ -5,6 +5,8 @@ import { cache } from "react";
 import {
   fetchAdminMe,
   fetchAdminSites,
+  fetchNotificationMessages,
+  type SessionTeamGroups,
   type SiteData,
   type TeamData,
 } from "@/lib/edge-client";
@@ -24,6 +26,7 @@ export interface DashboardContext {
     timeZone?: string;
   };
   teams: TeamData[];
+  teamGroups: SessionTeamGroups;
   activeTeam: TeamData;
   sites: SiteWithSlug[];
   activeSite: SiteWithSlug;
@@ -39,8 +42,24 @@ export interface DashboardTeamContext {
     timeZone?: string;
   };
   teams: TeamData[];
+  teamGroups: SessionTeamGroups;
   activeTeam: TeamData;
   sites: SiteWithSlug[];
+  unreadAttentionCount: number;
+}
+
+export interface DashboardRootContext {
+  user: {
+    id: string;
+    username: string;
+    email: string;
+    name: string;
+    systemRole: "admin" | "user";
+    timeZone?: string;
+  };
+  teams: TeamData[];
+  teamGroups: SessionTeamGroups;
+  unreadAttentionCount: number;
 }
 
 function safeSlug(value: string): string {
@@ -52,10 +71,8 @@ function safeSlug(value: string): string {
 }
 
 export function getSiteSlug(site: SiteData): string {
-  const primary = String(site.publicSlug || "").trim();
   const domain = String(site.domain || "").trim();
-  const name = String(site.name || "").trim();
-  const candidate = safeSlug(primary || domain || name);
+  const candidate = safeSlug(domain);
   if (candidate.length > 0) return candidate;
   return site.id.slice(0, 8);
 }
@@ -85,9 +102,40 @@ const getMe = cache(async () => {
   }
 });
 
+function teamGroupsForProfile(me: Awaited<ReturnType<typeof fetchAdminMe>>) {
+  return (
+    me.teamGroups ?? {
+      created: [],
+      managed: [],
+      member: me.teams,
+      system: [],
+    }
+  );
+}
+
 export const getDashboardProfile = cache(async () => {
   return getMe();
 });
+
+export const getDashboardRootContext = cache(
+  async (): Promise<DashboardRootContext | null> => {
+    const me = await getMe();
+    if (!me) return null;
+
+    const unreadAttentionCount = await fetchNotificationMessages({
+      limit: 1,
+    })
+      .then((data) => data.unreadAttentionCount)
+      .catch(() => 0);
+
+    return {
+      user: me.user,
+      teams: me.teams,
+      teamGroups: teamGroupsForProfile(me),
+      unreadAttentionCount,
+    };
+  },
+);
 
 const getSitesForTeam = cache(
   async (teamId: string): Promise<SiteWithSlug[]> => {
@@ -109,12 +157,19 @@ export const getDashboardTeamContext = cache(
     if (!activeTeam) return null;
 
     const sites = await getSitesForTeam(activeTeam.id);
+    const unreadAttentionCount = await fetchNotificationMessages({
+      limit: 1,
+    })
+      .then((data) => data.unreadAttentionCount)
+      .catch(() => 0);
 
     return {
       user: me.user,
       teams: me.teams,
+      teamGroups: teamGroupsForProfile(me),
       activeTeam,
       sites,
+      unreadAttentionCount,
     };
   },
 );
@@ -133,6 +188,7 @@ export const getTeamSiteContext = cache(
     return {
       user: teamContext.user,
       teams: teamContext.teams,
+      teamGroups: teamContext.teamGroups,
       activeTeam: teamContext.activeTeam,
       sites: teamContext.sites,
       activeSite,
