@@ -1605,6 +1605,9 @@ botProtection:
   loadFailed: 加载机器人防护数据失败。
   notConfiguredTitle: 尚未配置 Analytics Engine 读取凭据
   notConfiguredDescription: 请先在系统设置中填写 Cloudflare Account ID 和 API Token，用于读取机器人分流数据集。
+  analyticsEngineDisabledTitle: Analytics Engine 尚未启用
+  analyticsEngineDisabledDescription: 当前部署未绑定 Analytics Engine，因为 Cloudflare 账户尚未启用 Analytics Engine。请先在 Cloudflare 中启用，然后重新部署以采集机器人分流数据。
+  openAnalyticsEngine: 打开 Analytics Engine
   openSettings: 打开设置
   range1h: 最近 1 小时
   range6h: 最近 6 小时
@@ -1691,6 +1694,11 @@ systemSettings:
   botAnalyticsDeleted: 机器人分析配置已删除。
   botAnalyticsDeleteFailed: 删除机器人分析配置失败。
   botAnalyticsDeleteConfirm: 确认删除机器人分析读取配置吗？删除后机器人防护页面会显示需要配置。
+  botAnalyticsEngineDisabledBadge: Analytics Engine 已禁用
+  botAnalyticsEngineDisabledTitle: Analytics Engine 尚未启用
+  botAnalyticsEngineDisabledDescription: 当前部署已自动禁用 Analytics Engine 绑定，因为 Cloudflare 账户尚未启用 Analytics Engine。请先在 Cloudflare 中启用 Analytics Engine，然后重新部署 InsightFlare 以激活机器人分析。
+  botAnalyticsEngineDisabledHint: 在启用 Analytics Engine 并重新部署 Worker 前，机器人分析设置不可修改。
+  botAnalyticsOpenCloudflare: 打开 Cloudflare Analytics Engine
   notificationEmailTitle: 邮件通知
   notificationEmailDescription: 配置系统用于发送报告、告警和测试邮件的邮件服务。
   loginTurnstileTitle: 登录 Turnstile 保护

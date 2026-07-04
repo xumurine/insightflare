@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   RiCloseLine,
   RiDeleteBinLine,
+  RiExternalLinkLine,
   RiRobot2Line,
   RiSave3Line,
 } from "@remixicon/react";
@@ -35,6 +36,7 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import type { PublicBotAnalyticsConfig } from "@/lib/bot-analytics-config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { cn } from "@/lib/utils";
 
 interface BotAnalyticsSettingsClientProps {
   messages: AppMessages;
@@ -50,10 +52,18 @@ interface ApiResponse<T> {
 type FormState = Pick<PublicBotAnalyticsConfig, "accountId" | "dataset">;
 
 const API_PATH = "/api/private/admin/bot-analytics-config";
+const ANALYTICS_ENGINE_ENABLE_URL =
+  "https://dash.cloudflare.com/?to=/:account/workers/analytics-engine";
+
+function demoAnalyticsEngineDisabled(): boolean {
+  return process.env.NEXT_PUBLIC_INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED === "1";
+}
 
 function defaultConfig(): PublicBotAnalyticsConfig {
   return {
     accountId: "",
+    analyticsEngineDisabled: false,
+    analyticsEngineEnableUrl: "",
     dataset: "insightflare_bot_events",
     apiTokenConfigured: false,
     apiTokenHint: "",
@@ -87,7 +97,11 @@ function apiMessage(payload: ApiResponse<unknown>, fallback: string): string {
 
 async function fetchConfig(): Promise<PublicBotAnalyticsConfig> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    return defaultConfig();
+    return {
+      ...defaultConfig(),
+      analyticsEngineDisabled: demoAnalyticsEngineDisabled(),
+      analyticsEngineEnableUrl: ANALYTICS_ENGINE_ENABLE_URL,
+    };
   }
 
   const response = await fetch(API_PATH, {
@@ -113,6 +127,8 @@ async function saveConfig(
       dataset: String(body.dataset || "insightflare_bot_events"),
       apiTokenConfigured: Boolean(body.apiToken),
       apiTokenHint: body.apiToken ? "••••demo" : "",
+      analyticsEngineDisabled: false,
+      analyticsEngineEnableUrl: "",
       updatedAt: Date.now(),
     };
   }
@@ -159,6 +175,7 @@ export function BotAnalyticsSettingsClient({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const analyticsEngineDisabled = config.analyticsEngineDisabled;
 
   useEffect(() => {
     let cancelled = false;
@@ -184,14 +201,16 @@ export function BotAnalyticsSettingsClient({
 
   const hasChanges = useMemo(
     () =>
-      form.accountId !== config.accountId ||
-      form.dataset !== config.dataset ||
-      apiToken.trim().length > 0 ||
-      clearApiToken,
-    [apiToken, clearApiToken, config, form],
+      !analyticsEngineDisabled &&
+      (form.accountId !== config.accountId ||
+        form.dataset !== config.dataset ||
+        apiToken.trim().length > 0 ||
+        clearApiToken),
+    [analyticsEngineDisabled, apiToken, clearApiToken, config, form],
   );
 
   async function handleSave() {
+    if (analyticsEngineDisabled) return;
     setSaving(true);
     try {
       const next = await saveConfig({
@@ -215,6 +234,7 @@ export function BotAnalyticsSettingsClient({
   }
 
   async function handleDelete() {
+    if (analyticsEngineDisabled) return;
     setDeleting(true);
     try {
       const next = await deleteConfig();
@@ -233,7 +253,9 @@ export function BotAnalyticsSettingsClient({
   }
 
   return (
-    <Card className="overflow-hidden">
+    <Card
+      className={cn("overflow-hidden", analyticsEngineDisabled && "opacity-75")}
+    >
       <CardHeader>
         <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0">
@@ -243,10 +265,20 @@ export function BotAnalyticsSettingsClient({
             </CardTitle>
             <CardDescription>{copy.botAnalyticsDescription}</CardDescription>
           </div>
-          <Badge variant={config.apiTokenConfigured ? "default" : "secondary"}>
-            {config.apiTokenConfigured
-              ? copy.botAnalyticsTokenSaved
-              : copy.botAnalyticsTokenNotSaved}
+          <Badge
+            variant={
+              analyticsEngineDisabled
+                ? "secondary"
+                : config.apiTokenConfigured
+                  ? "default"
+                  : "secondary"
+            }
+          >
+            {analyticsEngineDisabled
+              ? copy.botAnalyticsEngineDisabledBadge
+              : config.apiTokenConfigured
+                ? copy.botAnalyticsTokenSaved
+                : copy.botAnalyticsTokenNotSaved}
           </Badge>
         </div>
       </CardHeader>
@@ -262,6 +294,26 @@ export function BotAnalyticsSettingsClient({
             </div>
           ) : (
             <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
+              {analyticsEngineDisabled ? (
+                <div className="rounded-md border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground lg:col-span-2">
+                  <p className="font-medium text-foreground">
+                    {copy.botAnalyticsEngineDisabledTitle}
+                  </p>
+                  <p className="mt-1">
+                    {copy.botAnalyticsEngineDisabledDescription}
+                  </p>
+                  <Button asChild className="mt-3" variant="outline">
+                    <a
+                      href={config.analyticsEngineEnableUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <RiExternalLinkLine className="size-4" />
+                      {copy.botAnalyticsOpenCloudflare}
+                    </a>
+                  </Button>
+                </div>
+              ) : null}
               <div className="space-y-2">
                 <Label htmlFor="bot-analytics-account-id">
                   {copy.botAnalyticsAccountIdLabel}
@@ -269,7 +321,7 @@ export function BotAnalyticsSettingsClient({
                 <Input
                   id="bot-analytics-account-id"
                   value={form.accountId}
-                  placeholder="442fe5198bff93bdf60d4223d9618033"
+                  disabled={analyticsEngineDisabled}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
@@ -285,6 +337,7 @@ export function BotAnalyticsSettingsClient({
                 <Input
                   id="bot-analytics-dataset"
                   value={form.dataset}
+                  disabled={analyticsEngineDisabled}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
@@ -301,8 +354,9 @@ export function BotAnalyticsSettingsClient({
                   id="bot-analytics-api-token"
                   type="password"
                   value={apiToken}
+                  disabled={analyticsEngineDisabled}
                   placeholder={
-                    config.apiTokenConfigured
+                    !analyticsEngineDisabled && config.apiTokenConfigured
                       ? copy.botAnalyticsApiTokenPlaceholder
                       : ""
                   }
@@ -312,16 +366,20 @@ export function BotAnalyticsSettingsClient({
                   }}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {config.apiTokenConfigured && config.apiTokenHint
-                    ? `${copy.botAnalyticsTokenSaved}: ${config.apiTokenHint}`
-                    : copy.botAnalyticsTokenNotSaved}
+                  {analyticsEngineDisabled
+                    ? copy.botAnalyticsEngineDisabledHint
+                    : config.apiTokenConfigured && config.apiTokenHint
+                      ? `${copy.botAnalyticsTokenSaved}: ${config.apiTokenHint}`
+                      : copy.botAnalyticsTokenNotSaved}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 lg:col-span-2">
                 <Button
                   type="button"
                   onClick={handleSave}
-                  disabled={saving || deleting || !hasChanges}
+                  disabled={
+                    analyticsEngineDisabled || saving || deleting || !hasChanges
+                  }
                 >
                   {saving ? (
                     <Spinner className="size-4" />
@@ -330,7 +388,7 @@ export function BotAnalyticsSettingsClient({
                   )}
                   {saving ? copy.saving : copy.save}
                 </Button>
-                {config.apiTokenConfigured ? (
+                {config.apiTokenConfigured && !analyticsEngineDisabled ? (
                   <Button
                     type="button"
                     variant={clearApiToken ? "destructive" : "outline"}
@@ -352,7 +410,7 @@ export function BotAnalyticsSettingsClient({
                     <Button
                       type="button"
                       variant="outline"
-                      disabled={saving || deleting}
+                      disabled={analyticsEngineDisabled || saving || deleting}
                     >
                       {deleting ? (
                         <Spinner className="size-4" />

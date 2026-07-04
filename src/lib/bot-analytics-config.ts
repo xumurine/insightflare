@@ -12,6 +12,8 @@ export interface BotAnalyticsConfig {
 
 export interface PublicBotAnalyticsConfig {
   accountId: string;
+  analyticsEngineDisabled: boolean;
+  analyticsEngineEnableUrl: string;
   dataset: string;
   apiTokenConfigured: boolean;
   apiTokenHint: string;
@@ -66,9 +68,15 @@ export function normalizeBotAnalyticsConfig(
 
 export function redactBotAnalyticsConfig(
   config: BotAnalyticsConfig,
+  availability?: {
+    analyticsEngineDisabled?: boolean;
+    analyticsEngineEnableUrl?: string;
+  },
 ): PublicBotAnalyticsConfig {
   return {
     accountId: config.accountId,
+    analyticsEngineDisabled: availability?.analyticsEngineDisabled ?? false,
+    analyticsEngineEnableUrl: availability?.analyticsEngineEnableUrl ?? "",
     dataset: config.dataset,
     apiTokenConfigured: config.configured,
     apiTokenHint: config.apiTokenHint,

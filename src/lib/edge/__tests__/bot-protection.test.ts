@@ -313,4 +313,30 @@ describe("bot protection", () => {
       ]),
     );
   });
+
+  it("drops bot analytics points when Analytics Engine is disabled", () => {
+    const writeDataPoint = vi.fn();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const env = {
+      BOT_ANALYTICS: { writeDataPoint },
+      INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED: "1",
+    } as unknown as Env;
+
+    writeBotAnalyticsEvent(env, {
+      request: request({ "user-agent": "curl/8.14.1" }),
+      payload,
+      siteId: "site-1",
+      origin: "https://example.com",
+      traceId: "trace-1",
+      receivedAt: 1_800_000_000_000,
+      classification: {
+        isBot: true,
+        confidence: "high",
+        reasons: ["script_ua"],
+      },
+    });
+
+    expect(writeDataPoint).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+  });
 });

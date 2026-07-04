@@ -264,10 +264,10 @@ export function generateDemoBotProtectionData(
     `bot-protection:${minutes}:${windowBucket(from, generatedAt)}`,
   );
   const eventTargetByWindow: Record<WindowMinutes, number> = {
-    60: 42,
-    1440: 138,
-    10080: 190,
-    43200: 260,
+    60: 160,
+    1440: 520,
+    10080: 960,
+    43200: 1500,
   };
   const target = eventTargetByWindow[minutes];
   const events: DemoBotEvent[] = [];

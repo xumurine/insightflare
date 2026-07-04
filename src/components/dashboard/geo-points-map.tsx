@@ -68,10 +68,15 @@ const GLOBE_VIEW_STATE: MapViewState = {
   longitude: 0,
   latitude: 30,
   zoom: 2.25,
-  minZoom: 1.5,
-  maxZoom: 3,
+  minZoom: 2,
+  maxZoom: 5,
   pitch: 0,
   bearing: 0,
+};
+const GLOBE_MOBILE_VIEW_STATE: MapViewState = {
+  ...GLOBE_VIEW_STATE,
+  zoom: 1.75,
+  minZoom: 1,
 };
 const GLOBE_ROTATION_DEGREES_PER_SECOND = 10;
 const GLOBE_USER_INTERACTION_PAUSE_MS = 5000;
@@ -92,6 +97,8 @@ function buildRasterStyle(
   const layerId = `insightflare-raster-layer-${theme}`;
   const endpoint = `/api/public/resources/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
   const isGlobe = projectionMode === "globe";
+  const backgroundColor =
+    theme === "dark" ? "rgb(10, 10, 10)" : "rgb(255, 255, 255)";
 
   return {
     version: 8,
@@ -102,12 +109,9 @@ function buildRasterStyle(
     ...(isGlobe
       ? {
           sky: {
-            "sky-color":
-              theme === "dark" ? "rgb(8, 12, 18)" : "rgb(244, 247, 250)",
-            "horizon-color":
-              theme === "dark" ? "rgb(17, 24, 39)" : "rgb(233, 238, 244)",
-            "fog-color":
-              theme === "dark" ? "rgb(8, 12, 18)" : "rgb(244, 247, 250)",
+            "sky-color": backgroundColor,
+            "horizon-color": backgroundColor,
+            "fog-color": backgroundColor,
             "atmosphere-blend": 0.18,
           },
         }
@@ -127,9 +131,8 @@ function buildRasterStyle(
               id: "insightflare-globe-ocean",
               type: "background" as const,
               paint: {
-                "background-color":
-                  theme === "dark" ? "rgb(15, 23, 42)" : "rgb(226, 233, 241)",
-                "background-opacity": theme === "dark" ? 0.88 : 0.82,
+                "background-color": backgroundColor,
+                "background-opacity": 1,
               },
             },
           ]
@@ -454,6 +457,7 @@ export function GeoPointsMap({
     null,
   );
   const [hoveredCountryName, setHoveredCountryName] = useState("");
+  const [mapSettled, setMapSettled] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(
     normalizeClusterZoom(DEFAULT_VIEW_STATE.zoom),
   );
@@ -529,8 +533,12 @@ export function GeoPointsMap({
 
   const initialViewState = useMemo(
     () =>
-      isGlobe ? GLOBE_VIEW_STATE : computeInitialViewState(normalizedPoints),
-    [isGlobe, normalizedPoints],
+      isGlobe
+        ? isMobile
+          ? GLOBE_MOBILE_VIEW_STATE
+          : GLOBE_VIEW_STATE
+        : computeInitialViewState(normalizedPoints),
+    [isGlobe, isMobile, normalizedPoints],
   );
   const mobileMinZoom =
     initialViewState.minZoom ?? DEFAULT_VIEW_STATE.minZoom ?? 0;
@@ -611,6 +619,10 @@ export function GeoPointsMap({
     () => buildRasterStyle(effectiveMapTheme, projectionMode),
     [effectiveMapTheme, projectionMode],
   );
+
+  useEffect(() => {
+    setMapSettled(false);
+  }, [mapInitialViewState, mapStyle]);
   const normalizedSelectedCountryCode = useMemo(
     () => normalizeCountryCode(selectedCountryCode),
     [selectedCountryCode],
@@ -785,30 +797,44 @@ export function GeoPointsMap({
     rotationRecoveryFromRef.current = null;
   }, []);
 
+  const markMapSettled = useCallback((map: MaplibreMap) => {
+    if (!map.isStyleLoaded() || !map.areTilesLoaded()) return;
+    setMapSettled(true);
+  }, []);
+
   const applyProjectionMode = useCallback(
     (map: MaplibreMap) => {
       if (!map.isStyleLoaded()) return false;
       map.setProjection({ type: isGlobe ? "globe" : "mercator" });
       if (isGlobe) {
         map.jumpTo({
-          center: [GLOBE_VIEW_STATE.longitude, GLOBE_VIEW_STATE.latitude],
-          zoom: GLOBE_VIEW_STATE.zoom,
+          center: [initialViewState.longitude, initialViewState.latitude],
+          zoom: initialViewState.zoom,
           bearing: 0,
           pitch: 0,
         });
-        setCurrentZoom(normalizeClusterZoom(GLOBE_VIEW_STATE.zoom));
+        setCurrentZoom(
+          normalizeClusterZoom(initialViewState.zoom ?? GLOBE_VIEW_STATE.zoom),
+        );
       }
       return true;
     },
-    [isGlobe],
+    [initialViewState, isGlobe],
   );
 
   useEffect(() => {
     const map = mapRef.current?.getMap();
     if (!map || !isMobile) return;
-    map.jumpTo({ zoom: mobileMinZoom });
-    setCurrentZoom(normalizeClusterZoom(mobileMinZoom));
-  }, [isMobile, mobileMinZoom]);
+    map.jumpTo({
+      center: [initialViewState.longitude, initialViewState.latitude],
+      zoom: initialViewState.zoom,
+      bearing: 0,
+      pitch: 0,
+    });
+    setCurrentZoom(
+      normalizeClusterZoom(initialViewState.zoom ?? DEFAULT_VIEW_STATE.zoom),
+    );
+  }, [initialViewState, isMobile]);
 
   useEffect(() => {
     const map = mapRef.current?.getMap();
@@ -824,7 +850,7 @@ export function GeoPointsMap({
   }, [applyProjectionMode, mapLoaded]);
 
   useEffect(() => {
-    if (!autoRotateEnabled) return;
+    if (!autoRotateEnabled || !mapSettled) return;
 
     const rotate = (timestamp: number) => {
       const map = mapRef.current?.getMap();
@@ -872,13 +898,16 @@ export function GeoPointsMap({
         const recoveryFrom = rotationRecoveryFromRef.current;
         const nextLatitude = recoveryFrom
           ? recoveryFrom.latitude +
-            (GLOBE_VIEW_STATE.latitude - recoveryFrom.latitude) *
+            ((initialViewState.latitude ?? GLOBE_VIEW_STATE.latitude) -
+              recoveryFrom.latitude) *
               recoveryProgress
-          : GLOBE_VIEW_STATE.latitude;
+          : (initialViewState.latitude ?? GLOBE_VIEW_STATE.latitude);
         const nextZoom = recoveryFrom
           ? recoveryFrom.zoom +
-            (GLOBE_VIEW_STATE.zoom - recoveryFrom.zoom) * recoveryProgress
-          : GLOBE_VIEW_STATE.zoom;
+            ((initialViewState.zoom ?? GLOBE_VIEW_STATE.zoom) -
+              recoveryFrom.zoom) *
+              recoveryProgress
+          : (initialViewState.zoom ?? GLOBE_VIEW_STATE.zoom);
         const nextLongitude = normalizeLongitude(
           center.lng +
             deltaSeconds * GLOBE_ROTATION_DEGREES_PER_SECOND * speedProgress,
@@ -916,7 +945,7 @@ export function GeoPointsMap({
         rotationFrameRef.current = null;
       }
     };
-  }, [autoRotateEnabled]);
+  }, [autoRotateEnabled, initialViewState, mapSettled]);
 
   if (loading) {
     return (
@@ -943,47 +972,68 @@ export function GeoPointsMap({
       }`}
       style={MAP_VIEWPORT_RENDER_ISOLATION_STYLE}
     >
-      <Map
-        ref={mapRef}
-        initialViewState={mapInitialViewState}
-        mapStyle={mapStyle}
-        attributionControl={false}
-        scrollZoom
-        maxPitch={0}
-        dragRotate={false}
-        pitchWithRotate={false}
-        renderWorldCopies={!isGlobe}
-        onDragStart={(event) => {
-          if (event.originalEvent) pauseAutoRotate();
+      {!mapSettled ? (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-background">
+          <Spinner className="size-6" />
+        </div>
+      ) : null}
+      <motion.div
+        className="absolute inset-0"
+        initial={false}
+        animate={{
+          opacity: mapSettled ? 1 : 0,
+          scale: mapSettled ? 1 : 0.5,
+          y: mapSettled ? 0 : "50%",
         }}
-        onDrag={(event) => {
-          if (event.originalEvent) pauseAutoRotate();
-        }}
-        onZoomStart={(event) => {
-          if (event.originalEvent) pauseAutoRotate();
-        }}
-        onMove={(event) => {
-          if (event.originalEvent) pauseAutoRotate();
-        }}
-        onMoveEnd={(event) => {
-          if (event.originalEvent) pauseAutoRotate();
-        }}
-        onZoom={(event) => {
-          if (event.originalEvent) pauseAutoRotate();
-          const nextZoom = normalizeClusterZoom(event.viewState.zoom);
-          setCurrentZoom((prev) =>
-            Math.abs(prev - nextZoom) > 0.0001 ? nextZoom : prev,
-          );
-        }}
-        onMouseDown={pauseAutoRotate}
-        onTouchStart={pauseAutoRotate}
-        onLoad={(event) => {
-          setMapLoaded(true);
-          applyProjectionMode(event.target);
+        transition={{
+          duration: 3,
+          ease: [0.16, 1.45, 0.34, 1],
         }}
       >
-        <DeckOverlay interleaved={false} layers={layers} />
-      </Map>
+        <Map
+          ref={mapRef}
+          initialViewState={mapInitialViewState}
+          mapStyle={mapStyle}
+          attributionControl={false}
+          scrollZoom
+          maxPitch={0}
+          dragRotate={false}
+          pitchWithRotate={false}
+          renderWorldCopies={!isGlobe}
+          onDragStart={(event) => {
+            if (event.originalEvent) pauseAutoRotate();
+          }}
+          onDrag={(event) => {
+            if (event.originalEvent) pauseAutoRotate();
+          }}
+          onZoomStart={(event) => {
+            if (event.originalEvent) pauseAutoRotate();
+          }}
+          onMove={(event) => {
+            if (event.originalEvent) pauseAutoRotate();
+          }}
+          onMoveEnd={(event) => {
+            if (event.originalEvent) pauseAutoRotate();
+          }}
+          onZoom={(event) => {
+            if (event.originalEvent) pauseAutoRotate();
+            const nextZoom = normalizeClusterZoom(event.viewState.zoom);
+            setCurrentZoom((prev) =>
+              Math.abs(prev - nextZoom) > 0.0001 ? nextZoom : prev,
+            );
+          }}
+          onMouseDown={pauseAutoRotate}
+          onTouchStart={pauseAutoRotate}
+          onLoad={(event) => {
+            setMapLoaded(true);
+            applyProjectionMode(event.target);
+            markMapSettled(event.target);
+          }}
+          onIdle={(event) => markMapSettled(event.target)}
+        >
+          <DeckOverlay interleaved={false} layers={layers} />
+        </Map>
+      </motion.div>
       <AnimatePresence>
         {showCountryToolbar ? (
           <motion.div

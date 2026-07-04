@@ -14,6 +14,7 @@ export interface Env {
   SCRIPT_CACHE_TTL_SECONDS?: string;
   SITE_SETTINGS_KV?: KVNamespace;
   INSIGHTFLARE_LOGIN_TURNSTILE_DISABLED?: string;
+  INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED?: string;
 }
 
 export interface SerializedRequestPayload {
