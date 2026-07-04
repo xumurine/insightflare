@@ -1679,6 +1679,37 @@ botProtection:
   ip: IP
   userAgent: User agent
   confidence: Confidence
+  blocked: Blocked
+  highConfidenceRequests: High-confidence Requests
+  emptyValue: Unknown
+  kind: Type
+  botScoreBucket: Bot Score Bucket
+  verifiedBotCategory: Verified Bot Category
+  hostname: Hostname
+  pathname: Path
+  origin: Origin
+  asOrganization: ASN Organization
+  asn: ASN
+  country: Country
+  region: Region
+  city: City
+  colo: Colo
+  userAgentLengthBucket: User-Agent Length
+  ipPrefix: IP Prefix
+  botReasonLabels:
+    missing_ua: Missing User-Agent
+    ua_too_long: User-Agent too long
+    ua_isbot: User-Agent matches bot
+    script_ua: Script client User-Agent
+    cf_bot_score_low: Low Cloudflare Bot Score
+    cf_verified_bot_category: Cloudflare verified bot category
+    hosting_asn: Hosting ASN
+    network_service_asn: Network service ASN
+    transit_asn: Transit ASN
+    access_asn: Access ASN
+    missing_browser_provenance: Missing browser provenance
+    origin_hostname_mismatch: Origin and hostname mismatch
+    blocked_pathname: Blocked pathname
 systemSettings:
   title: System Settings
   subtitle: Manage instance-wide configuration for this InsightFlare deployment.

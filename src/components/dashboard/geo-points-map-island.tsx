@@ -21,6 +21,8 @@ interface GeoPointsMapIslandProps {
   heightClassName?: string;
   countryHoverEnabled?: boolean;
   pointColor?: [number, number, number];
+  projectionMode?: "mercator" | "globe";
+  autoRotate?: boolean;
   selectedCountryCode?: string | null;
   onCountrySelect?: (countryCode: string | null) => void;
 }

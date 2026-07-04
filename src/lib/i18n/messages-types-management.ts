@@ -1138,6 +1138,24 @@ export interface AppManagementMessages {
     ip: string;
     userAgent: string;
     confidence: string;
+    blocked: string;
+    highConfidenceRequests: string;
+    emptyValue: string;
+    kind: string;
+    botScoreBucket: string;
+    verifiedBotCategory: string;
+    hostname: string;
+    pathname: string;
+    origin: string;
+    asOrganization: string;
+    asn: string;
+    country: string;
+    region: string;
+    city: string;
+    colo: string;
+    userAgentLengthBucket: string;
+    ipPrefix: string;
+    botReasonLabels: Record<string, string>;
   };
   systemSettings: {
     title: string;

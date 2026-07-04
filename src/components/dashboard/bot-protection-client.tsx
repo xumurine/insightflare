@@ -11,8 +11,6 @@ import {
 } from "@remixicon/react";
 import {
   Area,
-  Bar,
-  BarChart,
   CartesianGrid,
   ComposedChart,
   Line,
@@ -21,6 +19,12 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 
+import {
+  AsyncDimensionBreakdownCard,
+  type AsyncDimensionBreakdownLabelAppearance,
+  type AsyncDimensionBreakdownRow,
+  type AsyncDimensionBreakdownTab,
+} from "@/components/dashboard/async-dimension-breakdown-card";
 import { GeoPointsMapIsland } from "@/components/dashboard/geo-points-map-island";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -61,6 +65,10 @@ import {
   percentFormat,
   shortDateTimeWithSeconds,
 } from "@/lib/dashboard/format";
+import {
+  resolveCountryFlagCode,
+  resolveCountryLabel,
+} from "@/lib/i18n/code-labels";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { cn } from "@/lib/utils";
@@ -140,6 +148,34 @@ interface BotProtectionData {
 type WindowMinutes = 60 | 1440 | 10080 | 43200;
 
 const WINDOW_OPTIONS: readonly WindowMinutes[] = [60, 1440, 10080, 43200];
+const DIMENSION_ROW_LIMIT = 30;
+
+type DetectionDimensionTab =
+  | "reason"
+  | "confidence"
+  | "kind"
+  | "botScoreBucket"
+  | "verifiedBotCategory";
+type TargetDimensionTab = "site" | "hostname" | "pathname" | "origin";
+type NetworkDimensionTab =
+  | "asOrganization"
+  | "asn"
+  | "country"
+  | "region"
+  | "city"
+  | "colo";
+type ClientDimensionTab =
+  | "ip"
+  | "userAgent"
+  | "userAgentLengthBucket"
+  | "ipPrefix";
+
+interface BotDimensionRow {
+  label: string;
+  count: number;
+  highConfidence: number;
+  sampleEvent: BotEvent | null;
+}
 
 function trendChartConfig(copy: AppMessages["botProtection"]) {
   return {
@@ -153,13 +189,6 @@ function trendChartConfig(copy: AppMessages["botProtection"]) {
     },
   } satisfies ChartConfig;
 }
-
-const REASON_CHART_CONFIG = {
-  count: {
-    label: "Requests",
-    color: "var(--color-chart-2)",
-  },
-} satisfies ChartConfig;
 
 async function fetchBotProtection(
   minutes: WindowMinutes,
@@ -242,6 +271,140 @@ function trendTooltipDateFormat(
 
 function compactReason(reason: string): string {
   return reason.replace(/_/g, " ");
+}
+
+function botReasonLabel(
+  copy: AppMessages["botProtection"],
+  reason: string,
+): string {
+  return copy.botReasonLabels[reason] ?? compactReason(reason);
+}
+
+function emptyValue(copy: AppMessages["botProtection"]): string {
+  return copy.emptyValue;
+}
+
+function botScoreBucket(score: number | null): string {
+  if (score === null) return "";
+  if (score < 20) return "1-19";
+  if (score < 40) return "20-39";
+  if (score < 60) return "40-59";
+  if (score < 80) return "60-79";
+  return "80-99";
+}
+
+function userAgentLengthBucket(length: number): string {
+  if (!Number.isFinite(length) || length <= 0) return "";
+  if (length < 80) return "1-79";
+  if (length < 160) return "80-159";
+  if (length < 256) return "160-255";
+  if (length < 512) return "256-511";
+  return "512+";
+}
+
+function ipPrefix(ip: string): string {
+  const value = ip.trim();
+  const ipv4 = value.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}$/);
+  if (ipv4) return `${ipv4[1]}.${ipv4[2]}.${ipv4[3]}.0/24`;
+  if (value.includes(":")) {
+    const parts = value.split(":").filter(Boolean);
+    if (parts.length >= 4) return `${parts.slice(0, 4).join(":")}::/64`;
+  }
+  return value;
+}
+
+function valuesForDetectionTab(
+  event: BotEvent,
+  tab: DetectionDimensionTab,
+  copy: AppMessages["botProtection"],
+): string[] {
+  if (tab === "reason") {
+    return event.reasons.map((reason) => botReasonLabel(copy, reason));
+  }
+  if (tab === "confidence") return [event.confidence];
+  if (tab === "kind") return [event.kind];
+  if (tab === "botScoreBucket") return [botScoreBucket(event.botScore)];
+  return [event.verifiedBotCategory];
+}
+
+function valuesForTargetTab(
+  event: BotEvent,
+  tab: TargetDimensionTab,
+): string[] {
+  if (tab === "site") {
+    return [event.siteName || event.siteDomain || event.siteId];
+  }
+  if (tab === "hostname") return [event.hostname];
+  if (tab === "pathname") return [event.pathname || "/"];
+  return [event.origin];
+}
+
+function valuesForNetworkTab(
+  event: BotEvent,
+  tab: NetworkDimensionTab,
+): string[] {
+  if (tab === "asOrganization") return [event.asOrganization];
+  if (tab === "asn") return [event.asn ? `AS${event.asn}` : ""];
+  if (tab === "country") return [event.country];
+  if (tab === "region") return [event.region];
+  if (tab === "city") return [event.city];
+  return [event.colo];
+}
+
+function valuesForClientTab(
+  event: BotEvent,
+  tab: ClientDimensionTab,
+): string[] {
+  if (tab === "ip") return [event.ip];
+  if (tab === "userAgent") return [event.userAgent];
+  if (tab === "userAgentLengthBucket") {
+    return [userAgentLengthBucket(event.userAgentLength)];
+  }
+  return [ipPrefix(event.ip)];
+}
+
+function aggregateDimensionRows(
+  events: BotEvent[],
+  copy: AppMessages["botProtection"],
+  resolveValues: (event: BotEvent) => string[],
+): BotDimensionRow[] {
+  const rowMap = new Map<
+    string,
+    { count: number; highConfidence: number; sampleEvent: BotEvent | null }
+  >();
+
+  for (const event of events) {
+    const values = resolveValues(event)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const normalizedValues = values.length > 0 ? values : [emptyValue(copy)];
+    for (const value of normalizedValues) {
+      const current = rowMap.get(value) ?? {
+        count: 0,
+        highConfidence: 0,
+        sampleEvent: event,
+      };
+      current.count += 1;
+      if (event.confidence === "high") current.highConfidence += 1;
+      current.sampleEvent ??= event;
+      rowMap.set(value, current);
+    }
+  }
+
+  return Array.from(rowMap.entries())
+    .map(([label, row]) => ({
+      label,
+      count: row.count,
+      highConfidence: row.highConfidence,
+      sampleEvent: row.sampleEvent,
+    }))
+    .sort(
+      (left, right) =>
+        right.count - left.count ||
+        right.highConfidence - left.highConfidence ||
+        left.label.localeCompare(right.label),
+    )
+    .slice(0, DIMENSION_ROW_LIMIT);
 }
 
 function formatLocation(event: BotEvent): string {
@@ -380,6 +543,135 @@ function createTrendTooltipFormatter(input: {
   };
 }
 
+function faviconLabelForEvent(
+  event: BotEvent | null,
+  tab: TargetDimensionTab,
+): string | undefined {
+  if (!event) return undefined;
+  if (tab === "site") return event.siteDomain || event.hostname || event.origin;
+  if (tab === "hostname") return event.hostname || event.siteDomain;
+  if (tab === "origin")
+    return event.origin || event.hostname || event.siteDomain;
+  return undefined;
+}
+
+function countryFlagAppearance(
+  rawCountry: string,
+  locale: Locale,
+  unknownLabel: string,
+): {
+  label: string;
+  appearance: AsyncDimensionBreakdownLabelAppearance | undefined;
+} {
+  const country = resolveCountryLabel(rawCountry, locale, unknownLabel);
+  const flagCode = resolveCountryFlagCode(country.code, locale);
+  return {
+    label: country.label,
+    appearance: {
+      type: "leadingIcon",
+      iconName: flagCode ? `flagpack:${flagCode.toLowerCase()}` : null,
+    },
+  };
+}
+
+function regionAppearance(
+  row: BotDimensionRow,
+  locale: Locale,
+  unknownLabel: string,
+): AsyncDimensionBreakdownLabelAppearance | undefined {
+  const event = row.sampleEvent;
+  if (!event) return undefined;
+  const country = resolveCountryLabel(event.country, locale, unknownLabel);
+  const flagCode = resolveCountryFlagCode(country.code, locale);
+  const regionLabel = row.label.trim() || event.region.trim() || unknownLabel;
+  const hasRegion = Boolean(event.region.trim());
+
+  return {
+    type: "geoRegion",
+    countryLabel: country.label,
+    countryIconName: flagCode ? `flagpack:${flagCode.toLowerCase()}` : null,
+    regionLabel,
+    countryCode: country.code ?? event.country,
+    stateCode: event.region,
+    hideRegion: !hasRegion,
+  };
+}
+
+function cityAppearance(
+  row: BotDimensionRow,
+  locale: Locale,
+  unknownLabel: string,
+): AsyncDimensionBreakdownLabelAppearance | undefined {
+  const event = row.sampleEvent;
+  if (!event) return undefined;
+  const country = resolveCountryLabel(event.country, locale, unknownLabel);
+  const flagCode = resolveCountryFlagCode(country.code, locale);
+  const regionLabel = event.region.trim() || unknownLabel;
+  const cityLabel = row.label.trim() || event.city.trim() || unknownLabel;
+  const hasRegion = Boolean(event.region.trim());
+  const hasCity = Boolean(event.city.trim());
+
+  return {
+    type: "geoCity",
+    countryLabel: country.label,
+    countryIconName: flagCode ? `flagpack:${flagCode.toLowerCase()}` : null,
+    regionLabel,
+    cityLabel,
+    countryCode: country.code ?? event.country,
+    stateCode: event.region,
+    cityNameDefault: event.city,
+    hideRegion: !hasRegion,
+    hideCity: !hasCity,
+  };
+}
+
+function toAsyncDimensionRows(
+  rows: BotDimensionRow[],
+  options?: {
+    targetTab?: TargetDimensionTab;
+    networkTab?: NetworkDimensionTab;
+    locale?: Locale;
+    unknownLabel?: string;
+  },
+): AsyncDimensionBreakdownRow[] {
+  return rows.map((row) => ({
+    key: row.label,
+    label:
+      options?.networkTab === "country" &&
+      options.locale &&
+      options.unknownLabel
+        ? countryFlagAppearance(row.label, options.locale, options.unknownLabel)
+            .label
+        : row.label,
+    views: row.count,
+    visitors: row.highConfidence,
+    mono: row.label.includes("/") || row.label.includes(":"),
+    labelAppearance:
+      options?.targetTab && options.targetTab !== "pathname"
+        ? {
+            type: "favicon",
+            iconLabel: faviconLabelForEvent(row.sampleEvent, options.targetTab),
+          }
+        : options?.networkTab === "country" &&
+            options.locale &&
+            options.unknownLabel
+          ? countryFlagAppearance(
+              row.label,
+              options.locale,
+              options.unknownLabel,
+            ).appearance
+          : options?.networkTab === "region" &&
+              options.locale &&
+              options.unknownLabel
+            ? regionAppearance(row, options.locale, options.unknownLabel)
+            : options?.networkTab === "city" &&
+                options.locale &&
+                options.unknownLabel
+              ? cityAppearance(row, options.locale, options.unknownLabel)
+              : undefined,
+  }));
+}
+
 export function BotProtectionClient({
   locale,
   messages,
@@ -424,7 +716,6 @@ export function BotProtectionClient({
     [locale, minutes],
   );
   const trend = data?.trend ?? [];
-  const reasons = data?.reasons ?? [];
   const events = data?.events ?? [];
   const configured = data?.configured !== false;
   const trendConfig = useMemo(() => trendChartConfig(copy), [copy]);
@@ -437,6 +728,198 @@ export function BotProtectionClient({
         locale,
       }),
     [copy.botRequests, copy.botTrafficRatio, formatter, locale],
+  );
+  const detectionTabs = useMemo(
+    () =>
+      [
+        {
+          value: "reason",
+          label: copy.reason,
+          columnLabel: copy.reason,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "confidence",
+          label: copy.confidence,
+          columnLabel: copy.confidence,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "kind",
+          label: copy.kind,
+          columnLabel: copy.kind,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "botScoreBucket",
+          label: copy.botScoreBucket,
+          columnLabel: copy.botScoreBucket,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "verifiedBotCategory",
+          label: copy.verifiedBotCategory,
+          columnLabel: copy.verifiedBotCategory,
+          primaryMetricLabel: copy.blocked,
+        },
+      ] satisfies [
+        AsyncDimensionBreakdownTab<DetectionDimensionTab>,
+        ...AsyncDimensionBreakdownTab<DetectionDimensionTab>[],
+      ],
+    [copy],
+  );
+  const targetTabs = useMemo(
+    () =>
+      [
+        {
+          value: "site",
+          label: copy.site,
+          columnLabel: copy.site,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "hostname",
+          label: copy.hostname,
+          columnLabel: copy.hostname,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "pathname",
+          label: copy.pathname,
+          columnLabel: copy.pathname,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "origin",
+          label: copy.origin,
+          columnLabel: copy.origin,
+          primaryMetricLabel: copy.blocked,
+        },
+      ] satisfies [
+        AsyncDimensionBreakdownTab<TargetDimensionTab>,
+        ...AsyncDimensionBreakdownTab<TargetDimensionTab>[],
+      ],
+    [copy],
+  );
+  const networkTabs = useMemo(
+    () =>
+      [
+        {
+          value: "asOrganization",
+          label: copy.asOrganization,
+          columnLabel: copy.asOrganization,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "asn",
+          label: copy.asn,
+          columnLabel: copy.asn,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "country",
+          label: copy.country,
+          columnLabel: copy.country,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "region",
+          label: copy.region,
+          columnLabel: copy.region,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "city",
+          label: copy.city,
+          columnLabel: copy.city,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "colo",
+          label: copy.colo,
+          columnLabel: copy.colo,
+          primaryMetricLabel: copy.blocked,
+        },
+      ] satisfies [
+        AsyncDimensionBreakdownTab<NetworkDimensionTab>,
+        ...AsyncDimensionBreakdownTab<NetworkDimensionTab>[],
+      ],
+    [copy],
+  );
+  const clientTabs = useMemo(
+    () =>
+      [
+        {
+          value: "ip",
+          label: copy.ip,
+          columnLabel: copy.ip,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "userAgent",
+          label: copy.userAgent,
+          columnLabel: copy.userAgent,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "userAgentLengthBucket",
+          label: copy.userAgentLengthBucket,
+          columnLabel: copy.userAgentLengthBucket,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "ipPrefix",
+          label: copy.ipPrefix,
+          columnLabel: copy.ipPrefix,
+          primaryMetricLabel: copy.blocked,
+        },
+      ] satisfies [
+        AsyncDimensionBreakdownTab<ClientDimensionTab>,
+        ...AsyncDimensionBreakdownTab<ClientDimensionTab>[],
+      ],
+    [copy],
+  );
+  const loadDetectionRows = useMemo(
+    () => async (tab: DetectionDimensionTab) =>
+      toAsyncDimensionRows(
+        aggregateDimensionRows(events, copy, (event) =>
+          valuesForDetectionTab(event, tab, copy),
+        ),
+      ),
+    [copy, events],
+  );
+  const loadTargetRows = useMemo(
+    () => async (tab: TargetDimensionTab) =>
+      toAsyncDimensionRows(
+        aggregateDimensionRows(events, copy, (event) =>
+          valuesForTargetTab(event, tab),
+        ),
+        { targetTab: tab },
+      ),
+    [copy, events],
+  );
+  const loadNetworkRows = useMemo(
+    () => async (tab: NetworkDimensionTab) =>
+      toAsyncDimensionRows(
+        aggregateDimensionRows(events, copy, (event) =>
+          valuesForNetworkTab(event, tab),
+        ),
+        {
+          networkTab: tab,
+          locale,
+          unknownLabel: copy.emptyValue,
+        },
+      ),
+    [copy, events, locale],
+  );
+  const loadClientRows = useMemo(
+    () => async (tab: ClientDimensionTab) =>
+      toAsyncDimensionRows(
+        aggregateDimensionRows(events, copy, (event) =>
+          valuesForClientTab(event, tab),
+        ),
+      ),
+    [copy, events],
   );
 
   return (
@@ -451,6 +934,8 @@ export function BotProtectionClient({
           heightClassName="h-full"
           countryHoverEnabled={false}
           pointColor={[239, 68, 68]}
+          projectionMode="globe"
+          autoRotate
         />
 
         <div className="pointer-events-none absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-background via-background/65 to-transparent" />
@@ -661,73 +1146,48 @@ export function BotProtectionClient({
             </CardContent>
           </Card>
 
-          <div className="grid gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>{copy.reasonsTitle}</CardTitle>
-                <CardDescription>{copy.reasonsDescription}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer
-                  config={REASON_CHART_CONFIG}
-                  className="h-[280px] w-full"
-                >
-                  <BarChart
-                    data={reasons}
-                    layout="vertical"
-                    margin={{ left: 12 }}
-                  >
-                    <CartesianGrid horizontal={false} />
-                    <XAxis type="number" hide />
-                    <YAxis
-                      type="category"
-                      dataKey="reason"
-                      width={122}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={compactReason}
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar
-                      dataKey="count"
-                      fill="var(--color-count)"
-                      radius={[0, 3, 3, 0]}
-                    />
-                  </BarChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{copy.asnTitle}</CardTitle>
-              <CardDescription>{copy.asnDescription}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-                {(data?.asns ?? []).map((asn) => (
-                  <div
-                    key={asn.asn}
-                    className="min-w-0 border border-border/70 p-3"
-                  >
-                    <p className="truncate font-mono text-sm font-semibold">
-                      AS{asn.asn}
-                    </p>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {asn.asOrganization || "--"}
-                    </p>
-                    <p className="mt-3 font-mono text-lg font-semibold">
-                      {numberFormat(locale, asn.count)}
-                    </p>
-                  </div>
-                ))}
-                {!loading && (data?.asns ?? []).length === 0 ? (
-                  <p className="text-sm text-muted-foreground">{copy.noData}</p>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
+          <section className="grid gap-4 xl:grid-cols-2">
+            <AsyncDimensionBreakdownCard
+              locale={locale}
+              messages={messages}
+              tabs={detectionTabs}
+              loadRows={loadDetectionRows}
+              requestKey={`${minutes}:${events.length}:detection`}
+              className="h-full"
+              secondaryMetricLabel={copy.highConfidenceRequests}
+              emptyLabel={copy.noData}
+            />
+            <AsyncDimensionBreakdownCard
+              locale={locale}
+              messages={messages}
+              tabs={targetTabs}
+              loadRows={loadTargetRows}
+              requestKey={`${minutes}:${events.length}:target`}
+              className="h-full"
+              secondaryMetricLabel={copy.highConfidenceRequests}
+              emptyLabel={copy.noData}
+            />
+            <AsyncDimensionBreakdownCard
+              locale={locale}
+              messages={messages}
+              tabs={networkTabs}
+              loadRows={loadNetworkRows}
+              requestKey={`${minutes}:${events.length}:network`}
+              className="h-full"
+              secondaryMetricLabel={copy.highConfidenceRequests}
+              emptyLabel={copy.noData}
+            />
+            <AsyncDimensionBreakdownCard
+              locale={locale}
+              messages={messages}
+              tabs={clientTabs}
+              loadRows={loadClientRows}
+              requestKey={`${minutes}:${events.length}:client`}
+              className="h-full"
+              secondaryMetricLabel={copy.highConfidenceRequests}
+              emptyLabel={copy.noData}
+            />
+          </section>
 
           <Card>
             <CardHeader>
@@ -794,7 +1254,7 @@ export function BotProtectionClient({
                           </Badge>
                           {event.reasons.slice(0, 2).map((reason) => (
                             <Badge key={reason} variant="outline">
-                              {compactReason(reason)}
+                              {botReasonLabel(copy, reason)}
                             </Badge>
                           ))}
                         </div>
