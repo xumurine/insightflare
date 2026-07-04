@@ -3,8 +3,6 @@
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { Icon } from "@iconify/react";
 import {
-  RiArrowDownSLine,
-  RiArrowUpSLine,
   RiCheckboxCircleFill,
   RiCloseCircleFill,
   RiErrorWarningFill,
@@ -24,8 +22,6 @@ import {
   YAxis,
 } from "recharts";
 
-import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
-import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import {
   type CountriesFeatureCollection,
@@ -39,6 +35,10 @@ import {
   WORLD_MAP_WIDTH,
 } from "@/components/dashboard/site-pages/performance-map-utils";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+import {
+  TabbedDataTableCard,
+  type TabbedDataTableColumn,
+} from "@/components/dashboard/tabbed-data-table-card";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,7 +52,6 @@ import {
 } from "@/components/ui/chart";
 import { Clickable } from "@/components/ui/clickable";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { fetchPerformance } from "@/lib/dashboard/client-data";
 import { intlLocale, numberFormat } from "@/lib/dashboard/format";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
@@ -101,6 +100,7 @@ interface MetricCardModel {
 }
 
 interface PathPerformanceRow {
+  key: string;
   pathname: string;
   views: number;
   samples: number;
@@ -110,6 +110,7 @@ interface PathPerformanceRow {
 }
 
 interface CountryHealthRow {
+  key: string;
   country: string;
   label: string;
   iconName: string | null;
@@ -1889,7 +1890,6 @@ function PerformanceHealthMapCard({
       return ((a.value ?? -1) - (b.value ?? -1)) * direction;
     });
   }, [countries, sort.direction, sort.key]);
-  const maxSamples = Math.max(1, ...sortedCountries.map((row) => row.samples));
   const groupedRows = useMemo(
     () => ({
       poor: sortedCountries.filter((row) => row.status === "poor"),
@@ -2143,7 +2143,6 @@ function PerformanceHealthMapCard({
               activePanel={activePanel}
               status={status}
               rows={groupedRows[status]}
-              maxSamples={maxSamples}
               sort={sort}
               onSort={updateSort}
             />
@@ -2160,7 +2159,6 @@ function CountryStatusColumn({
   activePanel,
   status,
   rows,
-  maxSamples,
   sort,
   onSort,
 }: {
@@ -2169,75 +2167,47 @@ function CountryStatusColumn({
   activePanel: PerformancePanelKey;
   status: Exclude<PerformanceStatus, "none">;
   rows: CountryHealthRow[];
-  maxSamples: number;
   sort: { key: PathSortKey; direction: SortDirection };
   onSort: (key: PathSortKey) => void;
 }) {
   const statusStyle = STATUS_STYLE[status];
   const StatusIcon = statusStyle.icon;
-  const header = (
-    <TableRow className="hover:bg-transparent">
-      <TableHead className="h-8 p-0">
-        <div className="px-4">{messages.common.country}</div>
-      </TableHead>
-      <TableHead className="h-8 p-0 w-20">
-        <div className="flex justify-end px-2">
-          <SortHeaderButton
-            active={sort.key === "samples"}
-            direction={sort.direction}
-            onClick={() => onSort("samples")}
-          >
-            {messages.performance.samplesLabel}
-          </SortHeaderButton>
-        </div>
-      </TableHead>
-      <TableHead className="h-8 p-0 w-20">
-        <div className="flex justify-end px-2">
-          <SortHeaderButton
-            active={sort.key === "value"}
-            direction={sort.direction}
-            onClick={() => onSort("value")}
-          >
-            {activePanel === "score"
-              ? messages.performance.score
-              : messages.performance.metricValueColumn}
-          </SortHeaderButton>
-        </div>
-      </TableHead>
-    </TableRow>
+  const columns = useMemo<
+    readonly TabbedDataTableColumn<
+      CountryHealthRow,
+      PathSortKey,
+      typeof status
+    >[]
+  >(
+    () => [
+      {
+        key: "samples",
+        label: messages.performance.samplesLabel,
+        getValue: (row) => row.samples,
+        format: (value) => numberFormat(locale, value),
+        className: "font-mono tabular-nums",
+      },
+      {
+        key: "value",
+        label:
+          activePanel === "score"
+            ? messages.performance.score
+            : messages.performance.metricValueColumn,
+        getValue: (row) => row.value ?? row.score ?? 0,
+        format: (_value, row) =>
+          formatPanelValue(locale, messages, activePanel, row.value),
+        className: "font-mono tabular-nums",
+      },
+    ],
+    [
+      activePanel,
+      locale,
+      messages,
+      messages.performance.metricValueColumn,
+      messages.performance.samplesLabel,
+      messages.performance.score,
+    ],
   );
-
-  const renderedRows = rows.map((row) => {
-    const progressWidth = `${Math.max(2, Math.min(100, (row.samples / maxSamples) * 100))}%`;
-    return (
-      <AnimatedDataTableRow
-        key={`${status}-${row.country}`}
-        className="group/row bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-[0.98] dark:hover:brightness-125"
-        style={{
-          backgroundImage:
-            "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
-          backgroundPosition: "left top",
-          backgroundSize: `${progressWidth} 100%`,
-        }}
-      >
-        <TableCell className="p-0 whitespace-normal align-top">
-          <div className="max-w-[18rem] px-4 py-2 leading-5 whitespace-normal break-words">
-            <CountryLabelWithFlag label={row.label} iconName={row.iconName} />
-          </div>
-        </TableCell>
-        <TableCell className="p-0 text-right">
-          <div className="px-2 py-2 font-mono tabular-nums">
-            {numberFormat(locale, row.samples)}
-          </div>
-        </TableCell>
-        <TableCell className="p-0 text-right">
-          <div className="px-4 py-2 font-mono tabular-nums">
-            {formatPanelValue(locale, messages, activePanel, row.value)}
-          </div>
-        </TableCell>
-      </AnimatedDataTableRow>
-    );
-  });
 
   return (
     <div className="min-w-0">
@@ -2261,45 +2231,38 @@ function CountryStatusColumn({
         </div>
       </div>
       <div className="pb-4">
-        <DataTableSwitch
-          loading={false}
-          hasContent={rows.length > 0}
+        <TabbedDataTableCard<typeof status, CountryHealthRow, PathSortKey>
+          tabs={[
+            {
+              value: status,
+              label: statusLabel(messages, status),
+              columnLabel: messages.common.country,
+              defaultSort: sort,
+            },
+          ]}
+          rowsByTab={
+            { [status]: rows } as Record<typeof status, CountryHealthRow[]>
+          }
+          columns={columns}
+          value={status}
+          sortByTab={{ [status]: sort } as Record<typeof status, typeof sort>}
+          onSortChange={(_tab, next) => onSort(next.key)}
+          renderLabel={(row) => (
+            <span className="max-w-[18rem]">
+              <CountryLabelWithFlag label={row.label} iconName={row.iconName} />
+            </span>
+          )}
           loadingLabel={messages.common.loading}
           emptyLabel={messages.common.noData}
-          colSpan={3}
-          contentKey={`countries-${activePanel}-${status}-${sort.key}-${sort.direction}-${rows.length}`}
-          header={header}
-          rows={renderedRows}
+          headerHidden
+          search={false}
+          progress="samples"
+          getRowClassName={() =>
+            "hover:brightness-[0.98] dark:hover:brightness-125"
+          }
         />
       </div>
     </div>
-  );
-}
-
-function SortHeaderButton({
-  active,
-  direction,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  direction: SortDirection;
-  children: string;
-  onClick: () => void;
-}) {
-  const SortIcon = direction === "asc" ? RiArrowUpSLine : RiArrowDownSLine;
-  return (
-    <button
-      type="button"
-      className={cn(
-        "inline-flex items-center gap-1 whitespace-nowrap transition-colors hover:text-foreground",
-        active ? "text-foreground" : "text-muted-foreground",
-      )}
-      onClick={onClick}
-    >
-      <span>{children}</span>
-      {active ? <SortIcon className="size-3" /> : null}
-    </button>
   );
 }
 
@@ -2336,7 +2299,6 @@ function PathStatusColumn({
   activePanel,
   status,
   rows,
-  maxSamples,
   sort,
   onSort,
 }: {
@@ -2345,76 +2307,47 @@ function PathStatusColumn({
   activePanel: PerformancePanelKey;
   status: Exclude<PerformanceStatus, "none">;
   rows: PathPerformanceRow[];
-  maxSamples: number;
   sort: { key: PathSortKey; direction: SortDirection };
   onSort: (key: PathSortKey) => void;
 }) {
   const statusStyle = STATUS_STYLE[status];
   const StatusIcon = statusStyle.icon;
-  const header = (
-    <TableRow className="hover:bg-transparent">
-      <TableHead className="h-8 p-0">
-        <div className="px-4">{messages.common.path}</div>
-      </TableHead>
-      <TableHead className="h-8 p-0 w-20">
-        <div className="flex justify-end px-2">
-          <SortHeaderButton
-            active={sort.key === "samples"}
-            direction={sort.direction}
-            onClick={() => onSort("samples")}
-          >
-            {messages.performance.samplesLabel}
-          </SortHeaderButton>
-        </div>
-      </TableHead>
-      <TableHead className="h-8 p-0 w-20">
-        <div className="flex justify-end px-2">
-          <SortHeaderButton
-            active={sort.key === "value"}
-            direction={sort.direction}
-            onClick={() => onSort("value")}
-          >
-            {activePanel === "score"
-              ? messages.performance.score
-              : messages.performance.metricValueColumn}
-          </SortHeaderButton>
-        </div>
-      </TableHead>
-    </TableRow>
+  const columns = useMemo<
+    readonly TabbedDataTableColumn<
+      PathPerformanceRow,
+      PathSortKey,
+      typeof status
+    >[]
+  >(
+    () => [
+      {
+        key: "samples",
+        label: messages.performance.samplesLabel,
+        getValue: (row) => row.samples,
+        format: (value) => numberFormat(locale, value),
+        className: "font-mono tabular-nums",
+      },
+      {
+        key: "value",
+        label:
+          activePanel === "score"
+            ? messages.performance.score
+            : messages.performance.metricValueColumn,
+        getValue: (row) => row.value ?? row.score ?? 0,
+        format: (_value, row) =>
+          formatPanelValue(locale, messages, activePanel, row.value),
+        className: "font-mono tabular-nums",
+      },
+    ],
+    [
+      activePanel,
+      locale,
+      messages,
+      messages.performance.metricValueColumn,
+      messages.performance.samplesLabel,
+      messages.performance.score,
+    ],
   );
-
-  const renderedRows = rows.map((row) => {
-    const progressWidth = `${Math.max(2, Math.min(100, (row.samples / maxSamples) * 100))}%`;
-    const displayPathname = decodeUrlDisplayValue(row.pathname || "/");
-    return (
-      <AnimatedDataTableRow
-        key={`${status}-${row.pathname}`}
-        className="group/row bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-[0.98] dark:hover:brightness-125"
-        style={{
-          backgroundImage:
-            "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
-          backgroundPosition: "left top",
-          backgroundSize: `${progressWidth} 100%`,
-        }}
-      >
-        <TableCell className="p-0 whitespace-normal align-top">
-          <div className="max-w-[18rem] px-4 py-2 leading-5 whitespace-normal break-words">
-            {displayPathname}
-          </div>
-        </TableCell>
-        <TableCell className="p-0 text-right">
-          <div className="px-2 py-2 font-mono tabular-nums">
-            {numberFormat(locale, row.samples)}
-          </div>
-        </TableCell>
-        <TableCell className="p-0 text-right">
-          <div className="px-4 py-2 font-mono tabular-nums">
-            {formatPanelValue(locale, messages, activePanel, row.value)}
-          </div>
-        </TableCell>
-      </AnimatedDataTableRow>
-    );
-  });
 
   return (
     <div className="min-w-0">
@@ -2438,15 +2371,35 @@ function PathStatusColumn({
         </div>
       </div>
       <div className="pb-4">
-        <DataTableSwitch
-          loading={false}
-          hasContent={rows.length > 0}
+        <TabbedDataTableCard<typeof status, PathPerformanceRow, PathSortKey>
+          tabs={[
+            {
+              value: status,
+              label: statusLabel(messages, status),
+              columnLabel: messages.common.path,
+              defaultSort: sort,
+            },
+          ]}
+          rowsByTab={
+            { [status]: rows } as Record<typeof status, PathPerformanceRow[]>
+          }
+          columns={columns}
+          value={status}
+          sortByTab={{ [status]: sort } as Record<typeof status, typeof sort>}
+          onSortChange={(_tab, next) => onSort(next.key)}
+          renderLabel={(row) => (
+            <span className="max-w-[18rem] font-mono break-words">
+              {decodeUrlDisplayValue(row.pathname || "/")}
+            </span>
+          )}
           loadingLabel={messages.common.loading}
           emptyLabel={messages.common.noData}
-          colSpan={3}
-          contentKey={`${activePanel}-${status}-${sort.key}-${sort.direction}-${rows.length}`}
-          header={header}
-          rows={renderedRows}
+          headerHidden
+          search={false}
+          progress="samples"
+          getRowClassName={() =>
+            "hover:brightness-[0.98] dark:hover:brightness-125"
+          }
         />
       </div>
     </div>
@@ -2481,7 +2434,6 @@ function PathPerformanceTable({
       return ((a.value ?? -1) - (b.value ?? -1)) * direction;
     });
   }, [rows, sort.direction, sort.key]);
-  const maxSamples = Math.max(1, ...sortedRows.map((row) => row.samples));
   const groupedRows = useMemo(
     () => ({
       poor: sortedRows.filter((row) => row.status === "poor"),
@@ -2533,7 +2485,6 @@ function PathPerformanceTable({
               activePanel={activePanel}
               status={status}
               rows={groupedRows[status]}
-              maxSamples={maxSamples}
               sort={sort}
               onSort={updateSort}
             />
@@ -2650,8 +2601,10 @@ export function PerformanceClientPage({
       (performanceData.routes ?? []).map((route) => {
         const value = routeValue(route, activePanel);
         const score = routeScore(route);
+        const pathname = route.pathname || "/";
         return {
-          pathname: route.pathname || "/",
+          key: pathname,
+          pathname,
           views: route.views ?? 0,
           samples: routeSamples(route, activePanel),
           value,
@@ -2678,6 +2631,7 @@ export function PerformanceClientPage({
           );
           const flagCode = resolveCountryFlagCode(code, locale);
           return {
+            key: normalizedCountry,
             country: normalizedCountry,
             label,
             iconName: flagCode ? `flagpack:${flagCode.toLowerCase()}` : null,

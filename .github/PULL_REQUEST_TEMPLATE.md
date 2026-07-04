@@ -6,8 +6,8 @@ Describe what this PR changes and why.
 
 List the checks you ran.
 
-- [ ] `npm run check:dry`
-- [ ] `npm run ci:build`
+- [ ] `npm run check`
+- [ ] `npm run build:demo`
 
 ## Notes
 

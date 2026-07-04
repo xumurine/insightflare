@@ -27,6 +27,8 @@ interface GeoPointsMapIslandProps {
   onCountrySelect?: (countryCode: string | null) => void;
 }
 
+const DEFAULT_MAP_HEIGHT_CLASS = "h-[460px]";
+
 const GeoPointsMapClient = dynamic<GeoPointsMapIslandProps>(
   () =>
     import("@/components/dashboard/geo-points-map").then(
@@ -40,7 +42,7 @@ const GeoPointsMapClient = dynamic<GeoPointsMapIslandProps>(
 
 function GeoPointsMapFallback() {
   return (
-    <div className="flex h-[460px] items-center justify-center overflow-hidden rounded-md border border-border/70 bg-muted/20">
+    <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-md border border-border/70 bg-muted/20">
       <Spinner className="size-6" />
     </div>
   );
@@ -48,6 +50,13 @@ function GeoPointsMapFallback() {
 
 export type { GeoPointsMapCountryCount, GeoPointsMapPoint };
 
-export function GeoPointsMapIsland(props: GeoPointsMapIslandProps) {
-  return <GeoPointsMapClient {...props} />;
+export function GeoPointsMapIsland({
+  heightClassName,
+  ...props
+}: GeoPointsMapIslandProps) {
+  return (
+    <div className={`${heightClassName ?? DEFAULT_MAP_HEIGHT_CLASS} w-full`}>
+      <GeoPointsMapClient {...props} heightClassName="h-full" />
+    </div>
+  );
 }
