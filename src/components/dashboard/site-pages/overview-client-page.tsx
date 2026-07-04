@@ -2,7 +2,6 @@
 
 import {
   type MouseEvent,
-  type ReactNode,
   useCallback,
   useEffect,
   useId,
@@ -14,21 +13,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import {
   RiArrowDownLine,
-  RiArrowDownSLine,
   RiArrowRightUpLine,
   RiArrowUpLine,
-  RiArrowUpSLine,
   RiLineChartLine,
   RiSearchLine,
 } from "@remixicon/react";
-import { AnimatePresence, useReducedMotion } from "motion/react";
-import type { PartialOptions } from "overlayscrollbars";
-import { OverlayScrollbars } from "overlayscrollbars";
 import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
 
-import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
-import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import {
   DeviceMeta,
   resolveDeviceTypeMeta,
@@ -39,32 +31,17 @@ import {
 } from "@/components/dashboard/lazy-geo-location-label";
 import { OverviewGeoPointsMapCard } from "@/components/dashboard/overview-geo-points-map-card";
 import { PageHeading } from "@/components/dashboard/page-heading";
-import { TabbedScrollMaskCard } from "@/components/dashboard/tabbed-scroll-mask-card";
+import {
+  TabbedDataTableCard,
+  type TabbedDataTableColumn,
+  type TabbedDataTableTab,
+} from "@/components/dashboard/tabbed-data-table-card";
 import { TrendChart } from "@/components/dashboard/trend-chart";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clickable } from "@/components/ui/clickable";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
-import { Input } from "@/components/ui/input";
-import {
-  prepareNativeScrollbarHost,
-  useNativeScrollbars,
-} from "@/components/ui/overlay-scrollbar";
 import { Spinner } from "@/components/ui/spinner";
-import { TableCell, TableHead, TableRow } from "@/components/ui/table";
-import { useIsMobile } from "@/hooks/use-mobile";
 import {
   replaceUrlWithoutNavigation,
   useLiveSearchParams,
@@ -548,18 +525,6 @@ const GEO_AUX_QUERY_PARAM_BY_TAB: Record<
   organization: "geoOrganization",
 };
 const DIRECT_REFERRER_FILTER_VALUE = "__direct__";
-const PANEL_SCROLLBAR_OPTIONS = {
-  overflow: {
-    x: "hidden",
-    y: "scroll",
-  },
-  scrollbars: {
-    theme: "os-theme-insightflare",
-    autoHide: "move",
-    autoHideDelay: 420,
-    autoHideSuspend: false,
-  },
-} satisfies PartialOptions;
 const GEO_REGION_VALUE_SEPARATOR = "::";
 
 function createOverviewCardTabCache<T extends string>(
@@ -1672,63 +1637,6 @@ function resolvePageCardTargetUrl(params: {
   return null;
 }
 
-function PanelScrollbar({
-  children,
-  className,
-  syncKey,
-}: {
-  children: ReactNode;
-  className?: string;
-  syncKey?: string | number | boolean | null;
-}) {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
-    null,
-  );
-  const nativeScrollbars = useNativeScrollbars();
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    if (prepareNativeScrollbarHost(host)) return;
-
-    const existing = OverlayScrollbars(host);
-    const instance =
-      existing ?? OverlayScrollbars(host, PANEL_SCROLLBAR_OPTIONS);
-    if (existing) {
-      existing.options(PANEL_SCROLLBAR_OPTIONS);
-    }
-    scrollbarRef.current = instance;
-    instance.update();
-
-    return () => {
-      if (!existing) {
-        instance.destroy();
-      }
-      if (scrollbarRef.current === instance) {
-        scrollbarRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    scrollbarRef.current?.update();
-  }, [syncKey]);
-
-  return (
-    <div
-      ref={hostRef}
-      className={cn(
-        nativeScrollbars ? "overflow-y-auto" : "overflow-hidden",
-        className,
-      )}
-      data-overlayscrollbars-initialize={nativeScrollbars ? undefined : ""}
-    >
-      {children}
-    </div>
-  );
-}
-
 function useChartVisibility(rootMargin = "120px 0px") {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -1971,8 +1879,6 @@ export function OverviewPagesSection({
   const router = useRouter();
   const searchParams = useLiveSearchParams();
   const livePathname = usePathname() || pathname;
-  const isMobile = useIsMobile();
-  const reduceDataRowMotion = useReducedMotion() ?? false;
   const { window } = useDashboardQuery();
   const resolvedPageCardTabs = useMemo(
     () => pageCardTabs ?? PAGE_CARD_TABS,
@@ -2023,46 +1929,6 @@ export function OverviewPagesSection({
     useState<ClientDimensionCardTab>("browser");
   const [geoDimensionCardTab, setGeoDimensionCardTab] =
     useState<GeoDimensionCardTab>("country");
-  const [pageCardSort, setPageCardSort] = useState<{
-    key: PageCardSortKey;
-    direction: "asc" | "desc";
-  }>({
-    key: "views",
-    direction: "desc",
-  });
-  const [sourceCardSort, setSourceCardSort] = useState<{
-    key: PageCardSortKey;
-    direction: "asc" | "desc";
-  }>({
-    key: "views",
-    direction: "desc",
-  });
-  const [clientDimensionCardSort, setClientDimensionCardSort] = useState<{
-    key: PageCardSortKey;
-    direction: "asc" | "desc";
-  }>({
-    key: "views",
-    direction: "desc",
-  });
-  const [geoDimensionCardSort, setGeoDimensionCardSort] = useState<{
-    key: PageCardSortKey;
-    direction: "asc" | "desc";
-  }>({
-    key: "views",
-    direction: "desc",
-  });
-  const [pageCardSearchOpen, setPageCardSearchOpen] = useState(false);
-  const [pageCardSearchTerm, setPageCardSearchTerm] = useState("");
-  const [sourceCardSearchOpen, setSourceCardSearchOpen] = useState(false);
-  const [sourceCardSearchTerm, setSourceCardSearchTerm] = useState("");
-  const [clientDimensionCardSearchOpen, setClientDimensionCardSearchOpen] =
-    useState(false);
-  const [clientDimensionCardSearchTerm, setClientDimensionCardSearchTerm] =
-    useState("");
-  const [geoDimensionCardSearchOpen, setGeoDimensionCardSearchOpen] =
-    useState(false);
-  const [geoDimensionCardSearchTerm, setGeoDimensionCardSearchTerm] =
-    useState("");
   const hasCardDataOverride = Boolean(cardDataOverride);
   const resolvedPageCardTabData = cardDataOverride?.page ?? pageCardTabData;
   const resolvedSourceCardTabData =
@@ -2295,35 +2161,6 @@ export function OverviewPagesSection({
     hasCardDataOverride,
   ]);
 
-  useEffect(() => {
-    if (!pageCardSearchOpen) {
-      setPageCardSearchTerm("");
-    }
-  }, [pageCardSearchOpen]);
-  useEffect(() => {
-    if (!sourceCardSearchOpen) {
-      setSourceCardSearchTerm("");
-    }
-  }, [sourceCardSearchOpen]);
-  useEffect(() => {
-    if (!clientDimensionCardSearchOpen) {
-      setClientDimensionCardSearchTerm("");
-    }
-  }, [clientDimensionCardSearchOpen]);
-  useEffect(() => {
-    if (!geoDimensionCardSearchOpen) {
-      setGeoDimensionCardSearchTerm("");
-    }
-  }, [geoDimensionCardSearchOpen]);
-
-  const pageCardLoading =
-    !hasCardDataOverride && activePageCardTabData === null;
-  const sourceCardLoading =
-    !hasCardDataOverride && activeSourceCardTabData === null;
-  const clientDimensionCardLoading =
-    !hasCardDataOverride && activeClientDimensionCardTabData === null;
-  const geoDimensionCardLoading =
-    !hasCardDataOverride && activeGeoDimensionCardTabData === null;
   const noDataText = messages.common.noData;
 
   const pageCardTabMeta = useMemo<Record<PageCardTab, PageCardTabMeta>>(
@@ -2501,39 +2338,6 @@ export function OverviewPagesSection({
     }),
     [pathRows, queryRows, titleRows, hostnameRows, entryRows, exitRows],
   );
-  const activePageTabMeta = pageCardTabMeta[pageCardTab];
-  const effectivePageCardSortKey: PageCardSortKey = pageCardShowVisitors
-    ? pageCardSort.key
-    : "views";
-  const pageCardColumnSpan = pageCardShowVisitors ? 3 : 2;
-  const sortedPageCardRows = useMemo(() => {
-    const source = pageCardRows[pageCardTab];
-    const direction = pageCardSort.direction === "asc" ? 1 : -1;
-
-    return [...source].sort((left, right) => {
-      const primary =
-        (left[effectivePageCardSortKey] - right[effectivePageCardSortKey]) *
-        direction;
-      if (primary !== 0) return primary;
-      return (left.displayLabel ?? left.label).localeCompare(
-        right.displayLabel ?? right.label,
-      );
-    });
-  }, [
-    effectivePageCardSortKey,
-    pageCardRows,
-    pageCardSort.direction,
-    pageCardTab,
-  ]);
-  const pageCardProgressTotal = useMemo(
-    () =>
-      sortedPageCardRows.reduce(
-        (sum, item) =>
-          sum + Math.max(0, Number(item[effectivePageCardSortKey] ?? 0)),
-        0,
-      ),
-    [effectivePageCardSortKey, sortedPageCardRows],
-  );
   const activePageCardQueryValue = useMemo(() => {
     const queryParamKey = pageCardQueryParamByTab[pageCardTab];
     if (!queryParamKey) return null;
@@ -2542,31 +2346,6 @@ export function OverviewPagesSection({
     const normalized = raw.trim();
     return normalized.length > 0 ? normalized : null;
   }, [pageCardQueryParamByTab, pageCardTab, searchParams]);
-  const visiblePageCardRows = useMemo(
-    () =>
-      activePageCardQueryValue
-        ? sortedPageCardRows.filter(
-            (row) =>
-              (row.filterValue ?? row.label) === activePageCardQueryValue,
-          )
-        : sortedPageCardRows,
-    [activePageCardQueryValue, sortedPageCardRows],
-  );
-  const normalizedPageCardSearchTerm = pageCardSearchTerm
-    .trim()
-    .toLocaleLowerCase();
-  const searchedPageCardRows = useMemo(() => {
-    if (!normalizedPageCardSearchTerm) return sortedPageCardRows;
-    return sortedPageCardRows.filter((row) => {
-      const displayLabel = row.displayLabel ?? row.label;
-      return (
-        displayLabel
-          .toLocaleLowerCase()
-          .includes(normalizedPageCardSearchTerm) ||
-        row.label.toLocaleLowerCase().includes(normalizedPageCardSearchTerm)
-      );
-    });
-  }, [normalizedPageCardSearchTerm, sortedPageCardRows]);
   const pageCardDefaultHostname = useMemo(() => {
     const filteredHostname = sanitizeHostname(filters.hostname ?? "");
     if (filteredHostname.length > 0) return filteredHostname;
@@ -2644,26 +2423,6 @@ export function OverviewPagesSection({
     }),
     [sourceDomainRows, sourceLinkRows],
   );
-  const activeSourceTabMeta = sourceCardTabMeta[sourceCardTab];
-  const sortedSourceCardRows = useMemo(() => {
-    const direction = sourceCardSort.direction === "asc" ? 1 : -1;
-    return [...sourceCardRows[sourceCardTab]].sort((left, right) => {
-      const primary =
-        (left[sourceCardSort.key] - right[sourceCardSort.key]) * direction;
-      if (primary !== 0) return primary;
-      if (right.views !== left.views) return right.views - left.views;
-      if (right.visitors !== left.visitors)
-        return right.visitors - left.visitors;
-      return (left.displayLabel ?? left.label).localeCompare(
-        right.displayLabel ?? right.label,
-      );
-    });
-  }, [
-    sourceCardRows,
-    sourceCardSort.direction,
-    sourceCardSort.key,
-    sourceCardTab,
-  ]);
   const activeSourceCardQueryValue = useMemo(() => {
     const queryParamKey = SOURCE_CARD_QUERY_PARAM_BY_TAB[sourceCardTab];
     const raw = searchParams.get(queryParamKey);
@@ -2671,38 +2430,6 @@ export function OverviewPagesSection({
     const normalized = raw.trim();
     return normalized.length > 0 ? normalized : null;
   }, [searchParams, sourceCardTab]);
-  const visibleSourceCardRows = useMemo(
-    () =>
-      activeSourceCardQueryValue
-        ? sortedSourceCardRows.filter(
-            (row) => row.filterValue === activeSourceCardQueryValue,
-          )
-        : sortedSourceCardRows,
-    [activeSourceCardQueryValue, sortedSourceCardRows],
-  );
-  const normalizedSourceCardSearchTerm = sourceCardSearchTerm
-    .trim()
-    .toLocaleLowerCase();
-  const searchedSourceCardRows = useMemo(() => {
-    if (!normalizedSourceCardSearchTerm) return sortedSourceCardRows;
-    return sortedSourceCardRows.filter((row) => {
-      const displayLabel = row.displayLabel ?? row.label;
-      return (
-        displayLabel
-          .toLocaleLowerCase()
-          .includes(normalizedSourceCardSearchTerm) ||
-        row.label.toLocaleLowerCase().includes(normalizedSourceCardSearchTerm)
-      );
-    });
-  }, [normalizedSourceCardSearchTerm, sortedSourceCardRows]);
-  const sourceCardProgressTotal = useMemo(
-    () =>
-      sortedSourceCardRows.reduce(
-        (sum, item) => sum + Math.max(0, Number(item[sourceCardSort.key] ?? 0)),
-        0,
-      ),
-    [sortedSourceCardRows, sourceCardSort.key],
-  );
   const clientDimensionCardTabMeta: Record<
     ClientDimensionCardTab,
     { label: string; columnLabel: string; mono: boolean }
@@ -2956,53 +2683,8 @@ export function OverviewPagesSection({
     messages.geo.timezoneDeltaVsLocal,
     timezoneReferenceTimestampMs,
   ]);
-  const activeClientDimensionTabMeta =
-    clientDimensionCardTabMeta[clientDimensionCardTab];
-  const activeGeoDimensionTabMeta =
-    geoDimensionCardTabMeta[geoDimensionCardTab];
   const resolvedPrimaryMetricLabel =
     primaryMetricLabel ?? messages.common.views;
-  const sortedClientDimensionCardRows = useMemo(() => {
-    const direction = clientDimensionCardSort.direction === "asc" ? 1 : -1;
-    return [...clientDimensionCardRows[clientDimensionCardTab]].sort(
-      (left, right) => {
-        const primary =
-          (left[clientDimensionCardSort.key] -
-            right[clientDimensionCardSort.key]) *
-          direction;
-        if (primary !== 0) return primary;
-        if (right.views !== left.views) return right.views - left.views;
-        if (right.visitors !== left.visitors)
-          return right.visitors - left.visitors;
-        return left.label.localeCompare(right.label);
-      },
-    );
-  }, [
-    clientDimensionCardRows,
-    clientDimensionCardSort.direction,
-    clientDimensionCardSort.key,
-    clientDimensionCardTab,
-  ]);
-  const sortedGeoDimensionCardRows = useMemo(() => {
-    const direction = geoDimensionCardSort.direction === "asc" ? 1 : -1;
-    return [...geoDimensionCardRows[geoDimensionCardTab]].sort(
-      (left, right) => {
-        const primary =
-          (left[geoDimensionCardSort.key] - right[geoDimensionCardSort.key]) *
-          direction;
-        if (primary !== 0) return primary;
-        if (right.views !== left.views) return right.views - left.views;
-        if (right.visitors !== left.visitors)
-          return right.visitors - left.visitors;
-        return left.label.localeCompare(right.label);
-      },
-    );
-  }, [
-    geoDimensionCardRows,
-    geoDimensionCardSort.direction,
-    geoDimensionCardSort.key,
-    geoDimensionCardTab,
-  ]);
   const activeClientDimensionCardQueryValue = useMemo(() => {
     const queryParamKey =
       CLIENT_DIMENSION_CARD_QUERY_PARAM_BY_TAB[clientDimensionCardTab];
@@ -3025,111 +2707,7 @@ export function OverviewPagesSection({
     const normalized = raw.trim();
     return normalized.length > 0 ? normalized : null;
   }, [geoDimensionCardTab, searchParams]);
-  const visibleClientDimensionCardRows = useMemo(
-    () =>
-      activeClientDimensionCardQueryValue
-        ? sortedClientDimensionCardRows.filter(
-            (row) =>
-              (row.filterValue ?? row.label) ===
-              activeClientDimensionCardQueryValue,
-          )
-        : sortedClientDimensionCardRows,
-    [activeClientDimensionCardQueryValue, sortedClientDimensionCardRows],
-  );
-  const visibleGeoDimensionCardRows = useMemo(() => {
-    if (!activeGeoDimensionCardQueryValue) return sortedGeoDimensionCardRows;
-    const activeGeoQueryValue = isGeoLocationTab(geoDimensionCardTab)
-      ? resolveGeoLocationHighlightValue(
-          geoDimensionCardTab,
-          activeGeoDimensionCardQueryValue,
-        )
-      : activeGeoDimensionCardQueryValue;
-    if (!activeGeoQueryValue) return sortedGeoDimensionCardRows;
-    return sortedGeoDimensionCardRows.filter(
-      (row) => (row.filterValue ?? row.label) === activeGeoQueryValue,
-    );
-  }, [
-    activeGeoDimensionCardQueryValue,
-    geoDimensionCardTab,
-    sortedGeoDimensionCardRows,
-  ]);
-  const normalizedClientDimensionCardSearchTerm = clientDimensionCardSearchTerm
-    .trim()
-    .toLocaleLowerCase();
-  const normalizedGeoDimensionCardSearchTerm = geoDimensionCardSearchTerm
-    .trim()
-    .toLocaleLowerCase();
-  const searchedClientDimensionCardRows = useMemo(() => {
-    if (!normalizedClientDimensionCardSearchTerm)
-      return sortedClientDimensionCardRows;
-    return sortedClientDimensionCardRows.filter((row) => {
-      const normalizedLabel = row.label.toLocaleLowerCase();
-      const normalizedRawLabel = (row.rawLabel ?? "").toLocaleLowerCase();
-      return (
-        normalizedLabel.includes(normalizedClientDimensionCardSearchTerm) ||
-        normalizedRawLabel.includes(normalizedClientDimensionCardSearchTerm)
-      );
-    });
-  }, [normalizedClientDimensionCardSearchTerm, sortedClientDimensionCardRows]);
-  const searchedGeoDimensionCardRows = useMemo(() => {
-    if (!normalizedGeoDimensionCardSearchTerm)
-      return sortedGeoDimensionCardRows;
-    return sortedGeoDimensionCardRows.filter((row) => {
-      const normalizedLabel = row.label.toLocaleLowerCase();
-      if (normalizedLabel.includes(normalizedGeoDimensionCardSearchTerm)) {
-        return true;
-      }
-      const normalizedRawLabel = (row.rawLabel || "").toLocaleLowerCase();
-      return normalizedRawLabel.includes(normalizedGeoDimensionCardSearchTerm);
-    });
-  }, [normalizedGeoDimensionCardSearchTerm, sortedGeoDimensionCardRows]);
-  const clientDimensionCardProgressTotal = useMemo(
-    () =>
-      sortedClientDimensionCardRows.reduce(
-        (sum, item) =>
-          sum + Math.max(0, Number(item[clientDimensionCardSort.key] ?? 0)),
-        0,
-      ),
-    [sortedClientDimensionCardRows, clientDimensionCardSort.key],
-  );
-  const geoDimensionCardProgressTotal = useMemo(
-    () =>
-      sortedGeoDimensionCardRows.reduce(
-        (sum, item) =>
-          sum + Math.max(0, Number(item[geoDimensionCardSort.key] ?? 0)),
-        0,
-      ),
-    [sortedGeoDimensionCardRows, geoDimensionCardSort.key],
-  );
 
-  const togglePageCardSort = (key: PageCardSortKey) => {
-    setPageCardSort((prev) =>
-      prev.key === key
-        ? { key, direction: prev.direction === "desc" ? "asc" : "desc" }
-        : { key, direction: "desc" },
-    );
-  };
-  const toggleSourceCardSort = (key: PageCardSortKey) => {
-    setSourceCardSort((prev) =>
-      prev.key === key
-        ? { key, direction: prev.direction === "desc" ? "asc" : "desc" }
-        : { key, direction: "desc" },
-    );
-  };
-  const toggleClientDimensionCardSort = (key: PageCardSortKey) => {
-    setClientDimensionCardSort((prev) =>
-      prev.key === key
-        ? { key, direction: prev.direction === "desc" ? "asc" : "desc" }
-        : { key, direction: "desc" },
-    );
-  };
-  const toggleGeoDimensionCardSort = (key: PageCardSortKey) => {
-    setGeoDimensionCardSort((prev) =>
-      prev.key === key
-        ? { key, direction: prev.direction === "desc" ? "asc" : "desc" }
-        : { key, direction: "desc" },
-    );
-  };
   const setPageCardQueryFilter = (
     next: { tab: PageCardTab; value: string } | null,
   ) => {
@@ -3215,35 +2793,6 @@ export function OverviewPagesSection({
       setPageCardTab(tab);
     }
   };
-  const togglePageCardRowFilter = (rowKey: string) => {
-    if (!pageCardQueryParamByTab[pageCardTab]) return;
-    const normalized = rowKey.trim();
-    const isActive = activePageCardQueryValue === normalized;
-    setPageCardQueryFilter(
-      isActive ? null : { tab: pageCardTab, value: normalized },
-    );
-  };
-  const toggleSourceCardRowFilter = (rowKey: string) => {
-    const normalized = rowKey.trim();
-    const isActive = activeSourceCardQueryValue === normalized;
-    setSourceCardQueryFilter(
-      isActive ? null : { tab: sourceCardTab, value: normalized },
-    );
-  };
-  const toggleClientDimensionCardRowFilter = (rowKey: string) => {
-    const normalized = rowKey.trim();
-    const isActive = activeClientDimensionCardQueryValue === normalized;
-    setClientDimensionCardQueryFilter(
-      isActive ? null : { tab: clientDimensionCardTab, value: normalized },
-    );
-  };
-  const toggleGeoDimensionCardRowFilter = (rowKey: string) => {
-    const normalized = rowKey.trim();
-    const isActive = activeGeoDimensionCardQueryValue === normalized;
-    setGeoDimensionCardQueryFilter(
-      isActive ? null : { tab: geoDimensionCardTab, value: normalized },
-    );
-  };
   const openPageCardRowTarget = (
     targetUrl: string,
     event: MouseEvent<HTMLElement>,
@@ -3273,944 +2822,384 @@ export function OverviewPagesSection({
     event.stopPropagation();
     router.push(targetUrl);
   };
-  const renderSortIndicator = (key: PageCardSortKey) => {
-    if (effectivePageCardSortKey === key) {
-      return pageCardSort.direction === "desc" ? (
-        <RiArrowDownSLine className="size-3.5" />
-      ) : (
-        <RiArrowUpSLine className="size-3.5" />
+  const pageCardRowsForTable = useMemo<
+    Record<PageCardTab, PageCardRow[] | null>
+  >(
+    () => ({
+      path: resolvedPageCardTabData.path === null ? null : pageCardRows.path,
+      query: resolvedPageCardTabData.query === null ? null : pageCardRows.query,
+      title: resolvedPageCardTabData.title === null ? null : pageCardRows.title,
+      hostname:
+        resolvedPageCardTabData.hostname === null
+          ? null
+          : pageCardRows.hostname,
+      entry: resolvedPageCardTabData.entry === null ? null : pageCardRows.entry,
+      exit: resolvedPageCardTabData.exit === null ? null : pageCardRows.exit,
+    }),
+    [pageCardRows, resolvedPageCardTabData],
+  );
+  const sourceCardRowsForTable = useMemo<
+    Record<SourceCardTab, SourceCardRow[] | null>
+  >(
+    () => ({
+      domain:
+        resolvedSourceCardTabData.domain === null
+          ? null
+          : sourceCardRows.domain,
+      link:
+        resolvedSourceCardTabData.link === null ? null : sourceCardRows.link,
+    }),
+    [resolvedSourceCardTabData, sourceCardRows],
+  );
+  const clientDimensionCardRowsForTable = useMemo<
+    Record<ClientDimensionCardTab, PageCardRow[] | null>
+  >(
+    () => ({
+      browser:
+        resolvedClientDimensionCardTabData.browser === null
+          ? null
+          : clientDimensionCardRows.browser,
+      osVersion:
+        resolvedClientDimensionCardTabData.osVersion === null
+          ? null
+          : clientDimensionCardRows.osVersion,
+      deviceType:
+        resolvedClientDimensionCardTabData.deviceType === null
+          ? null
+          : clientDimensionCardRows.deviceType,
+      language:
+        resolvedClientDimensionCardTabData.language === null
+          ? null
+          : clientDimensionCardRows.language,
+      screenSize:
+        resolvedClientDimensionCardTabData.screenSize === null
+          ? null
+          : clientDimensionCardRows.screenSize,
+    }),
+    [clientDimensionCardRows, resolvedClientDimensionCardTabData],
+  );
+  const geoDimensionCardRowsForTable = useMemo<
+    Record<GeoDimensionCardTab, PageCardRow[] | null>
+  >(
+    () => ({
+      country:
+        resolvedGeoDimensionCardTabData.country === null
+          ? null
+          : geoDimensionCardRows.country,
+      region:
+        resolvedGeoDimensionCardTabData.region === null
+          ? null
+          : geoDimensionCardRows.region,
+      city:
+        resolvedGeoDimensionCardTabData.city === null
+          ? null
+          : geoDimensionCardRows.city,
+      continent:
+        resolvedGeoDimensionCardTabData.continent === null
+          ? null
+          : geoDimensionCardRows.continent,
+      timezone:
+        resolvedGeoDimensionCardTabData.timezone === null
+          ? null
+          : geoDimensionCardRows.timezone,
+      organization:
+        resolvedGeoDimensionCardTabData.organization === null
+          ? null
+          : geoDimensionCardRows.organization,
+    }),
+    [geoDimensionCardRows, resolvedGeoDimensionCardTabData],
+  );
+  const overviewMetricColumns = useMemo<
+    readonly TabbedDataTableColumn<PageCardRow, PageCardSortKey, string>[]
+  >(
+    () => [
+      {
+        key: "views",
+        label: resolvedPrimaryMetricLabel,
+        getValue: (row) => row.views,
+        format: (value) => numberFormat(locale, value),
+      },
+      {
+        key: "visitors",
+        label: messages.common.visitors,
+        getValue: (row) => row.visitors,
+        format: (value) => numberFormat(locale, value),
+      },
+    ],
+    [locale, messages.common.visitors, resolvedPrimaryMetricLabel],
+  );
+  const pageCardMetricColumns = useMemo<
+    (
+      tab: PageCardTab,
+    ) => readonly TabbedDataTableColumn<
+      PageCardRow,
+      PageCardSortKey,
+      PageCardTab
+    >[]
+  >(
+    () => (tab) => {
+      const viewsColumn = {
+        key: "views" as const,
+        label:
+          pageCardTabMeta[tab].primaryMetricLabel ?? resolvedPrimaryMetricLabel,
+        getValue: (row: PageCardRow) => row.views,
+        format: (value: number) => numberFormat(locale, value),
+      };
+      if (!pageCardShowVisitors) return [viewsColumn];
+      return [
+        viewsColumn,
+        {
+          key: "visitors",
+          label: messages.common.visitors,
+          getValue: (row) => row.visitors,
+          format: (value) => numberFormat(locale, value),
+        },
+      ];
+    },
+    [
+      locale,
+      messages.common.visitors,
+      pageCardShowVisitors,
+      pageCardTabMeta,
+      resolvedPrimaryMetricLabel,
+    ],
+  );
+  const pageCardTableTabs = useMemo(
+    () =>
+      (resolvedPageCardTabs.length > 0
+        ? resolvedPageCardTabs
+        : (["path"] as PageCardTab[])
+      ).map((tab) => ({
+        value: tab,
+        label: pageCardTabMeta[tab].label,
+        columnLabel: pageCardTabMeta[tab].columnLabel,
+      })) as [
+        TabbedDataTableTab<PageCardTab>,
+        ...TabbedDataTableTab<PageCardTab>[],
+      ],
+    [pageCardTabMeta, resolvedPageCardTabs],
+  );
+  const sourceCardTableTabs = useMemo(
+    () =>
+      SOURCE_CARD_TABS.map((tab) => ({
+        value: tab,
+        label: sourceCardTabMeta[tab].label,
+        columnLabel: sourceCardTabMeta[tab].columnLabel,
+      })) as [
+        TabbedDataTableTab<SourceCardTab>,
+        ...TabbedDataTableTab<SourceCardTab>[],
+      ],
+    [sourceCardTabMeta],
+  );
+  const clientDimensionCardTableTabs = useMemo(
+    () =>
+      CLIENT_DIMENSION_CARD_TABS.map((tab) => ({
+        value: tab,
+        label: clientDimensionCardTabMeta[tab].label,
+        columnLabel: clientDimensionCardTabMeta[tab].columnLabel,
+      })) as [
+        TabbedDataTableTab<ClientDimensionCardTab>,
+        ...TabbedDataTableTab<ClientDimensionCardTab>[],
+      ],
+    [clientDimensionCardTabMeta],
+  );
+  const geoDimensionCardTableTabs = useMemo(
+    () =>
+      GEO_DIMENSION_CARD_TABS.map((tab) => ({
+        value: tab,
+        label: geoDimensionCardTabMeta[tab].label,
+        columnLabel: geoDimensionCardTabMeta[tab].columnLabel,
+      })) as [
+        TabbedDataTableTab<GeoDimensionCardTab>,
+        ...TabbedDataTableTab<GeoDimensionCardTab>[],
+      ],
+    [geoDimensionCardTabMeta],
+  );
+  const loadingByPageCardTab = useMemo(
+    () =>
+      Object.fromEntries(
+        ALL_PAGE_CARD_TABS.map((tab) => [
+          tab,
+          !hasCardDataOverride && resolvedPageCardTabData[tab] === null,
+        ]),
+      ) as Record<PageCardTab, boolean>,
+    [hasCardDataOverride, resolvedPageCardTabData],
+  );
+  const loadingBySourceCardTab = useMemo(
+    () =>
+      Object.fromEntries(
+        SOURCE_CARD_TABS.map((tab) => [
+          tab,
+          !hasCardDataOverride && resolvedSourceCardTabData[tab] === null,
+        ]),
+      ) as Record<SourceCardTab, boolean>,
+    [hasCardDataOverride, resolvedSourceCardTabData],
+  );
+  const loadingByClientDimensionCardTab = useMemo(
+    () =>
+      Object.fromEntries(
+        CLIENT_DIMENSION_CARD_TABS.map((tab) => [
+          tab,
+          !hasCardDataOverride &&
+            resolvedClientDimensionCardTabData[tab] === null,
+        ]),
+      ) as Record<ClientDimensionCardTab, boolean>,
+    [hasCardDataOverride, resolvedClientDimensionCardTabData],
+  );
+  const loadingByGeoDimensionCardTab = useMemo(
+    () =>
+      Object.fromEntries(
+        GEO_DIMENSION_CARD_TABS.map((tab) => [
+          tab,
+          !hasCardDataOverride && resolvedGeoDimensionCardTabData[tab] === null,
+        ]),
+      ) as Record<GeoDimensionCardTab, boolean>,
+    [hasCardDataOverride, resolvedGeoDimensionCardTabData],
+  );
+  const searchConfig = useMemo(
+    () => ({
+      actionLabel: messages.common.search,
+      placeholder: (tab: { label: string }) =>
+        formatI18nTemplate(messages.overview.searchInTab, { tab: tab.label }),
+    }),
+    [messages.common.search, messages.overview.searchInTab],
+  );
+  const comparePageRows = useCallback(
+    (
+      left: PageCardRow,
+      right: PageCardRow,
+      { sort }: { sort: { key: PageCardSortKey; direction: "asc" | "desc" } },
+    ) => {
+      const primary =
+        (left[sort.key] - right[sort.key]) *
+        (sort.direction === "asc" ? 1 : -1);
+      if (primary !== 0) return primary;
+      if (right.views !== left.views) return right.views - left.views;
+      if (right.visitors !== left.visitors)
+        return right.visitors - left.visitors;
+      return (left.displayLabel ?? left.label).localeCompare(
+        right.displayLabel ?? right.label,
       );
-    }
-
-    return (
-      <span className="inline-flex flex-col leading-none text-muted-foreground">
-        <RiArrowUpSLine className="-mb-1 size-3.5" />
-        <RiArrowDownSLine className="-mt-1 size-3.5" />
-      </span>
-    );
-  };
-  const renderSourceSortIndicator = (key: PageCardSortKey) => {
-    if (sourceCardSort.key === key) {
-      return sourceCardSort.direction === "desc" ? (
-        <RiArrowDownSLine className="size-3.5" />
-      ) : (
-        <RiArrowUpSLine className="size-3.5" />
-      );
-    }
-
-    return (
-      <span className="inline-flex flex-col leading-none text-muted-foreground">
-        <RiArrowUpSLine className="-mb-1 size-3.5" />
-        <RiArrowDownSLine className="-mt-1 size-3.5" />
-      </span>
-    );
-  };
-  const renderClientDimensionSortIndicator = (key: PageCardSortKey) => {
-    if (clientDimensionCardSort.key === key) {
-      return clientDimensionCardSort.direction === "desc" ? (
-        <RiArrowDownSLine className="size-3.5" />
-      ) : (
-        <RiArrowUpSLine className="size-3.5" />
-      );
-    }
-
-    return (
-      <span className="inline-flex flex-col leading-none text-muted-foreground">
-        <RiArrowUpSLine className="-mb-1 size-3.5" />
-        <RiArrowDownSLine className="-mt-1 size-3.5" />
-      </span>
-    );
-  };
-  const renderGeoDimensionSortIndicator = (key: PageCardSortKey) => {
-    if (geoDimensionCardSort.key === key) {
-      return geoDimensionCardSort.direction === "desc" ? (
-        <RiArrowDownSLine className="size-3.5" />
-      ) : (
-        <RiArrowUpSLine className="size-3.5" />
-      );
-    }
-
-    return (
-      <span className="inline-flex flex-col leading-none text-muted-foreground">
-        <RiArrowUpSLine className="-mb-1 size-3.5" />
-        <RiArrowDownSLine className="-mt-1 size-3.5" />
-      </span>
-    );
-  };
-  const pageCardSearchLabel = messages.common.search;
-  const pageCardSearchPlaceholder = formatI18nTemplate(
-    messages.overview.searchInTab,
-    { tab: activePageTabMeta.label },
+    },
+    [],
   );
-  const pageCardSearchTitle = pageCardSearchPlaceholder;
-  const sourceCardSearchLabel = messages.common.search;
-  const sourceCardSearchPlaceholder = formatI18nTemplate(
-    messages.overview.searchInTab,
-    { tab: activeSourceTabMeta.label },
-  );
-  const sourceCardSearchTitle = sourceCardSearchPlaceholder;
-  const clientDimensionCardSearchLabel = messages.common.search;
-  const clientDimensionCardSearchPlaceholder = formatI18nTemplate(
-    messages.overview.searchInTab,
-    { tab: activeClientDimensionTabMeta.label },
-  );
-  const clientDimensionCardSearchTitle = clientDimensionCardSearchPlaceholder;
-  const geoDimensionCardSearchLabel = messages.common.search;
-  const geoDimensionCardSearchPlaceholder = formatI18nTemplate(
-    messages.overview.searchInTab,
-    { tab: activeGeoDimensionTabMeta.label },
-  );
-  const geoDimensionCardSearchTitle = geoDimensionCardSearchPlaceholder;
-  const pageCardTableHeader = (
-    <TableRow className="hover:bg-transparent">
-      <TableHead className="h-8 p-0">
-        <div className="px-4">{activePageTabMeta.columnLabel}</div>
-      </TableHead>
-      <TableHead className="h-8 p-0 w-20">
-        <div className="flex justify-end px-2">
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              effectivePageCardSortKey === "views"
-                ? "text-foreground"
-                : "text-muted-foreground",
-            )}
-            onClick={() => togglePageCardSort("views")}
-          >
-            {activePageTabMeta.primaryMetricLabel ?? resolvedPrimaryMetricLabel}
-            {renderSortIndicator("views")}
-          </button>
-        </div>
-      </TableHead>
-      {pageCardShowVisitors ? (
-        <TableHead className="h-8 p-0 w-20">
-          <div className="flex justify-end px-2">
-            <button
-              type="button"
-              className={cn(
-                "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-                pageCardSort.key === "visitors"
-                  ? "text-foreground"
-                  : "text-muted-foreground",
-              )}
-              onClick={() => togglePageCardSort("visitors")}
-            >
-              {messages.common.visitors}
-              {renderSortIndicator("visitors")}
-            </button>
-          </div>
-        </TableHead>
-      ) : null}
-    </TableRow>
-  );
-  const renderPageCardRows = (rows: PageCardRow[]) => (
-    <AnimatePresence initial={false} mode="popLayout">
-      {rows.map((item) => {
-        const displayLabel = item.displayLabel ?? item.label;
-        const rowFilterValue = item.filterValue ?? item.label;
-        const rowValue = Math.max(
-          0,
-          Number(item[effectivePageCardSortKey] ?? 0),
-        );
-        const progressPercent =
-          pageCardProgressTotal > 0
-            ? Math.min(100, (rowValue / pageCardProgressTotal) * 100)
-            : 0;
-        const progressWidth = `${progressPercent.toFixed(2)}%`;
-        const rowFilterEnabled = Boolean(pageCardQueryParamByTab[pageCardTab]);
-        const rowTargetUrl = resolvedPageCardNavigableTabs.has(
-          pageCardTab as PageCardNavigableTab,
-        )
-          ? (
-              pageCardTargetUrlResolvers?.[pageCardTab] ??
-              resolvePageCardTargetUrl
-            )({
-              tab: pageCardTab,
+  const pageCardLabel = useCallback(
+    (item: PageCardRow, tab: PageCardTab) => {
+      const displayLabel = item.displayLabel ?? item.label;
+      const rowTargetUrl = resolvedPageCardNavigableTabs.has(
+        tab as PageCardNavigableTab,
+      )
+        ? (pageCardTargetUrlResolvers?.[tab] ?? resolvePageCardTargetUrl)({
+            tab,
+            value: item.label,
+            unknownLabel: messages.common.unknown,
+            fallbackHostname: pageCardDefaultHostname,
+          })
+        : null;
+      const rowDetailAction =
+        isPageCardDetailTab(tab) && resolvedPageCardDetailTabs.has(tab)
+          ? (pageCardDetailClickResolvers?.[tab] ?? null)
+          : null;
+      const rowDetailHref =
+        !rowDetailAction &&
+        isPageCardDetailTab(tab) &&
+        resolvedPageCardDetailTabs.has(tab)
+          ? (pageCardDetailHrefResolvers?.[tab] ?? resolvePageCardDetailHref)({
+              tab,
+              basePath: pageDetailBasePath,
               value: item.label,
               unknownLabel: messages.common.unknown,
-              fallbackHostname: pageCardDefaultHostname,
             })
           : null;
-        const rowDetailAction =
-          isPageCardDetailTab(pageCardTab) &&
-          resolvedPageCardDetailTabs.has(pageCardTab)
-            ? (pageCardDetailClickResolvers?.[pageCardTab] ?? null)
-            : null;
-        const rowDetailHref =
-          !rowDetailAction &&
-          isPageCardDetailTab(pageCardTab) &&
-          resolvedPageCardDetailTabs.has(pageCardTab)
-            ? (
-                pageCardDetailHrefResolvers?.[pageCardTab] ??
-                resolvePageCardDetailHref
-              )({
-                tab: pageCardTab,
-                basePath: pageDetailBasePath,
-                value: item.label,
-                unknownLabel: messages.common.unknown,
-              })
-            : null;
-        const rowDetailParams =
-          rowDetailAction && isPageCardDetailTab(pageCardTab)
-            ? {
-                tab: pageCardTab as PageCardDetailTab,
-                basePath: pageDetailBasePath,
-                value: item.label,
-                unknownLabel: messages.common.unknown,
-              }
-            : null;
-        const rowFilterActive = activePageCardQueryValue === rowFilterValue;
-        const rowInteractive =
-          rowFilterEnabled ||
-          Boolean(rowTargetUrl) ||
-          Boolean(rowDetailHref) ||
-          Boolean(rowDetailAction);
-
-        return (
-          <AnimatedDataTableRow
-            key={`${pageCardTab}-${item.key}`}
-            reduceMotion={reduceDataRowMotion}
-            className={cn(
-              "group/row bg-no-repeat transition-[background-size,filter] duration-300 ease-out",
-              rowInteractive
-                ? "cursor-pointer hover:brightness-95"
-                : "cursor-default",
-              rowFilterActive && "brightness-95",
-            )}
-            style={{
-              backgroundImage:
-                "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
-              backgroundSize: `${progressWidth} 100%`,
-              backgroundPosition: "left top",
-            }}
-            onClick={() => {
-              if (rowFilterEnabled) {
-                togglePageCardRowFilter(rowFilterValue);
-                return;
-              }
-              if (rowTargetUrl) {
-                globalThis.window.open(
-                  rowTargetUrl,
-                  "_blank",
-                  "noopener,noreferrer",
-                );
-                return;
-              }
-              if (rowDetailAction && rowDetailParams) {
-                rowDetailAction(rowDetailParams);
-                return;
-              }
-              if (rowDetailHref) {
-                router.push(rowDetailHref);
-              }
-            }}
-          >
-            <TableCell className="p-0 whitespace-normal align-top">
-              <div
-                className={cn(
-                  "px-4 py-2 leading-5 whitespace-normal break-words",
-                  activePageTabMeta.mono && "font-mono",
-                )}
-              >
-                <span className="inline-flex items-center gap-2 break-words">
-                  <LabelWithOptionalIcon
-                    label={displayLabel}
-                    showIcon={activePageTabMeta.showIcon}
-                    unknownLabel={messages.common.unknown}
-                  />
-                  {rowTargetUrl ? (
-                    <Clickable
-                      className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-                      onClick={(event) =>
-                        openPageCardRowTarget(rowTargetUrl, event)
-                      }
-                      aria-label={displayLabel}
-                      title={displayLabel}
-                    >
-                      <RiArrowRightUpLine size="1.4em" />
-                    </Clickable>
-                  ) : null}
-                  {rowDetailAction && rowDetailParams ? (
-                    <Clickable
-                      className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-                      onClick={(event) =>
-                        openPageCardRowDetailAction(
-                          rowDetailAction,
-                          rowDetailParams,
-                          event,
-                        )
-                      }
-                      aria-label={messages.common.search}
-                      title={messages.common.search}
-                    >
-                      <RiSearchLine size="1.2em" />
-                    </Clickable>
-                  ) : rowDetailHref ? (
-                    <Clickable
-                      className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-                      onClick={(event) =>
-                        openPageCardRowDetail(rowDetailHref, event)
-                      }
-                      aria-label={messages.common.search}
-                      title={messages.common.search}
-                    >
-                      <RiSearchLine size="1.2em" />
-                    </Clickable>
-                  ) : null}
-                </span>
-              </div>
-            </TableCell>
-            <TableCell className="p-0">
-              <div className="px-2 py-2 text-right">
-                {numberFormat(locale, item.views)}
-              </div>
-            </TableCell>
-            {pageCardShowVisitors ? (
-              <TableCell className="p-0">
-                <div className="px-4 py-2 text-right">
-                  {numberFormat(locale, item.visitors)}
-                </div>
-              </TableCell>
-            ) : null}
-          </AnimatedDataTableRow>
-        );
-      })}
-    </AnimatePresence>
-  );
-  const sourceCardTableHeader = (
-    <TableRow className="hover:bg-transparent">
-      <TableHead className="h-8 p-0">
-        <div className="px-4">{activeSourceTabMeta.columnLabel}</div>
-      </TableHead>
-      <TableHead className="h-8 p-0 w-20">
-        <div className="flex justify-end px-2">
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              sourceCardSort.key === "views"
-                ? "text-foreground"
-                : "text-muted-foreground",
-            )}
-            onClick={() => toggleSourceCardSort("views")}
-          >
-            {resolvedPrimaryMetricLabel}
-            {renderSourceSortIndicator("views")}
-          </button>
-        </div>
-      </TableHead>
-      <TableHead className="h-8 p-0 w-20">
-        <div className="flex justify-end px-2">
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              sourceCardSort.key === "visitors"
-                ? "text-foreground"
-                : "text-muted-foreground",
-            )}
-            onClick={() => toggleSourceCardSort("visitors")}
-          >
-            {messages.common.visitors}
-            {renderSourceSortIndicator("visitors")}
-          </button>
-        </div>
-      </TableHead>
-    </TableRow>
-  );
-  const renderSourceCardRows = (rows: SourceCardRow[]) => (
-    <AnimatePresence initial={false} mode="popLayout">
-      {rows.map((item) => {
-        const displayLabel = item.displayLabel ?? item.label;
-        const rowValue = Math.max(0, Number(item[sourceCardSort.key] ?? 0));
-        const progressPercent =
-          sourceCardProgressTotal > 0
-            ? Math.min(100, (rowValue / sourceCardProgressTotal) * 100)
-            : 0;
-        const progressWidth = `${progressPercent.toFixed(2)}%`;
-        const targetUrl = item.targetUrl;
-        const rowFilterActive = activeSourceCardQueryValue === item.filterValue;
-
-        return (
-          <AnimatedDataTableRow
-            key={item.key}
-            reduceMotion={reduceDataRowMotion}
-            className={cn(
-              "group/row cursor-pointer bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-95",
-              rowFilterActive && "brightness-95",
-            )}
-            style={{
-              backgroundImage:
-                "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
-              backgroundSize: `${progressWidth} 100%`,
-              backgroundPosition: "left top",
-            }}
-            onClick={() => toggleSourceCardRowFilter(item.filterValue)}
-          >
-            <TableCell className="p-0 whitespace-normal align-top">
-              <div
-                className={cn(
-                  "px-4 py-2 leading-5 whitespace-normal break-words",
-                  item.mono && "font-mono",
-                )}
-              >
-                <span className="inline-flex items-center gap-2 break-words">
-                  <LabelWithOptionalIcon
-                    label={displayLabel}
-                    showIcon={activeSourceTabMeta.showIcon}
-                    unknownLabel={sourceCardDirectLabel}
-                  />
-                  {targetUrl ? (
-                    <Clickable
-                      className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-                      onClick={(event) =>
-                        openPageCardRowTarget(targetUrl, event)
-                      }
-                      aria-label={displayLabel}
-                      title={displayLabel}
-                    >
-                      <RiArrowRightUpLine size="1.4em" />
-                    </Clickable>
-                  ) : null}
-                </span>
-              </div>
-            </TableCell>
-            <TableCell className="p-0">
-              <div className="px-2 py-2 text-right">
-                {numberFormat(locale, item.views)}
-              </div>
-            </TableCell>
-            <TableCell className="p-0">
-              <div className="px-4 py-2 text-right">
-                {numberFormat(locale, item.visitors)}
-              </div>
-            </TableCell>
-          </AnimatedDataTableRow>
-        );
-      })}
-    </AnimatePresence>
-  );
-  const sourceCardSearchContent = (
-    <div className="space-y-3">
-      <Input
-        value={sourceCardSearchTerm}
-        onChange={(event) => setSourceCardSearchTerm(event.target.value)}
-        placeholder={sourceCardSearchPlaceholder}
-      />
-      <PanelScrollbar
-        className="max-h-[60vh] pr-1"
-        syncKey={`${sourceCardTab}-${sourceCardSort.key}-${sourceCardSort.direction}-${sourceCardSearchTerm}-${searchedSourceCardRows.length}-${sourceCardLoading}`}
-      >
-        <DataTableSwitch
-          loading={sourceCardLoading}
-          hasContent={searchedSourceCardRows.length > 0}
-          loadingLabel={messages.common.loading}
-          emptyLabel={noDataText}
-          colSpan={3}
-          header={sourceCardTableHeader}
-          rows={renderSourceCardRows(searchedSourceCardRows)}
-        />
-      </PanelScrollbar>
-    </div>
-  );
-  const sourceCardSearchPanel = isMobile ? (
-    <Drawer open={sourceCardSearchOpen} onOpenChange={setSourceCardSearchOpen}>
-      <DrawerContent className="max-h-[90vh]">
-        <DrawerHeader>
-          <DrawerTitle>{sourceCardSearchTitle}</DrawerTitle>
-        </DrawerHeader>
-        <div className="px-4 pb-4">{sourceCardSearchContent}</div>
-      </DrawerContent>
-    </Drawer>
-  ) : (
-    <Dialog open={sourceCardSearchOpen} onOpenChange={setSourceCardSearchOpen}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle icon={RiSearchLine}>{sourceCardSearchTitle}</DialogTitle>
-        </DialogHeader>
-        {sourceCardSearchContent}
-      </DialogContent>
-    </Dialog>
-  );
-  const sourceCardSearchAction = (
-    <Clickable
-      className="size-6 text-muted-foreground hover:text-foreground"
-      onClick={() => setSourceCardSearchOpen(true)}
-      aria-label={sourceCardSearchLabel}
-      title={sourceCardSearchLabel}
-    >
-      <RiSearchLine className="size-4" />
-    </Clickable>
-  );
-  const clientDimensionCardTableHeader = (
-    <TableRow className="hover:bg-transparent">
-      <TableHead className="h-8 p-0">
-        <div className="px-4">{activeClientDimensionTabMeta.columnLabel}</div>
-      </TableHead>
-      <TableHead className="h-8 p-0 w-20">
-        <div className="flex justify-end px-2">
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              clientDimensionCardSort.key === "views"
-                ? "text-foreground"
-                : "text-muted-foreground",
-            )}
-            onClick={() => toggleClientDimensionCardSort("views")}
-          >
-            {resolvedPrimaryMetricLabel}
-            {renderClientDimensionSortIndicator("views")}
-          </button>
-        </div>
-      </TableHead>
-      <TableHead className="h-8 p-0 w-20">
-        <div className="flex justify-end px-2">
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              clientDimensionCardSort.key === "visitors"
-                ? "text-foreground"
-                : "text-muted-foreground",
-            )}
-            onClick={() => toggleClientDimensionCardSort("visitors")}
-          >
-            {messages.common.visitors}
-            {renderClientDimensionSortIndicator("visitors")}
-          </button>
-        </div>
-      </TableHead>
-    </TableRow>
-  );
-  const renderClientDimensionCardRows = (rows: PageCardRow[]) => (
-    <AnimatePresence initial={false} mode="popLayout">
-      {rows.map((item) => {
-        const rowValue = Math.max(
-          0,
-          Number(item[clientDimensionCardSort.key] ?? 0),
-        );
-        const progressPercent =
-          clientDimensionCardProgressTotal > 0
-            ? Math.min(100, (rowValue / clientDimensionCardProgressTotal) * 100)
-            : 0;
-        const progressWidth = `${progressPercent.toFixed(2)}%`;
-        const rowFilterActive =
-          activeClientDimensionCardQueryValue ===
-          (item.filterValue ?? item.label);
-
-        return (
-          <AnimatedDataTableRow
-            key={item.key}
-            reduceMotion={reduceDataRowMotion}
-            className={cn(
-              "group/row cursor-pointer bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-95",
-              rowFilterActive && "brightness-95",
-            )}
-            style={{
-              backgroundImage:
-                "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
-              backgroundSize: `${progressWidth} 100%`,
-              backgroundPosition: "left top",
-            }}
-            onClick={() =>
-              toggleClientDimensionCardRowFilter(item.filterValue ?? item.label)
+      const rowDetailParams =
+        rowDetailAction && isPageCardDetailTab(tab)
+          ? {
+              tab: tab as PageCardDetailTab,
+              basePath: pageDetailBasePath,
+              value: item.label,
+              unknownLabel: messages.common.unknown,
             }
-          >
-            <TableCell className="p-0 whitespace-normal align-top">
-              <div
-                className={cn(
-                  "px-4 py-2 leading-5 whitespace-normal break-words",
-                  item.mono && "font-mono",
-                )}
-              >
-                {clientDimensionCardTab === "deviceType" ? (
-                  <DeviceMeta
-                    deviceType={item.rawLabel ?? item.label}
-                    deviceLabels={messages.common.deviceLabels}
-                    unknownLabel={messages.common.unknown}
-                  />
-                ) : (
-                  <LabelWithLeadingIcon
-                    label={item.label}
-                    iconName={item.iconName}
-                  />
-                )}
-              </div>
-            </TableCell>
-            <TableCell className="p-0">
-              <div className="px-2 py-2 text-right">
-                {numberFormat(locale, item.views)}
-              </div>
-            </TableCell>
-            <TableCell className="p-0">
-              <div className="px-4 py-2 text-right">
-                {numberFormat(locale, item.visitors)}
-              </div>
-            </TableCell>
-          </AnimatedDataTableRow>
-        );
-      })}
-    </AnimatePresence>
-  );
-  const clientDimensionCardSearchContent = (
-    <div className="space-y-3">
-      <Input
-        value={clientDimensionCardSearchTerm}
-        onChange={(event) =>
-          setClientDimensionCardSearchTerm(event.target.value)
-        }
-        placeholder={clientDimensionCardSearchPlaceholder}
-      />
-      <PanelScrollbar
-        className="max-h-[60vh] pr-1"
-        syncKey={`${clientDimensionCardTab}-${clientDimensionCardSort.key}-${clientDimensionCardSort.direction}-${clientDimensionCardSearchTerm}-${searchedClientDimensionCardRows.length}-${clientDimensionCardLoading}`}
-      >
-        <DataTableSwitch
-          loading={clientDimensionCardLoading}
-          hasContent={searchedClientDimensionCardRows.length > 0}
-          loadingLabel={messages.common.loading}
-          emptyLabel={noDataText}
-          colSpan={3}
-          header={clientDimensionCardTableHeader}
-          rows={renderClientDimensionCardRows(searchedClientDimensionCardRows)}
-        />
-      </PanelScrollbar>
-    </div>
-  );
-  const clientDimensionCardSearchPanel = isMobile ? (
-    <Drawer
-      open={clientDimensionCardSearchOpen}
-      onOpenChange={setClientDimensionCardSearchOpen}
-    >
-      <DrawerContent className="max-h-[90vh]">
-        <DrawerHeader>
-          <DrawerTitle>{clientDimensionCardSearchTitle}</DrawerTitle>
-        </DrawerHeader>
-        <div className="px-4 pb-4">{clientDimensionCardSearchContent}</div>
-      </DrawerContent>
-    </Drawer>
-  ) : (
-    <Dialog
-      open={clientDimensionCardSearchOpen}
-      onOpenChange={setClientDimensionCardSearchOpen}
-    >
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle icon={RiSearchLine}>
-            {clientDimensionCardSearchTitle}
-          </DialogTitle>
-        </DialogHeader>
-        {clientDimensionCardSearchContent}
-      </DialogContent>
-    </Dialog>
-  );
-  const clientDimensionCardSearchAction = (
-    <Clickable
-      className="size-6 text-muted-foreground hover:text-foreground"
-      onClick={() => setClientDimensionCardSearchOpen(true)}
-      aria-label={clientDimensionCardSearchLabel}
-      title={clientDimensionCardSearchLabel}
-    >
-      <RiSearchLine className="size-4" />
-    </Clickable>
-  );
-  const geoDimensionCardTableHeader = (
-    <TableRow className="hover:bg-transparent">
-      <TableHead className="h-8 p-0">
-        <div className="px-4">{activeGeoDimensionTabMeta.columnLabel}</div>
-      </TableHead>
-      <TableHead className="h-8 p-0 w-20">
-        <div className="flex justify-end px-2">
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              geoDimensionCardSort.key === "views"
-                ? "text-foreground"
-                : "text-muted-foreground",
-            )}
-            onClick={() => toggleGeoDimensionCardSort("views")}
-          >
-            {resolvedPrimaryMetricLabel}
-            {renderGeoDimensionSortIndicator("views")}
-          </button>
-        </div>
-      </TableHead>
-      <TableHead className="h-8 p-0 w-20">
-        <div className="flex justify-end px-2">
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              geoDimensionCardSort.key === "visitors"
-                ? "text-foreground"
-                : "text-muted-foreground",
-            )}
-            onClick={() => toggleGeoDimensionCardSort("visitors")}
-          >
-            {messages.common.visitors}
-            {renderGeoDimensionSortIndicator("visitors")}
-          </button>
-        </div>
-      </TableHead>
-    </TableRow>
-  );
-  const renderGeoDimensionCardRows = (
-    rows: PageCardRow[],
-    options?: {
-      showRawLabel?: boolean;
-    },
-  ) => (
-    <AnimatePresence initial={false} mode="popLayout">
-      {rows.map((item) => {
-        const showRawLabel = options?.showRawLabel ?? false;
-        const rowValue = Math.max(
-          0,
-          Number(item[geoDimensionCardSort.key] ?? 0),
-        );
-        const progressPercent =
-          geoDimensionCardProgressTotal > 0
-            ? Math.min(100, (rowValue / geoDimensionCardProgressTotal) * 100)
-            : 0;
-        const progressWidth = `${progressPercent.toFixed(2)}%`;
-        const rowFilterValue = item.filterValue ?? item.label;
-        const activeGeoHighlightValue = isGeoLocationTab(geoDimensionCardTab)
-          ? resolveGeoLocationHighlightValue(
-              geoDimensionCardTab,
-              activeGeoDimensionCardQueryValue,
-            )
-          : activeGeoDimensionCardQueryValue;
-        const rowFilterActive = activeGeoHighlightValue === rowFilterValue;
-        const rowLocationValue = resolveGeoLocationQueryValue(
-          geoDimensionCardTab,
-          item,
-          messages.common.unknown,
-        );
-        const rowLocationTarget = rowLocationValue
-          ? `${buildGeoPagePath(geoPageBasePathname ?? livePathname)}?${new URLSearchParams(
-              {
-                location: rowLocationValue,
-              },
-            ).toString()}`
           : null;
+      const meta = pageCardTabMeta[tab];
 
-        return (
-          <AnimatedDataTableRow
-            key={item.key}
-            reduceMotion={reduceDataRowMotion}
-            className={cn(
-              "group/row cursor-pointer bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-95",
-              rowFilterActive && "brightness-95",
-            )}
-            style={{
-              backgroundImage:
-                "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
-              backgroundSize: `${progressWidth} 100%`,
-              backgroundPosition: "left top",
-            }}
-            onClick={() => toggleGeoDimensionCardRowFilter(rowFilterValue)}
-          >
-            <TableCell
-              className={cn(
-                "p-0 whitespace-normal",
-                geoDimensionCardTab === "region" ||
-                  geoDimensionCardTab === "city"
-                  ? "align-middle"
-                  : "align-top",
-              )}
+      return (
+        <span
+          className={cn(
+            "inline-flex items-center gap-2 break-words",
+            meta.mono && "font-mono",
+          )}
+        >
+          <LabelWithOptionalIcon
+            label={displayLabel}
+            showIcon={meta.showIcon}
+            unknownLabel={messages.common.unknown}
+          />
+          {rowTargetUrl ? (
+            <Clickable
+              className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+              onClick={(event) => openPageCardRowTarget(rowTargetUrl, event)}
+              aria-label={displayLabel}
+              title={displayLabel}
             >
-              <div
-                className={cn(
-                  "px-4 py-2 leading-5 whitespace-normal break-words",
-                  (geoDimensionCardTab === "region" ||
-                    geoDimensionCardTab === "city") &&
-                    "flex min-h-8 items-center",
-                  item.mono && "font-mono",
-                )}
-              >
-                <span className="inline-flex items-center gap-2 break-words">
-                  {showRawLabel ? (
-                    <LabelWithLeadingIcon
-                      label={item.rawLabel?.trim() || item.label}
-                      iconName={item.iconName}
-                    />
-                  ) : geoDimensionCardTab === "region" &&
-                    item.regionBreadcrumb ? (
-                    <LazyGeoRegionBreadcrumbLabel
-                      locale={locale}
-                      countryLabel={item.regionBreadcrumb.countryLabel}
-                      countryIconName={item.regionBreadcrumb.countryIconName}
-                      regionLabel={item.regionBreadcrumb.regionLabel}
-                      countryCode={item.regionBreadcrumb.countryCode}
-                      stateCode={item.regionBreadcrumb.stateCode}
-                      hideRegion={item.regionBreadcrumb.hideRegion}
-                    />
-                  ) : geoDimensionCardTab === "city" && item.cityBreadcrumb ? (
-                    <LazyGeoCityBreadcrumbLabel
-                      locale={locale}
-                      countryLabel={item.cityBreadcrumb.countryLabel}
-                      countryIconName={item.cityBreadcrumb.countryIconName}
-                      regionLabel={item.cityBreadcrumb.regionLabel}
-                      cityLabel={item.cityBreadcrumb.cityLabel}
-                      countryCode={item.cityBreadcrumb.countryCode}
-                      stateCode={item.cityBreadcrumb.stateCode}
-                      cityNameDefault={item.cityBreadcrumb.cityNameDefault}
-                      hideRegion={item.cityBreadcrumb.hideRegion}
-                      hideCity={item.cityBreadcrumb.hideCity}
-                    />
-                  ) : (
-                    <LabelWithLeadingIcon
-                      label={item.label}
-                      iconName={item.iconName}
-                    />
-                  )}
-                  {rowLocationTarget ? (
-                    <Clickable
-                      className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-                      onClick={(event) =>
-                        openGeoDimensionLocationTarget(rowLocationTarget, event)
-                      }
-                      aria-label={messages.common.search}
-                      title={messages.common.search}
-                    >
-                      <RiSearchLine size="1.2em" />
-                    </Clickable>
-                  ) : null}
-                </span>
-              </div>
-            </TableCell>
-            <TableCell className="p-0">
-              <div className="px-2 py-2 text-right">
-                {numberFormat(locale, item.views)}
-              </div>
-            </TableCell>
-            <TableCell className="p-0">
-              <div className="px-4 py-2 text-right">
-                {numberFormat(locale, item.visitors)}
-              </div>
-            </TableCell>
-          </AnimatedDataTableRow>
-        );
-      })}
-    </AnimatePresence>
+              <RiArrowRightUpLine size="1.4em" />
+            </Clickable>
+          ) : null}
+          {rowDetailAction && rowDetailParams ? (
+            <Clickable
+              className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+              onClick={(event) =>
+                openPageCardRowDetailAction(
+                  rowDetailAction,
+                  rowDetailParams,
+                  event,
+                )
+              }
+              aria-label={messages.common.search}
+              title={messages.common.search}
+            >
+              <RiSearchLine size="1.2em" />
+            </Clickable>
+          ) : rowDetailHref ? (
+            <Clickable
+              className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+              onClick={(event) => openPageCardRowDetail(rowDetailHref, event)}
+              aria-label={messages.common.search}
+              title={messages.common.search}
+            >
+              <RiSearchLine size="1.2em" />
+            </Clickable>
+          ) : null}
+        </span>
+      );
+    },
+    [
+      messages.common.search,
+      messages.common.unknown,
+      pageCardDefaultHostname,
+      pageCardDetailClickResolvers,
+      pageCardDetailHrefResolvers,
+      pageCardTabMeta,
+      pageCardTargetUrlResolvers,
+      pageDetailBasePath,
+      resolvedPageCardDetailTabs,
+      resolvedPageCardNavigableTabs,
+    ],
   );
-  const geoDimensionCardSearchContent = (
-    <div className="space-y-3">
-      <Input
-        value={geoDimensionCardSearchTerm}
-        onChange={(event) => setGeoDimensionCardSearchTerm(event.target.value)}
-        placeholder={geoDimensionCardSearchPlaceholder}
-      />
-      <PanelScrollbar
-        className="max-h-[60vh] pr-1"
-        syncKey={`${geoDimensionCardTab}-${geoDimensionCardSort.key}-${geoDimensionCardSort.direction}-${geoDimensionCardSearchTerm}-${searchedGeoDimensionCardRows.length}-${geoDimensionCardLoading}`}
-      >
-        <DataTableSwitch
-          loading={geoDimensionCardLoading}
-          hasContent={searchedGeoDimensionCardRows.length > 0}
-          loadingLabel={messages.common.loading}
-          emptyLabel={noDataText}
-          colSpan={3}
-          header={geoDimensionCardTableHeader}
-          rows={renderGeoDimensionCardRows(searchedGeoDimensionCardRows, {
-            showRawLabel: true,
-          })}
-        />
-      </PanelScrollbar>
-    </div>
+  const geoDimensionRowLocationTarget = useCallback(
+    (tab: GeoDimensionCardTab, item: PageCardRow) => {
+      const rowLocationValue = resolveGeoLocationQueryValue(
+        tab,
+        item,
+        messages.common.unknown,
+      );
+      return rowLocationValue
+        ? `${buildGeoPagePath(geoPageBasePathname ?? livePathname)}?${new URLSearchParams(
+            { location: rowLocationValue },
+          ).toString()}`
+        : null;
+    },
+    [geoPageBasePathname, livePathname, messages.common.unknown],
   );
-  const geoDimensionCardSearchPanel = isMobile ? (
-    <Drawer
-      open={geoDimensionCardSearchOpen}
-      onOpenChange={setGeoDimensionCardSearchOpen}
-    >
-      <DrawerContent className="max-h-[90vh]">
-        <DrawerHeader>
-          <DrawerTitle>{geoDimensionCardSearchTitle}</DrawerTitle>
-        </DrawerHeader>
-        <div className="px-4 pb-4">{geoDimensionCardSearchContent}</div>
-      </DrawerContent>
-    </Drawer>
-  ) : (
-    <Dialog
-      open={geoDimensionCardSearchOpen}
-      onOpenChange={setGeoDimensionCardSearchOpen}
-    >
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle icon={RiSearchLine}>
-            {geoDimensionCardSearchTitle}
-          </DialogTitle>
-        </DialogHeader>
-        {geoDimensionCardSearchContent}
-      </DialogContent>
-    </Dialog>
-  );
-  const geoDimensionCardSearchAction = (
-    <Clickable
-      className="size-6 text-muted-foreground hover:text-foreground"
-      onClick={() => setGeoDimensionCardSearchOpen(true)}
-      aria-label={geoDimensionCardSearchLabel}
-      title={geoDimensionCardSearchLabel}
-    >
-      <RiSearchLine className="size-4" />
-    </Clickable>
-  );
-  const pageCardSearchContent = (
-    <div className="space-y-3">
-      <Input
-        value={pageCardSearchTerm}
-        onChange={(event) => setPageCardSearchTerm(event.target.value)}
-        placeholder={pageCardSearchPlaceholder}
-      />
-      <PanelScrollbar
-        className="max-h-[60vh] pr-1"
-        syncKey={`${pageCardTab}-${pageCardSearchTerm}-${searchedPageCardRows.length}-${pageCardLoading}`}
-      >
-        <DataTableSwitch
-          loading={pageCardLoading}
-          hasContent={searchedPageCardRows.length > 0}
-          loadingLabel={messages.common.loading}
-          emptyLabel={noDataText}
-          colSpan={pageCardColumnSpan}
-          header={pageCardTableHeader}
-          rows={renderPageCardRows(searchedPageCardRows)}
-        />
-      </PanelScrollbar>
-    </div>
-  );
-  const pageCardSearchPanel = isMobile ? (
-    <Drawer open={pageCardSearchOpen} onOpenChange={setPageCardSearchOpen}>
-      <DrawerContent className="max-h-[90vh]">
-        <DrawerHeader>
-          <DrawerTitle>{pageCardSearchTitle}</DrawerTitle>
-        </DrawerHeader>
-        <div className="px-4 pb-4">{pageCardSearchContent}</div>
-      </DrawerContent>
-    </Drawer>
-  ) : (
-    <Dialog open={pageCardSearchOpen} onOpenChange={setPageCardSearchOpen}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle icon={RiSearchLine}>{pageCardSearchTitle}</DialogTitle>
-        </DialogHeader>
-        {pageCardSearchContent}
-      </DialogContent>
-    </Dialog>
-  );
-  const pageCardSearchAction = (
-    <Clickable
-      className="size-6 text-muted-foreground hover:text-foreground"
-      onClick={() => setPageCardSearchOpen(true)}
-      aria-label={pageCardSearchLabel}
-      title={pageCardSearchLabel}
-    >
-      <RiSearchLine className="size-4" />
-    </Clickable>
-  );
-
   return (
     <>
       <section
@@ -4221,118 +3210,373 @@ export function OverviewPagesSection({
       >
         {resolvedVisibleCards.has("page") ? (
           <div className="min-w-0">
-            <TabbedScrollMaskCard
+            <TabbedDataTableCard<PageCardTab, PageCardRow, PageCardSortKey>
               value={pageCardTab}
-              onValueChange={(value) => handlePageCardTabChange(value)}
-              tabs={resolvedPageCardTabs.map((tab) => ({
-                value: tab,
-                label: pageCardTabMeta[tab].label,
-              }))}
-              headerRight={pageCardSearchAction}
+              onValueChange={handlePageCardTabChange}
+              tabs={pageCardTableTabs}
+              rowsByTab={pageCardRowsForTable}
+              loadingByTab={loadingByPageCardTab}
+              columns={pageCardMetricColumns}
+              renderLabel={(row, { tab }) => pageCardLabel(row, tab)}
+              getRowSearchText={(row) =>
+                `${row.displayLabel ?? row.label} ${row.label}`
+              }
+              filterRows={(rows) =>
+                activePageCardQueryValue
+                  ? rows.filter(
+                      (row) =>
+                        (row.filterValue ?? row.label) ===
+                        activePageCardQueryValue,
+                    )
+                  : [...rows]
+              }
+              compareRows={comparePageRows}
+              loadingLabel={messages.common.loading}
+              emptyLabel={noDataText}
+              search={searchConfig}
               className="h-full"
-              syncKey={`${pageCardLoading}-${pageCardTab}-${effectivePageCardSortKey}-${pageCardSort.direction}-${sortedPageCardRows.length}-${activePageCardQueryValue ?? "all"}-${visiblePageCardRows.length}`}
-            >
-              <DataTableSwitch
-                loading={pageCardLoading}
-                hasContent={visiblePageCardRows.length > 0}
-                loadingLabel={messages.common.loading}
-                emptyLabel={noDataText}
-                colSpan={pageCardColumnSpan}
-                contentKey={`${pageCardTab}-${activePageCardQueryValue ?? "all"}`}
-                header={pageCardTableHeader}
-                rows={renderPageCardRows(visiblePageCardRows)}
-              />
-            </TabbedScrollMaskCard>
+              getRowActive={(row) =>
+                activePageCardQueryValue === (row.filterValue ?? row.label)
+              }
+              getRowInteractive={(row, tab) =>
+                Boolean(pageCardQueryParamByTab[tab]) ||
+                Boolean(
+                  resolvedPageCardNavigableTabs.has(tab as PageCardNavigableTab)
+                    ? (
+                        pageCardTargetUrlResolvers?.[tab] ??
+                        resolvePageCardTargetUrl
+                      )({
+                        tab,
+                        value: row.label,
+                        unknownLabel: messages.common.unknown,
+                        fallbackHostname: pageCardDefaultHostname,
+                      })
+                    : null,
+                ) ||
+                (isPageCardDetailTab(tab) &&
+                  resolvedPageCardDetailTabs.has(tab))
+              }
+              onRowClick={(row, { tab }) => {
+                const rowFilterValue = row.filterValue ?? row.label;
+                if (pageCardQueryParamByTab[tab]) {
+                  const normalized = rowFilterValue.trim();
+                  setPageCardQueryFilter(
+                    activePageCardQueryValue === normalized
+                      ? null
+                      : { tab, value: normalized },
+                  );
+                  return;
+                }
+
+                const rowTargetUrl = resolvedPageCardNavigableTabs.has(
+                  tab as PageCardNavigableTab,
+                )
+                  ? (
+                      pageCardTargetUrlResolvers?.[tab] ??
+                      resolvePageCardTargetUrl
+                    )({
+                      tab,
+                      value: row.label,
+                      unknownLabel: messages.common.unknown,
+                      fallbackHostname: pageCardDefaultHostname,
+                    })
+                  : null;
+                if (rowTargetUrl) {
+                  globalThis.window.open(
+                    rowTargetUrl,
+                    "_blank",
+                    "noopener,noreferrer",
+                  );
+                  return;
+                }
+
+                const rowDetailAction =
+                  isPageCardDetailTab(tab) &&
+                  resolvedPageCardDetailTabs.has(tab)
+                    ? (pageCardDetailClickResolvers?.[tab] ?? null)
+                    : null;
+                if (rowDetailAction && isPageCardDetailTab(tab)) {
+                  rowDetailAction({
+                    tab,
+                    basePath: pageDetailBasePath,
+                    value: row.label,
+                    unknownLabel: messages.common.unknown,
+                  });
+                  return;
+                }
+
+                const rowDetailHref =
+                  isPageCardDetailTab(tab) &&
+                  resolvedPageCardDetailTabs.has(tab)
+                    ? (
+                        pageCardDetailHrefResolvers?.[tab] ??
+                        resolvePageCardDetailHref
+                      )({
+                        tab,
+                        basePath: pageDetailBasePath,
+                        value: row.label,
+                        unknownLabel: messages.common.unknown,
+                      })
+                    : null;
+                if (rowDetailHref) router.push(rowDetailHref);
+              }}
+            />
           </div>
         ) : null}
 
         {resolvedVisibleCards.has("source") ? (
           <div className="min-w-0">
-            <TabbedScrollMaskCard
+            <TabbedDataTableCard<SourceCardTab, SourceCardRow, PageCardSortKey>
               value={sourceCardTab}
               onValueChange={(value) => setSourceCardTab(value)}
-              tabs={SOURCE_CARD_TABS.map((tab) => ({
-                value: tab,
-                label: sourceCardTabMeta[tab].label,
-              }))}
-              headerRight={sourceCardSearchAction}
+              tabs={sourceCardTableTabs}
+              rowsByTab={sourceCardRowsForTable}
+              loadingByTab={loadingBySourceCardTab}
+              columns={overviewMetricColumns}
+              renderLabel={(row, { tab }) => {
+                const displayLabel = row.displayLabel ?? row.label;
+                return (
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-2 break-words",
+                      row.mono && "font-mono",
+                    )}
+                  >
+                    <LabelWithOptionalIcon
+                      label={displayLabel}
+                      showIcon={sourceCardTabMeta[tab].showIcon}
+                      unknownLabel={sourceCardDirectLabel}
+                    />
+                    {row.targetUrl ? (
+                      <Clickable
+                        className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                        onClick={(event) =>
+                          openPageCardRowTarget(row.targetUrl!, event)
+                        }
+                        aria-label={displayLabel}
+                        title={displayLabel}
+                      >
+                        <RiArrowRightUpLine size="1.4em" />
+                      </Clickable>
+                    ) : null}
+                  </span>
+                );
+              }}
+              getRowSearchText={(row) =>
+                `${row.displayLabel ?? row.label} ${row.label}`
+              }
+              filterRows={(rows) =>
+                activeSourceCardQueryValue
+                  ? rows.filter(
+                      (row) => row.filterValue === activeSourceCardQueryValue,
+                    )
+                  : [...rows]
+              }
+              compareRows={comparePageRows}
+              loadingLabel={messages.common.loading}
+              emptyLabel={noDataText}
+              search={searchConfig}
               className="h-full"
-              syncKey={`${sourceCardLoading}-${sourceCardTab}-${sourceCardSort.key}-${sourceCardSort.direction}-${sortedSourceCardRows.length}-${activeSourceCardQueryValue ?? "all"}-${visibleSourceCardRows.length}`}
-            >
-              <DataTableSwitch
-                loading={sourceCardLoading}
-                hasContent={visibleSourceCardRows.length > 0}
-                loadingLabel={messages.common.loading}
-                emptyLabel={noDataText}
-                colSpan={3}
-                contentKey={`${sourceCardTab}-${activeSourceCardQueryValue ?? "all"}`}
-                header={sourceCardTableHeader}
-                rows={renderSourceCardRows(visibleSourceCardRows)}
-              />
-            </TabbedScrollMaskCard>
+              getRowActive={(row) =>
+                activeSourceCardQueryValue === row.filterValue
+              }
+              getRowInteractive={() => true}
+              onRowClick={(row, { tab }) => {
+                const normalized = row.filterValue.trim();
+                setSourceCardQueryFilter(
+                  activeSourceCardQueryValue === normalized
+                    ? null
+                    : { tab, value: normalized },
+                );
+              }}
+            />
           </div>
         ) : null}
 
         {resolvedVisibleCards.has("client") ? (
           <div className="min-w-0">
-            <TabbedScrollMaskCard
+            <TabbedDataTableCard<
+              ClientDimensionCardTab,
+              PageCardRow,
+              PageCardSortKey
+            >
               value={clientDimensionCardTab}
               onValueChange={(value) => setClientDimensionCardTab(value)}
-              tabs={CLIENT_DIMENSION_CARD_TABS.map((tab) => ({
-                value: tab,
-                label: clientDimensionCardTabMeta[tab].label,
-              }))}
-              headerRight={clientDimensionCardSearchAction}
+              tabs={clientDimensionCardTableTabs}
+              rowsByTab={clientDimensionCardRowsForTable}
+              loadingByTab={loadingByClientDimensionCardTab}
+              columns={overviewMetricColumns}
+              renderLabel={(row, { tab }) =>
+                tab === "deviceType" ? (
+                  <DeviceMeta
+                    deviceType={row.rawLabel ?? row.label}
+                    deviceLabels={messages.common.deviceLabels}
+                    unknownLabel={messages.common.unknown}
+                  />
+                ) : (
+                  <span className={cn(row.mono && "font-mono")}>
+                    <LabelWithLeadingIcon
+                      label={row.label}
+                      iconName={row.iconName}
+                    />
+                  </span>
+                )
+              }
+              getRowSearchText={(row) => `${row.label} ${row.rawLabel ?? ""}`}
+              filterRows={(rows) =>
+                activeClientDimensionCardQueryValue
+                  ? rows.filter(
+                      (row) =>
+                        (row.filterValue ?? row.label) ===
+                        activeClientDimensionCardQueryValue,
+                    )
+                  : [...rows]
+              }
+              compareRows={comparePageRows}
+              loadingLabel={messages.common.loading}
+              emptyLabel={noDataText}
+              search={searchConfig}
               className="h-full"
-              syncKey={`${clientDimensionCardLoading}-${clientDimensionCardTab}-${clientDimensionCardSort.key}-${clientDimensionCardSort.direction}-${sortedClientDimensionCardRows.length}-${activeClientDimensionCardQueryValue ?? "all"}-${visibleClientDimensionCardRows.length}`}
-            >
-              <DataTableSwitch
-                loading={clientDimensionCardLoading}
-                hasContent={visibleClientDimensionCardRows.length > 0}
-                loadingLabel={messages.common.loading}
-                emptyLabel={noDataText}
-                colSpan={3}
-                contentKey={`${clientDimensionCardTab}-${activeClientDimensionCardQueryValue ?? "all"}`}
-                header={clientDimensionCardTableHeader}
-                rows={renderClientDimensionCardRows(
-                  visibleClientDimensionCardRows,
-                )}
-              />
-            </TabbedScrollMaskCard>
+              getRowActive={(row) =>
+                activeClientDimensionCardQueryValue ===
+                (row.filterValue ?? row.label)
+              }
+              getRowInteractive={() => true}
+              onRowClick={(row, { tab }) => {
+                const normalized = (row.filterValue ?? row.label).trim();
+                setClientDimensionCardQueryFilter(
+                  activeClientDimensionCardQueryValue === normalized
+                    ? null
+                    : { tab, value: normalized },
+                );
+              }}
+            />
           </div>
         ) : null}
 
         {resolvedVisibleCards.has("geo") ? (
           <div className="min-w-0">
-            <TabbedScrollMaskCard
+            <TabbedDataTableCard<
+              GeoDimensionCardTab,
+              PageCardRow,
+              PageCardSortKey
+            >
               value={geoDimensionCardTab}
               onValueChange={(value) => setGeoDimensionCardTab(value)}
-              tabs={GEO_DIMENSION_CARD_TABS.map((tab) => ({
-                value: tab,
-                label: geoDimensionCardTabMeta[tab].label,
-              }))}
-              headerRight={geoDimensionCardSearchAction}
+              tabs={geoDimensionCardTableTabs}
+              rowsByTab={geoDimensionCardRowsForTable}
+              loadingByTab={loadingByGeoDimensionCardTab}
+              columns={overviewMetricColumns}
+              renderLabel={(row, { tab, source }) => {
+                const rowLocationTarget = geoDimensionRowLocationTarget(
+                  tab,
+                  row,
+                );
+                return (
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-2 break-words",
+                      (tab === "region" || tab === "city") &&
+                        "flex min-h-8 items-center",
+                      row.mono && "font-mono",
+                    )}
+                  >
+                    {source === "search" ? (
+                      <LabelWithLeadingIcon
+                        label={row.rawLabel?.trim() || row.label}
+                        iconName={row.iconName}
+                      />
+                    ) : tab === "region" && row.regionBreadcrumb ? (
+                      <LazyGeoRegionBreadcrumbLabel
+                        locale={locale}
+                        countryLabel={row.regionBreadcrumb.countryLabel}
+                        countryIconName={row.regionBreadcrumb.countryIconName}
+                        regionLabel={row.regionBreadcrumb.regionLabel}
+                        countryCode={row.regionBreadcrumb.countryCode}
+                        stateCode={row.regionBreadcrumb.stateCode}
+                        hideRegion={row.regionBreadcrumb.hideRegion}
+                      />
+                    ) : tab === "city" && row.cityBreadcrumb ? (
+                      <LazyGeoCityBreadcrumbLabel
+                        locale={locale}
+                        countryLabel={row.cityBreadcrumb.countryLabel}
+                        countryIconName={row.cityBreadcrumb.countryIconName}
+                        regionLabel={row.cityBreadcrumb.regionLabel}
+                        cityLabel={row.cityBreadcrumb.cityLabel}
+                        countryCode={row.cityBreadcrumb.countryCode}
+                        stateCode={row.cityBreadcrumb.stateCode}
+                        cityNameDefault={row.cityBreadcrumb.cityNameDefault}
+                        hideRegion={row.cityBreadcrumb.hideRegion}
+                        hideCity={row.cityBreadcrumb.hideCity}
+                      />
+                    ) : (
+                      <LabelWithLeadingIcon
+                        label={row.label}
+                        iconName={row.iconName}
+                      />
+                    )}
+                    {rowLocationTarget ? (
+                      <Clickable
+                        className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                        onClick={(event) =>
+                          openGeoDimensionLocationTarget(
+                            rowLocationTarget,
+                            event,
+                          )
+                        }
+                        aria-label={messages.common.search}
+                        title={messages.common.search}
+                      >
+                        <RiSearchLine size="1.2em" />
+                      </Clickable>
+                    ) : null}
+                  </span>
+                );
+              }}
+              getRowSearchText={(row) => `${row.label} ${row.rawLabel ?? ""}`}
+              filterRows={(rows, tab) => {
+                if (!activeGeoDimensionCardQueryValue) return [...rows];
+                const activeGeoQueryValue = isGeoLocationTab(tab)
+                  ? resolveGeoLocationHighlightValue(
+                      tab,
+                      activeGeoDimensionCardQueryValue,
+                    )
+                  : activeGeoDimensionCardQueryValue;
+                if (!activeGeoQueryValue) return [...rows];
+                return rows.filter(
+                  (row) =>
+                    (row.filterValue ?? row.label) === activeGeoQueryValue,
+                );
+              }}
+              compareRows={comparePageRows}
+              loadingLabel={messages.common.loading}
+              emptyLabel={noDataText}
+              search={searchConfig}
               className="h-full"
-              syncKey={`${geoDimensionCardLoading}-${geoDimensionCardTab}-${geoDimensionCardSort.key}-${geoDimensionCardSort.direction}-${sortedGeoDimensionCardRows.length}-${activeGeoDimensionCardQueryValue ?? "all"}-${visibleGeoDimensionCardRows.length}`}
-            >
-              <DataTableSwitch
-                loading={geoDimensionCardLoading}
-                hasContent={visibleGeoDimensionCardRows.length > 0}
-                loadingLabel={messages.common.loading}
-                emptyLabel={noDataText}
-                colSpan={3}
-                contentKey={`${geoDimensionCardTab}-${activeGeoDimensionCardQueryValue ?? "all"}`}
-                header={geoDimensionCardTableHeader}
-                rows={renderGeoDimensionCardRows(visibleGeoDimensionCardRows)}
-              />
-            </TabbedScrollMaskCard>
+              getRowActive={(row, tab) => {
+                const activeGeoHighlightValue = isGeoLocationTab(tab)
+                  ? resolveGeoLocationHighlightValue(
+                      tab,
+                      activeGeoDimensionCardQueryValue,
+                    )
+                  : activeGeoDimensionCardQueryValue;
+                return (
+                  activeGeoHighlightValue === (row.filterValue ?? row.label)
+                );
+              }}
+              getRowInteractive={() => true}
+              onRowClick={(row, { tab }) => {
+                const normalized = (row.filterValue ?? row.label).trim();
+                setGeoDimensionCardQueryFilter(
+                  activeGeoDimensionCardQueryValue === normalized
+                    ? null
+                    : { tab, value: normalized },
+                );
+              }}
+            />
           </div>
         ) : null}
       </section>
-      {geoDimensionCardSearchPanel}
-      {clientDimensionCardSearchPanel}
-      {sourceCardSearchPanel}
-      {pageCardSearchPanel}
     </>
   );
 }

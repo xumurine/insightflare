@@ -1,206 +1,195 @@
-import { spawnSync } from "node:child_process";
+#!/usr/bin/env tsx
+
 import fs from "node:fs";
 import path from "node:path";
+import process from "node:process";
 
-import { createScriptLogger } from "./shared/logger";
+import {
+  type CommonOptions,
+  createRuntime,
+  type DeployTarget,
+  localCli,
+  parseCommonOptions,
+  resolveConfigPath,
+  targetEnv,
+} from "./shared/deploy-runtime";
+import { ROOT_DIR } from "./shared/paths";
 import { checkEnvironmentVariables } from "./check-env";
 import { applyWranglerEnvOverrides } from "./wrangler-env-overrides";
 
-const startedAt = Date.now();
-
-const rlog = createScriptLogger({
-  logFile: "prebuild.log",
-});
-
-function log(
-  msg: string,
-  type: "info" | "success" | "error" | "warn" = "info",
-): void {
-  if (type === "success") {
-    rlog.success(`[prebuild] ${msg}`);
-  } else if (type === "error") {
-    rlog.error(`[prebuild] ${msg}`);
-  } else if (type === "warn") {
-    rlog.warn(`[prebuild] ${msg}`);
-  } else {
-    rlog.info(`[prebuild] ${msg}`);
-  }
+function migrationMode(target: DeployTarget): "local" | "none" | "remote" {
+  if (target === "local") return "local";
+  if (target === "cf") return "remote";
+  return "none";
 }
 
-function pickArg(name: string): string | undefined {
-  const argv = process.argv.slice(2);
-  const flag = `--${name}`;
-  for (let i = 0; i < argv.length; i += 1) {
-    const current = argv[i];
-    if (current === flag) {
-      return argv[i + 1];
-    }
-    if (current.startsWith(`${flag}=`)) {
-      return current.slice(flag.length + 1);
-    }
-  }
-  return undefined;
+function shouldPrecheck(target: DeployTarget): boolean {
+  return target === "local";
 }
 
-function run(command: string, args: string[], cwd: string): void {
-  log(`$ ${command} ${args.join(" ")}`);
-  const res = spawnSync(command, args, {
-    cwd,
-    stdio: "inherit",
-    env: process.env,
-  });
-  if (res.status !== 0) {
-    throw new Error(`Command failed: ${command} ${args.join(" ")}`);
-  }
+function runtimeSecretsAvailable(target: DeployTarget): boolean {
+  return target === "local";
 }
 
-function normalizeRootSecretEnv(): void {
-  if (!process.env.MAIN_SECRET && process.env.DAILY_SALT_SECRET) {
-    process.env.MAIN_SECRET = process.env.DAILY_SALT_SECRET;
-  }
-}
-
-function resolveWranglerCli(rootDir: string, edgeDir: string): string {
+function wranglerCli(rootDir: string, configPath: string): string {
+  const configDir = path.dirname(configPath);
   const candidates = [
-    path.join(edgeDir, "node_modules", "wrangler", "bin", "wrangler.js"),
+    path.join(configDir, "node_modules", "wrangler", "bin", "wrangler.js"),
     path.join(rootDir, "node_modules", "wrangler", "bin", "wrangler.js"),
   ];
-
   for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
+    if (fs.existsSync(candidate)) return candidate;
   }
-
   throw new Error(
     "Cannot resolve local Wrangler CLI (node_modules/wrangler/bin/wrangler.js)",
   );
 }
 
-function resolveTsxCli(rootDir: string): string {
-  const candidate = path.join(
-    rootDir,
-    "node_modules",
-    "tsx",
-    "dist",
-    "cli.mjs",
-  );
-  if (fs.existsSync(candidate)) return candidate;
-  throw new Error(
-    "Cannot resolve local tsx CLI (node_modules/tsx/dist/cli.mjs)",
-  );
+function migrationArgs(options: CommonOptions, configPath: string): string[] {
+  const mode = migrationMode(options.target);
+  if (mode === "none") return [];
+
+  const args = [
+    wranglerCli(ROOT_DIR, configPath),
+    "d1",
+    "migrations",
+    "apply",
+    options.database,
+    "--config",
+    configPath,
+    mode === "remote" ? "--remote" : "--local",
+  ];
+
+  if (options.envName) {
+    args.push("--env", options.envName);
+  }
+
+  return args;
 }
 
-async function main(): Promise<void> {
-  const autoMigrateArg = pickArg("auto-migrate");
-  const autoMigrate =
-    autoMigrateArg !== undefined
-      ? autoMigrateArg !== "0" && autoMigrateArg.toLowerCase() !== "false"
-      : (process.env.INSIGHTFLARE_AUTO_MIGRATE ?? "1") !== "0";
-  const migrationTarget = (
-    pickArg("target") ??
-    process.env.INSIGHTFLARE_MIGRATION_TARGET ??
-    "local"
-  ).toLowerCase();
-  const rootDir = process.cwd();
-  const wranglerConfigInput =
-    pickArg("config") ??
-    process.env.INSIGHTFLARE_WRANGLER_CONFIG ??
-    path.join(rootDir, "wrangler.toml");
-  const wranglerConfig = path.isAbsolute(wranglerConfigInput)
-    ? wranglerConfigInput
-    : path.resolve(rootDir, wranglerConfigInput);
-  const wranglerDir = path.dirname(wranglerConfig);
-  const d1DatabaseName =
-    pickArg("database") ??
-    process.env.INSIGHTFLARE_D1_DATABASE ??
-    "insightflare";
-  const wranglerEnv = pickArg("env") ?? process.env.INSIGHTFLARE_ENV;
+async function runPrecheck(options: CommonOptions): Promise<void> {
+  if (!shouldPrecheck(options.target)) {
+    runtime.rlog.info("Precheck skipped for this target.");
+    return;
+  }
 
-  log("InsightFlare prebuild started");
-  normalizeRootSecretEnv();
+  await checkEnvironmentVariables({
+    runtimeSecretsAvailable: runtimeSecretsAvailable(options.target),
+    strict: true,
+  });
+}
 
-  // 检查环境变量安全性
-  await checkEnvironmentVariables({ strict: wranglerEnv !== "local" });
-
-  if (!fs.existsSync(wranglerConfig)) {
-    throw new Error(`Missing wrangler config: ${wranglerConfig}`);
+async function applyConfigOverrides(options: CommonOptions): Promise<string> {
+  const configPath = resolveConfigPath(options.config);
+  if (!fs.existsSync(configPath)) {
+    throw new Error(`Missing wrangler config: ${configPath}`);
   }
 
   const overrideResult = applyWranglerEnvOverrides(
-    fs.readFileSync(wranglerConfig, "utf8"),
+    fs.readFileSync(configPath, "utf8"),
     process.env,
-    wranglerEnv,
+    options.envName,
   );
   if (overrideResult.applied.length > 0) {
-    fs.writeFileSync(wranglerConfig, overrideResult.content);
-    log(
-      `Applied Wrangler config overrides from environment: ${overrideResult.applied.join(", ")}`,
-      "success",
+    fs.writeFileSync(configPath, overrideResult.content);
+    runtime.rlog.success(
+      `Applied Wrangler config overrides: ${overrideResult.applied.join(", ")}`,
     );
   }
 
-  if (autoMigrate) {
-    const targetFlag = migrationTarget === "remote" ? "--remote" : "--local";
-    const wranglerCli = resolveWranglerCli(rootDir, wranglerDir);
-    const args = [
-      wranglerCli,
-      "d1",
-      "migrations",
-      "apply",
-      d1DatabaseName,
-      "--config",
-      wranglerConfig,
-      targetFlag,
-    ];
+  return configPath;
+}
 
-    if (wranglerEnv && wranglerEnv.length > 0) {
-      args.push("--env", wranglerEnv);
-    }
-
-    run(process.execPath, args, wranglerDir);
-    log(`D1 migrations applied (${migrationTarget})`, "success");
-  } else {
-    log("INSIGHTFLARE_AUTO_MIGRATE=0, skip D1 migrations", "warn");
+async function runMigration(
+  options: CommonOptions,
+  configPath: string,
+): Promise<void> {
+  const args = migrationArgs(options, configPath);
+  if (args.length === 0) {
+    runtime.rlog.info("D1 migration skipped for this target.");
+    return;
   }
 
-  run(
+  await runtime.runCommand(process.execPath, args, targetEnv(options.target));
+  runtime.rlog.success(
+    `D1 migrations applied (${migrationMode(options.target)})`,
+  );
+}
+
+async function buildTrackerSdk(options: CommonOptions): Promise<void> {
+  if (options.skipSdk) {
+    runtime.rlog.info("Tracker SDK build skipped.");
+    return;
+  }
+
+  await runtime.runCommand(
     process.execPath,
     [
-      resolveTsxCli(rootDir),
-      path.join(rootDir, "scripts", "build-tracker-sdk.ts"),
+      localCli(ROOT_DIR, "tsx", path.join("dist", "cli.mjs")),
+      path.join(ROOT_DIR, "scripts", "build-tracker-sdk.ts"),
     ],
-    rootDir,
+    targetEnv(options.target),
   );
+}
 
-  const cacheDir = path.join(process.cwd(), ".cache");
-  if (!fs.existsSync(cacheDir)) {
-    fs.mkdirSync(cacheDir, { recursive: true });
-  }
-
-  const finishedAt = Date.now();
+async function writeBuildMeta(options: CommonOptions): Promise<void> {
+  const cacheDir = path.join(ROOT_DIR, ".cache");
+  fs.mkdirSync(cacheDir, { recursive: true });
   fs.writeFileSync(
     path.join(cacheDir, "build-meta.json"),
     JSON.stringify(
       {
-        prebuildStartTime: startedAt,
-        prebuildEndTime: finishedAt,
-        autoMigrate,
-        migrationTarget,
+        finishedAt: Date.now(),
+        migrationMode: migrationMode(options.target),
+        target: options.target,
       },
       null,
       2,
     ),
   );
+}
 
-  log(
-    `InsightFlare prebuild done in ${((finishedAt - startedAt) / 1000).toFixed(2)}s`,
-    "success",
+const runtime = createRuntime("prebuild", "Prebuild");
+
+async function main(): Promise<void> {
+  const options = parseCommonOptions(process.argv.slice(2));
+  const startedAt = Date.now();
+  const stages = [];
+
+  runtime.logHeader(options);
+  runtime.assertEnvironment(options);
+
+  stages.push(
+    await runtime.runStage(1, 4, "Checking environment", () =>
+      runPrecheck(options),
+    ),
   );
+  let configPath = "";
+  stages.push(
+    await runtime.runStage(2, 4, "Preparing Wrangler config", async () => {
+      configPath = await applyConfigOverrides(options);
+    }),
+  );
+  stages.push(
+    await runtime.runStage(3, 4, "Applying D1 migrations", () =>
+      runMigration(options, configPath),
+    ),
+  );
+  stages.push(
+    await runtime.runStage(4, 4, "Building tracker SDK", () =>
+      buildTrackerSdk(options),
+    ),
+  );
+  await writeBuildMeta(options);
+
+  runtime.logSummary(stages, startedAt);
+  runtime.rlog.success("InsightFlare prebuild completed successfully.");
 }
 
 main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  log(`failed: ${message}`, "error");
-  process.exit(1);
+  runtime.rlog.log();
+  runtime.rlog.error("InsightFlare prebuild failed");
+  runtime.rlog.error(error instanceof Error ? error.message : String(error));
+  runtime.rlog.error(`Full log: ${runtime.logFilePath}`);
+  process.exitCode = 1;
 });

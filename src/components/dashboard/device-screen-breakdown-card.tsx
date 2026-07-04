@@ -3,21 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RiArrowDownSLine,
-  RiArrowUpSLine,
   RiComputerLine,
   RiExternalLinkLine,
 } from "@remixicon/react";
-import {
-  AnimatePresence,
-  type HTMLMotionProps,
-  motion,
-  useReducedMotion,
-} from "motion/react";
 import { Cell, Pie, PieChart } from "recharts";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
-import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
-import { TabbedScrollMaskCard } from "@/components/dashboard/tabbed-scroll-mask-card";
+import {
+  TabbedDataTableCard,
+  type TabbedDataTableColumn,
+} from "@/components/dashboard/tabbed-data-table-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -32,7 +27,6 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { fetchClientDimensionTrend } from "@/lib/dashboard/client-data";
 import {
   aggregateScreenBuckets,
@@ -46,7 +40,6 @@ import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import type { BrowserTrendData, BrowserTrendSeries } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
-import { cn } from "@/lib/utils";
 
 const CHART_COLORS = [
   "var(--color-chart-1)",
@@ -61,50 +54,11 @@ type ScreenSortKey = "visitors" | "views" | "sessions";
 type ScreenListTab = "screenSize";
 
 interface ScreenListItem extends BrowserTrendSeries {
+  key: string;
   displayLabel: string;
   share: number;
   parsed: ParsedScreenSize | null;
   bucket: ScreenBucketKey;
-}
-
-const DATA_ROW_LAYOUT_TRANSITION = {
-  layout: {
-    duration: 0.34,
-    ease: [0.22, 1, 0.36, 1],
-  },
-  opacity: {
-    duration: 0.18,
-    ease: [0.22, 1, 0.36, 1],
-  },
-} as const;
-
-interface AnimatedDataTableRowProps extends HTMLMotionProps<"tr"> {
-  reduceMotion?: boolean;
-}
-
-function AnimatedDataTableRow({
-  reduceMotion = false,
-  className,
-  children,
-  ...props
-}: AnimatedDataTableRowProps) {
-  return (
-    <motion.tr
-      data-slot="table-row"
-      layout={reduceMotion ? false : "position"}
-      initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -10 }}
-      transition={DATA_ROW_LAYOUT_TRANSITION}
-      className={cn(
-        "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </motion.tr>
-  );
 }
 
 function emptyTrend(): BrowserTrendData {
@@ -267,185 +221,80 @@ function ScreenValueListCard({
   items: ScreenListItem[];
   loading: boolean;
 }) {
-  const reduceDataRowMotion = useReducedMotion() ?? false;
-  const [sort, setSort] = useState<{
-    key: ScreenSortKey;
-    direction: "asc" | "desc";
-  }>({
-    key: "visitors",
-    direction: "desc",
-  });
-  const sortedItems = useMemo(() => {
-    const direction = sort.direction === "asc" ? 1 : -1;
-    return [...items].sort((left, right) => {
-      const primary = (left[sort.key] - right[sort.key]) * direction;
-      if (primary !== 0) return primary;
-      if (right.views !== left.views) return right.views - left.views;
-      if (right.sessions !== left.sessions)
-        return right.sessions - left.sessions;
-      return left.displayLabel.localeCompare(right.displayLabel);
-    });
-  }, [items, sort.direction, sort.key]);
-  const progressTotal = useMemo(
-    () =>
-      sortedItems.reduce(
-        (sum, item) => sum + Math.max(0, Number(item[sort.key] ?? 0)),
-        0,
-      ),
-    [sort.key, sortedItems],
+  const columns = useMemo<
+    readonly TabbedDataTableColumn<
+      ScreenListItem,
+      ScreenSortKey,
+      ScreenListTab
+    >[]
+  >(
+    () => [
+      {
+        key: "visitors",
+        label: messages.common.visitors,
+        getValue: (item) => item.visitors,
+        format: (value) => numberFormat(locale, value),
+      },
+      {
+        key: "views",
+        label: messages.common.views,
+        getValue: (item) => item.views,
+        format: (value) => numberFormat(locale, value),
+      },
+      {
+        key: "sessions",
+        label: messages.common.sessions,
+        getValue: (item) => item.sessions,
+        format: (value) => numberFormat(locale, value),
+      },
+    ],
+    [
+      locale,
+      messages.common.sessions,
+      messages.common.views,
+      messages.common.visitors,
+    ],
   );
-
-  const toggleSort = (key: ScreenSortKey) => {
-    setSort((prev) =>
-      prev.key === key
-        ? { key, direction: prev.direction === "desc" ? "asc" : "desc" }
-        : { key, direction: "desc" },
-    );
-  };
-
-  const renderSortIndicator = (key: ScreenSortKey) => {
-    if (sort.key === key) {
-      return sort.direction === "desc" ? (
-        <RiArrowDownSLine className="size-3.5" />
-      ) : (
-        <RiArrowUpSLine className="size-3.5" />
-      );
-    }
-
-    return (
-      <span className="inline-flex flex-col leading-none text-muted-foreground">
-        <RiArrowUpSLine className="-mb-1 size-3.5" />
-        <RiArrowDownSLine className="-mt-1 size-3.5" />
-      </span>
-    );
-  };
-
-  const tableHeader = (
-    <TableRow className="hover:bg-transparent">
-      <TableHead className="h-8 p-0">
-        <div className="px-4">{messages.common.screenSize}</div>
-      </TableHead>
-      <TableHead className="h-8 w-20 p-0">
-        <div className="flex justify-end px-2">
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              sort.key === "visitors"
-                ? "text-foreground"
-                : "text-muted-foreground",
-            )}
-            onClick={() => toggleSort("visitors")}
-          >
-            {messages.common.visitors}
-            {renderSortIndicator("visitors")}
-          </button>
-        </div>
-      </TableHead>
-      <TableHead className="h-8 w-20 p-0">
-        <div className="flex justify-end px-2">
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              sort.key === "views"
-                ? "text-foreground"
-                : "text-muted-foreground",
-            )}
-            onClick={() => toggleSort("views")}
-          >
-            {messages.common.views}
-            {renderSortIndicator("views")}
-          </button>
-        </div>
-      </TableHead>
-      <TableHead className="h-8 w-20 p-0">
-        <div className="flex justify-end px-2">
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1 whitespace-nowrap transition-colors",
-              sort.key === "sessions"
-                ? "text-foreground"
-                : "text-muted-foreground",
-            )}
-            onClick={() => toggleSort("sessions")}
-          >
-            {messages.common.sessions}
-            {renderSortIndicator("sessions")}
-          </button>
-        </div>
-      </TableHead>
-    </TableRow>
-  );
-
-  const rows = (
-    <AnimatePresence initial={false} mode="popLayout">
-      {sortedItems.map((item) => {
-        const rowValue = Math.max(0, Number(item[sort.key] ?? 0));
-        const progressPercent =
-          progressTotal > 0
-            ? Math.min(100, (rowValue / progressTotal) * 100)
-            : 0;
-        const progressWidth = `${progressPercent.toFixed(2)}%`;
-
-        return (
-          <AnimatedDataTableRow
-            key={item.key}
-            reduceMotion={reduceDataRowMotion}
-            className="bg-no-repeat transition-[background-size,filter] duration-300 ease-out hover:brightness-95"
-            style={{
-              backgroundImage:
-                "linear-gradient(90deg, var(--muted) 0%, var(--muted) 100%)",
-              backgroundSize: `${progressWidth} 100%`,
-              backgroundPosition: "left top",
-            }}
-          >
-            <TableCell className="p-0 whitespace-normal align-top">
-              <div className="px-4 py-2 font-mono leading-5 whitespace-normal break-words text-foreground">
-                {item.displayLabel}
-              </div>
-            </TableCell>
-            <TableCell className="p-0">
-              <div className="px-2 py-2 text-right">
-                {numberFormat(locale, item.visitors)}
-              </div>
-            </TableCell>
-            <TableCell className="p-0">
-              <div className="px-2 py-2 text-right">
-                {numberFormat(locale, item.views)}
-              </div>
-            </TableCell>
-            <TableCell className="p-0">
-              <div className="px-4 py-2 text-right">
-                {numberFormat(locale, item.sessions)}
-              </div>
-            </TableCell>
-          </AnimatedDataTableRow>
-        );
-      })}
-    </AnimatePresence>
-  );
+  const rowsByTab = useMemo(() => ({ screenSize: items }), [items]);
+  const loadingByTab = useMemo(() => ({ screenSize: loading }), [loading]);
 
   return (
-    <TabbedScrollMaskCard<ScreenListTab>
-      value="screenSize"
-      onValueChange={() => {}}
-      tabs={[]}
+    <TabbedDataTableCard<ScreenListTab, ScreenListItem, ScreenSortKey>
+      tabs={[
+        {
+          value: "screenSize",
+          label: messages.common.screenSize,
+          columnLabel: messages.common.screenSize,
+          defaultSort: { key: "visitors", direction: "desc" },
+        },
+      ]}
+      rowsByTab={rowsByTab}
+      loadingByTab={loadingByTab}
+      columns={columns}
+      renderLabel={(item) => (
+        <span className="font-mono break-words text-foreground">
+          {item.displayLabel}
+        </span>
+      )}
+      getRowSearchText={(item) => item.displayLabel}
+      compareRows={(left, right, { sort }) => {
+        const primary =
+          (left[sort.key] - right[sort.key]) *
+          (sort.direction === "asc" ? 1 : -1);
+        if (primary !== 0) return primary;
+        if (right.views !== left.views) return right.views - left.views;
+        if (right.sessions !== left.sessions) {
+          return right.sessions - left.sessions;
+        }
+        return left.displayLabel.localeCompare(right.displayLabel);
+      }}
+      loadingLabel={messages.common.loading}
+      emptyLabel={messages.common.noData}
       headerHidden
       className="h-full"
-      syncKey={`${loading}-${sort.key}-${sort.direction}-${sortedItems.length}`}
-    >
-      <DataTableSwitch
-        loading={loading}
-        hasContent={sortedItems.length > 0}
-        loadingLabel={messages.common.loading}
-        emptyLabel={messages.common.noData}
-        colSpan={4}
-        header={tableHeader}
-        rows={rows}
-      />
-    </TabbedScrollMaskCard>
+      search={false}
+      getRowClassName={() => "hover:brightness-95"}
+    />
   );
 }
 
@@ -672,6 +521,7 @@ export function DeviceScreenBreakdownCard({
         const parsed = parseScreenSizeLabel(series.label);
         return {
           ...series,
+          key: (series as { key?: string }).key || series.label,
           displayLabel: displaySeriesLabel(series, messages),
           share: totalVisitors > 0 ? series.visitors / totalVisitors : 0,
           parsed,

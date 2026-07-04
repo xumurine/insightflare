@@ -100,9 +100,11 @@ function isDemoMode(): boolean {
 
 // 导出的环境检查函数
 export async function checkEnvironmentVariables(options?: {
+  runtimeSecretsAvailable?: boolean;
   strict?: boolean;
 }): Promise<void> {
   const strict = options?.strict ?? isProduction();
+  const runtimeSecretsAvailable = options?.runtimeSecretsAvailable ?? true;
   let hasErrors = false;
   let hasWarnings = false;
 
@@ -144,6 +146,10 @@ export async function checkEnvironmentVariables(options?: {
       const generated = generateStrongSecret();
       rlog.info(`    Suggested MAIN_SECRET: ${generated}`);
       hasErrors = true;
+    } else if (!runtimeSecretsAvailable) {
+      rlog.info(
+        "  ○ Runtime secrets are not available during Cloudflare build; they will be checked at runtime.",
+      );
     } else {
       rlog.warn("  ⚠ No secret configured, using insecure defaults (dev only)");
       hasWarnings = true;
@@ -155,6 +161,12 @@ export async function checkEnvironmentVariables(options?: {
     const value = process.env[envVar.name];
 
     if (!value) {
+      if (!runtimeSecretsAvailable) {
+        rlog.info(
+          `  ○ ${envVar.name} is not available during Cloudflare build (runtime secret)`,
+        );
+        continue;
+      }
       rlog.warn(`  ⚠ ${envVar.name} is not set (recommended)`);
       rlog.warn(`    ${envVar.description}`);
       hasWarnings = true;

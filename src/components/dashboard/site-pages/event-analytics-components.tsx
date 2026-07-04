@@ -2,6 +2,8 @@
 
 import {
   type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
   type ReactNode,
   useEffect,
   useEffectEvent,
@@ -1386,6 +1388,19 @@ export function EventRecordDetailDrawer({
     openNestedDetail("session", nextSessionId);
   };
 
+  const stopSideDrawerOverlayEvent = (
+    event: PointerEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>,
+  ) => {
+    event.stopPropagation();
+    event.nativeEvent.stopImmediatePropagation();
+  };
+
+  const closeSideDrawerFromOverlay = (event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    stopSideDrawerOverlayEvent(event);
+    if (!nestedDetailOpen) onOpenChange(false);
+  };
+
   const sideDrawerOverlay =
     open && typeof document !== "undefined"
       ? createPortal(
@@ -1398,11 +1413,9 @@ export function EventRecordDetailDrawer({
             {...{
               [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
             }}
-            onPointerDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              if (!nestedDetailOpen) onOpenChange(false);
-            }}
+            onPointerDown={stopSideDrawerOverlayEvent}
+            onPointerUp={stopSideDrawerOverlayEvent}
+            onClick={closeSideDrawerFromOverlay}
           />,
           document.body,
         )

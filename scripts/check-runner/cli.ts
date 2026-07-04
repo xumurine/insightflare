@@ -83,7 +83,7 @@ const tasks: CheckTask[] = [
     steps: [
       {
         name: "Build",
-        args: ["run", "ci:build"],
+        args: ["run", "build:demo"],
       },
     ],
   },

@@ -504,11 +504,7 @@ export function DetailDrawer({
           data-dashboard-floating-layer="detail-drawer"
           data-dashboard-floating-layer-z={layerZIndex}
           data-detail-drawer-root=""
-          className={cn(
-            "fixed inset-0 z-[96]",
-            isCloseInteractionDisabled && "pointer-events-none",
-            rootClassName,
-          )}
+          className={cn("fixed inset-0 z-[96]", rootClassName)}
           style={rootStyle}
         >
           <motion.div
