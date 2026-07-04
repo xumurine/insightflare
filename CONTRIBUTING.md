@@ -26,7 +26,7 @@ At minimum, local secret-backed flows need `MAIN_SECRET` and `BOOTSTRAP_ADMIN_PA
 Before opening a pull request, run:
 
 ```bash
-npm run check:dry
+npm run check
 ```
 
 This runs the same core checks expected by CI:
@@ -40,7 +40,7 @@ This runs the same core checks expected by CI:
 For build-related changes, also run:
 
 ```bash
-npm run ci:build
+npm run build:demo
 ```
 
 ## Pull Requests

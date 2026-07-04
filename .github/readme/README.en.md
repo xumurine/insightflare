@@ -330,7 +330,7 @@ If you do not use the deploy button, deploy with the steps below:
 
 1. Clone this repository locally: `git clone https://github.com/RavelloH/InsightFlare`
 2. Install dependencies: `npm install`
-3. Create the local database: `npm run d1:migrate:local`
+3. Create the local database: `npm run db:migrate:local`
 4. Set environment variables by referring to `.dev.vars.example`
 5. Start the development server: `npm run dev`
 
@@ -342,15 +342,24 @@ Set `NEXT_PUBLIC_DEMO_MODE=1` to make the development server automatically enabl
 | --------------------------------- | ------------------------------------------------------------------ |
 | `npm run dev`                     | Local Worker + dashboard development (use `http://127.0.0.1:8787`) |
 | `npm run dev:ui`                  | Start only the Next.js UI dev server in Demo Mode                  |
+| `npm run preview:local`           | Build with local resources and run Wrangler preview                |
+| `npm run build`                   | Cloudflare managed build entrypoint                                |
+| `npm run build:local`             | Local precheck + local D1 migration + build                        |
+| `npm run build:demo`              | Demo build without resource bindings                               |
+| `npm run deploy`                  | Cloudflare managed deploy entrypoint                               |
+| `npm run publish`                 | Build and publish from an allowed Cloudflare environment           |
+| `npm run publish:demo`            | Build and publish the demo Worker                                  |
 | `npm run check`                   | Run typecheck + lint + format + i18n + tests + spec checks         |
 | `npm run typecheck`               | TypeScript type checking                                           |
 | `npm run lint` / `lint:fix`       | ESLint                                                             |
 | `npm run format` / `format:check` | Prettier                                                           |
 | `npm run check:i18n`              | Validate translation key completeness                              |
-| `npm run d1:migrate:local`        | Local D1 migration                                                 |
-| `npm run d1:migrate:remote`       | Remote D1 migration                                                |
-| `npm run d1:migration:create`     | Create a new migration file                                        |
-| `npm run cf:tail`                 | View online Worker logs                                            |
+| `npm run db:migrate:local`        | Local D1 migration                                                 |
+| `npm run db:migrate:cf`           | Cloudflare D1 migration                                            |
+| `npm run db:migration:create`     | Create a new migration file                                        |
+| `npm run ops:secret:main`         | Set the `MAIN_SECRET` Worker secret                                |
+| `npm run ops:secret:bootstrap-admin-password` | Set the bootstrap admin password secret                |
+| `npm run ops:tail`                | View online Worker logs                                            |
 
 ---
 
