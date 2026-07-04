@@ -323,6 +323,12 @@ describe("admin bot analytics handlers", () => {
     const sql = String((fetchInit as RequestInit | undefined)?.body || "");
     expect(sql).toContain("FROM insightflare_bot_events");
     expect(sql).not.toContain("`insightflare_bot_events`");
+    expect(sql).toContain("double1 AS receivedAt");
+    expect(sql).toContain("double3 AS latitude");
+    expect(sql).toContain("double4 AS longitude");
+    expect(sql).toContain("ORDER BY timestamp DESC");
+    expect(sql).not.toMatch(/AND\s+double1\s+>=/);
+    expect(sql).not.toContain("ORDER BY double1 DESC");
     expect(body.configured).toBe(true);
     expect(body.summary).toMatchObject({
       total: 1,
@@ -344,10 +350,14 @@ describe("admin bot analytics handlers", () => {
       siteName: "Blog",
       siteDomain: "example.test",
       asn: 16509,
+      latitude: 35.6895,
+      longitude: 139.6917,
       reasons: ["hosting_asn"],
     });
     expect(body.mapPoints[0]).toMatchObject({
       country: "JP",
+      latitude: 35.6895,
+      longitude: 139.6917,
       pointCount: 1,
     });
     expect(body.trend.some((point: any) => point.baselineCount === 99)).toBe(

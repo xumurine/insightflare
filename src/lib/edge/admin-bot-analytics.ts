@@ -114,11 +114,6 @@ function buildBotAnalyticsSql(input: {
       double5 AS botScore,
       double6 AS userAgentLength`
     : "";
-  const doubleFilter = input.includeDoubles
-    ? `
-      AND double1 >= ${input.since}`
-    : "";
-  const orderBy = input.includeDoubles ? "double1" : "timestamp";
   return `
     SELECT
       timestamp,
@@ -143,8 +138,8 @@ function buildBotAnalyticsSql(input: {
       blob19 AS traceId,
       blob20 AS metadataJson${doubleSelect}
     FROM ${dataset}
-    WHERE timestamp >= toDateTime(${sinceSeconds})${doubleFilter}
-    ORDER BY ${orderBy} DESC
+    WHERE timestamp >= toDateTime(${sinceSeconds})
+    ORDER BY timestamp DESC
     LIMIT ${input.limit}
     FORMAT JSONEachRow
   `;
