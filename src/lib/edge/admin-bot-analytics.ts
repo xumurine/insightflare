@@ -11,6 +11,7 @@ import {
 
 import { requireActor } from "./admin-auth";
 import { bad, forb, jsonResponseFor, na, parseJson } from "./admin-response";
+import { analyticsEngineAvailability } from "./analytics-engine";
 import {
   decryptBotAnalyticsSecret,
   encryptBotAnalyticsSecret,
@@ -172,8 +173,42 @@ function applyUpdateInput(
   return next;
 }
 
-function responseData(config: BotAnalyticsConfig) {
-  return { ok: true, data: redactBotAnalyticsConfig(config) };
+function disabledResponseData(env: Env, config: BotAnalyticsConfig) {
+  const availability = analyticsEngineAvailability(env);
+  return {
+    ok: true,
+    data: redactBotAnalyticsConfig(config, availability),
+  };
+}
+
+function emptyBotAnalyticsResponse(
+  env: Env,
+  config: BotAnalyticsConfig,
+  error: string,
+) {
+  return {
+    ok: true,
+    configured: false,
+    generatedAt: Date.now(),
+    config: redactBotAnalyticsConfig(config, analyticsEngineAvailability(env)),
+    error,
+    events: [],
+    summary: {
+      total: 0,
+      baselineRequests: 0,
+      botRequestRatio: 0,
+      highConfidence: 0,
+      mediumConfidence: 0,
+      affectedSites: 0,
+      uniqueAsns: 0,
+      uniqueCountries: 0,
+    },
+    mapPoints: [],
+    trend: [],
+    reasons: [],
+    countries: [],
+    asns: [],
+  };
 }
 
 function requireAdmin(actor: AdminActor, request: Request): Response | null {
@@ -531,12 +566,23 @@ export async function handleBotAnalyticsConfigAdmin(
 
   if (req.method === "GET") {
     const config = await readBotAnalyticsConfig(env);
-    return jsonResponseFor(req, responseData(config));
+    return jsonResponseFor(req, disabledResponseData(env, config));
+  }
+
+  if (analyticsEngineAvailability(env).analyticsEngineDisabled) {
+    return bad(
+      "Analytics Engine is disabled for this deployment. Enable Analytics Engine in Cloudflare and redeploy before editing bot analytics settings.",
+      "analytics_engine_disabled",
+      req,
+    );
   }
 
   if (req.method === "DELETE") {
     await deleteConfig(env, SYSTEM_BOT_ANALYTICS_CONFIG_KEY);
-    return jsonResponseFor(req, responseData(defaultBotAnalyticsConfig()));
+    return jsonResponseFor(
+      req,
+      disabledResponseData(env, defaultBotAnalyticsConfig()),
+    );
   }
 
   if (req.method !== "POST" && req.method !== "PATCH") return na(req);
@@ -574,7 +620,7 @@ export async function handleBotAnalyticsConfigAdmin(
     SYSTEM_BOT_ANALYTICS_CONFIG_KEY,
     next as unknown as Record<string, unknown>,
   );
-  return jsonResponseFor(req, responseData(next));
+  return jsonResponseFor(req, disabledResponseData(env, next));
 }
 
 export async function handleBotAnalyticsAdmin(
@@ -588,30 +634,21 @@ export async function handleBotAnalyticsAdmin(
   if (req.method !== "GET") return na(req);
 
   const config = await readBotAnalyticsConfig(env);
+  if (analyticsEngineAvailability(env).analyticsEngineDisabled) {
+    return jsonResponseFor(
+      req,
+      emptyBotAnalyticsResponse(env, config, "analytics_engine_disabled"),
+    );
+  }
+
   const configError = validateBotAnalyticsConfig(config);
   if (configError || !config.configured || !config.apiTokenEncrypted) {
     return jsonResponseFor(req, {
-      ok: true,
-      configured: false,
-      generatedAt: Date.now(),
-      config: redactBotAnalyticsConfig(config),
-      error: configError || "bot_analytics_not_configured",
-      events: [],
-      summary: {
-        total: 0,
-        baselineRequests: 0,
-        botRequestRatio: 0,
-        highConfidence: 0,
-        mediumConfidence: 0,
-        affectedSites: 0,
-        uniqueAsns: 0,
-        uniqueCountries: 0,
-      },
-      mapPoints: [],
-      trend: [],
-      reasons: [],
-      countries: [],
-      asns: [],
+      ...emptyBotAnalyticsResponse(
+        env,
+        config,
+        configError || "bot_analytics_not_configured",
+      ),
     });
   }
 
@@ -721,7 +758,7 @@ export async function handleBotAnalyticsAdmin(
       from,
       to: generatedAt,
     },
-    config: redactBotAnalyticsConfig(config),
+    config: redactBotAnalyticsConfig(config, analyticsEngineAvailability(env)),
     summary: {
       total: botRequests,
       baselineRequests: rollupTraffic.requests,

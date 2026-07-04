@@ -146,6 +146,47 @@ describe("admin bot analytics handlers", () => {
     expect(body.summary.affectedSites).toBe(0);
   });
 
+  it("reports Analytics Engine disabled state and blocks config writes", async () => {
+    const env = {
+      ...createEnv([statement(), statement()]),
+      INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED: "1",
+    } as Env;
+
+    const configResponse = await handleBotAnalyticsConfigAdmin(
+      request("/api/private/admin/bot-analytics-config"),
+      env,
+    );
+    const configBody = await jsonOf(configResponse);
+    expect(configResponse.status).toBe(200);
+    expect(configBody.data.analyticsEngineDisabled).toBe(true);
+    expect(configBody.data.analyticsEngineEnableUrl).toContain(
+      "/workers/analytics-engine",
+    );
+
+    const writeResponse = await handleBotAnalyticsConfigAdmin(
+      jsonRequest("/api/private/admin/bot-analytics-config", {
+        accountId: "442fe5198bff93bdf60d4223d9618033",
+        dataset: "insightflare_bot_events",
+      }),
+      env,
+    );
+    expect(writeResponse.status).toBe(400);
+
+    const analyticsResponse = await handleBotAnalyticsAdmin(
+      request("/api/private/admin/bot-analytics"),
+      env,
+      new URL("https://app.test/api/private/admin/bot-analytics"),
+    );
+    const analyticsBody = await jsonOf(analyticsResponse);
+    expect(analyticsResponse.status).toBe(200);
+    expect(analyticsBody).toMatchObject({
+      configured: false,
+      error: "analytics_engine_disabled",
+      events: [],
+    });
+    expect(analyticsBody.config.analyticsEngineDisabled).toBe(true);
+  });
+
   it("passes through auth responses, rejects non-admins, and handles methods", async () => {
     const unauthorized = new Response("unauthorized", { status: 401 });
     vi.mocked(requireActor).mockResolvedValueOnce(unauthorized);

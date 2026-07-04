@@ -1,6 +1,7 @@
 import { classifyASN } from "asn-blocklist";
 import { isbot } from "isbot";
 
+import { isAnalyticsEngineDisabled } from "./analytics-engine";
 import type { Env, TrackerClientPayload } from "./types";
 import { clampString, coerceNumber, coerceString, safeHostname } from "./utils";
 
@@ -234,6 +235,10 @@ export function writeBotAnalyticsEvent(
   env: Env,
   input: BotAnalyticsInput,
 ): void {
+  if (isAnalyticsEngineDisabled(env)) {
+    return;
+  }
+
   const dataset = env.BOT_ANALYTICS;
   if (!dataset) {
     console.warn(

@@ -5,6 +5,11 @@ interface OverrideResult {
   content: string;
 }
 
+interface DisableAnalyticsEngineResult {
+  applied: string[];
+  content: string;
+}
+
 const KNOWN_VAR_KEYS = [
   "SESSION_WINDOW_MINUTES",
   "SCRIPT_CACHE_TTL_SECONDS",
@@ -195,6 +200,36 @@ function upsertKeyInArrayTable(
   return lines.join("\n");
 }
 
+function removeArrayTables(
+  content: string,
+  header: string,
+): {
+  content: string;
+  removed: number;
+} {
+  const lines = content.split("\n");
+  const ranges = findArrayTableRanges(lines, header);
+  if (ranges.length === 0) return { content, removed: 0 };
+
+  for (const [start, end] of ranges.slice().reverse()) {
+    let removeStart = start;
+    while (removeStart > 0 && lines[removeStart - 1]?.trim() === "") {
+      removeStart -= 1;
+    }
+    let removeEnd = end;
+    while (
+      removeEnd < lines.length &&
+      lines[removeEnd]?.trim() === "" &&
+      lines[removeEnd + 1]?.trim() === ""
+    ) {
+      removeEnd += 1;
+    }
+    lines.splice(removeStart, removeEnd - removeStart);
+  }
+
+  return { content: lines.join("\n"), removed: ranges.length };
+}
+
 function collectVarOverrides(
   env: EnvMap,
   wranglerEnv: string | undefined,
@@ -362,4 +397,43 @@ export function applyWranglerEnvOverrides(
   }
 
   return { applied, content: nextContent };
+}
+
+export function applyAnalyticsEngineDisabledFallback(
+  content: string,
+  wranglerEnv?: string,
+): DisableAnalyticsEngineResult {
+  const prefix = envTablePrefix(wranglerEnv);
+  const applied: string[] = [];
+  let nextContent = content;
+
+  const removed = removeArrayTables(
+    nextContent,
+    arrayTableHeader(prefix, "analytics_engine_datasets"),
+  );
+  nextContent = removed.content;
+  if (removed.removed > 0) {
+    applied.push(
+      `${arrayTableHeader(prefix, "analytics_engine_datasets")}.removed`,
+    );
+  }
+
+  nextContent = upsertKeyInTable(
+    nextContent,
+    tableHeader(prefix, "vars"),
+    "INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED",
+    "1",
+  );
+  applied.push(
+    `${tableHeader(prefix, "vars")}.INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED`,
+  );
+
+  return { applied, content: nextContent };
+}
+
+export function isAnalyticsEngineNotEnabledError(log: string): boolean {
+  return (
+    /\[code:\s*10089\]/i.test(log) ||
+    /need to enable Analytics Engine/i.test(log)
+  );
 }

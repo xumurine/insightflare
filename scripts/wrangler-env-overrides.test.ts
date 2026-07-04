@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { applyWranglerEnvOverrides } from "./wrangler-env-overrides";
+import {
+  applyAnalyticsEngineDisabledFallback,
+  applyWranglerEnvOverrides,
+  isAnalyticsEngineNotEnabledError,
+} from "./wrangler-env-overrides";
 
 const BASE_CONFIG = `name = "insightflare"
 
@@ -17,6 +21,10 @@ migrations_dir = "./migrations"
 binding = "SITE_SETTINGS_KV"
 id = "YOUR_KV_ID"
 
+[[analytics_engine_datasets]]
+binding = "BOT_ANALYTICS"
+dataset = "insightflare_bot_events"
+
 [env.production]
 name = "insightflare-production"
 
@@ -28,6 +36,10 @@ binding = "DB"
 database_name = "insightflare"
 database_id = "PROD_D1_ID"
 migrations_dir = "./migrations"
+
+[[env.production.analytics_engine_datasets]]
+binding = "BOT_ANALYTICS"
+dataset = "insightflare_bot_events"
 `;
 
 describe("applyWranglerEnvOverrides", () => {
@@ -101,5 +113,44 @@ describe("applyWranglerEnvOverrides", () => {
     expect(result.content).toContain('binding = "ARCHIVE_BUCKET"');
     expect(result.content).toContain('bucket_name = "archive"');
     expect(result.content).toContain('preview_bucket_name = "archive-preview"');
+  });
+
+  it("removes root Analytics Engine binding and writes disabled runtime var", () => {
+    const result = applyAnalyticsEngineDisabledFallback(BASE_CONFIG);
+
+    expect(result.content).not.toContain("[[analytics_engine_datasets]]");
+    expect(result.content).toContain(
+      "[[env.production.analytics_engine_datasets]]",
+    );
+    expect(result.content).toContain(
+      'INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED = "1"',
+    );
+  });
+
+  it("targets environment Analytics Engine binding for env deploys", () => {
+    const result = applyAnalyticsEngineDisabledFallback(
+      BASE_CONFIG,
+      "production",
+    );
+
+    expect(result.content).toContain("[[analytics_engine_datasets]]");
+    expect(result.content).not.toContain(
+      "[[env.production.analytics_engine_datasets]]",
+    );
+    expect(result.content).toContain("[env.production.vars]");
+    expect(result.content).toContain(
+      'INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED = "1"',
+    );
+  });
+
+  it("recognizes Cloudflare Analytics Engine disabled deploy errors", () => {
+    expect(
+      isAnalyticsEngineNotEnabledError(
+        "You need to enable Analytics Engine. [code: 10089]",
+      ),
+    ).toBe(true);
+    expect(isAnalyticsEngineNotEnabledError("different deploy error")).toBe(
+      false,
+    );
   });
 });
