@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { RiShareForwardLine } from "@remixicon/react";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
 import type { ReferrerRowsByTab } from "@/components/dashboard/referrer-utils";
@@ -120,7 +121,10 @@ export function ReferrerSummarySection({
       {hideSummaryCard ? null : (
         <Card>
           <CardHeader>
-            <CardTitle>{messages.referrers.summaryTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiShareForwardLine className="size-4" />
+              {messages.referrers.summaryTitle}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <ContentSwitch

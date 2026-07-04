@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { RiArrowDownSLine, RiArrowUpSLine } from "@remixicon/react";
+import {
+  RiArrowDownSLine,
+  RiArrowUpSLine,
+  RiComputerLine,
+  RiExternalLinkLine,
+} from "@remixicon/react";
 import {
   AnimatePresence,
   type HTMLMotionProps,
@@ -178,7 +183,10 @@ function ScreenCategoryPieCard({
   return (
     <Card className="flex h-full flex-col">
       <CardHeader>
-        <CardTitle>{messages.devices.screenBucketTitle}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiComputerLine className="size-4" />
+          {messages.devices.screenBucketTitle}
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col items-center justify-center gap-6">
         <ChartContainer
@@ -507,7 +515,10 @@ function ScreenPreviewCard({
   return (
     <Card className="overflow-hidden">
       <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <CardTitle>{messages.devices.screenPreviewTitle}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiComputerLine className="size-4" />
+          {messages.devices.screenPreviewTitle}
+        </CardTitle>
         <div className="flex flex-wrap items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild disabled={items.length === 0}>
@@ -539,7 +550,8 @@ function ScreenPreviewCard({
           {previewUrl ? (
             <Button asChild variant="outline" size="sm">
               <a href={previewUrl} target="_blank" rel="noreferrer">
-                {messages.devices.openSiteLabel}
+                <RiExternalLinkLine className="size-4" />
+                <span>{messages.devices.openSiteLabel}</span>
               </a>
             </Button>
           ) : null}
@@ -682,7 +694,8 @@ export function DeviceScreenBreakdownCard({
   return (
     <section className="space-y-4">
       <div className="px-1">
-        <h2 className="text-sm font-medium text-foreground">
+        <h2 className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
+          <RiComputerLine className="size-4 shrink-0" />
           {messages.devices.screenDistributionTitle}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">

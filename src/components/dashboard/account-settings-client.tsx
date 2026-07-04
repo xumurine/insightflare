@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  RiCheckLine,
   RiComputerLine,
   RiGlobalLine,
   RiLockPasswordLine,
+  RiNotification3Line,
+  RiSave3Line,
   RiUserSettingsLine,
 } from "@remixicon/react";
 import { toast } from "sonner";
@@ -23,6 +24,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
   FieldContent,
@@ -40,12 +42,19 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { intlLocale } from "@/lib/dashboard/format";
 import {
+  buildTimeZoneOptions,
   FALLBACK_TIME_ZONE,
+  formatTimeZoneOptionLabel,
   normalizeTimeZone,
   supportedTimeZones,
-  timeZoneOffsetMinutes,
 } from "@/lib/dashboard/time-zone";
-import type { AccountUserData } from "@/lib/edge-client";
+import {
+  type AccountUserData,
+  fetchNotificationPreferences,
+  normalizeNotificationPreferencesData,
+  type NotificationPreferencesData,
+  updateNotificationPreferences,
+} from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
@@ -56,6 +65,7 @@ interface AccountSettingsClientProps {
 }
 
 type TimeZoneMode = "browser" | "custom";
+type PreferredLocale = "" | "en" | "zh";
 
 interface ProfileResponse {
   ok?: boolean;
@@ -64,86 +74,24 @@ interface ProfileResponse {
   message?: string;
 }
 
-interface TimeZoneOption {
-  value: string;
-  label: string;
-}
-
-const timeZoneNameFormatterCache = new Map<string, Intl.DateTimeFormat>();
-
-function getTimeZoneNameFormatter(
-  locale: Locale,
-  timeZone: string,
-): Intl.DateTimeFormat | null {
-  const cacheKey = `${locale}::${timeZone}`;
-  const cached = timeZoneNameFormatterCache.get(cacheKey);
-  if (cached) return cached;
-
-  try {
-    const formatter = new Intl.DateTimeFormat(intlLocale(locale), {
-      timeZone,
-      timeZoneName: "long",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    });
-    timeZoneNameFormatterCache.set(cacheKey, formatter);
-    return formatter;
-  } catch {
-    return null;
-  }
-}
-
-function formatUtcOffset(offsetMinutes: number): string {
-  const sign = offsetMinutes >= 0 ? "+" : "-";
-  const absolute = Math.abs(offsetMinutes);
-  const hours = Math.floor(absolute / 60)
-    .toString()
-    .padStart(2, "0");
-  const minutes = (absolute % 60).toString().padStart(2, "0");
-  return `UTC${sign}${hours}:${minutes}`;
-}
-
-function formatTimeZoneOptionLabel(
-  locale: Locale,
-  timeZone: string,
-  timestampMs: number,
-): string {
-  const date = new Date(timestampMs);
-  const name =
-    getTimeZoneNameFormatter(locale, timeZone)
-      ?.formatToParts(date)
-      .find((part) => part.type === "timeZoneName")
-      ?.value.trim() || "";
-  const offset = formatUtcOffset(timeZoneOffsetMinutes(timeZone, timestampMs));
-  return name && name !== timeZone
-    ? `${name} (${offset}) - ${timeZone}`
-    : `${timeZone} (${offset})`;
-}
-
-function buildTimeZoneOptions(params: {
-  locale: Locale;
-  supported: string[];
-  selected: string;
-  active: string;
-  browser: string;
-  timestampMs: number;
-}): TimeZoneOption[] {
-  const values = new Set<string>();
-  for (const value of [
-    params.selected,
-    params.active,
-    params.browser,
-    ...params.supported,
-  ]) {
-    const normalized = normalizeTimeZone(value);
-    if (normalized) values.add(normalized);
-  }
-
-  return Array.from(values).map((value) => ({
-    value,
-    label: formatTimeZoneOptionLabel(params.locale, value, params.timestampMs),
-  }));
+function sameNotificationPreferences(
+  left: NotificationPreferencesData | null,
+  right: NotificationPreferencesData | null,
+): boolean {
+  if (!left || !right) return false;
+  const normalizedLeft = normalizeNotificationPreferencesData(left);
+  const normalizedRight = normalizeNotificationPreferencesData(right);
+  return (
+    normalizedLeft.inApp === normalizedRight.inApp &&
+    normalizedLeft.email === normalizedRight.email &&
+    normalizedLeft.webPush === normalizedRight.webPush &&
+    normalizedLeft.attention.reportsCreateUnread ===
+      normalizedRight.attention.reportsCreateUnread &&
+    normalizedLeft.attention.milestonesCreateUnread ===
+      normalizedRight.attention.milestonesCreateUnread &&
+    normalizedLeft.attention.alertsCreateUnread ===
+      normalizedRight.attention.alertsCreateUnread
+  );
 }
 
 export function AccountSettingsClient({
@@ -152,6 +100,7 @@ export function AccountSettingsClient({
   user,
 }: AccountSettingsClientProps) {
   const copy = messages.accountSettings;
+  const notificationCopy = messages.notificationCenter;
   const router = useRouter();
   const {
     timeZone,
@@ -163,11 +112,23 @@ export function AccountSettingsClient({
   const [profileName, setProfileName] = useState(user.name || "");
   const [profileUsername, setProfileUsername] = useState(user.username || "");
   const [profileEmail, setProfileEmail] = useState(user.email || "");
+  const [preferredLocale, setPreferredLocale] = useState<PreferredLocale>(
+    user.preferredLocale || "",
+  );
+  const [preferredLocaleSaving, setPreferredLocaleSaving] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [nextPassword, setNextPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const [notificationPreferences, setNotificationPreferences] =
+    useState<NotificationPreferencesData | null>(null);
+  const [draftNotificationPreferences, setDraftNotificationPreferences] =
+    useState<NotificationPreferencesData | null>(null);
+  const [notificationPreferencesLoading, setNotificationPreferencesLoading] =
+    useState(true);
+  const [notificationPreferencesSaving, setNotificationPreferencesSaving] =
+    useState(false);
   const timeZones = useMemo(() => supportedTimeZones(), []);
   const [mode, setMode] = useState<TimeZoneMode>(
     timeZonePreference ? "custom" : "browser",
@@ -195,6 +156,14 @@ export function AccountSettingsClient({
     currentPassword.length > 0 &&
     nextPassword.length >= 8 &&
     confirmPassword.length > 0;
+  const canSaveNotificationPreferences =
+    !notificationPreferencesLoading &&
+    !notificationPreferencesSaving &&
+    Boolean(draftNotificationPreferences) &&
+    !sameNotificationPreferences(
+      notificationPreferences,
+      draftNotificationPreferences,
+    );
   const selectedCustomTimeZone =
     normalizeTimeZone(customTimeZone) ||
     normalizeTimeZone(timeZone) ||
@@ -203,7 +172,7 @@ export function AccountSettingsClient({
   const timeZoneOptions = useMemo(
     () =>
       buildTimeZoneOptions({
-        locale,
+        locale: intlLocale(locale),
         supported: timeZones,
         selected: selectedCustomTimeZone,
         active: timeZone,
@@ -225,6 +194,7 @@ export function AccountSettingsClient({
     setProfileName(user.name || "");
     setProfileUsername(user.username || "");
     setProfileEmail(user.email || "");
+    setPreferredLocale(user.preferredLocale || "");
   }, [user]);
 
   useEffect(() => {
@@ -236,24 +206,53 @@ export function AccountSettingsClient({
     }
   }, [timeZone, timeZonePreference]);
 
+  useEffect(() => {
+    let active = true;
+
+    setNotificationPreferencesLoading(true);
+    fetchNotificationPreferences()
+      .then((nextPreferences) => {
+        if (!active) return;
+        const normalized =
+          normalizeNotificationPreferencesData(nextPreferences);
+        setNotificationPreferences(normalized);
+        setDraftNotificationPreferences(normalized);
+      })
+      .catch(() => {
+        if (!active) return;
+        toast.error(notificationCopy.preferencesSaveFailed);
+      })
+      .finally(() => {
+        if (!active) return;
+        setNotificationPreferencesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [notificationCopy.preferencesSaveFailed]);
+
   const nextPreference = mode === "browser" ? "" : selectedCustomTimeZone;
+  const canSavePreferredLocale =
+    !preferredLocaleSaving &&
+    preferredLocale !== (profileUser.preferredLocale || "");
   const canSave =
     !saving &&
     (mode === "browser" || Boolean(nextPreference)) &&
     nextPreference !== timeZonePreference;
   const sourceLabel =
     timeZonePreference.length > 0 ? copy.manualSource : copy.browserSource;
-  const activeTimeZoneLabel = formatTimeZoneOptionLabel(
-    locale,
+  const activeTimeZoneLabel = formatTimeZoneOptionLabel({
+    locale: intlLocale(locale),
     timeZone,
-    timeZoneOptionTimestamp,
-  );
+    timestampMs: timeZoneOptionTimestamp,
+  });
   const browserTimeZoneLabel = browserTimeZone
-    ? formatTimeZoneOptionLabel(
-        locale,
-        browserTimeZone,
-        timeZoneOptionTimestamp,
-      )
+    ? formatTimeZoneOptionLabel({
+        locale: intlLocale(locale),
+        timeZone: browserTimeZone,
+        timestampMs: timeZoneOptionTimestamp,
+      })
     : copy.browserUnavailable;
 
   function applySavedUser(savedUser: AccountUserData) {
@@ -261,6 +260,26 @@ export function AccountSettingsClient({
     setProfileName(savedUser.name || "");
     setProfileUsername(savedUser.username || "");
     setProfileEmail(savedUser.email || "");
+    setPreferredLocale(savedUser.preferredLocale || "");
+  }
+
+  function updateDraftNotificationPreferences(
+    patch: Omit<Partial<NotificationPreferencesData>, "attention"> & {
+      attention?: Partial<NotificationPreferencesData["attention"]>;
+    },
+  ) {
+    setDraftNotificationPreferences((current) => {
+      if (!current) return current;
+      const normalized = normalizeNotificationPreferencesData(current);
+      return {
+        ...normalized,
+        ...patch,
+        attention: {
+          ...normalized.attention,
+          ...(patch.attention ?? {}),
+        },
+      };
+    });
   }
 
   async function handleProfileSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -278,7 +297,7 @@ export function AccountSettingsClient({
 
     setProfileSaving(true);
     try {
-      const response = await fetch("/api/admin/profile", {
+      const response = await fetch("/api/private/admin/profile", {
         method: "POST",
         credentials: "include",
         headers: {
@@ -328,7 +347,7 @@ export function AccountSettingsClient({
 
     setPasswordSaving(true);
     try {
-      const response = await fetch("/api/admin/profile", {
+      const response = await fetch("/api/private/admin/profile", {
         method: "POST",
         credentials: "include",
         headers: {
@@ -362,6 +381,75 @@ export function AccountSettingsClient({
     }
   }
 
+  async function handleNotificationPreferencesSubmit(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    if (!draftNotificationPreferences || notificationPreferencesSaving) return;
+
+    setNotificationPreferencesSaving(true);
+    try {
+      const saved = await updateNotificationPreferences(
+        draftNotificationPreferences,
+      );
+      const normalized = normalizeNotificationPreferencesData(saved);
+      setNotificationPreferences(normalized);
+      setDraftNotificationPreferences(normalized);
+      toast.success(notificationCopy.preferencesSaved);
+      router.refresh();
+    } catch {
+      toast.error(notificationCopy.preferencesSaveFailed);
+    } finally {
+      setNotificationPreferencesSaving(false);
+    }
+  }
+
+  async function handlePreferredLocaleSubmit(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    if (preferredLocaleSaving) return;
+    if (
+      preferredLocale !== "" &&
+      preferredLocale !== "en" &&
+      preferredLocale !== "zh"
+    ) {
+      toast.error(copy.preferredLanguageSaveFailed);
+      return;
+    }
+
+    setPreferredLocaleSaving(true);
+    try {
+      const response = await fetch("/api/private/admin/profile", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ preferredLocale }),
+      });
+      const payload = (await response
+        .json()
+        .catch(() => ({}))) as ProfileResponse;
+      if (!response.ok || payload.ok === false || !payload.data) {
+        throw new Error(
+          payload.message || payload.error || copy.preferredLanguageSaveFailed,
+        );
+      }
+      applySavedUser(payload.data);
+      toast.success(copy.preferredLanguageSaved);
+      router.refresh();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : copy.preferredLanguageSaveFailed,
+      );
+    } finally {
+      setPreferredLocaleSaving(false);
+    }
+  }
+
   async function handleTimeZoneSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving) return;
@@ -372,7 +460,7 @@ export function AccountSettingsClient({
 
     setSaving(true);
     try {
-      const response = await fetch("/api/admin/profile", {
+      const response = await fetch("/api/private/admin/profile", {
         method: "POST",
         credentials: "include",
         headers: {
@@ -409,7 +497,7 @@ export function AccountSettingsClient({
         <Card className="h-full">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiUserSettingsLine className="size-4 text-muted-foreground" />
+              <RiUserSettingsLine className="size-4" />
               {copy.profileTitle}
             </CardTitle>
             <CardDescription>{copy.profileDescription}</CardDescription>
@@ -485,7 +573,7 @@ export function AccountSettingsClient({
                         key="profile-save"
                         className="inline-flex items-center gap-2"
                       >
-                        <RiCheckLine className="size-4" />
+                        <RiSave3Line className="size-4" />
                         {copy.profileSave}
                       </span>
                     )}
@@ -499,7 +587,7 @@ export function AccountSettingsClient({
         <Card className="h-full">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
-              <RiLockPasswordLine className="size-4 text-muted-foreground" />
+              <RiLockPasswordLine className="size-4" />
               {copy.passwordTitle}
             </CardTitle>
             <CardDescription>{copy.passwordDescription}</CardDescription>
@@ -572,8 +660,224 @@ export function AccountSettingsClient({
                         key="password-save"
                         className="inline-flex items-center gap-2"
                       >
-                        <RiCheckLine className="size-4" />
+                        <RiSave3Line className="size-4" />
                         {copy.passwordSave}
+                      </span>
+                    )}
+                  </AutoTransition>
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card className="h-full lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiNotification3Line className="size-4" />
+              {notificationCopy.preferencesTitle}
+            </CardTitle>
+            <CardDescription>
+              {notificationCopy.preferencesDescription}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex h-full flex-col">
+            {notificationPreferencesLoading || !draftNotificationPreferences ? (
+              <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
+                <Spinner className="mr-2 size-4" />
+                {messages.common.loading}
+              </div>
+            ) : (
+              <form
+                className="flex h-full flex-col gap-5"
+                onSubmit={handleNotificationPreferencesSubmit}
+              >
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field>
+                    <FieldLabel>
+                      {notificationCopy.emailNotificationsLabel}
+                    </FieldLabel>
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={draftNotificationPreferences.email}
+                        disabled={notificationPreferencesSaving}
+                        onCheckedChange={(checked) =>
+                          updateDraftNotificationPreferences({
+                            email: !!checked,
+                          })
+                        }
+                      />
+                      <FieldDescription>
+                        {notificationCopy.emailNotificationsDescription}
+                      </FieldDescription>
+                    </div>
+                  </Field>
+                  <Field>
+                    <FieldLabel>
+                      {notificationCopy.reportsUnreadLabel}
+                    </FieldLabel>
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={
+                          draftNotificationPreferences.attention
+                            .reportsCreateUnread
+                        }
+                        disabled={notificationPreferencesSaving}
+                        onCheckedChange={(checked) =>
+                          updateDraftNotificationPreferences({
+                            attention: { reportsCreateUnread: !!checked },
+                          })
+                        }
+                      />
+                      <FieldDescription>
+                        {notificationCopy.reportsUnreadDescription}
+                      </FieldDescription>
+                    </div>
+                  </Field>
+                  <Field>
+                    <FieldLabel>
+                      {notificationCopy.milestonesUnreadLabel}
+                    </FieldLabel>
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={
+                          draftNotificationPreferences.attention
+                            .milestonesCreateUnread
+                        }
+                        disabled={notificationPreferencesSaving}
+                        onCheckedChange={(checked) =>
+                          updateDraftNotificationPreferences({
+                            attention: { milestonesCreateUnread: !!checked },
+                          })
+                        }
+                      />
+                      <FieldDescription>
+                        {notificationCopy.milestonesUnreadDescription}
+                      </FieldDescription>
+                    </div>
+                  </Field>
+                  <Field>
+                    <FieldLabel>
+                      {notificationCopy.alertsUnreadLabel}
+                    </FieldLabel>
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={
+                          draftNotificationPreferences.attention
+                            .alertsCreateUnread
+                        }
+                        disabled={notificationPreferencesSaving}
+                        onCheckedChange={(checked) =>
+                          updateDraftNotificationPreferences({
+                            attention: { alertsCreateUnread: !!checked },
+                          })
+                        }
+                      />
+                      <FieldDescription>
+                        {notificationCopy.alertsUnreadDescription}
+                      </FieldDescription>
+                    </div>
+                  </Field>
+                </div>
+
+                <div className="mt-auto flex justify-start">
+                  <Button
+                    type="submit"
+                    disabled={!canSaveNotificationPreferences}
+                  >
+                    <AutoTransition className="inline-flex items-center gap-2">
+                      {notificationPreferencesSaving ? (
+                        <span
+                          key="notification-preferences-saving"
+                          className="inline-flex items-center gap-2"
+                        >
+                          <Spinner className="size-4" />
+                          {copy.saving}
+                        </span>
+                      ) : (
+                        <span
+                          key="notification-preferences-save"
+                          className="inline-flex items-center gap-2"
+                        >
+                          <RiSave3Line className="size-4" />
+                          {copy.save}
+                        </span>
+                      )}
+                    </AutoTransition>
+                  </Button>
+                </div>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="h-full overflow-visible lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiGlobalLine className="size-4" />
+              {copy.preferredLanguageTitle}
+            </CardTitle>
+            <CardDescription>
+              {copy.preferredLanguageDescription}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex h-full flex-col">
+            <form
+              className="flex h-full flex-col gap-5"
+              onSubmit={handlePreferredLocaleSubmit}
+            >
+              <Field>
+                <FieldLabel htmlFor="account-preferred-language">
+                  {copy.preferredLanguageLabel}
+                </FieldLabel>
+                <Select
+                  value={preferredLocale || "default"}
+                  disabled={preferredLocaleSaving}
+                  onValueChange={(value) => {
+                    if (value === "default") setPreferredLocale("");
+                    if (value === "en" || value === "zh") {
+                      setPreferredLocale(value);
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    id="account-preferred-language"
+                    className="w-full"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">
+                      {copy.preferredLanguageDefault}
+                    </SelectItem>
+                    <SelectItem value="en">
+                      {copy.preferredLanguageEnglish}
+                    </SelectItem>
+                    <SelectItem value="zh">
+                      {copy.preferredLanguageChinese}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <div className="mt-auto flex justify-start">
+                <Button type="submit" disabled={!canSavePreferredLocale}>
+                  <AutoTransition className="inline-flex items-center gap-2">
+                    {preferredLocaleSaving ? (
+                      <span
+                        key="preferred-locale-saving"
+                        className="inline-flex items-center gap-2"
+                      >
+                        <Spinner className="size-4" />
+                        {copy.saving}
+                      </span>
+                    ) : (
+                      <span
+                        key="preferred-locale-save"
+                        className="inline-flex items-center gap-2"
+                      >
+                        <RiSave3Line className="size-4" />
+                        {copy.save}
                       </span>
                     )}
                   </AutoTransition>
@@ -588,7 +892,7 @@ export function AccountSettingsClient({
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-1">
                 <CardTitle className="inline-flex items-center gap-2">
-                  <RiGlobalLine className="size-4 text-muted-foreground" />
+                  <RiGlobalLine className="size-4" />
                   {copy.timeZoneTitle}
                 </CardTitle>
                 <CardDescription>{copy.timeZoneDescription}</CardDescription>
@@ -692,7 +996,7 @@ export function AccountSettingsClient({
                         key="save"
                         className="inline-flex items-center gap-2"
                       >
-                        <RiCheckLine className="size-4" />
+                        <RiSave3Line className="size-4" />
                         {copy.save}
                       </span>
                     )}

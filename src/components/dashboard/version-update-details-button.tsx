@@ -1,0 +1,279 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  RiExternalLinkLine,
+  RiGitCommitLine,
+  RiListCheck2,
+} from "@remixicon/react";
+
+import { AutoResizer } from "@/components/ui/auto-resizer";
+import { AutoTransition } from "@/components/ui/auto-transition";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
+
+export type VersionUpdateDetailsLabels = {
+  viewDetails: string;
+  detailsTitle: string;
+  detailsDescription: string;
+  detailsLoading: string;
+  detailsEmpty: string;
+  detailsFailed: string;
+  currentCommitBadge: string;
+  openCompare: string;
+  openCommit: string;
+  commitCount: string;
+};
+
+type CompareCommit = {
+  sha: string;
+  shortSha: string;
+  htmlUrl: string;
+  title: string;
+  authorName: string;
+  authoredAt: string | null;
+};
+
+type ComparePayload = {
+  htmlUrl: string | null;
+  status: string;
+  totalCommits: number;
+  commits: CompareCommit[];
+};
+
+type CompareResponse =
+  | {
+      ok: true;
+      data: ComparePayload;
+    }
+  | {
+      ok: false;
+      message?: string;
+    };
+
+interface VersionUpdateDetailsButtonProps {
+  baseTag: string | null;
+  headRef: string;
+  releaseTag: string;
+  currentCommit: string | null;
+  labels: VersionUpdateDetailsLabels;
+}
+
+function isCommitMatch(left: string, right: string | null): boolean {
+  const normalizedLeft = left.trim().toLowerCase();
+  const normalizedRight = right?.trim().toLowerCase() || "";
+  if (!normalizedLeft || !normalizedRight) return false;
+
+  return (
+    normalizedLeft === normalizedRight ||
+    normalizedLeft.startsWith(normalizedRight) ||
+    normalizedRight.startsWith(normalizedLeft)
+  );
+}
+
+export function VersionUpdateDetailsButton({
+  baseTag,
+  headRef,
+  releaseTag,
+  currentCommit,
+  labels,
+}: VersionUpdateDetailsButtonProps) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [details, setDetails] = useState<ComparePayload | null>(null);
+
+  const title = useMemo(() => {
+    if (baseTag) return `${baseTag} -> ${releaseTag}`;
+    return releaseTag;
+  }, [baseTag, releaseTag]);
+
+  async function loadDetails(): Promise<void> {
+    if (details || loading) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const params = new URLSearchParams({
+        head: headRef,
+      });
+      if (baseTag) {
+        params.set("base", baseTag);
+      }
+
+      const response = await fetch(`/api/private/releases/compare?${params}`, {
+        method: "GET",
+      });
+      const payload = (await response.json()) as CompareResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          payload.ok
+            ? labels.detailsFailed
+            : payload.message || labels.detailsFailed,
+        );
+      }
+
+      setDetails(payload.data);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error ? loadError.message : labels.detailsFailed,
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleOpenChange(nextOpen: boolean): void {
+    setOpen(nextOpen);
+    if (nextOpen) {
+      void loadDetails();
+    }
+  }
+
+  const detailStateKey = loading
+    ? "loading"
+    : error
+      ? "error"
+      : details
+        ? details.commits.length > 0
+          ? "details"
+          : "empty"
+        : "idle";
+
+  return (
+    <>
+      <Button variant="outline" onClick={() => handleOpenChange(true)}>
+        <RiListCheck2 />
+        {labels.viewDetails}
+      </Button>
+
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="max-h-[86svh] max-w-3xl overflow-hidden">
+          <DialogHeader className="pr-8">
+            <DialogTitle icon={RiGitCommitLine}>
+              {labels.detailsTitle}
+            </DialogTitle>
+            <DialogDescription>
+              {labels.detailsDescription.replace("{range}", title)}
+            </DialogDescription>
+          </DialogHeader>
+
+          <AutoResizer className="min-h-0" initial duration={0.22}>
+            <AutoTransition
+              initial={false}
+              duration={0.2}
+              transitionKey={detailStateKey}
+            >
+              {loading ? (
+                <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
+                  <Spinner />
+                  {labels.detailsLoading}
+                </div>
+              ) : error ? (
+                <div className="border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                  {error}
+                </div>
+              ) : details ? (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-y py-2 text-xs text-muted-foreground">
+                    <span>
+                      {labels.commitCount}: {details.totalCommits}
+                    </span>
+                    {details.htmlUrl ? (
+                      <Button variant="ghost" size="xs" asChild>
+                        <Link
+                          href={details.htmlUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <RiExternalLinkLine />
+                          {labels.openCompare}
+                        </Link>
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  {details.commits.length > 0 ? (
+                    <div className="max-h-[56svh] overflow-y-auto pr-2">
+                      <div className="space-y-2">
+                        {details.commits.map((commit) => {
+                          const isCurrent = isCommitMatch(
+                            commit.sha,
+                            currentCommit,
+                          );
+
+                          return (
+                            <div
+                              key={commit.sha}
+                              className={cn(
+                                "border p-3 transition-colors",
+                                isCurrent
+                                  ? "border-primary bg-primary/5"
+                                  : "border-border",
+                              )}
+                            >
+                              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                <div className="min-w-0 space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <RiGitCommitLine className="size-4 text-muted-foreground" />
+                                    <span className="break-words text-sm font-medium">
+                                      {commit.title}
+                                    </span>
+                                    {isCurrent ? (
+                                      <Badge variant="outline">
+                                        {labels.currentCommitBadge}
+                                      </Badge>
+                                    ) : null}
+                                  </div>
+                                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                    <span className="font-mono">
+                                      {commit.shortSha}
+                                    </span>
+                                    <span>{commit.authorName}</span>
+                                    {commit.authoredAt ? (
+                                      <span>{commit.authoredAt}</span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                                <Button variant="ghost" size="xs" asChild>
+                                  <Link
+                                    href={commit.htmlUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    <RiExternalLinkLine />
+                                    {labels.openCommit}
+                                  </Link>
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="py-8 text-sm text-muted-foreground">
+                      {labels.detailsEmpty}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </AutoTransition>
+          </AutoResizer>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

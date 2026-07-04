@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { RiCopyrightLine } from "@remixicon/react";
+import { RiCopyrightLine, RiMapPin2Line } from "@remixicon/react";
 
 import {
-  GeoPointsMap,
   type GeoPointsMapCountryCount,
+  GeoPointsMapIsland,
   type GeoPointsMapPoint,
-} from "@/components/dashboard/geo-points-map";
+} from "@/components/dashboard/geo-points-map-island";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   emptyOverviewGeoPointsData,
@@ -93,6 +93,7 @@ export function OverviewGeoPointsMapCard({
         latitude: Number(item.latitude),
         longitude: Number(item.longitude),
         country: String(item.country ?? ""),
+        pointCount: Math.max(1, Number(item.pointCount ?? 1)),
       })),
     [geoPointsData.data],
   );
@@ -111,7 +112,10 @@ export function OverviewGeoPointsMapCard({
     <Card className="overflow-hidden">
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          <CardTitle>{messages.geo.mapTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiMapPin2Line className="size-4" />
+            {messages.geo.mapTitle}
+          </CardTitle>
         </div>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <RiCopyrightLine aria-hidden="true" size="1em" />
@@ -122,7 +126,7 @@ export function OverviewGeoPointsMapCard({
         </div>
       </CardHeader>
       <CardContent className="pt-0">
-        <GeoPointsMap
+        <GeoPointsMapIsland
           locale={locale}
           messages={messages}
           loading={loading}

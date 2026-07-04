@@ -2,6 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  RiArrowRightLine,
+  RiBarChartBoxLine,
+  RiCloseLine,
+  RiCodeLine,
+  RiDeleteBinLine,
+  RiFileCopyLine,
+  RiGlobalLine,
+  RiLinksLine,
+  RiRouteLine,
+  RiSave3Line,
+  RiSettings3Line,
+  RiShareForwardLine,
+  RiSpeedUpLine,
+} from "@remixicon/react";
 import { toast } from "sonner";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -69,7 +84,10 @@ interface SiteSettingsClientPageProps {
     slug: string;
     name: string;
   }>;
-  site: Pick<SiteData, "id" | "name" | "domain" | "publicSlug">;
+  site: Pick<
+    SiteData,
+    "id" | "name" | "domain" | "publicEnabled" | "publicSlug"
+  >;
 }
 
 interface ActionResponse<T> {
@@ -104,13 +122,18 @@ function safeSlug(value: string): string {
 function resolveSiteSlug(
   site: Pick<SiteData, "id" | "name" | "domain" | "publicSlug">,
 ): string {
-  const candidate = safeSlug(
-    String(site.publicSlug || "").trim() ||
-      String(site.domain || "").trim() ||
-      String(site.name || "").trim(),
-  );
+  const candidate = safeSlug(String(site.domain || "").trim());
   if (candidate.length > 0) return candidate;
   return site.id.slice(0, 8);
+}
+
+function randomPublicSlug(): string {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const values = new Uint8Array(8);
+  crypto.getRandomValues(values);
+  return Array.from(values, (value) => alphabet[value % alphabet.length]).join(
+    "",
+  );
 }
 
 function formatSampleRateValue(value: number): string {
@@ -123,12 +146,13 @@ function formatSampleRateValue(value: number): string {
 async function postJson<T>(
   url: string,
   body: Record<string, unknown>,
+  method: "POST" | "PATCH" = "POST",
 ): Promise<T> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: url.split("?")[0],
-      method: "POST",
+      method,
       params: Object.fromEntries(new URLSearchParams(url.split("?")[1] || "")),
       body,
     }) as ActionResponse<T>;
@@ -138,7 +162,7 @@ async function postJson<T>(
     return result.data;
   }
   const response = await fetch(url, {
-    method: "POST",
+    method,
     credentials: "include",
     headers: {
       "content-type": "application/json",
@@ -165,13 +189,20 @@ export function SettingsClientPage({
   const copy = messages.siteSettings;
   const [name, setName] = useState(site.name);
   const [domain, setDomain] = useState(site.domain);
+  const [publicEnabled, setPublicEnabled] = useState(
+    Boolean(site.publicEnabled),
+  );
   const [publicSlug, setPublicSlug] = useState(site.publicSlug || "");
   const [persistedName, setPersistedName] = useState(site.name);
   const [persistedDomain, setPersistedDomain] = useState(site.domain);
+  const [persistedPublicEnabled, setPersistedPublicEnabled] = useState(
+    Boolean(site.publicEnabled),
+  );
   const [persistedPublicSlug, setPersistedPublicSlug] = useState(
     site.publicSlug || "",
   );
   const [saving, setSaving] = useState(false);
+  const [savingPublicSharing, setSavingPublicSharing] = useState(false);
   const [savingTrackingStrength, setSavingTrackingStrength] = useState(false);
   const [savingQueryHash, setSavingQueryHash] = useState(false);
   const [savingPerformanceTracking, setSavingPerformanceTracking] =
@@ -214,6 +245,7 @@ export function SettingsClientPage({
   const [persistedSettings, setPersistedSettings] = useState(
     DEFAULT_SITE_SCRIPT_SETTINGS,
   );
+  const [origin, setOrigin] = useState("");
 
   const hasAutoTrackingChanges =
     autoTrackOutboundLinks !== persistedSettings.autoTrackOutboundLinks;
@@ -236,7 +268,10 @@ export function SettingsClientPage({
 
   const hasSiteInfoChanges =
     name.trim() !== persistedName.trim() ||
-    domain.trim() !== persistedDomain.trim() ||
+    domain.trim() !== persistedDomain.trim();
+
+  const hasPublicSharingChanges =
+    publicEnabled !== persistedPublicEnabled ||
     publicSlug.trim() !== persistedPublicSlug.trim();
 
   const hasTrackingStrengthChanges =
@@ -276,6 +311,10 @@ export function SettingsClientPage({
     setDomainWhitelistInput(formatListInput(normalized.domainWhitelist));
     setPathBlacklistInput(formatListInput(normalized.pathBlacklist));
   }
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -397,20 +436,21 @@ export function SettingsClientPage({
 
     setSaving(true);
     try {
-      const updated = await postJson<SiteData>("/api/admin/site", {
-        intent: "update",
-        siteId: site.id,
-        name: name.trim(),
-        domain: domain.trim(),
-        publicSlug: publicSlug.trim() || undefined,
-      });
+      const updated = await postJson<SiteData>(
+        "/api/private/admin/sites",
+        {
+          intent: "update",
+          siteId: site.id,
+          name: name.trim(),
+          domain: domain.trim(),
+        },
+        "PATCH",
+      );
 
       setName(updated.name);
       setDomain(updated.domain);
-      setPublicSlug(updated.publicSlug || "");
       setPersistedName(updated.name);
       setPersistedDomain(updated.domain);
-      setPersistedPublicSlug(updated.publicSlug || "");
       toast.success(copy.toasts.saved);
 
       const nextSlug = resolveSiteSlug(updated);
@@ -432,13 +472,59 @@ export function SettingsClientPage({
     }
   }
 
+  async function handleSavePublicSharing() {
+    if (!hasPublicSharingChanges) return;
+
+    setSavingPublicSharing(true);
+    try {
+      const nextPublicSlug = publicEnabled
+        ? publicSlug.trim() || randomPublicSlug()
+        : publicSlug.trim();
+      const updated = await postJson<SiteData>(
+        "/api/private/admin/sites",
+        {
+          intent: "update",
+          siteId: site.id,
+          publicEnabled,
+          publicSlug: nextPublicSlug || undefined,
+        },
+        "PATCH",
+      );
+
+      const updatedPublicEnabled = Boolean(updated.publicEnabled);
+      const updatedPublicSlug = updated.publicSlug || "";
+      setPublicEnabled(updatedPublicEnabled);
+      setPublicSlug(updatedPublicSlug);
+      setPersistedPublicEnabled(updatedPublicEnabled);
+      setPersistedPublicSlug(updatedPublicSlug);
+      toast.success(copy.toasts.saved);
+
+      const nextSlug = resolveSiteSlug(updated);
+      if (nextSlug !== currentSiteSlug) {
+        setCurrentSiteSlug(nextSlug);
+        navigateWithTransition(
+          router,
+          `/${locale}/app/${teamSlug}/${nextSlug}/settings`,
+        );
+      } else {
+        router.refresh();
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : copy.toasts.saveFailed;
+      toast.error(message || copy.toasts.saveFailed);
+    } finally {
+      setSavingPublicSharing(false);
+    }
+  }
+
   async function persistTrackingSettings(input: Record<string, unknown>) {
     const normalizedSettings = normalizeSiteScriptSettings({
       ...persistedSettings,
       ...input,
     });
     const savedSettings = await postJson<Record<string, unknown>>(
-      "/api/admin/site-config",
+      "/api/private/admin/site-config",
       {
         siteId: site.id,
         config: normalizedSettings,
@@ -552,11 +638,12 @@ export function SettingsClientPage({
     setDeleting(true);
     try {
       await postJson<{ siteId: string; teamId: string; removed: boolean }>(
-        "/api/admin/site",
+        "/api/private/admin/sites",
         {
           intent: "remove",
           siteId: site.id,
         },
+        "PATCH",
       );
       toast.success(copy.toasts.deleted);
       setDeleteDialogOpen(false);
@@ -582,11 +669,15 @@ export function SettingsClientPage({
 
     setTransferring(true);
     try {
-      const updated = await postJson<SiteData>("/api/admin/site", {
-        intent: "update",
-        siteId: site.id,
-        teamId: targetTeam.id,
-      });
+      const updated = await postJson<SiteData>(
+        "/api/private/admin/sites",
+        {
+          intent: "update",
+          siteId: site.id,
+          teamId: targetTeam.id,
+        },
+        "PATCH",
+      );
       toast.success(copy.toasts.transferred);
       const nextSlug = resolveSiteSlug(updated);
       navigateWithTransition(
@@ -613,6 +704,22 @@ export function SettingsClientPage({
     }
   }
 
+  async function handleCopyPublicLink() {
+    const link = publicLink;
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success(copy.copiedLink);
+    } catch {
+      toast.error(copy.toasts.saveFailed);
+    }
+  }
+
+  const publicLink =
+    publicEnabled && publicSlug.trim() && origin
+      ? `${origin}/${locale}/share/${encodeURIComponent(publicSlug.trim())}`
+      : "";
+
   return (
     <div className="space-y-6">
       <PageHeading title={copy.title} subtitle={copy.subtitle} />
@@ -620,7 +727,10 @@ export function SettingsClientPage({
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="h-full order-1">
           <CardHeader>
-            <CardTitle>{copy.editTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiSettings3Line className="size-4" />
+              {copy.editTitle}
+            </CardTitle>
             <CardDescription>{copy.editSubtitle}</CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col">
@@ -667,24 +777,6 @@ export function SettingsClientPage({
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="site-settings-public-slug">
-                  {copy.publicSlugLabel}
-                </Label>
-                <Input
-                  id="site-settings-public-slug"
-                  value={publicSlug}
-                  onChange={(event) => setPublicSlug(event.target.value)}
-                  disabled={
-                    saving ||
-                    trackingSaving ||
-                    transferring ||
-                    deleting ||
-                    loadingSettings
-                  }
-                />
-              </div>
-
               <Button
                 type="submit"
                 className="mt-auto self-start"
@@ -707,7 +799,10 @@ export function SettingsClientPage({
                       {copy.saving}
                     </span>
                   ) : (
-                    <span key="save">{copy.save}</span>
+                    <span key="save" className="inline-flex items-center gap-2">
+                      <RiSave3Line className="size-4" />
+                      {copy.save}
+                    </span>
                   )}
                 </AutoTransition>
               </Button>
@@ -715,9 +810,147 @@ export function SettingsClientPage({
           </CardContent>
         </Card>
 
+        <Card className="h-full order-3">
+          <CardHeader>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiShareForwardLine className="size-4" />
+              {copy.publicSharingTitle}
+            </CardTitle>
+            <CardDescription>{copy.publicSharingSubtitle}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex h-full flex-col gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="site-settings-public-enabled">
+                {copy.publicEnabledLabel}
+              </Label>
+              <Select
+                value={publicEnabled ? "true" : "false"}
+                onValueChange={(value) => {
+                  const enabled = value === "true";
+                  setPublicEnabled(enabled);
+                  if (enabled && !publicSlug.trim()) {
+                    setPublicSlug(randomPublicSlug());
+                  }
+                }}
+                disabled={
+                  saving ||
+                  savingPublicSharing ||
+                  trackingSaving ||
+                  transferring ||
+                  deleting
+                }
+              >
+                <SelectTrigger
+                  id="site-settings-public-enabled"
+                  className="w-full"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">{copy.booleanOn}</SelectItem>
+                  <SelectItem value="false">{copy.booleanOff}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="site-settings-public-slug">
+                {copy.publicSlugLabel}
+              </Label>
+              <Input
+                id="site-settings-public-slug"
+                value={publicSlug}
+                placeholder={copy.publicSlugPlaceholder}
+                onChange={(event) => setPublicSlug(event.target.value)}
+                disabled={
+                  saving ||
+                  savingPublicSharing ||
+                  trackingSaving ||
+                  transferring ||
+                  deleting
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                {copy.publicSlugHint}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="site-settings-public-link">
+                {copy.publicLinkLabel}
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id="site-settings-public-link"
+                  value={publicLink}
+                  placeholder={
+                    publicEnabled
+                      ? copy.publicLinkHint
+                      : copy.publicDisabledHint
+                  }
+                  readOnly
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    void handleCopyPublicLink();
+                  }}
+                  disabled={!publicLink}
+                >
+                  <RiFileCopyLine className="size-4" />
+                  <span>{messages.teamManagement.publicLinks.copyLink}</span>
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {publicEnabled ? copy.publicLinkHint : copy.publicDisabledHint}
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              className="mt-auto self-start"
+              onClick={() => {
+                void handleSavePublicSharing();
+              }}
+              disabled={
+                saving ||
+                savingPublicSharing ||
+                trackingSaving ||
+                transferring ||
+                deleting ||
+                !hasPublicSharingChanges
+              }
+            >
+              <AutoTransition className="inline-flex items-center gap-2">
+                {savingPublicSharing ? (
+                  <span
+                    key="saving-public-sharing"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <Spinner className="size-4" />
+                    {copy.saving}
+                  </span>
+                ) : (
+                  <span
+                    key="save-public-sharing"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiSave3Line className="size-4" />
+                    {copy.save}
+                  </span>
+                )}
+              </AutoTransition>
+            </Button>
+          </CardContent>
+        </Card>
+
         <Card className="h-full order-2">
           <CardHeader>
-            <CardTitle>{copy.scriptTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiCodeLine className="size-4" />
+              {copy.scriptTitle}
+            </CardTitle>
             <CardDescription>{copy.scriptSubtitle}</CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col gap-3">
@@ -745,14 +978,18 @@ export function SettingsClientPage({
               }}
               disabled={loadingScript || !scriptSnippet}
             >
-              {copy.copyScript}
+              <RiFileCopyLine className="size-4" />
+              <span>{copy.copyScript}</span>
             </Button>
           </CardContent>
         </Card>
 
         <Card className="h-full order-3">
           <CardHeader>
-            <CardTitle>{copy.trackingStrengthGroupTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiBarChartBoxLine className="size-4" />
+              {copy.trackingStrengthGroupTitle}
+            </CardTitle>
             <CardDescription>
               {copy.trackingStrengthDescription}
             </CardDescription>
@@ -850,7 +1087,13 @@ export function SettingsClientPage({
                     {copy.savingTracking}
                   </span>
                 ) : (
-                  <span key="save-strength">{copy.saveTracking}</span>
+                  <span
+                    key="save-strength"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiSave3Line className="size-4" />
+                    {copy.saveTracking}
+                  </span>
                 )}
               </AutoTransition>
             </Button>
@@ -859,7 +1102,10 @@ export function SettingsClientPage({
 
         <Card className="h-full order-4">
           <CardHeader>
-            <CardTitle>{copy.queryHashGroupTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiLinksLine className="size-4" />
+              {copy.queryHashGroupTitle}
+            </CardTitle>
             <CardDescription>{copy.queryHashGroupDescription}</CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col gap-4">
@@ -969,7 +1215,13 @@ export function SettingsClientPage({
                     {copy.savingTracking}
                   </span>
                 ) : (
-                  <span key="save-query-hash">{copy.saveTracking}</span>
+                  <span
+                    key="save-query-hash"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiSave3Line className="size-4" />
+                    {copy.saveTracking}
+                  </span>
                 )}
               </AutoTransition>
             </Button>
@@ -978,7 +1230,10 @@ export function SettingsClientPage({
 
         <Card className="h-full order-4">
           <CardHeader>
-            <CardTitle>{copy.autoTrackGroupTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiRouteLine className="size-4" />
+              {copy.autoTrackGroupTitle}
+            </CardTitle>
             <CardDescription>{copy.autoTrackGroupDescription}</CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col gap-4">
@@ -1039,7 +1294,13 @@ export function SettingsClientPage({
                     {copy.savingTracking}
                   </span>
                 ) : (
-                  <span key="save-auto-tracking">{copy.saveTracking}</span>
+                  <span
+                    key="save-auto-tracking"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiSave3Line className="size-4" />
+                    {copy.saveTracking}
+                  </span>
                 )}
               </AutoTransition>
             </Button>
@@ -1048,7 +1309,10 @@ export function SettingsClientPage({
 
         <Card className="h-full order-5">
           <CardHeader>
-            <CardTitle>{copy.performanceGroupTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiSpeedUpLine className="size-4" />
+              {copy.performanceGroupTitle}
+            </CardTitle>
             <CardDescription>
               {copy.performanceGroupDescription}
             </CardDescription>
@@ -1114,7 +1378,13 @@ export function SettingsClientPage({
                     {copy.savingTracking}
                   </span>
                 ) : (
-                  <span key="save-performance">{copy.saveTracking}</span>
+                  <span
+                    key="save-performance"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiSave3Line className="size-4" />
+                    {copy.saveTracking}
+                  </span>
                 )}
               </AutoTransition>
             </Button>
@@ -1123,7 +1393,10 @@ export function SettingsClientPage({
 
         <Card className="h-full order-6">
           <CardHeader>
-            <CardTitle>{copy.domainWhitelistTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiGlobalLine className="size-4" />
+              {copy.domainWhitelistTitle}
+            </CardTitle>
             <CardDescription>{copy.domainWhitelistDescription}</CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col gap-4">
@@ -1177,7 +1450,13 @@ export function SettingsClientPage({
                     {copy.savingTracking}
                   </span>
                 ) : (
-                  <span key="save-domain-whitelist">{copy.saveTracking}</span>
+                  <span
+                    key="save-domain-whitelist"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiSave3Line className="size-4" />
+                    {copy.saveTracking}
+                  </span>
                 )}
               </AutoTransition>
             </Button>
@@ -1186,7 +1465,10 @@ export function SettingsClientPage({
 
         <Card className="h-full order-7">
           <CardHeader>
-            <CardTitle>{copy.pathBlacklistTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiRouteLine className="size-4" />
+              {copy.pathBlacklistTitle}
+            </CardTitle>
             <CardDescription>{copy.pathBlacklistDescription}</CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col gap-4">
@@ -1238,7 +1520,13 @@ export function SettingsClientPage({
                     {copy.savingTracking}
                   </span>
                 ) : (
-                  <span key="save-path-blacklist">{copy.saveTracking}</span>
+                  <span
+                    key="save-path-blacklist"
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RiSave3Line className="size-4" />
+                    {copy.saveTracking}
+                  </span>
                 )}
               </AutoTransition>
             </Button>
@@ -1247,7 +1535,10 @@ export function SettingsClientPage({
 
         <Card className="h-full order-8">
           <CardHeader>
-            <CardTitle>{copy.transferTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiArrowRightLine className="size-4" />
+              {copy.transferTitle}
+            </CardTitle>
             <CardDescription>{copy.transferSubtitle}</CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col">
@@ -1303,7 +1594,13 @@ export function SettingsClientPage({
                       {copy.transferring}
                     </span>
                   ) : (
-                    <span key="transfer">{copy.transfer}</span>
+                    <span
+                      key="transfer"
+                      className="inline-flex items-center gap-2"
+                    >
+                      <RiArrowRightLine className="size-4" />
+                      {copy.transfer}
+                    </span>
                   )}
                 </AutoTransition>
               </Button>
@@ -1320,7 +1617,10 @@ export function SettingsClientPage({
         >
           <Card className="h-full border-destructive/40 order-9">
             <CardHeader>
-              <CardTitle>{copy.deleteTitle}</CardTitle>
+              <CardTitle className="inline-flex items-center gap-2">
+                <RiDeleteBinLine className="size-4" />
+                {copy.deleteTitle}
+              </CardTitle>
               <CardDescription>{copy.deleteSubtitle}</CardDescription>
             </CardHeader>
             <CardContent className="flex h-full items-end">
@@ -1342,7 +1642,13 @@ export function SettingsClientPage({
                         {copy.deleting}
                       </span>
                     ) : (
-                      <span key="delete">{copy.delete}</span>
+                      <span
+                        key="delete"
+                        className="inline-flex items-center gap-2"
+                      >
+                        <RiDeleteBinLine className="size-4" />
+                        {copy.delete}
+                      </span>
                     )}
                   </AutoTransition>
                 </Button>
@@ -1352,7 +1658,9 @@ export function SettingsClientPage({
 
           <AlertDialogContent size="sm">
             <AlertDialogHeader>
-              <AlertDialogTitle>{copy.deleteTitle}</AlertDialogTitle>
+              <AlertDialogTitle icon={RiDeleteBinLine}>
+                {copy.deleteTitle}
+              </AlertDialogTitle>
               <AlertDialogDescription>
                 {copy.deleteConfirm}
               </AlertDialogDescription>
@@ -1361,7 +1669,8 @@ export function SettingsClientPage({
               <AlertDialogCancel
                 disabled={trackingSaving || transferring || deleting}
               >
-                {messages.teamSelect.cancel}
+                <RiCloseLine className="size-4" />
+                <span>{messages.teamSelect.cancel}</span>
               </AlertDialogCancel>
               <AlertDialogAction
                 variant="destructive"
@@ -1381,7 +1690,13 @@ export function SettingsClientPage({
                       {copy.deleting}
                     </span>
                   ) : (
-                    <span key="confirm-delete">{copy.delete}</span>
+                    <span
+                      key="confirm-delete"
+                      className="inline-flex items-center gap-2"
+                    >
+                      <RiDeleteBinLine className="size-4" />
+                      {copy.delete}
+                    </span>
                   )}
                 </AutoTransition>
               </AlertDialogAction>

@@ -21,6 +21,7 @@ export const COMMON_TIME_ZONES = [
 ] as const;
 
 const partsFormatterCache = new Map<string, Intl.DateTimeFormat>();
+const timeZoneNameFormatterCache = new Map<string, Intl.DateTimeFormat>();
 
 export interface ZonedDateTimeParts {
   year: number;
@@ -99,6 +100,87 @@ export function supportedTimeZones(): string[] {
   return Array.from(new Set([...COMMON_TIME_ZONES, ...supported])).sort(
     (left, right) => left.localeCompare(right),
   );
+}
+
+export function formatUtcOffset(offsetMinutes: number): string {
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absolute = Math.abs(offsetMinutes);
+  const hours = Math.floor(absolute / 60)
+    .toString()
+    .padStart(2, "0");
+  const minutes = (absolute % 60).toString().padStart(2, "0");
+  return `UTC${sign}${hours}:${minutes}`;
+}
+
+function getTimeZoneNameFormatter(
+  locale: string,
+  timeZone: string,
+): Intl.DateTimeFormat | null {
+  const cacheKey = `${locale}::${timeZone}`;
+  const cached = timeZoneNameFormatterCache.get(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const formatter = new Intl.DateTimeFormat(locale, {
+      timeZone,
+      timeZoneName: "long",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    });
+    timeZoneNameFormatterCache.set(cacheKey, formatter);
+    return formatter;
+  } catch {
+    return null;
+  }
+}
+
+export function formatTimeZoneOptionLabel(input: {
+  locale: string;
+  timeZone: string;
+  timestampMs: number;
+}): string {
+  const date = new Date(input.timestampMs);
+  const name =
+    getTimeZoneNameFormatter(input.locale, input.timeZone)
+      ?.formatToParts(date)
+      .find((part) => part.type === "timeZoneName")
+      ?.value.trim() || "";
+  const offset = formatUtcOffset(
+    timeZoneOffsetMinutes(input.timeZone, input.timestampMs),
+  );
+  return name && name !== input.timeZone
+    ? `${name} (${offset}) - ${input.timeZone}`
+    : `${input.timeZone} (${offset})`;
+}
+
+export function buildTimeZoneOptions(input: {
+  locale: string;
+  supported?: string[];
+  selected?: string;
+  active?: string;
+  browser?: string;
+  timestampMs: number;
+}): Array<{ value: string; label: string }> {
+  const values = new Set<string>();
+  for (const value of [
+    input.selected,
+    input.active,
+    input.browser,
+    ...(input.supported ?? supportedTimeZones()),
+  ]) {
+    const normalized = normalizeTimeZone(value);
+    if (normalized) values.add(normalized);
+  }
+
+  return Array.from(values).map((value) => ({
+    value,
+    label: formatTimeZoneOptionLabel({
+      locale: input.locale,
+      timeZone: value,
+      timestampMs: input.timestampMs,
+    }),
+  }));
 }
 
 export function zonedParts(

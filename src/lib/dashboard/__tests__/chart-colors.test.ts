@@ -1,0 +1,62 @@
+import { describe, expect, it } from "vitest";
+
+import { buildComplementaryOklchPalette } from "@/lib/dashboard/chart-colors";
+
+describe("dashboard chart color palette", () => {
+  it("returns an empty palette for non-positive counts", () => {
+    expect(buildComplementaryOklchPalette(0)).toEqual([]);
+    expect(buildComplementaryOklchPalette(-3)).toEqual([]);
+  });
+
+  it("builds the requested number of hex colors from the default OKLCh base", () => {
+    const palette = buildComplementaryOklchPalette(5);
+
+    expect(palette).toHaveLength(5);
+    expect(palette.every((color) => /^#[0-9a-f]{6}$/i.test(color))).toBe(true);
+    expect(new Set(palette).size).toBeGreaterThan(1);
+  });
+
+  it("accepts shorthand hex, full hex, and OKLCh percentage colors", () => {
+    expect(buildComplementaryOklchPalette(1, "#abc")[0]).toMatch(
+      /^#[0-9a-f]{6}$/i,
+    );
+    expect(buildComplementaryOklchPalette(3, "#123456")).toHaveLength(3);
+    expect(
+      buildComplementaryOklchPalette(3, "oklch(85% 13% 165)"),
+    ).toHaveLength(3);
+  });
+
+  it("handles near-black and wide-hue OKLCh colors", () => {
+    const blackPalette = buildComplementaryOklchPalette(2, "#000000");
+    const hueWrappedPalette = buildComplementaryOklchPalette(
+      4,
+      "oklch(0.55 0.12 350)",
+    );
+
+    expect(blackPalette).toHaveLength(2);
+    expect(blackPalette.every((color) => /^#[0-9a-f]{6}$/i.test(color))).toBe(
+      true,
+    );
+    expect(hueWrappedPalette).toHaveLength(4);
+    expect(new Set(hueWrappedPalette).size).toBeGreaterThan(1);
+  });
+
+  it("interpolates hex colors across both hue-wrap directions", () => {
+    const greenPalette = buildComplementaryOklchPalette(4, "#00ff00");
+    const magentaPalette = buildComplementaryOklchPalette(4, "#ff00ff");
+    const lowChannelPalette = buildComplementaryOklchPalette(3, "#000011");
+
+    for (const palette of [greenPalette, magentaPalette, lowChannelPalette]) {
+      expect(palette.every((color) => /^#[0-9a-f]{6}$/i.test(color))).toBe(
+        true,
+      );
+      expect(new Set(palette).size).toBeGreaterThan(1);
+    }
+  });
+
+  it("throws for unsupported color formats", () => {
+    expect(() => buildComplementaryOklchPalette(2, "rgb(1, 2, 3)")).toThrow(
+      /Unsupported color format/,
+    );
+  });
+});

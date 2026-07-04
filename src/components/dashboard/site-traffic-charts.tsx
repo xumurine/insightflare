@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -16,15 +16,17 @@ import {
   type ChartConfig,
   ChartContainer,
   ChartTooltip,
-  ChartTooltipContent,
 } from "@/components/ui/chart";
-import { intlLocale } from "@/lib/dashboard/format";
+import { Skeleton } from "@/components/ui/skeleton";
+import { intlLocale, numberFormat } from "@/lib/dashboard/format";
 import type { DashboardInterval } from "@/lib/dashboard/query-state";
 import {
   addZonedInterval,
   startOfZonedInterval,
 } from "@/lib/dashboard/time-zone";
 import type { Locale } from "@/lib/i18n/config";
+import type { AppMessages } from "@/lib/i18n/messages";
+import { formatI18nTemplate } from "@/lib/i18n/template";
 import { cn } from "@/lib/utils";
 
 interface SiteTrafficStackChartProps {
@@ -45,6 +47,8 @@ interface SiteTrafficStackChartProps {
   interval: DashboardInterval;
   viewsLabel: string;
   visitorsLabel: string;
+  messages: AppMessages;
+  loading?: boolean;
   className?: string;
 }
 
@@ -59,6 +63,7 @@ interface TrafficPairBarChartProps {
   interval: DashboardInterval;
   viewsLabel: string;
   visitorsLabel: string;
+  messages: AppMessages;
   compact?: boolean;
   maxPoints?: number;
   className?: string;
@@ -76,6 +81,10 @@ interface SiteTrafficSeriesItem {
   visitorsColor: string;
   viewsColor: string;
 }
+
+type SiteTrafficChartRow = Record<string, number> & {
+  timestampMs: number;
+};
 
 interface TrafficPairChartPoint {
   timestampMs: number;
@@ -535,6 +544,9 @@ function SiteTrafficStackTooltip({
   dateFormatter,
   viewsLabel,
   visitorsLabel,
+  activeSiteIds,
+  locale: _locale,
+  messages: _messages,
 }: {
   active?: boolean;
   payload?: Array<{ payload?: Record<string, unknown> }>;
@@ -542,6 +554,9 @@ function SiteTrafficStackTooltip({
   dateFormatter: Intl.DateTimeFormat;
   viewsLabel: string;
   visitorsLabel: string;
+  activeSiteIds: string[];
+  locale: Locale;
+  messages: AppMessages;
 }) {
   if (!active || !payload?.length) return null;
 
@@ -549,75 +564,195 @@ function SiteTrafficStackTooltip({
   if (!row) return null;
 
   const timestamp = Number(row.timestampMs ?? 0);
-  const groupCount = Math.max(1, series.length);
-  const sqrtCount = Math.sqrt(groupCount);
-  const minCandidate = Math.max(1, Math.floor(sqrtCount));
-  const maxCandidate = Math.max(1, Math.ceil(sqrtCount));
-  const candidateColumns =
-    minCandidate === maxCandidate
-      ? [minCandidate]
-      : [minCandidate, maxCandidate];
-  const columnCount = candidateColumns.reduce((best, current) => {
-    const bestRows = Math.ceil(groupCount / best);
-    const currentRows = Math.ceil(groupCount / current);
-    const bestDelta = Math.abs(bestRows - best);
-    const currentDelta = Math.abs(currentRows - current);
-    if (currentDelta < bestDelta) return current;
-    if (currentDelta > bestDelta) return best;
-    return current > best ? current : best;
-  }, candidateColumns[0]);
-  const tooltipWidthPx = Math.max(280, Math.min(560, columnCount * 160));
+  const activeSiteIdSet = new Set(activeSiteIds);
+  const hasActiveSites = activeSiteIds.length > 0;
+
+  const activeSeries = series.filter(
+    (item) => !hasActiveSites || activeSiteIdSet.has(item.siteId),
+  );
+
+  let totalViews = 0;
+  let totalVisitors = 0;
+
+  for (const item of activeSeries) {
+    totalViews += safeCount(Number(row[item.viewsKey] ?? 0));
+    totalVisitors += safeCount(Number(row[item.visitorsKey] ?? 0));
+  }
 
   return (
-    <div
-      className="grid min-w-[280px] items-start gap-2 rounded-none border border-border/50 bg-background px-2.5 py-2 text-xs shadow-xl"
-      style={{ width: `min(68vw, ${tooltipWidthPx}px)` }}
-    >
-      <div className="font-medium">
+    <div className="grid min-w-[200px] items-start gap-1.5 rounded-none border border-border/50 bg-background px-2.5 py-2 text-xs shadow-xl">
+      <div className="font-medium text-foreground">
         {dateFormatter.format(new Date(timestamp))}
       </div>
-      <div
-        className="grid gap-1.5"
-        style={{
-          gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
-        }}
-      >
-        {series.map((item) => {
-          const views = safeCount(Number(row[item.viewsKey] ?? 0));
-          const visitors = safeCount(Number(row[item.visitorsKey] ?? 0));
-          return (
-            <div
-              key={item.siteId}
-              className="flex items-stretch overflow-hidden rounded-none"
-            >
-              <span
-                className="w-1.5 shrink-0 self-stretch rounded-none"
-                style={{ backgroundColor: item.viewsColor }}
-              />
-              <div className="min-w-0 flex-1 space-y-1 px-2 py-1.5">
-                <div className="min-w-0 truncate font-medium">
-                  {item.siteName}
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">{viewsLabel}</span>
-                  <span className="font-mono tabular-nums">
-                    {views.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">{visitorsLabel}</span>
-                  <span className="font-mono tabular-nums">
-                    {visitors.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+      <div className="grid gap-1">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-none bg-primary" />
+            <span className="text-muted-foreground">{viewsLabel}</span>
+          </div>
+          <span className="font-mono font-semibold tabular-nums text-foreground">
+            {totalViews.toLocaleString()}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-none bg-chart-3" />
+            <span className="text-muted-foreground">{visitorsLabel}</span>
+          </div>
+          <span className="font-mono font-semibold tabular-nums text-foreground">
+            {totalVisitors.toLocaleString()}
+          </span>
+        </div>
       </div>
+      {hasActiveSites ? (
+        <div className="border-t border-border/30 pt-1 text-[10px] text-muted-foreground">
+          {formatI18nTemplate(_messages.common.sitesFiltered, {
+            active: activeSiteIdSet.size,
+            total: series.length,
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
+
+const SiteTrafficStackPlot = memo(function SiteTrafficStackPlot({
+  chartData,
+  config,
+  series,
+  activeSiteIds,
+  className,
+  tickFormatter,
+  tooltipFormatter,
+  viewsLabel,
+  visitorsLabel,
+  locale,
+  messages,
+  stackChartDataKey,
+  onHoverPoint,
+}: {
+  chartData: SiteTrafficChartRow[];
+  config: ChartConfig;
+  series: SiteTrafficSeriesItem[];
+  activeSiteIds: string[];
+  className?: string;
+  tickFormatter: Intl.DateTimeFormat;
+  tooltipFormatter: Intl.DateTimeFormat;
+  viewsLabel: string;
+  visitorsLabel: string;
+  locale: Locale;
+  messages: AppMessages;
+  stackChartDataKey: string;
+  onHoverPoint: (point: SiteTrafficChartRow | null) => void;
+}) {
+  const { containerRef, isVisible, hasMeasuredVisibility } =
+    useChartVisibility();
+  const activeSiteIdSet = useMemo(
+    () => new Set(activeSiteIds),
+    [activeSiteIds],
+  );
+  const hasActiveSites = activeSiteIds.length > 0;
+  const isAnimationActive = useAnimationOnChartSwitch({
+    switchKey: stackChartDataKey,
+    hasData: chartData.length > 0,
+    isVisible,
+    hasMeasuredVisibility,
+  });
+
+  return (
+    <div ref={containerRef}>
+      <ChartContainer
+        className={cn("h-[320px] w-full aspect-auto", className)}
+        config={config}
+      >
+        <BarChart
+          data={chartData}
+          margin={{ left: 8, right: 8 }}
+          barCategoryGap="22%"
+          barGap={2}
+          onMouseMove={(state) => {
+            if (
+              state &&
+              state.activePayload &&
+              state.activePayload.length > 0
+            ) {
+              const activePoint = state.activePayload[0].payload as
+                | SiteTrafficChartRow
+                | undefined;
+              onHoverPoint(activePoint ?? null);
+            } else {
+              onHoverPoint(null);
+            }
+          }}
+          onMouseLeave={() => {
+            onHoverPoint(null);
+          }}
+        >
+          <CartesianGrid vertical={false} />
+          <XAxis
+            dataKey="timestampMs"
+            tickFormatter={(value) =>
+              tickFormatter.format(new Date(Number(value ?? 0)))
+            }
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            minTickGap={14}
+          />
+          <YAxis
+            allowDecimals={false}
+            tickLine={false}
+            axisLine={false}
+            width={36}
+          />
+          <ChartTooltip
+            allowEscapeViewBox={{ x: false, y: true }}
+            wrapperStyle={{ zIndex: 20 }}
+            content={
+              <SiteTrafficStackTooltip
+                series={series}
+                dateFormatter={tooltipFormatter}
+                viewsLabel={viewsLabel}
+                visitorsLabel={visitorsLabel}
+                activeSiteIds={activeSiteIds}
+                locale={locale}
+                messages={messages}
+              />
+            }
+          />
+          {series.map((item) => (
+            <Bar
+              key={item.visitorsKey}
+              dataKey={item.visitorsKey}
+              stackId="visitors"
+              fill={`var(--color-${item.visitorsKey})`}
+              fillOpacity={
+                !hasActiveSites || activeSiteIdSet.has(item.siteId) ? 1 : 0.28
+              }
+              radius={0}
+              isAnimationActive={isAnimationActive}
+              animationDuration={isAnimationActive ? 260 : 0}
+            />
+          ))}
+          {series.map((item) => (
+            <Bar
+              key={item.viewsKey}
+              dataKey={item.viewsKey}
+              stackId="views"
+              fill={`var(--color-${item.viewsKey})`}
+              fillOpacity={
+                !hasActiveSites || activeSiteIdSet.has(item.siteId) ? 1 : 0.28
+              }
+              radius={0}
+              isAnimationActive={isAnimationActive}
+              animationDuration={isAnimationActive ? 260 : 0}
+            />
+          ))}
+        </BarChart>
+      </ChartContainer>
+    </div>
+  );
+});
 
 export const SiteTrafficStackChart = memo(function SiteTrafficStackChart({
   data,
@@ -627,12 +762,16 @@ export const SiteTrafficStackChart = memo(function SiteTrafficStackChart({
   interval,
   viewsLabel,
   visitorsLabel,
+  messages,
+  loading = false,
   className,
 }: SiteTrafficStackChartProps) {
   const cachedSiteOrderRef = useRef<string[] | null>(null);
   const [activeSiteIds, setActiveSiteIds] = useState<string[]>([]);
-  const { containerRef, isVisible, hasMeasuredVisibility } =
-    useChartVisibility();
+  const [hoveredPoint, setHoveredPoint] = useState<SiteTrafficChartRow | null>(
+    null,
+  );
+  const hoveredTimestampRef = useRef<number | null>(null);
 
   if (!cachedSiteOrderRef.current && sites.length > 0) {
     cachedSiteOrderRef.current = sites.map((site) => site.id);
@@ -738,7 +877,7 @@ export const SiteTrafficStackChart = memo(function SiteTrafficStackChart({
           ]),
         );
 
-        const row: Record<string, number> = {
+        const row: SiteTrafficChartRow = {
           timestampMs: point.timestampMs,
         };
 
@@ -752,6 +891,49 @@ export const SiteTrafficStackChart = memo(function SiteTrafficStackChart({
       }),
     [data, series],
   );
+
+  const totals = useMemo(() => {
+    const map = new Map<string, { views: number; visitors: number }>();
+    for (const item of series) {
+      let viewsSum = 0;
+      let visitorsSum = 0;
+      for (const row of chartData) {
+        viewsSum += row[item.viewsKey] ?? 0;
+        visitorsSum += row[item.visitorsKey] ?? 0;
+      }
+      map.set(item.siteId, { views: viewsSum, visitors: visitorsSum });
+    }
+    return map;
+  }, [chartData, series]);
+
+  const getSiteValues = (siteId: string, item: (typeof series)[number]) => {
+    if (hoveredPoint) {
+      const views = hoveredPoint[item.viewsKey] ?? 0;
+      const visitors = hoveredPoint[item.visitorsKey] ?? 0;
+      return { views, visitors };
+    }
+    return totals.get(siteId) ?? { views: 0, visitors: 0 };
+  };
+  const handleHoverPoint = useCallback((point: SiteTrafficChartRow | null) => {
+    const nextTimestamp =
+      point && Number.isFinite(point.timestampMs) ? point.timestampMs : null;
+    if (hoveredTimestampRef.current === nextTimestamp) return;
+    hoveredTimestampRef.current = nextTimestamp;
+    setHoveredPoint(point);
+  }, []);
+  const handleToggleSite = useCallback((siteId: string) => {
+    setActiveSiteIds((current) =>
+      current.includes(siteId)
+        ? current.filter((currentSiteId) => currentSiteId !== siteId)
+        : [...current, siteId],
+    );
+  }, []);
+
+  useEffect(() => {
+    hoveredTimestampRef.current = null;
+    setHoveredPoint((current) => (current === null ? current : null));
+  }, [chartData]);
+
   const tickFormatter = useMemo(
     () => tickDateFormat(locale, interval, timeZone),
     [locale, interval, timeZone],
@@ -769,129 +951,138 @@ export const SiteTrafficStackChart = memo(function SiteTrafficStackChart({
     const lastTimestamp = data[data.length - 1]?.timestampMs ?? 0;
     return `${interval}:${legendKey}:${data.length}:${firstTimestamp}:${lastTimestamp}`;
   }, [interval, legendKey, data]);
-  const isAnimationActive = useAnimationOnChartSwitch({
-    switchKey: stackChartDataKey,
-    hasData: chartData.length > 0,
-    isVisible,
-    hasMeasuredVisibility,
-  });
 
   return (
-    <div ref={containerRef} className="space-y-2">
-      <ChartContainer
-        className={cn("h-[320px] w-full aspect-auto", className)}
+    <div className="space-y-4">
+      <SiteTrafficStackPlot
+        chartData={chartData}
         config={config}
-      >
-        <BarChart
-          data={chartData}
-          margin={{ left: 8, right: 8 }}
-          barCategoryGap="22%"
-          barGap={2}
-        >
-          <CartesianGrid vertical={false} />
-          <XAxis
-            dataKey="timestampMs"
-            tickFormatter={(value) =>
-              tickFormatter.format(new Date(Number(value ?? 0)))
-            }
-            tickLine={false}
-            axisLine={false}
-            tickMargin={8}
-            minTickGap={14}
-          />
-          <YAxis
-            allowDecimals={false}
-            tickLine={false}
-            axisLine={false}
-            width={36}
-          />
-          <ChartTooltip
-            allowEscapeViewBox={{ x: false, y: true }}
-            wrapperStyle={{ zIndex: 20 }}
-            content={
-              <SiteTrafficStackTooltip
-                series={series}
-                dateFormatter={tooltipFormatter}
-                viewsLabel={viewsLabel}
-                visitorsLabel={visitorsLabel}
-              />
-            }
-          />
-          {series.map((item) => (
-            <Bar
-              key={item.visitorsKey}
-              dataKey={item.visitorsKey}
-              stackId="visitors"
-              fill={`var(--color-${item.visitorsKey})`}
-              fillOpacity={
-                !hasActiveSites || activeSiteIdSet.has(item.siteId) ? 1 : 0.28
-              }
-              radius={0}
-              isAnimationActive={isAnimationActive}
-              animationDuration={isAnimationActive ? 260 : 0}
-            />
-          ))}
-          {series.map((item) => (
-            <Bar
-              key={item.viewsKey}
-              dataKey={item.viewsKey}
-              stackId="views"
-              fill={`var(--color-${item.viewsKey})`}
-              fillOpacity={
-                !hasActiveSites || activeSiteIdSet.has(item.siteId) ? 1 : 0.28
-              }
-              radius={0}
-              isAnimationActive={isAnimationActive}
-              animationDuration={isAnimationActive ? 260 : 0}
-            />
-          ))}
-        </BarChart>
-      </ChartContainer>
+        series={series}
+        activeSiteIds={activeSiteIds}
+        className={className}
+        tickFormatter={tickFormatter}
+        tooltipFormatter={tooltipFormatter}
+        viewsLabel={viewsLabel}
+        visitorsLabel={visitorsLabel}
+        locale={locale}
+        messages={messages}
+        stackChartDataKey={stackChartDataKey}
+        onHoverPoint={handleHoverPoint}
+      />
 
-      <AutoResizer initial className="min-h-5">
-        <AutoTransition initial={false} duration={0.2}>
-          <div
-            key={legendKey}
-            className="mx-auto flex w-full flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-xs"
-          >
-            {series.map((item) => (
-              <button
-                key={item.siteId}
-                type="button"
-                aria-pressed={activeSiteIdSet.has(item.siteId)}
-                onClick={() =>
-                  setActiveSiteIds((current) =>
-                    current.includes(item.siteId)
-                      ? current.filter((siteId) => siteId !== item.siteId)
-                      : [...current, item.siteId],
-                  )
-                }
-                className={cn(
-                  "inline-flex min-w-0 cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-left transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60",
-                  hasActiveSites && !activeSiteIdSet.has(item.siteId)
-                    ? "opacity-45"
-                    : "opacity-100",
+      <div className="flex flex-col gap-4 border-t border-border/40 pt-4">
+        <div className="flex items-center justify-between text-xs">
+          {loading ? (
+            <Skeleton className="h-4 w-32 rounded-none bg-muted" />
+          ) : (
+            <span className="font-medium text-muted-foreground">
+              <AutoTransition>
+                {hoveredPoint ? (
+                  <span className="inline-flex items-center gap-1.5 text-primary font-medium">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-none bg-primary/60 opacity-75"></span>
+                      <span className="relative inline-flex h-2 w-2 rounded-none bg-primary"></span>
+                    </span>
+                    {tooltipFormatter.format(
+                      new Date(Number(hoveredPoint.timestampMs)),
+                    )}
+                  </span>
+                ) : (
+                  messages.common.cumulativeTraffic
                 )}
+              </AutoTransition>
+            </span>
+          )}
+          {loading ? (
+            <Skeleton className="h-4 w-20 rounded-none bg-muted" />
+          ) : (
+            <span className="text-[11px] text-muted-foreground font-medium">
+              {viewsLabel} / {visitorsLabel}
+            </span>
+          )}
+        </div>
+
+        <AutoResizer initial className="min-h-5">
+          <AutoTransition initial={false} duration={0.2}>
+            {loading ? (
+              <div className="grid gap-x-6 gap-y-0.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {Array.from(
+                  { length: Math.max(4, sites.length) },
+                  (_, index) => (
+                    <div
+                      key={`legend-skeleton-${index}`}
+                      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2.5 py-1"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Skeleton className="size-2.5 shrink-0 rounded-none bg-muted" />
+                        <Skeleton className="h-3.5 w-20 rounded-none bg-muted" />
+                      </div>
+                      <Skeleton className="h-3.5 w-16 rounded-none bg-muted" />
+                    </div>
+                  ),
+                )}
+              </div>
+            ) : (
+              <div
+                key={legendKey}
+                className="grid gap-x-6 gap-y-0.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
               >
-                <span
-                  className="h-2.5 w-2.5 shrink-0"
-                  style={{ backgroundColor: item.viewsColor }}
-                />
-                <span
-                  className={cn(
-                    "max-w-[180px] truncate",
-                    activeSiteIdSet.has(item.siteId)
-                      ? "text-foreground"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {item.siteName}
-                </span>
-              </button>
-            ))}
-          </div>
-        </AutoTransition>
-      </AutoResizer>
+                {series.map((item) => {
+                  const { views, visitors } = getSiteValues(item.siteId, item);
+                  return (
+                    <button
+                      key={item.siteId}
+                      type="button"
+                      aria-pressed={activeSiteIdSet.has(item.siteId)}
+                      onClick={() => handleToggleSite(item.siteId)}
+                      className={cn(
+                        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-none px-2.5 py-1 text-left border-0 bg-transparent cursor-pointer transition-all hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60",
+                        hasActiveSites && !activeSiteIdSet.has(item.siteId)
+                          ? "opacity-40"
+                          : "opacity-100",
+                      )}
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className="size-2.5 shrink-0 rounded-none"
+                          style={{ backgroundColor: item.viewsColor }}
+                        />
+                        <span
+                          className={cn(
+                            "truncate font-medium text-xs",
+                            activeSiteIdSet.has(item.siteId)
+                              ? "text-foreground"
+                              : "text-muted-foreground",
+                          )}
+                          title={item.siteName}
+                        >
+                          {item.siteName}
+                        </span>
+                      </div>
+                      <AutoTransition>
+                        <div
+                          className="flex shrink-0 items-baseline gap-1.5 text-xs"
+                          key={`${views}/${visitors}`}
+                        >
+                          <span className="font-mono tabular-nums text-foreground font-semibold">
+                            {numberFormat(locale, views)}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground font-light">
+                            /
+                          </span>
+                          <span className="font-mono tabular-nums text-muted-foreground">
+                            {numberFormat(locale, visitors)}
+                          </span>
+                        </div>
+                      </AutoTransition>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </AutoTransition>
+        </AutoResizer>
+      </div>
     </div>
   );
 });
@@ -969,6 +1160,7 @@ export const TrafficPairBarChart = memo(function TrafficPairBarChart({
   interval,
   viewsLabel,
   visitorsLabel,
+  messages: _messages,
   compact = false,
   maxPoints,
   className,

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   type RemixiconComponentType,
   RiAlarmWarningLine,
+  RiBarChartBoxLine,
   RiCpuLine,
   RiDatabase2Line,
   RiRefreshLine,
@@ -16,6 +17,7 @@ import { toast } from "sonner";
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { PageHeading } from "@/components/dashboard/page-heading";
+import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -198,39 +200,54 @@ function SystemMetricCell({
   label,
   value,
   detail,
+  loading = false,
   tone = "default",
 }: {
   icon: RemixiconComponentType;
   label: string;
   value: string;
   detail: string;
+  loading?: boolean;
   tone?: "default" | "warning" | "good";
 }) {
+  const contentKey = loading ? "loading" : value;
+
   return (
     <div className="min-w-0 bg-card p-4">
       <div className="flex min-w-0 items-center gap-2">
-        <span
-          className={cn(
-            "inline-flex shrink-0 items-center justify-center text-muted-foreground",
-            tone === "warning" && "text-destructive",
-            tone === "good" && "text-primary",
-          )}
-        >
+        <span className="inline-flex shrink-0 items-center justify-center text-muted-foreground">
           <Icon className="size-[11px]" />
         </span>
         <p className="min-w-0 truncate text-[11px] uppercase text-muted-foreground">
           {label}
         </p>
       </div>
-      <p
-        className={cn(
-          "mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground tabular-nums",
-          tone === "warning" && "text-destructive",
-          tone === "good" && "text-primary",
-        )}
-      >
-        {value}
-      </p>
+      <AutoResizer initial className="mt-3">
+        <AutoTransition
+          transitionKey={contentKey}
+          initial={false}
+          duration={0.2}
+          type="fade"
+          presenceMode="wait"
+        >
+          {loading ? (
+            <div key="loading" className="flex h-7 items-center">
+              <Spinner className="size-5" />
+            </div>
+          ) : (
+            <p
+              key={value}
+              className={cn(
+                "min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground tabular-nums",
+                tone === "warning" && "text-destructive",
+                tone === "good" && "text-primary",
+              )}
+            >
+              {value}
+            </p>
+          )}
+        </AutoTransition>
+      </AutoResizer>
       <p className="mt-3 min-w-0 truncate text-[11px] leading-[14px] text-muted-foreground">
         {detail}
       </p>
@@ -307,106 +324,124 @@ function LatencyPercentileChart({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t.latencyPercentileTrend}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiSpeedUpLine className="size-4" />
+          {t.latencyPercentileTrend}
+        </CardTitle>
         <CardDescription>{t.latencyPercentileTrendDescription}</CardDescription>
       </CardHeader>
       <CardContent>
-        {hasLatencyData ? (
-          <ChartContainer
-            className="h-[320px] w-full aspect-auto"
-            config={chartConfig}
+        <AutoResizer initial>
+          <AutoTransition
+            transitionKey={
+              hasLatencyData ? "chart" : loading ? "loading" : "empty"
+            }
+            initial={false}
+            duration={0.2}
+            type="fade"
           >
-            <LineChart
-              accessibilityLayer
-              data={chartData}
-              margin={{ left: 12, right: 12, top: 12, bottom: 4 }}
-            >
-              <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis
-                dataKey="timestampMs"
-                tickFormatter={(value) =>
-                  bucketFormatter.format(new Date(Number(value ?? 0)))
-                }
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                minTickGap={12}
-              />
-              <YAxis
-                tickFormatter={(value) =>
-                  formatLatency(locale, Number(value ?? 0))
-                }
-                tickLine={false}
-                axisLine={false}
-                width={74}
-              />
-              <ChartTooltip
-                cursor={false}
-                content={
-                  <ChartTooltipContent
-                    className="min-w-[14rem]"
-                    indicator="line"
-                    labelFormatter={(value, payload) => {
-                      const timestamp = Number(
-                        payload?.[0]?.payload?.timestampMs ?? value ?? 0,
-                      );
-                      return tooltipFormatter.format(new Date(timestamp));
-                    }}
-                    formatter={(value, name) => (
-                      <div className="flex w-full items-center justify-between gap-3">
-                        <span className="text-muted-foreground">
-                          {String(name ?? "")}
-                        </span>
-                        <span className="font-mono text-foreground tabular-nums">
-                          {formatLatency(locale, Number(value ?? 0))}
-                        </span>
-                      </div>
-                    )}
+            {hasLatencyData ? (
+              <ChartContainer
+                key="chart"
+                className="h-[320px] w-full aspect-auto"
+                config={chartConfig}
+              >
+                <LineChart
+                  accessibilityLayer
+                  data={chartData}
+                  margin={{ left: 12, right: 12, top: 12, bottom: 4 }}
+                >
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="timestampMs"
+                    tickFormatter={(value) =>
+                      bucketFormatter.format(new Date(Number(value ?? 0)))
+                    }
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    minTickGap={12}
                   />
-                }
-              />
-              <ChartLegend
-                content={
-                  <ChartLegendContent className="pt-6 flex-wrap justify-center gap-x-4 gap-y-2" />
-                }
-              />
-              <Line
-                type="monotone"
-                dataKey="p50"
-                name={t.p50Label}
-                stroke={LATENCY_SERIES_COLORS.p50}
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-                connectNulls={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="p75"
-                name={t.p75Label}
-                stroke={LATENCY_SERIES_COLORS.p75}
-                strokeWidth={2.4}
-                dot={false}
-                activeDot={{ r: 4 }}
-                connectNulls={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="p95"
-                name={t.p95Label}
-                stroke={LATENCY_SERIES_COLORS.p95}
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-                connectNulls={false}
-              />
-            </LineChart>
-          </ChartContainer>
-        ) : (
-          <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
-            {loading ? messages.common.loading : t.noData}
-          </div>
-        )}
+                  <YAxis
+                    tickFormatter={(value) =>
+                      formatLatency(locale, Number(value ?? 0))
+                    }
+                    tickLine={false}
+                    axisLine={false}
+                    width={74}
+                  />
+                  <ChartTooltip
+                    cursor={false}
+                    content={
+                      <ChartTooltipContent
+                        className="min-w-[14rem]"
+                        indicator="line"
+                        labelFormatter={(value, payload) => {
+                          const timestamp = Number(
+                            payload?.[0]?.payload?.timestampMs ?? value ?? 0,
+                          );
+                          return tooltipFormatter.format(new Date(timestamp));
+                        }}
+                        formatter={(value, name) => (
+                          <div className="flex w-full items-center justify-between gap-3">
+                            <span className="text-muted-foreground">
+                              {String(name ?? "")}
+                            </span>
+                            <span className="font-mono text-foreground tabular-nums">
+                              {formatLatency(locale, Number(value ?? 0))}
+                            </span>
+                          </div>
+                        )}
+                      />
+                    }
+                  />
+                  <ChartLegend
+                    content={
+                      <ChartLegendContent className="pt-6 flex-wrap justify-center gap-x-4 gap-y-2" />
+                    }
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="p50"
+                    name={t.p50Label}
+                    stroke={LATENCY_SERIES_COLORS.p50}
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    connectNulls={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="p75"
+                    name={t.p75Label}
+                    stroke={LATENCY_SERIES_COLORS.p75}
+                    strokeWidth={2.4}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    connectNulls={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="p95"
+                    name={t.p95Label}
+                    stroke={LATENCY_SERIES_COLORS.p95}
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    connectNulls={false}
+                  />
+                </LineChart>
+              </ChartContainer>
+            ) : (
+              <div
+                key={loading ? "loading" : "empty"}
+                className="flex h-[320px] items-center justify-center text-sm text-muted-foreground"
+              >
+                {loading ? messages.common.loading : t.noData}
+              </div>
+            )}
+          </AutoTransition>
+        </AutoResizer>
       </CardContent>
     </Card>
   );
@@ -655,15 +690,24 @@ function DoDiagnosticCell({
       <p className="min-w-0 truncate text-[11px] uppercase text-muted-foreground">
         {label}
       </p>
-      <p
-        className={cn(
-          "mt-2 min-w-0 truncate font-mono text-xl leading-7 font-semibold tabular-nums",
-          tone === "warning" && "text-destructive",
-          tone === "good" && "text-primary",
-        )}
+      <AutoTransition
+        transitionKey={value}
+        initial={false}
+        duration={0.2}
+        type="fade"
+        presenceMode="wait"
       >
-        {value}
-      </p>
+        <p
+          key={value}
+          className={cn(
+            "mt-2 min-w-0 truncate font-mono text-xl leading-7 font-semibold tabular-nums",
+            tone === "warning" && "text-destructive",
+            tone === "good" && "text-primary",
+          )}
+        >
+          {value}
+        </p>
+      </AutoTransition>
       {detail ? (
         <p className="mt-2 min-w-0 truncate text-[11px] leading-[14px] text-muted-foreground">
           {detail}
@@ -685,14 +729,23 @@ function DoDiagnosticKv({
   return (
     <div className="flex items-center justify-between gap-3 border bg-card px-3 py-2">
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span
-        className={cn(
-          "font-mono text-xs tabular-nums",
-          tone === "warning" && "text-destructive",
-        )}
+      <AutoTransition
+        transitionKey={value}
+        initial={false}
+        duration={0.2}
+        type="fade"
+        presenceMode="wait"
       >
-        {value}
-      </span>
+        <span
+          key={value}
+          className={cn(
+            "font-mono text-xs tabular-nums",
+            tone === "warning" && "text-destructive",
+          )}
+        >
+          {value}
+        </span>
+      </AutoTransition>
     </div>
   );
 }
@@ -906,25 +959,36 @@ export function SystemPerformanceClient({
               disabled={loading}
               onClick={() => setRefreshNonce((value) => value + 1)}
             >
-              <AutoTransition className="inline-flex items-center gap-2">
+              <span className="inline-flex size-4 shrink-0 items-center justify-center">
                 {loading ? (
-                  <span
-                    key="loading"
-                    className="inline-flex items-center gap-2"
-                  >
-                    <Spinner className="size-4" />
-                    {messages.common.loading}
-                  </span>
+                  <Spinner className="size-4" />
                 ) : (
-                  <span
-                    key="refresh"
-                    className="inline-flex items-center gap-2"
-                  >
-                    <RiRefreshLine className="size-4" />
-                    {t.refresh}
-                  </span>
+                  <RiRefreshLine className="size-4" />
                 )}
-              </AutoTransition>
+              </span>
+              <AutoResizer
+                initial
+                animateWidth
+                animateHeight={false}
+                className="inline-flex shrink-0 items-center"
+              >
+                <AutoTransition
+                  className="inline-block"
+                  duration={0.2}
+                  type="fade"
+                  initial={false}
+                  presenceMode="wait"
+                  customVariants={{
+                    initial: { opacity: 0 },
+                    animate: { opacity: 1 },
+                    exit: { opacity: 0 },
+                  }}
+                >
+                  <span key={loading ? "loading" : "refresh"}>
+                    {loading ? messages.common.loading : t.refresh}
+                  </span>
+                </AutoTransition>
+              </AutoResizer>
             </Button>
           </>
         }
@@ -936,6 +1000,7 @@ export function SystemPerformanceClient({
             <SystemMetricCell
               icon={RiDatabase2Line}
               label={t.totalEvents}
+              loading={loading}
               value={
                 summary ? formatMetricNumber(locale, summary.totalEvents) : "--"
               }
@@ -948,6 +1013,7 @@ export function SystemPerformanceClient({
             <SystemMetricCell
               icon={RiSpeedUpLine}
               label={t.p95Latency}
+              loading={loading}
               value={
                 summary ? formatLatency(locale, summary.p95LatencyMs) : "--"
               }
@@ -967,6 +1033,7 @@ export function SystemPerformanceClient({
             <SystemMetricCell
               icon={RiTimeLine}
               label={t.dataFreshness}
+              loading={loading}
               value={
                 summary ? formatAge(locale, summary.dataFreshnessMs) : "--"
               }
@@ -980,6 +1047,7 @@ export function SystemPerformanceClient({
             <SystemMetricCell
               icon={RiAlarmWarningLine}
               label={t.clockAnomalies}
+              loading={loading}
               value={
                 summary ? formatPercent(locale, summary.anomalyRate) : "--"
               }
@@ -1004,50 +1072,71 @@ export function SystemPerformanceClient({
 
       <Card>
         <CardHeader>
-          <CardTitle>{t.throughputTrend}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiCpuLine className="size-4" />
+            {t.throughputTrend}
+          </CardTitle>
           <CardDescription>{t.throughputTrendDescription}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {(data?.trend ?? []).length > 0 ? (
-              data?.trend.map((point) => {
-                const visitWidth = `${(point.visits / maxTrendEvents) * 100}%`;
-                const customWidth = `${(point.customEvents / maxTrendEvents) * 100}%`;
-                const hasAnomaly =
-                  point.delayedEvents > 0 || point.futureSkewedEvents > 0;
-                return (
-                  <div
-                    key={point.bucket}
-                    className="grid grid-cols-[74px_minmax(0,1fr)_72px] items-center gap-3 text-xs"
-                  >
-                    <div className="text-muted-foreground tabular-nums">
-                      {bucketFormatter.format(new Date(point.timestampMs))}
-                    </div>
-                    <div className="flex h-7 min-w-0 items-center overflow-hidden border border-border bg-muted/25">
+          <AutoResizer initial>
+            <AutoTransition
+              transitionKey={
+                (data?.trend ?? []).length > 0
+                  ? "rows"
+                  : loading
+                    ? "loading"
+                    : "empty"
+              }
+              initial={false}
+              duration={0.2}
+              type="fade"
+            >
+              {(data?.trend ?? []).length > 0 ? (
+                <div key="rows" className="space-y-2">
+                  {data?.trend.map((point) => {
+                    const visitWidth = `${(point.visits / maxTrendEvents) * 100}%`;
+                    const customWidth = `${(point.customEvents / maxTrendEvents) * 100}%`;
+                    const hasAnomaly =
+                      point.delayedEvents > 0 || point.futureSkewedEvents > 0;
+                    return (
                       <div
-                        className="h-full bg-primary/70"
-                        style={{ width: visitWidth }}
-                      />
-                      <div
-                        className="h-full bg-foreground/35"
-                        style={{ width: customWidth }}
-                      />
-                      {hasAnomaly ? (
-                        <div className="ml-1 h-3 w-1 bg-destructive" />
-                      ) : null}
-                    </div>
-                    <div className="text-right font-mono tabular-nums">
-                      {formatMetricNumber(locale, point.totalEvents)}
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-                {loading ? messages.common.loading : t.noData}
-              </div>
-            )}
-          </div>
+                        key={point.bucket}
+                        className="grid grid-cols-[74px_minmax(0,1fr)_72px] items-center gap-3 text-xs"
+                      >
+                        <div className="text-muted-foreground tabular-nums">
+                          {bucketFormatter.format(new Date(point.timestampMs))}
+                        </div>
+                        <div className="flex h-7 min-w-0 items-center overflow-hidden border border-border bg-muted/25">
+                          <div
+                            className="h-full bg-primary/70"
+                            style={{ width: visitWidth }}
+                          />
+                          <div
+                            className="h-full bg-foreground/35"
+                            style={{ width: customWidth }}
+                          />
+                          {hasAnomaly ? (
+                            <div className="ml-1 h-3 w-1 bg-destructive" />
+                          ) : null}
+                        </div>
+                        <div className="text-right font-mono tabular-nums">
+                          {formatMetricNumber(locale, point.totalEvents)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div
+                  key={loading ? "loading" : "empty"}
+                  className="flex h-32 items-center justify-center text-sm text-muted-foreground"
+                >
+                  {loading ? messages.common.loading : t.noData}
+                </div>
+              )}
+            </AutoTransition>
+          </AutoResizer>
           <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
             <Badge variant="outline" className="gap-1">
               <span className="size-2 bg-primary/70" />
@@ -1068,36 +1157,72 @@ export function SystemPerformanceClient({
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>{t.openVisitHealth}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiTimeLine className="size-4" />
+              {t.openVisitHealth}
+            </CardTitle>
             <CardDescription>{t.openVisitHealthDescription}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-3 gap-px overflow-hidden border bg-border/70">
               <div className="bg-card p-3">
                 <div className="text-xs text-muted-foreground">{t.open}</div>
-                <div className="mt-2 font-mono text-xl font-semibold tabular-nums">
-                  {openVisits
-                    ? formatMetricNumber(locale, openVisits.total)
-                    : "--"}
-                </div>
+                <AutoTransition
+                  transitionKey={openVisits ? "data" : "empty"}
+                  initial={false}
+                  duration={0.2}
+                  type="fade"
+                  presenceMode="wait"
+                >
+                  <div
+                    key={openVisits ? "data" : "empty"}
+                    className="mt-2 font-mono text-xl font-semibold tabular-nums"
+                  >
+                    {openVisits
+                      ? formatMetricNumber(locale, openVisits.total)
+                      : "--"}
+                  </div>
+                </AutoTransition>
               </div>
               <div className="bg-card p-3">
                 <div className="text-xs text-muted-foreground">{t.stale}</div>
-                <div className="mt-2 font-mono text-xl font-semibold tabular-nums">
-                  {openVisits
-                    ? formatMetricNumber(locale, openVisits.stale)
-                    : "--"}
-                </div>
+                <AutoTransition
+                  transitionKey={openVisits ? "data" : "empty"}
+                  initial={false}
+                  duration={0.2}
+                  type="fade"
+                  presenceMode="wait"
+                >
+                  <div
+                    key={openVisits ? "data" : "empty"}
+                    className="mt-2 font-mono text-xl font-semibold tabular-nums"
+                  >
+                    {openVisits
+                      ? formatMetricNumber(locale, openVisits.stale)
+                      : "--"}
+                  </div>
+                </AutoTransition>
               </div>
               <div className="bg-card p-3">
                 <div className="text-xs text-muted-foreground">
                   {t.timedOut}
                 </div>
-                <div className="mt-2 font-mono text-xl font-semibold tabular-nums">
-                  {openVisits
-                    ? formatMetricNumber(locale, openVisits.timedOut)
-                    : "--"}
-                </div>
+                <AutoTransition
+                  transitionKey={openVisits ? "data" : "empty"}
+                  initial={false}
+                  duration={0.2}
+                  type="fade"
+                  presenceMode="wait"
+                >
+                  <div
+                    key={openVisits ? "data" : "empty"}
+                    className="mt-2 font-mono text-xl font-semibold tabular-nums"
+                  >
+                    {openVisits
+                      ? formatMetricNumber(locale, openVisits.timedOut)
+                      : "--"}
+                  </div>
+                </AutoTransition>
               </div>
             </div>
             <div className="space-y-2 text-sm">
@@ -1134,7 +1259,10 @@ export function SystemPerformanceClient({
 
         <Card>
           <CardHeader>
-            <CardTitle>{t.latencySampleHealth}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiSpeedUpLine className="size-4" />
+              {t.latencySampleHealth}
+            </CardTitle>
             <CardDescription>
               {t.latencySampleHealthDescription}
             </CardDescription>
@@ -1145,19 +1273,46 @@ export function SystemPerformanceClient({
                 <div className="text-xs text-muted-foreground">
                   {t.trustedSamples}
                 </div>
-                <div className="mt-2 font-mono text-xl font-semibold tabular-nums">
-                  {summary
-                    ? formatMetricNumber(locale, summary.trustedLatencySamples)
-                    : "--"}
-                </div>
+                <AutoTransition
+                  transitionKey={summary ? "data" : "empty"}
+                  initial={false}
+                  duration={0.2}
+                  type="fade"
+                  presenceMode="wait"
+                >
+                  <div
+                    key={summary ? "data" : "empty"}
+                    className="mt-2 font-mono text-xl font-semibold tabular-nums"
+                  >
+                    {summary
+                      ? formatMetricNumber(
+                          locale,
+                          summary.trustedLatencySamples,
+                        )
+                      : "--"}
+                  </div>
+                </AutoTransition>
               </div>
               <div className="bg-card p-3">
                 <div className="text-xs text-muted-foreground">
                   {t.avgLatency}
                 </div>
-                <div className="mt-2 font-mono text-xl font-semibold tabular-nums">
-                  {summary ? formatLatency(locale, summary.avgLatencyMs) : "--"}
-                </div>
+                <AutoTransition
+                  transitionKey={summary ? "data" : "empty"}
+                  initial={false}
+                  duration={0.2}
+                  type="fade"
+                  presenceMode="wait"
+                >
+                  <div
+                    key={summary ? "data" : "empty"}
+                    className="mt-2 font-mono text-xl font-semibold tabular-nums"
+                  >
+                    {summary
+                      ? formatLatency(locale, summary.avgLatencyMs)
+                      : "--"}
+                  </div>
+                </AutoTransition>
               </div>
             </div>
             <div className="space-y-2 text-sm">
@@ -1193,7 +1348,10 @@ export function SystemPerformanceClient({
 
       <Card>
         <CardHeader>
-          <CardTitle>{t.topSitesTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiBarChartBoxLine className="size-4" />
+            {t.topSitesTitle}
+          </CardTitle>
           <CardDescription>{t.topSitesDescription}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -1250,7 +1408,10 @@ export function SystemPerformanceClient({
 
       <Card>
         <CardHeader>
-          <CardTitle>{t.slowestEventsTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiAlarmWarningLine className="size-4" />
+            {t.slowestEventsTitle}
+          </CardTitle>
           <CardDescription>{t.slowestEventsDescription}</CardDescription>
         </CardHeader>
         <CardContent>

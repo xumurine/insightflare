@@ -8,6 +8,7 @@ import {
   RiCheckboxCircleFill,
   RiCloseCircleFill,
   RiErrorWarningFill,
+  RiMapPin2Line,
   RiPulseLine,
   RiRouteLine,
   RiSpeedUpLine,
@@ -199,12 +200,11 @@ const PERFORMANCE_SERIES_COLORS = {
   p75: "var(--color-chart-4)",
   p95: "var(--color-chart-5)",
 } as const;
-const PERFORMANCE_SERIES_KEYS = ["p50", "p75", "p95"] as const;
 const PERFORMANCE_TREND_ANIMATION_DURATION_MS = 1200;
 const PERFORMANCE_TREND_CONNECTOR_DELAY_MS =
   PERFORMANCE_TREND_ANIMATION_DURATION_MS + 120;
 
-type PerformanceSeriesKey = (typeof PERFORMANCE_SERIES_KEYS)[number];
+type PerformanceSeriesKey = "p50" | "p75" | "p95";
 
 const ZONE_COLORS = {
   great: "var(--color-chart-2)",
@@ -1657,7 +1657,10 @@ function PerformanceTrendCard({
       <CardHeader className="pb-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
-            <CardTitle>{messages.performance.chartTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiSpeedUpLine className="size-4" />
+              {messages.performance.chartTitle}
+            </CardTitle>
             <p className="text-sm text-muted-foreground">
               {panelLabel(messages, activePanel)}
             </p>
@@ -1837,7 +1840,7 @@ function PerformanceHealthMapCard({
   useEffect(() => {
     let active = true;
 
-    fetch("/api/world-countries", { cache: "force-cache" })
+    fetch("/api/public/resources/world-countries", { cache: "force-cache" })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (!active) return;
@@ -1942,7 +1945,10 @@ function PerformanceHealthMapCard({
       <CardHeader className="pb-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
-            <CardTitle>{messages.performance.countryHealthTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiMapPin2Line className="size-4" />
+              {messages.performance.countryHealthTitle}
+            </CardTitle>
             <p className="text-sm text-muted-foreground">
               {formatI18nTemplate(messages.performance.countryHealthSubtitle, {
                 metric: panelLabel(messages, activePanel),
@@ -2504,7 +2510,7 @@ function PathPerformanceTable({
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <CardTitle className="inline-flex items-center gap-2">
-              <RiRouteLine className="size-4 text-muted-foreground" />
+              <RiRouteLine className="size-4" />
               {messages.performance.pathsTitle}
             </CardTitle>
             <p className="text-sm text-muted-foreground">

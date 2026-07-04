@@ -36,7 +36,7 @@ const SESSION_MAP_POINT_BASE_RADIUS_PX = 4.8;
 function buildRasterStyle(theme: SessionDetailMapTheme): StyleSpecification {
   const sourceId = `insightflare-session-map-source-${theme}`;
   const layerId = `insightflare-session-map-layer-${theme}`;
-  const endpoint = `/api/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
+  const endpoint = `/api/public/resources/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
 
   return {
     version: 8,

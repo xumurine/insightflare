@@ -2,10 +2,16 @@ import { SDK_MIN as SDK_FULL } from "@/tracker/sdk.min";
 import { SDK_MIN as SDK_NO_PERF } from "@/tracker/sdk.no-perf.min";
 
 import {
+  COLLECT_TOKEN_TTL_SECONDS,
+  issueCollectToken,
+  requestIp,
+} from "./collect-token";
+import {
   normalizeSiteSettingsKey,
   readSiteTrackingConfig,
 } from "./site-settings-store";
 import type { Env } from "./types";
+import { resolveSessionWindowMinutes } from "./utils";
 
 const SCRIPT_RESPONSE_CACHE_NAME = "insightflare-script-cache";
 const SCRIPT_RESPONSE_CACHE_TTL_SECONDS = 60 * 60;
@@ -74,6 +80,7 @@ function applyConfigToSdk(
     autoTrackOutboundLinks: boolean;
     performanceSampleRate: number;
     sessionWindowMs: number;
+    collectToken: string;
   },
 ): string {
   return template
@@ -96,7 +103,8 @@ function applyConfigToSdk(
       `"__IF_PERFORMANCE_SAMPLE_RATE__"`,
       String(config.performanceSampleRate),
     )
-    .replaceAll(`"__IF_SESSION_WINDOW_MS__"`, String(config.sessionWindowMs));
+    .replaceAll(`"__IF_SESSION_WINDOW_MS__"`, String(config.sessionWindowMs))
+    .replaceAll(`"__IF_COLLECT_TOKEN__"`, JSON.stringify(config.collectToken));
 }
 
 function settingsFingerprint(input: {
@@ -108,6 +116,7 @@ function settingsFingerprint(input: {
   performanceSampleRate: number;
   siteDomain: string;
   sessionWindowMinutes: number;
+  requestIp: string;
 }): string {
   return [
     input.trackingStrength,
@@ -118,6 +127,7 @@ function settingsFingerprint(input: {
     String(input.performanceSampleRate),
     input.siteDomain,
     String(input.sessionWindowMinutes),
+    input.requestIp,
   ].join("|");
 }
 
@@ -140,7 +150,11 @@ function resolveScriptCacheTtlSeconds(env: Env): number {
   }
   return Math.max(
     1,
-    Math.min(MAX_SCRIPT_RESPONSE_CACHE_TTL_SECONDS, Math.floor(raw)),
+    Math.min(
+      MAX_SCRIPT_RESPONSE_CACHE_TTL_SECONDS,
+      COLLECT_TOKEN_TTL_SECONDS,
+      Math.floor(raw),
+    ),
   );
 }
 
@@ -174,12 +188,9 @@ export async function handleTrackerScriptRequest(
 
   const requestEuMode = isEUCountry(request);
   const euMode = determineEuMode(settings.trackingStrength, requestEuMode);
-  const sessionWindowMinutes = (() => {
-    const raw = Number(env.SESSION_WINDOW_MINUTES || "30");
-    if (!Number.isFinite(raw) || raw <= 0) return 30;
-    return Math.max(1, Math.min(24 * 60, Math.floor(raw)));
-  })();
+  const sessionWindowMinutes = resolveSessionWindowMinutes(env);
   const ttlSeconds = resolveScriptCacheTtlSeconds(env);
+  const clientIp = requestIp(request);
   const performanceSampleRate = Math.max(
     0,
     Math.min(100, Number(settings.performanceSampleRate || 0)),
@@ -191,6 +202,7 @@ export async function handleTrackerScriptRequest(
       autoTrackOutboundLinks: settings.autoTrackOutboundLinks,
       performanceSampleRate,
       sessionWindowMinutes,
+      requestIp: clientIp,
     }),
   ].join("|");
   const cacheKey = scriptCacheKeyRequest(siteId, euMode, fingerprint);
@@ -204,6 +216,18 @@ export async function handleTrackerScriptRequest(
 
   const sessionWindowMs =
     Math.max(1, Math.floor(sessionWindowMinutes)) * 60 * 1000;
+  let collectToken = "";
+  try {
+    collectToken = await issueCollectToken({
+      env,
+      siteId,
+      ip: clientIp,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "collect_token_unavailable";
+    return responseInternalServerError(message);
+  }
 
   const sdkTemplate = performanceSampleRate > 0 ? SDK_FULL : SDK_NO_PERF;
   const script = applyConfigToSdk(sdkTemplate, {
@@ -215,6 +239,7 @@ export async function handleTrackerScriptRequest(
     autoTrackOutboundLinks: settings.autoTrackOutboundLinks,
     performanceSampleRate,
     sessionWindowMs,
+    collectToken,
   });
 
   const response = new Response(script, {

@@ -12,6 +12,7 @@ import {
 
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   Card,
@@ -22,6 +23,7 @@ import {
 } from "@/components/ui/card";
 import { OverlayScrollbar } from "@/components/ui/overlay-scrollbar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Tooltip,
   TooltipContent,
@@ -38,7 +40,10 @@ import {
   percentFormat,
 } from "@/lib/dashboard/format";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
-import { addZonedInterval } from "@/lib/dashboard/time-zone";
+import {
+  addZonedInterval,
+  startOfZonedInterval,
+} from "@/lib/dashboard/time-zone";
 import type { RetentionData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -96,14 +101,21 @@ interface RetentionViewModel {
   summary: RetentionSummary;
 }
 
+interface RetentionLoadingShape {
+  rows: number;
+  columns: number;
+}
+
 const RETENTION_TABLE_COLUMNS =
-  "[--retention-cohort-width:8rem] [--retention-size-width:5rem] [--retention-period-width:4.5rem]";
+  "[--retention-cohort-width:6rem] [--retention-size-width:4rem] [--retention-period-width:4.5rem]";
 const RETENTION_COHORT_COLUMN =
   "w-[var(--retention-cohort-width)] min-w-[var(--retention-cohort-width)] max-w-[var(--retention-cohort-width)]";
 const RETENTION_SIZE_COLUMN =
   "w-[var(--retention-size-width)] min-w-[var(--retention-size-width)] max-w-[var(--retention-size-width)]";
 const RETENTION_PERIOD_COLUMN =
   "w-[var(--retention-period-width)] min-w-[var(--retention-period-width)] max-w-[var(--retention-period-width)]";
+const RETENTION_LOADING_MAX_ROWS = 36;
+const RETENTION_LOADING_MAX_COLUMNS = 240;
 
 function normalizeGranularity(value: string): RetentionGranularity {
   if (
@@ -151,6 +163,62 @@ function periodLabel(
 ): string {
   if (index === 0) return labels.periodZero;
   return formatI18nTemplate(messages.retention.periodLabel, { n: index });
+}
+
+function retentionIntervalFallbackMs(
+  granularity: RetentionGranularity,
+): number {
+  if (granularity === "minute") return 60 * 1000;
+  if (granularity === "hour") return 60 * 60 * 1000;
+  if (granularity === "day") return 24 * 60 * 60 * 1000;
+  if (granularity === "week") return 7 * 24 * 60 * 60 * 1000;
+  return 31 * 24 * 60 * 60 * 1000;
+}
+
+function retentionBucketCount(
+  window: TimeWindow,
+  granularity: RetentionGranularity,
+): number {
+  let current = startOfZonedInterval(window.from, granularity, window.timeZone);
+  if (!Number.isFinite(current)) return 1;
+
+  const hardLimit = 2000;
+  let count = 0;
+  for (; count < hardLimit && current <= window.to; count += 1) {
+    let next = addZonedInterval(current, granularity, window.timeZone);
+    if (!Number.isFinite(next) || next <= current) {
+      next = current + retentionIntervalFallbackMs(granularity);
+    }
+    current = next;
+  }
+
+  return Math.max(1, count);
+}
+
+function retentionActiveFilterCount(filters: DashboardFilters): number {
+  return Object.entries(filters).reduce((count, [key, value]) => {
+    if (key === "eventPayloadFilters") {
+      return (
+        count + (Array.isArray(value) && value.length > 0 ? value.length : 0)
+      );
+    }
+    return count + (typeof value === "string" && value.trim() ? 1 : 0);
+  }, 0);
+}
+
+function retentionLoadingShape(
+  window: TimeWindow,
+  granularity: RetentionGranularity,
+  filters: DashboardFilters,
+): RetentionLoadingShape {
+  const bucketCount = retentionBucketCount(window, granularity);
+  const activeFilterCount = retentionActiveFilterCount(filters);
+  const rowLimit = activeFilterCount > 0 ? 20 : RETENTION_LOADING_MAX_ROWS;
+
+  return {
+    rows: Math.max(4, Math.min(bucketCount, rowLimit)),
+    columns: Math.max(1, Math.min(bucketCount, RETENTION_LOADING_MAX_COLUMNS)),
+  };
 }
 
 function cohortMaxPeriodIndex(
@@ -356,12 +424,16 @@ function RetentionMetricCell({
   label,
   value,
   detail,
+  loading = false,
 }: {
   icon: RemixiconComponentType;
   label: string;
   value: string;
   detail: string;
+  loading?: boolean;
 }) {
+  const contentKey = loading ? "loading" : value;
+
   return (
     <div className="min-w-0 bg-card p-4">
       <div className="flex min-w-0 items-center gap-2">
@@ -372,9 +444,28 @@ function RetentionMetricCell({
           {label}
         </p>
       </div>
-      <p className="mt-3 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground">
-        {value}
-      </p>
+      <AutoResizer initial className="mt-3">
+        <AutoTransition
+          transitionKey={contentKey}
+          initial={false}
+          duration={0.2}
+          type="fade"
+          presenceMode="wait"
+        >
+          {loading ? (
+            <div key="loading" className="flex h-7 items-center">
+              <Spinner className="size-5" />
+            </div>
+          ) : (
+            <p
+              key={value}
+              className="min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground"
+            >
+              {value}
+            </p>
+          )}
+        </AutoTransition>
+      </AutoResizer>
       <p className="mt-3 min-w-0 truncate text-[11px] leading-[14px] text-muted-foreground">
         {detail}
       </p>
@@ -386,10 +477,12 @@ function RetentionSummaryGrid({
   locale,
   labels,
   viewModel,
+  loading = false,
 }: {
   locale: Locale;
   labels: RetentionCopy;
   viewModel: RetentionViewModel;
+  loading?: boolean;
 }) {
   const { summary } = viewModel;
 
@@ -400,18 +493,21 @@ function RetentionSummaryGrid({
           <RetentionMetricCell
             icon={RiCalendarLine}
             label={labels.cohortsMetric}
+            loading={loading}
             value={numberFormat(locale, summary.cohortCount)}
             detail={`${numberFormat(locale, viewModel.columns.length)} ${labels.periodsAnalyzed}`}
           />
           <RetentionMetricCell
             icon={RiGroupLine}
             label={labels.visitorsMetric}
+            loading={loading}
             value={numberFormat(locale, summary.totalVisitors)}
             detail={labels.cohortDetail}
           />
           <RetentionMetricCell
             icon={RiPercentLine}
             label={labels.periodOneMetric}
+            loading={loading}
             value={
               summary.periodOneRate === null
                 ? "--"
@@ -426,6 +522,7 @@ function RetentionSummaryGrid({
           <RetentionMetricCell
             icon={RiRepeat2Line}
             label={labels.averageReturnMetric}
+            loading={loading}
             value={
               summary.averageReturnRate === null
                 ? "--"
@@ -470,43 +567,129 @@ function RetentionStateCard({
   );
 }
 
-function RetentionLoading() {
+function RetentionLoading({ shape }: { shape: RetentionLoadingShape }) {
+  const rows = Array.from({ length: shape.rows }, (_, index) => index);
+  const columns = Array.from({ length: shape.columns }, (_, index) => index);
+
   return (
     <div className="space-y-4" aria-hidden="true">
-      <Card className="py-0">
-        <CardContent className="p-0">
-          <div className="grid gap-px overflow-hidden bg-border/70 sm:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className="bg-card p-4">
-                <div className="flex items-center gap-2">
-                  <Skeleton className="size-[11px]" />
-                  <Skeleton className="h-3 w-20" />
-                </div>
-                <Skeleton className="mt-3 h-7 w-24" />
-                <Skeleton className="mt-3 h-3 w-32" />
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
       <Card>
         <CardHeader>
           <Skeleton className="h-4 w-32" />
           <Skeleton className="h-3 w-80 max-w-full" />
         </CardHeader>
-        <CardContent className="space-y-2">
-          {Array.from({ length: 8 }, (_, rowIndex) => (
-            <div key={rowIndex} className="flex items-center gap-2">
-              <Skeleton className="h-8 w-28 shrink-0" />
-              <Skeleton className="h-8 w-16 shrink-0" />
-              {Array.from({ length: 8 }, (_, cellIndex) => (
-                <Skeleton
-                  key={`${rowIndex}-${cellIndex}`}
-                  className="h-8 w-16 shrink-0"
-                />
-              ))}
-            </div>
-          ))}
+        <CardContent className="px-0">
+          <OverlayScrollbar className="pb-1">
+            <table
+              className={cn(
+                RETENTION_TABLE_COLUMNS,
+                "w-max min-w-full border-separate border-spacing-0 text-left text-xs",
+              )}
+            >
+              <colgroup>
+                <col className={RETENTION_COHORT_COLUMN} />
+                <col className={RETENTION_SIZE_COLUMN} />
+                {columns.map((index) => (
+                  <col key={index} className={RETENTION_PERIOD_COLUMN} />
+                ))}
+              </colgroup>
+              <thead>
+                <tr>
+                  <th
+                    className={cn(
+                      RETENTION_COHORT_COLUMN,
+                      "sticky left-0 z-40 border-b bg-card py-2 pr-2 pl-3",
+                    )}
+                  >
+                    <Skeleton className="h-3 w-16" />
+                  </th>
+                  <th
+                    className={cn(
+                      RETENTION_SIZE_COLUMN,
+                      "sticky left-[var(--retention-cohort-width)] z-40 border-r border-b bg-card px-2 py-2",
+                    )}
+                  >
+                    <Skeleton className="ml-auto h-3 w-8" />
+                  </th>
+                  {columns.map((index) => (
+                    <th
+                      key={index}
+                      className={cn(
+                        RETENTION_PERIOD_COLUMN,
+                        "border-b px-1 py-2",
+                      )}
+                    >
+                      <Skeleton className="mx-auto h-3 w-10" />
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((rowIndex) => (
+                  <tr key={rowIndex}>
+                    <th
+                      className={cn(
+                        RETENTION_COHORT_COLUMN,
+                        "sticky left-0 z-30 border-b bg-card py-2 pr-2 pl-3",
+                      )}
+                    >
+                      <Skeleton className="h-4 w-14" />
+                    </th>
+                    <td
+                      className={cn(
+                        RETENTION_SIZE_COLUMN,
+                        "sticky left-[var(--retention-cohort-width)] z-30 border-r border-b bg-card px-2 py-2",
+                      )}
+                    >
+                      <Skeleton className="ml-auto h-4 w-9" />
+                    </td>
+                    {columns.map((cellIndex) => (
+                      <td
+                        key={`${rowIndex}-${cellIndex}`}
+                        className={cn(
+                          RETENTION_PERIOD_COLUMN,
+                          "border-r border-b p-1 align-middle",
+                        )}
+                      >
+                        <Skeleton className="h-8 w-full" />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th
+                    className={cn(
+                      RETENTION_COHORT_COLUMN,
+                      "sticky left-0 z-30 border-t bg-card py-2 pr-2 pl-3",
+                    )}
+                  >
+                    <Skeleton className="h-4 w-16" />
+                  </th>
+                  <td
+                    className={cn(
+                      RETENTION_SIZE_COLUMN,
+                      "sticky left-[var(--retention-cohort-width)] z-30 border-r border-t bg-card px-2 py-2",
+                    )}
+                  >
+                    <Skeleton className="ml-auto h-4 w-9" />
+                  </td>
+                  {columns.map((index) => (
+                    <td
+                      key={index}
+                      className={cn(
+                        RETENTION_PERIOD_COLUMN,
+                        "border-t border-r p-1 align-middle",
+                      )}
+                    >
+                      <Skeleton className="h-8 w-full" />
+                    </td>
+                  ))}
+                </tr>
+              </tfoot>
+            </table>
+          </OverlayScrollbar>
         </CardContent>
       </Card>
     </div>
@@ -595,7 +778,10 @@ function RetentionMatrix({
     <Card>
       <CardHeader className="gap-3 md:grid-cols-[1fr_auto]">
         <div className="space-y-1">
-          <CardTitle>{labels.matrixTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiRepeat2Line className="size-4" />
+            {labels.matrixTitle}
+          </CardTitle>
           <CardDescription>{labels.matrixSubtitle}</CardDescription>
         </div>
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground md:justify-self-end">
@@ -636,7 +822,7 @@ function RetentionMatrix({
                   <th
                     className={cn(
                       RETENTION_COHORT_COLUMN,
-                      "sticky left-0 z-40 border-b bg-card py-2 pr-2 pl-4 font-medium text-muted-foreground",
+                      "sticky left-0 z-40 truncate border-b bg-card py-2 pr-2 pl-3 font-medium text-muted-foreground",
                     )}
                   >
                     {messages.retention.cohortDate}
@@ -644,7 +830,7 @@ function RetentionMatrix({
                   <th
                     className={cn(
                       RETENTION_SIZE_COLUMN,
-                      "sticky left-[var(--retention-cohort-width)] z-40 border-r border-b bg-card px-2 py-2 text-right font-medium text-muted-foreground",
+                      "sticky left-[var(--retention-cohort-width)] z-40 border-r border-b bg-card px-2 py-2 text-right font-medium whitespace-nowrap text-muted-foreground",
                     )}
                   >
                     {messages.retention.cohortSize}
@@ -670,7 +856,7 @@ function RetentionMatrix({
                     <th
                       className={cn(
                         RETENTION_COHORT_COLUMN,
-                        "sticky left-0 z-30 border-b bg-card py-2 pr-2 pl-4 font-mono font-medium group-hover:bg-muted",
+                        "sticky left-0 z-30 truncate border-b bg-card py-2 pr-2 pl-3 font-mono font-medium group-hover:bg-muted",
                       )}
                     >
                       {cohort.label}
@@ -678,7 +864,7 @@ function RetentionMatrix({
                     <td
                       className={cn(
                         RETENTION_SIZE_COLUMN,
-                        "sticky left-[var(--retention-cohort-width)] z-30 border-r border-b bg-card px-2 py-2 text-right font-mono tabular-nums text-muted-foreground group-hover:bg-muted",
+                        "sticky left-[var(--retention-cohort-width)] z-30 border-r border-b bg-card px-2 py-2 text-right font-mono tabular-nums whitespace-nowrap text-muted-foreground group-hover:bg-muted",
                       )}
                     >
                       {numberFormat(locale, cohort.size)}
@@ -701,7 +887,7 @@ function RetentionMatrix({
                   <th
                     className={cn(
                       RETENTION_COHORT_COLUMN,
-                      "sticky left-0 z-30 border-t bg-card py-2 pr-2 pl-4 font-medium text-muted-foreground",
+                      "sticky left-0 z-30 truncate border-t bg-card py-2 pr-2 pl-3 font-medium text-muted-foreground",
                     )}
                   >
                     {labels.weightedAverage}
@@ -709,7 +895,7 @@ function RetentionMatrix({
                   <td
                     className={cn(
                       RETENTION_SIZE_COLUMN,
-                      "sticky left-[var(--retention-cohort-width)] z-30 border-r border-t bg-card px-2 py-2 text-right font-mono text-muted-foreground",
+                      "sticky left-[var(--retention-cohort-width)] z-30 border-r border-t bg-card px-2 py-2 text-right font-mono whitespace-nowrap text-muted-foreground",
                     )}
                   >
                     {numberFormat(locale, viewModel.summary.totalVisitors)}
@@ -774,6 +960,17 @@ export function RetentionClientPage({
   const [error, setError] = useState(false);
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const granularity = timeWindow.interval;
+  const loadingShape = useMemo(
+    () => retentionLoadingShape(timeWindow, granularity, filters),
+    [
+      filters,
+      filtersKey,
+      granularity,
+      timeWindow.from,
+      timeWindow.timeZone,
+      timeWindow.to,
+    ],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -836,6 +1033,15 @@ export function RetentionClientPage({
         subtitle={messages.retention.subtitle}
       />
 
+      {loading || (!error && !isEmpty) ? (
+        <RetentionSummaryGrid
+          locale={locale}
+          labels={labels}
+          viewModel={viewModel}
+          loading={loading}
+        />
+      ) : null}
+
       <AutoTransition
         transitionKey={bodyState}
         duration={0.18}
@@ -843,7 +1049,7 @@ export function RetentionClientPage({
         presenceMode="wait"
       >
         {loading ? (
-          <RetentionLoading />
+          <RetentionLoading shape={loadingShape} />
         ) : error ? (
           <RetentionStateCard
             title={labels.loadError}
@@ -858,11 +1064,6 @@ export function RetentionClientPage({
           />
         ) : (
           <div className="space-y-4">
-            <RetentionSummaryGrid
-              locale={locale}
-              labels={labels}
-              viewModel={viewModel}
-            />
             <RetentionMatrix
               locale={locale}
               messages={messages}

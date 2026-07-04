@@ -5,7 +5,7 @@ import { buildSitePath, getTeamSiteContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 
-interface FunnelsPageProps {
+interface FunnelPageProps {
   params: Promise<{
     locale: string;
     teamSlug: string;
@@ -13,7 +13,7 @@ interface FunnelsPageProps {
   }>;
 }
 
-export async function generateMetadata({ params }: FunnelsPageProps) {
+export async function generateMetadata({ params }: FunnelPageProps) {
   const { locale } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: FunnelsPageProps) {
   };
 }
 
-export default async function FunnelsPage({ params }: FunnelsPageProps) {
+export default async function FunnelPage({ params }: FunnelPageProps) {
   const { locale, teamSlug, siteSlug } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);

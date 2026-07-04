@@ -107,6 +107,25 @@ export function shortDateTime(
   );
 }
 
+export function shortDateTimeWithSeconds(
+  locale: Locale,
+  value: DateValue,
+  timeZone?: string,
+): string {
+  return formatDate(
+    locale,
+    value,
+    {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    },
+    timeZone,
+  );
+}
+
 export function shortDate(
   locale: Locale,
   value: DateValue,

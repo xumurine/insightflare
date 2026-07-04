@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { RiGlobalLine } from "@remixicon/react";
 import { Cell, Pie, PieChart } from "recharts";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
@@ -261,7 +262,8 @@ export function BrowserVersionBreakdownGrid({
   return (
     <section className="space-y-4">
       <div className="px-1">
-        <h2 className="text-sm font-medium text-foreground">
+        <h2 className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
+          <RiGlobalLine className="size-4 shrink-0" />
           {messages.browsers.versionBreakdownTitle}
         </h2>
       </div>

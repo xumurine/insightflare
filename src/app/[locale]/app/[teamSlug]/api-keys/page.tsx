@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
-import { RiKey2Line } from "@remixicon/react";
 
+import { ApiKeysClient } from "@/components/dashboard/api-keys-client";
 import { PageHeading } from "@/components/dashboard/page-heading";
-import { Card, CardContent } from "@/components/ui/card";
 import { canManageTeam } from "@/lib/dashboard/permissions";
 import { getDashboardTeamContext } from "@/lib/dashboard/server";
 import { resolveLocale } from "@/lib/i18n/config";
@@ -45,12 +44,16 @@ export default async function TeamApiKeysPage({
   return (
     <div className="space-y-4">
       <PageHeading title={copy.title} subtitle={copy.subtitle} />
-      <Card>
-        <CardContent className="flex flex-col items-center gap-3 py-12 text-center text-sm text-muted-foreground">
-          <RiKey2Line className="size-8 text-muted-foreground/70" />
-          <p>{copy.empty}</p>
-        </CardContent>
-      </Card>
+      <ApiKeysClient
+        locale={resolvedLocale}
+        messages={messages}
+        teamId={context.activeTeam.id}
+        sites={context.sites.map((site) => ({
+          id: site.id,
+          name: site.name,
+          domain: site.domain,
+        }))}
+      />
     </div>
   );
 }

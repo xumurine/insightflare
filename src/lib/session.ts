@@ -1,3 +1,5 @@
+import { dashboardSessionSecret, type SecretSource } from "@/lib/secrets";
+
 export type SystemRole = "admin" | "user";
 
 export interface DashboardSession {
@@ -8,21 +10,33 @@ export interface DashboardSession {
   exp: number;
 }
 
-function sessionSecret(): string {
-  const configured = configuredSessionSecret();
+async function sessionSecret(): Promise<string> {
+  const configured = await configuredSessionSecret();
   if (configured) {
     return configured;
   }
   return "insightflare-session-secret-change-me";
 }
 
-export function configuredSessionSecret(): string | null {
-  const fromEnv =
-    process.env.DASHBOARD_SESSION_SECRET || process.env.SESSION_SECRET || "";
-  if (fromEnv.length > 0) {
-    return fromEnv;
-  }
-  return null;
+export function sessionSecretSourceFromProcessEnv(): SecretSource {
+  return {
+    MAIN_SECRET: process.env.MAIN_SECRET,
+    DAILY_SALT_SECRET: process.env.DAILY_SALT_SECRET,
+  };
+}
+
+export function hasConfiguredSessionSecretSource(
+  source: SecretSource = sessionSecretSourceFromProcessEnv(),
+): boolean {
+  return Boolean(source.MAIN_SECRET || source.DAILY_SALT_SECRET);
+}
+
+export function hasConfiguredSessionSecret(): boolean {
+  return hasConfiguredSessionSecretSource();
+}
+
+export async function configuredSessionSecret(): Promise<string | null> {
+  return dashboardSessionSecret(sessionSecretSourceFromProcessEnv());
 }
 
 function bytes(input: string): Uint8Array {
@@ -95,7 +109,7 @@ export async function createSessionToken(
     exp: Math.floor(Date.now() / 1000) + maxAgeSeconds,
   };
   const encodedPayload = base64UrlEncode(bytes(JSON.stringify(payload)));
-  const signature = await hmacSha256(encodedPayload, sessionSecret());
+  const signature = await hmacSha256(encodedPayload, await sessionSecret());
   return `${encodedPayload}.${base64UrlEncode(signature)}`;
 }
 
@@ -113,7 +127,7 @@ export async function verifySessionToken(
 
   const expectedSig = await hmacSha256(
     payloadPart,
-    secretOverride || sessionSecret(),
+    secretOverride || (await sessionSecret()),
   );
   let actualSig: Uint8Array;
   try {

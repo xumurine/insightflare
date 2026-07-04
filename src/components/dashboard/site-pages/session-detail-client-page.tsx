@@ -42,9 +42,9 @@ import {
 } from "@/components/dashboard/journey-geo-location-card";
 import { LazyGeoCityBreadcrumbLabel } from "@/components/dashboard/lazy-geo-location-label";
 import {
-  useDetailModalClose,
-  useDetailModalReady,
-} from "@/components/dashboard/site-pages/detail-query-modal";
+  useDetailDrawerClose,
+  useDetailDrawerReady,
+} from "@/components/dashboard/site-pages/detail-drawer";
 import {
   OverviewPagesSection,
   type OverviewPagesSectionCardData,
@@ -89,6 +89,7 @@ interface SessionDetailClientPageProps {
   siteId: string;
   pathname: string;
   sessionId: string;
+  onOpenVisitor?: (visitorId: string) => void;
 }
 
 type SessionDetail = NonNullable<SessionDetailData["data"]>;
@@ -633,7 +634,10 @@ function SessionPerformancePanel({
       <CardHeader>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <CardTitle>{labels.performanceTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiPulseLine className="size-4" />
+              {labels.performanceTitle}
+            </CardTitle>
           </div>
           <div
             className={cn(
@@ -782,6 +786,7 @@ function SessionMapHero({
   backHref,
   visitorHref,
   onBack,
+  onOpenVisitor,
 }: {
   labels: Labels;
   session: JourneySession;
@@ -789,11 +794,13 @@ function SessionMapHero({
   backHref: string;
   visitorHref: string;
   onBack?: () => void;
+  onOpenVisitor?: (visitorId: string) => void;
 }) {
-  const modalReady = useDetailModalReady();
+  const modalReady = useDetailDrawerReady();
   const { resolvedTheme } = useTheme();
   const effectiveTheme: SessionDetailMapTheme =
     resolvedTheme === "dark" ? "dark" : "light";
+  const visitorId = session.visitorId.trim();
   const points = useMemo(
     () => (modalReady ? sessionLocationPoints(locationPoints, session) : []),
     [locationPoints, modalReady, session],
@@ -838,22 +845,40 @@ function SessionMapHero({
         </div>
       </div>
 
-      {session.visitorId.trim() ? (
-        <Link
-          href={visitorHref}
-          data-skip-page-transition=""
-          className="absolute bottom-4 left-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-3 outline-none focus-visible:ring-2 focus-visible:ring-ring/70 sm:bottom-5 sm:left-5"
-        >
-          <VisitorAvatar seed={session.visitorId} className="size-12" />
-          <div className="min-w-0">
-            <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight text-foreground">
-              {labels.anonymous}
-            </h1>
-            <p className="mt-1 truncate font-mono text-[11px] text-foreground/70">
-              {labels.visitorId}: {session.visitorId}
-            </p>
-          </div>
-        </Link>
+      {visitorId ? (
+        onOpenVisitor ? (
+          <button
+            type="button"
+            className="absolute bottom-4 left-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/70 sm:bottom-5 sm:left-5"
+            onClick={() => onOpenVisitor(visitorId)}
+          >
+            <VisitorAvatar seed={session.visitorId} className="size-12" />
+            <div className="min-w-0">
+              <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight text-foreground">
+                {labels.anonymous}
+              </h1>
+              <p className="mt-1 truncate font-mono text-[11px] text-foreground/70">
+                {labels.visitorId}: {session.visitorId}
+              </p>
+            </div>
+          </button>
+        ) : (
+          <Link
+            href={visitorHref}
+            data-skip-page-transition=""
+            className="absolute bottom-4 left-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-3 outline-none focus-visible:ring-2 focus-visible:ring-ring/70 sm:bottom-5 sm:left-5"
+          >
+            <VisitorAvatar seed={session.visitorId} className="size-12" />
+            <div className="min-w-0">
+              <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight text-foreground">
+                {labels.anonymous}
+              </h1>
+              <p className="mt-1 truncate font-mono text-[11px] text-foreground/70">
+                {labels.visitorId}: {session.visitorId}
+              </p>
+            </div>
+          </Link>
+        )
       ) : (
         <div className="absolute bottom-4 left-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-3 sm:bottom-5 sm:left-5">
           <VisitorAvatar seed={session.visitorId} className="size-12" />
@@ -1122,7 +1147,10 @@ function VisitDetailsTab({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{labels.visitDetailsTitle}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiCalendarEventLine className="size-4" />
+          {labels.visitDetailsTitle}
+        </CardTitle>
         <CardDescription>{labels.visitDetailsSubtitle}</CardDescription>
       </CardHeader>
       <CardContent className="px-4">
@@ -1377,6 +1405,7 @@ function DetailContent({
   siteId,
   pathname,
   timeZone,
+  onOpenVisitor,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -1385,8 +1414,9 @@ function DetailContent({
   siteId: string;
   pathname: string;
   timeZone: string;
+  onOpenVisitor?: (visitorId: string) => void;
 }) {
-  const modalClose = useDetailModalClose();
+  const modalClose = useDetailDrawerClose();
   const session = detail.session;
   const sessionsPath = pathname.replace(/\/detail$/, "");
   const siteBasePath = sessionsPath.replace(/\/sessions$/, "");
@@ -1412,6 +1442,7 @@ function DetailContent({
         backHref={sessionsPath}
         visitorHref={visitorHref}
         onBack={modalClose ?? undefined}
+        onOpenVisitor={onOpenVisitor}
       />
 
       <div className="mx-auto mt-6 w-full max-w-[1400px] space-y-6 px-4 md:px-6">
@@ -1468,6 +1499,7 @@ export function SessionDetailClientPage({
   siteId,
   pathname,
   sessionId,
+  onOpenVisitor,
 }: SessionDetailClientPageProps) {
   const labels = messages.sessionDetail;
   const { timeZone, window } = useDashboardQueryControls();
@@ -1573,6 +1605,7 @@ export function SessionDetailClientPage({
         siteId={siteId}
         pathname={pathname}
         timeZone={timeZone}
+        onOpenVisitor={onOpenVisitor}
       />
     </JourneyDetailStateSwitch>
   );

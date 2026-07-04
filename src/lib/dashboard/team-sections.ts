@@ -15,7 +15,9 @@ export type ManagementSectionKey =
   | "manage-teams"
   | "version-updates"
   | "scheduled-tasks"
-  | "system-performance";
+  | "bot-protection"
+  | "system-performance"
+  | "system-settings";
 
 export interface DashboardSectionItem {
   key: string;
@@ -52,6 +54,8 @@ function managementLabel(
   if (key === "manage-teams") return messages.managementNav.teams;
   if (key === "version-updates") return messages.managementNav.versionUpdates;
   if (key === "scheduled-tasks") return messages.managementNav.scheduledTasks;
+  if (key === "bot-protection") return messages.managementNav.botProtection;
+  if (key === "system-settings") return messages.managementNav.systemSettings;
   return messages.managementNav.systemPerformance;
 }
 
@@ -68,16 +72,15 @@ function buildTeamTabPath(
 
 function buildManagementPath(
   locale: Locale,
-  teamSlug: string,
   key: ManagementSectionKey,
 ): string {
-  if (key === "manage-users") return `/${locale}/app/${teamSlug}/manage/users`;
-  if (key === "manage-teams") return `/${locale}/app/${teamSlug}/manage/teams`;
-  if (key === "version-updates")
-    return `/${locale}/app/${teamSlug}/manage/version-updates`;
-  if (key === "scheduled-tasks")
-    return `/${locale}/app/${teamSlug}/manage/scheduled-tasks`;
-  return `/${locale}/app/${teamSlug}/manage/system-performance`;
+  if (key === "manage-users") return `/${locale}/app/manage/users`;
+  if (key === "manage-teams") return `/${locale}/app/manage/teams`;
+  if (key === "version-updates") return `/${locale}/app/manage/version-updates`;
+  if (key === "scheduled-tasks") return `/${locale}/app/manage/scheduled-tasks`;
+  if (key === "bot-protection") return `/${locale}/app/manage/bot-protection`;
+  if (key === "system-settings") return `/${locale}/app/manage/system-settings`;
+  return `/${locale}/app/manage/system-performance`;
 }
 
 export function buildTeamSections(
@@ -98,7 +101,6 @@ export function buildTeamSections(
 
 export function buildManagementSections(
   locale: Locale,
-  teamSlug: string,
   messages: AppMessages,
 ): DashboardSectionItem[] {
   const keys: readonly ManagementSectionKey[] = [
@@ -106,11 +108,13 @@ export function buildManagementSections(
     "manage-teams",
     "version-updates",
     "scheduled-tasks",
+    "bot-protection",
     "system-performance",
+    "system-settings",
   ] as const;
   return keys.map((key) => ({
     key,
     label: managementLabel(messages, key),
-    href: buildManagementPath(locale, teamSlug, key),
+    href: buildManagementPath(locale, key),
   }));
 }

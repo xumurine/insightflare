@@ -7,7 +7,8 @@ dist
 node_modules
 output
 tmp
+coverage
 *.log
 *.tsbuildinfo
 next-env.d.ts
-README.md
+**/*.md

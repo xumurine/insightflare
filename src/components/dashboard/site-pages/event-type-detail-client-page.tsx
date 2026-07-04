@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { RiPulseLine } from "@remixicon/react";
 
 import { JourneyDetailStateSwitch } from "@/components/dashboard/journey-detail-state";
 import { useDetailModalClose } from "@/components/dashboard/site-pages/detail-query-modal";
@@ -266,7 +267,10 @@ export function EventTypeDetailClientPage({
 
             <Card className="overflow-visible">
               <CardHeader>
-                <CardTitle>{messages.events.trendTitle}</CardTitle>
+                <CardTitle className="inline-flex items-center gap-2">
+                  <RiPulseLine className="size-4" />
+                  {messages.events.trendTitle}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <TrafficPairBarChart
@@ -280,6 +284,7 @@ export function EventTypeDetailClientPage({
                   }}
                   viewsLabel={labels.triggerCount}
                   visitorsLabel={labels.triggerVisitors}
+                  messages={messages}
                   className="h-[320px]"
                 />
               </CardContent>
@@ -300,6 +305,11 @@ export function EventTypeDetailClientPage({
             <EventFieldsCard
               locale={locale}
               labels={labels}
+              siteId={siteId}
+              window={requestWindow}
+              filters={requestFilters}
+              eventName={eventName}
+              loading={loading}
               fields={detail.fields}
             />
 

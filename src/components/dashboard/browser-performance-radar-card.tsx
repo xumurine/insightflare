@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { RiPulseLine } from "@remixicon/react";
 import {
   PolarAngleAxis,
   PolarGrid,
@@ -221,7 +222,10 @@ export function BrowserPerformanceRadarCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{messages.browsers.radarTitle}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiPulseLine className="size-4" />
+          {messages.browsers.radarTitle}
+        </CardTitle>
         <p className="text-sm text-muted-foreground">
           {messages.browsers.radarSubtitle}
         </p>

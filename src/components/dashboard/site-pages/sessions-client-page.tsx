@@ -19,7 +19,7 @@ import {
 } from "@/components/dashboard/sessions-table-card";
 import {
   DETAIL_QUERY_PARAM,
-  DetailModal,
+  DetailDrawer,
 } from "@/components/dashboard/site-pages/detail-query-modal";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
 import { Input } from "@/components/ui/input";
@@ -354,10 +354,13 @@ export function SessionsClientPage({
       />
 
       {detailSessionId ? (
-        <DetailModal
+        <DetailDrawer
           ariaLabel={messages.sessionDetail.visitDetailsTitle}
-          modalKey={`session:${detailSessionId}`}
-          onClose={closeSessionDetail}
+          drawerKey={`session:${detailSessionId}`}
+          open={Boolean(detailSessionId)}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) closeSessionDetail();
+          }}
         >
           <SessionDetailClientPage
             locale={locale}
@@ -366,7 +369,7 @@ export function SessionsClientPage({
             pathname={pathname}
             sessionId={detailSessionId}
           />
-        </DetailModal>
+        </DetailDrawer>
       ) : null}
     </div>
   );

@@ -87,9 +87,11 @@ function leadingLabelLetter(value: string): string {
 
 function DomainOrUrlIcon({
   label,
+  fallbackLabel,
   unknownLabel,
 }: {
   label: string;
+  fallbackLabel?: string;
   unknownLabel: string;
 }) {
   const src = useMemo(() => {
@@ -124,7 +126,9 @@ function DomainOrUrlIcon({
   }, [src]);
 
   const showFavicon = Boolean(src) && iconLoaded && !iconFailed;
-  const fallbackValue = label === unknownLabel ? "" : label;
+  const fallbackDisplayLabel = fallbackLabel ?? label;
+  const fallbackValue =
+    fallbackDisplayLabel === unknownLabel ? "" : fallbackDisplayLabel;
 
   if (showFavicon) {
     return (
@@ -147,10 +151,12 @@ function DomainOrUrlIcon({
 
 export function LabelWithOptionalIcon({
   label,
+  iconLabel,
   showIcon,
   unknownLabel,
 }: {
   label: string;
+  iconLabel?: string;
   showIcon: boolean;
   unknownLabel: string;
 }) {
@@ -161,7 +167,11 @@ export function LabelWithOptionalIcon({
   return (
     <span className="relative inline-block max-w-full break-words pl-6">
       <span className="pointer-events-none absolute inset-y-0 left-0 inline-flex w-4 items-center">
-        <DomainOrUrlIcon label={label} unknownLabel={unknownLabel} />
+        <DomainOrUrlIcon
+          label={iconLabel ?? label}
+          fallbackLabel={label}
+          unknownLabel={unknownLabel}
+        />
       </span>
       <span className="break-words">{label}</span>
     </span>

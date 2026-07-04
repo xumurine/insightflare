@@ -54,9 +54,9 @@ import {
   SessionsTableCard,
 } from "@/components/dashboard/sessions-table-card";
 import {
-  useDetailModalClose,
-  useDetailModalReady,
-} from "@/components/dashboard/site-pages/detail-query-modal";
+  useDetailDrawerClose,
+  useDetailDrawerReady,
+} from "@/components/dashboard/site-pages/detail-drawer";
 import {
   OverviewPagesSection,
   type OverviewPagesSectionCardData,
@@ -108,6 +108,7 @@ interface VisitorDetailClientPageProps {
   siteId: string;
   pathname: string;
   visitorId: string;
+  onOpenSession?: (sessionId: string) => void;
 }
 
 type VisitorDetail = NonNullable<VisitorDetailData["data"]>;
@@ -412,7 +413,10 @@ function VisitorPerformancePanel({
       <CardHeader>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <CardTitle>{labels.performanceTitle}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiPulseLine className="size-4" />
+              {labels.performanceTitle}
+            </CardTitle>
           </div>
           <div
             className={cn(
@@ -935,7 +939,7 @@ function VisitorMapHero({
   backHref: string;
   onBack?: () => void;
 }) {
-  const modalReady = useDetailModalReady();
+  const modalReady = useDetailDrawerReady();
   const { resolvedTheme } = useTheme();
   const effectiveTheme: VisitorDetailMapTheme =
     resolvedTheme === "dark" ? "dark" : "light";
@@ -1473,6 +1477,7 @@ function VisitorEventCard({
   deltaMs,
   siteBasePath,
   timeZone,
+  onOpenSession,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -1481,9 +1486,11 @@ function VisitorEventCard({
   deltaMs: number | null;
   siteBasePath: string;
   timeZone: string;
+  onOpenSession?: (sessionId: string) => void;
 }) {
+  const sessionId = event.sessionId.trim();
   const sessionHref = `${siteBasePath}/sessions?detail=${encodeURIComponent(
-    event.sessionId,
+    sessionId,
   )}`;
 
   return (
@@ -1516,14 +1523,24 @@ function VisitorEventCard({
                   <span>
                     {labels.sincePrevious}: {formatDuration(locale, deltaMs)}
                   </span>
-                ) : event.sessionId.trim() ? (
-                  <Link
-                    href={sessionHref}
-                    data-skip-page-transition=""
-                    className="hover:text-foreground hover:underline"
-                  >
-                    {labels.sessionId}: {event.sessionId}
-                  </Link>
+                ) : sessionId ? (
+                  onOpenSession ? (
+                    <button
+                      type="button"
+                      className="bg-transparent p-0 text-left hover:text-foreground hover:underline"
+                      onClick={() => onOpenSession(sessionId)}
+                    >
+                      {labels.sessionId}: {event.sessionId}
+                    </button>
+                  ) : (
+                    <Link
+                      href={sessionHref}
+                      data-skip-page-transition=""
+                      className="hover:text-foreground hover:underline"
+                    >
+                      {labels.sessionId}: {event.sessionId}
+                    </Link>
+                  )
                 ) : (
                   <span aria-hidden="true">--</span>
                 )}
@@ -1543,6 +1560,7 @@ function VisitDetailsCard({
   events,
   siteBasePath,
   timeZone,
+  onOpenSession,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -1550,6 +1568,7 @@ function VisitDetailsCard({
   events: JourneyEvent[];
   siteBasePath: string;
   timeZone: string;
+  onOpenSession?: (sessionId: string) => void;
 }) {
   const chronologicalEvents = useMemo(
     () =>
@@ -1566,7 +1585,10 @@ function VisitDetailsCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{labels.visitDetailsTitle}</CardTitle>
+        <CardTitle className="inline-flex items-center gap-2">
+          <RiCalendarEventLine className="size-4" />
+          {labels.visitDetailsTitle}
+        </CardTitle>
         <CardDescription>{labels.visitDetailsSubtitle}</CardDescription>
       </CardHeader>
       <CardContent className="px-4">
@@ -1583,6 +1605,7 @@ function VisitDetailsCard({
                 event={event}
                 siteBasePath={siteBasePath}
                 timeZone={timeZone}
+                onOpenSession={onOpenSession}
                 deltaMs={
                   index > 0
                     ? event.occurredAt -
@@ -1627,6 +1650,7 @@ function ActivityAndSessionsSection({
   detail,
   siteBasePath,
   timeZone,
+  onOpenSession,
 }: {
   locale: Locale;
   labels: Labels;
@@ -1634,6 +1658,7 @@ function ActivityAndSessionsSection({
   detail: VisitorDetail;
   siteBasePath: string;
   timeZone: string;
+  onOpenSession?: (sessionId: string) => void;
 }) {
   const [sessionSort, setSessionSort] =
     useState<SessionSortState>(VISITOR_SESSION_SORT);
@@ -1655,6 +1680,11 @@ function ActivityAndSessionsSection({
     );
   };
   const openSessionDetail = (sessionId: string) => {
+    if (onOpenSession) {
+      onOpenSession(sessionId);
+      return;
+    }
+
     window.location.assign(
       `${siteBasePath}/sessions?detail=${encodeURIComponent(sessionId)}`,
     );
@@ -1664,7 +1694,10 @@ function ActivityAndSessionsSection({
     <section className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>{labels.activity}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiPulseLine className="size-4" />
+            {labels.activity}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <ActivityGrid
@@ -1683,6 +1716,9 @@ function ActivityAndSessionsSection({
           locale={locale}
           messages={messages}
           labels={{
+            title: "",
+            subtitle: "",
+            search: "",
             started: labels.started,
             sessionId: labels.sessionId,
             visitor: labels.visitor,
@@ -1955,6 +1991,7 @@ function DetailContent({
   siteId,
   pathname,
   timeZone,
+  onOpenSession,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -1963,8 +2000,9 @@ function DetailContent({
   siteId: string;
   pathname: string;
   timeZone: string;
+  onOpenSession?: (sessionId: string) => void;
 }) {
-  const modalClose = useDetailModalClose();
+  const modalClose = useDetailDrawerClose();
   const visitorListPath = pathname.replace(/\/detail$/, "");
   const siteBasePath = visitorListPath.replace(/\/visitors$/, "");
   const visitorSiteDomain = useMemo(
@@ -2005,6 +2043,7 @@ function DetailContent({
           detail={detail}
           siteBasePath={siteBasePath}
           timeZone={timeZone}
+          onOpenSession={onOpenSession}
         />
 
         <VisitDetailsCard
@@ -2014,6 +2053,7 @@ function DetailContent({
           events={displayEvents}
           siteBasePath={siteBasePath}
           timeZone={timeZone}
+          onOpenSession={onOpenSession}
         />
 
         <VisitorDetailBottomCards
@@ -2050,6 +2090,7 @@ export function VisitorDetailClientPage({
   siteId,
   pathname,
   visitorId,
+  onOpenSession,
 }: VisitorDetailClientPageProps) {
   const labels = messages.visitorDetail;
   const { timeZone, window } = useDashboardQueryControls();
@@ -2155,6 +2196,7 @@ export function VisitorDetailClientPage({
         siteId={siteId}
         pathname={pathname}
         timeZone={timeZone}
+        onOpenSession={onOpenSession}
       />
     </JourneyDetailStateSwitch>
   );

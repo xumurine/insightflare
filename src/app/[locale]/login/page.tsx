@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RiLoginBoxLine, RiTranslate2 } from "@remixicon/react";
 
 import { LoginForm } from "@/components/auth/login-form";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -73,7 +74,10 @@ export default async function LoginPage({
             </Link>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <CardTitle className="text-xl">{t.login.title}</CardTitle>
+            <CardTitle className="inline-flex items-center gap-2 text-xl">
+              <RiLoginBoxLine className="size-5" />
+              {t.login.title}
+            </CardTitle>
             <div className="flex items-center gap-1">
               <ThemeToggle
                 lightLabel={t.actions.switchToLight}
@@ -86,7 +90,8 @@ export default async function LoginPage({
                 asChild
               >
                 <Link href={withNext("/en/login", nextPath)}>
-                  {t.actions.switchToEnglish}
+                  <RiTranslate2 className="size-3" />
+                  <span>{t.actions.switchToEnglish}</span>
                 </Link>
               </Button>
               <Button
@@ -95,7 +100,8 @@ export default async function LoginPage({
                 asChild
               >
                 <Link href={withNext("/zh/login", nextPath)}>
-                  {t.actions.switchToChinese}
+                  <RiTranslate2 className="size-3" />
+                  <span>{t.actions.switchToChinese}</span>
                 </Link>
               </Button>
             </div>
@@ -111,6 +117,15 @@ export default async function LoginPage({
             passwordLabel={t.login.password}
             signInLabel={t.login.signIn}
             signingInLabel={t.loginForm.signingIn}
+            verifyingSecurityLabel={t.loginForm.verifyingSecurity}
+            securityVerificationFailedLabel={
+              t.loginForm.securityVerificationFailed
+            }
+            securityVerificationTitleLabel={
+              t.loginForm.securityVerificationTitle
+            }
+            retrySecurityLabel={t.loginForm.retrySecurityVerification}
+            redirectingLabel={t.loginForm.redirecting}
             invalidCredentialsLabel={t.login.invalidCredentials}
             failedLabel={t.loginForm.failed}
           />

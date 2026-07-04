@@ -21,6 +21,7 @@ import {
   startOfZonedInterval,
 } from "@/lib/dashboard/time-zone";
 import type { Locale } from "@/lib/i18n/config";
+import type { AppMessages } from "@/lib/i18n/messages";
 
 interface SiteOverviewMetrics {
   views: number;
@@ -64,11 +65,13 @@ interface SidebarSiteDetailsProps {
   teamId: string;
   teamSlug: string;
   activeSiteSlug?: string;
+  currentSection?: string;
   sites: SidebarSiteSummary[];
   labels: {
     views: string;
     visitors: string;
   };
+  messages: AppMessages;
 }
 
 interface SiteTrendPoint {
@@ -86,8 +89,11 @@ function buildSitePath(
   locale: Locale,
   teamSlug: string,
   siteSlug: string,
+  section?: string,
 ): string {
-  return `/${locale}/app/${teamSlug}/${siteSlug}`;
+  const base = `/${locale}/app/${teamSlug}/${siteSlug}`;
+  if (!section) return base;
+  return `${base}/${section}`;
 }
 
 function safeCount(value: number): number {
@@ -199,8 +205,10 @@ export function SidebarSiteDetails({
   teamId,
   teamSlug,
   activeSiteSlug,
+  currentSection,
   sites,
   labels,
+  messages,
 }: SidebarSiteDetailsProps) {
   const { state: sidebarState, isMobile } = useSidebar();
   const { window } = useDashboardQuery();
@@ -405,7 +413,14 @@ export function SidebarSiteDetails({
               tooltip={site.name}
               className="h-8 rounded-none"
             >
-              <Link href={buildSitePath(locale, teamSlug, site.slug)}>
+              <Link
+                href={buildSitePath(
+                  locale,
+                  teamSlug,
+                  site.slug,
+                  currentSection,
+                )}
+              >
                 <SiteBrandIcon
                   siteId={site.id}
                   siteName={site.name}
@@ -426,6 +441,7 @@ export function SidebarSiteDetails({
                         interval={chartWindow.interval}
                         viewsLabel={labels.views}
                         visitorsLabel={labels.visitors}
+                        messages={messages}
                         compact
                       />
                     ) : (

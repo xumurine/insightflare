@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { RiLogoutBoxLine } from "@remixicon/react";
 import { toast } from "sonner";
 
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -32,13 +33,9 @@ export function LogoutActionButton({
     if (pending) return;
     setPending(true);
     try {
-      const response = await fetch("/api/auth/logout", {
-        method: "POST",
+      const response = await fetch("/api/public/session", {
+        method: "DELETE",
         credentials: "include",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({}),
       });
       if (!response.ok) throw new Error(failedLabel);
       toast.success(successLabel);
@@ -65,7 +62,10 @@ export function LogoutActionButton({
             {pendingLabel}
           </span>
         ) : (
-          <span key="idle">{label}</span>
+          <span key="idle" className="inline-flex items-center gap-2">
+            <RiLogoutBoxLine className="size-4" />
+            {label}
+          </span>
         )}
       </AutoTransition>
     </Button>

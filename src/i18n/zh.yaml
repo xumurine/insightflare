@@ -27,7 +27,6 @@ common:
   visitors: 访客数
   bounceRate: 跳出率
   avgDuration: 平均停留
-  page: 页面
   path: 路径
   title: 标题
   hostname: 主机名
@@ -36,12 +35,10 @@ common:
   exitPage: 出口页面
   referrer: 来源
   startedAt: 开始时间
-  endedAt: 结束时间
   event: 事件
   location: 地区
   browser: 浏览器
   operatingSystem: 操作系统
-  device: 设备
   deviceType: 设备类型
   country: 国家
   region: 地区
@@ -87,6 +84,8 @@ common:
   time: 时间
   cycle: 周期
   close: 关闭
+  sitesFiltered: "已筛选 {active} / {total} 个站点"
+  cumulativeTraffic: 全部周期累计流量
 ranges:
   last30m: 30分钟
   last1h: 1小时
@@ -159,8 +158,6 @@ realtime:
   visitorMapSection: 访客位置
   visitorMapSubtitle: 根据当前事件里的经纬度展示该访客的大致位置。
   visitorMapUnavailable: 当前事件没有可用的定位坐标。
-  mapZoomIn: 放大地图
-  mapZoomOut: 缩小地图
   visitorId: 访客 ID
   sessionId: 会话 ID
   visitId: 访问 ID
@@ -170,8 +167,6 @@ overview:
   title: 访问总览
   subtitle: 查看核心指标与访问趋势。
   trendTitle: 访问趋势
-  topPages: 热门页面
-  topReferrers: 热门来源
   sourceTab: 来源
   sourceDomainColumn: 来源（域名）
   sourceLinkTab: 来源链接
@@ -184,14 +179,9 @@ pages:
   pagesPerSession: 每会话页面数
   untitled: 未命名页面
   empty: 当前筛选条件下暂无页面数据。
-  loading: 正在加载页面卡片...
-  loadingMore: 正在加载更多页面...
   loadError: 页面数据加载失败，请稍后重试。
   loadMoreError: 加载更多页面失败。
   retry: 重试
-  tabPages: 页面
-  tabEntryPages: 入口页面
-  tabExitPages: 出口页面
   trendTitle: 页面访问趋势
   otherPages: 其他页面
   hashTab: 锚点
@@ -218,35 +208,22 @@ referrers:
   directSourceNote: 这部分流量没有外部来源站点，属于直接访问。
   breakdownTitle: 来源明细
   directViews: 直接访问量
-  directShare: 直接访问占比
   uniqueDomains: 来源域名数
   uniqueLinks: 来源链接数
   topSource: 头部外部来源
   topSourceShare: 访问占比
   noExternalSource: 暂无外部来源
-  externalViews: 外部来源访问量
-  externalShare: 外部来源占比
   externalLabel: 外部来源
   nextSources: 后续 4 个来源
   longTail: 长尾来源
 campaigns:
   title: 推广活动
   subtitle: UTM 推广活动表现与流量归因。
-  trendTitle: UTM 占比趋势
   tabSource: 来源
   tabMedium: 媒介
   tabCampaign: 活动
   tabTerm: 关键词
   tabContent: 内容
-  overviewAcquisitionTitle: 获取面概览
-  overviewAcquisitionSubtitle: 查看带标签的来源与媒介分别带来了多少流量。
-  overviewSignalsTitle: 活动信号
-  overviewSignalsSubtitle: 快速识别表现最强的活动、关键词与创意内容。
-  topSource: 头部来源
-  topMedium: 头部媒介
-  topCampaign: 头部活动
-  topTerm: 头部关键词
-  topContent: 头部内容
   breakdownTitle: UTM 明细
   notSet: 未设置
   noTaggedTraffic: 当前筛选范围内暂无带 UTM 标签的流量。
@@ -261,19 +238,15 @@ sessions:
   entryPage: 入口页面
   exitPage: 出口页面
   duration: 时长
-  bounce: 跳出
   referrer: 来源
   location: 地区
   os: 系统
   browser: 浏览器
   device: 设备
   pageViews: 页面浏览
-  yes: 是
-  no: 否
   loadError: 无法加载会话数据。
   empty: 当前时间范围内没有会话。
 sessionDetail:
-  titlePrefix: 会话
   anonymous: 匿名访客
   back: 返回会话
   missing: 缺少 sessionId。
@@ -305,8 +278,6 @@ sessionDetail:
   eventTitleSeparator: "："
   visitDetailsTitle: 访问明细
   visitDetailsSubtitle: 按发生顺序展示该会话内的开始、页面访问、退出和自定义事件。
-  path: 路径
-  title: 标题
   location: 位置
   visitorId: 访客 ID
   sessionId: 会话 ID
@@ -316,7 +287,7 @@ sessionDetail:
   sincePrevious: 距上个事件
   geoLocationTitle: 地理位置
   performanceTitle: 当前会话性能
-  range: Range
+  range: 范围
 events:
   title: 自定义事件
   subtitle: 查看事件规模、上下文、Payload 字段与原始触发记录。
@@ -334,13 +305,21 @@ events:
   triggerVisitors: 触发人数
   trendTitle: 事件趋势
   topEvents: 事件排行
-  topPages: 页面分布
-  topCountries: 国家/地区
-  topDevices: 设备分布
-  topBrowsers: 浏览器分布
   recordsTitle: 事件记录
   fieldsTitle: Payload 字段
-  fieldsSubtitle: 按 JSON path 汇总出现频率、类型和样本值。
+  fieldsSubtitle: 选择字段后查看其值分布和元数据。
+  fieldValuesTitle: 字段值
+  fieldValuesSubtitle: 展示当前字段的记录及出现次数，点击以进行筛选。
+  fieldValuesEmpty: 当前字段暂无记录。
+  payloadFilter: 筛选
+  payloadFilterTitle: Payload 筛选
+  payloadFilterSubtitle: 每行一个条件，可使用 == 或 != 组合筛选。
+  payloadFilterPlaceholder: "path.value == \"a\"\nlevel != 0"
+  payloadFilterApply: 应用筛选
+  payloadFilterClear: 清空筛选
+  payloadFilterInvalid: 无法解析筛选条件，请检查字段路径、操作符和值。
+  expandField: 展开字段
+  collapseField: 收起字段
   breakdownTitle: 上下文分布
   search: 搜索事件名、ID、访客、会话、页面...
   eventName: 事件名
@@ -350,7 +329,6 @@ events:
   page: 页面
   context: 上下文
   visitor: 访客
-  session: 会话
   visit: 访问
   referrer: 来源
   location: 地区
@@ -361,44 +339,70 @@ events:
   payloadFields: Payload 字段
   values: 值
   nodes: 节点
-  jsonPath: JSON path
-  type: 类型
   occurrences: 出现次数
-  firstSeen: 首次出现
-  lastSeen: 最后出现
-  sample: 样本值
   openVisitor: 打开访客
   openSession: 打开会话
+  copyJson: 复制 JSON
+  copiedJson: JSON 已复制。
+  copyJsonFailed: 无法复制 JSON。
+  copyValue: 复制值
+  copiedValue: 值已复制。
+  copyValueFailed: 复制值失败。
   loadError: 无法加载事件数据。
   empty: 当前筛选范围内没有自定义事件。
   emptyFields: 当前事件暂无 payload 字段。
   noEventName: 缺少事件名。
   loading: 加载中
   other: 其他
-  unknown: 未知
 funnels:
   title: 漏斗分析
   subtitle: 衡量多步骤用户旅程的转化情况。
-  createFunnel: 创建漏斗
-  editFunnel: 编辑漏斗
-  funnelName: 漏斗名称
-  funnelNamePlaceholder: "例如：注册流程"
+  listTitle: 漏斗定义
+  listSubtitle: 构建可复用的步骤序列，并按当前看板时间窗查看转化。
+  create: 新建漏斗
+  createTitle: 创建漏斗
+  createDescription: 至少定义两个有顺序的页面浏览或自定义事件步骤。
+  nameLabel: 名称
+  namePlaceholder: 注册激活
+  stepsLabel: 步骤
   addStep: 添加步骤
-  removeStep: 删除
-  stepType: 步骤类型
-  stepValue: 值
-  pageview: 页面浏览
-  event: 自定义事件
-  save: 保存
+  removeStep: 移除步骤
+  stepTypePageview: 页面浏览
+  stepTypeEvent: 事件
+  stepValueLabel: 值
+  pageviewPlaceholder: /pricing
+  eventPlaceholder: signup_started
+  save: 创建
+  creating: 创建中...
   cancel: 取消
-  delete: 删除漏斗
-  deleteConfirm: 确定要删除这个漏斗吗？
-  noFunnels: 尚未配置漏斗。创建一个以开始跟踪转化。
-  selectFunnel: 选择漏斗
-  conversionRate: 转化率
-  dropOff: 流失率
-  overallConversion: 整体转化率
-  step: "步骤 {n}"
+  delete: 删除
+  deleteTitle: 删除漏斗
+  deleteDescription: 这会移除已保存的漏斗定义，不会删除历史分析数据。
+  deleteConfirm: 删除漏斗
+  deleting: 删除中...
+  empty: 暂无漏斗。
+  emptyHint: 使用页面浏览和自定义事件创建漏斗来跟踪转化。
+  loadError: 无法加载漏斗。
+  detailLoadError: 无法加载漏斗分析。
+  invalidFunnel: 请填写名称，并至少补全两个步骤。
+  created: 漏斗已创建。
+  createFailed: 创建漏斗失败。
+  deleted: 漏斗已删除。
+  deleteFailed: 删除漏斗失败。
+  selectPrompt: 选择一个漏斗查看转化。
+  overallConversion: 总转化率
+  startedSessions: 起始会话
+  convertedSessions: 转化会话
+  convertedVisitors: 转化访客
+  largestDropOff: 最大流失
+  noDropOff: 无流失
+  step: 步骤
+  sessions: 会话
+  visitors: 访客
+  conversion: 转化率
+  stepConversion: 步骤转化
+  dropOff: 流失
+  updated: 更新于
 visitors:
   title: 访客分析
   subtitle: 访客级别明细与最近活跃情况。
@@ -425,17 +429,14 @@ visitorDetail:
   loadError: 无法加载访客详情。
   totalDuration: 总时长
   events: 事件
-  sessions: 会话
   views: 页面浏览
   uniquePages: 唯一页面
   avgPagesPerSession: 平均页面/会话
   avgEventsPerSession: 平均事件/会话
   avgStay: 平均停留
-  p90Duration: P90 会话时长
   firstSeen: 首次出现
   lastSeen: 最近出现
   daysActive: 活跃天数
-  conversionEvents: 转化事件
   avgTimeBetweenSessions: 平均会话间隔
   activity: 活跃记录
   sessionRecords: 会话记录
@@ -446,8 +447,6 @@ visitorDetail:
   pageViews: 页面浏览
   visitDetailsTitle: 访问明细
   visitDetailsSubtitle: 按发生顺序展示该访客的会话开始、页面访问、退出和自定义事件。
-  path: 路径
-  title: 标题
   customEvents: 自定义事件
   emptyEvents: 没有事件记录。
   emptyCustomEvents: 暂无自定义事件
@@ -463,12 +462,6 @@ visitorDetail:
   screen: 屏幕
   entryPath: 入口路径
   exitPath: 退出路径
-  bounce: 跳出
-  status: 状态
-  active: 进行中
-  inactive: 已结束
-  yes: 是
-  no: 否
   sessionStarted: 会话开始
   pageview: 访问页面
   exitPage: 退出页面
@@ -569,7 +562,6 @@ devices:
   osTrendTitle: 操作系统趋势
   screenDistributionTitle: 屏幕尺寸分布
   screenDistributionSubtitle: 识别最常见的视口尺寸和响应式断点。
-  topSizesCoverageLabel: 头部尺寸覆盖率
   screenBucketTitle: 断点分桶
   screenPreviewTitle: 屏幕预览
   selectedViewportLabel: 当前视口
@@ -577,13 +569,6 @@ devices:
   previewUnavailableLabel: 当前没有可预览的屏幕尺寸。
   browserByDeviceTitle: 设备类型 × 浏览器
   osByDeviceTitle: 设备类型 × 操作系统
-  priorityTitle: 适配优先级
-  prioritySubtitle: 根据当前访客结构整理出优先测试的设备组合。
-  dominantSegmentLabel: 主导设备段
-  dominantOsLabel: 主导系统
-  responsiveFocusLabel: 响应式重点
-  testMatrixTitle: 首测矩阵
-  shareLabel: 占比
   otherLabel: 其他
   screenBucketLabels:
     phoneCompact: 小屏手机
@@ -600,9 +585,6 @@ browsers:
   versionBreakdownTitle: 浏览器版本分布
   osBreakdownTitle: 浏览器 × 系统
   deviceTypeBreakdownTitle: 浏览器 × 设备类型
-  trendSubtitle: 观察所选时间范围内各浏览器流量占比的变化。
-  topBrowserLabel: 头部浏览器
-  shareLabel: 占比
   otherLabel: 其他
   browserShareTitle: 浏览器占比
   engineShareTitle: 内核占比
@@ -664,14 +646,26 @@ performance:
   pathsAnalyzedLabel: 已分析路径
   metricValueColumn: P75 数值
   statusColumn: 状态
+share:
+  title: "{siteName} - 分析数据"
+  poweredBy: powered by
 siteSettings:
   title: 站点设置
   subtitle: 管理当前站点的基础信息与生命周期。
   editTitle: 修改站点信息
-  editSubtitle: 更新站点名称、域名和公开 Slug。
+  editSubtitle: 更新站点名称和域名。
   nameLabel: 站点名称
   domainLabel: 域名
-  publicSlugLabel: 公开 Slug（可选）
+  publicSharingTitle: 公开分享
+  publicSharingSubtitle: 配置站点的公开访问链接，启用后任何人可通过链接查看分析数据。
+  publicEnabledLabel: 启用公开访问
+  publicSlugLabel: 公开 Slug
+  publicSlugPlaceholder: 例如 my-site
+  publicSlugHint: 自定义 URL 路径标识。留空将自动生成。
+  publicLinkLabel: 公开链接
+  publicLinkHint: 启用公开访问后，可通过此链接分享分析数据。
+  publicDisabledHint: 启用公开访问后将显示分享链接。
+  copiedLink: 链接已复制
   trackingStrengthGroupTitle: 跟踪强度
   trackingStrengthDescription: 选择脚本对访客标识与统计精度的处理方式。
   trackingStrengthLabel: 跟踪强度策略
@@ -707,7 +701,7 @@ siteSettings:
   performanceGroupTitle: 性能追踪
   performanceGroupDescription: 通过一个采样率控制 Web 性能指标采集。
   performanceSampleRateLabel: 性能采样率（%）
-  performanceSampleRateHint: 被采样的访问会在 leave 时记录 TTFB、FCP、LCP、CLS 和 INP。填 0 表示不采样，100 表示全量采集。
+  performanceSampleRateHint: 被采样的访问会在离开页面时记录 TTFB、FCP、LCP、CLS 和 INP。填 0 表示不采样，100 表示全量采集。
   booleanOn: 开启
   booleanOff: 关闭
   loadingSettings: 正在加载脚本设置...
@@ -715,9 +709,9 @@ siteSettings:
   savingTracking: 保存追踪设置中...
   save: 保存修改
   saving: 保存中...
-  transferTitle: 转移到其他 Team
+  transferTitle: 转移到其他团队
   transferSubtitle: 将当前站点迁移到你可管理的其他团队。
-  transferTeamLabel: 目标 Team
+  transferTeamLabel: 目标团队
   transfer: 转移站点
   transferring: 转移中...
   scriptTitle: 安装统计脚本
@@ -772,6 +766,14 @@ accountSettings:
   passwordSaving: 修改中...
   passwordSaved: 密码已修改。
   passwordSaveFailed: 修改密码失败。
+  preferredLanguageTitle: 通知语言
+  preferredLanguageDescription: 选择定时通知邮件使用的语言。
+  preferredLanguageLabel: 邮件语言
+  preferredLanguageDefault: 默认
+  preferredLanguageEnglish: English
+  preferredLanguageChinese: 中文
+  preferredLanguageSaved: 通知语言已保存。
+  preferredLanguageSaveFailed: 保存通知语言失败。
   timeZoneTitle: 报表时区
   timeZoneDescription: 仪表盘里的自然日期范围和聚合分桶都会使用这个时区。
   activeTimeZone: 当前生效时区
@@ -790,6 +792,123 @@ accountSettings:
   saving: 保存中...
   saved: 时区偏好已保存。
   saveFailed: 保存时区偏好失败。
+notificationCenter:
+  title: 通知中心
+  subtitle: 查看你的全部通知和报告。
+  inboxTitle: 我的通知
+  empty: 暂无通知。
+  loading: 正在加载通知
+  markRead: 标记已读
+  markAllRead: 全部标记已读
+  refresh: 刷新
+  unreadAttentionCount: "{count} 条未读重点通知。"
+  attention: 重点
+  statusPrefix: "状态：{status}"
+  read: 已读
+  unread: 未读
+  loadFailed: 加载通知失败。
+  markReadFailed: 标记通知已读失败。
+  markAllReadSuccess: 通知已全部标记为已读。
+  markAllReadFailed: 全部标记已读失败。
+  ruleFilterActive: 正在查看此规则产生的通知。
+  ruleFilterClear: 清除筛选
+  sections:
+    importantTitle: 重要通知
+    importantDescription: "{count} 条未读重点通知。"
+    importantEmpty: 当前没有重要通知。
+    reportsTitle: 报告
+    reportsDescription: 查看通知规则生成的定期报告。
+    reportsEmpty: 当前没有报告。
+  tabs:
+    all: 全部
+    unread: 未读
+    attention: 重点
+    report: 报告
+  tabDescriptions:
+    all: 全部消息
+    unread: 等待查看
+    attention: 需要关注
+    report: 定期报告
+  messageTypes:
+    report: 报告
+    milestone: 里程碑
+    threshold: 阈值
+    change: 变化
+    health: 健康
+    system: 系统
+    test: 测试
+  severities:
+    info: 信息
+    success: 成功
+    warning: 警告
+    critical: 严重
+  deliveryStatuses:
+    created: 已创建
+    sending: 发送中
+    sent: 已发送
+    partial: 部分完成
+    failed: 失败
+    skipped: 已跳过
+  channels:
+    inApp: 站内
+    email: 邮件
+  channelStatuses:
+    sent: 已发送
+    skipped: 已跳过
+    failed: 失败
+    created: 已创建
+  emailSkipReasons:
+    user_preference_disabled: 用户已关闭邮件通知
+    system_email_unconfigured: 系统邮件尚未配置
+    recipient_email_invalid: 收件人邮箱无效
+    secret_decryption_failed: 保存的邮件凭据无法解密
+    provider_failed: 邮件服务商拒绝发送
+    network_failed: 无法连接邮件服务商
+    unknown: 未知原因
+  emailAttempts: "尝试次数：{count}"
+  emailRetryCount: "重试次数：{count}"
+  emailDuration: "{duration} 毫秒"
+  filtersTitle: 筛选
+  filtersDescription: 按通知类型或严重程度缩小列表范围。
+  typeFilterLabel: 类型
+  severityFilterLabel: 严重程度
+  allTypes: 全部类型
+  allSeverities: 全部严重程度
+  preferencesTitle: 通知偏好
+  preferencesDescription: 这些设置控制邮件投递，以及哪些消息会保持未读以提醒关注。
+  emailNotificationsLabel: 邮件通知
+  emailNotificationsDescription: 规则触发时发送邮件。
+  reportsUnreadLabel: 报告保持未读
+  reportsUnreadDescription: 报告创建后保持未读状态。
+  milestonesUnreadLabel: 里程碑保持未读
+  milestonesUnreadDescription: 将未读状态保留给里程碑消息。
+  alertsUnreadLabel: 告警保持未读
+  alertsUnreadDescription: 阈值和健康告警保持未读。
+  preferencesSaved: 通知偏好已保存。
+  preferencesSaveFailed: 保存通知偏好失败。
+  showDetails: 详情
+  hideDetails: 收起详情
+  detailFields:
+    bodyText: 正文
+    type: 类型
+    severity: 严重程度
+    site: 站点
+    ruleId: 规则 ID
+    runId: 运行 ID
+    batchId: 批次 ID
+    deliveryStatus: 投递状态
+    deliveryDetails: 投递详情
+    emailStatus: 邮件状态
+    emailReason: 邮件原因
+    provider: 服务商
+    providerMessageId: 服务商消息 ID
+    duration: 耗时
+    locale: 语言
+    deliveryResults: 投递结果
+    createdAt: 创建时间
+    triggeredAt: 触发时间
+    sentAt: 发送时间
+    failedAt: 失败时间
 login:
   title: 登录
   subtitle: 使用 InsightFlare 账号登录。
@@ -797,6 +916,49 @@ login:
   password: 密码
   signIn: 登录
   invalidCredentials: 用户名或密码错误。
+accountLinks:
+  invite:
+    title: 团队邀请
+    subtitle: 接受邀请后加入该团队。
+    loading: 正在加载邀请...
+    missingToken: 缺少邀请 token。
+    loadFailed: 加载邀请失败。
+    accept: 接受邀请
+    accepting: 正在接受...
+    accepted: 已接受邀请。
+    acceptFailed: 接受邀请失败。
+    signIn: 登录后接受
+    signedInNotice: 当前已登录。接受后会将当前账号加入该团队。
+    teamLabel: 团队
+    roleLabel: 角色
+    emailLabel: 邀请邮箱
+    accountEmailLabel: 账号邮箱
+    anyEmail: 任意账号
+    expiresLabel: 过期时间
+    usernameLabel: 用户名
+    nameLabel: 显示名称
+    passwordLabel: 密码
+    roles:
+      admin: 管理员
+      member: 成员
+  resetPassword:
+    title: 重置密码
+    subtitle: 为该账号设置新密码。
+    loading: 正在加载重置链接...
+    missingToken: 缺少重置 token。
+    loadFailed: 加载重置链接失败。
+    reset: 重置密码
+    resetting: 正在重置...
+    resetDone: 密码已重置，请使用新密码登录。
+    resetFailed: 重置密码失败。
+    signIn: 返回登录
+    accountLabel: 账号
+    emailLabel: 邮箱
+    expiresLabel: 过期时间
+    passwordLabel: 新密码
+    confirmPasswordLabel: 确认密码
+    passwordTooShort: 密码至少 8 个字符。
+    passwordMismatch: 两次输入的密码不一致。
 empty:
   noTeams: 当前账号还没有可访问的团队。
   noSites: 该团队下暂无可访问站点。
@@ -809,6 +971,11 @@ actions:
   switchToDark: 深色
 teamSelect:
   groupLabel: 团队
+  groups:
+    created: 创建的团队
+    managed: 管理的团队
+    member: 所属的团队
+    system: 系统全部团队
   createHint: 新建团队
   createTitle: 新建团队
   createDescription: 创建后会自动切换到新团队。
@@ -839,6 +1006,14 @@ teamManagement:
     roleChangeFailed: 更新成员角色失败。
     invalidTeamName: 团队名称至少 2 个字符。
     invalidMemberIdentifier: 请输入有效的用户名或邮箱。
+    inviteCreated: 邀请链接已创建。
+    inviteCreateFailed: 创建邀请链接失败。
+    inviteRevoked: 邀请已撤销。
+    inviteRevokeFailed: 撤销邀请失败。
+    inviteCopied: 邀请链接已复制。
+    inviteCopyFailed: 复制邀请链接失败。
+    invalidInviteEmail: 请输入有效的邀请邮箱。
+    invalidInviteExpiry: 邀请有效期至少为 1 小时。
     ownerTransferred: 所有权已转移。
     ownerTransferFailed: 转移所有权失败。
     invalidTransferTarget: 请选择新的所有者。
@@ -858,14 +1033,310 @@ teamManagement:
     title: 事件通知
     subtitle: 管理当前团队的事件通知规则。
     empty: 当前团队还没有事件通知规则。
+    forbiddenTitle: 通知规则由团队管理员管理
+    forbiddenDescription: 你仍然可以查看自己的通知消息，并修改个人通知偏好。
+    rulesTitle: 通知规则
+    enabledCount: "当前团队已启用 {count} 条规则。"
+    createTestRule: 创建测试规则
+    loadingRules: 正在加载通知规则
+    deliveryTestTitle: 投递测试
+    deliveryTestDescription: 为你创建一条站内通知；如果可用，也会尝试发送邮件。
+    inAppTestHint: 我们会向你发送一条站内通知。
+    emailTestConfiguredHint: 我们会向你发送一条测试邮件。
+    emailTestUnconfiguredHint: 当前系统未设置邮件发送服务，请联系管理员添加。
+    sendTestNotification: 发送测试通知
+    testRuleName: 每小时通知测试
+    loadRulesFailed: 加载通知规则失败。
+    testRuleCreated: 测试规则已创建。
+    createTestRuleFailed: 创建测试规则失败。
+    testNotificationSent: 测试通知已发送。
+    sendTestNotificationFailed: 发送测试通知失败。
+    createRule: 创建规则
+    editRule: 编辑规则
+    dialogDescription: 为当前团队配置一条基础通知规则。
+    ruleInfoSection: 规则信息
+    scheduleSection: 计划
+    sendScheduleSection: 发送时间
+    checkSection: 检查频率
+    conditionSection: 条件
+    deliverySection: 投递
+    summarySection: 摘要
+    liveSummaryDescription: 实时确认这条规则会如何运行。
+    nameLabel: 名称
+    siteLabel: 站点
+    chooseSite: 选择站点
+    ruleTypeLabel: 规则类型
+    recipientLabel: 接收人
+    enabledLabel: 启用
+    enabledHint: 运行这条规则
+    scheduleLabel: 计划
+    timeLabel: 时间
+    timezoneLabel: 时区
+    intervalLabel: 间隔
+    dayLabel: 星期
+    dayOfMonthLabel: 日期
+    monthLabel: 月份
+    reportPeriodLabel: 报告周期
+    milestoneEveryLabel: 每个里程碑
+    matchLabel: 匹配
+    matchAll: 全部
+    matchAny: 任一
+    changeValueLabel: 变化值
+    changeModeLabel: 变化方式
+    changeModePercent: 百分比
+    changeModeAbsolute: 绝对值
+    addCondition: 添加条件
+    removeCondition: 移除
+    conditionItemTitle: "条件 {index}"
+    metricLabel: 指标
+    windowLabel: 时间窗口
+    operatorLabel: 操作符
+    valueLabel: 阈值
+    cooldownLabel: 冷却时间
+    cooldownDescription: 在这段时间内，不会重复发送报告。
+    noDataHoursLabel: 无数据小时数
+    pleaseChooseSite: 请选择一个站点。
+    pleaseChooseRecipients: 请至少选择一个接收人。
+    ruleCreated: 规则已创建。
+    ruleUpdated: 规则已更新。
+    createRuleFailed: 创建规则失败。
+    updateRuleFailed: 更新规则失败。
+    deleteConfirm: 确认删除「{name}」？
+    ruleDeleted: 规则已删除。
+    deleteRuleFailed: 删除规则失败。
+    lastChecked: 上次检查
+    lastTriggered: 上次触发
+    actions: 操作
+    edit: 编辑
+    enable: 启用
+    disable: 停用
+    delete: 删除
+    saveRule: 保存规则
+    viewMessages: 查看消息
+    emailPreview: 邮件预览
+    preview: 预览
+    runNow: 立即运行
+    previewFailed: 预览规则失败。
+    runFailed: 运行规则失败。
+    runResultToast: "已创建 {messages} 条消息。邮件发送 {sent} 条，失败 {failed} 条。"
+    previewDialogTitle: 规则预览
+    previewDialogDescription: 仅评估规则，不创建消息，也不发送邮件。
+    coolingDownUntil: "冷却至 {time}"
+    scheduleDaily: "每天 {time}"
+    scheduleWeekly: "每周{day} {time}"
+    scheduleMonthly: "每月 {day} 日 {time}"
+    scheduleQuarterly: "每季度 {day} 日 {time}"
+    scheduleYearly: "每年 {month}/{day} {time}"
+    scheduleInterval: "每 {minutes} 分钟"
+    scheduleCustom: 自定义
+    conditionReport: "{period}报告"
+    conditionMilestone: "{metric} 每 {step} 触发"
+    conditionThreshold: "{window} {metric} {operator} {value}"
+    conditionChange: "{window} {metric} 变化 {operator} {value}"
+    conditionHealth: "{hours} 小时无数据"
+    summaryWhenConditions: "当满足下列{combinator}条件时，发送{type}通知："
+    summaryWhenSingleCondition: "当满足此条件时，发送{type}通知："
+    summaryConditionThreshold: "{window}{metric}{operator}{value}"
+    summaryConditionChange: "{window}{metric}{mode}变化{operator}{value}"
+    summaryReportSchedule: "{period}：{schedule}"
+    summaryReportCondition: "生成{period}报告"
+    summaryMilestoneCondition: "{metric} 每达到 {step} 触发"
+    summaryHealthCondition: "{hours} 小时无数据"
+    defaultNames:
+      report: "{site} 每日报告"
+      milestone: "{site} 流量里程碑"
+      threshold: "{site} 访问阈值"
+      change: "{site} 流量变化"
+      health: "{site} 健康检查"
+    columns:
+      name: 名称
+      type: 类型
+      site: 站点
+      recipient: 接收人
+      schedule: 计划
+      condition: 条件
+      nextRun: 下次运行
+      status: 状态
+    status:
+      enabled: 已启用
+      disabled: 未启用
+    nextRunStates:
+      disabled: 未启用
+      coolingDown: 冷却中
+      dueNow: 现在到期
+    previewFields:
+      status: 状态
+      summary: 摘要
+      title: 标题
+      htmlPreview: HTML 预览
+      bodyText: 正文
+      data: 数据
+      createdAt: 创建时间
+      updatedAt: 更新时间
+      loadingContent: 正在加载实际报告内容
+      noHtmlPreview: 当前预览没有 HTML 内容。
+    ruleTypes:
+      report: 报告
+      milestone: 里程碑
+      threshold: 阈值
+      change: 变化
+      health: 健康
+      test: 测试
+    ruleTypeDescriptions:
+      report: 定期发送站点概览
+      milestone: 指标达到阶段值时通知
+      threshold: 指标高于或低于阈值时通知
+      change: 指标相对上个周期变化时通知
+      health: 长时间无数据时通知
+    recipientModes:
+      creator: 创建者
+      team_admins: 团队管理员
+      all_team_members: 全部团队成员
+      users: 指定用户
+    recipientKindLabel: 接收人类型
+    recipientPresetLabel: 预设
+    customRecipientsEmpty: 未选择接收人
+    noTeamMembers: 当前没有可选团队成员。
+    recipientKinds:
+      preset: 预设
+      custom: 自定义
+    scheduleKinds:
+      daily: 每天
+      weekly: 每周
+      monthly: 每月
+      quarterly: 每季度
+      yearly: 每年
+      interval: 间隔
+    reportPeriods:
+      daily: 日报
+      weekly: 周报
+      monthly: 月报
+      quarterly: 季度报告
+      yearly: 年报
+    cooldownUnits:
+      minutes: 分钟
+      hours: 小时
+      days: 天
+    intervalOptions:
+      every30Minutes: 每 30 分钟
+      everyHour: 每小时
+      every6Hours: 每 6 小时
+      every12Hours: 每 12 小时
+      everyDay: 每天
+      every7Days: 每 7 天
+      every30Days: 每 30 天
+    weekDays:
+      - 周日
+      - 周一
+      - 周二
+      - 周三
+      - 周四
+      - 周五
+      - 周六
+    metrics:
+      views: 浏览量
+      visitors: 访客
+      sessions: 会话
+    windows:
+      last_1h: 最近 1 小时
+      last_24h: 最近 24 小时
+      yesterday: 昨天
+    emailPreviewPage:
+      title: 通知邮件预览
+      subtitle: 不创建消息、不调用 Resend，直接渲染通知邮件。
+      typeLabel: 预览类型
+      localeLabel: 预览语言
+      formatLabel: 预览格式
+      html: HTML
+      text: 纯文本
+      json: JSON
+      refresh: 预览
+      loading: 正在渲染预览...
+      loadFailed: 渲染邮件预览失败。
+      subject: 主题
   publicLinks:
     title: 公开链接
     subtitle: 管理当前团队可公开访问的分享链接。
     empty: 当前团队还没有公开链接。
+    enabled: 已启用
+    disabled: 未启用
+    disabledHint: 未启用公开访问。前往站点设置开启。
+    viewSettings: 查看设置
+    publicUrl: 公开链接
+    copyLink: 复制链接
+    linkCopied: 链接已复制
+    noSites: 当前团队还没有站点。
+    columns:
+      site: 站点
+      domain: 域名
+      publicUrl: 公开链接
+      status: 状态
+      action: 操作
   apiKeys:
     title: API 密钥
     subtitle: 管理当前团队用于接口访问的密钥。
     empty: 当前团队还没有 API 密钥。
+    create: 创建密钥
+    creating: 创建中...
+    createTitle: 创建 API 密钥
+    createSubtitle: 只授予这个集成真正需要的最小权限。
+    nameLabel: 密钥名称
+    namePlaceholder: 生产同步任务
+    scopesTitle: 权限
+    scopesDescription: API 密钥永远不能管理成员、用户、所有权或其他密钥。
+    siteScopeTitle: 站点范围
+    siteScopeDescription: 不选择站点表示当前团队所有现有和未来站点。
+    allSites: 全部站点
+    expirationLabel: 过期时间
+    expiration30: 30 天
+    expiration90: 90 天
+    expiration180: 180 天
+    expiration365: 365 天
+    expirationNever: 永不过期
+    oneTimeSecretTitle: 立即复制这个密钥
+    oneTimeSecretDescription: 完整密钥只显示一次，关闭弹窗后无法再次查看。
+    copySecret: 复制密钥
+    revoke: 撤销
+    rotate: 轮换
+    revokeConfirm: 确认立即撤销这个 API 密钥吗？
+    rotateConfirm: 确认轮换这个 API 密钥吗？旧密钥会被立即撤销。
+    neverExpires: 永不过期
+    notUsed: 未使用
+    loading: 正在加载 API 密钥...
+    loadFailed: API 密钥加载失败。
+    invalidInput: 请输入名称并至少选择一个权限。
+    createFailed: API 密钥创建失败。
+    revokeFailed: API 密钥撤销失败。
+    rotateFailed: API 密钥轮换失败。
+    copied: 已复制
+    status:
+      active: 有效
+      expired: 已过期
+      revoked: 已撤销
+    scopes:
+      analyticsRead: 读取分析
+      siteRead: 读取站点
+      siteWrite: 写入站点
+      siteConfigRead: 读取配置
+      siteConfigWrite: 写入配置
+    scopeDescriptions:
+      analyticsRead: 查看访问量、访客、页面浏览等分析数据
+      siteRead: 查看站点列表和站点详情
+      siteWrite: 创建、更新或删除站点
+      siteConfigRead: 查看站点配置，如跟踪代码、域名白名单等
+      siteConfigWrite: 修改站点配置，如跟踪强度、路径黑名单等
+    scopeGroups:
+      analytics: 分析
+      site: 站点
+      siteConfig: 站点配置
+    columns:
+      name: 名称
+      scopes: 权限
+      sites: 站点
+      expires: 过期
+      lastUsed: 最近使用
+      status: 状态
+      action: 操作
   settings:
     title: 团队设置
     subtitle: 更新团队显示名和 slug。
@@ -886,19 +1357,42 @@ teamManagement:
     noTransferableMembers: 当前团队没有其他可转移的成员，请先添加成员。
   members:
     title: 成员管理
-    subtitle: 添加成员或移除成员。
+    subtitle: 创建邀请链接或移除现有成员。
     identifierLabel: 用户名或邮箱
     identifierPlaceholder: 例如：alice 或 alice@example.com
     add: 添加成员
     adding: 添加中...
     remove: 移除
     noMembers: 当前团队暂无成员。
+    invitesTitle: 创建邀请链接
+    invitesSubtitle: 用户接受邀请后才会加入此团队。
+    inviteEmailLabel: 邮箱限制（可选）
+    inviteEmailPlaceholder: user@example.com
+    inviteExpiresLabel: 有效期（小时）
+    createInvite: 创建邀请链接
+    creatingInvite: 创建中...
+    copyInvite: 复制链接
+    inviteLinksTitle: 邀请链接
+    inviteLinksSubtitle: 查看邀请状态并撤销有效链接。
+    noInvites: 当前团队暂无邀请链接。
+    anyEmail: 任意邮箱
+    revokeInvite: 撤销邀请
+    inviteStatuses:
+      active: 有效
+      used: 已使用
+      revoked: 已撤销
+      expired: 已过期
     columns:
       name: 名称
       username: 用户名
       email: 邮箱
+      inviteCode: 邀请码
       role: 角色
       joinedAt: 加入时间
+      createdAt: 创建时间
+      expiresAt: 过期时间
+      usedAt: 使用时间
+      status: 状态
       action: 操作
     roleLabels:
       owner: 所有者
@@ -910,24 +1404,121 @@ managementNav:
   teams: 团队管理
   versionUpdates: 版本更新
   scheduledTasks: 定时任务
+  botProtection: 机器人防护
   systemPerformance: 系统性能
+  systemSettings: 系统设置
 managementPages:
   versionUpdates:
-    subtitle: 查看和管理系统版本更新记录。
+    subtitle: 查看 InsightFlare 已发布版本与当前运行构建。
     empty: 暂无版本更新记录。
+    currentVersion: 当前版本
+    latestVersion: 最新版本
+    currentCommit: 当前提交
+    releaseCount: 发布数
+    publishedAt: 发布时间
+    author: 发布者
+    commit: 提交
+    statusStable: 正式版
+    statusPrerelease: 预发布
+    statusDraft: 草稿
+    currentVersionBadge: 当前版本
+    releaseNotes: 更新说明
+    openRelease: 打开 Release
+    viewDetails: 查看详细变更
+    detailsTitle: 详细变更
+    detailsDescription: "{range} 包含的提交。"
+    detailsLoading: 正在加载详细变更...
+    detailsEmpty: 这个版本暂无可对比的上一个发布版本。
+    detailsFailed: 加载详细变更失败。
+    currentCommitBadge: 当前部署
+    openCompare: 打开对比
+    openCommit: 打开提交
+    commitCount: 提交数
+    source: 数据来源
+    loadFailed: 加载 GitHub Releases 失败。
+    unknown: 未知
   scheduledTasks:
     subtitle: 查看和管理系统定时任务。
     empty: 暂无定时任务。
+    refresh: 刷新
+    loadFailed: 加载定时任务失败。
+    allTasks: 全部任务
+    allStatuses: 全部状态
+    runs24h: 24 小时运行
+    successRate24h: 24 小时成功率
+    successRateDescription: 只统计成功状态的运行。
+    problemRuns24h: 问题运行
+    retentionPrefix: 保留
+    days: 天
+    failed: 失败
+    partial: 部分完成
+    lastRun: 最近运行
+    staleRunning: 卡住的运行
+    noStaleRunning: 没有卡住的运行
+    taskListTitle: 任务
+    taskListDescription: 当前系统注册的定时任务和近 30 天健康状况。
+    task: 任务
+    schedule: 计划
+    enabled: 状态
+    enabledYes: 已启用
+    enabledNo: 未启用
+    lastStatus: 最近状态
+    runs30d: 30 天运行
+    successRate30d: 30 天成功率
+    avgDuration: 平均耗时
+    runHistoryTitle: 运行历史
+    runHistoryDescription: 最近 30 天内的任务运行记录。
+    noRuns: 暂无运行记录。
+    scheduledAt: 计划时间
+    startedAt: 开始时间
+    finishedAt: 结束时间
+    trigger: 触发
+    tasks: 任务
+    taskCount: 任务数
+    subtaskCount: 子任务数
+    taskResult: 任务结果
+    statusLabel: 状态
+    duration: 耗时
+    sites: 站点
+    hours: 小时
+    rows: 行数
+    rulesScanned: 规则
+    messagesCreated: 消息
+    emailFailed: 邮件失败
+    logs: 日志
+    viewLogs: 查看
+    logTitle: 运行日志
+    noRunSelected: 选择一次运行查看日志。
+    noLogs: 暂无日志。
+    error: 错误
+    status:
+      running: 运行中
+      success: 成功
+      partial: 部分完成
+      failed: 失败
+      skipped: 已跳过
+    taskDefinitions:
+      visit_hourly_rollup:
+        name: 小时访问聚合
+        description: 将已关闭的访问记录聚合为小时汇总，用于仪表盘计数器和趋势。
+        schedule: 每小时
+      notification_tick:
+        name: 通知分发
+        description: 检查通知规则并分发消息。
+        schedule: 每小时
 adminUsers:
   title: 用户管理
   subtitle: 仅系统管理员可创建和管理后台用户。
   createTitle: 新建用户
-  createSubtitle: 创建后可立即用于登录后台。
+  createTeamNotice: 在这里创建用户会同时创建一个由该用户拥有的新团队。如果只是想把用户加入现有团队，请前往对应团队设置中创建邀请链接。
   username: 用户名
   email: 邮箱
   name: 名称（可选）
   password: 密码（至少 8 位）
   role: 系统角色
+  teamName: 团队名称
+  teamSlug: 团队 Slug（可选）
+  defaultTeamName: "{name} 的团队"
   create: 创建用户
   creating: 创建中...
   delete: 删除
@@ -935,6 +1526,13 @@ adminUsers:
   deleteConfirm: 确认删除该用户账号吗？
   deleteSuccess: 用户已删除。
   deleteFailed: 删除用户失败。
+  generateResetLink: 生成重置密码链接
+  resetLinkCreated: 重置密码链接已生成。
+  resetLinkCreateFailed: 生成重置密码链接失败。
+  resetLinkCopied: 重置密码链接已复制。
+  resetLinkCopyFailed: 复制重置密码链接失败。
+  copyResetLink: 复制链接
+  resetLinkExpiresAt: 过期时间
   listTitle: 用户列表
   listSubtitle: 当前系统内所有用户。
   noData: 暂无用户数据。
@@ -1000,6 +1598,155 @@ adminTeams:
     members: 成员数
     created: 创建时间
     action: 操作
+botProtection:
+  title: 机器人防护
+  subtitle: 查看进入主 DO/D1 分析链路前已被分流的流量。
+  refresh: 刷新
+  loadFailed: 加载机器人防护数据失败。
+  notConfiguredTitle: 尚未配置 Analytics Engine 读取凭据
+  notConfiguredDescription: 请先在系统设置中填写 Cloudflare Account ID 和 API Token，用于读取机器人分流数据集。
+  openSettings: 打开设置
+  range1h: 最近 1 小时
+  range6h: 最近 6 小时
+  range24h: 最近 24 小时
+  range7d: 最近 7 天
+  range30d: 最近 30 天
+  total: 已分流请求
+  botRequests: 机器人请求数
+  allRequests: 全站访问量
+  botRequestRatio: 机器人请求比例
+  botTrafficRatio: 机器人流量比例
+  highConfidenceBots: 高置信机器人
+  affectedSites: 受影响站点
+  sourceNetworks: 来源网络
+  rollupBaseline: 基于汇总表全站访问
+  highConfidence: 高置信度
+  mediumConfidence: ASN 分流
+  uniqueAsns: ASN 数
+  uniqueCountries: 国家/地区
+  mapTitle: 机器人流量地图
+  mapDescription: 按 Cloudflare 边缘地理信息聚合最近分流请求。
+  noData: 当前时间窗口内没有机器人流量。
+  trendTitle: 分流趋势
+  trendDescription: 进入主分析链路前被分流的请求数量。
+  reasonsTitle: 判定原因
+  reasonsDescription: 触发分流的信号。
+  asnTitle: 来源网络
+  asnDescription: 最常出现的托管和云服务 ASN。
+  recentTitle: 最近机器人请求
+  recentDescription: 这些详细记录只写入机器人 Analytics Engine 数据集。
+  time: 时间
+  site: 站点
+  location: 位置
+  network: 网络
+  reason: 原因
+  request: 请求
+  ip: IP
+  userAgent: User-Agent
+  confidence: 置信度
+  blocked: 拦截
+  highConfidenceRequests: 高置信请求
+  emptyValue: 未知
+  kind: 类型
+  botScoreBucket: Bot Score 区间
+  verifiedBotCategory: 验证机器人类别
+  hostname: 主机名
+  pathname: 路径
+  origin: Origin
+  asOrganization: ASN 组织
+  asn: ASN
+  country: 国家/地区
+  region: 州/省
+  city: 城市
+  colo: 数据中心
+  userAgentLengthBucket: User-Agent 长度
+  ipPrefix: IP 前缀
+  botReasonLabels:
+    missing_ua: 缺少 User-Agent
+    ua_too_long: User-Agent 过长
+    ua_isbot: User-Agent 匹配机器人
+    script_ua: 脚本客户端 User-Agent
+    cf_bot_score_low: Cloudflare Bot Score 偏低
+    cf_verified_bot_category: Cloudflare 验证机器人类别
+    hosting_asn: 托管服务 ASN
+    network_service_asn: 网络服务 ASN
+    transit_asn: 中转网络 ASN
+    access_asn: 接入网络 ASN
+    missing_browser_provenance: 缺少浏览器来源信号
+    origin_hostname_mismatch: Origin 与主机名不匹配
+    blocked_pathname: 命中路径黑名单
+systemSettings:
+  title: 系统设置
+  subtitle: 管理当前 InsightFlare 实例的全站配置。
+  botAnalyticsTitle: 机器人分析引擎
+  botAnalyticsDescription: 配置用于读取机器人分流 Analytics Engine 数据集的 Cloudflare 凭据。
+  botAnalyticsAccountIdLabel: Cloudflare Account ID
+  botAnalyticsDatasetLabel: Analytics Engine 数据集
+  botAnalyticsApiTokenLabel: Cloudflare API Token
+  botAnalyticsApiTokenPlaceholder: 留空表示保留已保存的 API Token
+  botAnalyticsTokenSaved: Token 已保存
+  botAnalyticsTokenNotSaved: 尚未保存 Token
+  botAnalyticsSaved: 机器人分析配置已保存。
+  botAnalyticsSaveFailed: 保存机器人分析配置失败。
+  botAnalyticsDeleted: 机器人分析配置已删除。
+  botAnalyticsDeleteFailed: 删除机器人分析配置失败。
+  botAnalyticsDeleteConfirm: 确认删除机器人分析读取配置吗？删除后机器人防护页面会显示需要配置。
+  notificationEmailTitle: 邮件通知
+  notificationEmailDescription: 配置系统用于发送报告、告警和测试邮件的邮件服务。
+  loginTurnstileTitle: 登录 Turnstile 保护
+  loginTurnstileDescription: 启用后，登录页会在后台执行 Cloudflare Turnstile Invisible 验证，并在服务端登录流程中强制校验。
+  loginTurnstileEnabledLabel: 启用登录保护
+  loginTurnstileSiteKeyLabel: Site Key
+  loginTurnstileSecretKeyLabel: Secret Key
+  loginTurnstileSecretKeyPlaceholder: 留空表示保留已保存的 Secret Key
+  loginTurnstileSecretKeySaved: 已保存
+  loginTurnstileSecretKeyNotSaved: 尚未保存 Secret Key
+  loginTurnstileModeLabel: 验证模式
+  loginTurnstileModeInvisible: Invisible
+  loginTurnstileTest: 测试验证
+  loginTurnstileTesting: 验证中...
+  loginTurnstileTestPassed: 验证成功
+  loginTurnstileTestRequired: 新 Secret Key 需要先测试
+  loginTurnstileTestMissing: 请先填写 Site Key 和 Secret Key。
+  loginTurnstileTestFailed: 验证失败，请检查 Site Key 与 Secret Key。
+  loginTurnstileSaved: 登录 Turnstile 配置已保存。
+  loginTurnstileSaveFailed: 保存登录 Turnstile 配置失败。
+  loginTurnstileDeleted: 登录 Turnstile 配置已删除。
+  loginTurnstileDeleteFailed: 删除登录 Turnstile 配置失败。
+  loginTurnstileDeleteConfirm: 确认删除登录 Turnstile 配置吗？删除后登录保护将关闭。
+  loginTurnstileLoadFailed: 加载登录 Turnstile 配置失败。
+  loginTurnstilePrivacyNotice: 请在 Cloudflare Turnstile 控制台创建 Invisible widget。自托管站点启用后，请自行确认隐私政策与 Cloudflare Turnstile 要求匹配。
+  enabledLabel: 启用邮件发送
+  enabledOn: 开启
+  enabledOff: 关闭
+  providerLabel: 邮件服务
+  providerResend: Resend
+  fromNameLabel: 发件人名称
+  fromEmailLabel: 发件人邮箱
+  replyToLabel: Reply-To 邮箱
+  replyToPlaceholder: 可选，默认使用发件人邮箱
+  resendApiKeyLabel: Resend API Key
+  resendApiKeyPlaceholder: 留空表示保留已保存的 API Key
+  resendApiKeySaved: 已保存
+  clearApiKey: 清除已保存的 API Key
+  testRecipientLabel: 测试收件人
+  save: 保存配置
+  saving: 保存中...
+  test: 发送测试邮件
+  testing: 发送中...
+  saved: 邮件配置已保存。
+  saveFailed: 保存邮件配置失败。
+  delete: 删除配置
+  deleting: 删除中...
+  cancel: 取消
+  deleted: 邮件配置已删除。
+  deleteFailed: 删除邮件配置失败。
+  deleteConfirm: 确认删除邮件通知配置吗？删除后系统将视为未配置并关闭邮件发送。
+  testSent: 测试邮件已发送。
+  testFailed: 测试邮件发送失败。
+  loadFailed: 加载邮件配置失败。
+  invalidEmail: 请填写有效邮箱。
+  missingApiKey: 启用 Resend 时需要配置 API Key。
 systemPerformance:
   title: 系统性能
   subtitle: 基于现有分析行监控 InsightFlare 的采集、缓冲和写入健康度。
@@ -1050,44 +1797,48 @@ systemPerformance:
   serverTime: 服务端写入时间
   estimatedDelay: 估算延迟
   doDiagnosticTitle: DO 内部缓冲诊断
-  doDiagnosticDescription: 直接询问每个站点的 Durable Object，统计 buffered_visits / buffered_custom_events 是否存在停滞、未来时间戳或永久 dirty 行。
+  doDiagnosticDescription:
+    直接询问每个站点的 Durable Object，统计 buffered_visits /
+    buffered_custom_events 是否存在停滞、未来时间戳或永久未刷新（脏）行。
   doDiagnosticLoadFailed: 加载 DO 诊断数据失败。
   doDiagnosticLoading: 正在拉取每个 DO 的状态…
   doDiagnosticEmpty: 暂无站点 DO 状态。
   doDiagnosticUnreachable: 部分站点 DO 不可达
   doDiagnosticReachableSites: 可达 DO
   doDiagnosticTotalSites: 总站点
-  doDiagnosticActiveAlarms: 活跃 alarm
+  doDiagnosticActiveAlarms: 活跃 Alarm 定时器
   doDiagnosticBufferedVisits: 缓冲访问
-  doDiagnosticOpenVisits: 缓冲 open 行
-  doDiagnosticOpenStale: open >30 分钟无活动
-  doDiagnosticOpenTimedOut: open >12 小时无活动
+  doDiagnosticOpenVisits: 缓冲未关闭访问行
+  doDiagnosticOpenStale: 未关闭且停滞 >30 分钟
+  doDiagnosticOpenTimedOut: 未关闭且停滞 >12 小时
   doDiagnosticOpenHardAged: 起始 >36 小时
   doDiagnosticOpenFutureSkew: 未来时间戳
-  doDiagnosticDirtyVisits: dirty 访问
-  doDiagnosticStuckDirty: dirty 卡住
+  doDiagnosticStuckDirty: 未刷新卡住
   doDiagnosticMaxFlushAttempts: 最大重试次数
   doDiagnosticBufferedCustomEvents: 缓冲自定义事件
-  doDiagnosticDirtyCustomEvents: dirty 自定义事件
-  doDiagnosticStuckDirtyCustomEvents: dirty 自定义事件卡住
-  doDiagnosticOldestOpen: 最早 open 起始
+  doDiagnosticOldestOpen: 最早未关闭起始
   doDiagnosticFutureMaxActivity: 最远未来 last_activity
   doDiagnosticSiteList: 风险靠前的站点
   doDiagnosticSiteListDescription: 按风险评分排序，前 20 个站点的 DO 内部缓冲快照。
-  doDiagnosticSiteOk: 已响应
   doDiagnosticSiteFailed: 不可达
-  doDiagnosticSiteOpen: open
+  doDiagnosticSiteOpen: 未关闭
   doDiagnosticSiteStuck: 卡住
   doDiagnosticSiteFuture: 未来
   doDiagnosticSiteHardAged: 老旧
-  doDiagnosticSiteAlarm: alarm
+  doDiagnosticSiteAlarm: Alarm 状态
   doDiagnosticSiteAlarmNone: 无
   doDiagnosticSiteAlarmDue: 到期
   doDiagnosticSiteResponseMs: 响应耗时
-  doDiagnosticThresholdsHint: 阈值：stale {stale}，timeout {timeout}，hardAged {hardAged}，stuck flush_attempts ≥ {stuck}
+  doDiagnosticThresholdsHint: 阈值：stale {stale}，timeout {timeout}，hardAged
+    {hardAged}，stuck flush_attempts ≥ {stuck}
   doDiagnosticHealthy: 当前未发现异常缓冲行。
 loginForm:
   signingIn: 登录中...
+  verifyingSecurity: 正在安全验证...
+  securityVerificationTitle: 安全验证失败
+  securityVerificationFailed: 安全验证失败，请重试。
+  retrySecurityVerification: 重试验证
+  redirecting: 正在跳转...
   failed: 登录失败，请稍后重试。
 logoutAction:
   pending: 退出中...

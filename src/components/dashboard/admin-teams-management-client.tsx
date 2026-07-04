@@ -2,11 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RiArrowRightLine, RiSettings3Line } from "@remixicon/react";
+import {
+  RiAddLine,
+  RiArrowRightLine,
+  RiFileList3Line,
+  RiSettings3Line,
+} from "@remixicon/react";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { PageHeading } from "@/components/dashboard/page-heading";
+import { TableActionButton } from "@/components/dashboard/table-action-button";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +23,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Clickable } from "@/components/ui/clickable";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
@@ -108,7 +114,7 @@ export function AdminTeamsManagementClient({
 
     setSubmitting(true);
     try {
-      const response = await fetch("/api/admin/team", {
+      const response = await fetch("/api/private/admin/teams", {
         method: "POST",
         credentials: "include",
         headers: {
@@ -139,14 +145,14 @@ export function AdminTeamsManagementClient({
 
   return (
     <div className="space-y-4">
-      <div className="space-y-1">
-        <h2 className="text-base font-semibold tracking-tight">{t.title}</h2>
-        <p className="text-sm text-muted-foreground">{t.subtitle}</p>
-      </div>
+      <PageHeading title={t.title} subtitle={t.subtitle} />
 
       <Card className="max-w-3xl">
         <CardHeader>
-          <CardTitle>{t.createTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiAddLine className="size-4" />
+            {t.createTitle}
+          </CardTitle>
           <CardDescription>{t.createSubtitle}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -186,7 +192,13 @@ export function AdminTeamsManagementClient({
                       {t.creating}
                     </span>
                   ) : (
-                    <span key="create">{t.create}</span>
+                    <span
+                      key="create"
+                      className="inline-flex items-center gap-2"
+                    >
+                      <RiAddLine className="size-4" />
+                      {t.create}
+                    </span>
                   )}
                 </AutoTransition>
               </Button>
@@ -197,7 +209,10 @@ export function AdminTeamsManagementClient({
 
       <Card>
         <CardHeader>
-          <CardTitle>{t.listTitle}</CardTitle>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiFileList3Line className="size-4" />
+            {t.listTitle}
+          </CardTitle>
           <CardDescription>{t.listSubtitle}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -230,32 +245,28 @@ export function AdminTeamsManagementClient({
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="inline-flex items-center justify-end gap-2">
-                    <Clickable
+                    <TableActionButton
                       onClick={() => {
                         navigateWithTransition(
                           router,
                           `/${locale}/app/${team.slug}`,
                         );
                       }}
-                      className="size-6 text-muted-foreground hover:text-foreground"
-                      aria-label={t.open}
-                      title={t.open}
+                      label={t.open}
                     >
                       <RiArrowRightLine className="size-4" />
-                    </Clickable>
-                    <Clickable
+                    </TableActionButton>
+                    <TableActionButton
                       onClick={() => {
                         navigateWithTransition(
                           router,
                           `/${locale}/app/${team.slug}/settings`,
                         );
                       }}
-                      className="size-6 text-muted-foreground hover:text-foreground"
-                      aria-label={t.settings}
-                      title={t.settings}
+                      label={t.settings}
                     >
                       <RiSettings3Line className="size-4" />
-                    </Clickable>
+                    </TableActionButton>
                   </div>
                 </TableCell>
               </TableRow>
