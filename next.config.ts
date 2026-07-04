@@ -5,7 +5,9 @@ import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 
 import packageJson from "./package.json";
 
-initOpenNextCloudflareForDev();
+if (process.env.NODE_ENV === "development") {
+  initOpenNextCloudflareForDev();
+}
 
 function getCommitSha(): string {
   try {
@@ -16,6 +18,7 @@ function getCommitSha(): string {
 }
 
 const nextConfig: NextConfig = {
+  adapterPath: "@opennextjs/cloudflare",
   reactStrictMode: true,
   env: {
     NEXT_PUBLIC_APP_VERSION: packageJson.version,
@@ -82,9 +85,6 @@ const nextConfig: NextConfig = {
         as: "*.js",
       },
     },
-  },
-  experimental: {
-    adapterPath: "@opennextjs/cloudflare",
   },
   webpack: (config) => {
     config.module.rules.push({

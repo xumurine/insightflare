@@ -83,11 +83,19 @@ async function runEnsureAstGrep(options: CommonOptions): Promise<void> {
 }
 
 async function runOpenNextBuild(options: CommonOptions): Promise<void> {
-  const command = process.platform === "win32" ? "npx.cmd" : "npx";
   await runtime.runCommand(
-    command,
-    ["opennextjs-cloudflare", "build"],
+    process.execPath,
+    [
+      localCli(
+        ROOT_DIR,
+        "@opennextjs/cloudflare",
+        path.join("dist", "cli", "index.js"),
+      ),
+      "build",
+    ],
     targetEnv(options.target),
+    ROOT_DIR,
+    "opennextjs-cloudflare build",
   );
 }
 

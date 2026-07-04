@@ -14,6 +14,7 @@
     "build:cf": "tsx scripts/build.ts --target cf",
     "build:local": "tsx scripts/build.ts --target local",
     "build:demo": "tsx scripts/build.ts --target demo",
+    "build:next": "cross-env NEXT_IGNORE_INCORRECT_LOCKFILE=1 next build --webpack",
     "build:pre": "tsx scripts/prebuild.ts --target cf",
     "build:pre:cf": "tsx scripts/prebuild.ts --target cf",
     "build:pre:local": "tsx scripts/prebuild.ts --target local",
