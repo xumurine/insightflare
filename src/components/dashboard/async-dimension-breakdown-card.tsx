@@ -138,7 +138,7 @@ function AsyncDimensionRowLabel({
   const appearance = row.labelAppearance;
   const className = cn(
     (appearance?.type === "geoRegion" || appearance?.type === "geoCity") &&
-      "flex min-h-8 items-center",
+      "inline-flex items-center",
     row.mono && "font-mono",
   );
 
@@ -262,7 +262,7 @@ export function AsyncDimensionBreakdownCard<T extends string>({
       columns={columns}
       requestKey={requestKey}
       loadRows={(tab) => loadRows(tab)}
-      normalizeRows={(rows) => normalizeRows(rows)}
+      normalizeRows={normalizeRows}
       renderLabel={(row) => (
         <AsyncDimensionRowLabel
           locale={locale}

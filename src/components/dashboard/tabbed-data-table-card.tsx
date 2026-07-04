@@ -269,6 +269,7 @@ export function TabbedDataTableCard<
   const [searchTerm, setSearchTerm] = useState("");
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const latestLoadRowsRef = useRef(loadRows);
+  const latestNormalizeRowsRef = useRef(normalizeRows);
   const loadedRowsByTabRef = useRef(loadedRowsByTab);
   const loadingByTabRef = useRef(internalLoadingByTab);
 
@@ -278,6 +279,10 @@ export function TabbedDataTableCard<
   useEffect(() => {
     latestLoadRowsRef.current = loadRows;
   }, [loadRows]);
+
+  useEffect(() => {
+    latestNormalizeRowsRef.current = normalizeRows;
+  }, [normalizeRows]);
 
   useEffect(() => {
     if (tabs.some((tab) => tab.value === activeTab)) return;
@@ -323,7 +328,7 @@ export function TabbedDataTableCard<
 
     latestLoadRowsRef
       .current(activeTab, controller.signal)
-      .then((nextRows) => normalizeRows(nextRows, activeTab))
+      .then((nextRows) => latestNormalizeRowsRef.current(nextRows, activeTab))
       .then((nextRows) => {
         if (controller.signal.aborted) return;
         setLoadedRowsByTab((previous) => ({
@@ -349,7 +354,7 @@ export function TabbedDataTableCard<
     return () => {
       controller.abort();
     };
-  }, [activeTab, normalizeRows, requestKey]);
+  }, [activeTab, requestKey]);
 
   useEffect(() => {
     if (searchTab !== null) return;
