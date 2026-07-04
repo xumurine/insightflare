@@ -1104,7 +1104,16 @@ export interface AppManagementMessages {
     range6h: string;
     range24h: string;
     range7d: string;
+    range30d: string;
     total: string;
+    botRequests: string;
+    allRequests: string;
+    botRequestRatio: string;
+    botTrafficRatio: string;
+    highConfidenceBots: string;
+    affectedSites: string;
+    sourceNetworks: string;
+    rollupBaseline: string;
     highConfidence: string;
     mediumConfidence: string;
     uniqueAsns: string;

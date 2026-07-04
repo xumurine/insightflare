@@ -14,6 +14,7 @@ import {
   RiKey2Line,
   RiLinksLine,
   RiNotification3Line,
+  RiRobot2Line,
   RiSettings3Line,
   RiShieldUserLine,
   RiSpeedUpLine,
@@ -149,6 +150,7 @@ function getManagementSectionIcon(key: string) {
   if (key === "manage-users") return RiUser3Line;
   if (key === "version-updates") return RiFileInfoLine;
   if (key === "scheduled-tasks") return RiCalendarScheduleLine;
+  if (key === "bot-protection") return RiRobot2Line;
   if (key === "system-settings") return RiSettings3Line;
   if (key === "system-performance") return RiSpeedUpLine;
   return RiTeamLine;
@@ -262,6 +264,7 @@ function parseSidebarRouteState(
         teams: "manage-teams",
         "version-updates": "version-updates",
         "scheduled-tasks": "scheduled-tasks",
+        "bot-protection": "bot-protection",
         "system-performance": "system-performance",
         "system-settings": "system-settings",
       };
@@ -562,6 +565,10 @@ export function DashboardShell({
   const isRealtimeRoute = Boolean(
     hasActiveSite && activeSiteBase && mainSiteSection === "realtime",
   );
+  const isBotProtectionRoute = Boolean(
+    !liveActiveTeamSlug &&
+    normalizeLocalePath(livePathname) === "/app/manage/bot-protection",
+  );
   const isGeoRoute = Boolean(
     hasActiveSite && activeSiteBase && mainSiteSection === "geo",
   );
@@ -579,7 +586,10 @@ export function DashboardShell({
   );
   const contentContainerClassName = isGeoRoute
     ? "flex min-h-0 flex-1 min-w-0 w-full flex-col md:overflow-hidden [&>[data-page-transition]]:flex [&>[data-page-transition]]:h-full [&>[data-page-transition]]:min-h-0 [&>[data-page-transition]]:flex-1 [&>[data-page-transition]]:flex-col"
-    : isRealtimeRoute || isSessionDetailRoute || isVisitorDetailRoute
+    : isRealtimeRoute ||
+        isBotProtectionRoute ||
+        isSessionDetailRoute ||
+        isVisitorDetailRoute
       ? "min-w-0 w-full"
       : "mx-auto min-w-0 w-full max-w-[1400px] p-4 md:p-6";
   const sidebarInsetClassName = isGeoRoute

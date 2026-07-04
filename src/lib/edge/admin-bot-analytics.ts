@@ -17,11 +17,11 @@ import {
 } from "./secret-encryption";
 import { deleteConfig, readConfig, upsertConfig } from "./system-config";
 import type { Env } from "./types";
-import { clampString } from "./utils";
+import { clampString, ONE_HOUR_MS } from "./utils";
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
-const WINDOW_OPTIONS_MINUTES = new Set([15, 60, 360, 1440, 10080]);
+const WINDOW_OPTIONS_MINUTES = new Set([60, 1440, 10080, 43200]);
 const CF_ANALYTICS_ENGINE_SQL_ENDPOINT =
   "https://api.cloudflare.com/client/v4/accounts";
 
@@ -57,6 +57,15 @@ interface BotAnalyticsEvent {
   userAgentLength: number;
 }
 
+interface RollupTrafficSummaryRow {
+  requests: number;
+}
+
+interface RollupTrafficTrendRow {
+  hourBucket: number;
+  requests: number;
+}
+
 function toFiniteNumber(value: unknown, fallback = 0): number {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
@@ -70,8 +79,8 @@ function toNullableCoordinate(value: unknown): number | null {
 }
 
 function parseWindowMinutes(url: URL): number {
-  const value = Number(url.searchParams.get("minutes") || "1440");
-  return WINDOW_OPTIONS_MINUTES.has(value) ? value : 1440;
+  const value = Number(url.searchParams.get("minutes") || "43200");
+  return WINDOW_OPTIONS_MINUTES.has(value) ? value : 43200;
 }
 
 function parseLimit(url: URL): number {
@@ -258,14 +267,24 @@ function shouldRetryBotAnalyticsWithoutDoubles(result: {
 }
 
 function bucketSizeMs(minutes: number): number {
-  if (minutes <= 60) return 5 * 60 * 1000;
-  if (minutes <= 360) return 30 * 60 * 1000;
-  if (minutes <= 1440) return 60 * 60 * 1000;
-  return 6 * 60 * 60 * 1000;
+  if (minutes <= 1440) return ONE_HOUR_MS;
+  if (minutes <= 10080) return 6 * ONE_HOUR_MS;
+  return 24 * ONE_HOUR_MS;
 }
 
-function aggregateEvents(events: BotAnalyticsEvent[], minutes: number) {
-  const now = Date.now();
+function buildTrendBuckets(from: number, to: number, bucketMs: number) {
+  const buckets: number[] = [];
+  for (let bucket = from; bucket <= to; bucket += bucketMs) {
+    buckets.push(Math.floor(bucket / bucketMs) * bucketMs);
+  }
+  return Array.from(new Set(buckets)).sort((left, right) => left - right);
+}
+
+function aggregateEvents(
+  events: BotAnalyticsEvent[],
+  minutes: number,
+  now = Date.now(),
+) {
   const since = now - minutes * 60 * 1000;
   const bucketMs = bucketSizeMs(minutes);
   const reasonCounts = new Map<string, number>();
@@ -285,8 +304,8 @@ function aggregateEvents(events: BotAnalyticsEvent[], minutes: number) {
     }
   >();
 
-  for (let bucket = since; bucket <= now; bucket += bucketMs) {
-    trend.set(Math.floor(bucket / bucketMs) * bucketMs, 0);
+  for (const bucket of buildTrendBuckets(since, now, bucketMs)) {
+    trend.set(bucket, 0);
   }
 
   for (const event of events) {
@@ -351,6 +370,80 @@ function aggregateEvents(events: BotAnalyticsEvent[], minutes: number) {
       })),
     ),
     asns: sortCounts([...asnCounts.values()]),
+  };
+}
+
+async function queryRollupTrafficSummary(
+  env: Env,
+  input: {
+    fromMs: number;
+    toMs: number;
+    bucketMs: number;
+  },
+): Promise<{
+  requests: number;
+  trend: Array<{ timestampMs: number; baselineCount: number }>;
+}> {
+  const startHour = Math.ceil(input.fromMs / ONE_HOUR_MS);
+  const endHour = Math.floor((input.toMs + 1) / ONE_HOUR_MS) - 1;
+  const trend = new Map(
+    buildTrendBuckets(input.fromMs, input.toMs, input.bucketMs).map(
+      (timestampMs) => [timestampMs, 0],
+    ),
+  );
+  if (endHour < startHour) {
+    return {
+      requests: 0,
+      trend: [...trend.entries()].map(([timestampMs, baselineCount]) => ({
+        timestampMs,
+        baselineCount,
+      })),
+    };
+  }
+
+  const row = await env.DB.prepare(
+    `
+      SELECT COALESCE(SUM(views), 0) AS requests
+      FROM visit_hourly_rollups
+      WHERE hour_bucket BETWEEN ? AND ?
+    `,
+  )
+    .bind(startHour, endHour)
+    .first<RollupTrafficSummaryRow>();
+  const trendRows = await env.DB.prepare(
+    `
+      SELECT
+        hour_bucket AS hourBucket,
+        COALESCE(SUM(views), 0) AS requests
+      FROM visit_hourly_rollups
+      WHERE hour_bucket BETWEEN ? AND ?
+      GROUP BY hour_bucket
+      ORDER BY hour_bucket ASC
+    `,
+  )
+    .bind(startHour, endHour)
+    .all<RollupTrafficTrendRow>();
+
+  for (const trendRow of trendRows.results) {
+    const hourBucket = Number(trendRow.hourBucket);
+    if (!Number.isFinite(hourBucket)) continue;
+    const timestampMs =
+      Math.floor((hourBucket * ONE_HOUR_MS) / input.bucketMs) * input.bucketMs;
+    trend.set(
+      timestampMs,
+      (trend.get(timestampMs) ?? 0) +
+        Math.max(0, toFiniteNumber(trendRow.requests)),
+    );
+  }
+
+  return {
+    requests: Math.max(0, Math.trunc(toFiniteNumber(row?.requests))),
+    trend: [...trend.entries()]
+      .sort((left, right) => left[0] - right[0])
+      .map(([timestampMs, baselineCount]) => ({
+        timestampMs,
+        baselineCount: Math.trunc(baselineCount),
+      })),
   };
 }
 
@@ -511,8 +604,11 @@ export async function handleBotAnalyticsAdmin(
       events: [],
       summary: {
         total: 0,
+        baselineRequests: 0,
+        botRequestRatio: 0,
         highConfidence: 0,
         mediumConfidence: 0,
+        affectedSites: 0,
         uniqueAsns: 0,
         uniqueCountries: 0,
       },
@@ -586,11 +682,40 @@ export async function handleBotAnalyticsAdmin(
   );
   const sites = await siteLookup(env, preliminaryEvents);
   const events = rawRows.map((row) => normalizeBotRow(row, sites));
-  const aggregates = aggregateEvents(events, minutes);
+  const bucketMs = bucketSizeMs(minutes);
+  const aggregates = aggregateEvents(events, minutes, generatedAt);
   const uniqueAsns = new Set(events.map((event) => event.asn).filter(Boolean));
   const uniqueCountries = new Set(
     events.map((event) => event.country).filter(Boolean),
   );
+  const affectedSites = new Set(
+    events.map((event) => event.siteId).filter(Boolean),
+  );
+  const rollupTraffic = await queryRollupTrafficSummary(env, {
+    fromMs: from,
+    toMs: generatedAt,
+    bucketMs,
+  });
+  const botRequests = events.length;
+  const totalRequests = rollupTraffic.requests + botRequests;
+  const botRequestRatio = totalRequests > 0 ? botRequests / totalRequests : 0;
+  const baselineByTimestamp = new Map(
+    rollupTraffic.trend.map((point) => [
+      point.timestampMs,
+      point.baselineCount,
+    ]),
+  );
+  const trend = aggregates.trend.map((point) => ({
+    ...point,
+    baselineCount: baselineByTimestamp.get(point.timestampMs) ?? 0,
+  }));
+  const trendWithRatio = trend.map((point) => {
+    const total = point.count + point.baselineCount;
+    return {
+      ...point,
+      botRatio: total > 0 ? point.count / total : 0,
+    };
+  });
 
   return jsonResponseFor(req, {
     ok: true,
@@ -603,15 +728,19 @@ export async function handleBotAnalyticsAdmin(
     },
     config: redactBotAnalyticsConfig(config),
     summary: {
-      total: events.length,
+      total: botRequests,
+      baselineRequests: rollupTraffic.requests,
+      botRequestRatio,
       highConfidence: events.filter((event) => event.confidence === "high")
         .length,
       mediumConfidence: events.filter((event) => event.confidence === "medium")
         .length,
+      affectedSites: affectedSites.size,
       uniqueAsns: uniqueAsns.size,
       uniqueCountries: uniqueCountries.size,
     },
     events,
     ...aggregates,
+    trend: trendWithRatio,
   });
 }

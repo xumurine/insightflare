@@ -141,6 +141,9 @@ describe("admin bot analytics handlers", () => {
     expect(body.configured).toBe(false);
     expect(body.events).toEqual([]);
     expect(body.summary.total).toBe(0);
+    expect(body.summary.baselineRequests).toBe(0);
+    expect(body.summary.botRequestRatio).toBe(0);
+    expect(body.summary.affectedSites).toBe(0);
   });
 
   it("passes through auth responses, rejects non-admins, and handles methods", async () => {
@@ -251,7 +254,16 @@ describe("admin bot analytics handlers", () => {
     const siteSelect = statement({
       all: [{ id: "site-1", name: "Blog", domain: "example.test" }],
     });
-    const env = createEnv([configSelect, siteSelect]);
+    const rollupSelect = statement({ first: { requests: 99 } });
+    const rollupTrendSelect = statement({
+      all: [{ hourBucket: 499999, requests: 99 }],
+    });
+    const env = createEnv([
+      configSelect,
+      siteSelect,
+      rollupSelect,
+      rollupTrendSelect,
+    ]);
     const aeBody = [
       JSON.stringify({
         timestamp: "2026-07-03 10:00:00",
@@ -314,10 +326,20 @@ describe("admin bot analytics handlers", () => {
     expect(body.configured).toBe(true);
     expect(body.summary).toMatchObject({
       total: 1,
+      baselineRequests: 99,
+      botRequestRatio: 0.01,
       mediumConfidence: 1,
+      affectedSites: 1,
       uniqueAsns: 1,
       uniqueCountries: 1,
     });
+    const preparedSql = (
+      env.DB.prepare as unknown as ReturnType<typeof vi.fn>
+    ).mock.calls.map(([sql]) => String(sql));
+    expect(
+      preparedSql.some((sql) => sql.includes("visit_hourly_rollups")),
+    ).toBe(true);
+    expect(preparedSql.some((sql) => sql.includes("FROM visits"))).toBe(false);
     expect(body.events[0]).toMatchObject({
       siteName: "Blog",
       siteDomain: "example.test",
@@ -328,6 +350,9 @@ describe("admin bot analytics handlers", () => {
       country: "JP",
       pointCount: 1,
     });
+    expect(body.trend.some((point: any) => point.baselineCount === 99)).toBe(
+      true,
+    );
   });
 
   it("falls back to blob-only Analytics Engine queries when double columns are unavailable", async () => {
@@ -349,7 +374,16 @@ describe("admin bot analytics handlers", () => {
     const siteSelect = statement({
       all: [{ id: "site-1", name: "Blog", domain: "example.test" }],
     });
-    const env = createEnv([configSelect, siteSelect]);
+    const rollupSelect = statement({ first: { requests: 49 } });
+    const rollupTrendSelect = statement({
+      all: [{ hourBucket: 500000, requests: 49 }],
+    });
+    const env = createEnv([
+      configSelect,
+      siteSelect,
+      rollupSelect,
+      rollupTrendSelect,
+    ]);
     const fallbackBody = [
       JSON.stringify({
         timestamp: "2026-07-03 10:00:00",
@@ -420,7 +454,10 @@ describe("admin bot analytics handlers", () => {
     });
     expect(body.summary).toMatchObject({
       total: 1,
+      baselineRequests: 49,
+      botRequestRatio: 0.02,
       mediumConfidence: 1,
+      affectedSites: 1,
       uniqueAsns: 1,
       uniqueCountries: 1,
     });

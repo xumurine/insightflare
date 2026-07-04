@@ -42,6 +42,8 @@ interface GeoPointsMapProps {
   loading?: boolean;
   emptyLabel?: string;
   heightClassName?: string;
+  countryHoverEnabled?: boolean;
+  pointColor?: [number, number, number];
   selectedCountryCode?: string | null;
   onCountrySelect?: (countryCode: string | null) => void;
 }
@@ -377,6 +379,8 @@ export function GeoPointsMap({
   loading = false,
   emptyLabel,
   heightClassName = DEFAULT_MAP_HEIGHT_CLASS,
+  countryHoverEnabled = true,
+  pointColor = MAP_ACCENT_RGB,
   selectedCountryCode,
   onCountrySelect,
 }: GeoPointsMapProps) {
@@ -562,7 +566,7 @@ export function GeoPointsMap({
       new ScatterplotLayer<ClusteredGeoPoint>({
         id,
         data,
-        getFillColor: withAlpha(MAP_ACCENT_RGB, alpha),
+        getFillColor: withAlpha(pointColor, alpha),
         getPosition: (item) => [item.longitude, item.latitude],
         getRadius: (item) => computeClusterPointRadius(item.count, currentZoom),
         radiusUnits: "pixels",
@@ -600,29 +604,35 @@ export function GeoPointsMap({
         lineWidthUnits: "pixels",
         lineWidthMinPixels: 0,
         getFillColor: (feature) =>
+          countryHoverEnabled &&
           normalizedSelectedCountryCode &&
           resolveCountryCodeFromFeature(feature) ===
             normalizedSelectedCountryCode
             ? withAlpha(MAP_ACCENT_RGB, 80)
             : [0, 0, 0, 0],
         getLineColor: (feature) =>
+          countryHoverEnabled &&
           normalizedSelectedCountryCode &&
           resolveCountryCodeFromFeature(feature) ===
             normalizedSelectedCountryCode
             ? withAlpha(MAP_ACCENT_RGB, 255)
-            : resolveCountryFeatureKey(feature) === hoveredCountryKey
+            : countryHoverEnabled &&
+                resolveCountryFeatureKey(feature) === hoveredCountryKey
               ? withAlpha(MAP_ACCENT_RGB, 240)
               : [0, 0, 0, 0],
         getLineWidth: (feature) =>
+          countryHoverEnabled &&
           normalizedSelectedCountryCode &&
           resolveCountryCodeFromFeature(feature) ===
             normalizedSelectedCountryCode
             ? 3
-            : resolveCountryFeatureKey(feature) === hoveredCountryKey
+            : countryHoverEnabled &&
+                resolveCountryFeatureKey(feature) === hoveredCountryKey
               ? 2.5
               : 0,
-        pickable: true,
+        pickable: countryHoverEnabled,
         onHover: (info) => {
+          if (!countryHoverEnabled) return;
           const feature = (info.object as CountryFeature | undefined) ?? null;
           const nextKey = resolveCountryFeatureKey(feature);
           const nextCode = resolveCountryCodeFromFeature(feature);
@@ -639,6 +649,7 @@ export function GeoPointsMap({
           );
         },
         onClick: (info) => {
+          if (!countryHoverEnabled) return;
           const feature = (info.object as CountryFeature | undefined) ?? null;
           handleCountryClick(feature);
         },
@@ -653,6 +664,7 @@ export function GeoPointsMap({
     return result;
   }, [
     countryGeoJson,
+    countryHoverEnabled,
     currentZoom,
     handleCountryClick,
     hoveredCountryKey,
@@ -661,6 +673,7 @@ export function GeoPointsMap({
     normalizedSelectedCountryCode,
     outgoingAlpha,
     outgoingClusters,
+    pointColor,
   ]);
 
   const hoveredCountryLabel = useMemo(() => {
@@ -688,7 +701,7 @@ export function GeoPointsMap({
     locale,
     hoveredCountryCounts?.sessions ?? 0,
   );
-  const showCountryToolbar = Boolean(hoveredCountryKey);
+  const showCountryToolbar = countryHoverEnabled && Boolean(hoveredCountryKey);
 
   useEffect(() => {
     const map = mapRef.current?.getMap();

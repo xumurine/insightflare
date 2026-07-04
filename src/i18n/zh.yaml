@@ -1610,7 +1610,16 @@ botProtection:
   range6h: 最近 6 小时
   range24h: 最近 24 小时
   range7d: 最近 7 天
+  range30d: 最近 30 天
   total: 已分流请求
+  botRequests: 机器人请求数
+  allRequests: 全站访问量
+  botRequestRatio: 机器人请求比例
+  botTrafficRatio: 机器人流量比例
+  highConfidenceBots: 高置信机器人
+  affectedSites: 受影响站点
+  sourceNetworks: 来源网络
+  rollupBaseline: 基于汇总表全站访问
   highConfidence: 高置信度
   mediumConfidence: ASN 分流
   uniqueAsns: ASN 数

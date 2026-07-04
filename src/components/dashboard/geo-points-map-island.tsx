@@ -19,6 +19,8 @@ interface GeoPointsMapIslandProps {
   loading?: boolean;
   emptyLabel?: string;
   heightClassName?: string;
+  countryHoverEnabled?: boolean;
+  pointColor?: [number, number, number];
   selectedCountryCode?: string | null;
   onCountrySelect?: (countryCode: string | null) => void;
 }
