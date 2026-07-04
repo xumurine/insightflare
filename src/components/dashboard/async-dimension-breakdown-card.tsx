@@ -136,11 +136,7 @@ function AsyncDimensionRowLabel({
   emptyLabel: string;
 }) {
   const appearance = row.labelAppearance;
-  const className = cn(
-    (appearance?.type === "geoRegion" || appearance?.type === "geoCity") &&
-      "flex min-h-8 items-center",
-    row.mono && "font-mono",
-  );
+  const className = cn(row.mono && "font-mono");
 
   if (appearance?.type === "favicon") {
     return (

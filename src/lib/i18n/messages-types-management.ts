@@ -1099,6 +1099,9 @@ export interface AppManagementMessages {
     loadFailed: string;
     notConfiguredTitle: string;
     notConfiguredDescription: string;
+    analyticsEngineDisabledTitle: string;
+    analyticsEngineDisabledDescription: string;
+    openAnalyticsEngine: string;
     openSettings: string;
     range1h: string;
     range6h: string;
@@ -1173,6 +1176,11 @@ export interface AppManagementMessages {
     botAnalyticsDeleted: string;
     botAnalyticsDeleteFailed: string;
     botAnalyticsDeleteConfirm: string;
+    botAnalyticsEngineDisabledBadge: string;
+    botAnalyticsEngineDisabledTitle: string;
+    botAnalyticsEngineDisabledDescription: string;
+    botAnalyticsEngineDisabledHint: string;
+    botAnalyticsOpenCloudflare: string;
     notificationEmailTitle: string;
     notificationEmailDescription: string;
     loginTurnstileTitle: string;

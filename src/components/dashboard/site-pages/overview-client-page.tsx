@@ -3476,8 +3476,6 @@ export function OverviewPagesSection({
                   <span
                     className={cn(
                       "inline-flex items-center gap-2 break-words",
-                      (tab === "region" || tab === "city") &&
-                        "flex min-h-8 items-center",
                       row.mono && "font-mono",
                     )}
                   >

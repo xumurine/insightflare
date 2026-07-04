@@ -1640,6 +1640,9 @@ botProtection:
   loadFailed: Failed to load bot protection data.
   notConfiguredTitle: Analytics Engine reader is not configured
   notConfiguredDescription: Add a Cloudflare Account ID and API token in System Settings to read the bot diversion dataset.
+  analyticsEngineDisabledTitle: Analytics Engine is not enabled
+  analyticsEngineDisabledDescription: This deployment was published without the Analytics Engine binding because the Cloudflare account has not enabled Analytics Engine. Enable it in Cloudflare, then redeploy to collect bot diversion data.
+  openAnalyticsEngine: Open Analytics Engine
   openSettings: Open settings
   range1h: Last 1 hour
   range6h: Last 6 hours
@@ -1726,6 +1729,11 @@ systemSettings:
   botAnalyticsDeleted: Bot analytics configuration deleted.
   botAnalyticsDeleteFailed: Failed to delete bot analytics configuration.
   botAnalyticsDeleteConfirm: Delete the bot analytics read configuration? The Bot Protection page will show configuration required until it is restored.
+  botAnalyticsEngineDisabledBadge: Analytics Engine disabled
+  botAnalyticsEngineDisabledTitle: Analytics Engine is not enabled
+  botAnalyticsEngineDisabledDescription: This deployment automatically disabled the Analytics Engine binding because the Cloudflare account has not enabled Analytics Engine. Enable Analytics Engine in Cloudflare, then redeploy InsightFlare to activate bot analytics.
+  botAnalyticsEngineDisabledHint: Bot analytics settings are locked until Analytics Engine is enabled and the Worker is redeployed.
+  botAnalyticsOpenCloudflare: Open Cloudflare Analytics Engine
   notificationEmailTitle: Email Notifications
   notificationEmailDescription: Configure the email service used for reports, alerts, and test messages.
   loginTurnstileTitle: Login Turnstile Protection

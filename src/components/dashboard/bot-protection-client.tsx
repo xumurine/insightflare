@@ -111,6 +111,10 @@ interface BotEvent {
 interface BotProtectionData {
   ok: true;
   configured: boolean;
+  config?: {
+    analyticsEngineDisabled?: boolean;
+    analyticsEngineEnableUrl?: string;
+  };
   generatedAt: number;
   window?: {
     minutes: number;
@@ -190,13 +194,48 @@ function trendChartConfig(copy: AppMessages["botProtection"]) {
   } satisfies ChartConfig;
 }
 
+async function generateDemoBotProtection(
+  minutes: WindowMinutes,
+  overrides?: Pick<BotProtectionData, "configured" | "error"> & {
+    config?: BotProtectionData["config"];
+  },
+): Promise<BotProtectionData> {
+  const { generateDemoBotProtectionData } =
+    await import("@/lib/realtime/mock/bot-protection");
+  const data = generateDemoBotProtectionData(minutes) as BotProtectionData;
+  return {
+    ...data,
+    ...overrides,
+    config: {
+      ...(data.config ?? {}),
+      ...overrides?.config,
+    },
+  };
+}
+
+function shouldShowDemoOverlay(data: BotProtectionData): boolean {
+  return (
+    data.config?.analyticsEngineDisabled === true || data.configured === false
+  );
+}
+
+async function withDemoOverlayData(
+  minutes: WindowMinutes,
+  data: BotProtectionData,
+): Promise<BotProtectionData> {
+  if (!shouldShowDemoOverlay(data)) return data;
+  return generateDemoBotProtection(minutes, {
+    configured: false,
+    error: data.error,
+    config: data.config,
+  });
+}
+
 async function fetchBotProtection(
   minutes: WindowMinutes,
 ): Promise<BotProtectionData> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { generateDemoBotProtectionData } =
-      await import("@/lib/realtime/mock/bot-protection");
-    return generateDemoBotProtectionData(minutes);
+    return generateDemoBotProtection(minutes);
   }
 
   const response = await fetch(
@@ -221,7 +260,7 @@ async function fetchBotProtection(
         "load_bot_protection_failed",
     );
   }
-  return payload;
+  return withDemoOverlayData(minutes, payload);
 }
 
 function windowLabel(messages: AppMessages, minutes: WindowMinutes): string {
@@ -717,7 +756,34 @@ export function BotProtectionClient({
   );
   const trend = data?.trend ?? [];
   const events = data?.events ?? [];
-  const configured = data?.configured !== false;
+  const analyticsEngineDisabled =
+    data?.config?.analyticsEngineDisabled === true;
+  const configured = !analyticsEngineDisabled && data?.configured !== false;
+  const showDemoOverlay =
+    Boolean(data) && !loading && (analyticsEngineDisabled || !configured);
+  const overlayTitle = analyticsEngineDisabled
+    ? copy.analyticsEngineDisabledTitle
+    : copy.notConfiguredTitle;
+  const overlayDescription = analyticsEngineDisabled
+    ? copy.analyticsEngineDisabledDescription
+    : copy.notConfiguredDescription;
+  const overlayAction = analyticsEngineDisabled ? (
+    <Button asChild>
+      <a
+        href={data?.config?.analyticsEngineEnableUrl || "#"}
+        target="_blank"
+        rel="noreferrer"
+      >
+        {copy.openAnalyticsEngine}
+      </a>
+    </Button>
+  ) : (
+    <Button asChild>
+      <Link href={`/${locale}/app/manage/system-settings`}>
+        {copy.openSettings}
+      </Link>
+    </Button>
+  );
   const trendConfig = useMemo(() => trendChartConfig(copy), [copy]);
   const formatTrendTooltipValue = useMemo(
     () =>
@@ -924,373 +990,403 @@ export function BotProtectionClient({
 
   return (
     <div className="space-y-6 pb-6">
-      <div className="relative h-[min(72svh,calc(100svh-10.5rem))] min-h-[18rem] overflow-hidden bg-background sm:min-h-[22rem]">
-        <GeoPointsMapIsland
-          locale={locale}
-          messages={messages}
-          points={data?.mapPoints ?? []}
-          loading={loading}
-          emptyLabel={copy.noData}
-          heightClassName="h-full"
-          countryHoverEnabled={false}
-          pointColor={[239, 68, 68]}
-          projectionMode="globe"
-          autoRotate
-        />
-
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-background via-background/65 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-background via-background/70 to-transparent" />
-
-        <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex flex-col gap-4 lg:inset-x-6 lg:top-6 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-2xl space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              {copy.title}
-            </h1>
-            <p className="max-w-prose text-sm text-foreground/75">
-              {copy.subtitle}
-            </p>
-          </div>
-          <div className="pointer-events-auto flex flex-wrap items-center gap-2">
-            <Select
-              value={String(minutes)}
-              onValueChange={(value) =>
-                setMinutes(Number(value) as WindowMinutes)
-              }
-            >
-              <SelectTrigger className="w-[160px] bg-background/90 backdrop-blur">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {WINDOW_OPTIONS.map((option) => (
-                  <SelectItem key={option} value={String(option)}>
-                    {windowLabel(messages, option)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              type="button"
-              variant="outline"
-              className="bg-background/90 backdrop-blur"
-              onClick={() => load(minutes, "refresh")}
-              disabled={loading || refreshing}
-            >
-              {refreshing ? (
-                <Spinner className="size-4" />
-              ) : (
-                <RiRefreshLine className="size-4" />
-              )}
-              {copy.refresh}
-            </Button>
-          </div>
+      <div className="pointer-events-none relative z-20 mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 pt-4 md:px-6 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-2xl space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            {copy.title}
+          </h1>
+          <p className="max-w-prose text-sm text-foreground/75">
+            {copy.subtitle}
+          </p>
+        </div>
+        <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+          <Select
+            value={String(minutes)}
+            onValueChange={(value) =>
+              setMinutes(Number(value) as WindowMinutes)
+            }
+          >
+            <SelectTrigger className="w-[160px] bg-background/90 backdrop-blur">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {WINDOW_OPTIONS.map((option) => (
+                <SelectItem key={option} value={String(option)}>
+                  {windowLabel(messages, option)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            variant="outline"
+            className="bg-background/90 backdrop-blur"
+            onClick={() => load(minutes, "refresh")}
+            disabled={loading || refreshing}
+          >
+            {refreshing ? (
+              <Spinner className="size-4" />
+            ) : (
+              <RiRefreshLine className="size-4" />
+            )}
+            {copy.refresh}
+          </Button>
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-[1400px] px-4 md:px-6">
-        <div className="space-y-6">
-          {!configured ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>{copy.notConfiguredTitle}</CardTitle>
-                <CardDescription>
-                  {copy.notConfiguredDescription}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button asChild>
-                  <Link href={`/${locale}/app/manage/system-settings`}>
-                    {copy.openSettings}
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          ) : null}
+      <div className="relative">
+        <div
+          aria-hidden={showDemoOverlay}
+          className={cn(
+            "space-y-6 transition duration-200",
+            showDemoOverlay && "pointer-events-none select-none blur-sm",
+          )}
+        >
+          <div className="relative h-[min(72svh,calc(100svh-10.5rem))] min-h-[18rem] overflow-hidden bg-background sm:min-h-[22rem]">
+            <GeoPointsMapIsland
+              locale={locale}
+              messages={messages}
+              points={data?.mapPoints ?? []}
+              loading={loading}
+              emptyLabel={copy.noData}
+              heightClassName="h-full"
+              countryHoverEnabled={false}
+              pointColor={[239, 68, 68]}
+              projectionMode="globe"
+              autoRotate
+            />
 
-          <Card className="py-0">
-            <CardContent className="p-0">
-              <div className="grid gap-px overflow-hidden bg-border/70 md:grid-cols-2 xl:grid-cols-4">
-                <MetricTile
-                  icon={RiRobot2Line}
-                  label={copy.botRequests}
-                  value={numberFormat(locale, data?.summary.total ?? 0)}
-                  detail={windowLabel(messages, minutes)}
-                  loading={loading}
-                />
-                <MetricTile
-                  icon={RiRadarLine}
-                  label={copy.botRequestRatio}
-                  value={percentFormat(
-                    locale,
-                    data?.summary.botRequestRatio ?? 0,
-                  )}
-                  detail={copy.rollupBaseline}
-                  loading={loading}
-                />
-                <MetricTile
-                  icon={RiShieldCheckLine}
-                  label={copy.highConfidenceBots}
-                  value={numberFormat(
-                    locale,
-                    data?.summary.highConfidence ?? 0,
-                  )}
-                  detail={copy.confidence}
-                  loading={loading}
-                />
-                <MetricTile
-                  icon={RiGlobalLine}
-                  label={copy.affectedSites}
-                  value={numberFormat(locale, data?.summary.affectedSites ?? 0)}
-                  detail={copy.site}
-                  loading={loading}
-                />
-              </div>
-            </CardContent>
-          </Card>
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-background via-background/65 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-background via-background/70 to-transparent" />
+          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>{copy.trendTitle}</CardTitle>
-              <CardDescription>{copy.trendDescription}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ChartContainer config={trendConfig} className="h-[320px] w-full">
-                <ComposedChart data={trend}>
-                  <defs>
-                    <linearGradient
-                      id="bot-protection-count-fill"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop
-                        offset="5%"
-                        stopColor="var(--color-count)"
-                        stopOpacity={0.35}
+          <div className="mx-auto w-full max-w-[1400px] px-4 md:px-6">
+            <div className="space-y-6">
+              <Card className="py-0">
+                <CardContent className="p-0">
+                  <div className="grid gap-px overflow-hidden bg-border/70 md:grid-cols-2 xl:grid-cols-4">
+                    <MetricTile
+                      icon={RiRobot2Line}
+                      label={copy.botRequests}
+                      value={numberFormat(locale, data?.summary.total ?? 0)}
+                      detail={windowLabel(messages, minutes)}
+                      loading={loading}
+                    />
+                    <MetricTile
+                      icon={RiRadarLine}
+                      label={copy.botRequestRatio}
+                      value={percentFormat(
+                        locale,
+                        data?.summary.botRequestRatio ?? 0,
+                      )}
+                      detail={copy.rollupBaseline}
+                      loading={loading}
+                    />
+                    <MetricTile
+                      icon={RiShieldCheckLine}
+                      label={copy.highConfidenceBots}
+                      value={numberFormat(
+                        locale,
+                        data?.summary.highConfidence ?? 0,
+                      )}
+                      detail={copy.confidence}
+                      loading={loading}
+                    />
+                    <MetricTile
+                      icon={RiGlobalLine}
+                      label={copy.affectedSites}
+                      value={numberFormat(
+                        locale,
+                        data?.summary.affectedSites ?? 0,
+                      )}
+                      detail={copy.site}
+                      loading={loading}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>{copy.trendTitle}</CardTitle>
+                  <CardDescription>{copy.trendDescription}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ChartContainer
+                    config={trendConfig}
+                    className="h-[320px] w-full"
+                  >
+                    <ComposedChart data={trend}>
+                      <defs>
+                        <linearGradient
+                          id="bot-protection-count-fill"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="5%"
+                            stopColor="var(--color-count)"
+                            stopOpacity={0.35}
+                          />
+                          <stop
+                            offset="95%"
+                            stopColor="var(--color-count)"
+                            stopOpacity={0.03}
+                          />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid vertical={false} />
+                      <XAxis
+                        dataKey="timestampMs"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        tickFormatter={(value) =>
+                          trendTickFormatter.format(
+                            new Date(Number(value ?? 0)),
+                          )
+                        }
+                        minTickGap={14}
                       />
-                      <stop
-                        offset="95%"
-                        stopColor="var(--color-count)"
-                        stopOpacity={0.03}
+                      <YAxis
+                        yAxisId="bots"
+                        width={52}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(value) =>
+                          formatter.format(Number(value))
+                        }
                       />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid vertical={false} />
-                  <XAxis
-                    dataKey="timestampMs"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    tickFormatter={(value) =>
-                      trendTickFormatter.format(new Date(Number(value ?? 0)))
-                    }
-                    minTickGap={14}
-                  />
-                  <YAxis
-                    yAxisId="bots"
-                    width={52}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(value) => formatter.format(Number(value))}
-                  />
-                  <YAxis
-                    yAxisId="ratio"
-                    orientation="right"
-                    width={44}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(value) =>
-                      percentFormat(locale, Number(value))
-                    }
-                  />
-                  <ChartTooltip
-                    allowEscapeViewBox={{ x: false, y: true }}
-                    wrapperStyle={{ zIndex: 20 }}
-                    content={
-                      <ChartTooltipContent
-                        indicator="dot"
-                        labelFormatter={(value, payload) => {
-                          const timestamp = Number(
-                            payload?.[0]?.payload?.timestampMs ?? value ?? 0,
-                          );
-                          return trendTooltipFormatter.format(
-                            new Date(timestamp),
-                          );
-                        }}
-                        formatter={formatTrendTooltipValue}
+                      <YAxis
+                        yAxisId="ratio"
+                        orientation="right"
+                        width={44}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(value) =>
+                          percentFormat(locale, Number(value))
+                        }
                       />
-                    }
-                  />
-                  <Area
-                    yAxisId="bots"
-                    type="monotone"
-                    dataKey="count"
-                    stroke="var(--color-count)"
-                    fill="url(#bot-protection-count-fill)"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                  />
-                  <Line
-                    yAxisId="ratio"
-                    type="monotone"
-                    dataKey="botRatio"
-                    stroke="var(--color-botRatio)"
-                    strokeWidth={2}
-                    strokeDasharray="4 4"
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                  />
-                </ComposedChart>
-              </ChartContainer>
-            </CardContent>
-          </Card>
+                      <ChartTooltip
+                        allowEscapeViewBox={{ x: false, y: true }}
+                        wrapperStyle={{ zIndex: 20 }}
+                        content={
+                          <ChartTooltipContent
+                            indicator="dot"
+                            labelFormatter={(value, payload) => {
+                              const timestamp = Number(
+                                payload?.[0]?.payload?.timestampMs ??
+                                  value ??
+                                  0,
+                              );
+                              return trendTooltipFormatter.format(
+                                new Date(timestamp),
+                              );
+                            }}
+                            formatter={formatTrendTooltipValue}
+                          />
+                        }
+                      />
+                      <Area
+                        yAxisId="bots"
+                        type="monotone"
+                        dataKey="count"
+                        stroke="var(--color-count)"
+                        fill="url(#bot-protection-count-fill)"
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                      />
+                      <Line
+                        yAxisId="ratio"
+                        type="monotone"
+                        dataKey="botRatio"
+                        stroke="var(--color-botRatio)"
+                        strokeWidth={2}
+                        strokeDasharray="4 4"
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                      />
+                    </ComposedChart>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
 
-          <section className="grid gap-4 xl:grid-cols-2">
-            <AsyncDimensionBreakdownCard
-              locale={locale}
-              messages={messages}
-              tabs={detectionTabs}
-              loadRows={loadDetectionRows}
-              requestKey={`${minutes}:${events.length}:detection`}
-              className="h-full"
-              secondaryMetricLabel={copy.highConfidenceRequests}
-              emptyLabel={copy.noData}
-            />
-            <AsyncDimensionBreakdownCard
-              locale={locale}
-              messages={messages}
-              tabs={targetTabs}
-              loadRows={loadTargetRows}
-              requestKey={`${minutes}:${events.length}:target`}
-              className="h-full"
-              secondaryMetricLabel={copy.highConfidenceRequests}
-              emptyLabel={copy.noData}
-            />
-            <AsyncDimensionBreakdownCard
-              locale={locale}
-              messages={messages}
-              tabs={networkTabs}
-              loadRows={loadNetworkRows}
-              requestKey={`${minutes}:${events.length}:network`}
-              className="h-full"
-              secondaryMetricLabel={copy.highConfidenceRequests}
-              emptyLabel={copy.noData}
-            />
-            <AsyncDimensionBreakdownCard
-              locale={locale}
-              messages={messages}
-              tabs={clientTabs}
-              loadRows={loadClientRows}
-              requestKey={`${minutes}:${events.length}:client`}
-              className="h-full"
-              secondaryMetricLabel={copy.highConfidenceRequests}
-              emptyLabel={copy.noData}
-            />
-          </section>
+              <section className="grid gap-4 xl:grid-cols-2">
+                <AsyncDimensionBreakdownCard
+                  locale={locale}
+                  messages={messages}
+                  tabs={detectionTabs}
+                  loadRows={loadDetectionRows}
+                  requestKey={`${minutes}:${events.length}:detection`}
+                  className="h-full"
+                  secondaryMetricLabel={copy.highConfidenceRequests}
+                  emptyLabel={copy.noData}
+                />
+                <AsyncDimensionBreakdownCard
+                  locale={locale}
+                  messages={messages}
+                  tabs={targetTabs}
+                  loadRows={loadTargetRows}
+                  requestKey={`${minutes}:${events.length}:target`}
+                  className="h-full"
+                  secondaryMetricLabel={copy.highConfidenceRequests}
+                  emptyLabel={copy.noData}
+                />
+                <AsyncDimensionBreakdownCard
+                  locale={locale}
+                  messages={messages}
+                  tabs={networkTabs}
+                  loadRows={loadNetworkRows}
+                  requestKey={`${minutes}:${events.length}:network`}
+                  className="h-full"
+                  secondaryMetricLabel={copy.highConfidenceRequests}
+                  emptyLabel={copy.noData}
+                />
+                <AsyncDimensionBreakdownCard
+                  locale={locale}
+                  messages={messages}
+                  tabs={clientTabs}
+                  loadRows={loadClientRows}
+                  requestKey={`${minutes}:${events.length}:client`}
+                  className="h-full"
+                  secondaryMetricLabel={copy.highConfidenceRequests}
+                  emptyLabel={copy.noData}
+                />
+              </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>{copy.recentTitle}</CardTitle>
-              <CardDescription>{copy.recentDescription}</CardDescription>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{copy.time}</TableHead>
-                    <TableHead>{copy.site}</TableHead>
-                    <TableHead>{copy.location}</TableHead>
-                    <TableHead>{copy.network}</TableHead>
-                    <TableHead>{copy.reason}</TableHead>
-                    <TableHead>{copy.request}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {events.map((event) => (
-                    <TableRow key={`${event.traceId}:${event.receivedAt}`}>
-                      <TableCell className="whitespace-nowrap font-mono text-xs">
-                        {shortDateTimeWithSeconds(locale, event.receivedAt)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="max-w-[180px]">
-                          <p className="truncate text-sm font-medium">
-                            {event.siteName}
-                          </p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {event.siteDomain || event.siteId}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="max-w-[160px]">
-                          <p className="truncate text-sm">
-                            {formatLocation(event) || "--"}
-                          </p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {event.colo || event.continent || "--"}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="max-w-[230px]">
-                          <p className="truncate text-sm">{formatAsn(event)}</p>
-                          <p className="truncate font-mono text-xs text-muted-foreground">
-                            {copy.ip}: {event.ip || "--"}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex max-w-[220px] flex-wrap gap-1">
-                          <Badge
-                            variant={
-                              event.confidence === "high"
-                                ? "default"
-                                : "secondary"
-                            }
-                            className="capitalize"
+              <Card>
+                <CardHeader>
+                  <CardTitle>{copy.recentTitle}</CardTitle>
+                  <CardDescription>{copy.recentDescription}</CardDescription>
+                </CardHeader>
+                <CardContent className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{copy.time}</TableHead>
+                        <TableHead>{copy.site}</TableHead>
+                        <TableHead>{copy.location}</TableHead>
+                        <TableHead>{copy.network}</TableHead>
+                        <TableHead>{copy.reason}</TableHead>
+                        <TableHead>{copy.request}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {events.map((event) => (
+                        <TableRow key={`${event.traceId}:${event.receivedAt}`}>
+                          <TableCell className="whitespace-nowrap font-mono text-xs">
+                            {shortDateTimeWithSeconds(locale, event.receivedAt)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-[180px]">
+                              <p className="truncate text-sm font-medium">
+                                {event.siteName}
+                              </p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {event.siteDomain || event.siteId}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-[160px]">
+                              <p className="truncate text-sm">
+                                {formatLocation(event) || "--"}
+                              </p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {event.colo || event.continent || "--"}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-[230px]">
+                              <p className="truncate text-sm">
+                                {formatAsn(event)}
+                              </p>
+                              <p className="truncate font-mono text-xs text-muted-foreground">
+                                {copy.ip}: {event.ip || "--"}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex max-w-[220px] flex-wrap gap-1">
+                              <Badge
+                                variant={
+                                  event.confidence === "high"
+                                    ? "default"
+                                    : "secondary"
+                                }
+                                className="capitalize"
+                              >
+                                {event.confidence || "--"}
+                              </Badge>
+                              {event.reasons.slice(0, 2).map((reason) => (
+                                <Badge key={reason} variant="outline">
+                                  {botReasonLabel(copy, reason)}
+                                </Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-[300px]">
+                              <p className="truncate font-mono text-xs">
+                                {event.pathname || "/"}
+                              </p>
+                              <p
+                                className={cn(
+                                  "mt-1 truncate text-xs text-muted-foreground",
+                                  !event.userAgent && "italic",
+                                )}
+                              >
+                                {event.userAgent || copy.userAgent}
+                              </p>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {!loading && events.length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={6}
+                            className="h-24 text-center text-muted-foreground"
                           >
-                            {event.confidence || "--"}
-                          </Badge>
-                          {event.reasons.slice(0, 2).map((reason) => (
-                            <Badge key={reason} variant="outline">
-                              {botReasonLabel(copy, reason)}
-                            </Badge>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="max-w-[300px]">
-                          <p className="truncate font-mono text-xs">
-                            {event.pathname || "/"}
-                          </p>
-                          <p
-                            className={cn(
-                              "mt-1 truncate text-xs text-muted-foreground",
-                              !event.userAgent && "italic",
-                            )}
-                          >
-                            {event.userAgent || copy.userAgent}
-                          </p>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {!loading && events.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="h-24 text-center text-muted-foreground"
-                      >
-                        {copy.noData}
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                            {copy.noData}
+                          </TableCell>
+                        </TableRow>
+                      ) : null}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </div>
+
+        {showDemoOverlay ? (
+          <div className="absolute inset-0 z-30 bg-background/30 px-4">
+            <div className="sticky top-[calc(50svh-8rem)] mx-auto flex w-full max-w-lg justify-center py-10">
+              <Card
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="bot-protection-overlay-title"
+                aria-describedby="bot-protection-overlay-description"
+                className="w-full border-border/80 bg-background/95 shadow-2xl backdrop-blur"
+              >
+                <CardHeader>
+                  <CardTitle id="bot-protection-overlay-title">
+                    {overlayTitle}
+                  </CardTitle>
+                  <CardDescription id="bot-protection-overlay-description">
+                    {overlayDescription}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>{overlayAction}</CardContent>
+              </Card>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
