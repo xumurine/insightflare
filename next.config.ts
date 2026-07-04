@@ -53,7 +53,8 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://ajax.cloudflare.com https://challenges.cloudflare.com https://insight.ravelloh.com https://static.cloudflareinsights.com",
+              "script-src-elem 'self' 'unsafe-inline' https://ajax.cloudflare.com https://challenges.cloudflare.com https://insight.ravelloh.com https://static.cloudflareinsights.com",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https:",
               "font-src 'self' data:",

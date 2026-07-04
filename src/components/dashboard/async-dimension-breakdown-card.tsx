@@ -138,7 +138,7 @@ function AsyncDimensionRowLabel({
   const appearance = row.labelAppearance;
   const className = cn(
     (appearance?.type === "geoRegion" || appearance?.type === "geoCity") &&
-      "inline-flex items-center",
+      "flex min-h-8 items-center",
     row.mono && "font-mono",
   );
 

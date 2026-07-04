@@ -130,6 +130,8 @@ export interface TabbedDataTableCardProps<
   onValueChange?: (value: TTab) => void;
   requestKey?: string | number;
   defaultSort?: TabbedDataTableSortState<TKey>;
+  sortByTab?: Partial<Record<TTab, TabbedDataTableSortState<TKey>>>;
+  onSortChange?: (tab: TTab, sort: TabbedDataTableSortState<TKey>) => void;
   labelColumnLabel?: string | ((tab: TabbedDataTableTab<TTab>) => string);
   loadingLabel: string;
   emptyLabel: string;
@@ -217,6 +219,8 @@ export function TabbedDataTableCard<
   onValueChange,
   requestKey,
   defaultSort,
+  sortByTab: controlledSortByTab,
+  onSortChange,
   labelColumnLabel,
   loadingLabel,
   emptyLabel,
@@ -240,6 +244,16 @@ export function TabbedDataTableCard<
   const isMobile = useIsMobile();
   const reduceDataRowMotion = useReducedMotion() ?? false;
   const controlled = value !== undefined;
+  const tabsKey = useMemo(
+    () =>
+      tabs
+        .map(
+          (tab) =>
+            `${tab.value}:${tab.label}:${tab.columnLabel ?? ""}:${tab.defaultSort?.key ?? ""}:${tab.defaultSort?.direction ?? ""}`,
+        )
+        .join("|"),
+    [tabs],
+  );
   const [internalTab, setInternalTab] = useState<TTab>(
     defaultValue ?? tabs[0].value,
   );
@@ -267,9 +281,12 @@ export function TabbedDataTableCard<
   );
   const [searchTab, setSearchTab] = useState<TTab | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [loadVersion, setLoadVersion] = useState(0);
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const latestLoadRowsRef = useRef(loadRows);
   const latestNormalizeRowsRef = useRef(normalizeRows);
+  const latestTabsRef = useRef(tabs);
+  const latestColumnsRef = useRef(columns);
   const loadedRowsByTabRef = useRef(loadedRowsByTab);
   const loadingByTabRef = useRef(internalLoadingByTab);
 
@@ -285,18 +302,26 @@ export function TabbedDataTableCard<
   }, [normalizeRows]);
 
   useEffect(() => {
-    if (tabs.some((tab) => tab.value === activeTab)) return;
-    const next = tabs[0].value;
-    if (!controlled) setInternalTab(next);
-    onValueChange?.(next);
-  }, [activeTab, controlled, onValueChange, tabs]);
+    latestTabsRef.current = tabs;
+    latestColumnsRef.current = columns;
+  }, [columns, tabs]);
 
   useEffect(() => {
-    setLoadedRowsByTab(createTabRecord(tabs, () => null));
-    setInternalLoadingByTab(createTabRecord(tabs, () => false));
+    const nextTabs = latestTabsRef.current;
+    if (nextTabs.some((tab) => tab.value === activeTab)) return;
+    const next = nextTabs[0].value;
+    if (!controlled) setInternalTab(next);
+    onValueChange?.(next);
+  }, [activeTab, controlled, onValueChange, tabsKey]);
+
+  useEffect(() => {
+    const nextTabs = latestTabsRef.current;
+    const nextColumns = latestColumnsRef.current;
+    setLoadedRowsByTab(createTabRecord(nextTabs, () => null));
+    setInternalLoadingByTab(createTabRecord(nextTabs, () => false));
     setSortByTab(
-      createTabRecord(tabs, (tab) => {
-        const tabColumns = getColumnsForTab(columns, tab.value);
+      createTabRecord(nextTabs, (tab) => {
+        const tabColumns = getColumnsForTab(nextColumns, tab.value);
         return {
           key:
             (tab.defaultSort?.key as TKey | undefined) ??
@@ -309,7 +334,8 @@ export function TabbedDataTableCard<
     );
     setSearchTab(null);
     setSearchTerm("");
-  }, [columns, defaultSort?.direction, defaultSort?.key, requestKey, tabs]);
+    setLoadVersion((previous) => previous + 1);
+  }, [defaultSort?.direction, defaultSort?.key, requestKey, tabsKey]);
 
   useEffect(() => {
     if (!latestLoadRowsRef.current) return;
@@ -354,13 +380,21 @@ export function TabbedDataTableCard<
     return () => {
       controller.abort();
     };
-  }, [activeTab, requestKey]);
+  }, [activeTab, loadVersion, requestKey]);
 
   useEffect(() => {
     if (searchTab !== null) return;
     setSearchTerm("");
   }, [searchTab]);
 
+  const effectiveSortByTab = useMemo(
+    () =>
+      createTabRecord(
+        tabs,
+        (tab) => controlledSortByTab?.[tab.value] ?? sortByTab[tab.value],
+      ),
+    [controlledSortByTab, sortByTab, tabs],
+  );
   const searchConfig = search === false ? null : (search ?? {});
   const searchEnabled = searchConfig?.enabled ?? true;
   const externalRowsByTab = (rowsByTab ?? {}) as Partial<
@@ -393,7 +427,7 @@ export function TabbedDataTableCard<
       const tabValue = tab.value;
       const tabRows = resolvedRowsByTab[tabValue] ?? [];
       const tabColumns = getColumnsForTab(columns, tabValue);
-      const sort = sortByTab[tabValue];
+      const sort = effectiveSortByTab[tabValue];
       const sortColumn =
         tabColumns.find((column) => column.key === sort.key) ?? tabColumns[0];
       const direction = sort.direction === "asc" ? 1 : -1;
@@ -430,7 +464,7 @@ export function TabbedDataTableCard<
     filterRows,
     getRowSearchText,
     resolvedRowsByTab,
-    sortByTab,
+    effectiveSortByTab,
     tabs,
   ]);
 
@@ -486,23 +520,26 @@ export function TabbedDataTableCard<
   }
 
   function toggleSort(tab: TTab, key: TKey) {
-    setSortByTab((previous) => {
-      const current = previous[tab];
-      return {
-        ...previous,
-        [tab]:
-          current.key === key
-            ? {
-                key,
-                direction: current.direction === "desc" ? "asc" : "desc",
-              }
-            : { key, direction: "desc" },
-      };
-    });
+    const current = effectiveSortByTab[tab];
+    const next: TabbedDataTableSortState<TKey> =
+      current.key === key
+        ? {
+            key,
+            direction: current.direction === "desc" ? "asc" : "desc",
+          }
+        : { key, direction: "desc" as const };
+    if (onSortChange) {
+      onSortChange(tab, next);
+      return;
+    }
+    setSortByTab((previous) => ({
+      ...previous,
+      [tab]: next,
+    }));
   }
 
   function renderSortIndicator(tab: TTab, key: TKey) {
-    const sort = sortByTab[tab];
+    const sort = effectiveSortByTab[tab];
     if (sort.key === key) {
       return sort.direction === "desc" ? (
         <RiArrowDownSLine className="size-3.5" />
@@ -536,7 +573,7 @@ export function TabbedDataTableCard<
         </TableHead>
         {metricColumns.map((column) => {
           const sortable = column.sortable !== false;
-          const active = sortByTab[tab].key === column.key;
+          const active = effectiveSortByTab[tab].key === column.key;
 
           return (
             <TableHead
@@ -573,7 +610,7 @@ export function TabbedDataTableCard<
     metricColumns: readonly TabbedDataTableColumn<TRow, TKey, TTab>[],
     source: "card" | "search",
   ) {
-    const sort = sortByTab[tab];
+    const sort = effectiveSortByTab[tab];
     const progressColumn =
       progress === false
         ? null
@@ -749,8 +786,8 @@ export function TabbedDataTableCard<
   const syncKey = [
     activeTab,
     activeLoading ? "loading" : "idle",
-    sortByTab[activeTab].key,
-    sortByTab[activeTab].direction,
+    effectiveSortByTab[activeTab].key,
+    effectiveSortByTab[activeTab].direction,
     activeRows.length,
   ].join(":");
 
