@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { generateDemoBotProtectionData } from "@/lib/realtime/mock/bot-protection";
+import { generateDemoRequestObservationData } from "@/lib/realtime/mock/request-observation";
 
-describe("mock/bot-protection", () => {
-  it("generates populated bot protection demo data", () => {
-    const data = generateDemoBotProtectionData(1440);
+describe("mock/request-observation", () => {
+  it("generates populated request observation demo data", () => {
+    const data = generateDemoRequestObservationData(1440);
 
     expect(data.ok).toBe(true);
     expect(data.configured).toBe(true);

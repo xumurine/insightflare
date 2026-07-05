@@ -164,7 +164,7 @@ function getManagementSectionIcon(key: string) {
   if (key === "manage-users") return RiUser3Line;
   if (key === "version-updates") return RiFileInfoLine;
   if (key === "scheduled-tasks") return RiCalendarScheduleLine;
-  if (key === "bot-protection") return RiRobot2Line;
+  if (key === "request-observation") return RiRobot2Line;
   if (key === "system-settings") return RiSettings3Line;
   if (key === "system-performance") return RiSpeedUpLine;
   return RiTeamLine;
@@ -278,7 +278,7 @@ function parseSidebarRouteState(
         teams: "manage-teams",
         "version-updates": "version-updates",
         "scheduled-tasks": "scheduled-tasks",
-        "bot-protection": "bot-protection",
+        "request-observation": "request-observation",
         "system-performance": "system-performance",
         "system-settings": "system-settings",
       };
@@ -582,11 +582,11 @@ export function DashboardShell({
   const isRealtimeRoute = Boolean(
     hasActiveSite && activeSiteBase && mainSiteSection === "realtime",
   );
-  const isBotProtectionRoute = Boolean(
+  const isRequestObservationRoute = Boolean(
     !liveActiveTeamSlug &&
-    normalizeLocalePath(livePathname) === "/app/manage/bot-protection",
+    normalizeLocalePath(livePathname) === "/app/manage/request-observation",
   );
-  const requestObservationBase = `/${locale}/app/manage/bot-protection`;
+  const requestObservationBase = `/${locale}/app/manage/request-observation`;
   const requestObservationSections: Array<{
     key: AnalyticsNavKey;
     href: string;
@@ -594,7 +594,7 @@ export function DashboardShell({
     queryKey: string;
     queryValue: string;
     queryDefault?: boolean;
-  }> = isBotProtectionRoute
+  }> = isRequestObservationRoute
     ? [
         {
           key: "request-overview",
@@ -642,7 +642,7 @@ export function DashboardShell({
   const contentContainerClassName = isGeoRoute
     ? "flex min-h-0 flex-1 min-w-0 w-full flex-col md:overflow-hidden [&>[data-page-transition]]:flex [&>[data-page-transition]]:h-full [&>[data-page-transition]]:min-h-0 [&>[data-page-transition]]:flex-1 [&>[data-page-transition]]:flex-col"
     : isRealtimeRoute ||
-        isBotProtectionRoute ||
+        isRequestObservationRoute ||
         isSessionDetailRoute ||
         isVisitorDetailRoute
       ? "min-w-0 w-full"
@@ -758,7 +758,7 @@ export function DashboardShell({
       <DashboardQueryProvider
         scopeKey={activeSiteId}
         initialTimeZonePreference={user.timeZone || ""}
-        maxRangeDays={isBotProtectionRoute ? 90 : undefined}
+        maxRangeDays={isRequestObservationRoute ? 90 : undefined}
       >
         <Sidebar variant="inset" collapsible="icon">
           <SidebarHeader className={SIDEBAR_COLLAPSE_SECTION_CLASS}>
@@ -1066,10 +1066,10 @@ export function DashboardShell({
                     messages={messages}
                     siteId={activeSiteId}
                     showControls={
-                      Boolean(liveActiveTeamSlug) || isBotProtectionRoute
+                      Boolean(liveActiveTeamSlug) || isRequestObservationRoute
                     }
                     showFilterSheet={hasActiveSite}
-                    showRealtimeBadge={!isBotProtectionRoute}
+                    showRealtimeBadge={!isRequestObservationRoute}
                   />
                 </div>
               </div>

@@ -801,7 +801,7 @@ export interface AppManagementMessages {
     teams: string;
     versionUpdates: string;
     scheduledTasks: string;
-    botProtection: string;
+    requestObservation: string;
     systemPerformance: string;
     systemSettings: string;
   };
@@ -1092,7 +1092,7 @@ export interface AppManagementMessages {
     doDiagnosticThresholdsHint: string;
     doDiagnosticHealthy: string;
   };
-  botProtection: {
+  requestObservation: {
     title: string;
     subtitle: string;
     refresh: string;

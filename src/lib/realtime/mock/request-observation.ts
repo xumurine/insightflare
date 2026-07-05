@@ -93,7 +93,7 @@ interface DemoTrendPoint {
   p99LatencyMs: number | null;
 }
 
-interface DemoBotProtectionData {
+interface DemoRequestObservationData {
   ok: true;
   configured: boolean;
   generatedAt: number;
@@ -133,7 +133,7 @@ interface DemoBotProtectionData {
     p99LatencyMs: number | null;
   };
   abnormal: {
-    summary: DemoBotProtectionData["summary"] & {
+    summary: DemoRequestObservationData["summary"] & {
       total: number;
       ratio: number;
     };
@@ -201,6 +201,28 @@ const NORMAL_ASNS = [
   { asn: 1221, organization: "Telstra Pty Ltd", weight: 6 },
 ] as const;
 
+const DEMO_ABNORMAL_COUNTRY_WEIGHTS = [
+  { label: "US", weight: 18 },
+  { label: "DE", weight: 14 },
+  { label: "NL", weight: 12 },
+  { label: "SG", weight: 10 },
+  { label: "RU", weight: 9 },
+  { label: "IN", weight: 8 },
+  { label: "BR", weight: 6 },
+  { label: "VN", weight: 5 },
+] as const;
+
+const DEMO_NORMAL_COUNTRY_WEIGHTS = [
+  { label: "CN", weight: 20 },
+  { label: "US", weight: 14 },
+  { label: "JP", weight: 12 },
+  { label: "KR", weight: 10 },
+  { label: "GB", weight: 8 },
+  { label: "FR", weight: 7 },
+  { label: "AU", weight: 6 },
+  { label: "CA", weight: 6 },
+] as const;
+
 const BOT_USER_AGENTS = [
   "Googlebot/2.1 (+http://www.google.com/bot.html)",
   "bingbot/2.0 (+http://www.bing.com/bingbot.htm)",
@@ -248,6 +270,28 @@ function weightedPickNormalAsn(rng: () => number) {
     if (hit <= 0) return item;
   }
   return NORMAL_ASNS[0];
+}
+
+function pickDemoTrafficCountry(
+  rng: () => number,
+  profileCountries: Array<{ code: string; weight: number }>,
+  trafficWeights: readonly { label: string; weight: number }[],
+  fallback: string,
+): string {
+  const profileWeightByCountry = new Map(
+    profileCountries.map((item) => [
+      item.code.trim().toUpperCase(),
+      Math.max(0, item.weight),
+    ]),
+  );
+  const adjustedWeights = trafficWeights.map((item) => {
+    const profileWeight = profileWeightByCountry.get(item.label) ?? 0;
+    return {
+      label: item.label,
+      weight: item.weight * (0.75 + profileWeight / 100),
+    };
+  });
+  return weightedPickLabel(rng, adjustedWeights, fallback);
 }
 
 function pickReasons(rng: () => number): string[] {
@@ -497,14 +541,14 @@ function percentile(
   ];
 }
 
-export function generateDemoBotProtectionData(
+export function generateDemoRequestObservationData(
   minutes: WindowMinutes,
-): DemoBotProtectionData {
+): DemoRequestObservationData {
   const generatedAt = Date.now();
   const from = generatedAt - minutes * 60 * 1000;
   const rng = createDemoRng(
     "global",
-    `bot-protection:${minutes}:${windowBucket(from, generatedAt)}`,
+    `request-observation:${minutes}:${windowBucket(from, generatedAt)}`,
   );
   const eventTargetByWindow: Record<WindowMinutes, number> = {
     60: 160,
@@ -518,12 +562,10 @@ export function generateDemoBotProtectionData(
 
   for (let index = 0; index < target; index += 1) {
     const site = sPick(rng, DEMO_SITE_PROFILES);
-    const country = weightedPickLabel(
+    const country = pickDemoTrafficCountry(
       rng,
-      site.topCountries.map((item) => ({
-        label: item.code,
-        weight: item.weight,
-      })),
+      site.topCountries,
+      DEMO_ABNORMAL_COUNTRY_WEIGHTS,
       "US",
     );
     const geo = pickDemoGeoContext(rng, country);
@@ -590,13 +632,11 @@ export function generateDemoBotProtectionData(
 
   for (let index = 0; index < baselineRequests; index += 1) {
     const site = sPick(rng, DEMO_SITE_PROFILES);
-    const country = weightedPickLabel(
+    const country = pickDemoTrafficCountry(
       rng,
-      site.topCountries.map((item) => ({
-        label: item.code,
-        weight: item.weight,
-      })),
-      "US",
+      site.topCountries,
+      DEMO_NORMAL_COUNTRY_WEIGHTS,
+      "CN",
     );
     const geo = pickDemoGeoContext(rng, country);
     const asn = weightedPickNormalAsn(rng);

@@ -1439,7 +1439,7 @@ managementNav:
   teams: Team Management
   versionUpdates: Version Updates
   scheduledTasks: Scheduled Tasks
-  botProtection: Request Observability
+  requestObservation: Request Observability
   systemPerformance: System Performance
   systemSettings: System Settings
 managementPages:
@@ -1633,7 +1633,7 @@ adminTeams:
     members: Members
     created: Created
     action: Action
-botProtection:
+requestObservation:
   title: Request Observability
   subtitle: Observe total requests, abnormal diversions, and the normal collection path from Analytics Engine.
   refresh: Refresh

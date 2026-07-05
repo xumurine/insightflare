@@ -1404,7 +1404,7 @@ managementNav:
   teams: 团队管理
   versionUpdates: 版本更新
   scheduledTasks: 定时任务
-  botProtection: 请求观测
+  requestObservation: 请求观测
   systemPerformance: 系统性能
   systemSettings: 系统设置
 managementPages:
@@ -1598,7 +1598,7 @@ adminTeams:
     members: 成员数
     created: 创建时间
     action: 操作
-botProtection:
+requestObservation:
   title: 请求观测
   subtitle: 基于 Analytics Engine 观察整体请求、异常分流与正常采集链路。
   refresh: 刷新

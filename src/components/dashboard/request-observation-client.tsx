@@ -101,7 +101,7 @@ import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { cn } from "@/lib/utils";
 
-interface BotProtectionClientProps {
+interface RequestObservationClientProps {
   locale: Locale;
   messages: AppMessages;
 }
@@ -192,7 +192,7 @@ interface RequestTrendPoint {
   p99LatencyMs: number | null;
 }
 
-interface BotProtectionData {
+interface RequestObservationData {
   ok: true;
   configured: boolean;
   config?: {
@@ -274,7 +274,7 @@ interface BotProtectionData {
   };
 }
 
-interface BotProtectionDetailData {
+interface RequestObservationDetailData {
   ok: true;
   configured: boolean;
   generatedAt: number;
@@ -287,9 +287,10 @@ const BOT_EVENT_PAGE_SIZE = 80;
 const BOT_EVENT_SKELETON_ROWS = 8;
 const ABNORMAL_POINT_COLOR: [number, number, number] = [239, 68, 68];
 const NORMAL_POINT_COLOR: [number, number, number] = [34, 197, 94];
-const LOW_CONFIDENCE_COLOR = "#f59e0b";
-const MEDIUM_CONFIDENCE_COLOR = "#f97316";
-const HIGH_CONFIDENCE_COLOR = "#ef4444";
+const NORMAL_TRAFFIC_SHARE_COLOR = "var(--color-chart-1)";
+const LOW_CONFIDENCE_TRAFFIC_COLOR = "#f59e0b";
+const MEDIUM_CONFIDENCE_TRAFFIC_COLOR = "#f97316";
+const HIGH_CONFIDENCE_TRAFFIC_COLOR = "var(--color-destructive)";
 
 type RequestObservationTab = "overview" | "abnormal" | "normal";
 
@@ -391,16 +392,16 @@ interface BotDimensionRow {
 
 type DemoWindowMinutes = 60 | 1440 | 10080 | 43200;
 
-async function generateDemoBotProtection(
+async function generateDemoRequestObservation(
   minutes: DemoWindowMinutes,
-  overrides?: Pick<BotProtectionData, "configured" | "error"> & {
-    config?: BotProtectionData["config"];
+  overrides?: Pick<RequestObservationData, "configured" | "error"> & {
+    config?: RequestObservationData["config"];
   },
-): Promise<BotProtectionData> {
-  const { generateDemoBotProtectionData } =
-    await import("@/lib/realtime/mock/bot-protection");
+): Promise<RequestObservationData> {
+  const { generateDemoRequestObservationData } =
+    await import("@/lib/realtime/mock/request-observation");
   const data = withRequestObservabilityDefaults(
-    generateDemoBotProtectionData(minutes) as BotProtectionData,
+    generateDemoRequestObservationData(minutes) as RequestObservationData,
   );
   return withRequestObservabilityDefaults({
     ...data,
@@ -424,8 +425,8 @@ function demoMinutesForWindow(timeWindow: TimeWindow): DemoWindowMinutes {
 }
 
 function withRequestObservabilityDefaults(
-  data: BotProtectionData,
-): BotProtectionData {
+  data: RequestObservationData,
+): RequestObservationData {
   const rawTrend = data.trend ?? [];
   const trend = rawTrend.map((point) => {
     const abnormalCount = Number(point.abnormalCount ?? point.count ?? 0);
@@ -549,23 +550,23 @@ function withRequestObservabilityDefaults(
   };
 }
 
-function shouldShowDemoOverlay(data: BotProtectionData): boolean {
+function shouldShowDemoOverlay(data: RequestObservationData): boolean {
   return (
     data.config?.analyticsEngineDisabled === true || data.configured === false
   );
 }
 
-export function BotProtectionClient({
+export function RequestObservationClient({
   locale,
   messages,
-}: BotProtectionClientProps) {
-  const copy = messages.botProtection;
+}: RequestObservationClientProps) {
+  const copy = messages.requestObservation;
   const { window: timeWindow } = useDashboardQuery();
   const searchParams = useSearchParams();
   const activeTab = normalizeRequestObservationTab(
     searchParams.get("requestTab"),
   );
-  const [data, setData] = useState<BotProtectionData | null>(null);
+  const [data, setData] = useState<RequestObservationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -665,7 +666,7 @@ export function BotProtectionClient({
       if (mode === "initial") setLoading(true);
       else setRefreshing(true);
       try {
-        const next = await fetchBotProtection(timeWindow);
+        const next = await fetchRequestObservation(timeWindow);
         setData(next);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : copy.loadFailed);
@@ -765,27 +766,27 @@ export function BotProtectionClient({
       ({
         normalCount: {
           label: labels.normalRequests,
-          color: "var(--color-chart-2)",
+          color: "var(--color-chart-1)",
         },
         abnormalCount: {
           label: labels.abnormalRequests,
-          color: "var(--color-chart-4)",
+          color: "var(--color-destructive)",
         },
         totalCount: {
           label: labels.totalRequests,
-          color: "var(--color-chart-3)",
+          color: "var(--color-chart-1)",
         },
         pageviews: {
           label: labels.pageviews,
-          color: "var(--color-chart-5)",
+          color: "var(--color-chart-2)",
         },
         customEvents: {
           label: labels.customEvents,
-          color: "var(--color-chart-1)",
+          color: "var(--color-chart-4)",
         },
         abnormalRatio: {
           label: labels.abnormalRatio,
-          color: "var(--color-chart-1)",
+          color: "var(--color-chart-4)",
         },
         avgLatencyMs: {
           label: labels.avgLatency,
@@ -809,19 +810,19 @@ export function BotProtectionClient({
         },
         normalTrafficShare: {
           label: labels.normalTrafficShare,
-          color: "var(--color-chart-2)",
+          color: NORMAL_TRAFFIC_SHARE_COLOR,
         },
         lowConfidenceTraffic: {
           label: labels.lowConfidenceTraffic,
-          color: "var(--color-chart-5)",
+          color: LOW_CONFIDENCE_TRAFFIC_COLOR,
         },
         mediumConfidenceTraffic: {
           label: labels.mediumConfidenceTraffic,
-          color: "var(--color-chart-1)",
+          color: MEDIUM_CONFIDENCE_TRAFFIC_COLOR,
         },
         highConfidenceTraffic: {
           label: labels.highConfidenceTraffic,
-          color: "var(--color-chart-4)",
+          color: HIGH_CONFIDENCE_TRAFFIC_COLOR,
         },
       }) satisfies ChartConfig,
     [labels],
@@ -1112,25 +1113,25 @@ export function BotProtectionClient({
         key: "normal",
         label: labels.normalTrafficShare,
         value: overview?.normalRequests ?? 0,
-        color: `rgb(${NORMAL_POINT_COLOR.join(" ")})`,
+        color: NORMAL_TRAFFIC_SHARE_COLOR,
       },
       {
         key: "low",
         label: labels.lowConfidenceTraffic,
         value: confidenceCounts.low,
-        color: LOW_CONFIDENCE_COLOR,
+        color: LOW_CONFIDENCE_TRAFFIC_COLOR,
       },
       {
         key: "medium",
         label: labels.mediumConfidenceTraffic,
         value: abnormalSummary?.mediumConfidence ?? confidenceCounts.medium,
-        color: MEDIUM_CONFIDENCE_COLOR,
+        color: MEDIUM_CONFIDENCE_TRAFFIC_COLOR,
       },
       {
         key: "high",
         label: labels.highConfidenceTraffic,
         value: abnormalSummary?.highConfidence ?? confidenceCounts.high,
-        color: HIGH_CONFIDENCE_COLOR,
+        color: HIGH_CONFIDENCE_TRAFFIC_COLOR,
       },
     ],
     [
@@ -1150,6 +1151,7 @@ export function BotProtectionClient({
   const renderMap = (
     points: RequestMapPoint[],
     pointColor: [number, number, number],
+    options?: { collapseOverlappingPointColors?: boolean },
   ) => (
     <div className="relative h-[min(72svh,calc(100svh-10.5rem))] min-h-[18rem] overflow-hidden bg-background sm:min-h-[22rem]">
       <GeoPointsMapIsland
@@ -1163,6 +1165,7 @@ export function BotProtectionClient({
         pointColor={pointColor}
         projectionMode="globe"
         autoRotate
+        collapseOverlappingPointColors={options?.collapseOverlappingPointColors}
       />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-background via-background/65 to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-background via-background/70 to-transparent" />
@@ -1308,7 +1311,7 @@ export function BotProtectionClient({
                   dataKey="abnormalCount"
                   stackId="requests"
                   fill="var(--color-abnormalCount)"
-                  radius={[3, 3, 0, 0]}
+                  radius={[0, 0, 0, 0]}
                 />
                 <Line
                   yAxisId="ratio"
@@ -1527,7 +1530,9 @@ export function BotProtectionClient({
         >
           {activeTab === "overview" ? (
             <div className="mt-0 space-y-6">
-              {renderMap(overviewMapPoints, NORMAL_POINT_COLOR)}
+              {renderMap(overviewMapPoints, NORMAL_POINT_COLOR, {
+                collapseOverlappingPointColors: true,
+              })}
               {renderOverviewCharts()}
             </div>
           ) : null}
@@ -1843,15 +1848,15 @@ export function BotProtectionClient({
               <Card
                 role="dialog"
                 aria-modal="true"
-                aria-labelledby="bot-protection-overlay-title"
-                aria-describedby="bot-protection-overlay-description"
+                aria-labelledby="request-observation-overlay-title"
+                aria-describedby="request-observation-overlay-description"
                 className="w-full border-border/80 bg-background/95 shadow-2xl backdrop-blur"
               >
                 <CardHeader>
-                  <CardTitle id="bot-protection-overlay-title">
+                  <CardTitle id="request-observation-overlay-title">
                     {overlayTitle}
                   </CardTitle>
-                  <CardDescription id="bot-protection-overlay-description">
+                  <CardDescription id="request-observation-overlay-description">
                     {overlayDescription}
                   </CardDescription>
                 </CardHeader>
@@ -1866,22 +1871,22 @@ export function BotProtectionClient({
 }
 async function withDemoOverlayData(
   timeWindow: TimeWindow,
-  data: BotProtectionData,
-): Promise<BotProtectionData> {
+  data: RequestObservationData,
+): Promise<RequestObservationData> {
   const normalized = withRequestObservabilityDefaults(data);
   if (!shouldShowDemoOverlay(normalized)) return normalized;
-  return generateDemoBotProtection(demoMinutesForWindow(timeWindow), {
+  return generateDemoRequestObservation(demoMinutesForWindow(timeWindow), {
     configured: false,
     error: normalized.error,
     config: normalized.config,
   });
 }
 
-async function fetchBotProtection(
+async function fetchRequestObservation(
   timeWindow: TimeWindow,
-): Promise<BotProtectionData> {
+): Promise<RequestObservationData> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    return generateDemoBotProtection(demoMinutesForWindow(timeWindow));
+    return generateDemoRequestObservation(demoMinutesForWindow(timeWindow));
   }
 
   const params = new URLSearchParams({
@@ -1896,7 +1901,7 @@ async function fetchBotProtection(
     cache: "no-store",
   });
   const payload = (await response.json()) as
-    | BotProtectionData
+    | RequestObservationData
     | {
         ok?: false;
         error?: string;
@@ -1912,7 +1917,7 @@ async function fetchBotProtection(
   return withDemoOverlayData(timeWindow, payload);
 }
 
-async function fetchBotProtectionDetail(
+async function fetchRequestObservationDetail(
   minutes: number,
   event: BotEvent,
 ): Promise<BotEvent | null> {
@@ -1931,7 +1936,7 @@ async function fetchBotProtectionDetail(
     cache: "no-store",
   });
   const payload = (await response.json()) as
-    | BotProtectionDetailData
+    | RequestObservationDetailData
     | {
         ok?: false;
         error?: string;
@@ -1990,13 +1995,13 @@ function compactReason(reason: string): string {
 }
 
 function botReasonLabel(
-  copy: AppMessages["botProtection"],
+  copy: AppMessages["requestObservation"],
   reason: string,
 ): string {
   return copy.botReasonLabels[reason] ?? compactReason(reason);
 }
 
-function emptyValue(copy: AppMessages["botProtection"]): string {
+function emptyValue(copy: AppMessages["requestObservation"]): string {
   return copy.emptyValue;
 }
 
@@ -2032,7 +2037,7 @@ function ipPrefix(ip: string): string {
 function valuesForDetectionTab(
   event: BotEvent,
   tab: DetectionDimensionTab,
-  copy: AppMessages["botProtection"],
+  copy: AppMessages["requestObservation"],
 ): string[] {
   if (tab === "reason") {
     return event.reasons.map((reason) => botReasonLabel(copy, reason));
@@ -2081,7 +2086,7 @@ function valuesForClientTab(
 
 function aggregateDimensionRows(
   events: BotEvent[],
-  copy: AppMessages["botProtection"],
+  copy: AppMessages["requestObservation"],
   resolveValues: (event: BotEvent) => string[],
 ): BotDimensionRow[] {
   const rowMap = new Map<
@@ -2527,7 +2532,7 @@ function BotRequestDetailDrawer({
 }: {
   locale: Locale;
   messages: AppMessages;
-  copy: AppMessages["botProtection"];
+  copy: AppMessages["requestObservation"];
   previewEvent: BotEvent | null;
   detailEvent: BotEvent | null;
   loading: boolean;
@@ -2567,7 +2572,7 @@ function BotRequestDetailDrawer({
             {open ? (
               <motion.div
                 aria-hidden="true"
-                data-dashboard-floating-layer="bot-protection-drawer-overlay"
+                data-dashboard-floating-layer="request-observation-drawer-overlay"
                 className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
                 style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
                 initial={{ opacity: 0 }}
@@ -2597,7 +2602,7 @@ function BotRequestDetailDrawer({
         modal={false}
       >
         <DrawerContent
-          data-dashboard-floating-layer="bot-protection-drawer"
+          data-dashboard-floating-layer="request-observation-drawer"
           className="!w-full !max-w-none sm:!w-[min(58vw,34rem)]"
           overlayClassName="hidden"
           style={{ zIndex: EVENT_RECORD_DRAWER_Z_INDEX }}
@@ -2877,7 +2882,7 @@ function BotEventsTable({
 }: {
   locale: Locale;
   messages: AppMessages;
-  copy: AppMessages["botProtection"];
+  copy: AppMessages["requestObservation"];
   events: BotEvent[];
   loading: boolean;
   requestKey: string;
@@ -3024,7 +3029,7 @@ function BotEventsTable({
     if (!drawerOpen || !selectedEvent) return;
     let active = true;
     setDetailLoading(true);
-    fetchBotProtectionDetail(minutes, selectedEvent)
+    fetchRequestObservationDetail(minutes, selectedEvent)
       .then((detail) => {
         if (!active) return;
         setDetailEvent(detail ?? selectedEvent);
@@ -3296,7 +3301,7 @@ function valuesForNormalNetworkTab(
 
 function aggregateNormalDimensionRows(
   events: NormalRequestEvent[],
-  copy: AppMessages["botProtection"],
+  copy: AppMessages["requestObservation"],
   resolveValues: (event: NormalRequestEvent) => string[],
 ): BotDimensionRow[] {
   const rowMap = new Map<
@@ -3355,7 +3360,7 @@ function NormalRequestsTable({
 }: {
   locale: Locale;
   messages: AppMessages;
-  copy: AppMessages["botProtection"];
+  copy: AppMessages["requestObservation"];
   events: NormalRequestEvent[];
   loading: boolean;
   requestKey: string;
@@ -3644,13 +3649,13 @@ function NormalRequestsTable({
 }
 
 /*
-function LegacyBotProtectionClient({
+function LegacyRequestObservationClient({
   locale,
   messages,
-}: BotProtectionClientProps) {
-  const copy = messages.botProtection;
+}: RequestObservationClientProps) {
+  const copy = messages.requestObservation;
   const [minutes, setMinutes] = useState<WindowMinutes>(43200);
-  const [data, setData] = useState<BotProtectionData | null>(null);
+  const [data, setData] = useState<RequestObservationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -3659,7 +3664,7 @@ function LegacyBotProtectionClient({
       if (mode === "initial") setLoading(true);
       else setRefreshing(true);
       try {
-        const next = await fetchBotProtection(nextMinutes);
+        const next = await fetchRequestObservation(nextMinutes);
         setData(next);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : copy.loadFailed);
@@ -4052,7 +4057,7 @@ function LegacyBotProtectionClient({
                     <ComposedChart data={trend}>
                       <defs>
                         <linearGradient
-                          id="bot-protection-count-fill"
+                          id="request-observation-count-fill"
                           x1="0"
                           y1="0"
                           x2="0"
@@ -4127,7 +4132,7 @@ function LegacyBotProtectionClient({
                         type="monotone"
                         dataKey="count"
                         stroke="var(--color-count)"
-                        fill="url(#bot-protection-count-fill)"
+                        fill="url(#request-observation-count-fill)"
                         strokeWidth={2}
                         dot={false}
                         activeDot={{ r: 4 }}
@@ -4209,15 +4214,15 @@ function LegacyBotProtectionClient({
               <Card
                 role="dialog"
                 aria-modal="true"
-                aria-labelledby="bot-protection-overlay-title"
-                aria-describedby="bot-protection-overlay-description"
+                aria-labelledby="request-observation-overlay-title"
+                aria-describedby="request-observation-overlay-description"
                 className="w-full border-border/80 bg-background/95 shadow-2xl backdrop-blur"
               >
                 <CardHeader>
-                  <CardTitle id="bot-protection-overlay-title">
+                  <CardTitle id="request-observation-overlay-title">
                     {overlayTitle}
                   </CardTitle>
-                  <CardDescription id="bot-protection-overlay-description">
+                  <CardDescription id="request-observation-overlay-description">
                     {overlayDescription}
                   </CardDescription>
                 </CardHeader>

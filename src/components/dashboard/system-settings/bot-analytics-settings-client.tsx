@@ -358,7 +358,7 @@ export function BotAnalyticsSettingsClient({
                 <Label htmlFor="bot-analytics-normal-dataset">
                   {copy.botAnalyticsDatasetLabel}
                   {" / "}
-                  {messages.botProtection.allRequests}
+                  {messages.requestObservation.allRequests}
                 </Label>
                 <Input
                   id="bot-analytics-normal-dataset"
