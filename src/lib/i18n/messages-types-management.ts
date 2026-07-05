@@ -1132,6 +1132,17 @@ export interface AppManagementMessages {
     asnDescription: string;
     recentTitle: string;
     recentDescription: string;
+    recentShowing: string;
+    recentLoadedAll: string;
+    detailTitle: string;
+    detailSubtitle: string;
+    detection: string;
+    client: string;
+    edge: string;
+    identifiers: string;
+    fullUserAgent: string;
+    id: string;
+    metadata: string;
     time: string;
     site: string;
     location: string;

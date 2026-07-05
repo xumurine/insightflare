@@ -52,6 +52,7 @@ interface BotAnalyticsEvent {
   verifiedBotCategory: string;
   rayId: string;
   traceId: string;
+  metadataJson: string;
   latitude: number | null;
   longitude: number | null;
   botScore: number | null;
@@ -98,6 +99,10 @@ function analyticsDatasetIdentifier(value: string): string {
   return name;
 }
 
+function analyticsSqlString(value: string): string {
+  return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "''")}'`;
+}
+
 function buildBotAnalyticsSql(input: {
   dataset: string;
   since: number;
@@ -142,6 +147,60 @@ function buildBotAnalyticsSql(input: {
     WHERE timestamp >= toDateTime(${sinceSeconds})
     ORDER BY timestamp DESC
     LIMIT ${input.limit}
+    FORMAT JSONEachRow
+  `;
+}
+
+function buildBotAnalyticsDetailSql(input: {
+  dataset: string;
+  since: number;
+  traceId?: string;
+  rayId?: string;
+  includeDoubles?: boolean;
+}) {
+  const dataset = analyticsDatasetIdentifier(input.dataset);
+  const sinceSeconds = Math.floor(input.since / 1000);
+  const doubleSelect = input.includeDoubles
+    ? `,
+      double1 AS receivedAt,
+      double2 AS asn,
+      double3 AS latitude,
+      double4 AS longitude,
+      double5 AS botScore,
+      double6 AS userAgentLength`
+    : "";
+  const identityFilters = [
+    input.traceId ? `blob19 = ${analyticsSqlString(input.traceId)}` : "",
+    input.rayId ? `blob18 = ${analyticsSqlString(input.rayId)}` : "",
+  ].filter(Boolean);
+  return `
+    SELECT
+      timestamp,
+      blob1 AS siteId,
+      blob2 AS kind,
+      blob3 AS confidence,
+      blob4 AS reasons,
+      blob5 AS ip,
+      blob6 AS userAgent,
+      blob7 AS origin,
+      blob8 AS hostname,
+      blob9 AS pathname,
+      blob10 AS country,
+      blob11 AS region,
+      blob12 AS city,
+      blob13 AS continent,
+      blob14 AS colo,
+      blob15 AS asnText,
+      blob16 AS asOrganization,
+      blob17 AS verifiedBotCategory,
+      blob18 AS rayId,
+      blob19 AS traceId,
+      blob20 AS metadataJson${doubleSelect}
+    FROM ${dataset}
+    WHERE timestamp >= toDateTime(${sinceSeconds})
+      AND (${identityFilters.join(" OR ") || "0"})
+    ORDER BY timestamp DESC
+    LIMIT 1
     FORMAT JSONEachRow
   `;
 }
@@ -278,11 +337,17 @@ function normalizeBotRow(
     verifiedBotCategory: clampString(String(row.verifiedBotCategory || ""), 80),
     rayId: clampString(String(row.rayId || ""), 120),
     traceId: clampString(String(row.traceId || ""), 128),
+    metadataJson: clampString(String(row.metadataJson || ""), 8000),
     latitude: toNullableCoordinate(row.latitude),
     longitude: toNullableCoordinate(row.longitude),
     botScore: botScore > 0 ? botScore : null,
     userAgentLength: Math.trunc(toFiniteNumber(row.userAgentLength)),
   };
+}
+
+function serializeBotListEvent(event: BotAnalyticsEvent) {
+  const { metadataJson: _metadataJson, ...listEvent } = event;
+  return listEvent;
 }
 
 function shouldRetryBotAnalyticsWithoutDoubles(result: {
@@ -667,6 +732,88 @@ export async function handleBotAnalyticsAdmin(
   const minutes = parseWindowMinutes(url);
   const limit = parseLimit(url);
   const from = generatedAt - minutes * 60 * 1000;
+  const detailTraceId = clampString(
+    url.searchParams.get("traceId")?.trim() || "",
+    128,
+  );
+  const detailRayId = clampString(
+    url.searchParams.get("rayId")?.trim() || "",
+    120,
+  );
+
+  if (url.searchParams.get("detail") === "1" || detailTraceId || detailRayId) {
+    if (!detailTraceId && !detailRayId) {
+      return bad(
+        "Bot analytics detail requires traceId or rayId",
+        "bot_analytics_detail_missing_id",
+        req,
+      );
+    }
+
+    const detailSql = buildBotAnalyticsDetailSql({
+      dataset: config.dataset,
+      since: from,
+      traceId: detailTraceId,
+      rayId: detailRayId,
+      includeDoubles: true,
+    });
+    let detailResult = await queryCloudflareAnalyticsEngine({
+      accountId: config.accountId,
+      token,
+      sql: detailSql,
+    });
+    if (
+      !detailResult.ok &&
+      shouldRetryBotAnalyticsWithoutDoubles(detailResult)
+    ) {
+      detailResult = await queryCloudflareAnalyticsEngine({
+        accountId: config.accountId,
+        token,
+        sql: buildBotAnalyticsDetailSql({
+          dataset: config.dataset,
+          since: from,
+          traceId: detailTraceId,
+          rayId: detailRayId,
+          includeDoubles: false,
+        }),
+      });
+    }
+    if (!detailResult.ok) {
+      return bad(
+        cloudflareAnalyticsErrorMessage(detailResult),
+        "bot_analytics_query_failed",
+        req,
+      );
+    }
+
+    let detailRows: Record<string, unknown>[];
+    try {
+      detailRows = parseJsonEachRow(detailResult.body);
+    } catch {
+      return bad(
+        "Cloudflare Analytics Engine returned invalid JSONEachRow data",
+        "bot_analytics_parse_failed",
+        req,
+      );
+    }
+
+    const preliminaryEvents = detailRows.map((row) =>
+      normalizeBotRow(row, new Map()),
+    );
+    const sites = await siteLookup(env, preliminaryEvents);
+    const detail = detailRows[0] ? normalizeBotRow(detailRows[0], sites) : null;
+    return jsonResponseFor(req, {
+      ok: true,
+      configured: true,
+      generatedAt,
+      config: redactBotAnalyticsConfig(
+        config,
+        analyticsEngineAvailability(env),
+      ),
+      detail,
+    });
+  }
+
   const sql = buildBotAnalyticsSql({
     dataset: config.dataset,
     since: from,
@@ -771,7 +918,7 @@ export async function handleBotAnalyticsAdmin(
       uniqueAsns: uniqueAsns.size,
       uniqueCountries: uniqueCountries.size,
     },
-    events,
+    events: events.map(serializeBotListEvent),
     ...aggregates,
     trend: trendWithRatio,
   });

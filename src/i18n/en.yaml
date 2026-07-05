@@ -1673,6 +1673,17 @@ botProtection:
   asnDescription: Hosting and cloud ASNs seen most often.
   recentTitle: Recent Bot Requests
   recentDescription: Detailed records written only to the bot Analytics Engine dataset.
+  recentShowing: Showing
+  recentLoadedAll: All records loaded
+  detailTitle: Bot Request Detail
+  detailSubtitle: Inspect detection signals, network context, and client data for this diverted request.
+  detection: Detection
+  client: Client
+  edge: Edge
+  identifiers: Identifiers
+  fullUserAgent: Full User-Agent
+  id: ID
+  metadata: Metadata
   time: Time
   site: Site
   location: Location

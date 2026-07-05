@@ -1,14 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
+import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
+import {
+  RiFileList3Line,
   RiGlobalLine,
   RiRadarLine,
   RiRefreshLine,
   RiRobot2Line,
   RiShieldCheckLine,
 } from "@remixicon/react";
+import { AnimatePresence, motion } from "motion/react";
 import {
   Area,
   CartesianGrid,
@@ -26,6 +38,16 @@ import {
   type AsyncDimensionBreakdownTab,
 } from "@/components/dashboard/async-dimension-breakdown-card";
 import { GeoPointsMapIsland } from "@/components/dashboard/geo-points-map-island";
+import {
+  CountryRegionMeta,
+  formatRelativeTime,
+  VisitorAvatar,
+} from "@/components/dashboard/journey-display";
+import {
+  EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
+  EVENT_RECORD_DRAWER_Z_INDEX,
+  FLOATING_LAYER_Z_ATTR,
+} from "@/components/dashboard/site-pages/floating-layer";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
@@ -44,16 +66,24 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
-  TableBody,
   TableCell,
   TableHead,
   TableHeader,
@@ -102,6 +132,7 @@ interface BotEvent {
   verifiedBotCategory: string;
   rayId: string;
   traceId: string;
+  metadataJson?: string;
   latitude: number | null;
   longitude: number | null;
   botScore: number | null;
@@ -149,10 +180,29 @@ interface BotProtectionData {
   events: BotEvent[];
 }
 
+interface BotProtectionDetailData {
+  ok: true;
+  configured: boolean;
+  generatedAt: number;
+  detail: BotEvent | null;
+}
+
 type WindowMinutes = 60 | 1440 | 10080 | 43200;
 
 const WINDOW_OPTIONS: readonly WindowMinutes[] = [60, 1440, 10080, 43200];
 const DIMENSION_ROW_LIMIT = 30;
+const BOT_EVENT_FETCH_LIMIT = 500;
+const BOT_EVENT_PAGE_SIZE = 80;
+const BOT_EVENT_SKELETON_ROWS = 8;
+
+function shortId(value: string): string {
+  if (value.length <= 12) return value;
+  return `${value.slice(0, 9)}...`;
+}
+
+function botEventDetailId(event: BotEvent): string {
+  return event.traceId || event.rayId || "";
+}
 
 type DetectionDimensionTab =
   | "reason"
@@ -239,7 +289,7 @@ async function fetchBotProtection(
   }
 
   const response = await fetch(
-    `/api/private/admin/bot-analytics?minutes=${minutes}&limit=200`,
+    `/api/private/admin/bot-analytics?minutes=${minutes}&limit=${BOT_EVENT_FETCH_LIMIT}`,
     {
       method: "GET",
       credentials: "include",
@@ -261,6 +311,41 @@ async function fetchBotProtection(
     );
   }
   return withDemoOverlayData(minutes, payload);
+}
+
+async function fetchBotProtectionDetail(
+  minutes: WindowMinutes,
+  event: BotEvent,
+): Promise<BotEvent | null> {
+  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") return event;
+
+  const params = new URLSearchParams({
+    minutes: String(minutes),
+    detail: "1",
+  });
+  if (event.traceId) params.set("traceId", event.traceId);
+  if (event.rayId) params.set("rayId", event.rayId);
+
+  const response = await fetch(`/api/private/admin/bot-analytics?${params}`, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+  const payload = (await response.json()) as
+    | BotProtectionDetailData
+    | {
+        ok?: false;
+        error?: string;
+        message?: string;
+      };
+  if (!response.ok || payload.ok !== true) {
+    throw new Error(
+      ("message" in payload && payload.message) ||
+        ("error" in payload && payload.error) ||
+        "load_bot_protection_detail_failed",
+    );
+  }
+  return payload.detail;
 }
 
 function windowLabel(messages: AppMessages, minutes: WindowMinutes): string {
@@ -444,10 +529,6 @@ function aggregateDimensionRows(
         left.label.localeCompare(right.label),
     )
     .slice(0, DIMENSION_ROW_LIMIT);
-}
-
-function formatLocation(event: BotEvent): string {
-  return [event.city, event.region, event.country].filter(Boolean).join(", ");
 }
 
 function formatAsn(event: BotEvent): string {
@@ -709,6 +790,880 @@ function toAsyncDimensionRows(
               ? cityAppearance(row, options.locale, options.unknownLabel)
               : undefined,
   }));
+}
+
+function displayValue(
+  value: string | number | null | undefined,
+  empty: string,
+) {
+  if (value === null || value === undefined || value === "") return empty;
+  return String(value);
+}
+
+function metadataEntries(
+  metadataJson: string | undefined,
+): Array<[string, string]> {
+  const raw = (metadataJson ?? "").trim();
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return [["metadata", raw]];
+    }
+    return Object.entries(parsed as Record<string, unknown>).map(
+      ([key, value]) => [
+        key,
+        typeof value === "string" ? value : JSON.stringify(value),
+      ],
+    );
+  } catch {
+    return [["metadata", raw]];
+  }
+}
+
+function DetailItem({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="min-w-0 space-y-1">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0">{value}</dd>
+    </div>
+  );
+}
+
+function ConfidenceBlocks({
+  confidence,
+  label,
+}: {
+  confidence: string;
+  label?: string;
+}) {
+  const normalized = confidence.trim().toLowerCase();
+  const activeCount =
+    normalized === "low"
+      ? 1
+      : normalized === "medium"
+        ? 2
+        : normalized === "high"
+          ? 3
+          : 0;
+  const activeColor =
+    normalized === "low"
+      ? "bg-emerald-500"
+      : normalized === "medium"
+        ? "bg-amber-500"
+        : normalized === "high"
+          ? "bg-red-500"
+          : "";
+
+  return (
+    <span
+      className="inline-flex items-center gap-0.5"
+      aria-label={label || confidence || undefined}
+    >
+      {Array.from({ length: 3 }, (_, index) => (
+        <span
+          key={index}
+          className={cn(
+            "size-1.5 shrink-0",
+            index < activeCount ? activeColor : "bg-muted-foreground/25",
+          )}
+          aria-hidden="true"
+        />
+      ))}
+    </span>
+  );
+}
+
+function BotEventRowSkeleton({
+  index,
+  sentinelRef,
+}: {
+  index: number;
+  sentinelRef?: (node: HTMLTableRowElement | null) => void;
+}) {
+  const widths = [
+    "w-24",
+    "w-28",
+    "w-24",
+    "w-28",
+    "w-32",
+    "w-40",
+    "w-24",
+    "w-28",
+    "w-24",
+    "w-24",
+    "w-20",
+    "w-48",
+  ];
+  return (
+    <TableRow ref={sentinelRef} aria-hidden="true">
+      {widths.map((width, cellIndex) => (
+        <TableCell
+          key={`${index}:${cellIndex}`}
+          className={cellIndex === 0 ? "pl-4" : undefined}
+        >
+          <Skeleton className={cn("h-4", width)} />
+        </TableCell>
+      ))}
+    </TableRow>
+  );
+}
+
+function BotRequestDetailDrawer({
+  locale,
+  messages,
+  copy,
+  previewEvent,
+  detailEvent,
+  loading,
+  error,
+  open,
+  onOpenChange,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  copy: AppMessages["botProtection"];
+  previewEvent: BotEvent | null;
+  detailEvent: BotEvent | null;
+  loading: boolean;
+  error: string | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const empty = copy.emptyValue;
+  const event = detailEvent ?? previewEvent;
+  const metadata = event ? metadataEntries(event.metadataJson) : [];
+  const eventId = event ? event.traceId || event.rayId : "";
+  const contentKey = loading
+    ? "loading"
+    : error
+      ? "error"
+      : event
+        ? "detail"
+        : "empty";
+
+  const stopSideDrawerOverlayEvent = (
+    event: PointerEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>,
+  ) => {
+    event.stopPropagation();
+    event.nativeEvent.stopImmediatePropagation();
+  };
+
+  const closeSideDrawerFromOverlay = (event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    stopSideDrawerOverlayEvent(event);
+    onOpenChange(false);
+  };
+
+  const sideDrawerOverlay =
+    typeof document !== "undefined"
+      ? createPortal(
+          <AnimatePresence>
+            {open ? (
+              <motion.div
+                aria-hidden="true"
+                data-dashboard-floating-layer="bot-protection-drawer-overlay"
+                className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
+                style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.16, ease: "easeOut" }}
+                {...{
+                  [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
+                }}
+                onPointerDown={stopSideDrawerOverlayEvent}
+                onPointerUp={stopSideDrawerOverlayEvent}
+                onClick={closeSideDrawerFromOverlay}
+              />
+            ) : null}
+          </AnimatePresence>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <>
+      {sideDrawerOverlay}
+      <Drawer
+        open={open}
+        onOpenChange={onOpenChange}
+        direction="right"
+        modal={false}
+      >
+        <DrawerContent
+          data-dashboard-floating-layer="bot-protection-drawer"
+          className="!w-full !max-w-none sm:!w-[min(58vw,34rem)]"
+          overlayClassName="hidden"
+          style={{ zIndex: EVENT_RECORD_DRAWER_Z_INDEX }}
+          {...{
+            [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_Z_INDEX,
+          }}
+        >
+          <DrawerHeader className="border-b">
+            <DrawerTitle>{copy.detailTitle}</DrawerTitle>
+            <DrawerDescription>
+              {previewEvent?.pathname ||
+                detailEvent?.pathname ||
+                copy.detailSubtitle}
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            <AutoResizer initial duration={0.2} ease={[0.22, 1, 0.36, 1]}>
+              <AutoTransition
+                transitionKey={contentKey}
+                initial={false}
+                duration={0.18}
+                type="fade"
+                presenceMode="wait"
+              >
+                {loading ? (
+                  <div className="flex h-64 items-center justify-center text-muted-foreground">
+                    <Spinner className="size-5" />
+                  </div>
+                ) : error ? (
+                  <div className="flex h-64 items-center justify-center text-center text-sm text-muted-foreground">
+                    {error}
+                  </div>
+                ) : !event ? (
+                  <div className="flex h-64 items-center justify-center text-muted-foreground">
+                    {copy.noData}
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    <section className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">
+                          <ConfidenceBlocks
+                            confidence={event.confidence}
+                            label={displayValue(event.confidence, empty)}
+                          />
+                        </Badge>
+                        {event.reasons.map((reason) => (
+                          <Badge key={reason} variant="outline">
+                            {botReasonLabel(copy, reason)}
+                          </Badge>
+                        ))}
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {displayValue(eventId, empty)}
+                        </span>
+                      </div>
+                      <dl className="grid gap-3 sm:grid-cols-2">
+                        <DetailItem
+                          label={copy.time}
+                          value={shortDateTimeWithSeconds(
+                            locale,
+                            event.receivedAt,
+                          )}
+                        />
+                        <DetailItem
+                          label={copy.kind}
+                          value={displayValue(event.kind, empty)}
+                        />
+                        <DetailItem
+                          label={copy.botScoreBucket}
+                          value={botScoreBucket(event.botScore)}
+                        />
+                        <DetailItem
+                          label={copy.verifiedBotCategory}
+                          value={displayValue(event.verifiedBotCategory, empty)}
+                        />
+                      </dl>
+                    </section>
+
+                    <Separator />
+
+                    <section className="space-y-3">
+                      <h3 className="text-sm font-medium">{copy.request}</h3>
+                      <dl className="grid gap-3 sm:grid-cols-2">
+                        <DetailItem
+                          label={copy.site}
+                          value={
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">
+                                {displayValue(event.siteName, empty)}
+                              </div>
+                              <div className="truncate font-mono text-xs text-muted-foreground">
+                                {displayValue(
+                                  event.siteDomain || event.siteId,
+                                  empty,
+                                )}
+                              </div>
+                            </div>
+                          }
+                        />
+                        <DetailItem
+                          label={copy.origin}
+                          value={
+                            <span className="break-all font-mono text-xs">
+                              {displayValue(event.origin, empty)}
+                            </span>
+                          }
+                        />
+                        <DetailItem
+                          label={copy.hostname}
+                          value={
+                            <span className="break-all font-mono text-xs">
+                              {displayValue(event.hostname, empty)}
+                            </span>
+                          }
+                        />
+                        <DetailItem
+                          label={copy.pathname}
+                          value={
+                            <span className="break-all font-mono text-xs">
+                              {displayValue(event.pathname || "/", empty)}
+                            </span>
+                          }
+                        />
+                      </dl>
+                    </section>
+
+                    <Separator />
+
+                    <section className="space-y-3">
+                      <h3 className="text-sm font-medium">{copy.edge}</h3>
+                      <dl className="grid gap-3 sm:grid-cols-2">
+                        <DetailItem
+                          label={copy.location}
+                          value={
+                            <CountryRegionMeta
+                              locale={locale}
+                              messages={messages}
+                              country={event.country || ""}
+                              region={event.region}
+                            />
+                          }
+                        />
+                        <DetailItem
+                          label={copy.colo}
+                          value={displayValue(event.colo, empty)}
+                        />
+                        <DetailItem
+                          label={copy.network}
+                          value={displayValue(formatAsn(event), empty)}
+                        />
+                        <DetailItem
+                          label={copy.ip}
+                          value={
+                            <span className="font-mono">
+                              {displayValue(event.ip, empty)}
+                            </span>
+                          }
+                        />
+                      </dl>
+                    </section>
+
+                    <Separator />
+
+                    <section className="space-y-3">
+                      <h3 className="text-sm font-medium">{copy.client}</h3>
+                      <dl className="grid gap-3 sm:grid-cols-2">
+                        <DetailItem
+                          label={copy.userAgentLengthBucket}
+                          value={
+                            event.userAgentLength
+                              ? userAgentLengthBucket(event.userAgentLength)
+                              : empty
+                          }
+                        />
+                        <DetailItem
+                          label={copy.ipPrefix}
+                          value={ipPrefix(event.ip)}
+                        />
+                      </dl>
+                      <div className="space-y-1">
+                        <div className="text-muted-foreground">
+                          {copy.fullUserAgent}
+                        </div>
+                        <div className="break-all rounded-none border bg-muted/30 p-3 font-mono text-xs text-muted-foreground">
+                          {displayValue(event.userAgent, empty)}
+                        </div>
+                      </div>
+                    </section>
+
+                    <Separator />
+
+                    <section className="space-y-3">
+                      <h3 className="text-sm font-medium">
+                        {copy.identifiers}
+                      </h3>
+                      <dl className="grid gap-3 sm:grid-cols-2">
+                        <DetailItem
+                          label={copy.id}
+                          value={
+                            <span className="break-all font-mono text-xs">
+                              {displayValue(eventId, empty)}
+                            </span>
+                          }
+                        />
+                        <DetailItem
+                          label="Trace ID"
+                          value={
+                            <span className="break-all font-mono text-xs">
+                              {displayValue(event.traceId, empty)}
+                            </span>
+                          }
+                        />
+                        <DetailItem
+                          label="Ray ID"
+                          value={
+                            <span className="break-all font-mono text-xs">
+                              {displayValue(event.rayId, empty)}
+                            </span>
+                          }
+                        />
+                        <DetailItem
+                          label={copy.country}
+                          value={displayValue(event.country, empty)}
+                        />
+                        <DetailItem
+                          label={copy.asn}
+                          value={displayValue(
+                            event.asn ? `AS${event.asn}` : "",
+                            empty,
+                          )}
+                        />
+                      </dl>
+                    </section>
+
+                    {metadata.length > 0 ? (
+                      <>
+                        <Separator />
+                        <section className="space-y-3">
+                          <h3 className="text-sm font-medium">
+                            {copy.metadata}
+                          </h3>
+                          <dl className="grid gap-3">
+                            {metadata.map(([key, value]) => (
+                              <DetailItem
+                                key={key}
+                                label={key}
+                                value={
+                                  <span className="break-all font-mono text-xs text-muted-foreground">
+                                    {displayValue(value, empty)}
+                                  </span>
+                                }
+                              />
+                            ))}
+                          </dl>
+                        </section>
+                      </>
+                    ) : null}
+                  </div>
+                )}
+              </AutoTransition>
+            </AutoResizer>
+          </div>
+        </DrawerContent>
+      </Drawer>
+    </>
+  );
+}
+
+function BotEventsTable({
+  locale,
+  messages,
+  copy,
+  events,
+  loading,
+  requestKey,
+  minutes,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  copy: AppMessages["botProtection"];
+  events: BotEvent[];
+  loading: boolean;
+  requestKey: string;
+  minutes: WindowMinutes;
+}) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [visibleCount, setVisibleCount] = useState(BOT_EVENT_PAGE_SIZE);
+  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
+    null,
+  );
+  const [selectedEvent, setSelectedEvent] = useState<BotEvent | null>(null);
+  const [detailEvent, setDetailEvent] = useState<BotEvent | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const [detailParam, setDetailParam] = useState(
+    () => searchParams.get("detail")?.trim() || "",
+  );
+
+  useEffect(() => {
+    setVisibleCount(BOT_EVENT_PAGE_SIZE);
+  }, [requestKey]);
+
+  useEffect(() => {
+    setDetailParam(searchParams.get("detail")?.trim() || "");
+  }, [searchParams]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setDetailParam(
+        new URLSearchParams(window.location.search).get("detail")?.trim() || "",
+      );
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const visibleEvents = useMemo(
+    () => events.slice(0, visibleCount),
+    [events, visibleCount],
+  );
+  const hasMore = visibleCount < events.length;
+
+  useEffect(() => {
+    const target = sentinelNode;
+    if (
+      !target ||
+      loading ||
+      !hasMore ||
+      typeof IntersectionObserver === "undefined"
+    ) {
+      return;
+    }
+
+    const loadMore = () => {
+      setVisibleCount((current) =>
+        Math.min(current + BOT_EVENT_PAGE_SIZE, events.length),
+      );
+    };
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry?.isIntersecting) loadMore();
+      },
+      {
+        root: null,
+        rootMargin: "360px 0px",
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(target);
+    const frameId = window.requestAnimationFrame(() => {
+      const rect = target.getBoundingClientRect();
+      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
+        loadMore();
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, [events.length, hasMore, loading, sentinelNode]);
+
+  const updateDetailParam = (detailId: string, mode: "push" | "replace") => {
+    const nextParams = new URLSearchParams(window.location.search);
+    if (detailId) nextParams.set("detail", detailId);
+    else nextParams.delete("detail");
+
+    const nextQuery = nextParams.toString();
+    const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname;
+    if (`${window.location.pathname}${window.location.search}` === nextUrl) {
+      setDetailParam(detailId);
+      return;
+    }
+    if (mode === "push") window.history.pushState(null, "", nextUrl);
+    else window.history.replaceState(null, "", nextUrl);
+    setDetailParam(detailId);
+  };
+
+  const openEvent = (event: BotEvent, options?: { syncUrl?: boolean }) => {
+    setSelectedEvent(event);
+    setDetailEvent(null);
+    setDetailError(null);
+    setDrawerOpen(true);
+
+    if (options?.syncUrl !== false) {
+      const detailId = botEventDetailId(event);
+      if (detailId) updateDetailParam(detailId, "push");
+    }
+  };
+
+  const handleDrawerOpenChange = (nextOpen: boolean) => {
+    setDrawerOpen(nextOpen);
+    if (nextOpen || !detailParam) return;
+    updateDetailParam("", "replace");
+  };
+
+  useEffect(() => {
+    if (!detailParam) {
+      setDrawerOpen(false);
+      return;
+    }
+    const matchingEvent = events.find(
+      (event) => event.traceId === detailParam || event.rayId === detailParam,
+    );
+    if (!matchingEvent) return;
+    if (selectedEvent && botEventDetailId(selectedEvent) === detailParam) {
+      setDrawerOpen(true);
+      return;
+    }
+    openEvent(matchingEvent, { syncUrl: false });
+  }, [detailParam, events, selectedEvent]);
+
+  useEffect(() => {
+    if (!drawerOpen || !selectedEvent) return;
+    let active = true;
+    setDetailLoading(true);
+    fetchBotProtectionDetail(minutes, selectedEvent)
+      .then((detail) => {
+        if (!active) return;
+        setDetailEvent(detail ?? selectedEvent);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setDetailError(
+          error instanceof Error
+            ? error.message
+            : "load_bot_protection_detail_failed",
+        );
+      })
+      .finally(() => {
+        if (active) setDetailLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [drawerOpen, minutes, selectedEvent]);
+
+  const handleKeyDown = (
+    keyboardEvent: KeyboardEvent<HTMLTableRowElement>,
+    event: BotEvent,
+  ) => {
+    if (keyboardEvent.key !== "Enter" && keyboardEvent.key !== " ") return;
+    keyboardEvent.preventDefault();
+    openEvent(event);
+  };
+
+  const bodyState = loading
+    ? "loading"
+    : events.length === 0
+      ? "empty"
+      : "rows";
+
+  return (
+    <>
+      <section className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="inline-flex items-center gap-2 text-sm font-medium">
+              <RiFileList3Line className="size-4 shrink-0" />
+              {copy.recentTitle}
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {copy.recentDescription}
+            </p>
+          </div>
+          <div className="shrink-0 text-xs text-muted-foreground">
+            {!loading && events.length > 0
+              ? hasMore
+                ? `${copy.recentShowing} ${numberFormat(locale, visibleEvents.length)} / ${numberFormat(locale, events.length)}`
+                : copy.recentLoadedAll
+              : ""}
+          </div>
+        </div>
+
+        <Card className="py-0">
+          <CardContent className="px-0">
+            <Table className="min-w-[92rem]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-4">{copy.id}</TableHead>
+                  <TableHead>{copy.time}</TableHead>
+                  <TableHead>{copy.site}</TableHead>
+                  <TableHead>{copy.reason}</TableHead>
+                  <TableHead>{copy.confidence}</TableHead>
+                  <TableHead>{copy.network}</TableHead>
+                  <TableHead>{copy.asn}</TableHead>
+                  <TableHead>{copy.ip}</TableHead>
+                  <TableHead>{copy.location}</TableHead>
+                  <TableHead>{copy.pathname}</TableHead>
+                  <TableHead className="pr-4">{copy.userAgent}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <AutoTransition
+                as="tbody"
+                transitionKey={bodyState}
+                initial={false}
+                duration={0.18}
+                type="fade"
+                presenceMode="wait"
+                aria-busy={loading}
+                data-slot="table-body"
+                className="[&_tr:last-child]:border-0"
+              >
+                {loading ? (
+                  Array.from(
+                    { length: BOT_EVENT_SKELETON_ROWS },
+                    (_, index) => (
+                      <BotEventRowSkeleton key={index} index={index} />
+                    ),
+                  )
+                ) : events.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={11}
+                      className="h-28 text-center text-muted-foreground"
+                    >
+                      {copy.noData}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  <>
+                    {visibleEvents.map((event, index) => {
+                      const reasonLabel = botReasonLabel(
+                        copy,
+                        event.reasons[0] || event.confidence || "",
+                      );
+                      const eventId = event.traceId || event.rayId || "";
+                      const rowKey =
+                        eventId ||
+                        `${event.siteId}:${event.ip}:${event.pathname}:${event.receivedAt}`;
+                      return (
+                        <TableRow
+                          key={`${rowKey}:${index}`}
+                          role="button"
+                          tabIndex={0}
+                          className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                          onClick={() => openEvent(event)}
+                          onKeyDown={(keyboardEvent) =>
+                            handleKeyDown(keyboardEvent, event)
+                          }
+                        >
+                          <TableCell className="pl-4 max-w-36">
+                            <div className="flex w-28 min-w-0 items-center gap-2">
+                              <VisitorAvatar
+                                seed={eventId || "unknown"}
+                                className="size-6"
+                              />
+                              <span
+                                className="min-w-0 truncate font-mono"
+                                title={eventId || undefined}
+                              >
+                                {eventId ? shortId(eventId) : "--"}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="max-w-36 font-mono text-muted-foreground">
+                            <span className="block truncate">
+                              {formatRelativeTime(
+                                locale,
+                                event.receivedAt,
+                                now,
+                              )}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-48">
+                            <span
+                              className="block truncate font-medium"
+                              title={event.siteName}
+                            >
+                              {event.siteName}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-48">
+                            <span
+                              className="block truncate font-medium"
+                              title={reasonLabel}
+                            >
+                              {reasonLabel}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-36">
+                            <ConfidenceBlocks
+                              confidence={event.confidence}
+                              label={event.confidence || "--"}
+                            />
+                          </TableCell>
+                          <TableCell className="max-w-44">
+                            <span
+                              className="block truncate"
+                              title={event.asOrganization || undefined}
+                            >
+                              {event.asOrganization || "--"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-24">
+                            <span className="block truncate font-mono">
+                              {event.asn ? `AS${event.asn}` : "--"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-36">
+                            <span className="block truncate font-mono text-muted-foreground">
+                              {event.ip || "--"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-52">
+                            <CountryRegionMeta
+                              locale={locale}
+                              messages={messages}
+                              country={event.country || ""}
+                              region={event.region}
+                              className="w-full"
+                            />
+                          </TableCell>
+                          <TableCell className="max-w-64">
+                            <span
+                              className="block truncate font-mono"
+                              title={event.pathname || "/"}
+                            >
+                              {event.pathname || "/"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-80 pr-4">
+                            <span
+                              className="block truncate font-mono text-muted-foreground"
+                              title={event.userAgent || undefined}
+                            >
+                              {event.userAgent || "--"}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {hasMore ? (
+                      <BotEventRowSkeleton
+                        key={`sentinel-${visibleEvents.length}`}
+                        index={visibleEvents.length}
+                        sentinelRef={setSentinelNode}
+                      />
+                    ) : null}
+                  </>
+                )}
+              </AutoTransition>
+            </Table>
+          </CardContent>
+        </Card>
+      </section>
+
+      <BotRequestDetailDrawer
+        locale={locale}
+        messages={messages}
+        copy={copy}
+        previewEvent={selectedEvent}
+        detailEvent={detailEvent}
+        loading={detailLoading}
+        error={detailError}
+        open={drawerOpen}
+        onOpenChange={handleDrawerOpenChange}
+      />
+    </>
+  );
 }
 
 export function BotProtectionClient({
@@ -1257,109 +2212,15 @@ export function BotProtectionClient({
                 />
               </section>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>{copy.recentTitle}</CardTitle>
-                  <CardDescription>{copy.recentDescription}</CardDescription>
-                </CardHeader>
-                <CardContent className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{copy.time}</TableHead>
-                        <TableHead>{copy.site}</TableHead>
-                        <TableHead>{copy.location}</TableHead>
-                        <TableHead>{copy.network}</TableHead>
-                        <TableHead>{copy.reason}</TableHead>
-                        <TableHead>{copy.request}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {events.map((event) => (
-                        <TableRow key={`${event.traceId}:${event.receivedAt}`}>
-                          <TableCell className="whitespace-nowrap font-mono text-xs">
-                            {shortDateTimeWithSeconds(locale, event.receivedAt)}
-                          </TableCell>
-                          <TableCell>
-                            <div className="max-w-[180px]">
-                              <p className="truncate text-sm font-medium">
-                                {event.siteName}
-                              </p>
-                              <p className="truncate text-xs text-muted-foreground">
-                                {event.siteDomain || event.siteId}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="max-w-[160px]">
-                              <p className="truncate text-sm">
-                                {formatLocation(event) || "--"}
-                              </p>
-                              <p className="truncate text-xs text-muted-foreground">
-                                {event.colo || event.continent || "--"}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="max-w-[230px]">
-                              <p className="truncate text-sm">
-                                {formatAsn(event)}
-                              </p>
-                              <p className="truncate font-mono text-xs text-muted-foreground">
-                                {copy.ip}: {event.ip || "--"}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex max-w-[220px] flex-wrap gap-1">
-                              <Badge
-                                variant={
-                                  event.confidence === "high"
-                                    ? "default"
-                                    : "secondary"
-                                }
-                                className="capitalize"
-                              >
-                                {event.confidence || "--"}
-                              </Badge>
-                              {event.reasons.slice(0, 2).map((reason) => (
-                                <Badge key={reason} variant="outline">
-                                  {botReasonLabel(copy, reason)}
-                                </Badge>
-                              ))}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="max-w-[300px]">
-                              <p className="truncate font-mono text-xs">
-                                {event.pathname || "/"}
-                              </p>
-                              <p
-                                className={cn(
-                                  "mt-1 truncate text-xs text-muted-foreground",
-                                  !event.userAgent && "italic",
-                                )}
-                              >
-                                {event.userAgent || copy.userAgent}
-                              </p>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {!loading && events.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={6}
-                            className="h-24 text-center text-muted-foreground"
-                          >
-                            {copy.noData}
-                          </TableCell>
-                        </TableRow>
-                      ) : null}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
+              <BotEventsTable
+                locale={locale}
+                messages={messages}
+                copy={copy}
+                events={events}
+                loading={loading}
+                requestKey={`${minutes}:${data?.generatedAt ?? 0}:${events.length}`}
+                minutes={minutes}
+              />
             </div>
           </div>
         </div>
