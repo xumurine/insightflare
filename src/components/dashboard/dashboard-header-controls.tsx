@@ -1106,7 +1106,14 @@ export function DashboardHeaderControls({
     () =>
       RANGE_GROUPS.map((group) => ({
         ...group,
-        items: group.items.filter((item) => !(maxRangeDays && item === "all")),
+        items: group.items.filter((item) => {
+          if (!maxRangeDays) return true;
+          if (item === "all") return false;
+          if (maxRangeDays <= 90) {
+            return item !== "6m" && item !== "12m";
+          }
+          return true;
+        }),
       })).filter((group) => group.items.length > 0),
     [maxRangeDays],
   );
@@ -1292,61 +1299,63 @@ export function DashboardHeaderControls({
               messages={messages}
             />
           ) : null}
-          <Drawer
-            open={mobileFilterDrawerOpen}
-            onOpenChange={setMobileFilterDrawerOpen}
-          >
-            <DrawerTrigger asChild disabled={!showFilterSheet}>
-              <Button
-                variant="outline"
-                className={filterTriggerClassName}
-                style={filterTriggerStyle}
-              >
-                <RiFilter3Line className="size-4 text-muted-foreground" />
-                {messages.dashboardHeader.filters}
-                <FilterActiveCountBadge count={activeFilterCount} />
-              </Button>
-            </DrawerTrigger>
-            <DrawerContent className="max-h-[90vh] flex flex-col">
-              <DrawerHeader>
-                <DrawerTitle>
-                  {messages.dashboardHeader.filterTitle}
-                </DrawerTitle>
-                <DrawerDescription>
-                  {messages.dashboardHeader.filterSubtitle}
-                </DrawerDescription>
-              </DrawerHeader>
-
-              <PanelScrollbar
-                className="min-h-0 flex-1"
-                syncKey={searchParamsKey}
-              >
-                <div className="space-y-4 px-4 pb-2">
-                  <DashboardFilterFields
-                    locale={locale}
-                    messages={messages}
-                    siteId={siteId}
-                    queryFilters={queryFilters}
-                    window={window}
-                    onValueChange={setFilterQueryValue}
-                  />
-                </div>
-              </PanelScrollbar>
-
-              <DrawerFooter>
-                <Button variant="outline" onClick={clearAllFilterQueryValues}>
-                  <RiFilterOffLine className="size-4" />
-                  <span>{messages.filters.clear}</span>
+          {showFilterSheet ? (
+            <Drawer
+              open={mobileFilterDrawerOpen}
+              onOpenChange={setMobileFilterDrawerOpen}
+            >
+              <DrawerTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={filterTriggerClassName}
+                  style={filterTriggerStyle}
+                >
+                  <RiFilter3Line className="size-4 text-muted-foreground" />
+                  {messages.dashboardHeader.filters}
+                  <FilterActiveCountBadge count={activeFilterCount} />
                 </Button>
-                <DrawerClose asChild>
-                  <Button>
-                    <RiCloseLine className="size-4" />
-                    <span>{closeLabel}</span>
+              </DrawerTrigger>
+              <DrawerContent className="max-h-[90vh] flex flex-col">
+                <DrawerHeader>
+                  <DrawerTitle>
+                    {messages.dashboardHeader.filterTitle}
+                  </DrawerTitle>
+                  <DrawerDescription>
+                    {messages.dashboardHeader.filterSubtitle}
+                  </DrawerDescription>
+                </DrawerHeader>
+
+                <PanelScrollbar
+                  className="min-h-0 flex-1"
+                  syncKey={searchParamsKey}
+                >
+                  <div className="space-y-4 px-4 pb-2">
+                    <DashboardFilterFields
+                      locale={locale}
+                      messages={messages}
+                      siteId={siteId}
+                      queryFilters={queryFilters}
+                      window={window}
+                      onValueChange={setFilterQueryValue}
+                    />
+                  </div>
+                </PanelScrollbar>
+
+                <DrawerFooter>
+                  <Button variant="outline" onClick={clearAllFilterQueryValues}>
+                    <RiFilterOffLine className="size-4" />
+                    <span>{messages.filters.clear}</span>
                   </Button>
-                </DrawerClose>
-              </DrawerFooter>
-            </DrawerContent>
-          </Drawer>
+                  <DrawerClose asChild>
+                    <Button>
+                      <RiCloseLine className="size-4" />
+                      <span>{closeLabel}</span>
+                    </Button>
+                  </DrawerClose>
+                </DrawerFooter>
+              </DrawerContent>
+            </Drawer>
+          ) : null}
 
           <Drawer
             open={mobileTimeDrawerOpen}
@@ -1476,51 +1485,58 @@ export function DashboardHeaderControls({
               messages={messages}
             />
           ) : null}
-          <Sheet modal={false}>
-            <SheetTrigger asChild disabled={!showFilterSheet}>
-              <Button
-                variant="outline"
-                className={filterTriggerClassName}
-                style={filterTriggerStyle}
+          {showFilterSheet ? (
+            <Sheet modal={false}>
+              <SheetTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={filterTriggerClassName}
+                  style={filterTriggerStyle}
+                >
+                  <RiFilter3Line className="size-4 text-muted-foreground" />
+                  {messages.dashboardHeader.filters}
+                  <FilterActiveCountBadge count={activeFilterCount} />
+                </Button>
+              </SheetTrigger>
+              <SheetContent
+                side="right"
+                className="flex h-full max-h-screen w-full flex-col sm:max-w-md"
               >
-                <RiFilter3Line className="size-4 text-muted-foreground" />
-                {messages.dashboardHeader.filters}
-                <FilterActiveCountBadge count={activeFilterCount} />
-              </Button>
-            </SheetTrigger>
-            <SheetContent
-              side="right"
-              className="flex h-full max-h-screen w-full flex-col sm:max-w-md"
-            >
-              <SheetHeader>
-                <SheetTitle>{messages.dashboardHeader.filterTitle}</SheetTitle>
-                <SheetDescription>
-                  {messages.dashboardHeader.filterSubtitle}
-                </SheetDescription>
-              </SheetHeader>
+                <SheetHeader>
+                  <SheetTitle>
+                    {messages.dashboardHeader.filterTitle}
+                  </SheetTitle>
+                  <SheetDescription>
+                    {messages.dashboardHeader.filterSubtitle}
+                  </SheetDescription>
+                </SheetHeader>
 
-              <PanelScrollbar
-                className="min-h-0 flex-1"
-                syncKey={searchParamsKey}
-              >
-                <div className="space-y-4 px-4 pb-4">
-                  <DashboardFilterFields
-                    locale={locale}
-                    messages={messages}
-                    siteId={siteId}
-                    queryFilters={queryFilters}
-                    window={window}
-                    onValueChange={setFilterQueryValue}
-                  />
+                <PanelScrollbar
+                  className="min-h-0 flex-1"
+                  syncKey={searchParamsKey}
+                >
+                  <div className="space-y-4 px-4 pb-4">
+                    <DashboardFilterFields
+                      locale={locale}
+                      messages={messages}
+                      siteId={siteId}
+                      queryFilters={queryFilters}
+                      window={window}
+                      onValueChange={setFilterQueryValue}
+                    />
 
-                  <Button variant="outline" onClick={clearAllFilterQueryValues}>
-                    <RiFilterOffLine className="size-4" />
-                    <span>{messages.filters.clear}</span>
-                  </Button>
-                </div>
-              </PanelScrollbar>
-            </SheetContent>
-          </Sheet>
+                    <Button
+                      variant="outline"
+                      onClick={clearAllFilterQueryValues}
+                    >
+                      <RiFilterOffLine className="size-4" />
+                      <span>{messages.filters.clear}</span>
+                    </Button>
+                  </div>
+                </PanelScrollbar>
+              </SheetContent>
+            </Sheet>
+          ) : null}
 
           <ButtonGroup>
             <Tooltip>

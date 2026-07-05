@@ -105,7 +105,10 @@ type AnalyticsNavKey =
   | "devices"
   | "browsers"
   | "performance"
-  | "settings";
+  | "settings"
+  | "request-overview"
+  | "request-abnormal"
+  | "request-normal";
 
 const DASHBOARD_SCROLLBAR_OPTIONS = {
   overflow: {
@@ -126,6 +129,17 @@ const SIDEBAR_COLLAPSE_SEPARATOR_CLASS =
   "transition-[opacity,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-data-[collapsible=icon]:my-0 group-data-[collapsible=icon]:opacity-0";
 const SIDEBAR_COLLAPSE_MARGIN_CLASS =
   "transition-[margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-data-[collapsible=icon]:mb-0";
+
+function analyticsTabLabel(
+  item: {
+    key: AnalyticsNavKey;
+    label?: string;
+  },
+  messages: AppMessages,
+): string {
+  if (item.label) return item.label;
+  return messages.navigation[item.key as keyof typeof messages.navigation];
+}
 
 interface SidebarRouteState {
   mode: "root" | "team" | "site";
@@ -520,6 +534,10 @@ export function DashboardShell({
   const analyticsSections: Array<{
     key: AnalyticsNavKey;
     href: string;
+    label?: string;
+    queryKey?: string;
+    queryValue?: string;
+    queryDefault?: boolean;
   }> =
     hasActiveSite && activeSiteBase
       ? [
@@ -540,7 +558,6 @@ export function DashboardShell({
           { key: "settings", href: `${activeSiteBase}/settings` },
         ]
       : [];
-
   const localeSuffix = normalizeLocalePath(livePathname);
   const switchToEn = `/en${localeSuffix}`;
   const switchToZh = `/zh${localeSuffix}`;
@@ -569,6 +586,44 @@ export function DashboardShell({
     !liveActiveTeamSlug &&
     normalizeLocalePath(livePathname) === "/app/manage/bot-protection",
   );
+  const requestObservationBase = `/${locale}/app/manage/bot-protection`;
+  const requestObservationSections: Array<{
+    key: AnalyticsNavKey;
+    href: string;
+    label: string;
+    queryKey: string;
+    queryValue: string;
+    queryDefault?: boolean;
+  }> = isBotProtectionRoute
+    ? [
+        {
+          key: "request-overview",
+          href: requestObservationBase,
+          label: locale === "zh" ? "总览" : "Overview",
+          queryKey: "requestTab",
+          queryValue: "overview",
+          queryDefault: true,
+        },
+        {
+          key: "request-abnormal",
+          href: `${requestObservationBase}?requestTab=abnormal`,
+          label: locale === "zh" ? "异常请求" : "Abnormal Requests",
+          queryKey: "requestTab",
+          queryValue: "abnormal",
+        },
+        {
+          key: "request-normal",
+          href: `${requestObservationBase}?requestTab=normal`,
+          label: locale === "zh" ? "正常请求" : "Normal Requests",
+          queryKey: "requestTab",
+          queryValue: "normal",
+        },
+      ]
+    : [];
+  const topbarSections =
+    analyticsSections.length > 0
+      ? analyticsSections
+      : requestObservationSections;
   const isGeoRoute = Boolean(
     hasActiveSite && activeSiteBase && mainSiteSection === "geo",
   );
@@ -703,6 +758,7 @@ export function DashboardShell({
       <DashboardQueryProvider
         scopeKey={activeSiteId}
         initialTimeZonePreference={user.timeZone || ""}
+        maxRangeDays={isBotProtectionRoute ? 90 : undefined}
       >
         <Sidebar variant="inset" collapsible="icon">
           <SidebarHeader className={SIDEBAR_COLLAPSE_SECTION_CLASS}>
@@ -1009,8 +1065,11 @@ export function DashboardShell({
                     locale={locale}
                     messages={messages}
                     siteId={activeSiteId}
-                    showControls={Boolean(liveActiveTeamSlug)}
+                    showControls={
+                      Boolean(liveActiveTeamSlug) || isBotProtectionRoute
+                    }
                     showFilterSheet={hasActiveSite}
+                    showRealtimeBadge={!isBotProtectionRoute}
                   />
                 </div>
               </div>
@@ -1023,13 +1082,16 @@ export function DashboardShell({
                 initial={false}
                 presenceMode="sync"
               >
-                {analyticsSections.length > 0 ? (
+                {topbarSections.length > 0 ? (
                   <div key="analytics-tabs">
                     <AnalyticsTabs
-                      items={analyticsSections.map((item) => ({
+                      items={topbarSections.map((item) => ({
                         key: item.key,
                         href: item.href,
-                        label: messages.navigation[item.key],
+                        label: analyticsTabLabel(item, messages),
+                        queryKey: item.queryKey,
+                        queryValue: item.queryValue,
+                        queryDefault: item.queryDefault,
                       }))}
                     />
                   </div>

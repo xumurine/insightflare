@@ -1439,7 +1439,7 @@ managementNav:
   teams: Team Management
   versionUpdates: Version Updates
   scheduledTasks: Scheduled Tasks
-  botProtection: Bot Protection
+  botProtection: Request Observability
   systemPerformance: System Performance
   systemSettings: System Settings
 managementPages:
@@ -1634,14 +1634,14 @@ adminTeams:
     created: Created
     action: Action
 botProtection:
-  title: Bot Protection
-  subtitle: Review traffic diverted before it reaches the primary DO/D1 analytics pipeline.
+  title: Request Observability
+  subtitle: Observe total requests, abnormal diversions, and the normal collection path from Analytics Engine.
   refresh: Refresh
-  loadFailed: Failed to load bot protection data.
+  loadFailed: Failed to load request observability data.
   notConfiguredTitle: Analytics Engine reader is not configured
-  notConfiguredDescription: Add a Cloudflare Account ID and API token in System Settings to read the bot diversion dataset.
+  notConfiguredDescription: Add a Cloudflare Account ID and API token in System Settings to read the request observability Analytics Engine datasets.
   analyticsEngineDisabledTitle: Analytics Engine is not enabled
-  analyticsEngineDisabledDescription: This deployment was published without the Analytics Engine binding because the Cloudflare account has not enabled Analytics Engine. Enable it in Cloudflare, then redeploy to collect bot diversion data.
+  analyticsEngineDisabledDescription: This deployment was published without the Analytics Engine binding because the Cloudflare account has not enabled Analytics Engine. Enable it in Cloudflare, then redeploy to collect request observability data.
   openAnalyticsEngine: Open Analytics Engine
   openSettings: Open settings
   range1h: Last 1 hour
@@ -1649,24 +1649,24 @@ botProtection:
   range24h: Last 24 hours
   range7d: Last 7 days
   range30d: Last 30 days
-  total: Diverted Requests
+  total: Total Requests
   botRequests: Bot Requests
-  allRequests: All Site Traffic
+  allRequests: All Site Requests
   botRequestRatio: Bot Request Ratio
   botTrafficRatio: Bot Traffic Ratio
   highConfidenceBots: High-confidence Bots
   affectedSites: Affected Sites
   sourceNetworks: Source Networks
-  rollupBaseline: Based on rollup site traffic
+  rollupBaseline: Based on normal and abnormal request datasets
   highConfidence: High Confidence
   mediumConfidence: ASN Diversions
   uniqueAsns: Unique ASNs
   uniqueCountries: Countries
-  mapTitle: Bot Traffic Map
-  mapDescription: Recent diverted requests grouped by Cloudflare edge geolocation.
-  noData: No bot traffic in this window.
-  trendTitle: Diversion Trend
-  trendDescription: Requests diverted before the primary analytics path.
+  mapTitle: Request Map
+  mapDescription: Requests in the selected window grouped by Cloudflare edge geolocation.
+  noData: No request data in this window.
+  trendTitle: Routing Trend
+  trendDescription: Normal requests, abnormal requests, and diversion ratio by interval.
   reasonsTitle: Detection Reasons
   reasonsDescription: Signals that triggered diversion.
   asnTitle: Source Networks

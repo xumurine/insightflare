@@ -49,7 +49,10 @@ interface ApiResponse<T> {
   message?: string;
 }
 
-type FormState = Pick<PublicBotAnalyticsConfig, "accountId" | "dataset">;
+type FormState = Pick<
+  PublicBotAnalyticsConfig,
+  "accountId" | "dataset" | "normalDataset"
+>;
 
 const API_PATH = "/api/private/admin/bot-analytics-config";
 const ANALYTICS_ENGINE_ENABLE_URL =
@@ -65,6 +68,7 @@ function defaultConfig(): PublicBotAnalyticsConfig {
     analyticsEngineDisabled: false,
     analyticsEngineEnableUrl: "",
     dataset: "insightflare_bot_events",
+    normalDataset: "insightflare_normal_events",
     apiTokenConfigured: false,
     apiTokenHint: "",
     updatedAt: 0,
@@ -75,6 +79,7 @@ function toFormState(config: PublicBotAnalyticsConfig): FormState {
   return {
     accountId: config.accountId,
     dataset: config.dataset,
+    normalDataset: config.normalDataset,
   };
 }
 
@@ -125,6 +130,7 @@ async function saveConfig(
       ...defaultConfig(),
       accountId: String(body.accountId || ""),
       dataset: String(body.dataset || "insightflare_bot_events"),
+      normalDataset: String(body.normalDataset || "insightflare_normal_events"),
       apiTokenConfigured: Boolean(body.apiToken),
       apiTokenHint: body.apiToken ? "••••demo" : "",
       analyticsEngineDisabled: false,
@@ -204,6 +210,7 @@ export function BotAnalyticsSettingsClient({
       !analyticsEngineDisabled &&
       (form.accountId !== config.accountId ||
         form.dataset !== config.dataset ||
+        form.normalDataset !== config.normalDataset ||
         apiToken.trim().length > 0 ||
         clearApiToken),
     [analyticsEngineDisabled, apiToken, clearApiToken, config, form],
@@ -216,6 +223,7 @@ export function BotAnalyticsSettingsClient({
       const next = await saveConfig({
         accountId: form.accountId.trim(),
         dataset: form.dataset.trim(),
+        normalDataset: form.normalDataset.trim(),
         apiToken: apiToken.trim() || undefined,
         clearApiToken,
       });
@@ -342,6 +350,24 @@ export function BotAnalyticsSettingsClient({
                     setForm((current) => ({
                       ...current,
                       dataset: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-2 lg:col-span-2">
+                <Label htmlFor="bot-analytics-normal-dataset">
+                  {copy.botAnalyticsDatasetLabel}
+                  {" / "}
+                  {messages.botProtection.allRequests}
+                </Label>
+                <Input
+                  id="bot-analytics-normal-dataset"
+                  value={form.normalDataset}
+                  disabled={analyticsEngineDisabled}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      normalDataset: event.target.value,
                     }))
                   }
                 />

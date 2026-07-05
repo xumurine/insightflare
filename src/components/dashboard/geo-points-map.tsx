@@ -25,6 +25,7 @@ export interface GeoPointsMapPoint {
   longitude: number;
   country: string;
   pointCount?: number;
+  color?: [number, number, number];
 }
 
 export interface GeoPointsMapCountryCount {
@@ -55,6 +56,8 @@ interface ClusteredGeoPoint {
   latitude: number;
   longitude: number;
   count: number;
+  color?: [number, number, number];
+  priority: number;
 }
 
 type EffectiveMapTheme = "light" | "dark";
@@ -377,26 +380,48 @@ function clusterGeoPoints(
 
   const buckets = new globalThis.Map<
     string,
-    { count: number; sumLatitude: number; sumLongitude: number }
+    {
+      count: number;
+      sumLatitude: number;
+      sumLongitude: number;
+      sumRed: number;
+      sumGreen: number;
+      sumBlue: number;
+      hasColor: boolean;
+      priority: number;
+    }
   >();
 
   for (const point of points) {
+    const color = point.color;
     const x = projectLongitudeToWorldX(point.longitude, zoom);
     const y = projectLatitudeToWorldY(point.latitude, zoom);
     const cellX = Math.floor(x / CLUSTER_RADIUS_PX);
     const cellY = Math.floor(y / CLUSTER_RADIUS_PX);
-    const key = `${cellX}:${cellY}`;
+    const colorKey = color ? color.join(",") : "default";
+    const key = `${cellX}:${cellY}:${colorKey}`;
 
     const bucket = buckets.get(key) ?? {
       count: 0,
       sumLatitude: 0,
       sumLongitude: 0,
+      sumRed: 0,
+      sumGreen: 0,
+      sumBlue: 0,
+      hasColor: false,
+      priority: color ? colorPriority(color) : 0,
     };
     // Use pointCount if available, otherwise count as 1
     const pointWeight = point.pointCount ?? 1;
     bucket.count += pointWeight;
     bucket.sumLatitude += point.latitude * pointWeight;
     bucket.sumLongitude += point.longitude * pointWeight;
+    if (color) {
+      bucket.hasColor = true;
+      bucket.sumRed += color[0] * pointWeight;
+      bucket.sumGreen += color[1] * pointWeight;
+      bucket.sumBlue += color[2] * pointWeight;
+    }
     buckets.set(key, bucket);
   }
 
@@ -407,10 +432,25 @@ function clusterGeoPoints(
       latitude: bucket.sumLatitude / bucket.count,
       longitude: bucket.sumLongitude / bucket.count,
       count: bucket.count,
+      color: bucket.hasColor
+        ? [
+            Math.round(bucket.sumRed / bucket.count),
+            Math.round(bucket.sumGreen / bucket.count),
+            Math.round(bucket.sumBlue / bucket.count),
+          ]
+        : undefined,
+      priority: bucket.priority,
     });
   }
-  clusters.sort((a, b) => a.id.localeCompare(b.id));
+  clusters.sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
   return clusters;
+}
+
+function colorPriority(color: [number, number, number]): number {
+  const [red, green, blue] = color;
+  if (red >= 200 && green <= 120 && blue <= 140) return 3;
+  if (green >= 150 && red <= 120) return 1;
+  return 2;
 }
 
 function normalizeClusterZoom(zoom: number): number {
@@ -651,13 +691,17 @@ export function GeoPointsMap({
       new ScatterplotLayer<ClusteredGeoPoint>({
         id,
         data,
-        getFillColor: withAlpha(pointColor, alpha),
+        getFillColor: (item) => withAlpha(item.color ?? pointColor, alpha),
         getPosition: (item) => [item.longitude, item.latitude],
         getRadius: (item) => computeClusterPointRadius(item.count, currentZoom),
         radiusUnits: "pixels",
         radiusMinPixels: 2,
         radiusMaxPixels: 32,
         pickable: false,
+        parameters: {
+          depthCompare: "always",
+          depthWriteEnabled: false,
+        },
       });
 
     if (outgoingClusters.length > 0 && outgoingAlpha > 0) {

@@ -29,3 +29,7 @@ id = "local-dev"
 [[analytics_engine_datasets]]
 binding = "BOT_ANALYTICS"
 dataset = "insightflare_bot_events"
+
+[[analytics_engine_datasets]]
+binding = "NORMAL_ANALYTICS"
+dataset = "insightflare_normal_events"

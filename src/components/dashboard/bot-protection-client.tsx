@@ -23,6 +23,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import {
   Area,
+  Bar,
   CartesianGrid,
   ComposedChart,
   Line,
@@ -37,12 +38,14 @@ import {
   type AsyncDimensionBreakdownRow,
   type AsyncDimensionBreakdownTab,
 } from "@/components/dashboard/async-dimension-breakdown-card";
+import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
 import { GeoPointsMapIsland } from "@/components/dashboard/geo-points-map-island";
 import {
   CountryRegionMeta,
   formatRelativeTime,
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
+import { ShareRadialCard } from "@/components/dashboard/share-radial-card";
 import {
   EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
   EVENT_RECORD_DRAWER_Z_INDEX,
@@ -72,13 +75,6 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -90,11 +86,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  durationFormat,
   intlLocale,
   numberFormat,
   percentFormat,
   shortDateTimeWithSeconds,
 } from "@/lib/dashboard/format";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
 import {
   resolveCountryFlagCode,
   resolveCountryLabel,
@@ -139,6 +137,61 @@ interface BotEvent {
   userAgentLength: number;
 }
 
+interface NormalRequestEvent {
+  timestamp: string;
+  receivedAt: number;
+  eventAt: number;
+  edgeLatencyMs: number;
+  siteId: string;
+  siteName: string;
+  siteDomain: string;
+  kind: string;
+  origin: string;
+  hostname: string;
+  pathname: string;
+  country: string;
+  region: string;
+  city: string;
+  continent: string;
+  colo: string;
+  asn: number;
+  asOrganization: string;
+  rayId: string;
+  traceId: string;
+  requestMethod: string;
+  latitude: number | null;
+  longitude: number | null;
+  userAgentLength: number;
+}
+
+interface RequestMapPoint {
+  latitude: number;
+  longitude: number;
+  country: string;
+  pointCount: number;
+  source?: "normal" | "abnormal";
+  color?: [number, number, number];
+}
+
+interface RequestTrendPoint {
+  timestampMs: number;
+  count: number;
+  baselineCount: number;
+  normalCount: number;
+  abnormalCount: number;
+  totalCount: number;
+  botRatio: number;
+  abnormalRatio: number;
+  normalRatio: number;
+  pageviews: number;
+  customEvents: number;
+  avgLatencyMs: number | null;
+  p50LatencyMs: number | null;
+  p75LatencyMs: number | null;
+  p95LatencyMs: number | null;
+  p99LatencyMs: number | null;
+}
+
 interface BotProtectionData {
   ok: true;
   configured: boolean;
@@ -151,6 +204,7 @@ interface BotProtectionData {
     minutes: number;
     from: number;
     to: number;
+    interval?: string;
   };
   error?: string;
   summary: {
@@ -163,21 +217,61 @@ interface BotProtectionData {
     uniqueAsns: number;
     uniqueCountries: number;
   };
-  mapPoints: Array<{
-    latitude: number;
-    longitude: number;
-    country: string;
-    pointCount: number;
-  }>;
-  trend: Array<{
-    timestampMs: number;
-    count: number;
-    baselineCount: number;
-    botRatio: number;
-  }>;
+  mapPoints: RequestMapPoint[];
+  trend: RequestTrendPoint[];
   reasons: Array<{ reason: string; count: number }>;
+  countries?: Array<{ country: string; count: number }>;
   asns: Array<{ asn: number; asOrganization: string; count: number }>;
   events: BotEvent[];
+  normalEvents?: NormalRequestEvent[];
+  overview?: {
+    totalRequests: number;
+    normalRequests: number;
+    abnormalRequests: number;
+    abnormalRequestRatio: number;
+    normalRequestRatio: number;
+    pageviews: number;
+    customEvents: number;
+    avgLatencyMs: number | null;
+    p50LatencyMs: number | null;
+    p75LatencyMs: number | null;
+    p95LatencyMs: number | null;
+    p99LatencyMs: number | null;
+  };
+  abnormal?: {
+    summary: {
+      total: number;
+      ratio: number;
+      highConfidence: number;
+      mediumConfidence: number;
+      affectedSites: number;
+      uniqueAsns: number;
+      uniqueCountries: number;
+    };
+    mapPoints: RequestMapPoint[];
+    events: BotEvent[];
+    reasons?: Array<{ reason: string; count: number }>;
+    countries?: Array<{ country: string; count: number }>;
+    asns?: Array<{ asn: number; asOrganization: string; count: number }>;
+  };
+  normal?: {
+    summary: {
+      total: number;
+      ratio: number;
+      pageviews: number;
+      customEvents: number;
+      affectedSites: number;
+      uniqueAsns: number;
+      uniqueCountries: number;
+      avgLatencyMs: number | null;
+      p50LatencyMs: number | null;
+      p75LatencyMs: number | null;
+      p95LatencyMs: number | null;
+      p99LatencyMs: number | null;
+    };
+    mapPoints: RequestMapPoint[];
+    events: NormalRequestEvent[];
+  };
 }
 
 interface BotProtectionDetailData {
@@ -187,13 +281,24 @@ interface BotProtectionDetailData {
   detail: BotEvent | null;
 }
 
-type WindowMinutes = 60 | 1440 | 10080 | 43200;
-
-const WINDOW_OPTIONS: readonly WindowMinutes[] = [60, 1440, 10080, 43200];
 const DIMENSION_ROW_LIMIT = 30;
 const BOT_EVENT_FETCH_LIMIT = 500;
 const BOT_EVENT_PAGE_SIZE = 80;
 const BOT_EVENT_SKELETON_ROWS = 8;
+const ABNORMAL_POINT_COLOR: [number, number, number] = [239, 68, 68];
+const NORMAL_POINT_COLOR: [number, number, number] = [34, 197, 94];
+const LOW_CONFIDENCE_COLOR = "#f59e0b";
+const MEDIUM_CONFIDENCE_COLOR = "#f97316";
+const HIGH_CONFIDENCE_COLOR = "#ef4444";
+
+type RequestObservationTab = "overview" | "abnormal" | "normal";
+
+function normalizeRequestObservationTab(
+  value: string | null | undefined,
+): RequestObservationTab {
+  if (value === "abnormal" || value === "normal") return value;
+  return "overview";
+}
 
 function shortId(value: string): string {
   if (value.length <= 12) return value;
@@ -202,6 +307,59 @@ function shortId(value: string): string {
 
 function botEventDetailId(event: BotEvent): string {
   return event.traceId || event.rayId || "";
+}
+
+function normalRequestToDetailEvent(event: NormalRequestEvent): BotEvent {
+  return {
+    timestamp: event.timestamp,
+    receivedAt: event.receivedAt,
+    siteId: event.siteId,
+    siteName: event.siteName,
+    siteDomain: event.siteDomain,
+    kind: event.kind,
+    confidence: "normal",
+    reasons: [],
+    ip: "",
+    userAgent: "",
+    origin: event.origin,
+    hostname: event.hostname,
+    pathname: event.pathname,
+    country: event.country,
+    region: event.region,
+    city: event.city,
+    continent: event.continent,
+    colo: event.colo,
+    asn: event.asn,
+    asOrganization: event.asOrganization,
+    verifiedBotCategory: "",
+    rayId: event.rayId,
+    traceId: event.traceId,
+    metadataJson: JSON.stringify({
+      requestMethod: event.requestMethod,
+      edgeLatencyMs: event.edgeLatencyMs,
+      eventAt: event.eventAt,
+    }),
+    latitude: event.latitude,
+    longitude: event.longitude,
+    botScore: null,
+    userAgentLength: event.userAgentLength,
+  };
+}
+
+function latencyFormat(locale: Locale, valueMs: number | null | undefined) {
+  if (valueMs === null || valueMs === undefined || !Number.isFinite(valueMs)) {
+    return "--";
+  }
+  const value = Math.max(0, valueMs);
+  if (value < 1000) {
+    const formatter = new Intl.NumberFormat(intlLocale(locale), {
+      maximumFractionDigits: value < 100 ? 1 : 0,
+    });
+    return locale === "zh"
+      ? `${formatter.format(value)} 毫秒`
+      : `${formatter.format(value)} ms`;
+  }
+  return durationFormat(locale, value);
 }
 
 type DetectionDimensionTab =
@@ -231,34 +389,162 @@ interface BotDimensionRow {
   sampleEvent: BotEvent | null;
 }
 
-function trendChartConfig(copy: AppMessages["botProtection"]) {
-  return {
-    count: {
-      label: copy.botRequests,
-      color: "var(--color-chart-4)",
-    },
-    botRatio: {
-      label: copy.botTrafficRatio,
-      color: "var(--color-chart-1)",
-    },
-  } satisfies ChartConfig;
-}
+type DemoWindowMinutes = 60 | 1440 | 10080 | 43200;
 
 async function generateDemoBotProtection(
-  minutes: WindowMinutes,
+  minutes: DemoWindowMinutes,
   overrides?: Pick<BotProtectionData, "configured" | "error"> & {
     config?: BotProtectionData["config"];
   },
 ): Promise<BotProtectionData> {
   const { generateDemoBotProtectionData } =
     await import("@/lib/realtime/mock/bot-protection");
-  const data = generateDemoBotProtectionData(minutes) as BotProtectionData;
-  return {
+  const data = withRequestObservabilityDefaults(
+    generateDemoBotProtectionData(minutes) as BotProtectionData,
+  );
+  return withRequestObservabilityDefaults({
     ...data,
     ...overrides,
     config: {
       ...(data.config ?? {}),
       ...overrides?.config,
+    },
+  });
+}
+
+function demoMinutesForWindow(timeWindow: TimeWindow): DemoWindowMinutes {
+  const minutes = Math.max(
+    1,
+    Math.ceil((timeWindow.to - timeWindow.from) / 60000),
+  );
+  if (minutes <= 60) return 60;
+  if (minutes <= 1440) return 1440;
+  if (minutes <= 10080) return 10080;
+  return 43200;
+}
+
+function withRequestObservabilityDefaults(
+  data: BotProtectionData,
+): BotProtectionData {
+  const rawTrend = data.trend ?? [];
+  const trend = rawTrend.map((point) => {
+    const abnormalCount = Number(point.abnormalCount ?? point.count ?? 0);
+    const normalCount = Number(point.normalCount ?? point.baselineCount ?? 0);
+    const totalCount = Number(point.totalCount ?? abnormalCount + normalCount);
+    return {
+      timestampMs: Number(point.timestampMs ?? 0),
+      count: abnormalCount,
+      baselineCount: normalCount,
+      normalCount,
+      abnormalCount,
+      totalCount,
+      botRatio:
+        totalCount > 0
+          ? Number(point.botRatio ?? abnormalCount / totalCount)
+          : 0,
+      abnormalRatio:
+        totalCount > 0
+          ? Number(point.abnormalRatio ?? abnormalCount / totalCount)
+          : 0,
+      normalRatio:
+        totalCount > 0
+          ? Number(point.normalRatio ?? normalCount / totalCount)
+          : 0,
+      pageviews: Number(point.pageviews ?? normalCount),
+      customEvents: Number(point.customEvents ?? 0),
+      avgLatencyMs: point.avgLatencyMs ?? null,
+      p50LatencyMs: point.p50LatencyMs ?? point.avgLatencyMs ?? null,
+      p75LatencyMs: point.p75LatencyMs ?? point.p95LatencyMs ?? null,
+      p95LatencyMs: point.p95LatencyMs ?? null,
+      p99LatencyMs: point.p99LatencyMs ?? point.p95LatencyMs ?? null,
+    };
+  });
+  const abnormalEvents = data.abnormal?.events ?? data.events ?? [];
+  const normalEvents = data.normal?.events ?? data.normalEvents ?? [];
+  const abnormalMapPoints = data.abnormal?.mapPoints ?? data.mapPoints ?? [];
+  const normalMapPoints = data.normal?.mapPoints ?? [];
+  const normalRequests =
+    data.overview?.normalRequests ??
+    trend.reduce((sum, point) => sum + point.normalCount, 0) ??
+    data.summary.baselineRequests;
+  const abnormalRequests =
+    data.overview?.abnormalRequests ??
+    trend.reduce((sum, point) => sum + point.abnormalCount, 0) ??
+    data.summary.total;
+  const totalRequests =
+    data.overview?.totalRequests ?? normalRequests + abnormalRequests;
+  const abnormalRequestRatio =
+    data.overview?.abnormalRequestRatio ??
+    (totalRequests > 0 ? abnormalRequests / totalRequests : 0);
+  const normalRequestRatio =
+    data.overview?.normalRequestRatio ??
+    (totalRequests > 0 ? normalRequests / totalRequests : 0);
+
+  return {
+    ...data,
+    trend,
+    events: abnormalEvents,
+    normalEvents,
+    mapPoints: abnormalMapPoints,
+    overview: {
+      totalRequests,
+      normalRequests,
+      abnormalRequests,
+      abnormalRequestRatio,
+      normalRequestRatio,
+      pageviews:
+        data.overview?.pageviews ??
+        trend.reduce((sum, point) => sum + point.pageviews, 0),
+      customEvents:
+        data.overview?.customEvents ??
+        trend.reduce((sum, point) => sum + point.customEvents, 0),
+      avgLatencyMs: data.overview?.avgLatencyMs ?? null,
+      p50LatencyMs:
+        data.overview?.p50LatencyMs ?? data.overview?.avgLatencyMs ?? null,
+      p75LatencyMs:
+        data.overview?.p75LatencyMs ?? data.overview?.p95LatencyMs ?? null,
+      p95LatencyMs: data.overview?.p95LatencyMs ?? null,
+      p99LatencyMs:
+        data.overview?.p99LatencyMs ?? data.overview?.p95LatencyMs ?? null,
+    },
+    abnormal: {
+      summary: {
+        total: abnormalRequests,
+        ratio: abnormalRequestRatio,
+        highConfidence: data.summary.highConfidence,
+        mediumConfidence: data.summary.mediumConfidence,
+        affectedSites: data.summary.affectedSites,
+        uniqueAsns: data.summary.uniqueAsns,
+        uniqueCountries: data.summary.uniqueCountries,
+        ...(data.abnormal?.summary ?? {}),
+      },
+      mapPoints: abnormalMapPoints,
+      events: abnormalEvents,
+      reasons: data.abnormal?.reasons ?? data.reasons,
+      countries: data.abnormal?.countries ?? data.countries,
+      asns: data.abnormal?.asns ?? data.asns,
+    },
+    normal: {
+      summary: {
+        total: normalRequests,
+        ratio: normalRequestRatio,
+        pageviews: data.overview?.pageviews ?? normalRequests,
+        customEvents: data.overview?.customEvents ?? 0,
+        affectedSites: data.normal?.summary.affectedSites ?? 0,
+        uniqueAsns: data.normal?.summary.uniqueAsns ?? 0,
+        uniqueCountries: data.normal?.summary.uniqueCountries ?? 0,
+        avgLatencyMs: data.overview?.avgLatencyMs ?? null,
+        p50LatencyMs:
+          data.overview?.p50LatencyMs ?? data.overview?.avgLatencyMs ?? null,
+        p75LatencyMs:
+          data.overview?.p75LatencyMs ?? data.overview?.p95LatencyMs ?? null,
+        p95LatencyMs: data.overview?.p95LatencyMs ?? null,
+        p99LatencyMs:
+          data.overview?.p99LatencyMs ?? data.overview?.p95LatencyMs ?? null,
+        ...(data.normal?.summary ?? {}),
+      },
+      mapPoints: normalMapPoints,
+      events: normalEvents,
     },
   };
 }
@@ -269,33 +555,1346 @@ function shouldShowDemoOverlay(data: BotProtectionData): boolean {
   );
 }
 
+export function BotProtectionClient({
+  locale,
+  messages,
+}: BotProtectionClientProps) {
+  const copy = messages.botProtection;
+  const { window: timeWindow } = useDashboardQuery();
+  const searchParams = useSearchParams();
+  const activeTab = normalizeRequestObservationTab(
+    searchParams.get("requestTab"),
+  );
+  const [data, setData] = useState<BotProtectionData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const spanMs = Math.max(1, timeWindow.to - timeWindow.from);
+  const detailMinutes = Math.max(1, Math.ceil(spanMs / 60000));
+  const windowDetail =
+    locale === "zh"
+      ? `最近 ${Math.max(1, Math.ceil(spanMs / 86400000))} 天`
+      : `Last ${Math.max(1, Math.ceil(spanMs / 86400000))} days`;
+
+  const labels = useMemo(
+    () =>
+      locale === "zh"
+        ? {
+            overview: "总览",
+            abnormal: "异常请求",
+            normal: "正常请求",
+            totalRequests: "总请求数",
+            normalRequests: "正常请求",
+            abnormalRequests: "异常请求",
+            abnormalRatio: "异常请求比例",
+            normalRatio: "正常请求比例",
+            p50Latency: "P50 边缘耗时",
+            p75Latency: "P75 边缘耗时",
+            p95Latency: "P95 边缘耗时",
+            p99Latency: "P99 边缘耗时",
+            avgLatency: "平均边缘耗时",
+            pageviews: "页面浏览",
+            customEvents: "自定义事件",
+            overviewTrendTitle: "请求分流趋势",
+            overviewTrendDescription:
+              "按顶栏时间间隔分桶显示正常与异常请求，以及异常请求比例。",
+            trafficCompositionTitle: "请求构成",
+            trafficCompositionDescription:
+              "正常请求、异常请求和页面事件在同一时间轴上的变化。",
+            confidenceShareTitle: "请求置信度占比",
+            confidenceShareDescription:
+              "按请求数展示正常流量、低/中/高置信度异常流量的占比。",
+            normalTrafficShare: "正常流量",
+            lowConfidenceTraffic: "低置信度流量",
+            mediumConfidenceTraffic: "中置信度流量",
+            highConfidenceTraffic: "高置信度流量",
+            latencyTitle: "边缘耗时趋势",
+            latencyDescription:
+              "正常请求写入 AE 时记录的 P50 / P75 / P95 / P99 边缘耗时。",
+            normalBreakdownTitle: "正常请求维度",
+            abnormalSubtitle:
+              "聚焦已分流的异常请求，地图和统计表只显示红色异常流量。",
+            normalSubtitle:
+              "聚焦进入正常采集链路的请求，地图和统计表只显示绿色正常流量。",
+            requests: "请求数",
+          }
+        : {
+            overview: "Overview",
+            abnormal: "Abnormal Requests",
+            normal: "Normal Requests",
+            totalRequests: "Total Requests",
+            normalRequests: "Normal Requests",
+            abnormalRequests: "Abnormal Requests",
+            abnormalRatio: "Abnormal Request Ratio",
+            normalRatio: "Normal Request Ratio",
+            p50Latency: "P50 Edge Latency",
+            p75Latency: "P75 Edge Latency",
+            p95Latency: "P95 Edge Latency",
+            p99Latency: "P99 Edge Latency",
+            avgLatency: "Average Edge Latency",
+            pageviews: "Pageviews",
+            customEvents: "Custom Events",
+            overviewTrendTitle: "Request Routing Trend",
+            overviewTrendDescription:
+              "Normal requests, abnormal requests, and abnormal ratio bucketed by the top-bar interval.",
+            trafficCompositionTitle: "Request Composition",
+            trafficCompositionDescription:
+              "Normal requests, abnormal requests, and page events on the same timeline.",
+            confidenceShareTitle: "Request Confidence Share",
+            confidenceShareDescription:
+              "Share of normal traffic and low / medium / high-confidence abnormal traffic by request count.",
+            normalTrafficShare: "Normal Traffic",
+            lowConfidenceTraffic: "Low Confidence Traffic",
+            mediumConfidenceTraffic: "Medium Confidence Traffic",
+            highConfidenceTraffic: "High Confidence Traffic",
+            latencyTitle: "Edge Latency Trend",
+            latencyDescription:
+              "P50 / P75 / P95 / P99 edge latency captured when normal requests are written to AE.",
+            normalBreakdownTitle: "Normal Request Dimensions",
+            abnormalSubtitle:
+              "Focuses on diverted abnormal requests; the map and tables show only red abnormal traffic.",
+            normalSubtitle:
+              "Focuses on requests entering the normal collection path; the map and tables show only green normal traffic.",
+            requests: "Requests",
+          },
+    [locale],
+  );
+
+  const load = useMemo(
+    () => async (mode: "initial" | "refresh") => {
+      if (mode === "initial") setLoading(true);
+      else setRefreshing(true);
+      try {
+        const next = await fetchBotProtection(timeWindow);
+        setData(next);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : copy.loadFailed);
+      } finally {
+        if (mode === "initial") setLoading(false);
+        else setRefreshing(false);
+      }
+    },
+    [copy.loadFailed, timeWindow],
+  );
+
+  useEffect(() => {
+    void load("initial");
+  }, [load]);
+
+  const formatter = useMemo(
+    () => new Intl.NumberFormat(intlLocale(locale)),
+    [locale],
+  );
+  const trendTickFormatter = useMemo(
+    () => trendTickDateFormat(locale, spanMs),
+    [locale, spanMs],
+  );
+  const trendTooltipFormatter = useMemo(
+    () => trendTooltipDateFormat(locale, spanMs),
+    [locale, spanMs],
+  );
+
+  const trend = data?.trend ?? [];
+  const abnormalEvents = data?.abnormal?.events ?? data?.events ?? [];
+  const normalEvents = data?.normal?.events ?? data?.normalEvents ?? [];
+  const abnormalMapPoints = useMemo(
+    () =>
+      (data?.abnormal?.mapPoints ?? data?.mapPoints ?? []).map((point) => ({
+        ...point,
+        source: "abnormal" as const,
+        color: ABNORMAL_POINT_COLOR,
+      })),
+    [data],
+  );
+  const normalMapPoints = useMemo(
+    () =>
+      (data?.normal?.mapPoints ?? []).map((point) => ({
+        ...point,
+        source: "normal" as const,
+        color: NORMAL_POINT_COLOR,
+      })),
+    [data],
+  );
+  const overviewMapPoints = useMemo(
+    () => [...normalMapPoints, ...abnormalMapPoints],
+    [abnormalMapPoints, normalMapPoints],
+  );
+  const confidenceCounts = useMemo(() => {
+    let low = 0;
+    let medium = 0;
+    let high = 0;
+    for (const event of abnormalEvents) {
+      if (event.confidence === "high") high += 1;
+      else if (event.confidence === "medium") medium += 1;
+      else low += 1;
+    }
+    return { low, medium, high };
+  }, [abnormalEvents]);
+
+  const analyticsEngineDisabled =
+    data?.config?.analyticsEngineDisabled === true;
+  const configured = !analyticsEngineDisabled && data?.configured !== false;
+  const showDemoOverlay =
+    Boolean(data) && !loading && (analyticsEngineDisabled || !configured);
+  const overlayTitle = analyticsEngineDisabled
+    ? copy.analyticsEngineDisabledTitle
+    : copy.notConfiguredTitle;
+  const overlayDescription = analyticsEngineDisabled
+    ? copy.analyticsEngineDisabledDescription
+    : copy.notConfiguredDescription;
+  const overlayAction = analyticsEngineDisabled ? (
+    <Button asChild>
+      <a
+        href={data?.config?.analyticsEngineEnableUrl || "#"}
+        target="_blank"
+        rel="noreferrer"
+      >
+        {copy.openAnalyticsEngine}
+      </a>
+    </Button>
+  ) : (
+    <Button asChild>
+      <Link href={`/${locale}/app/manage/system-settings`}>
+        {copy.openSettings}
+      </Link>
+    </Button>
+  );
+
+  const trendConfig = useMemo(
+    () =>
+      ({
+        normalCount: {
+          label: labels.normalRequests,
+          color: "var(--color-chart-2)",
+        },
+        abnormalCount: {
+          label: labels.abnormalRequests,
+          color: "var(--color-chart-4)",
+        },
+        totalCount: {
+          label: labels.totalRequests,
+          color: "var(--color-chart-3)",
+        },
+        pageviews: {
+          label: labels.pageviews,
+          color: "var(--color-chart-5)",
+        },
+        customEvents: {
+          label: labels.customEvents,
+          color: "var(--color-chart-1)",
+        },
+        abnormalRatio: {
+          label: labels.abnormalRatio,
+          color: "var(--color-chart-1)",
+        },
+        avgLatencyMs: {
+          label: labels.avgLatency,
+          color: "var(--color-chart-2)",
+        },
+        p50LatencyMs: {
+          label: labels.p50Latency,
+          color: "var(--color-chart-1)",
+        },
+        p75LatencyMs: {
+          label: labels.p75Latency,
+          color: "var(--color-chart-4)",
+        },
+        p95LatencyMs: {
+          label: labels.p95Latency,
+          color: "var(--color-chart-5)",
+        },
+        p99LatencyMs: {
+          label: labels.p99Latency,
+          color: "var(--color-destructive)",
+        },
+        normalTrafficShare: {
+          label: labels.normalTrafficShare,
+          color: "var(--color-chart-2)",
+        },
+        lowConfidenceTraffic: {
+          label: labels.lowConfidenceTraffic,
+          color: "var(--color-chart-5)",
+        },
+        mediumConfidenceTraffic: {
+          label: labels.mediumConfidenceTraffic,
+          color: "var(--color-chart-1)",
+        },
+        highConfidenceTraffic: {
+          label: labels.highConfidenceTraffic,
+          color: "var(--color-chart-4)",
+        },
+      }) satisfies ChartConfig,
+    [labels],
+  );
+  const formatTrendTooltipValue = useMemo(
+    () =>
+      createTrendTooltipFormatter({
+        botRequestsLabel: labels.requests,
+        botTrafficRatioLabel: labels.abnormalRatio,
+        countFormatter: formatter,
+        locale,
+        labels: {
+          normalCount: labels.normalRequests,
+          abnormalCount: labels.abnormalRequests,
+          totalCount: labels.totalRequests,
+          pageviews: labels.pageviews,
+          customEvents: labels.customEvents,
+          abnormalRatio: labels.abnormalRatio,
+          avgLatencyMs: labels.avgLatency,
+          p50LatencyMs: labels.p50Latency,
+          p75LatencyMs: labels.p75Latency,
+          p95LatencyMs: labels.p95Latency,
+          p99LatencyMs: labels.p99Latency,
+          normalTrafficShare: labels.normalTrafficShare,
+          lowConfidenceTraffic: labels.lowConfidenceTraffic,
+          mediumConfidenceTraffic: labels.mediumConfidenceTraffic,
+          highConfidenceTraffic: labels.highConfidenceTraffic,
+        },
+      }),
+    [formatter, labels, locale],
+  );
+
+  const detectionTabs = useMemo(
+    () =>
+      [
+        {
+          value: "reason",
+          label: copy.reason,
+          columnLabel: copy.reason,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "confidence",
+          label: copy.confidence,
+          columnLabel: copy.confidence,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "kind",
+          label: copy.kind,
+          columnLabel: copy.kind,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "botScoreBucket",
+          label: copy.botScoreBucket,
+          columnLabel: copy.botScoreBucket,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "verifiedBotCategory",
+          label: copy.verifiedBotCategory,
+          columnLabel: copy.verifiedBotCategory,
+          primaryMetricLabel: copy.blocked,
+        },
+      ] satisfies [
+        AsyncDimensionBreakdownTab<DetectionDimensionTab>,
+        ...AsyncDimensionBreakdownTab<DetectionDimensionTab>[],
+      ],
+    [copy],
+  );
+  const targetTabs = useMemo(
+    () =>
+      [
+        {
+          value: "site",
+          label: copy.site,
+          columnLabel: copy.site,
+          primaryMetricLabel: labels.requests,
+        },
+        {
+          value: "hostname",
+          label: copy.hostname,
+          columnLabel: copy.hostname,
+          primaryMetricLabel: labels.requests,
+        },
+        {
+          value: "pathname",
+          label: copy.pathname,
+          columnLabel: copy.pathname,
+          primaryMetricLabel: labels.requests,
+        },
+        {
+          value: "origin",
+          label: copy.origin,
+          columnLabel: copy.origin,
+          primaryMetricLabel: labels.requests,
+        },
+      ] satisfies [
+        AsyncDimensionBreakdownTab<TargetDimensionTab>,
+        ...AsyncDimensionBreakdownTab<TargetDimensionTab>[],
+      ],
+    [copy, labels.requests],
+  );
+  const networkTabs = useMemo(
+    () =>
+      [
+        {
+          value: "asOrganization",
+          label: copy.asOrganization,
+          columnLabel: copy.asOrganization,
+          primaryMetricLabel: labels.requests,
+        },
+        {
+          value: "asn",
+          label: copy.asn,
+          columnLabel: copy.asn,
+          primaryMetricLabel: labels.requests,
+        },
+        {
+          value: "country",
+          label: copy.country,
+          columnLabel: copy.country,
+          primaryMetricLabel: labels.requests,
+        },
+        {
+          value: "region",
+          label: copy.region,
+          columnLabel: copy.region,
+          primaryMetricLabel: labels.requests,
+        },
+        {
+          value: "city",
+          label: copy.city,
+          columnLabel: copy.city,
+          primaryMetricLabel: labels.requests,
+        },
+        {
+          value: "colo",
+          label: copy.colo,
+          columnLabel: copy.colo,
+          primaryMetricLabel: labels.requests,
+        },
+      ] satisfies [
+        AsyncDimensionBreakdownTab<NetworkDimensionTab>,
+        ...AsyncDimensionBreakdownTab<NetworkDimensionTab>[],
+      ],
+    [copy, labels.requests],
+  );
+  const clientTabs = useMemo(
+    () =>
+      [
+        {
+          value: "ip",
+          label: copy.ip,
+          columnLabel: copy.ip,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "userAgent",
+          label: copy.userAgent,
+          columnLabel: copy.userAgent,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "userAgentLengthBucket",
+          label: copy.userAgentLengthBucket,
+          columnLabel: copy.userAgentLengthBucket,
+          primaryMetricLabel: copy.blocked,
+        },
+        {
+          value: "ipPrefix",
+          label: copy.ipPrefix,
+          columnLabel: copy.ipPrefix,
+          primaryMetricLabel: copy.blocked,
+        },
+      ] satisfies [
+        AsyncDimensionBreakdownTab<ClientDimensionTab>,
+        ...AsyncDimensionBreakdownTab<ClientDimensionTab>[],
+      ],
+    [copy],
+  );
+
+  const detectionRowsByTab = useMemo(
+    () =>
+      Object.fromEntries(
+        detectionTabs.map((tab) => [
+          tab.value,
+          toAsyncDimensionRows(
+            aggregateDimensionRows(abnormalEvents, copy, (event) =>
+              valuesForDetectionTab(event, tab.value, copy),
+            ),
+          ),
+        ]),
+      ) as Record<DetectionDimensionTab, AsyncDimensionBreakdownRow[]>,
+    [abnormalEvents, copy, detectionTabs],
+  );
+  const abnormalTargetRowsByTab = useMemo(
+    () =>
+      Object.fromEntries(
+        targetTabs.map((tab) => [
+          tab.value,
+          toAsyncDimensionRows(
+            aggregateDimensionRows(abnormalEvents, copy, (event) =>
+              valuesForTargetTab(event, tab.value),
+            ),
+            { targetTab: tab.value },
+          ),
+        ]),
+      ) as Record<TargetDimensionTab, AsyncDimensionBreakdownRow[]>,
+    [abnormalEvents, copy, targetTabs],
+  );
+  const abnormalNetworkRowsByTab = useMemo(
+    () =>
+      Object.fromEntries(
+        networkTabs.map((tab) => [
+          tab.value,
+          toAsyncDimensionRows(
+            aggregateDimensionRows(abnormalEvents, copy, (event) =>
+              valuesForNetworkTab(event, tab.value),
+            ),
+            {
+              networkTab: tab.value,
+              locale,
+              unknownLabel: copy.emptyValue,
+            },
+          ),
+        ]),
+      ) as Record<NetworkDimensionTab, AsyncDimensionBreakdownRow[]>,
+    [abnormalEvents, copy, locale, networkTabs],
+  );
+  const clientRowsByTab = useMemo(
+    () =>
+      Object.fromEntries(
+        clientTabs.map((tab) => [
+          tab.value,
+          toAsyncDimensionRows(
+            aggregateDimensionRows(abnormalEvents, copy, (event) =>
+              valuesForClientTab(event, tab.value),
+            ),
+          ),
+        ]),
+      ) as Record<ClientDimensionTab, AsyncDimensionBreakdownRow[]>,
+    [abnormalEvents, clientTabs, copy],
+  );
+  const normalTargetRowsByTab = useMemo(
+    () =>
+      Object.fromEntries(
+        targetTabs.map((tab) => [
+          tab.value,
+          toAsyncDimensionRows(
+            aggregateNormalDimensionRows(normalEvents, copy, (event) =>
+              valuesForNormalTargetTab(event, tab.value),
+            ),
+            { targetTab: tab.value },
+          ),
+        ]),
+      ) as Record<TargetDimensionTab, AsyncDimensionBreakdownRow[]>,
+    [copy, normalEvents, targetTabs],
+  );
+  const normalNetworkRowsByTab = useMemo(
+    () =>
+      Object.fromEntries(
+        networkTabs.map((tab) => [
+          tab.value,
+          toAsyncDimensionRows(
+            aggregateNormalDimensionRows(normalEvents, copy, (event) =>
+              valuesForNormalNetworkTab(event, tab.value),
+            ),
+            {
+              networkTab: tab.value,
+              locale,
+              unknownLabel: copy.emptyValue,
+            },
+          ),
+        ]),
+      ) as Record<NetworkDimensionTab, AsyncDimensionBreakdownRow[]>,
+    [copy, locale, networkTabs, normalEvents],
+  );
+
+  const requestKey = `${timeWindow.interval}:${data?.generatedAt ?? 0}`;
+  const overview = data?.overview;
+  const abnormalSummary = data?.abnormal?.summary;
+  const normalSummary = data?.normal?.summary;
+  const confidenceShareItems = useMemo(
+    () => [
+      {
+        key: "normal",
+        label: labels.normalTrafficShare,
+        value: overview?.normalRequests ?? 0,
+        color: `rgb(${NORMAL_POINT_COLOR.join(" ")})`,
+      },
+      {
+        key: "low",
+        label: labels.lowConfidenceTraffic,
+        value: confidenceCounts.low,
+        color: LOW_CONFIDENCE_COLOR,
+      },
+      {
+        key: "medium",
+        label: labels.mediumConfidenceTraffic,
+        value: abnormalSummary?.mediumConfidence ?? confidenceCounts.medium,
+        color: MEDIUM_CONFIDENCE_COLOR,
+      },
+      {
+        key: "high",
+        label: labels.highConfidenceTraffic,
+        value: abnormalSummary?.highConfidence ?? confidenceCounts.high,
+        color: HIGH_CONFIDENCE_COLOR,
+      },
+    ],
+    [
+      abnormalSummary?.highConfidence,
+      abnormalSummary?.mediumConfidence,
+      confidenceCounts.high,
+      confidenceCounts.low,
+      confidenceCounts.medium,
+      labels.highConfidenceTraffic,
+      labels.lowConfidenceTraffic,
+      labels.mediumConfidenceTraffic,
+      labels.normalTrafficShare,
+      overview?.normalRequests,
+    ],
+  );
+
+  const renderMap = (
+    points: RequestMapPoint[],
+    pointColor: [number, number, number],
+  ) => (
+    <div className="relative h-[min(72svh,calc(100svh-10.5rem))] min-h-[18rem] overflow-hidden bg-background sm:min-h-[22rem]">
+      <GeoPointsMapIsland
+        locale={locale}
+        messages={messages}
+        points={points}
+        loading={loading}
+        emptyLabel={copy.noData}
+        heightClassName="h-full"
+        countryHoverEnabled={false}
+        pointColor={pointColor}
+        projectionMode="globe"
+        autoRotate
+      />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-background via-background/65 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-background via-background/70 to-transparent" />
+      <div className="pointer-events-none absolute left-4 top-4 z-10 max-w-2xl md:left-6 md:top-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          {copy.title}
+        </h1>
+        <p className="mt-1 max-w-prose text-sm text-foreground/75">
+          {copy.subtitle}
+        </p>
+      </div>
+      <div className="absolute right-4 top-4 z-10 md:right-6 md:top-6">
+        <Button
+          type="button"
+          variant="outline"
+          className="bg-background/90 backdrop-blur"
+          onClick={() => load("refresh")}
+          disabled={loading || refreshing}
+        >
+          {refreshing ? (
+            <Spinner className="size-4" />
+          ) : (
+            <RiRefreshLine className="size-4" />
+          )}
+          {copy.refresh}
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderOverviewCharts = () => (
+    <div className="mx-auto w-full max-w-[1400px] px-4 md:px-6">
+      <div className="space-y-6">
+        <Card className="py-0">
+          <CardContent className="p-0">
+            <div className="grid gap-px overflow-hidden bg-border/70 md:grid-cols-2 xl:grid-cols-4">
+              <MetricTile
+                icon={RiRadarLine}
+                label={labels.totalRequests}
+                value={numberFormat(locale, overview?.totalRequests ?? 0)}
+                detail={windowDetail}
+                loading={loading}
+              />
+              <MetricTile
+                icon={RiShieldCheckLine}
+                label={labels.normalRequests}
+                value={numberFormat(locale, overview?.normalRequests ?? 0)}
+                detail={percentFormat(
+                  locale,
+                  overview?.normalRequestRatio ?? 0,
+                )}
+                loading={loading}
+              />
+              <MetricTile
+                icon={RiRobot2Line}
+                label={labels.abnormalRatio}
+                value={percentFormat(
+                  locale,
+                  overview?.abnormalRequestRatio ?? 0,
+                )}
+                detail={numberFormat(locale, overview?.abnormalRequests ?? 0)}
+                loading={loading}
+              />
+              <MetricTile
+                icon={RiGlobalLine}
+                label={labels.p95Latency}
+                value={
+                  overview?.p95LatencyMs === null ||
+                  overview?.p95LatencyMs === undefined
+                    ? "--"
+                    : latencyFormat(locale, overview.p95LatencyMs)
+                }
+                detail={labels.avgLatency}
+                loading={loading}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{labels.overviewTrendTitle}</CardTitle>
+            <CardDescription>{labels.overviewTrendDescription}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={trendConfig} className="h-[320px] w-full">
+              <ComposedChart data={trend}>
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="timestampMs"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  tickFormatter={(value) =>
+                    trendTickFormatter.format(new Date(Number(value ?? 0)))
+                  }
+                  minTickGap={14}
+                />
+                <YAxis
+                  yAxisId="requests"
+                  width={52}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(value) => formatter.format(Number(value))}
+                />
+                <YAxis
+                  yAxisId="ratio"
+                  orientation="right"
+                  width={44}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(value) =>
+                    percentFormat(locale, Number(value))
+                  }
+                />
+                <ChartTooltip
+                  allowEscapeViewBox={{ x: false, y: true }}
+                  wrapperStyle={{ zIndex: 20 }}
+                  content={
+                    <ChartTooltipContent
+                      indicator="dot"
+                      labelFormatter={(value, payload) => {
+                        const timestamp = Number(
+                          payload?.[0]?.payload?.timestampMs ?? value ?? 0,
+                        );
+                        return trendTooltipFormatter.format(
+                          new Date(timestamp),
+                        );
+                      }}
+                      formatter={formatTrendTooltipValue}
+                    />
+                  }
+                />
+                <Bar
+                  yAxisId="requests"
+                  dataKey="normalCount"
+                  stackId="requests"
+                  fill="var(--color-normalCount)"
+                  radius={[0, 0, 0, 0]}
+                />
+                <Bar
+                  yAxisId="requests"
+                  dataKey="abnormalCount"
+                  stackId="requests"
+                  fill="var(--color-abnormalCount)"
+                  radius={[3, 3, 0, 0]}
+                />
+                <Line
+                  yAxisId="ratio"
+                  type="linear"
+                  dataKey="abnormalRatio"
+                  stroke="var(--color-abnormalRatio)"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+              </ComposedChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+
+        <section className="grid gap-4 xl:grid-cols-2">
+          <ShareRadialCard
+            className="xl:col-span-2"
+            title={labels.confidenceShareTitle}
+            items={confidenceShareItems}
+            locale={locale}
+            valueLabel={labels.requests}
+            loading={loading}
+            emptyLabel={copy.noData}
+          />
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{labels.trafficCompositionTitle}</CardTitle>
+              <CardDescription>
+                {labels.trafficCompositionDescription}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer config={trendConfig} className="h-[280px] w-full">
+                <ComposedChart data={trend}>
+                  <defs>
+                    <linearGradient
+                      id="request-observability-total-fill"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="5%"
+                        stopColor="var(--color-totalCount)"
+                        stopOpacity={0.3}
+                      />
+                      <stop
+                        offset="95%"
+                        stopColor="var(--color-totalCount)"
+                        stopOpacity={0.02}
+                      />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="timestampMs"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tickFormatter={(value) =>
+                      trendTickFormatter.format(new Date(Number(value ?? 0)))
+                    }
+                    minTickGap={14}
+                  />
+                  <YAxis
+                    width={52}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(value) => formatter.format(Number(value))}
+                  />
+                  <ChartTooltip
+                    allowEscapeViewBox={{ x: false, y: true }}
+                    wrapperStyle={{ zIndex: 20 }}
+                    content={
+                      <ChartTooltipContent
+                        indicator="dot"
+                        labelFormatter={(value, payload) => {
+                          const timestamp = Number(
+                            payload?.[0]?.payload?.timestampMs ?? value ?? 0,
+                          );
+                          return trendTooltipFormatter.format(
+                            new Date(timestamp),
+                          );
+                        }}
+                        formatter={formatTrendTooltipValue}
+                      />
+                    }
+                  />
+                  <Area
+                    type="linear"
+                    dataKey="totalCount"
+                    stroke="var(--color-totalCount)"
+                    fill="url(#request-observability-total-fill)"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="linear"
+                    dataKey="pageviews"
+                    stroke="var(--color-pageviews)"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="linear"
+                    dataKey="customEvents"
+                    stroke="var(--color-customEvents)"
+                    strokeWidth={2}
+                    strokeDasharray="4 4"
+                    dot={false}
+                  />
+                </ComposedChart>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{labels.latencyTitle}</CardTitle>
+              <CardDescription>{labels.latencyDescription}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer config={trendConfig} className="h-[280px] w-full">
+                <ComposedChart data={trend}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="timestampMs"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tickFormatter={(value) =>
+                      trendTickFormatter.format(new Date(Number(value ?? 0)))
+                    }
+                    minTickGap={14}
+                  />
+                  <YAxis
+                    width={60}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(value) =>
+                      latencyFormat(locale, Number(value))
+                    }
+                  />
+                  <ChartTooltip
+                    allowEscapeViewBox={{ x: false, y: true }}
+                    wrapperStyle={{ zIndex: 20 }}
+                    content={
+                      <ChartTooltipContent
+                        indicator="dot"
+                        labelFormatter={(value, payload) => {
+                          const timestamp = Number(
+                            payload?.[0]?.payload?.timestampMs ?? value ?? 0,
+                          );
+                          return trendTooltipFormatter.format(
+                            new Date(timestamp),
+                          );
+                        }}
+                        formatter={formatTrendTooltipValue}
+                      />
+                    }
+                  />
+                  <Line
+                    type="linear"
+                    dataKey="p50LatencyMs"
+                    stroke="var(--color-p50LatencyMs)"
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls
+                  />
+                  <Line
+                    type="linear"
+                    dataKey="p75LatencyMs"
+                    stroke="var(--color-p75LatencyMs)"
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls
+                  />
+                  <Line
+                    type="linear"
+                    dataKey="p95LatencyMs"
+                    stroke="var(--color-p95LatencyMs)"
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls
+                  />
+                  <Line
+                    type="linear"
+                    dataKey="p99LatencyMs"
+                    stroke="var(--color-p99LatencyMs)"
+                    strokeWidth={2}
+                    strokeDasharray="4 4"
+                    dot={false}
+                    connectNulls
+                  />
+                </ComposedChart>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+        </section>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6 pb-6">
+      <div className="relative">
+        <div
+          aria-hidden={showDemoOverlay}
+          className={cn(
+            "space-y-6 transition duration-200",
+            showDemoOverlay && "pointer-events-none select-none blur-sm",
+          )}
+        >
+          {activeTab === "overview" ? (
+            <div className="mt-0 space-y-6">
+              {renderMap(overviewMapPoints, NORMAL_POINT_COLOR)}
+              {renderOverviewCharts()}
+            </div>
+          ) : null}
+
+          {activeTab === "abnormal" ? (
+            <div className="mt-0 space-y-6">
+              {renderMap(abnormalMapPoints, ABNORMAL_POINT_COLOR)}
+              <div className="mx-auto w-full max-w-[1400px] px-4 md:px-6">
+                <div className="space-y-6">
+                  <div className="text-sm text-muted-foreground">
+                    {labels.abnormalSubtitle}
+                  </div>
+                  <Card className="py-0">
+                    <CardContent className="p-0">
+                      <div className="grid gap-px overflow-hidden bg-border/70 md:grid-cols-2 xl:grid-cols-4">
+                        <MetricTile
+                          icon={RiRobot2Line}
+                          label={labels.abnormalRequests}
+                          value={numberFormat(
+                            locale,
+                            abnormalSummary?.total ??
+                              overview?.abnormalRequests ??
+                              0,
+                          )}
+                          detail={windowDetail}
+                          loading={loading}
+                        />
+                        <MetricTile
+                          icon={RiRadarLine}
+                          label={labels.abnormalRatio}
+                          value={percentFormat(
+                            locale,
+                            abnormalSummary?.ratio ??
+                              overview?.abnormalRequestRatio ??
+                              0,
+                          )}
+                          detail={labels.totalRequests}
+                          loading={loading}
+                        />
+                        <MetricTile
+                          icon={RiShieldCheckLine}
+                          label={copy.highConfidenceBots}
+                          value={numberFormat(
+                            locale,
+                            abnormalSummary?.highConfidence ?? 0,
+                          )}
+                          detail={copy.confidence}
+                          loading={loading}
+                        />
+                        <MetricTile
+                          icon={RiGlobalLine}
+                          label={copy.affectedSites}
+                          value={numberFormat(
+                            locale,
+                            abnormalSummary?.affectedSites ?? 0,
+                          )}
+                          detail={copy.site}
+                          loading={loading}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>{copy.trendTitle}</CardTitle>
+                      <CardDescription>{copy.trendDescription}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ChartContainer
+                        config={trendConfig}
+                        className="h-[320px] w-full"
+                      >
+                        <ComposedChart data={trend}>
+                          <CartesianGrid vertical={false} />
+                          <XAxis
+                            dataKey="timestampMs"
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
+                            tickFormatter={(value) =>
+                              trendTickFormatter.format(
+                                new Date(Number(value ?? 0)),
+                              )
+                            }
+                            minTickGap={14}
+                          />
+                          <YAxis
+                            yAxisId="requests"
+                            width={52}
+                            tickLine={false}
+                            axisLine={false}
+                            tickFormatter={(value) =>
+                              formatter.format(Number(value))
+                            }
+                          />
+                          <YAxis
+                            yAxisId="ratio"
+                            orientation="right"
+                            width={44}
+                            tickLine={false}
+                            axisLine={false}
+                            tickFormatter={(value) =>
+                              percentFormat(locale, Number(value))
+                            }
+                          />
+                          <ChartTooltip
+                            allowEscapeViewBox={{ x: false, y: true }}
+                            wrapperStyle={{ zIndex: 20 }}
+                            content={
+                              <ChartTooltipContent
+                                indicator="dot"
+                                labelFormatter={(value, payload) => {
+                                  const timestamp = Number(
+                                    payload?.[0]?.payload?.timestampMs ??
+                                      value ??
+                                      0,
+                                  );
+                                  return trendTooltipFormatter.format(
+                                    new Date(timestamp),
+                                  );
+                                }}
+                                formatter={formatTrendTooltipValue}
+                              />
+                            }
+                          />
+                          <Bar
+                            yAxisId="requests"
+                            dataKey="abnormalCount"
+                            fill="var(--color-abnormalCount)"
+                            radius={[3, 3, 0, 0]}
+                          />
+                          <Line
+                            yAxisId="ratio"
+                            type="linear"
+                            dataKey="abnormalRatio"
+                            stroke="var(--color-abnormalRatio)"
+                            strokeWidth={2}
+                            dot={false}
+                            activeDot={{ r: 4 }}
+                          />
+                        </ComposedChart>
+                      </ChartContainer>
+                    </CardContent>
+                  </Card>
+
+                  <section className="grid gap-4 xl:grid-cols-2">
+                    <AsyncDimensionBreakdownCard
+                      locale={locale}
+                      messages={messages}
+                      tabs={detectionTabs}
+                      rowsByTab={detectionRowsByTab}
+                      requestKey={`${requestKey}:${abnormalEvents.length}:detection`}
+                      className="h-full"
+                      secondaryMetricLabel={copy.highConfidenceRequests}
+                      emptyLabel={copy.noData}
+                    />
+                    <AsyncDimensionBreakdownCard
+                      locale={locale}
+                      messages={messages}
+                      tabs={targetTabs}
+                      rowsByTab={abnormalTargetRowsByTab}
+                      requestKey={`${requestKey}:${abnormalEvents.length}:target`}
+                      className="h-full"
+                      secondaryMetricLabel={copy.highConfidenceRequests}
+                      emptyLabel={copy.noData}
+                    />
+                    <AsyncDimensionBreakdownCard
+                      locale={locale}
+                      messages={messages}
+                      tabs={networkTabs}
+                      rowsByTab={abnormalNetworkRowsByTab}
+                      requestKey={`${requestKey}:${abnormalEvents.length}:network`}
+                      className="h-full"
+                      secondaryMetricLabel={copy.highConfidenceRequests}
+                      emptyLabel={copy.noData}
+                    />
+                    <AsyncDimensionBreakdownCard
+                      locale={locale}
+                      messages={messages}
+                      tabs={clientTabs}
+                      rowsByTab={clientRowsByTab}
+                      requestKey={`${requestKey}:${abnormalEvents.length}:client`}
+                      className="h-full"
+                      secondaryMetricLabel={copy.highConfidenceRequests}
+                      emptyLabel={copy.noData}
+                    />
+                  </section>
+
+                  <BotEventsTable
+                    locale={locale}
+                    messages={messages}
+                    copy={copy}
+                    events={abnormalEvents}
+                    loading={loading}
+                    requestKey={`${requestKey}:${abnormalEvents.length}`}
+                    minutes={detailMinutes}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === "normal" ? (
+            <div className="mt-0 space-y-6">
+              {renderMap(normalMapPoints, NORMAL_POINT_COLOR)}
+              <div className="mx-auto w-full max-w-[1400px] px-4 md:px-6">
+                <div className="space-y-6">
+                  <div className="text-sm text-muted-foreground">
+                    {labels.normalSubtitle}
+                  </div>
+                  <Card className="py-0">
+                    <CardContent className="p-0">
+                      <div className="grid gap-px overflow-hidden bg-border/70 md:grid-cols-2 xl:grid-cols-4">
+                        <MetricTile
+                          icon={RiShieldCheckLine}
+                          label={labels.normalRequests}
+                          value={numberFormat(
+                            locale,
+                            normalSummary?.total ??
+                              overview?.normalRequests ??
+                              0,
+                          )}
+                          detail={percentFormat(
+                            locale,
+                            normalSummary?.ratio ??
+                              overview?.normalRequestRatio ??
+                              0,
+                          )}
+                          loading={loading}
+                        />
+                        <MetricTile
+                          icon={RiRadarLine}
+                          label={labels.pageviews}
+                          value={numberFormat(
+                            locale,
+                            normalSummary?.pageviews ??
+                              overview?.pageviews ??
+                              0,
+                          )}
+                          detail={labels.customEvents}
+                          loading={loading}
+                        />
+                        <MetricTile
+                          icon={RiGlobalLine}
+                          label={copy.uniqueCountries}
+                          value={numberFormat(
+                            locale,
+                            normalSummary?.uniqueCountries ?? 0,
+                          )}
+                          detail={copy.country}
+                          loading={loading}
+                        />
+                        <MetricTile
+                          icon={RiRadarLine}
+                          label={labels.p95Latency}
+                          value={
+                            normalSummary?.p95LatencyMs === null ||
+                            normalSummary?.p95LatencyMs === undefined
+                              ? "--"
+                              : latencyFormat(
+                                  locale,
+                                  normalSummary.p95LatencyMs,
+                                )
+                          }
+                          detail={labels.avgLatency}
+                          loading={loading}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <section className="grid gap-4 xl:grid-cols-2">
+                    <AsyncDimensionBreakdownCard
+                      locale={locale}
+                      messages={messages}
+                      tabs={targetTabs}
+                      rowsByTab={normalTargetRowsByTab}
+                      requestKey={`${requestKey}:${normalEvents.length}:normal-target`}
+                      className="h-full"
+                      showVisitors={false}
+                      emptyLabel={copy.noData}
+                    />
+                    <AsyncDimensionBreakdownCard
+                      locale={locale}
+                      messages={messages}
+                      tabs={networkTabs}
+                      rowsByTab={normalNetworkRowsByTab}
+                      requestKey={`${requestKey}:${normalEvents.length}:normal-network`}
+                      className="h-full"
+                      showVisitors={false}
+                      emptyLabel={copy.noData}
+                    />
+                  </section>
+
+                  <NormalRequestsTable
+                    locale={locale}
+                    messages={messages}
+                    copy={copy}
+                    events={normalEvents}
+                    loading={loading}
+                    requestKey={`${requestKey}:${normalEvents.length}`}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {showDemoOverlay ? (
+          <div className="absolute inset-0 z-30 bg-background/30 px-4">
+            <div className="sticky top-[calc(50svh-8rem)] mx-auto flex w-full max-w-lg justify-center py-10">
+              <Card
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="bot-protection-overlay-title"
+                aria-describedby="bot-protection-overlay-description"
+                className="w-full border-border/80 bg-background/95 shadow-2xl backdrop-blur"
+              >
+                <CardHeader>
+                  <CardTitle id="bot-protection-overlay-title">
+                    {overlayTitle}
+                  </CardTitle>
+                  <CardDescription id="bot-protection-overlay-description">
+                    {overlayDescription}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>{overlayAction}</CardContent>
+              </Card>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 async function withDemoOverlayData(
-  minutes: WindowMinutes,
+  timeWindow: TimeWindow,
   data: BotProtectionData,
 ): Promise<BotProtectionData> {
-  if (!shouldShowDemoOverlay(data)) return data;
-  return generateDemoBotProtection(minutes, {
+  const normalized = withRequestObservabilityDefaults(data);
+  if (!shouldShowDemoOverlay(normalized)) return normalized;
+  return generateDemoBotProtection(demoMinutesForWindow(timeWindow), {
     configured: false,
-    error: data.error,
-    config: data.config,
+    error: normalized.error,
+    config: normalized.config,
   });
 }
 
 async function fetchBotProtection(
-  minutes: WindowMinutes,
+  timeWindow: TimeWindow,
 ): Promise<BotProtectionData> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    return generateDemoBotProtection(minutes);
+    return generateDemoBotProtection(demoMinutesForWindow(timeWindow));
   }
 
-  const response = await fetch(
-    `/api/private/admin/bot-analytics?minutes=${minutes}&limit=${BOT_EVENT_FETCH_LIMIT}`,
-    {
-      method: "GET",
-      credentials: "include",
-      cache: "no-store",
-    },
-  );
+  const params = new URLSearchParams({
+    from: String(Math.floor(timeWindow.from)),
+    to: String(Math.floor(timeWindow.to)),
+    interval: timeWindow.interval,
+    limit: String(BOT_EVENT_FETCH_LIMIT),
+  });
+  const response = await fetch(`/api/private/admin/bot-analytics?${params}`, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
   const payload = (await response.json()) as
     | BotProtectionData
     | {
@@ -310,11 +1909,11 @@ async function fetchBotProtection(
         "load_bot_protection_failed",
     );
   }
-  return withDemoOverlayData(minutes, payload);
+  return withDemoOverlayData(timeWindow, payload);
 }
 
 async function fetchBotProtectionDetail(
-  minutes: WindowMinutes,
+  minutes: number,
   event: BotEvent,
 ): Promise<BotEvent | null> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") return event;
@@ -348,18 +1947,11 @@ async function fetchBotProtectionDetail(
   return payload.detail;
 }
 
-function windowLabel(messages: AppMessages, minutes: WindowMinutes): string {
-  if (minutes === 60) return messages.botProtection.range1h;
-  if (minutes === 10080) return messages.botProtection.range7d;
-  if (minutes === 43200) return messages.botProtection.range30d;
-  return messages.botProtection.range24h;
-}
-
 function trendTickDateFormat(
   locale: Locale,
-  minutes: WindowMinutes,
+  spanMs: number,
 ): Intl.DateTimeFormat {
-  if (minutes <= 10080) {
+  if (spanMs <= 14 * 24 * 60 * 60 * 1000) {
     return new Intl.DateTimeFormat(intlLocale(locale), {
       month: "numeric",
       day: "numeric",
@@ -375,9 +1967,9 @@ function trendTickDateFormat(
 
 function trendTooltipDateFormat(
   locale: Locale,
-  minutes: WindowMinutes,
+  spanMs: number,
 ): Intl.DateTimeFormat {
-  if (minutes <= 10080) {
+  if (spanMs <= 14 * 24 * 60 * 60 * 1000) {
     return new Intl.DateTimeFormat(intlLocale(locale), {
       year: "numeric",
       month: "short",
@@ -620,6 +2212,7 @@ function createTrendTooltipFormatter(input: {
   botTrafficRatioLabel: string;
   countFormatter: Intl.NumberFormat;
   locale: Locale;
+  labels?: Record<string, string>;
 }) {
   return function formatTrendTooltipValue(
     value: unknown,
@@ -628,30 +2221,41 @@ function createTrendTooltipFormatter(input: {
     _index: number,
     payload: unknown,
   ) {
-    const row = (payload ?? null) as {
-      count?: number;
-      botRatio?: number;
-    } | null;
-    const isRatio = name === "botRatio";
+    const key = String(name || "");
+    const row = (payload ?? null) as Record<string, unknown> | null;
+    const isRatio = key === "botRatio" || key.endsWith("Ratio");
+    const isLatency = key.toLowerCase().includes("latency");
     const numeric = Number(value);
-    const displayValue = isRatio
-      ? Number(row?.botRatio ?? numeric ?? 0)
-      : Number(row?.count ?? numeric ?? 0);
-    const formatted = isRatio
-      ? percentFormat(
+    const displayValue = Number(row?.[key] ?? numeric ?? 0);
+    const formatted = isLatency
+      ? durationFormat(
           input.locale,
           Number.isFinite(displayValue) ? displayValue : 0,
         )
-      : input.countFormatter.format(
-          Math.max(
-            0,
-            Math.round(Number.isFinite(displayValue) ? displayValue : 0),
-          ),
-        );
-    const label = isRatio ? input.botTrafficRatioLabel : input.botRequestsLabel;
-    const indicatorColor = isRatio
-      ? "var(--color-botRatio)"
-      : "var(--color-count)";
+      : isRatio
+        ? percentFormat(
+            input.locale,
+            Number.isFinite(displayValue) ? displayValue : 0,
+          )
+        : input.countFormatter.format(
+            Math.max(
+              0,
+              Math.round(Number.isFinite(displayValue) ? displayValue : 0),
+            ),
+          );
+    const label =
+      input.labels?.[key] ??
+      (isRatio ? input.botTrafficRatioLabel : input.botRequestsLabel);
+    const indicatorColor =
+      key === "normalCount"
+        ? "var(--color-normalCount)"
+        : key === "totalCount"
+          ? "var(--color-totalCount)"
+          : key === "pageviews"
+            ? "var(--color-pageviews)"
+            : isRatio
+              ? "var(--color-botRatio)"
+              : "var(--color-abnormalCount, var(--color-count))";
 
     return (
       <TrendTooltipValue
@@ -1277,7 +2881,7 @@ function BotEventsTable({
   events: BotEvent[];
   loading: boolean;
   requestKey: string;
-  minutes: WindowMinutes;
+  minutes: number;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -1666,7 +3270,381 @@ function BotEventsTable({
   );
 }
 
-export function BotProtectionClient({
+function valuesForNormalTargetTab(
+  event: NormalRequestEvent,
+  tab: TargetDimensionTab,
+): string[] {
+  if (tab === "site") {
+    return [event.siteName || event.siteDomain || event.siteId];
+  }
+  if (tab === "hostname") return [event.hostname];
+  if (tab === "pathname") return [event.pathname || "/"];
+  return [event.origin];
+}
+
+function valuesForNormalNetworkTab(
+  event: NormalRequestEvent,
+  tab: NetworkDimensionTab,
+): string[] {
+  if (tab === "asOrganization") return [event.asOrganization];
+  if (tab === "asn") return [event.asn ? `AS${event.asn}` : ""];
+  if (tab === "country") return [event.country];
+  if (tab === "region") return [event.region];
+  if (tab === "city") return [event.city];
+  return [event.colo];
+}
+
+function aggregateNormalDimensionRows(
+  events: NormalRequestEvent[],
+  copy: AppMessages["botProtection"],
+  resolveValues: (event: NormalRequestEvent) => string[],
+): BotDimensionRow[] {
+  const rowMap = new Map<
+    string,
+    { count: number; sampleEvent: NormalRequestEvent | null }
+  >();
+
+  for (const event of events) {
+    const values = resolveValues(event)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const normalizedValues = values.length > 0 ? values : [emptyValue(copy)];
+    for (const value of normalizedValues) {
+      const current = rowMap.get(value) ?? {
+        count: 0,
+        sampleEvent: event,
+      };
+      current.count += 1;
+      current.sampleEvent ??= event;
+      rowMap.set(value, current);
+    }
+  }
+
+  return Array.from(rowMap.entries())
+    .map(([label, row]) => ({
+      label,
+      count: row.count,
+      highConfidence: 0,
+      sampleEvent: row.sampleEvent
+        ? ({
+            ...row.sampleEvent,
+            confidence: "",
+            reasons: [],
+            ip: "",
+            userAgent: "",
+            verifiedBotCategory: "",
+            botScore: null,
+            metadataJson: "",
+          } satisfies BotEvent)
+        : null,
+    }))
+    .sort(
+      (left, right) =>
+        right.count - left.count || left.label.localeCompare(right.label),
+    )
+    .slice(0, DIMENSION_ROW_LIMIT);
+}
+
+function NormalRequestsTable({
+  locale,
+  messages,
+  copy,
+  events,
+  loading,
+  requestKey,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  copy: AppMessages["botProtection"];
+  events: NormalRequestEvent[];
+  loading: boolean;
+  requestKey: string;
+}) {
+  const [visibleCount, setVisibleCount] = useState(BOT_EVENT_PAGE_SIZE);
+  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
+    null,
+  );
+  const [selectedEvent, setSelectedEvent] = useState<BotEvent | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    setVisibleCount(BOT_EVENT_PAGE_SIZE);
+  }, [requestKey]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const visibleEvents = useMemo(
+    () => events.slice(0, visibleCount),
+    [events, visibleCount],
+  );
+  const hasMore = visibleCount < events.length;
+
+  useEffect(() => {
+    const target = sentinelNode;
+    if (
+      !target ||
+      loading ||
+      !hasMore ||
+      typeof IntersectionObserver === "undefined"
+    ) {
+      return;
+    }
+
+    const loadMore = () => {
+      setVisibleCount((current) =>
+        Math.min(current + BOT_EVENT_PAGE_SIZE, events.length),
+      );
+    };
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry?.isIntersecting) loadMore();
+      },
+      {
+        root: null,
+        rootMargin: "360px 0px",
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(target);
+    const frameId = window.requestAnimationFrame(() => {
+      const rect = target.getBoundingClientRect();
+      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
+        loadMore();
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, [events.length, hasMore, loading, sentinelNode]);
+
+  const bodyState = loading
+    ? "loading"
+    : events.length === 0
+      ? "empty"
+      : "rows";
+  const title = locale === "zh" ? "最近正常请求" : "Recent Normal Requests";
+  const description =
+    locale === "zh"
+      ? "这些详细记录只写入正常请求 Analytics Engine 数据集。"
+      : "Detailed records written only to the normal request Analytics Engine dataset.";
+  const openEvent = (event: NormalRequestEvent) => {
+    setSelectedEvent(normalRequestToDetailEvent(event));
+    setDrawerOpen(true);
+  };
+  const handleKeyDown = (
+    keyboardEvent: KeyboardEvent<HTMLTableRowElement>,
+    event: NormalRequestEvent,
+  ) => {
+    if (keyboardEvent.key !== "Enter" && keyboardEvent.key !== " ") return;
+    keyboardEvent.preventDefault();
+    openEvent(event);
+  };
+
+  return (
+    <>
+      <section className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="inline-flex items-center gap-2 text-sm font-medium">
+              <RiFileList3Line className="size-4 shrink-0" />
+              {title}
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+          </div>
+          <div className="shrink-0 text-xs text-muted-foreground">
+            {!loading && events.length > 0
+              ? hasMore
+                ? `${copy.recentShowing} ${numberFormat(locale, visibleEvents.length)} / ${numberFormat(locale, events.length)}`
+                : copy.recentLoadedAll
+              : ""}
+          </div>
+        </div>
+
+        <Card className="py-0">
+          <CardContent className="px-0">
+            <Table className="min-w-[80rem]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-4">{copy.id}</TableHead>
+                  <TableHead>{copy.time}</TableHead>
+                  <TableHead>{copy.site}</TableHead>
+                  <TableHead>{copy.kind}</TableHead>
+                  <TableHead>Method</TableHead>
+                  <TableHead>{copy.network}</TableHead>
+                  <TableHead>{copy.asn}</TableHead>
+                  <TableHead>{copy.location}</TableHead>
+                  <TableHead>{copy.pathname}</TableHead>
+                  <TableHead className="pr-4">
+                    {locale === "zh" ? "边缘耗时" : "Edge Latency"}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <AutoTransition
+                as="tbody"
+                transitionKey={bodyState}
+                initial={false}
+                duration={0.18}
+                type="fade"
+                presenceMode="wait"
+                aria-busy={loading}
+                data-slot="table-body"
+                className="[&_tr:last-child]:border-0"
+              >
+                {loading ? (
+                  Array.from(
+                    { length: BOT_EVENT_SKELETON_ROWS },
+                    (_, index) => (
+                      <BotEventRowSkeleton key={index} index={index} />
+                    ),
+                  )
+                ) : events.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={10}
+                      className="h-28 text-center text-muted-foreground"
+                    >
+                      {copy.noData}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  <>
+                    {visibleEvents.map((event, index) => {
+                      const eventId = event.traceId || event.rayId || "";
+                      const rowKey =
+                        eventId ||
+                        `${event.siteId}:${event.pathname}:${event.receivedAt}`;
+                      return (
+                        <TableRow
+                          key={`${rowKey}:${index}`}
+                          role="button"
+                          tabIndex={0}
+                          className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                          onClick={() => openEvent(event)}
+                          onKeyDown={(keyboardEvent) =>
+                            handleKeyDown(keyboardEvent, event)
+                          }
+                        >
+                          <TableCell className="pl-4 max-w-36">
+                            <div className="flex w-28 min-w-0 items-center gap-2">
+                              <VisitorAvatar
+                                seed={eventId || "normal"}
+                                className="size-6"
+                              />
+                              <span
+                                className="min-w-0 truncate font-mono"
+                                title={eventId || undefined}
+                              >
+                                {eventId ? shortId(eventId) : "--"}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="max-w-36 font-mono text-muted-foreground">
+                            <span className="block truncate">
+                              {formatRelativeTime(
+                                locale,
+                                event.receivedAt,
+                                now,
+                              )}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-48">
+                            <span
+                              className="block truncate font-medium"
+                              title={event.siteName}
+                            >
+                              {event.siteName ||
+                                event.siteDomain ||
+                                event.siteId}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-28">
+                            <Badge variant="outline">
+                              {event.kind || "--"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="max-w-24">
+                            <span className="block truncate font-mono">
+                              {event.requestMethod || "--"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-44">
+                            <span
+                              className="block truncate"
+                              title={event.asOrganization || undefined}
+                            >
+                              {event.asOrganization || "--"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-24">
+                            <span className="block truncate font-mono">
+                              {event.asn ? `AS${event.asn}` : "--"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-52">
+                            <CountryRegionMeta
+                              locale={locale}
+                              messages={messages}
+                              country={event.country || ""}
+                              region={event.region}
+                              className="w-full"
+                            />
+                          </TableCell>
+                          <TableCell className="max-w-64">
+                            <span
+                              className="block truncate font-mono"
+                              title={event.pathname || "/"}
+                            >
+                              {event.pathname || "/"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="max-w-28 pr-4">
+                            <span className="block truncate font-mono tabular-nums text-muted-foreground">
+                              {latencyFormat(locale, event.edgeLatencyMs)}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {hasMore ? (
+                      <BotEventRowSkeleton
+                        key={`sentinel-${visibleEvents.length}`}
+                        index={visibleEvents.length}
+                        sentinelRef={setSentinelNode}
+                      />
+                    ) : null}
+                  </>
+                )}
+              </AutoTransition>
+            </Table>
+          </CardContent>
+        </Card>
+      </section>
+
+      <BotRequestDetailDrawer
+        locale={locale}
+        messages={messages}
+        copy={copy}
+        previewEvent={selectedEvent}
+        detailEvent={selectedEvent}
+        loading={false}
+        error={null}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+      />
+    </>
+  );
+}
+
+/*
+function LegacyBotProtectionClient({
   locale,
   messages,
 }: BotProtectionClientProps) {
@@ -2252,3 +4230,4 @@ export function BotProtectionClient({
     </div>
   );
 }
+*/
