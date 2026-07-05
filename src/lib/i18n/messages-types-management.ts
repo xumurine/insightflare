@@ -1170,6 +1170,7 @@ export interface AppManagementMessages {
     userAgentLengthBucket: string;
     ipPrefix: string;
     botReasonLabels: Record<string, string>;
+    requestKindLabels: Record<string, string>;
   };
   systemSettings: {
     title: string;

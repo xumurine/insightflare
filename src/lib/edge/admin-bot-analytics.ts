@@ -280,11 +280,7 @@ function buildCountByBucketSql(input: {
   const latencySelect =
     input.includeLatency && input.source === "normal"
       ? `,
-      avgIf(double3, double3 >= 0) AS avgLatencyMs,
-      quantile(0.50)(double3) AS p50LatencyMs,
-      quantile(0.75)(double3) AS p75LatencyMs,
-      quantile(0.95)(double3) AS p95LatencyMs,
-      quantile(0.99)(double3) AS p99LatencyMs`
+      avgIf(double3, double3 >= 0) AS avgLatencyMs`
       : "";
   return `
     SELECT
@@ -864,6 +860,7 @@ function mergeTrendRows(input: {
   bucketMs: number;
   abnormalRows: Record<string, unknown>[];
   normalRows: Record<string, unknown>[];
+  normalEvents?: NormalAnalyticsEvent[];
 }) {
   const trend = new Map<
     number,
@@ -951,6 +948,32 @@ function mergeTrendRows(input: {
     current.p99LatencyMs = Number.isFinite(p99LatencyMs)
       ? p99LatencyMs
       : current.p95LatencyMs;
+  }
+  const latencyBuckets = new Map<number, number[]>();
+  for (const event of input.normalEvents ?? []) {
+    if (!Number.isFinite(event.edgeLatencyMs) || event.edgeLatencyMs < 0) {
+      continue;
+    }
+    const timestamp = event.receivedAt || event.eventAt;
+    if (!Number.isFinite(timestamp) || timestamp <= 0) continue;
+    const timestampMs =
+      Math.floor(Number(timestamp) / input.bucketMs) * input.bucketMs;
+    if (!trend.has(timestampMs)) continue;
+    const values = latencyBuckets.get(timestampMs) ?? [];
+    values.push(event.edgeLatencyMs);
+    latencyBuckets.set(timestampMs, values);
+  }
+  for (const [timestampMs, values] of latencyBuckets.entries()) {
+    const current = trend.get(timestampMs);
+    if (!current) continue;
+    const sortedValues = values.sort((left, right) => left - right);
+    const sampleAvgLatencyMs =
+      sortedValues.reduce((sum, value) => sum + value, 0) / sortedValues.length;
+    current.avgLatencyMs ??= sampleAvgLatencyMs;
+    current.p50LatencyMs = percentile(sortedValues, 0.5);
+    current.p75LatencyMs = percentile(sortedValues, 0.75);
+    current.p95LatencyMs = percentile(sortedValues, 0.95);
+    current.p99LatencyMs = percentile(sortedValues, 0.99);
   }
   return [...trend.values()].map((point) => {
     const totalCount = point.normalCount + point.abnormalCount;
@@ -1406,6 +1429,7 @@ export async function handleBotAnalyticsAdmin(
     bucketMs,
     abnormalRows: abnormalTrendResult.rows,
     normalRows: normalTrendResult.rows,
+    normalEvents,
   });
   const botRequests = trendWithRatio.reduce(
     (sum, point) => sum + point.abnormalCount,

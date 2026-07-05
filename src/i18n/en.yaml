@@ -1724,6 +1724,10 @@ requestObservation:
     missing_browser_provenance: Missing browser provenance
     origin_hostname_mismatch: Origin and hostname mismatch
     blocked_pathname: Blocked pathname
+  requestKindLabels:
+    pageview: Pageview
+    custom_event: Custom Event
+    request: Request
 systemSettings:
   title: System Settings
   subtitle: Manage instance-wide configuration for this InsightFlare deployment.

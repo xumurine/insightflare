@@ -93,6 +93,15 @@ async function jsonOf(response: Response) {
   return (await response.json()) as Record<string, any>;
 }
 
+function jsonEachRow(rows: Record<string, unknown>[]) {
+  return `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
+}
+
+function firstBucketTimestampMs(sql: string) {
+  const match = sql.match(/timestamp\s+>=\s+toDateTime\((\d+)\)/);
+  return Number(match?.[1] ?? 0) * 1000;
+}
+
 describe("admin bot analytics handlers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -243,7 +252,7 @@ describe("admin bot analytics handlers", () => {
     );
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response("denied", { status: 403 }))
-      .mockResolvedValueOnce(new Response("{bad-json", { status: 200 }));
+      .mockImplementation(async () => new Response("{bad-json", { status: 200 }));
 
     const cfFailed = await handleBotAnalyticsAdmin(
       request("/api/private/admin/bot-analytics"),
@@ -305,41 +314,114 @@ describe("admin bot analytics handlers", () => {
       rollupSelect,
       rollupTrendSelect,
     ]);
-    const aeBody = [
-      JSON.stringify({
-        timestamp: "2026-07-03 10:00:00",
-        siteId: "site-1",
-        kind: "pageview",
-        confidence: "medium",
-        reasons: "hosting_asn",
-        ip: "203.0.113.8",
-        userAgent: "Mozilla/5.0",
-        origin: "https://example.test",
-        hostname: "example.test",
-        pathname: "/post",
-        country: "JP",
-        region: "Tokyo",
-        city: "Tokyo",
-        continent: "AS",
-        colo: "NRT",
-        asnText: "16509",
-        asOrganization: "Amazon.com, Inc.",
-        verifiedBotCategory: "",
-        rayId: "ray-1",
-        traceId: "trace-1",
-        metadataJson: "{}",
-        receivedAt: 1_799_999_900_000,
-        asn: 16509,
-        latitude: 35.6895,
-        longitude: 139.6917,
-        botScore: 0,
-        userAgentLength: 11,
-      }),
-      "",
-    ].join("\n");
+    const botRow = {
+      timestamp: "2026-07-03 10:00:00",
+      siteId: "site-1",
+      kind: "pageview",
+      confidence: "medium",
+      reasons: "hosting_asn",
+      ip: "203.0.113.8",
+      userAgent: "Mozilla/5.0",
+      origin: "https://example.test",
+      hostname: "example.test",
+      pathname: "/post",
+      country: "JP",
+      region: "Tokyo",
+      city: "Tokyo",
+      continent: "AS",
+      colo: "NRT",
+      asnText: "16509",
+      asOrganization: "Amazon.com, Inc.",
+      verifiedBotCategory: "",
+      rayId: "ray-1",
+      traceId: "trace-1",
+      metadataJson: "{}",
+      receivedAt: 1_799_999_900_000,
+      asn: 16509,
+      latitude: 35.6895,
+      longitude: 139.6917,
+      botScore: 0,
+      userAgentLength: 11,
+    };
+    const normalRow = {
+      timestamp: "2026-07-03 10:00:00",
+      siteId: "site-1",
+      kind: "pageview",
+      origin: "https://example.test",
+      hostname: "example.test",
+      pathname: "/post",
+      country: "JP",
+      region: "Tokyo",
+      city: "Tokyo",
+      continent: "AS",
+      colo: "NRT",
+      asnText: "16509",
+      asOrganization: "Amazon.com, Inc.",
+      rayId: "normal-ray-1",
+      traceId: "normal-trace-1",
+      requestMethod: "GET",
+      metadataJson: "{}",
+      receivedAt: 1_799_999_900_000,
+      eventAt: 1_799_999_899_960,
+      edgeLatencyMs: 40,
+      asn: 16509,
+      latitude: 35.6895,
+      longitude: 139.6917,
+      userAgentLength: 11,
+    };
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValue(new Response(aeBody, { status: 200 }));
+      .mockImplementation(async (_input, init) => {
+        const sql = String((init as RequestInit | undefined)?.body || "");
+        if (sql.includes("blob3 AS confidence")) {
+          return new Response(jsonEachRow([botRow]), { status: 200 });
+        }
+        if (sql.includes("blob3 AS origin")) {
+          return new Response(jsonEachRow([normalRow]), { status: 200 });
+        }
+        if (sql.includes("GROUP BY timestampMs")) {
+          const timestampMs = firstBucketTimestampMs(sql);
+          if (sql.includes("avgIf(double3")) {
+            return new Response(
+              jsonEachRow([
+                {
+                  timestampMs,
+                  count: 99,
+                  pageviews: 99,
+                  customEvents: 0,
+                  avgLatencyMs: 40,
+                },
+              ]),
+              { status: 200 },
+            );
+          }
+          return new Response(
+            jsonEachRow([
+              {
+                timestampMs,
+                count: 1,
+                pageviews: 1,
+                customEvents: 0,
+              },
+            ]),
+            { status: 200 },
+          );
+        }
+        if (sql.includes("GROUP BY latitude, longitude, country")) {
+          return new Response(
+            jsonEachRow([
+              {
+                latitude: 35.69,
+                longitude: 139.692,
+                country: "JP",
+                pointCount: 1,
+              },
+            ]),
+            { status: 200 },
+          );
+        }
+        return new Response("", { status: 200 });
+      });
 
     const response = await handleBotAnalyticsAdmin(
       request("/api/private/admin/bot-analytics?minutes=60&limit=10"),
@@ -370,6 +452,20 @@ describe("admin bot analytics handlers", () => {
     expect(sql).toContain("ORDER BY timestamp DESC");
     expect(sql).not.toMatch(/AND\s+double1\s+>=/);
     expect(sql).not.toContain("ORDER BY double1 DESC");
+    const allSql = fetchMock.mock.calls.map(([, init]) =>
+      String((init as RequestInit | undefined)?.body || ""),
+    );
+    expect(allSql.join("\n")).not.toMatch(/quantile/i);
+    expect(
+      allSql.some(
+        (statement) =>
+          statement.includes("GROUP BY timestampMs") &&
+          statement.includes("avgIf(double3") &&
+          !/p50LatencyMs|p75LatencyMs|p95LatencyMs|p99LatencyMs/.test(
+            statement,
+          ),
+      ),
+    ).toBe(true);
     expect(body.configured).toBe(true);
     expect(body.summary).toMatchObject({
       total: 1,
@@ -383,9 +479,7 @@ describe("admin bot analytics handlers", () => {
     const preparedSql = (
       env.DB.prepare as unknown as ReturnType<typeof vi.fn>
     ).mock.calls.map(([sql]) => String(sql));
-    expect(
-      preparedSql.some((sql) => sql.includes("visit_hourly_rollups")),
-    ).toBe(true);
+    expect(preparedSql.some((sql) => sql.includes("FROM sites"))).toBe(true);
     expect(preparedSql.some((sql) => sql.includes("FROM visits"))).toBe(false);
     expect(body.events[0]).toMatchObject({
       siteName: "Blog",
@@ -397,8 +491,8 @@ describe("admin bot analytics handlers", () => {
     });
     expect(body.mapPoints[0]).toMatchObject({
       country: "JP",
-      latitude: 35.6895,
-      longitude: 139.6917,
+      latitude: 35.69,
+      longitude: 139.692,
       pointCount: 1,
     });
     expect(body.trend.some((point: any) => point.baselineCount === 99)).toBe(
@@ -435,32 +529,29 @@ describe("admin bot analytics handlers", () => {
       rollupSelect,
       rollupTrendSelect,
     ]);
-    const fallbackBody = [
-      JSON.stringify({
-        timestamp: "2026-07-03 10:00:00",
-        siteId: "site-1",
-        kind: "pageview",
-        confidence: "medium",
-        reasons: "hosting_asn",
-        ip: "203.0.113.8",
-        userAgent: "Mozilla/5.0",
-        origin: "https://example.test",
-        hostname: "example.test",
-        pathname: "/post",
-        country: "JP",
-        region: "Tokyo",
-        city: "Tokyo",
-        continent: "AS",
-        colo: "NRT",
-        asnText: "16509",
-        asOrganization: "Amazon.com, Inc.",
-        verifiedBotCategory: "",
-        rayId: "ray-1",
-        traceId: "trace-1",
-        metadataJson: "{}",
-      }),
-      "",
-    ].join("\n");
+    const fallbackRow = {
+      timestamp: "2026-07-03 10:00:00",
+      siteId: "site-1",
+      kind: "pageview",
+      confidence: "medium",
+      reasons: "hosting_asn",
+      ip: "203.0.113.8",
+      userAgent: "Mozilla/5.0",
+      origin: "https://example.test",
+      hostname: "example.test",
+      pathname: "/post",
+      country: "JP",
+      region: "Tokyo",
+      city: "Tokyo",
+      continent: "AS",
+      colo: "NRT",
+      asnText: "16509",
+      asOrganization: "Amazon.com, Inc.",
+      verifiedBotCategory: "",
+      rayId: "ray-1",
+      traceId: "trace-1",
+      metadataJson: "{}",
+    };
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
@@ -476,7 +567,31 @@ describe("admin bot analytics handlers", () => {
           { status: 422 },
         ),
       )
-      .mockResolvedValueOnce(new Response(fallbackBody, { status: 200 }));
+      .mockImplementation(async (_input, init) => {
+        const sql = String((init as RequestInit | undefined)?.body || "");
+        if (sql.includes("blob3 AS confidence") || sql.includes("blob3 AS origin")) {
+          return new Response(jsonEachRow([fallbackRow]), { status: 200 });
+        }
+        if (sql.includes("GROUP BY timestampMs")) {
+          const timestampMs = firstBucketTimestampMs(sql);
+          return new Response(
+            jsonEachRow([
+              {
+                timestampMs,
+                count: sql.includes("avgIf(double3") ? 49 : 1,
+                pageviews: sql.includes("avgIf(double3") ? 49 : 1,
+                customEvents: 0,
+                avgLatencyMs: 0,
+              },
+            ]),
+            { status: 200 },
+          );
+        }
+        if (sql.includes("GROUP BY latitude, longitude, country")) {
+          return new Response("", { status: 200 });
+        }
+        return new Response("", { status: 200 });
+      });
 
     const response = await handleBotAnalyticsAdmin(
       request("/api/private/admin/bot-analytics?minutes=60&limit=10"),
@@ -488,7 +603,7 @@ describe("admin bot analytics handlers", () => {
     const body = await jsonOf(response);
 
     expect(response.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
     const firstSql = String(
       (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body || "",
     );
@@ -498,6 +613,11 @@ describe("admin bot analytics handlers", () => {
     expect(firstSql).toContain("double1 AS receivedAt");
     expect(fallbackSql).not.toContain("double1");
     expect(fallbackSql).toContain("ORDER BY timestamp DESC");
+    expect(
+      fetchMock.mock.calls
+        .map(([, init]) => String((init as RequestInit | undefined)?.body || ""))
+        .join("\n"),
+    ).not.toMatch(/quantile/i);
     expect(body.events[0]).toMatchObject({
       siteName: "Blog",
       asn: 16509,

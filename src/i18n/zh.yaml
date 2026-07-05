@@ -1689,6 +1689,10 @@ requestObservation:
     missing_browser_provenance: 缺少浏览器来源信号
     origin_hostname_mismatch: Origin 与主机名不匹配
     blocked_pathname: 命中路径黑名单
+  requestKindLabels:
+    pageview: 页面浏览
+    custom_event: 自定义事件
+    request: 请求
 systemSettings:
   title: 系统设置
   subtitle: 管理当前 InsightFlare 实例的全站配置。

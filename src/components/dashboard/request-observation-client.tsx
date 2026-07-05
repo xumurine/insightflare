@@ -2110,6 +2110,13 @@ function botReasonLabel(
   return copy.botReasonLabels[reason] ?? compactReason(reason);
 }
 
+function requestKindLabel(
+  copy: AppMessages["requestObservation"],
+  kind: string,
+): string {
+  return copy.requestKindLabels[kind] ?? (compactReason(kind) || emptyValue(copy));
+}
+
 function emptyValue(copy: AppMessages["requestObservation"]): string {
   return copy.emptyValue;
 }
@@ -3125,7 +3132,9 @@ function NormalRequestDetailDrawer({
                   <div className="space-y-5">
                     <section className="space-y-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">{event.kind || empty}</Badge>
+                        <Badge variant="outline">
+                          {requestKindLabel(copy, event.kind)}
+                        </Badge>
                         <Badge variant="outline">
                           {event.requestMethod || empty}
                         </Badge>
@@ -3150,7 +3159,7 @@ function NormalRequestDetailDrawer({
                         />
                         <DetailItem
                           label={copy.kind}
-                          value={displayValue(event.kind, empty)}
+                          value={requestKindLabel(copy, event.kind)}
                         />
                         <DetailItem
                           label={requestMethodLabel}
@@ -4028,7 +4037,7 @@ function NormalRequestsTable({
                           </TableCell>
                           <TableCell className="max-w-28">
                             <Badge variant="outline">
-                              {event.kind || "--"}
+                              {requestKindLabel(copy, event.kind)}
                             </Badge>
                           </TableCell>
                           <TableCell className="max-w-24">
