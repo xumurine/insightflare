@@ -7,6 +7,7 @@ import {
   type ReactNode,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
@@ -20,7 +21,7 @@ import {
   RiRobot2Line,
   RiShieldCheckLine,
 } from "@remixicon/react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useAnimationControls } from "motion/react";
 import {
   Area,
   Bar,
@@ -287,12 +288,29 @@ const BOT_EVENT_PAGE_SIZE = 80;
 const BOT_EVENT_SKELETON_ROWS = 8;
 const ABNORMAL_POINT_COLOR: [number, number, number] = [239, 68, 68];
 const NORMAL_POINT_COLOR: [number, number, number] = [34, 197, 94];
-const NORMAL_TRAFFIC_SHARE_COLOR = "var(--color-chart-1)";
-const LOW_CONFIDENCE_TRAFFIC_COLOR = "#f59e0b";
-const MEDIUM_CONFIDENCE_TRAFFIC_COLOR = "#f97316";
+const PERFORMANCE_WARNING_COLOR = "oklch(0.75 0.16 80)";
+const NORMAL_TRAFFIC_SHARE_COLOR = "var(--color-chart-4)";
+const LOW_CONFIDENCE_TRAFFIC_COLOR = "var(--color-chart-5)";
+const MEDIUM_CONFIDENCE_TRAFFIC_COLOR = PERFORMANCE_WARNING_COLOR;
 const HIGH_CONFIDENCE_TRAFFIC_COLOR = "var(--color-destructive)";
 
 type RequestObservationTab = "overview" | "abnormal" | "normal";
+interface RequestObservationMapConfig {
+  key: RequestObservationTab;
+  points: RequestMapPoint[];
+  pointColor: [number, number, number];
+  collapseOverlappingPointColors: boolean;
+}
+
+const REQUEST_OBSERVATION_TAB_INDEX = {
+  overview: 0,
+  abnormal: 1,
+  normal: 2,
+} as const satisfies Record<RequestObservationTab, number>;
+const REQUEST_MAP_SLIDE_TRANSITION = {
+  duration: 2,
+  ease: [0.22, 1, 0.36, 1],
+} as const;
 
 function normalizeRequestObservationTab(
   value: string | null | undefined,
@@ -308,43 +326,6 @@ function shortId(value: string): string {
 
 function botEventDetailId(event: BotEvent): string {
   return event.traceId || event.rayId || "";
-}
-
-function normalRequestToDetailEvent(event: NormalRequestEvent): BotEvent {
-  return {
-    timestamp: event.timestamp,
-    receivedAt: event.receivedAt,
-    siteId: event.siteId,
-    siteName: event.siteName,
-    siteDomain: event.siteDomain,
-    kind: event.kind,
-    confidence: "normal",
-    reasons: [],
-    ip: "",
-    userAgent: "",
-    origin: event.origin,
-    hostname: event.hostname,
-    pathname: event.pathname,
-    country: event.country,
-    region: event.region,
-    city: event.city,
-    continent: event.continent,
-    colo: event.colo,
-    asn: event.asn,
-    asOrganization: event.asOrganization,
-    verifiedBotCategory: "",
-    rayId: event.rayId,
-    traceId: event.traceId,
-    metadataJson: JSON.stringify({
-      requestMethod: event.requestMethod,
-      edgeLatencyMs: event.edgeLatencyMs,
-      eventAt: event.eventAt,
-    }),
-    latitude: event.latitude,
-    longitude: event.longitude,
-    botScore: null,
-    userAgentLength: event.userAgentLength,
-  };
 }
 
 function latencyFormat(locale: Locale, valueMs: number | null | undefined) {
@@ -569,6 +550,7 @@ export function RequestObservationClient({
   const [data, setData] = useState<RequestObservationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const mapAnimationControls = useAnimationControls();
 
   const spanMs = Math.max(1, timeWindow.to - timeWindow.from);
   const detailMinutes = Math.max(1, Math.ceil(spanMs / 60000));
@@ -720,6 +702,79 @@ export function RequestObservationClient({
     () => [...normalMapPoints, ...abnormalMapPoints],
     [abnormalMapPoints, normalMapPoints],
   );
+  const activeMap = useMemo<RequestObservationMapConfig>(() => {
+    if (activeTab === "abnormal") {
+      return {
+        key: "abnormal",
+        points: abnormalMapPoints,
+        pointColor: ABNORMAL_POINT_COLOR,
+        collapseOverlappingPointColors: false,
+      };
+    }
+    if (activeTab === "normal") {
+      return {
+        key: "normal",
+        points: normalMapPoints,
+        pointColor: NORMAL_POINT_COLOR,
+        collapseOverlappingPointColors: false,
+      };
+    }
+    return {
+      key: "overview",
+      points: overviewMapPoints,
+      pointColor: NORMAL_POINT_COLOR,
+      collapseOverlappingPointColors: true,
+    };
+  }, [abnormalMapPoints, activeTab, normalMapPoints, overviewMapPoints]);
+  const [renderedMap, setRenderedMap] =
+    useState<RequestObservationMapConfig>(activeMap);
+  const renderedMapRef = useRef(activeMap);
+
+  useEffect(() => {
+    renderedMapRef.current = renderedMap;
+  }, [renderedMap]);
+
+  useEffect(() => {
+    const currentMap = renderedMapRef.current;
+    if (currentMap.key === activeMap.key) {
+      setRenderedMap(activeMap);
+      return;
+    }
+
+    let cancelled = false;
+    const direction =
+      REQUEST_OBSERVATION_TAB_INDEX[activeMap.key] >
+      REQUEST_OBSERVATION_TAB_INDEX[currentMap.key]
+        ? 1
+        : -1;
+    const exitX = direction > 0 ? "-100%" : "100%";
+    const enterX = direction > 0 ? "100%" : "-100%";
+
+    void (async () => {
+      await mapAnimationControls.start({
+        x: exitX,
+        transition: REQUEST_MAP_SLIDE_TRANSITION,
+      });
+      if (cancelled) return;
+
+      mapAnimationControls.set({ x: enterX });
+      setRenderedMap(activeMap);
+
+      requestAnimationFrame(() => {
+        if (!cancelled) {
+          void mapAnimationControls.start({
+            x: 0,
+            transition: REQUEST_MAP_SLIDE_TRANSITION,
+          });
+        }
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      mapAnimationControls.stop();
+    };
+  }, [activeMap, mapAnimationControls]);
   const confidenceCounts = useMemo(() => {
     let low = 0;
     let medium = 0;
@@ -766,7 +821,7 @@ export function RequestObservationClient({
       ({
         normalCount: {
           label: labels.normalRequests,
-          color: "var(--color-chart-1)",
+          color: NORMAL_TRAFFIC_SHARE_COLOR,
         },
         abnormalCount: {
           label: labels.abnormalRequests,
@@ -778,19 +833,19 @@ export function RequestObservationClient({
         },
         pageviews: {
           label: labels.pageviews,
-          color: "var(--color-chart-2)",
+          color: NORMAL_TRAFFIC_SHARE_COLOR,
         },
         customEvents: {
           label: labels.customEvents,
-          color: "var(--color-chart-4)",
+          color: PERFORMANCE_WARNING_COLOR,
         },
         abnormalRatio: {
           label: labels.abnormalRatio,
-          color: "var(--color-chart-4)",
+          color: "var(--color-destructive)",
         },
         avgLatencyMs: {
           label: labels.avgLatency,
-          color: "var(--color-chart-2)",
+          color: "var(--color-chart-1)",
         },
         p50LatencyMs: {
           label: labels.p50Latency,
@@ -1154,19 +1209,28 @@ export function RequestObservationClient({
     options?: { collapseOverlappingPointColors?: boolean },
   ) => (
     <div className="relative h-[min(72svh,calc(100svh-10.5rem))] min-h-[18rem] overflow-hidden bg-background sm:min-h-[22rem]">
-      <GeoPointsMapIsland
-        locale={locale}
-        messages={messages}
-        points={points}
-        loading={loading}
-        emptyLabel={copy.noData}
-        heightClassName="h-full"
-        countryHoverEnabled={false}
-        pointColor={pointColor}
-        projectionMode="globe"
-        autoRotate
-        collapseOverlappingPointColors={options?.collapseOverlappingPointColors}
-      />
+      <motion.div
+        animate={mapAnimationControls}
+        initial={false}
+        className="h-full"
+      >
+        <GeoPointsMapIsland
+          locale={locale}
+          messages={messages}
+          points={points}
+          loading={loading}
+          emptyLabel={copy.noData}
+          heightClassName="h-full"
+          countryHoverEnabled={false}
+          pointColor={pointColor}
+          projectionMode="globe"
+          autoRotate
+          collapseOverlappingPointColors={
+            options?.collapseOverlappingPointColors
+          }
+          pointCrossfadeEnabled={false}
+        />
+      </motion.div>
       <div className="pointer-events-none absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-background via-background/65 to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-background via-background/70 to-transparent" />
       <div className="pointer-events-none absolute left-4 top-4 z-10 max-w-2xl md:left-6 md:top-6">
@@ -1528,318 +1592,363 @@ export function RequestObservationClient({
             showDemoOverlay && "pointer-events-none select-none blur-sm",
           )}
         >
-          {activeTab === "overview" ? (
-            <div className="mt-0 space-y-6">
-              {renderMap(overviewMapPoints, NORMAL_POINT_COLOR, {
-                collapseOverlappingPointColors: true,
-              })}
-              {renderOverviewCharts()}
-            </div>
-          ) : null}
+          {renderMap(renderedMap.points, renderedMap.pointColor, {
+            collapseOverlappingPointColors:
+              renderedMap.collapseOverlappingPointColors,
+          })}
 
-          {activeTab === "abnormal" ? (
-            <div className="mt-0 space-y-6">
-              {renderMap(abnormalMapPoints, ABNORMAL_POINT_COLOR)}
-              <div className="mx-auto w-full max-w-[1400px] px-4 md:px-6">
+          <AutoResizer initial className="mt-0" duration={0.3}>
+            <AutoTransition
+              initial={false}
+              type="fade"
+              transitionKey={activeTab}
+            >
+              {activeTab === "overview" ? (
+                <div className="space-y-6">{renderOverviewCharts()}</div>
+              ) : activeTab === "abnormal" ? (
                 <div className="space-y-6">
-                  <div className="text-sm text-muted-foreground">
-                    {labels.abnormalSubtitle}
-                  </div>
-                  <Card className="py-0">
-                    <CardContent className="p-0">
-                      <div className="grid gap-px overflow-hidden bg-border/70 md:grid-cols-2 xl:grid-cols-4">
-                        <MetricTile
-                          icon={RiRobot2Line}
-                          label={labels.abnormalRequests}
-                          value={numberFormat(
-                            locale,
-                            abnormalSummary?.total ??
-                              overview?.abnormalRequests ??
-                              0,
-                          )}
-                          detail={windowDetail}
-                          loading={loading}
-                        />
-                        <MetricTile
-                          icon={RiRadarLine}
-                          label={labels.abnormalRatio}
-                          value={percentFormat(
-                            locale,
-                            abnormalSummary?.ratio ??
-                              overview?.abnormalRequestRatio ??
-                              0,
-                          )}
-                          detail={labels.totalRequests}
-                          loading={loading}
-                        />
-                        <MetricTile
-                          icon={RiShieldCheckLine}
-                          label={copy.highConfidenceBots}
-                          value={numberFormat(
-                            locale,
-                            abnormalSummary?.highConfidence ?? 0,
-                          )}
-                          detail={copy.confidence}
-                          loading={loading}
-                        />
-                        <MetricTile
-                          icon={RiGlobalLine}
-                          label={copy.affectedSites}
-                          value={numberFormat(
-                            locale,
-                            abnormalSummary?.affectedSites ?? 0,
-                          )}
-                          detail={copy.site}
-                          loading={loading}
-                        />
+                  <div className="mx-auto w-full max-w-[1400px] px-4 md:px-6">
+                    <div className="space-y-6">
+                      <div className="text-sm text-muted-foreground">
+                        {labels.abnormalSubtitle}
                       </div>
-                    </CardContent>
-                  </Card>
+                      <Card className="py-0">
+                        <CardContent className="p-0">
+                          <div className="grid gap-px overflow-hidden bg-border/70 md:grid-cols-2 xl:grid-cols-4">
+                            <MetricTile
+                              icon={RiRobot2Line}
+                              label={labels.abnormalRequests}
+                              value={numberFormat(
+                                locale,
+                                abnormalSummary?.total ??
+                                  overview?.abnormalRequests ??
+                                  0,
+                              )}
+                              detail={windowDetail}
+                              loading={loading}
+                            />
+                            <MetricTile
+                              icon={RiRadarLine}
+                              label={labels.abnormalRatio}
+                              value={percentFormat(
+                                locale,
+                                abnormalSummary?.ratio ??
+                                  overview?.abnormalRequestRatio ??
+                                  0,
+                              )}
+                              detail={labels.totalRequests}
+                              loading={loading}
+                            />
+                            <MetricTile
+                              icon={RiShieldCheckLine}
+                              label={copy.highConfidenceBots}
+                              value={numberFormat(
+                                locale,
+                                abnormalSummary?.highConfidence ?? 0,
+                              )}
+                              detail={copy.confidence}
+                              loading={loading}
+                            />
+                            <MetricTile
+                              icon={RiGlobalLine}
+                              label={copy.affectedSites}
+                              value={numberFormat(
+                                locale,
+                                abnormalSummary?.affectedSites ?? 0,
+                              )}
+                              detail={copy.site}
+                              loading={loading}
+                            />
+                          </div>
+                        </CardContent>
+                      </Card>
 
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>{copy.trendTitle}</CardTitle>
-                      <CardDescription>{copy.trendDescription}</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <ChartContainer
-                        config={trendConfig}
-                        className="h-[320px] w-full"
-                      >
-                        <ComposedChart data={trend}>
-                          <CartesianGrid vertical={false} />
-                          <XAxis
-                            dataKey="timestampMs"
-                            tickLine={false}
-                            axisLine={false}
-                            tickMargin={8}
-                            tickFormatter={(value) =>
-                              trendTickFormatter.format(
-                                new Date(Number(value ?? 0)),
-                              )
-                            }
-                            minTickGap={14}
-                          />
-                          <YAxis
-                            yAxisId="requests"
-                            width={52}
-                            tickLine={false}
-                            axisLine={false}
-                            tickFormatter={(value) =>
-                              formatter.format(Number(value))
-                            }
-                          />
-                          <YAxis
-                            yAxisId="ratio"
-                            orientation="right"
-                            width={44}
-                            tickLine={false}
-                            axisLine={false}
-                            tickFormatter={(value) =>
-                              percentFormat(locale, Number(value))
-                            }
-                          />
-                          <ChartTooltip
-                            allowEscapeViewBox={{ x: false, y: true }}
-                            wrapperStyle={{ zIndex: 20 }}
-                            content={
-                              <ChartTooltipContent
-                                indicator="dot"
-                                labelFormatter={(value, payload) => {
-                                  const timestamp = Number(
-                                    payload?.[0]?.payload?.timestampMs ??
-                                      value ??
-                                      0,
-                                  );
-                                  return trendTooltipFormatter.format(
-                                    new Date(timestamp),
-                                  );
-                                }}
-                                formatter={formatTrendTooltipValue}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>{copy.trendTitle}</CardTitle>
+                          <CardDescription>
+                            {copy.trendDescription}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <ChartContainer
+                            config={trendConfig}
+                            className="h-[320px] w-full"
+                          >
+                            <ComposedChart data={trend}>
+                              <CartesianGrid vertical={false} />
+                              <XAxis
+                                dataKey="timestampMs"
+                                tickLine={false}
+                                axisLine={false}
+                                tickMargin={8}
+                                tickFormatter={(value) =>
+                                  trendTickFormatter.format(
+                                    new Date(Number(value ?? 0)),
+                                  )
+                                }
+                                minTickGap={14}
                               />
-                            }
-                          />
-                          <Bar
-                            yAxisId="requests"
-                            dataKey="abnormalCount"
-                            fill="var(--color-abnormalCount)"
-                            radius={[3, 3, 0, 0]}
-                          />
-                          <Line
-                            yAxisId="ratio"
-                            type="linear"
-                            dataKey="abnormalRatio"
-                            stroke="var(--color-abnormalRatio)"
-                            strokeWidth={2}
-                            dot={false}
-                            activeDot={{ r: 4 }}
-                          />
-                        </ComposedChart>
-                      </ChartContainer>
-                    </CardContent>
-                  </Card>
+                              <YAxis
+                                yAxisId="requests"
+                                width={52}
+                                tickLine={false}
+                                axisLine={false}
+                                tickFormatter={(value) =>
+                                  formatter.format(Number(value))
+                                }
+                              />
+                              <YAxis
+                                yAxisId="ratio"
+                                orientation="right"
+                                width={44}
+                                tickLine={false}
+                                axisLine={false}
+                                tickFormatter={(value) =>
+                                  percentFormat(locale, Number(value))
+                                }
+                              />
+                              <ChartTooltip
+                                allowEscapeViewBox={{ x: false, y: true }}
+                                wrapperStyle={{ zIndex: 20 }}
+                                content={
+                                  <ChartTooltipContent
+                                    indicator="dot"
+                                    labelFormatter={(value, payload) => {
+                                      const timestamp = Number(
+                                        payload?.[0]?.payload?.timestampMs ??
+                                          value ??
+                                          0,
+                                      );
+                                      return trendTooltipFormatter.format(
+                                        new Date(timestamp),
+                                      );
+                                    }}
+                                    formatter={formatTrendTooltipValue}
+                                  />
+                                }
+                              />
+                              <Bar
+                                yAxisId="requests"
+                                dataKey="abnormalCount"
+                                fill="var(--color-abnormalCount)"
+                                radius={[3, 3, 0, 0]}
+                              />
+                              <Line
+                                yAxisId="ratio"
+                                type="linear"
+                                dataKey="abnormalRatio"
+                                stroke="var(--color-abnormalRatio)"
+                                strokeWidth={2}
+                                dot={false}
+                                activeDot={{ r: 4 }}
+                              />
+                            </ComposedChart>
+                          </ChartContainer>
+                        </CardContent>
+                      </Card>
 
-                  <section className="grid gap-4 xl:grid-cols-2">
-                    <AsyncDimensionBreakdownCard
-                      locale={locale}
-                      messages={messages}
-                      tabs={detectionTabs}
-                      rowsByTab={detectionRowsByTab}
-                      requestKey={`${requestKey}:${abnormalEvents.length}:detection`}
-                      className="h-full"
-                      secondaryMetricLabel={copy.highConfidenceRequests}
-                      emptyLabel={copy.noData}
-                    />
-                    <AsyncDimensionBreakdownCard
-                      locale={locale}
-                      messages={messages}
-                      tabs={targetTabs}
-                      rowsByTab={abnormalTargetRowsByTab}
-                      requestKey={`${requestKey}:${abnormalEvents.length}:target`}
-                      className="h-full"
-                      secondaryMetricLabel={copy.highConfidenceRequests}
-                      emptyLabel={copy.noData}
-                    />
-                    <AsyncDimensionBreakdownCard
-                      locale={locale}
-                      messages={messages}
-                      tabs={networkTabs}
-                      rowsByTab={abnormalNetworkRowsByTab}
-                      requestKey={`${requestKey}:${abnormalEvents.length}:network`}
-                      className="h-full"
-                      secondaryMetricLabel={copy.highConfidenceRequests}
-                      emptyLabel={copy.noData}
-                    />
-                    <AsyncDimensionBreakdownCard
-                      locale={locale}
-                      messages={messages}
-                      tabs={clientTabs}
-                      rowsByTab={clientRowsByTab}
-                      requestKey={`${requestKey}:${abnormalEvents.length}:client`}
-                      className="h-full"
-                      secondaryMetricLabel={copy.highConfidenceRequests}
-                      emptyLabel={copy.noData}
-                    />
-                  </section>
+                      <section className="grid gap-4 xl:grid-cols-2">
+                        <AsyncDimensionBreakdownCard
+                          locale={locale}
+                          messages={messages}
+                          tabs={detectionTabs}
+                          rowsByTab={detectionRowsByTab}
+                          loadingByTab={{
+                            reason: loading,
+                            confidence: loading,
+                            kind: loading,
+                            botScoreBucket: loading,
+                            verifiedBotCategory: loading,
+                          }}
+                          requestKey={`${requestKey}:${abnormalEvents.length}:detection`}
+                          className="h-full"
+                          secondaryMetricLabel={copy.highConfidenceRequests}
+                          emptyLabel={copy.noData}
+                        />
+                        <AsyncDimensionBreakdownCard
+                          locale={locale}
+                          messages={messages}
+                          tabs={targetTabs}
+                          rowsByTab={abnormalTargetRowsByTab}
+                          loadingByTab={{
+                            site: loading,
+                            hostname: loading,
+                            pathname: loading,
+                            origin: loading,
+                          }}
+                          requestKey={`${requestKey}:${abnormalEvents.length}:target`}
+                          className="h-full"
+                          secondaryMetricLabel={copy.highConfidenceRequests}
+                          emptyLabel={copy.noData}
+                        />
+                        <AsyncDimensionBreakdownCard
+                          locale={locale}
+                          messages={messages}
+                          tabs={networkTabs}
+                          rowsByTab={abnormalNetworkRowsByTab}
+                          loadingByTab={{
+                            asOrganization: loading,
+                            asn: loading,
+                            country: loading,
+                            region: loading,
+                            city: loading,
+                            colo: loading,
+                          }}
+                          requestKey={`${requestKey}:${abnormalEvents.length}:network`}
+                          className="h-full"
+                          secondaryMetricLabel={copy.highConfidenceRequests}
+                          emptyLabel={copy.noData}
+                        />
+                        <AsyncDimensionBreakdownCard
+                          locale={locale}
+                          messages={messages}
+                          tabs={clientTabs}
+                          rowsByTab={clientRowsByTab}
+                          loadingByTab={{
+                            ip: loading,
+                            userAgent: loading,
+                            userAgentLengthBucket: loading,
+                            ipPrefix: loading,
+                          }}
+                          requestKey={`${requestKey}:${abnormalEvents.length}:client`}
+                          className="h-full"
+                          secondaryMetricLabel={copy.highConfidenceRequests}
+                          emptyLabel={copy.noData}
+                        />
+                      </section>
 
-                  <BotEventsTable
-                    locale={locale}
-                    messages={messages}
-                    copy={copy}
-                    events={abnormalEvents}
-                    loading={loading}
-                    requestKey={`${requestKey}:${abnormalEvents.length}`}
-                    minutes={detailMinutes}
-                  />
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {activeTab === "normal" ? (
-            <div className="mt-0 space-y-6">
-              {renderMap(normalMapPoints, NORMAL_POINT_COLOR)}
-              <div className="mx-auto w-full max-w-[1400px] px-4 md:px-6">
-                <div className="space-y-6">
-                  <div className="text-sm text-muted-foreground">
-                    {labels.normalSubtitle}
+                      <BotEventsTable
+                        locale={locale}
+                        messages={messages}
+                        copy={copy}
+                        events={abnormalEvents}
+                        loading={loading}
+                        requestKey={`${requestKey}:${abnormalEvents.length}`}
+                        minutes={detailMinutes}
+                      />
+                    </div>
                   </div>
-                  <Card className="py-0">
-                    <CardContent className="p-0">
-                      <div className="grid gap-px overflow-hidden bg-border/70 md:grid-cols-2 xl:grid-cols-4">
-                        <MetricTile
-                          icon={RiShieldCheckLine}
-                          label={labels.normalRequests}
-                          value={numberFormat(
-                            locale,
-                            normalSummary?.total ??
-                              overview?.normalRequests ??
-                              0,
-                          )}
-                          detail={percentFormat(
-                            locale,
-                            normalSummary?.ratio ??
-                              overview?.normalRequestRatio ??
-                              0,
-                          )}
-                          loading={loading}
-                        />
-                        <MetricTile
-                          icon={RiRadarLine}
-                          label={labels.pageviews}
-                          value={numberFormat(
-                            locale,
-                            normalSummary?.pageviews ??
-                              overview?.pageviews ??
-                              0,
-                          )}
-                          detail={labels.customEvents}
-                          loading={loading}
-                        />
-                        <MetricTile
-                          icon={RiGlobalLine}
-                          label={copy.uniqueCountries}
-                          value={numberFormat(
-                            locale,
-                            normalSummary?.uniqueCountries ?? 0,
-                          )}
-                          detail={copy.country}
-                          loading={loading}
-                        />
-                        <MetricTile
-                          icon={RiRadarLine}
-                          label={labels.p95Latency}
-                          value={
-                            normalSummary?.p95LatencyMs === null ||
-                            normalSummary?.p95LatencyMs === undefined
-                              ? "--"
-                              : latencyFormat(
-                                  locale,
-                                  normalSummary.p95LatencyMs,
-                                )
-                          }
-                          detail={labels.avgLatency}
-                          loading={loading}
-                        />
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <section className="grid gap-4 xl:grid-cols-2">
-                    <AsyncDimensionBreakdownCard
-                      locale={locale}
-                      messages={messages}
-                      tabs={targetTabs}
-                      rowsByTab={normalTargetRowsByTab}
-                      requestKey={`${requestKey}:${normalEvents.length}:normal-target`}
-                      className="h-full"
-                      showVisitors={false}
-                      emptyLabel={copy.noData}
-                    />
-                    <AsyncDimensionBreakdownCard
-                      locale={locale}
-                      messages={messages}
-                      tabs={networkTabs}
-                      rowsByTab={normalNetworkRowsByTab}
-                      requestKey={`${requestKey}:${normalEvents.length}:normal-network`}
-                      className="h-full"
-                      showVisitors={false}
-                      emptyLabel={copy.noData}
-                    />
-                  </section>
-
-                  <NormalRequestsTable
-                    locale={locale}
-                    messages={messages}
-                    copy={copy}
-                    events={normalEvents}
-                    loading={loading}
-                    requestKey={`${requestKey}:${normalEvents.length}`}
-                  />
                 </div>
-              </div>
-            </div>
-          ) : null}
+              ) : (
+                <div className="space-y-6">
+                  <div className="mx-auto w-full max-w-[1400px] px-4 md:px-6">
+                    <div className="space-y-6">
+                      <div className="text-sm text-muted-foreground">
+                        {labels.normalSubtitle}
+                      </div>
+                      <Card className="py-0">
+                        <CardContent className="p-0">
+                          <div className="grid gap-px overflow-hidden bg-border/70 md:grid-cols-2 xl:grid-cols-4">
+                            <MetricTile
+                              icon={RiShieldCheckLine}
+                              label={labels.normalRequests}
+                              value={numberFormat(
+                                locale,
+                                normalSummary?.total ??
+                                  overview?.normalRequests ??
+                                  0,
+                              )}
+                              detail={percentFormat(
+                                locale,
+                                normalSummary?.ratio ??
+                                  overview?.normalRequestRatio ??
+                                  0,
+                              )}
+                              loading={loading}
+                            />
+                            <MetricTile
+                              icon={RiRadarLine}
+                              label={labels.pageviews}
+                              value={numberFormat(
+                                locale,
+                                normalSummary?.pageviews ??
+                                  overview?.pageviews ??
+                                  0,
+                              )}
+                              detail={labels.customEvents}
+                              loading={loading}
+                            />
+                            <MetricTile
+                              icon={RiGlobalLine}
+                              label={copy.uniqueCountries}
+                              value={numberFormat(
+                                locale,
+                                normalSummary?.uniqueCountries ?? 0,
+                              )}
+                              detail={copy.country}
+                              loading={loading}
+                            />
+                            <MetricTile
+                              icon={RiRadarLine}
+                              label={labels.p95Latency}
+                              value={
+                                normalSummary?.p95LatencyMs === null ||
+                                normalSummary?.p95LatencyMs === undefined
+                                  ? "--"
+                                  : latencyFormat(
+                                      locale,
+                                      normalSummary.p95LatencyMs,
+                                    )
+                              }
+                              detail={labels.avgLatency}
+                              loading={loading}
+                            />
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <section className="grid gap-4 xl:grid-cols-2">
+                        <AsyncDimensionBreakdownCard
+                          locale={locale}
+                          messages={messages}
+                          tabs={targetTabs}
+                          rowsByTab={normalTargetRowsByTab}
+                          loadingByTab={{
+                            site: loading,
+                            hostname: loading,
+                            pathname: loading,
+                            origin: loading,
+                          }}
+                          requestKey={`${requestKey}:${normalEvents.length}:normal-target`}
+                          className="h-full"
+                          showVisitors={false}
+                          emptyLabel={copy.noData}
+                        />
+                        <AsyncDimensionBreakdownCard
+                          locale={locale}
+                          messages={messages}
+                          tabs={networkTabs}
+                          rowsByTab={normalNetworkRowsByTab}
+                          loadingByTab={{
+                            asOrganization: loading,
+                            asn: loading,
+                            country: loading,
+                            region: loading,
+                            city: loading,
+                            colo: loading,
+                          }}
+                          requestKey={`${requestKey}:${normalEvents.length}:normal-network`}
+                          className="h-full"
+                          showVisitors={false}
+                          emptyLabel={copy.noData}
+                        />
+                      </section>
+
+                      <NormalRequestsTable
+                        locale={locale}
+                        messages={messages}
+                        copy={copy}
+                        events={normalEvents}
+                        loading={loading}
+                        requestKey={`${requestKey}:${normalEvents.length}`}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </AutoTransition>
+          </AutoResizer>
         </div>
 
         {showDemoOverlay ? (
@@ -2135,6 +2244,13 @@ function formatAsn(event: BotEvent): string {
   return `AS${event.asn} ${event.asOrganization}`;
 }
 
+function formatNormalAsn(event: NormalRequestEvent): string {
+  if (!event.asn && !event.asOrganization) return "--";
+  if (!event.asn) return event.asOrganization;
+  if (!event.asOrganization) return `AS${event.asn}`;
+  return `AS${event.asn} ${event.asOrganization}`;
+}
+
 function MetricTile({
   icon: Icon,
   label,
@@ -2258,9 +2374,19 @@ function createTrendTooltipFormatter(input: {
           ? "var(--color-totalCount)"
           : key === "pageviews"
             ? "var(--color-pageviews)"
-            : isRatio
-              ? "var(--color-botRatio)"
-              : "var(--color-abnormalCount, var(--color-count))";
+            : key === "customEvents"
+              ? "var(--color-customEvents)"
+              : key === "p50LatencyMs"
+                ? "var(--color-p50LatencyMs)"
+                : key === "p75LatencyMs"
+                  ? "var(--color-p75LatencyMs)"
+                  : key === "p95LatencyMs"
+                    ? "var(--color-p95LatencyMs)"
+                    : key === "p99LatencyMs"
+                      ? "var(--color-p99LatencyMs)"
+                      : isRatio
+                        ? "var(--color-abnormalRatio, var(--color-botRatio))"
+                        : "var(--color-abnormalCount, var(--color-count))";
 
     return (
       <TrendTooltipValue
@@ -2609,6 +2735,15 @@ function BotRequestDetailDrawer({
           {...{
             [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_Z_INDEX,
           }}
+          onFocusOutside={(event) => {
+            event.preventDefault();
+          }}
+          onInteractOutside={(event) => {
+            event.preventDefault();
+          }}
+          onPointerDownOutside={(event) => {
+            event.preventDefault();
+          }}
         >
           <DrawerHeader className="border-b">
             <DrawerTitle>{copy.detailTitle}</DrawerTitle>
@@ -2860,6 +2995,325 @@ function BotRequestDetailDrawer({
                         </section>
                       </>
                     ) : null}
+                  </div>
+                )}
+              </AutoTransition>
+            </AutoResizer>
+          </div>
+        </DrawerContent>
+      </Drawer>
+    </>
+  );
+}
+
+function NormalRequestDetailDrawer({
+  locale,
+  messages,
+  copy,
+  event,
+  open,
+  onOpenChange,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  copy: AppMessages["requestObservation"];
+  event: NormalRequestEvent | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const empty = copy.emptyValue;
+  const eventId = event ? event.traceId || event.rayId : "";
+  const title = locale === "zh" ? "正常请求详情" : "Normal Request Detail";
+  const subtitle =
+    event?.pathname ||
+    (locale === "zh"
+      ? "查看正常请求 AE 记录的链路、位置和耗时字段。"
+      : "Inspect the normal request AE record fields, location, and latency.");
+  const requestMethodLabel = locale === "zh" ? "请求方法" : "Request Method";
+  const edgeLatencyLabel = locale === "zh" ? "边缘耗时" : "Edge Latency";
+  const eventAtLabel = locale === "zh" ? "事件时间" : "Event Time";
+  const receivedAtLabel = locale === "zh" ? "接收时间" : "Received Time";
+  const coordinatesLabel = locale === "zh" ? "坐标" : "Coordinates";
+  const continentLabel = locale === "zh" ? "大洲" : "Continent";
+  const contentKey = event ? "detail" : "empty";
+
+  const stopSideDrawerOverlayEvent = (
+    event: PointerEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>,
+  ) => {
+    event.stopPropagation();
+    event.nativeEvent.stopImmediatePropagation();
+  };
+
+  const closeSideDrawerFromOverlay = (event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    stopSideDrawerOverlayEvent(event);
+    onOpenChange(false);
+  };
+
+  const sideDrawerOverlay =
+    typeof document !== "undefined"
+      ? createPortal(
+          <AnimatePresence>
+            {open ? (
+              <motion.div
+                aria-hidden="true"
+                data-dashboard-floating-layer="request-observation-normal-drawer-overlay"
+                className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
+                style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.16, ease: "easeOut" }}
+                {...{
+                  [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
+                }}
+                onPointerDown={stopSideDrawerOverlayEvent}
+                onPointerUp={stopSideDrawerOverlayEvent}
+                onClick={closeSideDrawerFromOverlay}
+              />
+            ) : null}
+          </AnimatePresence>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <>
+      {sideDrawerOverlay}
+      <Drawer
+        open={open}
+        onOpenChange={onOpenChange}
+        direction="right"
+        modal={false}
+      >
+        <DrawerContent
+          data-dashboard-floating-layer="request-observation-normal-drawer"
+          className="!w-full !max-w-none sm:!w-[min(58vw,34rem)]"
+          overlayClassName="hidden"
+          style={{ zIndex: EVENT_RECORD_DRAWER_Z_INDEX }}
+          {...{
+            [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_Z_INDEX,
+          }}
+          onFocusOutside={(event) => {
+            event.preventDefault();
+          }}
+          onInteractOutside={(event) => {
+            event.preventDefault();
+          }}
+          onPointerDownOutside={(event) => {
+            event.preventDefault();
+          }}
+        >
+          <DrawerHeader className="border-b">
+            <DrawerTitle>{title}</DrawerTitle>
+            <DrawerDescription>{subtitle}</DrawerDescription>
+          </DrawerHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            <AutoResizer initial duration={0.2} ease={[0.22, 1, 0.36, 1]}>
+              <AutoTransition
+                transitionKey={contentKey}
+                initial={false}
+                duration={0.18}
+                type="fade"
+                presenceMode="wait"
+              >
+                {!event ? (
+                  <div className="flex h-64 items-center justify-center text-muted-foreground">
+                    {copy.noData}
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    <section className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">{event.kind || empty}</Badge>
+                        <Badge variant="outline">
+                          {event.requestMethod || empty}
+                        </Badge>
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {displayValue(eventId, empty)}
+                        </span>
+                      </div>
+                      <dl className="grid gap-3 sm:grid-cols-2">
+                        <DetailItem
+                          label={receivedAtLabel}
+                          value={shortDateTimeWithSeconds(
+                            locale,
+                            event.receivedAt,
+                          )}
+                        />
+                        <DetailItem
+                          label={eventAtLabel}
+                          value={shortDateTimeWithSeconds(
+                            locale,
+                            event.eventAt,
+                          )}
+                        />
+                        <DetailItem
+                          label={copy.kind}
+                          value={displayValue(event.kind, empty)}
+                        />
+                        <DetailItem
+                          label={requestMethodLabel}
+                          value={displayValue(event.requestMethod, empty)}
+                        />
+                      </dl>
+                    </section>
+
+                    <Separator />
+
+                    <section className="space-y-3">
+                      <h3 className="text-sm font-medium">{copy.request}</h3>
+                      <dl className="grid gap-3 sm:grid-cols-2">
+                        <DetailItem
+                          label={copy.site}
+                          value={
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">
+                                {displayValue(event.siteName, empty)}
+                              </div>
+                              <div className="truncate font-mono text-xs text-muted-foreground">
+                                {displayValue(
+                                  event.siteDomain || event.siteId,
+                                  empty,
+                                )}
+                              </div>
+                            </div>
+                          }
+                        />
+                        <DetailItem
+                          label={copy.origin}
+                          value={
+                            <span className="break-all font-mono text-xs">
+                              {displayValue(event.origin, empty)}
+                            </span>
+                          }
+                        />
+                        <DetailItem
+                          label={copy.hostname}
+                          value={
+                            <span className="break-all font-mono text-xs">
+                              {displayValue(event.hostname, empty)}
+                            </span>
+                          }
+                        />
+                        <DetailItem
+                          label={copy.pathname}
+                          value={
+                            <span className="break-all font-mono text-xs">
+                              {displayValue(event.pathname || "/", empty)}
+                            </span>
+                          }
+                        />
+                      </dl>
+                    </section>
+
+                    <Separator />
+
+                    <section className="space-y-3">
+                      <h3 className="text-sm font-medium">{copy.edge}</h3>
+                      <dl className="grid gap-3 sm:grid-cols-2">
+                        <DetailItem
+                          label={edgeLatencyLabel}
+                          value={latencyFormat(locale, event.edgeLatencyMs)}
+                        />
+                        <DetailItem
+                          label={copy.location}
+                          value={
+                            <CountryRegionMeta
+                              locale={locale}
+                              messages={messages}
+                              country={event.country || ""}
+                              region={event.region}
+                            />
+                          }
+                        />
+                        <DetailItem
+                          label={copy.colo}
+                          value={displayValue(event.colo, empty)}
+                        />
+                        <DetailItem
+                          label={copy.network}
+                          value={displayValue(formatNormalAsn(event), empty)}
+                        />
+                        <DetailItem
+                          label={coordinatesLabel}
+                          value={
+                            event.latitude !== null && event.longitude !== null
+                              ? `${event.latitude.toFixed(5)}, ${event.longitude.toFixed(5)}`
+                              : empty
+                          }
+                        />
+                        <DetailItem
+                          label={continentLabel}
+                          value={displayValue(event.continent, empty)}
+                        />
+                      </dl>
+                    </section>
+
+                    <Separator />
+
+                    <section className="space-y-3">
+                      <h3 className="text-sm font-medium">{copy.client}</h3>
+                      <dl className="grid gap-3 sm:grid-cols-2">
+                        <DetailItem
+                          label={copy.userAgentLengthBucket}
+                          value={
+                            event.userAgentLength
+                              ? userAgentLengthBucket(event.userAgentLength)
+                              : empty
+                          }
+                        />
+                        <DetailItem
+                          label={copy.userAgent}
+                          value={numberFormat(locale, event.userAgentLength)}
+                        />
+                      </dl>
+                    </section>
+
+                    <Separator />
+
+                    <section className="space-y-3">
+                      <h3 className="text-sm font-medium">
+                        {copy.identifiers}
+                      </h3>
+                      <dl className="grid gap-3 sm:grid-cols-2">
+                        <DetailItem
+                          label={copy.id}
+                          value={
+                            <span className="break-all font-mono text-xs">
+                              {displayValue(eventId, empty)}
+                            </span>
+                          }
+                        />
+                        <DetailItem
+                          label="Trace ID"
+                          value={
+                            <span className="break-all font-mono text-xs">
+                              {displayValue(event.traceId, empty)}
+                            </span>
+                          }
+                        />
+                        <DetailItem
+                          label="Ray ID"
+                          value={
+                            <span className="break-all font-mono text-xs">
+                              {displayValue(event.rayId, empty)}
+                            </span>
+                          }
+                        />
+                        <DetailItem
+                          label={copy.country}
+                          value={displayValue(event.country, empty)}
+                        />
+                        <DetailItem
+                          label={copy.asn}
+                          value={displayValue(
+                            event.asn ? `AS${event.asn}` : "",
+                            empty,
+                          )}
+                        />
+                      </dl>
+                    </section>
                   </div>
                 )}
               </AutoTransition>
@@ -3369,7 +3823,9 @@ function NormalRequestsTable({
   const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
     null,
   );
-  const [selectedEvent, setSelectedEvent] = useState<BotEvent | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<NormalRequestEvent | null>(
+    null,
+  );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
@@ -3441,7 +3897,7 @@ function NormalRequestsTable({
       ? "这些详细记录只写入正常请求 Analytics Engine 数据集。"
       : "Detailed records written only to the normal request Analytics Engine dataset.";
   const openEvent = (event: NormalRequestEvent) => {
-    setSelectedEvent(normalRequestToDetailEvent(event));
+    setSelectedEvent(event);
     setDrawerOpen(true);
   };
   const handleKeyDown = (
@@ -3633,14 +4089,11 @@ function NormalRequestsTable({
         </Card>
       </section>
 
-      <BotRequestDetailDrawer
+      <NormalRequestDetailDrawer
         locale={locale}
         messages={messages}
         copy={copy}
-        previewEvent={selectedEvent}
-        detailEvent={selectedEvent}
-        loading={false}
-        error={null}
+        event={selectedEvent}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
       />

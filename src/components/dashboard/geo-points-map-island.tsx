@@ -26,6 +26,7 @@ interface GeoPointsMapIslandProps {
   selectedCountryCode?: string | null;
   onCountrySelect?: (countryCode: string | null) => void;
   collapseOverlappingPointColors?: boolean;
+  pointCrossfadeEnabled?: boolean;
 }
 
 const DEFAULT_MAP_HEIGHT_CLASS = "h-[460px]";

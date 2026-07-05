@@ -163,6 +163,7 @@ function toCorsHeaders(origin: string | null): Record<string, string> {
   return {
     ...CORS_BASE_HEADERS,
     "access-control-allow-origin": origin,
+    "access-control-allow-credentials": "true",
     vary: "Origin",
   };
 }

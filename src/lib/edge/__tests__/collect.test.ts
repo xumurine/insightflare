@@ -164,7 +164,9 @@ describe("collect route", () => {
     expect(response.headers.get("access-control-allow-origin")).toBe(
       "https://example.com",
     );
-    expect(response.headers.get("access-control-allow-credentials")).toBeNull();
+    expect(response.headers.get("access-control-allow-credentials")).toBe(
+      "true",
+    );
     expect(response.headers.get("access-control-allow-methods")).toBe(
       "GET, POST, PATCH, OPTIONS",
     );

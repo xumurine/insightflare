@@ -208,19 +208,73 @@ const DEMO_ABNORMAL_COUNTRY_WEIGHTS = [
   { label: "SG", weight: 10 },
   { label: "RU", weight: 9 },
   { label: "IN", weight: 8 },
-  { label: "BR", weight: 6 },
-  { label: "VN", weight: 5 },
+  { label: "BR", weight: 7 },
+  { label: "VN", weight: 6 },
+  { label: "GB", weight: 6 },
+  { label: "FR", weight: 6 },
+  { label: "JP", weight: 5 },
+  { label: "KR", weight: 5 },
+  { label: "CN", weight: 5 },
+  { label: "CA", weight: 5 },
+  { label: "AU", weight: 5 },
+  { label: "ID", weight: 5 },
+  { label: "TH", weight: 4 },
+  { label: "PH", weight: 4 },
+  { label: "MY", weight: 4 },
+  { label: "AE", weight: 4 },
+  { label: "TR", weight: 4 },
+  { label: "ES", weight: 4 },
+  { label: "IT", weight: 4 },
+  { label: "PL", weight: 4 },
+  { label: "SE", weight: 3 },
+  { label: "MX", weight: 4 },
+  { label: "CO", weight: 3 },
+  { label: "AR", weight: 3 },
+  { label: "CL", weight: 3 },
+  { label: "ZA", weight: 4 },
+  { label: "NG", weight: 4 },
+  { label: "KE", weight: 3 },
+  { label: "EG", weight: 3 },
+  { label: "NZ", weight: 3 },
 ] as const;
 
 const DEMO_NORMAL_COUNTRY_WEIGHTS = [
   { label: "CN", weight: 20 },
-  { label: "US", weight: 14 },
+  { label: "US", weight: 15 },
   { label: "JP", weight: 12 },
   { label: "KR", weight: 10 },
-  { label: "GB", weight: 8 },
-  { label: "FR", weight: 7 },
-  { label: "AU", weight: 6 },
-  { label: "CA", weight: 6 },
+  { label: "GB", weight: 9 },
+  { label: "FR", weight: 8 },
+  { label: "AU", weight: 7 },
+  { label: "CA", weight: 7 },
+  { label: "DE", weight: 7 },
+  { label: "IN", weight: 7 },
+  { label: "BR", weight: 6 },
+  { label: "SG", weight: 6 },
+  { label: "NL", weight: 5 },
+  { label: "IT", weight: 5 },
+  { label: "ES", weight: 5 },
+  { label: "SE", weight: 4 },
+  { label: "PL", weight: 4 },
+  { label: "RU", weight: 4 },
+  { label: "TR", weight: 4 },
+  { label: "ID", weight: 5 },
+  { label: "PH", weight: 4 },
+  { label: "VN", weight: 4 },
+  { label: "TH", weight: 4 },
+  { label: "MY", weight: 4 },
+  { label: "TW", weight: 4 },
+  { label: "HK", weight: 4 },
+  { label: "MX", weight: 5 },
+  { label: "CO", weight: 4 },
+  { label: "AR", weight: 4 },
+  { label: "CL", weight: 3 },
+  { label: "ZA", weight: 4 },
+  { label: "NG", weight: 4 },
+  { label: "KE", weight: 3 },
+  { label: "EG", weight: 3 },
+  { label: "AE", weight: 3 },
+  { label: "NZ", weight: 3 },
 ] as const;
 
 const BOT_USER_AGENTS = [
@@ -250,6 +304,13 @@ function bucketSizeMs(minutes: number): number {
   if (minutes <= 1440) return 60 * 60 * 1000;
   if (minutes <= 10080) return 6 * 60 * 60 * 1000;
   return 24 * 60 * 60 * 1000;
+}
+
+function mapCoordinatePrecision(minutes: number): number {
+  if (minutes <= 60) return 100;
+  if (minutes <= 1440) return 50;
+  if (minutes <= 10080) return 25;
+  return 10;
 }
 
 function weightedPickAsn(rng: () => number) {
@@ -328,6 +389,7 @@ function aggregateEvents(
 ) {
   const from = generatedAt - minutes * 60 * 1000;
   const bucketMs = bucketSizeMs(minutes);
+  const coordinatePrecision = mapCoordinatePrecision(minutes);
   const trend = new Map<number, Omit<DemoTrendPoint, "timestampMs">>();
   const reasons = new Map<string, number>();
   const asns = new Map<
@@ -403,8 +465,10 @@ function aggregateEvents(
     }
 
     if (event.latitude !== null && event.longitude !== null) {
-      const lat = Math.round(event.latitude * 100) / 100;
-      const lon = Math.round(event.longitude * 100) / 100;
+      const lat =
+        Math.round(event.latitude * coordinatePrecision) / coordinatePrecision;
+      const lon =
+        Math.round(event.longitude * coordinatePrecision) / coordinatePrecision;
       const key = `${event.country}:${lat}:${lon}`;
       const current = mapPoints.get(key);
       if (current) {
@@ -442,6 +506,7 @@ function aggregateNormalEvents(
 ) {
   const from = generatedAt - minutes * 60 * 1000;
   const bucketMs = bucketSizeMs(minutes);
+  const coordinatePrecision = mapCoordinatePrecision(minutes);
   const trend = new Map<
     number,
     {
@@ -479,8 +544,10 @@ function aggregateNormalEvents(
     trend.set(bucket, point);
 
     if (event.latitude !== null && event.longitude !== null) {
-      const lat = Math.round(event.latitude * 100) / 100;
-      const lon = Math.round(event.longitude * 100) / 100;
+      const lat =
+        Math.round(event.latitude * coordinatePrecision) / coordinatePrecision;
+      const lon =
+        Math.round(event.longitude * coordinatePrecision) / coordinatePrecision;
       const key = `${event.country}:${lat}:${lon}`;
       const current = mapPoints.get(key);
       if (current) {
@@ -551,10 +618,10 @@ export function generateDemoRequestObservationData(
     `request-observation:${minutes}:${windowBucket(from, generatedAt)}`,
   );
   const eventTargetByWindow: Record<WindowMinutes, number> = {
-    60: 160,
-    1440: 520,
-    10080: 960,
-    43200: 1500,
+    60: 280,
+    1440: 900,
+    10080: 1500,
+    43200: 2400,
   };
   const target = eventTargetByWindow[minutes];
   const events: DemoBotEvent[] = [];

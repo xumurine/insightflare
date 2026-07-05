@@ -50,6 +50,7 @@ interface GeoPointsMapProps {
   selectedCountryCode?: string | null;
   onCountrySelect?: (countryCode: string | null) => void;
   collapseOverlappingPointColors?: boolean;
+  pointCrossfadeEnabled?: boolean;
 }
 
 interface ClusteredGeoPoint {
@@ -515,6 +516,7 @@ export function GeoPointsMap({
   selectedCountryCode,
   onCountrySelect,
   collapseOverlappingPointColors = false,
+  pointCrossfadeEnabled = true,
 }: GeoPointsMapProps) {
   const { resolvedTheme } = useTheme();
   const isMobile = useIsMobile();
@@ -649,6 +651,15 @@ export function GeoPointsMap({
   const mapRef = useRef<MapRef | null>(null);
 
   useEffect(() => {
+    if (!pointCrossfadeEnabled) {
+      hasClusterCrossfadeInitialized.current = true;
+      incomingClustersRef.current = clusteredPoints;
+      setIncomingClusters(clusteredPoints);
+      setOutgoingClusters([]);
+      setClusterFadeProgress(1);
+      return;
+    }
+
     if (!hasClusterCrossfadeInitialized.current) {
       hasClusterCrossfadeInitialized.current = true;
       incomingClustersRef.current = clusteredPoints;
@@ -679,7 +690,7 @@ export function GeoPointsMap({
     return () => {
       controls.stop();
     };
-  }, [clusteredPoints]);
+  }, [clusteredPoints, pointCrossfadeEnabled]);
 
   const incomingAlpha = Math.round(
     MAP_POINT_ALPHA_VISIBLE * clusterFadeProgress,
