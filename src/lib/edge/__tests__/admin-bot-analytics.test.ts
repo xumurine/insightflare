@@ -252,7 +252,9 @@ describe("admin bot analytics handlers", () => {
     );
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response("denied", { status: 403 }))
-      .mockImplementation(async () => new Response("{bad-json", { status: 200 }));
+      .mockImplementation(
+        async () => new Response("{bad-json", { status: 200 }),
+      );
 
     const cfFailed = await handleBotAnalyticsAdmin(
       request("/api/private/admin/bot-analytics"),
@@ -569,7 +571,10 @@ describe("admin bot analytics handlers", () => {
       )
       .mockImplementation(async (_input, init) => {
         const sql = String((init as RequestInit | undefined)?.body || "");
-        if (sql.includes("blob3 AS confidence") || sql.includes("blob3 AS origin")) {
+        if (
+          sql.includes("blob3 AS confidence") ||
+          sql.includes("blob3 AS origin")
+        ) {
           return new Response(jsonEachRow([fallbackRow]), { status: 200 });
         }
         if (sql.includes("GROUP BY timestampMs")) {
@@ -615,7 +620,9 @@ describe("admin bot analytics handlers", () => {
     expect(fallbackSql).toContain("ORDER BY timestamp DESC");
     expect(
       fetchMock.mock.calls
-        .map(([, init]) => String((init as RequestInit | undefined)?.body || ""))
+        .map(([, init]) =>
+          String((init as RequestInit | undefined)?.body || ""),
+        )
         .join("\n"),
     ).not.toMatch(/quantile/i);
     expect(body.events[0]).toMatchObject({
@@ -631,6 +638,329 @@ describe("admin bot analytics handlers", () => {
       affectedSites: 1,
       uniqueAsns: 1,
       uniqueCountries: 1,
+    });
+  });
+
+  it("maps empty analytics rows, explicit windows, and fallback row fields", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    const encrypted = await import("@/lib/edge/secret-encryption").then(
+      ({ encryptBotAnalyticsSecret }) =>
+        encryptBotAnalyticsSecret(
+          { MAIN_SECRET: "main-secret" },
+          "cf_reader_token",
+        ),
+    );
+    const env = createEnv([
+      statement({
+        first: row({
+          apiTokenEncrypted: encrypted,
+          apiTokenHint: "••••oken",
+          configured: true,
+        }),
+      }),
+    ]);
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (_input, init) => {
+        const sql = String((init as RequestInit | undefined)?.body || "");
+        if (sql.includes("blob3 AS confidence")) {
+          return new Response(
+            jsonEachRow([
+              {
+                timestamp: "not-a-date",
+                siteId: "",
+                kind: "",
+                confidence: "high",
+                reasons: "ua_isbot, ,hosting_asn",
+                ip: "",
+                userAgent: "",
+                origin: "",
+                hostname: "",
+                pathname: "",
+                country: "",
+                region: "",
+                city: "",
+                continent: "",
+                colo: "",
+                asnText: "0",
+                asOrganization: "",
+                verifiedBotCategory: "",
+                rayId: "",
+                traceId: "",
+                metadataJson: "",
+                receivedAt: 0,
+                asn: 0,
+                latitude: 0,
+                longitude: Number.NaN,
+                botScore: 17,
+                userAgentLength: "bad",
+              },
+            ]),
+            { status: 200 },
+          );
+        }
+        if (sql.includes("blob3 AS origin")) {
+          return new Response(
+            jsonEachRow([
+              {
+                timestamp: "2026-07-03T10:00:00.000Z",
+                siteId: "",
+                kind: "custom_event",
+                origin: "",
+                hostname: "",
+                pathname: "",
+                country: "",
+                region: "",
+                city: "",
+                continent: "",
+                colo: "",
+                asnText: "",
+                asOrganization: "",
+                rayId: "",
+                traceId: "",
+                requestMethod: "",
+                metadataJson: "",
+                receivedAt: 0,
+                eventAt: 1_799_999_999_000,
+                edgeLatencyMs: -12,
+                asn: 0,
+                latitude: 0,
+                longitude: 0,
+                userAgentLength: "bad",
+              },
+            ]),
+            { status: 200 },
+          );
+        }
+        if (sql.includes("GROUP BY timestampMs")) {
+          return new Response(
+            jsonEachRow([
+              {
+                timestampMs: 0,
+                count: -1,
+                pageviews: -1,
+                customEvents: -1,
+                avgLatencyMs: "bad",
+                p95LatencyMs: "bad",
+              },
+            ]),
+            { status: 200 },
+          );
+        }
+        if (sql.includes("GROUP BY latitude, longitude, country")) {
+          return new Response(
+            jsonEachRow([
+              {
+                latitude: 0,
+                longitude: 0,
+                country: "",
+                pointCount: -1,
+              },
+            ]),
+            { status: 200 },
+          );
+        }
+        return new Response("", { status: 200 });
+      });
+
+    const response = await handleBotAnalyticsAdmin(
+      request(
+        "/api/private/admin/bot-analytics?from=1799990000000&to=1800000000000&interval=minute&limit=bad",
+      ),
+      env,
+      new URL(
+        "https://app.test/api/private/admin/bot-analytics?from=1799990000000&to=1800000000000&interval=minute&limit=bad",
+      ),
+    );
+    const body = await jsonOf(response);
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(
+      fetchMock.mock.calls.some(([, init]) =>
+        String((init as RequestInit | undefined)?.body || "").includes(
+          "LIMIT 100",
+        ),
+      ),
+    ).toBe(true);
+    expect(body.window).toMatchObject({
+      from: 1_799_990_000_000,
+      to: 1_800_000_000_000,
+      interval: "minute",
+    });
+    expect(body.events[0]).toMatchObject({
+      siteName: "Unknown site",
+      siteDomain: "",
+      reasons: ["ua_isbot", "hosting_asn"],
+      latitude: null,
+      longitude: null,
+      botScore: 17,
+      userAgentLength: 0,
+    });
+    expect(body.normalEvents[0]).toMatchObject({
+      siteName: "Unknown site",
+      edgeLatencyMs: 0,
+      latitude: null,
+      longitude: null,
+    });
+    expect(body.summary).toMatchObject({
+      total: 0,
+      baselineRequests: 0,
+      botRequestRatio: 0,
+      highConfidence: 1,
+      affectedSites: 0,
+      uniqueAsns: 0,
+      uniqueCountries: 0,
+    });
+    expect(body.mapPoints).toEqual([]);
+    expect(body.normal.mapPoints).toEqual([]);
+  });
+
+  it("supports detail queries, fallback detail reads, and config token clearing", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    const encrypted = await import("@/lib/edge/secret-encryption").then(
+      ({ encryptBotAnalyticsSecret }) =>
+        encryptBotAnalyticsSecret(
+          { MAIN_SECRET: "main-secret" },
+          "cf_reader_token",
+        ),
+    );
+
+    const missingDetail = await handleBotAnalyticsAdmin(
+      request("/api/private/admin/bot-analytics?detail=1"),
+      createEnv([
+        statement({
+          first: row({
+            apiTokenEncrypted: encrypted,
+            apiTokenHint: "••••oken",
+            configured: true,
+          }),
+        }),
+      ]),
+      new URL("https://app.test/api/private/admin/bot-analytics?detail=1"),
+    );
+    expect(missingDetail.status).toBe(400);
+
+    const detailEnv = createEnv([
+      statement({
+        first: row({
+          apiTokenEncrypted: encrypted,
+          apiTokenHint: "••••oken",
+          configured: true,
+        }),
+      }),
+      statement({
+        all: [{ id: "site-2", name: "", domain: "" }],
+      }),
+    ]);
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            errors: [
+              {
+                message:
+                  'Input was invalid: unable to find type of column: "double1"',
+              },
+            ],
+          }),
+          { status: 422 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          jsonEachRow([
+            {
+              timestamp: "2026-07-03 10:00:00",
+              siteId: "site-2",
+              kind: "collect",
+              confidence: "low",
+              reasons: "",
+              ip: "203.0.113.9",
+              userAgent: "curl/8",
+              origin: "",
+              hostname: "",
+              pathname: "",
+              country: "US",
+              region: "",
+              city: "",
+              continent: "",
+              colo: "",
+              asnText: "",
+              asOrganization: "",
+              verifiedBotCategory: "",
+              rayId: "ray-detail",
+              traceId: "trace-detail",
+              metadataJson: "{}",
+            },
+          ]),
+          { status: 200 },
+        ),
+      );
+
+    const detailResponse = await handleBotAnalyticsAdmin(
+      request(
+        "/api/private/admin/bot-analytics?traceId=trace-detail&rayId=ray-detail",
+      ),
+      detailEnv,
+      new URL(
+        "https://app.test/api/private/admin/bot-analytics?traceId=trace-detail&rayId=ray-detail",
+      ),
+    );
+    const detailBody = await jsonOf(detailResponse);
+
+    expect(detailResponse.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(detailBody.detail).toMatchObject({
+      siteId: "site-2",
+      siteName: "site-2",
+      rayId: "ray-detail",
+      traceId: "trace-detail",
+      receivedAt: Date.UTC(2026, 6, 3, 10, 0, 0),
+    });
+    const firstDetailSql = String(
+      (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body || "",
+    );
+    const fallbackDetailSql = String(
+      (fetchMock.mock.calls[1]?.[1] as RequestInit | undefined)?.body || "",
+    );
+    expect(firstDetailSql).toContain("double1 AS receivedAt");
+    expect(fallbackDetailSql).not.toContain("double1 AS receivedAt");
+    expect(fallbackDetailSql).toContain("blob19 = 'trace-detail'");
+    expect(fallbackDetailSql).toContain("blob18 = 'ray-detail'");
+
+    const upsert = statement();
+    const clearResponse = await handleBotAnalyticsConfigAdmin(
+      jsonRequest("/api/private/admin/bot-analytics-config", {
+        accountId: "442fe5198bff93bdf60d4223d9618033",
+        dataset: "insightflare_bot_events",
+        normalDataset: "insightflare_normal_events",
+        clearApiToken: true,
+      }),
+      createEnv([
+        statement({
+          first: row({
+            apiTokenEncrypted: encrypted,
+            apiTokenHint: "••••oken",
+            configured: true,
+          }),
+        }),
+        upsert,
+      ]),
+    );
+    const clearBody = await jsonOf(clearResponse);
+    const saved = JSON.parse(
+      upsert.bind.mock.calls[0][1],
+    ) as BotAnalyticsConfig;
+
+    expect(clearResponse.status).toBe(200);
+    expect(clearBody.data.apiTokenConfigured).toBe(false);
+    expect(saved).toMatchObject({
+      normalDataset: "insightflare_normal_events",
+      apiTokenEncrypted: "",
+      apiTokenHint: "",
+      configured: false,
     });
   });
 });

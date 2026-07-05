@@ -287,7 +287,7 @@ const BOT_EVENT_FETCH_LIMIT = 500;
 const BOT_EVENT_PAGE_SIZE = 80;
 const BOT_EVENT_SKELETON_ROWS = 8;
 const ABNORMAL_POINT_COLOR: [number, number, number] = [239, 68, 68];
-const NORMAL_POINT_COLOR: [number, number, number] = [34, 197, 94];
+const NORMAL_POINT_COLOR: [number, number, number] = [34, 197, 154];
 const PERFORMANCE_WARNING_COLOR = "oklch(0.75 0.16 80)";
 const NORMAL_TRAFFIC_SHARE_COLOR = "var(--color-chart-4)";
 const LOW_CONFIDENCE_TRAFFIC_COLOR = "var(--color-chart-5)";
@@ -637,7 +637,7 @@ export function RequestObservationClient({
             abnormalSubtitle:
               "Focuses on diverted abnormal requests; the map and tables show only red abnormal traffic.",
             normalSubtitle:
-              "Focuses on requests entering the normal collection path; the map and tables show only green normal traffic.",
+              "Focuses on requests entering the normal collection path; the map and tables show only normal request traffic.",
             requests: "Requests",
           },
     [locale],
@@ -2114,7 +2114,9 @@ function requestKindLabel(
   copy: AppMessages["requestObservation"],
   kind: string,
 ): string {
-  return copy.requestKindLabels[kind] ?? (compactReason(kind) || emptyValue(copy));
+  return (
+    copy.requestKindLabels[kind] ?? (compactReason(kind) || emptyValue(copy))
+  );
 }
 
 function emptyValue(copy: AppMessages["requestObservation"]): string {

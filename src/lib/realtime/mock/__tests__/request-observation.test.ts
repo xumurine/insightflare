@@ -23,4 +23,25 @@ describe("mock/request-observation", () => {
     expect(data.asns.length).toBeGreaterThan(0);
     expect(data.mapPoints.length).toBeGreaterThan(0);
   });
+
+  it.each([60, 10080, 43200] as const)(
+    "generates coherent request observation demo data for %i-minute windows",
+    (minutes) => {
+      const data = generateDemoRequestObservationData(minutes);
+
+      expect(data.ok).toBe(true);
+      expect(data.window.minutes).toBe(minutes);
+      expect(data.overview.totalRequests).toBe(
+        data.overview.normalRequests + data.overview.abnormalRequests,
+      );
+      expect(data.normal.summary.total).toBe(data.overview.normalRequests);
+      expect(data.abnormal.summary.total).toBe(data.overview.abnormalRequests);
+      expect(data.normal.mapPoints.length).toBeGreaterThan(0);
+      expect(data.abnormal.mapPoints.length).toBeGreaterThan(0);
+      expect(data.trend.some((point) => point.totalCount > 0)).toBe(true);
+      expect(data.trend.some((point) => point.p95LatencyMs !== null)).toBe(
+        true,
+      );
+    },
+  );
 });
