@@ -553,7 +553,6 @@ export function RequestObservationClient({
   const mapAnimationControls = useAnimationControls();
 
   const spanMs = Math.max(1, timeWindow.to - timeWindow.from);
-  const detailMinutes = Math.max(1, Math.ceil(spanMs / 60000));
   const windowDetail =
     locale === "zh"
       ? `最近 ${Math.max(1, Math.ceil(spanMs / 86400000))} 天`
@@ -1825,7 +1824,7 @@ export function RequestObservationClient({
                         events={abnormalEvents}
                         loading={loading}
                         requestKey={`${requestKey}:${abnormalEvents.length}`}
-                        minutes={detailMinutes}
+                        timeWindow={timeWindow}
                       />
                     </div>
                   </div>
@@ -2002,6 +2001,7 @@ async function fetchRequestObservation(
     from: String(Math.floor(timeWindow.from)),
     to: String(Math.floor(timeWindow.to)),
     interval: timeWindow.interval,
+    timeZone: timeWindow.timeZone,
     limit: String(BOT_EVENT_FETCH_LIMIT),
   });
   const response = await fetch(`/api/private/admin/bot-analytics?${params}`, {
@@ -2027,13 +2027,16 @@ async function fetchRequestObservation(
 }
 
 async function fetchRequestObservationDetail(
-  minutes: number,
+  timeWindow: TimeWindow,
   event: BotEvent,
 ): Promise<BotEvent | null> {
   if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") return event;
 
   const params = new URLSearchParams({
-    minutes: String(minutes),
+    from: String(Math.floor(timeWindow.from)),
+    to: String(Math.floor(timeWindow.to)),
+    interval: timeWindow.interval,
+    timeZone: timeWindow.timeZone,
     detail: "1",
   });
   if (event.traceId) params.set("traceId", event.traceId);
@@ -3343,7 +3346,7 @@ function BotEventsTable({
   events,
   loading,
   requestKey,
-  minutes,
+  timeWindow,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -3351,7 +3354,7 @@ function BotEventsTable({
   events: BotEvent[];
   loading: boolean;
   requestKey: string;
-  minutes: number;
+  timeWindow: TimeWindow;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -3494,7 +3497,7 @@ function BotEventsTable({
     if (!drawerOpen || !selectedEvent) return;
     let active = true;
     setDetailLoading(true);
-    fetchRequestObservationDetail(minutes, selectedEvent)
+    fetchRequestObservationDetail(timeWindow, selectedEvent)
       .then((detail) => {
         if (!active) return;
         setDetailEvent(detail ?? selectedEvent);
@@ -3513,7 +3516,7 @@ function BotEventsTable({
     return () => {
       active = false;
     };
-  }, [drawerOpen, minutes, selectedEvent]);
+  }, [drawerOpen, selectedEvent, timeWindow]);
 
   const handleKeyDown = (
     keyboardEvent: KeyboardEvent<HTMLTableRowElement>,

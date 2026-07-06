@@ -8,6 +8,12 @@ import {
   validateBotAnalyticsConfig,
   validateBotAnalyticsUpdateInput,
 } from "@/lib/bot-analytics-config";
+import {
+  addZonedInterval,
+  resolveReportingTimeZone,
+  startOfZonedDay,
+  startOfZonedInterval,
+} from "@/lib/dashboard/time-zone";
 
 import { requireActor } from "./admin-auth";
 import { bad, forb, jsonResponseFor, na, parseJson } from "./admin-response";
@@ -28,6 +34,7 @@ const CF_ANALYTICS_ENGINE_SQL_ENDPOINT =
   "https://api.cloudflare.com/client/v4/accounts";
 
 type AdminActor = Awaited<ReturnType<typeof requireActor>>;
+type BotAnalyticsInterval = "minute" | "hour" | "day" | "week";
 
 interface BotAnalyticsEvent {
   timestamp: string;
@@ -109,6 +116,7 @@ function parseTimeWindow(url: URL, now = Date.now()) {
   const rawFrom = Number(url.searchParams.get("from"));
   const rawTo = Number(url.searchParams.get("to"));
   const hasExplicitWindow = Number.isFinite(rawFrom) && Number.isFinite(rawTo);
+  const timeZone = resolveReportingTimeZone(url.searchParams.get("timeZone"));
   const fallbackMinutes = parseWindowMinutes(url);
   const fallbackFrom = now - fallbackMinutes * 60 * 1000;
   const requestedTo = hasExplicitWindow ? rawTo : now;
@@ -116,21 +124,23 @@ function parseTimeWindow(url: URL, now = Date.now()) {
   const to = Math.min(now, Math.max(1, Math.floor(requestedTo)));
   const from = Math.max(0, Math.floor(requestedFrom));
   const boundedFrom = Math.max(0, Math.min(from, to - 1));
-  const safeFrom = Math.max(boundedFrom, to - MAX_WINDOW_MS);
-  const interval = parseInterval(url, to - safeFrom);
+  const cappedFrom = Math.max(boundedFrom, to - MAX_WINDOW_MS);
+  const interval = parseInterval(url, to - cappedFrom);
+  const safeFrom =
+    interval === "day" || interval === "week"
+      ? Math.max(0, startOfZonedDay(cappedFrom, timeZone))
+      : cappedFrom;
   return {
     from: safeFrom,
     to,
     minutes: Math.max(1, Math.ceil((to - safeFrom) / 60000)),
     interval,
     bucketMs: intervalToBucketMs(interval),
+    timeZone,
   };
 }
 
-function parseInterval(
-  url: URL,
-  spanMs: number,
-): "minute" | "hour" | "day" | "week" {
+function parseInterval(url: URL, spanMs: number): BotAnalyticsInterval {
   const raw = url.searchParams.get("interval");
   if (raw === "minute" && spanMs <= 24 * 60 * 60 * 1000) return "minute";
   if (raw === "hour") return "hour";
@@ -141,7 +151,7 @@ function parseInterval(
   return "day";
 }
 
-function intervalToBucketMs(interval: "minute" | "hour" | "day" | "week") {
+function intervalToBucketMs(interval: BotAnalyticsInterval) {
   if (interval === "minute") return 60 * 1000;
   if (interval === "hour") return ONE_HOUR_MS;
   if (interval === "week") return 7 * 24 * ONE_HOUR_MS;
@@ -270,13 +280,15 @@ function buildCountByBucketSql(input: {
   from: number;
   to: number;
   bucketMs: number;
+  interval: BotAnalyticsInterval;
+  timeZone: string;
   source: "normal" | "abnormal";
   includeLatency?: boolean;
 }) {
   const dataset = analyticsDatasetIdentifier(input.dataset);
   const fromSeconds = Math.floor(input.from / 1000);
   const toSeconds = Math.ceil(input.to / 1000);
-  const bucketSeconds = Math.max(60, Math.floor(input.bucketMs / 1000));
+  const bucketExpression = `toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL 1 ${analyticsBucketUnit(input.interval)}, ${analyticsSqlString(input.timeZone)})) * 1000`;
   const latencySelect =
     input.includeLatency && input.source === "normal"
       ? `,
@@ -284,7 +296,7 @@ function buildCountByBucketSql(input: {
       : "";
   return `
     SELECT
-      intDiv(toUnixTimestamp(timestamp), ${bucketSeconds}) * ${bucketSeconds} * 1000 AS timestampMs,
+      ${bucketExpression} AS timestampMs,
       count() AS count,
       countIf(blob2 = 'pageview') AS pageviews,
       countIf(blob2 = 'custom_event') AS customEvents${latencySelect}
@@ -295,6 +307,13 @@ function buildCountByBucketSql(input: {
     ORDER BY timestampMs ASC
     FORMAT JSONEachRow
   `;
+}
+
+function analyticsBucketUnit(interval: BotAnalyticsInterval): string {
+  if (interval === "minute") return "MINUTE";
+  if (interval === "hour") return "HOUR";
+  if (interval === "week") return "WEEK";
+  return "DAY";
 }
 
 function buildMapPointsSql(input: {
@@ -638,12 +657,31 @@ function bucketSizeMs(minutes: number): number {
   return 24 * ONE_HOUR_MS;
 }
 
-function buildTrendBuckets(from: number, to: number, bucketMs: number) {
+function buildTrendBuckets(
+  from: number,
+  to: number,
+  interval: BotAnalyticsInterval,
+  timeZone: string,
+) {
   const buckets: number[] = [];
-  for (let bucket = from; bucket <= to; bucket += bucketMs) {
-    buckets.push(Math.floor(bucket / bucketMs) * bucketMs);
+  let bucket = startOfZonedInterval(from, interval, timeZone);
+  let guard = 0;
+  while (bucket <= to && guard < 5000) {
+    buckets.push(bucket);
+    const nextBucket = addZonedInterval(bucket, interval, timeZone);
+    if (nextBucket <= bucket) break;
+    bucket = nextBucket;
+    guard += 1;
   }
   return Array.from(new Set(buckets)).sort((left, right) => left - right);
+}
+
+function bucketTimestamp(
+  timestampMs: number,
+  interval: BotAnalyticsInterval,
+  timeZone: string,
+): number {
+  return startOfZonedInterval(timestampMs, interval, timeZone);
 }
 
 function aggregateEvents(
@@ -670,7 +708,7 @@ function aggregateEvents(
     }
   >();
 
-  for (const bucket of buildTrendBuckets(since, now, bucketMs)) {
+  for (const bucket of buildTrendBuckets(since, now, "hour", "UTC")) {
     trend.set(bucket, 0);
   }
 
@@ -858,6 +896,8 @@ function mergeTrendRows(input: {
   from: number;
   to: number;
   bucketMs: number;
+  interval: BotAnalyticsInterval;
+  timeZone: string;
   abnormalRows: Record<string, unknown>[];
   normalRows: Record<string, unknown>[];
   normalEvents?: NormalAnalyticsEvent[];
@@ -886,7 +926,8 @@ function mergeTrendRows(input: {
   for (const timestampMs of buildTrendBuckets(
     input.from,
     input.to,
-    input.bucketMs,
+    input.interval,
+    input.timeZone,
   )) {
     trend.set(timestampMs, {
       timestampMs,
@@ -956,8 +997,11 @@ function mergeTrendRows(input: {
     }
     const timestamp = event.receivedAt || event.eventAt;
     if (!Number.isFinite(timestamp) || timestamp <= 0) continue;
-    const timestampMs =
-      Math.floor(Number(timestamp) / input.bucketMs) * input.bucketMs;
+    const timestampMs = bucketTimestamp(
+      Number(timestamp),
+      input.interval,
+      input.timeZone,
+    );
     if (!trend.has(timestampMs)) continue;
     const values = latencyBuckets.get(timestampMs) ?? [];
     values.push(event.edgeLatencyMs);
@@ -1154,7 +1198,7 @@ export async function handleBotAnalyticsAdmin(
 
   const generatedAt = Date.now();
   const timeWindow = parseTimeWindow(url, generatedAt);
-  const { from, to, minutes, interval, bucketMs } = timeWindow;
+  const { from, to, minutes, interval, bucketMs, timeZone } = timeWindow;
   const limit = parseLimit(url);
   const detailTraceId = clampString(
     url.searchParams.get("traceId")?.trim() || "",
@@ -1357,6 +1401,8 @@ export async function handleBotAnalyticsAdmin(
       from,
       to,
       bucketMs,
+      interval,
+      timeZone,
       source: "abnormal",
     }),
   });
@@ -1375,6 +1421,8 @@ export async function handleBotAnalyticsAdmin(
       from,
       to,
       bucketMs,
+      interval,
+      timeZone,
       source: "normal",
       includeLatency: true,
     }),
@@ -1427,6 +1475,8 @@ export async function handleBotAnalyticsAdmin(
     from,
     to,
     bucketMs,
+    interval,
+    timeZone,
     abnormalRows: abnormalTrendResult.rows,
     normalRows: normalTrendResult.rows,
     normalEvents,
@@ -1496,6 +1546,7 @@ export async function handleBotAnalyticsAdmin(
       from,
       to,
       interval,
+      timeZone,
     },
     config: redactBotAnalyticsConfig(config, analyticsEngineAvailability(env)),
     summary: {

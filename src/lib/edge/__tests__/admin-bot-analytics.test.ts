@@ -502,6 +502,61 @@ describe("admin bot analytics handlers", () => {
     );
   });
 
+  it("expands day-bucket Analytics Engine windows to the full leading day", async () => {
+    const now = Date.UTC(2026, 6, 6, 7, 30, 0);
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const encrypted = await import("@/lib/edge/secret-encryption").then(
+      ({ encryptBotAnalyticsSecret }) =>
+        encryptBotAnalyticsSecret(
+          { MAIN_SECRET: "main-secret" },
+          "cf_reader_token",
+        ),
+    );
+    const env = createEnv([
+      statement({
+        first: row({
+          apiTokenEncrypted: encrypted,
+          apiTokenHint: "••••oken",
+          configured: true,
+        }),
+      }),
+    ]);
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => new Response("", { status: 200 }));
+    const rollingFrom = Date.UTC(2026, 5, 6, 7, 30, 0);
+    const expectedFrom = Date.UTC(2026, 5, 5, 16, 0, 0);
+
+    const response = await handleBotAnalyticsAdmin(
+      request(
+        `/api/private/admin/bot-analytics?from=${rollingFrom}&to=${now}&interval=day&timeZone=Asia%2FShanghai`,
+      ),
+      env,
+      new URL(
+        `https://app.test/api/private/admin/bot-analytics?from=${rollingFrom}&to=${now}&interval=day&timeZone=Asia%2FShanghai`,
+      ),
+    );
+    const body = await jsonOf(response);
+    const allSql = fetchMock.mock.calls.map(([, init]) =>
+      String((init as RequestInit | undefined)?.body || ""),
+    );
+
+    expect(response.status).toBe(200);
+    expect(body.window).toMatchObject({
+      from: expectedFrom,
+      to: now,
+      interval: "day",
+      timeZone: "Asia/Shanghai",
+    });
+    expect(allSql.join("\n")).toContain(
+      `timestamp >= toDateTime(${Math.floor(expectedFrom / 1000)})`,
+    );
+    expect(allSql.join("\n")).toContain(
+      "toStartOfInterval(timestamp, INTERVAL 1 DAY, 'Asia/Shanghai')",
+    );
+    expect(body.trend[0]?.timestampMs).toBe(expectedFrom);
+  });
+
   it("falls back to blob-only Analytics Engine queries when double columns are unavailable", async () => {
     vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     const encrypted = await import("@/lib/edge/secret-encryption").then(
