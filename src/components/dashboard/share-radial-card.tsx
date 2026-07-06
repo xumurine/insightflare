@@ -34,6 +34,7 @@ interface ShareRadialCardProps {
   valueLabel: string;
   loading?: boolean;
   emptyLabel?: string;
+  className?: string;
 }
 
 type ResolvedShareItem = ShareRadialCardItem & {
@@ -69,6 +70,7 @@ export function ShareRadialCard({
   valueLabel,
   loading = false,
   emptyLabel,
+  className,
 }: ShareRadialCardProps) {
   const totalValue = useMemo(
     () =>
@@ -90,7 +92,7 @@ export function ShareRadialCard({
     .join(", ")}`;
 
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader className="gap-2">
         <CardTitle className="inline-flex items-center gap-2">
           <RiDonutChartLine className="size-4" />

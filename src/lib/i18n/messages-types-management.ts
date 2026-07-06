@@ -801,7 +801,7 @@ export interface AppManagementMessages {
     teams: string;
     versionUpdates: string;
     scheduledTasks: string;
-    botProtection: string;
+    requestObservation: string;
     systemPerformance: string;
     systemSettings: string;
   };
@@ -1092,7 +1092,7 @@ export interface AppManagementMessages {
     doDiagnosticThresholdsHint: string;
     doDiagnosticHealthy: string;
   };
-  botProtection: {
+  requestObservation: {
     title: string;
     subtitle: string;
     refresh: string;
@@ -1132,6 +1132,17 @@ export interface AppManagementMessages {
     asnDescription: string;
     recentTitle: string;
     recentDescription: string;
+    recentShowing: string;
+    recentLoadedAll: string;
+    detailTitle: string;
+    detailSubtitle: string;
+    detection: string;
+    client: string;
+    edge: string;
+    identifiers: string;
+    fullUserAgent: string;
+    id: string;
+    metadata: string;
     time: string;
     site: string;
     location: string;
@@ -1159,6 +1170,7 @@ export interface AppManagementMessages {
     userAgentLengthBucket: string;
     ipPrefix: string;
     botReasonLabels: Record<string, string>;
+    requestKindLabels: Record<string, string>;
   };
   systemSettings: {
     title: string;

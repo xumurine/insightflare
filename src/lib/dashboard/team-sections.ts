@@ -15,7 +15,7 @@ export type ManagementSectionKey =
   | "manage-teams"
   | "version-updates"
   | "scheduled-tasks"
-  | "bot-protection"
+  | "request-observation"
   | "system-performance"
   | "system-settings";
 
@@ -54,7 +54,8 @@ function managementLabel(
   if (key === "manage-teams") return messages.managementNav.teams;
   if (key === "version-updates") return messages.managementNav.versionUpdates;
   if (key === "scheduled-tasks") return messages.managementNav.scheduledTasks;
-  if (key === "bot-protection") return messages.managementNav.botProtection;
+  if (key === "request-observation")
+    return messages.managementNav.requestObservation;
   if (key === "system-settings") return messages.managementNav.systemSettings;
   return messages.managementNav.systemPerformance;
 }
@@ -78,7 +79,8 @@ function buildManagementPath(
   if (key === "manage-teams") return `/${locale}/app/manage/teams`;
   if (key === "version-updates") return `/${locale}/app/manage/version-updates`;
   if (key === "scheduled-tasks") return `/${locale}/app/manage/scheduled-tasks`;
-  if (key === "bot-protection") return `/${locale}/app/manage/bot-protection`;
+  if (key === "request-observation")
+    return `/${locale}/app/manage/request-observation`;
   if (key === "system-settings") return `/${locale}/app/manage/system-settings`;
   return `/${locale}/app/manage/system-performance`;
 }
@@ -108,7 +110,7 @@ export function buildManagementSections(
     "manage-teams",
     "version-updates",
     "scheduled-tasks",
-    "bot-protection",
+    "request-observation",
     "system-performance",
     "system-settings",
   ] as const;

@@ -208,26 +208,33 @@ function removeArrayTables(
   removed: number;
 } {
   const lines = content.split("\n");
-  const ranges = findArrayTableRanges(lines, header);
-  if (ranges.length === 0) return { content, removed: 0 };
+  const nextLines: string[] = [];
+  let removed = 0;
 
-  for (const [start, end] of ranges.slice().reverse()) {
-    let removeStart = start;
-    while (removeStart > 0 && lines[removeStart - 1]?.trim() === "") {
-      removeStart -= 1;
+  for (let index = 0; index < lines.length; ) {
+    if (lines[index]?.trim() !== header) {
+      nextLines.push(lines[index] ?? "");
+      index += 1;
+      continue;
     }
-    let removeEnd = end;
+
+    removed += 1;
+    index += 1;
+    while (index < lines.length && !/^\s*\[/.test(lines[index] ?? "")) {
+      index += 1;
+    }
+
     while (
-      removeEnd < lines.length &&
-      lines[removeEnd]?.trim() === "" &&
-      lines[removeEnd + 1]?.trim() === ""
+      nextLines.length > 0 &&
+      nextLines[nextLines.length - 1]?.trim() === "" &&
+      (index >= lines.length || lines[index]?.trim() === "")
     ) {
-      removeEnd += 1;
+      nextLines.pop();
     }
-    lines.splice(removeStart, removeEnd - removeStart);
   }
 
-  return { content: lines.join("\n"), removed: ranges.length };
+  if (removed === 0) return { content, removed: 0 };
+  return { content: nextLines.join("\n"), removed };
 }
 
 function collectVarOverrides(

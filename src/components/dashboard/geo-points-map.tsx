@@ -25,6 +25,7 @@ export interface GeoPointsMapPoint {
   longitude: number;
   country: string;
   pointCount?: number;
+  color?: [number, number, number];
 }
 
 export interface GeoPointsMapCountryCount {
@@ -48,6 +49,8 @@ interface GeoPointsMapProps {
   autoRotate?: boolean;
   selectedCountryCode?: string | null;
   onCountrySelect?: (countryCode: string | null) => void;
+  collapseOverlappingPointColors?: boolean;
+  pointCrossfadeEnabled?: boolean;
 }
 
 interface ClusteredGeoPoint {
@@ -55,6 +58,8 @@ interface ClusteredGeoPoint {
   latitude: number;
   longitude: number;
   count: number;
+  color?: [number, number, number];
+  priority: number;
 }
 
 type EffectiveMapTheme = "light" | "dark";
@@ -372,45 +377,110 @@ function projectLatitudeToWorldY(latitude: number, zoom: number): number {
 function clusterGeoPoints(
   points: GeoPointsMapPoint[],
   zoom: number,
+  collapseOverlappingPointColors = false,
 ): ClusteredGeoPoint[] {
   if (points.length === 0) return [];
 
   const buckets = new globalThis.Map<
     string,
-    { count: number; sumLatitude: number; sumLongitude: number }
+    {
+      count: number;
+      sumLatitude: number;
+      sumLongitude: number;
+      sumRed: number;
+      sumGreen: number;
+      sumBlue: number;
+      hasColor: boolean;
+      priority: number;
+      colorWeights: globalThis.Map<
+        string,
+        {
+          color: [number, number, number];
+          count: number;
+          priority: number;
+        }
+      >;
+    }
   >();
 
   for (const point of points) {
+    const color = point.color;
     const x = projectLongitudeToWorldX(point.longitude, zoom);
     const y = projectLatitudeToWorldY(point.latitude, zoom);
     const cellX = Math.floor(x / CLUSTER_RADIUS_PX);
     const cellY = Math.floor(y / CLUSTER_RADIUS_PX);
-    const key = `${cellX}:${cellY}`;
+    const colorKey = color ? color.join(",") : "default";
+    const key = collapseOverlappingPointColors
+      ? `${cellX}:${cellY}`
+      : `${cellX}:${cellY}:${colorKey}`;
 
     const bucket = buckets.get(key) ?? {
       count: 0,
       sumLatitude: 0,
       sumLongitude: 0,
+      sumRed: 0,
+      sumGreen: 0,
+      sumBlue: 0,
+      hasColor: false,
+      priority: color ? colorPriority(color) : 0,
+      colorWeights: new globalThis.Map(),
     };
     // Use pointCount if available, otherwise count as 1
     const pointWeight = point.pointCount ?? 1;
     bucket.count += pointWeight;
     bucket.sumLatitude += point.latitude * pointWeight;
     bucket.sumLongitude += point.longitude * pointWeight;
+    if (color) {
+      bucket.hasColor = true;
+      bucket.sumRed += color[0] * pointWeight;
+      bucket.sumGreen += color[1] * pointWeight;
+      bucket.sumBlue += color[2] * pointWeight;
+      if (collapseOverlappingPointColors) {
+        const current = bucket.colorWeights.get(colorKey) ?? {
+          color,
+          count: 0,
+          priority: colorPriority(color),
+        };
+        current.count += pointWeight;
+        bucket.colorWeights.set(colorKey, current);
+      }
+    }
     buckets.set(key, bucket);
   }
 
   const clusters: ClusteredGeoPoint[] = [];
   for (const [id, bucket] of buckets.entries()) {
+    const dominantColor = collapseOverlappingPointColors
+      ? [...bucket.colorWeights.values()].sort(
+          (a, b) => b.count - a.count || b.priority - a.priority,
+        )[0]
+      : undefined;
     clusters.push({
       id,
       latitude: bucket.sumLatitude / bucket.count,
       longitude: bucket.sumLongitude / bucket.count,
       count: bucket.count,
+      color: dominantColor
+        ? dominantColor.color
+        : bucket.hasColor
+          ? [
+              Math.round(bucket.sumRed / bucket.count),
+              Math.round(bucket.sumGreen / bucket.count),
+              Math.round(bucket.sumBlue / bucket.count),
+            ]
+          : undefined,
+      priority: dominantColor?.priority ?? bucket.priority,
     });
   }
-  clusters.sort((a, b) => a.id.localeCompare(b.id));
+  clusters.sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
   return clusters;
+}
+
+function colorPriority(color: [number, number, number]): number {
+  const [red, green, blue] = color;
+  if (red >= 200 && green <= 120 && blue <= 140) return 3;
+  if (green >= 150 && red <= 120) return 1;
+  return 2;
 }
 
 function normalizeClusterZoom(zoom: number): number {
@@ -445,6 +515,8 @@ export function GeoPointsMap({
   autoRotate = false,
   selectedCountryCode,
   onCountrySelect,
+  collapseOverlappingPointColors = false,
+  pointCrossfadeEnabled = true,
 }: GeoPointsMapProps) {
   const { resolvedTheme } = useTheme();
   const isMobile = useIsMobile();
@@ -560,8 +632,13 @@ export function GeoPointsMap({
   }, [mapInitialViewState.zoom]);
 
   const clusteredPoints = useMemo(
-    () => clusterGeoPoints(normalizedPoints, currentZoom),
-    [currentZoom, normalizedPoints],
+    () =>
+      clusterGeoPoints(
+        normalizedPoints,
+        currentZoom,
+        collapseOverlappingPointColors,
+      ),
+    [collapseOverlappingPointColors, currentZoom, normalizedPoints],
   );
   const [incomingClusters, setIncomingClusters] = useState<ClusteredGeoPoint[]>(
     () => clusteredPoints,
@@ -574,6 +651,15 @@ export function GeoPointsMap({
   const mapRef = useRef<MapRef | null>(null);
 
   useEffect(() => {
+    if (!pointCrossfadeEnabled) {
+      hasClusterCrossfadeInitialized.current = true;
+      incomingClustersRef.current = clusteredPoints;
+      setIncomingClusters(clusteredPoints);
+      setOutgoingClusters([]);
+      setClusterFadeProgress(1);
+      return;
+    }
+
     if (!hasClusterCrossfadeInitialized.current) {
       hasClusterCrossfadeInitialized.current = true;
       incomingClustersRef.current = clusteredPoints;
@@ -604,7 +690,7 @@ export function GeoPointsMap({
     return () => {
       controls.stop();
     };
-  }, [clusteredPoints]);
+  }, [clusteredPoints, pointCrossfadeEnabled]);
 
   const incomingAlpha = Math.round(
     MAP_POINT_ALPHA_VISIBLE * clusterFadeProgress,
@@ -636,6 +722,12 @@ export function GeoPointsMap({
     },
     [onCountrySelect],
   );
+  const updateClusterZoom = useCallback((zoom: number) => {
+    const nextZoom = normalizeClusterZoom(zoom);
+    setCurrentZoom((prev) =>
+      Math.abs(prev - nextZoom) > 0.0001 ? nextZoom : prev,
+    );
+  }, []);
 
   const layers = useMemo(() => {
     const result: Array<
@@ -651,13 +743,17 @@ export function GeoPointsMap({
       new ScatterplotLayer<ClusteredGeoPoint>({
         id,
         data,
-        getFillColor: withAlpha(pointColor, alpha),
+        getFillColor: (item) => withAlpha(item.color ?? pointColor, alpha),
         getPosition: (item) => [item.longitude, item.latitude],
         getRadius: (item) => computeClusterPointRadius(item.count, currentZoom),
         radiusUnits: "pixels",
         radiusMinPixels: 2,
         radiusMaxPixels: 32,
         pickable: false,
+        parameters: {
+          depthCompare: "always",
+          depthWriteEnabled: false,
+        },
       });
 
     if (outgoingClusters.length > 0 && outgoingAlpha > 0) {
@@ -1017,10 +1113,7 @@ export function GeoPointsMap({
           }}
           onZoom={(event) => {
             if (event.originalEvent) pauseAutoRotate();
-            const nextZoom = normalizeClusterZoom(event.viewState.zoom);
-            setCurrentZoom((prev) =>
-              Math.abs(prev - nextZoom) > 0.0001 ? nextZoom : prev,
-            );
+            if (!isGlobe) updateClusterZoom(event.viewState.zoom);
           }}
           onMouseDown={pauseAutoRotate}
           onTouchStart={pauseAutoRotate}
