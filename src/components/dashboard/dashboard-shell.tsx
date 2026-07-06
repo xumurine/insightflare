@@ -105,7 +105,10 @@ type AnalyticsNavKey =
   | "devices"
   | "browsers"
   | "performance"
-  | "settings";
+  | "settings"
+  | "request-overview"
+  | "request-abnormal"
+  | "request-normal";
 
 const DASHBOARD_SCROLLBAR_OPTIONS = {
   overflow: {
@@ -126,6 +129,17 @@ const SIDEBAR_COLLAPSE_SEPARATOR_CLASS =
   "transition-[opacity,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-data-[collapsible=icon]:my-0 group-data-[collapsible=icon]:opacity-0";
 const SIDEBAR_COLLAPSE_MARGIN_CLASS =
   "transition-[margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-data-[collapsible=icon]:mb-0";
+
+function analyticsTabLabel(
+  item: {
+    key: AnalyticsNavKey;
+    label?: string;
+  },
+  messages: AppMessages,
+): string {
+  if (item.label) return item.label;
+  return messages.navigation[item.key as keyof typeof messages.navigation];
+}
 
 interface SidebarRouteState {
   mode: "root" | "team" | "site";
@@ -150,7 +164,7 @@ function getManagementSectionIcon(key: string) {
   if (key === "manage-users") return RiUser3Line;
   if (key === "version-updates") return RiFileInfoLine;
   if (key === "scheduled-tasks") return RiCalendarScheduleLine;
-  if (key === "bot-protection") return RiRobot2Line;
+  if (key === "request-observation") return RiRobot2Line;
   if (key === "system-settings") return RiSettings3Line;
   if (key === "system-performance") return RiSpeedUpLine;
   return RiTeamLine;
@@ -264,7 +278,7 @@ function parseSidebarRouteState(
         teams: "manage-teams",
         "version-updates": "version-updates",
         "scheduled-tasks": "scheduled-tasks",
-        "bot-protection": "bot-protection",
+        "request-observation": "request-observation",
         "system-performance": "system-performance",
         "system-settings": "system-settings",
       };
@@ -520,6 +534,10 @@ export function DashboardShell({
   const analyticsSections: Array<{
     key: AnalyticsNavKey;
     href: string;
+    label?: string;
+    queryKey?: string;
+    queryValue?: string;
+    queryDefault?: boolean;
   }> =
     hasActiveSite && activeSiteBase
       ? [
@@ -540,7 +558,6 @@ export function DashboardShell({
           { key: "settings", href: `${activeSiteBase}/settings` },
         ]
       : [];
-
   const localeSuffix = normalizeLocalePath(livePathname);
   const switchToEn = `/en${localeSuffix}`;
   const switchToZh = `/zh${localeSuffix}`;
@@ -565,10 +582,48 @@ export function DashboardShell({
   const isRealtimeRoute = Boolean(
     hasActiveSite && activeSiteBase && mainSiteSection === "realtime",
   );
-  const isBotProtectionRoute = Boolean(
+  const isRequestObservationRoute = Boolean(
     !liveActiveTeamSlug &&
-    normalizeLocalePath(livePathname) === "/app/manage/bot-protection",
+    normalizeLocalePath(livePathname) === "/app/manage/request-observation",
   );
+  const requestObservationBase = `/${locale}/app/manage/request-observation`;
+  const requestObservationSections: Array<{
+    key: AnalyticsNavKey;
+    href: string;
+    label: string;
+    queryKey: string;
+    queryValue: string;
+    queryDefault?: boolean;
+  }> = isRequestObservationRoute
+    ? [
+        {
+          key: "request-overview",
+          href: requestObservationBase,
+          label: locale === "zh" ? "总览" : "Overview",
+          queryKey: "requestTab",
+          queryValue: "overview",
+          queryDefault: true,
+        },
+        {
+          key: "request-abnormal",
+          href: `${requestObservationBase}?requestTab=abnormal`,
+          label: locale === "zh" ? "异常请求" : "Abnormal Requests",
+          queryKey: "requestTab",
+          queryValue: "abnormal",
+        },
+        {
+          key: "request-normal",
+          href: `${requestObservationBase}?requestTab=normal`,
+          label: locale === "zh" ? "正常请求" : "Normal Requests",
+          queryKey: "requestTab",
+          queryValue: "normal",
+        },
+      ]
+    : [];
+  const topbarSections =
+    analyticsSections.length > 0
+      ? analyticsSections
+      : requestObservationSections;
   const isGeoRoute = Boolean(
     hasActiveSite && activeSiteBase && mainSiteSection === "geo",
   );
@@ -587,7 +642,7 @@ export function DashboardShell({
   const contentContainerClassName = isGeoRoute
     ? "flex min-h-0 flex-1 min-w-0 w-full flex-col md:overflow-hidden [&>[data-page-transition]]:flex [&>[data-page-transition]]:h-full [&>[data-page-transition]]:min-h-0 [&>[data-page-transition]]:flex-1 [&>[data-page-transition]]:flex-col"
     : isRealtimeRoute ||
-        isBotProtectionRoute ||
+        isRequestObservationRoute ||
         isSessionDetailRoute ||
         isVisitorDetailRoute
       ? "min-w-0 w-full"
@@ -703,6 +758,7 @@ export function DashboardShell({
       <DashboardQueryProvider
         scopeKey={activeSiteId}
         initialTimeZonePreference={user.timeZone || ""}
+        maxRangeDays={isRequestObservationRoute ? 90 : undefined}
       >
         <Sidebar variant="inset" collapsible="icon">
           <SidebarHeader className={SIDEBAR_COLLAPSE_SECTION_CLASS}>
@@ -1009,8 +1065,11 @@ export function DashboardShell({
                     locale={locale}
                     messages={messages}
                     siteId={activeSiteId}
-                    showControls={Boolean(liveActiveTeamSlug)}
+                    showControls={
+                      Boolean(liveActiveTeamSlug) || isRequestObservationRoute
+                    }
                     showFilterSheet={hasActiveSite}
+                    showRealtimeBadge={!isRequestObservationRoute}
                   />
                 </div>
               </div>
@@ -1023,13 +1082,16 @@ export function DashboardShell({
                 initial={false}
                 presenceMode="sync"
               >
-                {analyticsSections.length > 0 ? (
+                {topbarSections.length > 0 ? (
                   <div key="analytics-tabs">
                     <AnalyticsTabs
-                      items={analyticsSections.map((item) => ({
+                      items={topbarSections.map((item) => ({
                         key: item.key,
                         href: item.href,
-                        label: messages.navigation[item.key],
+                        label: analyticsTabLabel(item, messages),
+                        queryKey: item.queryKey,
+                        queryValue: item.queryValue,
+                        queryDefault: item.queryDefault,
                       }))}
                     />
                   </div>

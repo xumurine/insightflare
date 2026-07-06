@@ -25,6 +25,10 @@ id = "YOUR_KV_ID"
 binding = "BOT_ANALYTICS"
 dataset = "insightflare_bot_events"
 
+[[analytics_engine_datasets]]
+binding = "NORMAL_ANALYTICS"
+dataset = "insightflare_normal_events"
+
 [env.production]
 name = "insightflare-production"
 
@@ -40,6 +44,10 @@ migrations_dir = "./migrations"
 [[env.production.analytics_engine_datasets]]
 binding = "BOT_ANALYTICS"
 dataset = "insightflare_bot_events"
+
+[[env.production.analytics_engine_datasets]]
+binding = "NORMAL_ANALYTICS"
+dataset = "insightflare_normal_events"
 `;
 
 describe("applyWranglerEnvOverrides", () => {
@@ -127,6 +135,16 @@ describe("applyWranglerEnvOverrides", () => {
     );
   });
 
+  it("removes all root Analytics Engine datasets when disabled", () => {
+    const result = applyAnalyticsEngineDisabledFallback(BASE_CONFIG);
+    const rootContent = result.content.split("[env.production]")[0] ?? "";
+
+    expect(rootContent).not.toContain('binding = "BOT_ANALYTICS"');
+    expect(rootContent).not.toContain('binding = "NORMAL_ANALYTICS"');
+    expect(rootContent).not.toContain('dataset = "insightflare_bot_events"');
+    expect(rootContent).not.toContain('dataset = "insightflare_normal_events"');
+  });
+
   it("targets environment Analytics Engine binding for env deploys", () => {
     const result = applyAnalyticsEngineDisabledFallback(
       BASE_CONFIG,
@@ -137,6 +155,9 @@ describe("applyWranglerEnvOverrides", () => {
     expect(result.content).not.toContain(
       "[[env.production.analytics_engine_datasets]]",
     );
+    const envContent = result.content.split("[env.production]")[1] ?? "";
+    expect(envContent).not.toContain('binding = "BOT_ANALYTICS"');
+    expect(envContent).not.toContain('binding = "NORMAL_ANALYTICS"');
     expect(result.content).toContain("[env.production.vars]");
     expect(result.content).toContain(
       'INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED = "1"',

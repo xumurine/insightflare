@@ -72,7 +72,9 @@ interface AsyncDimensionBreakdownCardProps<T extends string> {
   locale: Locale;
   messages: AppMessages;
   tabs: NonEmptyArray<AsyncDimensionBreakdownTab<T>>;
-  loadRows: (tab: T) => Promise<AsyncDimensionBreakdownRow[]>;
+  loadRows?: (tab: T) => Promise<AsyncDimensionBreakdownRow[]>;
+  rowsByTab?: Partial<Record<T, readonly AsyncDimensionBreakdownRow[] | null>>;
+  loadingByTab?: Partial<Record<T, boolean>>;
   requestKey: string;
   className?: string;
   showVisitors?: boolean;
@@ -205,6 +207,8 @@ export function AsyncDimensionBreakdownCard<T extends string>({
   messages,
   tabs,
   loadRows,
+  rowsByTab,
+  loadingByTab,
   requestKey,
   className,
   showVisitors = true,
@@ -257,7 +261,9 @@ export function AsyncDimensionBreakdownCard<T extends string>({
       tabs={tabs}
       columns={columns}
       requestKey={requestKey}
-      loadRows={(tab) => loadRows(tab)}
+      rowsByTab={rowsByTab}
+      loadingByTab={loadingByTab}
+      loadRows={loadRows ? (tab) => loadRows(tab) : undefined}
       normalizeRows={normalizeRows}
       renderLabel={(row) => (
         <AsyncDimensionRowLabel

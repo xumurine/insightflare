@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   RiComputerLine,
   RiDashboardLine,
@@ -21,8 +21,10 @@ import {
   RiMegaphoneLine,
   RiPulseLine,
   RiRepeatLine,
+  RiRobot2Line,
   RiSettings3Line,
   RiShareForwardLine,
+  RiShieldCheckLine,
   RiSpeedUpLine,
   RiUser3Line,
 } from "@remixicon/react";
@@ -51,12 +53,18 @@ type AnalyticsTabKey =
   | "devices"
   | "browsers"
   | "performance"
-  | "settings";
+  | "settings"
+  | "request-overview"
+  | "request-abnormal"
+  | "request-normal";
 
 interface AnalyticsTabItem {
   key: AnalyticsTabKey;
   href: string;
   label: string;
+  queryKey?: string;
+  queryValue?: string;
+  queryDefault?: boolean;
 }
 
 interface AnalyticsTabsProps {
@@ -78,6 +86,9 @@ const TABS_SCROLLBAR_OPTIONS = {
 
 function getAnalyticsSectionIcon(key: AnalyticsTabKey) {
   if (key === "overview") return RiDashboardLine;
+  if (key === "request-overview") return RiDashboardLine;
+  if (key === "request-abnormal") return RiRobot2Line;
+  if (key === "request-normal") return RiShieldCheckLine;
   if (key === "realtime") return RiPulseLine;
   if (key === "pages") return RiFileList3Line;
   if (key === "referrers") return RiShareForwardLine;
@@ -102,13 +113,25 @@ function normalizePathname(pathname: string): string {
 function isTabActive(
   item: AnalyticsTabItem,
   normalizedPathname: string,
+  searchParams: URLSearchParams,
 ): boolean {
-  if (item.key === "overview") return normalizedPathname === item.href;
-  return normalizedPathname.startsWith(item.href);
+  const itemPath = normalizePathname(item.href.split("?")[0] || item.href);
+  if (item.queryKey) {
+    const currentValue =
+      searchParams.get(item.queryKey) ??
+      (item.queryDefault ? (item.queryValue ?? "") : "");
+    return (
+      normalizedPathname === itemPath &&
+      String(currentValue) === String(item.queryValue ?? "")
+    );
+  }
+  if (item.key === "overview") return normalizedPathname === itemPath;
+  return normalizedPathname.startsWith(itemPath);
 }
 
 export function AnalyticsTabs({ items }: AnalyticsTabsProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const normalizedPathname = normalizePathname(pathname || "");
   const scrollHostRef = useRef<HTMLDivElement | null>(null);
   const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
@@ -130,12 +153,27 @@ export function AnalyticsTabs({ items }: AnalyticsTabsProps) {
 
   const pathActiveKey = useMemo(() => {
     const activeItem = items.find((item) =>
-      isTabActive(item, normalizedPathname),
+      isTabActive(item, normalizedPathname, searchParams),
     );
     return activeItem?.key ?? items[0]?.key ?? null;
-  }, [items, normalizedPathname]);
+  }, [items, normalizedPathname, searchParams]);
 
   const resolvedActiveKey = pathActiveKey;
+  const hrefForItem = useCallback(
+    (item: AnalyticsTabItem) => {
+      if (!item.queryKey) return item.href;
+      const itemPath = normalizePathname(item.href.split("?")[0] || item.href);
+      const nextParams = new URLSearchParams(searchParams.toString());
+      if (item.queryDefault) {
+        nextParams.delete(item.queryKey);
+      } else if (item.queryValue) {
+        nextParams.set(item.queryKey, item.queryValue);
+      }
+      const nextQuery = nextParams.toString();
+      return nextQuery ? `${itemPath}?${nextQuery}` : itemPath;
+    },
+    [searchParams],
+  );
 
   const applyMaskVisibility = useCallback(
     (showLeft: boolean, showRight: boolean) => {
@@ -362,7 +400,7 @@ export function AnalyticsTabs({ items }: AnalyticsTabsProps) {
                     linkRefs.current.delete(item.key);
                   }
                 }}
-                href={item.href}
+                href={hrefForItem(item)}
                 className={cn(
                   "relative inline-flex items-center gap-1.5 px-2 py-3 text-xs whitespace-nowrap transition-colors",
                   isActive

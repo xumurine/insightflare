@@ -5,6 +5,7 @@ import {
 import { normalizeTrackerUaClientHints } from "@/lib/edge/client-hints";
 import { requestIp, verifyCollectToken } from "@/lib/edge/collect-token";
 import { expandCustomEventData } from "@/lib/edge/custom-event-json";
+import { writeNormalAnalyticsEvent } from "@/lib/edge/request-analytics";
 import {
   normalizeSiteSettingsKey,
   readSiteTrackingConfig,
@@ -162,6 +163,7 @@ function toCorsHeaders(origin: string | null): Record<string, string> {
   return {
     ...CORS_BASE_HEADERS,
     "access-control-allow-origin": origin,
+    "access-control-allow-credentials": "true",
     vary: "Origin",
   };
 }
@@ -594,6 +596,15 @@ export async function handleCollectRequest(
     traceId: trace.id,
     origin,
     ...compactPayloadForLog(decision.payload),
+  });
+
+  writeNormalAnalyticsEvent(env, {
+    request: requestWithCf,
+    payload: decision.payload,
+    siteId: decision.siteId,
+    origin: decision.allowOrigin,
+    traceId: trace.id,
+    receivedAt: trace.acceptedAt,
   });
 
   ctx.waitUntil(

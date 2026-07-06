@@ -29,7 +29,7 @@ import {
   RiSearchLine,
   RiStackLine,
 } from "@remixicon/react";
-import { AnimatePresence, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
@@ -1188,13 +1188,13 @@ function EventRecordsTable({
                     onClick={() => onOpenRecord(row.eventId)}
                     onKeyDown={(event) => handleKeyDown(event, row.eventId)}
                   >
-                    <TableCell className="pl-4">
-                      <div className="flex w-28 items-center gap-2">
+                    <TableCell className="max-w-36 pl-4">
+                      <div className="flex w-28 min-w-0 items-center gap-2">
                         <VisitorAvatar
                           seed={row.visitorId || row.eventId}
                           className="size-6"
                         />
-                        <span className="truncate font-mono">
+                        <span className="min-w-0 truncate font-mono">
                           {shortId(
                             row.visitorId || row.sessionId || row.visitId,
                           )}
@@ -1203,23 +1203,25 @@ function EventRecordsTable({
                     </TableCell>
                     <TableCell className="max-w-48">
                       <span
-                        className="truncate font-medium"
+                        className="block truncate font-medium"
                         title={row.eventName}
                       >
                         {row.eventName}
                       </span>
                     </TableCell>
-                    <TableCell>
-                      <span className="font-mono text-muted-foreground">
+                    <TableCell className="max-w-32">
+                      <span className="block truncate font-mono text-muted-foreground">
                         {shortId(row.eventId)}
                       </span>
                     </TableCell>
-                    <TableCell className="font-mono text-muted-foreground">
-                      {formatRelativeTime(locale, row.occurredAt, now)}
+                    <TableCell className="max-w-36 font-mono text-muted-foreground">
+                      <span className="block truncate">
+                        {formatRelativeTime(locale, row.occurredAt, now)}
+                      </span>
                     </TableCell>
                     <TableCell className="max-w-64">
                       <span
-                        className="truncate font-mono"
+                        className="block truncate font-mono"
                         title={formatPath(row.pathname)}
                       >
                         {formatPath(row.pathname)}
@@ -1229,6 +1231,7 @@ function EventRecordsTable({
                       <ReferrerMeta
                         referrerHost={row.referrerHost || ""}
                         directLabel={messages.overview.direct}
+                        className="w-full"
                       />
                     </TableCell>
                     <TableCell className="max-w-52">
@@ -1237,6 +1240,7 @@ function EventRecordsTable({
                         messages={messages}
                         country={row.country || ""}
                         region={row.region}
+                        className="w-full"
                       />
                     </TableCell>
                     <TableCell className="max-w-40">
@@ -1244,6 +1248,7 @@ function EventRecordsTable({
                         os={row.os || ""}
                         version={row.osVersion}
                         unknownLabel={messages.common.unknown}
+                        className="w-full"
                       />
                     </TableCell>
                     <TableCell className="max-w-40">
@@ -1251,6 +1256,7 @@ function EventRecordsTable({
                         browser={row.browser || ""}
                         version={row.browserVersion}
                         unknownLabel={messages.common.unknown}
+                        className="w-full"
                       />
                     </TableCell>
                     <TableCell className="max-w-36">
@@ -1258,6 +1264,7 @@ function EventRecordsTable({
                         deviceType={row.deviceType || ""}
                         deviceLabels={messages.common.deviceLabels}
                         unknownLabel={messages.common.unknown}
+                        className="w-full"
                       />
                     </TableCell>
                     <TableCell className="pr-4 text-right font-mono tabular-nums">
@@ -1402,21 +1409,29 @@ export function EventRecordDetailDrawer({
   };
 
   const sideDrawerOverlay =
-    open && typeof document !== "undefined"
+    typeof document !== "undefined"
       ? createPortal(
-          <div
-            aria-hidden="true"
-            data-dashboard-floating-layer="event-record-drawer-overlay"
-            data-event-record-drawer-overlay=""
-            className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
-            style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
-            {...{
-              [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-            }}
-            onPointerDown={stopSideDrawerOverlayEvent}
-            onPointerUp={stopSideDrawerOverlayEvent}
-            onClick={closeSideDrawerFromOverlay}
-          />,
+          <AnimatePresence>
+            {open ? (
+              <motion.div
+                aria-hidden="true"
+                data-dashboard-floating-layer="event-record-drawer-overlay"
+                data-event-record-drawer-overlay=""
+                className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
+                style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.16, ease: "easeOut" }}
+                {...{
+                  [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
+                }}
+                onPointerDown={stopSideDrawerOverlayEvent}
+                onPointerUp={stopSideDrawerOverlayEvent}
+                onClick={closeSideDrawerFromOverlay}
+              />
+            ) : null}
+          </AnimatePresence>,
           document.body,
         )
       : null;

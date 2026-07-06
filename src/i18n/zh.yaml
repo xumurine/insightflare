@@ -1404,7 +1404,7 @@ managementNav:
   teams: 团队管理
   versionUpdates: 版本更新
   scheduledTasks: 定时任务
-  botProtection: 机器人防护
+  requestObservation: 请求观测
   systemPerformance: 系统性能
   systemSettings: 系统设置
 managementPages:
@@ -1598,15 +1598,15 @@ adminTeams:
     members: 成员数
     created: 创建时间
     action: 操作
-botProtection:
-  title: 机器人防护
-  subtitle: 查看进入主 DO/D1 分析链路前已被分流的流量。
+requestObservation:
+  title: 请求观测
+  subtitle: 基于 Analytics Engine 观察整体请求、异常分流与正常采集链路。
   refresh: 刷新
-  loadFailed: 加载机器人防护数据失败。
+  loadFailed: 加载请求观测数据失败。
   notConfiguredTitle: 尚未配置 Analytics Engine 读取凭据
-  notConfiguredDescription: 请先在系统设置中填写 Cloudflare Account ID 和 API Token，用于读取机器人分流数据集。
+  notConfiguredDescription: 请先在系统设置中填写 Cloudflare Account ID 和 API Token，用于读取请求观测 Analytics Engine 数据集。
   analyticsEngineDisabledTitle: Analytics Engine 尚未启用
-  analyticsEngineDisabledDescription: 当前部署未绑定 Analytics Engine，因为 Cloudflare 账户尚未启用 Analytics Engine。请先在 Cloudflare 中启用，然后重新部署以采集机器人分流数据。
+  analyticsEngineDisabledDescription: 当前部署未绑定 Analytics Engine，因为 Cloudflare 账户尚未启用 Analytics Engine。请先在 Cloudflare 中启用，然后重新部署以采集请求观测数据。
   openAnalyticsEngine: 打开 Analytics Engine
   openSettings: 打开设置
   range1h: 最近 1 小时
@@ -1614,30 +1614,41 @@ botProtection:
   range24h: 最近 24 小时
   range7d: 最近 7 天
   range30d: 最近 30 天
-  total: 已分流请求
+  total: 总请求数
   botRequests: 机器人请求数
-  allRequests: 全站访问量
+  allRequests: 全站请求量
   botRequestRatio: 机器人请求比例
   botTrafficRatio: 机器人流量比例
   highConfidenceBots: 高置信机器人
   affectedSites: 受影响站点
   sourceNetworks: 来源网络
-  rollupBaseline: 基于汇总表全站访问
+  rollupBaseline: 基于正常与异常请求数据集
   highConfidence: 高置信度
   mediumConfidence: ASN 分流
   uniqueAsns: ASN 数
   uniqueCountries: 国家/地区
-  mapTitle: 机器人流量地图
-  mapDescription: 按 Cloudflare 边缘地理信息聚合最近分流请求。
-  noData: 当前时间窗口内没有机器人流量。
+  mapTitle: 请求地图
+  mapDescription: 按 Cloudflare 边缘地理信息聚合当前时间窗口内的请求。
+  noData: 当前时间窗口内没有请求数据。
   trendTitle: 分流趋势
-  trendDescription: 进入主分析链路前被分流的请求数量。
+  trendDescription: 按时间间隔显示正常请求、异常请求与分流比例。
   reasonsTitle: 判定原因
   reasonsDescription: 触发分流的信号。
   asnTitle: 来源网络
   asnDescription: 最常出现的托管和云服务 ASN。
   recentTitle: 最近机器人请求
   recentDescription: 这些详细记录只写入机器人 Analytics Engine 数据集。
+  recentShowing: 已显示
+  recentLoadedAll: 已加载全部记录
+  detailTitle: 机器人请求详情
+  detailSubtitle: 查看这次分流请求的检测信号、网络和客户端上下文。
+  detection: 检测
+  client: 客户端
+  edge: 边缘
+  identifiers: 标识符
+  fullUserAgent: 完整 User-Agent
+  id: ID
+  metadata: Metadata
   time: 时间
   site: 站点
   location: 位置
@@ -1678,6 +1689,10 @@ botProtection:
     missing_browser_provenance: 缺少浏览器来源信号
     origin_hostname_mismatch: Origin 与主机名不匹配
     blocked_pathname: 命中路径黑名单
+  requestKindLabels:
+    pageview: 页面浏览
+    custom_event: 自定义事件
+    request: 请求
 systemSettings:
   title: 系统设置
   subtitle: 管理当前 InsightFlare 实例的全站配置。

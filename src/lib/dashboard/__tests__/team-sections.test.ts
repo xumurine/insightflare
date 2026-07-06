@@ -21,7 +21,7 @@ const messages = {
     teams: "Teams",
     versionUpdates: "Version updates",
     scheduledTasks: "Scheduled tasks",
-    botProtection: "Bot protection",
+    requestObservation: "Request observation",
     systemPerformance: "System performance",
     systemSettings: "System settings",
   },
@@ -85,9 +85,9 @@ describe("dashboard team section builders", () => {
         href: "/en/app/manage/scheduled-tasks",
       },
       {
-        key: "bot-protection",
-        label: "Bot protection",
-        href: "/en/app/manage/bot-protection",
+        key: "request-observation",
+        label: "Request observation",
+        href: "/en/app/manage/request-observation",
       },
       {
         key: "system-performance",
