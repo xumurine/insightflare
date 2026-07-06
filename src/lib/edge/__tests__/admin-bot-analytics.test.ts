@@ -552,8 +552,9 @@ describe("admin bot analytics handlers", () => {
       `timestamp >= toDateTime(${Math.floor(expectedFrom / 1000)})`,
     );
     expect(allSql.join("\n")).toContain(
-      "toStartOfInterval(timestamp, INTERVAL 1 DAY, 'Asia/Shanghai')",
+      "intDiv(toUnixTimestamp(timestamp) + 28800, 86400)",
     );
+    expect(allSql.join("\n")).not.toContain("toStartOfInterval");
     expect(body.trend[0]?.timestampMs).toBe(expectedFrom);
   });
 

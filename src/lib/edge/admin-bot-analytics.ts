@@ -13,6 +13,7 @@ import {
   resolveReportingTimeZone,
   startOfZonedDay,
   startOfZonedInterval,
+  timeZoneOffsetMinutes,
 } from "@/lib/dashboard/time-zone";
 
 import { requireActor } from "./admin-auth";
@@ -288,7 +289,11 @@ function buildCountByBucketSql(input: {
   const dataset = analyticsDatasetIdentifier(input.dataset);
   const fromSeconds = Math.floor(input.from / 1000);
   const toSeconds = Math.ceil(input.to / 1000);
-  const bucketExpression = `toUnixTimestamp(toStartOfInterval(timestamp, INTERVAL 1 ${analyticsBucketUnit(input.interval)}, ${analyticsSqlString(input.timeZone)})) * 1000`;
+  const bucketSeconds = Math.max(60, Math.floor(input.bucketMs / 1000));
+  const bucketOffsetSeconds =
+    timeZoneOffsetMinutes(input.timeZone, input.from) * 60 +
+    (input.interval === "week" ? 3 * 24 * 60 * 60 : 0);
+  const bucketExpression = `(intDiv(toUnixTimestamp(timestamp) + ${bucketOffsetSeconds}, ${bucketSeconds}) * ${bucketSeconds} - ${bucketOffsetSeconds}) * 1000`;
   const latencySelect =
     input.includeLatency && input.source === "normal"
       ? `,
@@ -307,13 +312,6 @@ function buildCountByBucketSql(input: {
     ORDER BY timestampMs ASC
     FORMAT JSONEachRow
   `;
-}
-
-function analyticsBucketUnit(interval: BotAnalyticsInterval): string {
-  if (interval === "minute") return "MINUTE";
-  if (interval === "hour") return "HOUR";
-  if (interval === "week") return "WEEK";
-  return "DAY";
 }
 
 function buildMapPointsSql(input: {
@@ -949,7 +947,11 @@ function mergeTrendRows(input: {
     });
   }
   for (const row of input.abnormalRows) {
-    const timestampMs = Math.floor(toFiniteNumber(row.timestampMs));
+    const timestampMs = bucketTimestamp(
+      Math.floor(toFiniteNumber(row.timestampMs)),
+      input.interval,
+      input.timeZone,
+    );
     const current = trend.get(timestampMs);
     if (!current) continue;
     current.abnormalCount = Math.max(0, Math.trunc(toFiniteNumber(row.count)));
@@ -961,7 +963,11 @@ function mergeTrendRows(input: {
     );
   }
   for (const row of input.normalRows) {
-    const timestampMs = Math.floor(toFiniteNumber(row.timestampMs));
+    const timestampMs = bucketTimestamp(
+      Math.floor(toFiniteNumber(row.timestampMs)),
+      input.interval,
+      input.timeZone,
+    );
     const current = trend.get(timestampMs);
     if (!current) continue;
     current.normalCount = Math.max(0, Math.trunc(toFiniteNumber(row.count)));
