@@ -10,7 +10,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
@@ -21,7 +20,7 @@ import {
   RiRobot2Line,
   RiShieldCheckLine,
 } from "@remixicon/react";
-import { AnimatePresence, motion, useAnimationControls } from "motion/react";
+import { motion, useAnimationControls } from "motion/react";
 import {
   Area,
   Bar,
@@ -47,11 +46,7 @@ import {
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
 import { ShareRadialCard } from "@/components/dashboard/share-radial-card";
-import {
-  EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-  EVENT_RECORD_DRAWER_Z_INDEX,
-  FLOATING_LAYER_Z_ATTR,
-} from "@/components/dashboard/site-pages/floating-layer";
+import { EVENT_RECORD_DRAWER_Z_INDEX } from "@/components/dashboard/site-pages/floating-layer";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +71,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { ModalOverlay, overlayZIndexFor } from "@/components/ui/modal-overlay";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -2703,36 +2699,17 @@ function BotRequestDetailDrawer({
     onOpenChange(false);
   };
 
-  const sideDrawerOverlay =
-    typeof document !== "undefined"
-      ? createPortal(
-          <AnimatePresence>
-            {open ? (
-              <motion.div
-                aria-hidden="true"
-                data-dashboard-floating-layer="request-observation-drawer-overlay"
-                className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
-                style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.16, ease: "easeOut" }}
-                {...{
-                  [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-                }}
-                onPointerDown={stopSideDrawerOverlayEvent}
-                onPointerUp={stopSideDrawerOverlayEvent}
-                onClick={closeSideDrawerFromOverlay}
-              />
-            ) : null}
-          </AnimatePresence>,
-          document.body,
-        )
-      : null;
-
   return (
     <>
-      {sideDrawerOverlay}
+      <ModalOverlay
+        layerId="request-observation-drawer"
+        open={open}
+        portal
+        zIndex={overlayZIndexFor(EVENT_RECORD_DRAWER_Z_INDEX)}
+        onPointerDown={stopSideDrawerOverlayEvent}
+        onPointerUp={stopSideDrawerOverlayEvent}
+        onClick={closeSideDrawerFromOverlay}
+      />
       <Drawer
         open={open}
         onOpenChange={onOpenChange}
@@ -2744,9 +2721,6 @@ function BotRequestDetailDrawer({
           className="!w-full !max-w-none sm:!w-[min(58vw,34rem)]"
           overlayClassName="hidden"
           style={{ zIndex: EVENT_RECORD_DRAWER_Z_INDEX }}
-          {...{
-            [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_Z_INDEX,
-          }}
           onFocusOutside={(event) => {
             event.preventDefault();
           }}
@@ -3062,36 +3036,17 @@ function NormalRequestDetailDrawer({
     onOpenChange(false);
   };
 
-  const sideDrawerOverlay =
-    typeof document !== "undefined"
-      ? createPortal(
-          <AnimatePresence>
-            {open ? (
-              <motion.div
-                aria-hidden="true"
-                data-dashboard-floating-layer="request-observation-normal-drawer-overlay"
-                className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
-                style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.16, ease: "easeOut" }}
-                {...{
-                  [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-                }}
-                onPointerDown={stopSideDrawerOverlayEvent}
-                onPointerUp={stopSideDrawerOverlayEvent}
-                onClick={closeSideDrawerFromOverlay}
-              />
-            ) : null}
-          </AnimatePresence>,
-          document.body,
-        )
-      : null;
-
   return (
     <>
-      {sideDrawerOverlay}
+      <ModalOverlay
+        layerId="request-observation-normal-drawer"
+        open={open}
+        portal
+        zIndex={overlayZIndexFor(EVENT_RECORD_DRAWER_Z_INDEX)}
+        onPointerDown={stopSideDrawerOverlayEvent}
+        onPointerUp={stopSideDrawerOverlayEvent}
+        onClick={closeSideDrawerFromOverlay}
+      />
       <Drawer
         open={open}
         onOpenChange={onOpenChange}
@@ -3103,9 +3058,6 @@ function NormalRequestDetailDrawer({
           className="!w-full !max-w-none sm:!w-[min(58vw,34rem)]"
           overlayClassName="hidden"
           style={{ zIndex: EVENT_RECORD_DRAWER_Z_INDEX }}
-          {...{
-            [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_Z_INDEX,
-          }}
           onFocusOutside={(event) => {
             event.preventDefault();
           }}

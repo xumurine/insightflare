@@ -8,7 +8,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import {
   RiAlarmWarningLine,
   RiCalendarScheduleLine,
@@ -24,11 +23,7 @@ import { useDashboardQueryControls } from "@/components/dashboard/dashboard-quer
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { JsonTreePanel } from "@/components/dashboard/json-tree";
 import { PageHeading } from "@/components/dashboard/page-heading";
-import {
-  EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-  EVENT_RECORD_DRAWER_Z_INDEX,
-  FLOATING_LAYER_Z_ATTR,
-} from "@/components/dashboard/site-pages/floating-layer";
+import { EVENT_RECORD_DRAWER_Z_INDEX } from "@/components/dashboard/site-pages/floating-layer";
 import { TableActionButton } from "@/components/dashboard/table-action-button";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -48,6 +43,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { ModalOverlay, overlayZIndexFor } from "@/components/ui/modal-overlay";
 import {
   Select,
   SelectContent,
@@ -656,30 +652,20 @@ function ScheduledTaskRunLogDrawer({
     return grouped;
   }, [logs]);
   const bodyTransitionKey = loading ? "loading" : run ? run.id : "empty";
-  const overlay =
-    open && typeof document !== "undefined"
-      ? createPortal(
-          <div
-            aria-hidden="true"
-            data-dashboard-floating-layer="scheduled-task-run-drawer-overlay"
-            className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
-            style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
-            {...{
-              [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-            }}
-            onPointerDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onOpenChange(false);
-            }}
-          />,
-          document.body,
-        )
-      : null;
 
   return (
     <>
-      {overlay}
+      <ModalOverlay
+        layerId="scheduled-task-run-drawer"
+        open={open}
+        portal
+        zIndex={overlayZIndexFor(EVENT_RECORD_DRAWER_Z_INDEX)}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onOpenChange(false);
+        }}
+      />
       <Drawer
         open={open}
         onOpenChange={onOpenChange}
@@ -691,9 +677,6 @@ function ScheduledTaskRunLogDrawer({
           className="!w-full !max-w-none sm:!w-[min(58vw,34rem)]"
           overlayClassName="hidden"
           style={{ zIndex: EVENT_RECORD_DRAWER_Z_INDEX }}
-          {...{
-            [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_Z_INDEX,
-          }}
         >
           <DrawerHeader className="border-b">
             <DrawerTitle>{labels.logTitle}</DrawerTitle>

@@ -3,12 +3,61 @@
 import * as React from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 
+import { FLOATING_LAYER_Z_ATTR } from "@/components/ui/floating-layer";
+import {
+  ModalOverlay,
+  type ModalRootState,
+  overlayZIndexFor,
+  parseZIndex,
+  useControllableOpen,
+  useModalLayerId,
+  useModalLayerZIndex,
+} from "@/components/ui/modal-overlay";
 import { cn } from "@/lib/utils";
 
+type DrawerRootProps = React.ComponentProps<typeof DrawerPrimitive.Root>;
+
+interface DrawerRootState extends ModalRootState {
+  onOpenChange?: (open: boolean) => void;
+}
+
+const DrawerRootContext = React.createContext<DrawerRootState | null>(null);
+
 function Drawer({
+  defaultOpen,
+  modal = true,
+  onOpenChange,
+  open,
   ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Root>) {
-  return <DrawerPrimitive.Root data-slot="drawer" {...props} />;
+}: DrawerRootProps) {
+  const layerId = useModalLayerId("drawer");
+  const [currentOpen, handleOpenChange] = useControllableOpen({
+    defaultOpen,
+    onOpenChange,
+    open,
+  });
+  const rootState = React.useMemo(
+    () => ({
+      layerId,
+      modal,
+      onOpenChange: handleOpenChange,
+      open: currentOpen,
+    }),
+    [currentOpen, handleOpenChange, layerId, modal],
+  );
+
+  return (
+    <DrawerRootContext.Provider value={rootState}>
+      <DrawerPrimitive.Root
+        data-slot="drawer"
+        defaultOpen={undefined}
+        modal={modal}
+        onOpenChange={handleOpenChange}
+        open={currentOpen}
+        {...props}
+      />
+    </DrawerRootContext.Provider>
+  );
 }
 
 function DrawerTrigger({
@@ -31,15 +80,26 @@ function DrawerClose({
 
 function DrawerOverlay({
   className,
+  onClick,
+  zIndex,
   ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Overlay>) {
+}: React.ComponentProps<typeof DrawerPrimitive.Overlay> & {
+  zIndex?: number;
+}) {
+  const rootState = React.useContext(DrawerRootContext);
+
   return (
-    <DrawerPrimitive.Overlay
+    <ModalOverlay
       data-slot="drawer-overlay"
-      className={cn(
-        "fixed inset-0 z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
-        className,
-      )}
+      layerId={rootState?.layerId ?? "drawer"}
+      open={rootState?.modal !== false && (rootState?.open ?? true)}
+      zIndex={zIndex}
+      className={cn(className)}
+      onClick={(event) => {
+        onClick?.(event);
+        if (event.defaultPrevented) return;
+        rootState?.onOpenChange?.(false);
+      }}
       {...props}
     />
   );
@@ -49,19 +109,38 @@ function DrawerContent({
   className,
   children,
   overlayClassName,
+  style,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Content> & {
   overlayClassName?: string;
 }) {
+  const rootState = React.useContext(DrawerRootContext);
+  const fallbackLayerId = useModalLayerId("drawer-content");
+  const layerId = rootState?.layerId ?? fallbackLayerId;
+  const baseZIndex = parseZIndex(style?.zIndex) ?? 50;
+  const contentZIndex = useModalLayerZIndex({
+    baseZIndex,
+    enabled: rootState?.modal !== false,
+    layerId,
+    open: rootState?.open ?? true,
+  });
+  const overlayZIndex = overlayZIndexFor(contentZIndex);
+  const floatingLayerProps =
+    rootState?.modal === false
+      ? undefined
+      : { [FLOATING_LAYER_Z_ATTR]: contentZIndex };
+
   return (
     <DrawerPortal data-slot="drawer-portal">
-      <DrawerOverlay className={overlayClassName} />
+      <DrawerOverlay className={overlayClassName} zIndex={overlayZIndex} />
       <DrawerPrimitive.Content
         data-slot="drawer-content"
+        {...floatingLayerProps}
         className={cn(
           "group/drawer-content fixed z-50 flex h-auto flex-col bg-background text-xs/relaxed data-[vaul-drawer-direction=bottom]:inset-x-0 data-[vaul-drawer-direction=bottom]:bottom-0 data-[vaul-drawer-direction=bottom]:mt-24 data-[vaul-drawer-direction=bottom]:max-h-[80vh] data-[vaul-drawer-direction=bottom]:rounded-none data-[vaul-drawer-direction=bottom]:border-t data-[vaul-drawer-direction=left]:inset-y-0 data-[vaul-drawer-direction=left]:left-0 data-[vaul-drawer-direction=left]:w-3/4 data-[vaul-drawer-direction=left]:rounded-none data-[vaul-drawer-direction=left]:border-r data-[vaul-drawer-direction=right]:inset-y-0 data-[vaul-drawer-direction=right]:right-0 data-[vaul-drawer-direction=right]:w-3/4 data-[vaul-drawer-direction=right]:rounded-none data-[vaul-drawer-direction=right]:border-l data-[vaul-drawer-direction=top]:inset-x-0 data-[vaul-drawer-direction=top]:top-0 data-[vaul-drawer-direction=top]:mb-24 data-[vaul-drawer-direction=top]:max-h-[80vh] data-[vaul-drawer-direction=top]:rounded-none data-[vaul-drawer-direction=top]:border-b data-[vaul-drawer-direction=left]:sm:max-w-sm data-[vaul-drawer-direction=right]:sm:max-w-sm",
           className,
         )}
+        style={{ ...style, zIndex: contentZIndex }}
         {...props}
       >
         <div className="mx-auto mt-4 hidden h-1 w-[100px] shrink-0 rounded-none bg-muted group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />

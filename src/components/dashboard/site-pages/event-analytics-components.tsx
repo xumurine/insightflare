@@ -11,7 +11,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { RemixiconComponentType } from "@remixicon/react";
@@ -29,7 +28,7 @@ import {
   RiSearchLine,
   RiStackLine,
 } from "@remixicon/react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, useReducedMotion } from "motion/react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
@@ -50,9 +49,7 @@ import { PageHeading } from "@/components/dashboard/page-heading";
 import { DetailDrawer } from "@/components/dashboard/site-pages/detail-drawer";
 import {
   EVENT_FILTER_DIALOG_Z_INDEX,
-  EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
   EVENT_RECORD_DRAWER_Z_INDEX,
-  FLOATING_LAYER_Z_ATTR,
   NESTED_DETAIL_DRAWER_Z_INDEX,
 } from "@/components/dashboard/site-pages/floating-layer";
 import { AutoResizer } from "@/components/ui/auto-resizer";
@@ -82,6 +79,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
+import { ModalOverlay, overlayZIndexFor } from "@/components/ui/modal-overlay";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -1408,37 +1406,18 @@ export function EventRecordDetailDrawer({
     if (!nestedDetailOpen) onOpenChange(false);
   };
 
-  const sideDrawerOverlay =
-    typeof document !== "undefined"
-      ? createPortal(
-          <AnimatePresence>
-            {open ? (
-              <motion.div
-                aria-hidden="true"
-                data-dashboard-floating-layer="event-record-drawer-overlay"
-                data-event-record-drawer-overlay=""
-                className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
-                style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.16, ease: "easeOut" }}
-                {...{
-                  [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-                }}
-                onPointerDown={stopSideDrawerOverlayEvent}
-                onPointerUp={stopSideDrawerOverlayEvent}
-                onClick={closeSideDrawerFromOverlay}
-              />
-            ) : null}
-          </AnimatePresence>,
-          document.body,
-        )
-      : null;
-
   return (
     <>
-      {sideDrawerOverlay}
+      <ModalOverlay
+        data-event-record-drawer-overlay=""
+        layerId="event-record-drawer"
+        open={open}
+        portal
+        zIndex={overlayZIndexFor(EVENT_RECORD_DRAWER_Z_INDEX)}
+        onPointerDown={stopSideDrawerOverlayEvent}
+        onPointerUp={stopSideDrawerOverlayEvent}
+        onClick={closeSideDrawerFromOverlay}
+      />
       <Drawer
         open={open}
         onOpenChange={onOpenChange}
@@ -1450,9 +1429,6 @@ export function EventRecordDetailDrawer({
           className="!w-full !max-w-none sm:!w-[min(58vw,34rem)]"
           overlayClassName="hidden"
           style={{ zIndex: EVENT_RECORD_DRAWER_Z_INDEX }}
-          {...{
-            [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_Z_INDEX,
-          }}
           onEscapeKeyDown={(event) => {
             if (nestedDetailOpen) event.preventDefault();
           }}
@@ -2596,11 +2572,7 @@ export function EventFieldsCard({
         <DialogContent
           data-dashboard-floating-layer="event-filter-dialog"
           className="max-w-xl"
-          overlayClassName="z-[999]"
           style={{ zIndex: EVENT_FILTER_DIALOG_Z_INDEX }}
-          {...{
-            [FLOATING_LAYER_Z_ATTR]: EVENT_FILTER_DIALOG_Z_INDEX,
-          }}
         >
           <DialogHeader>
             <DialogTitle icon={RiFilter3Line}>
