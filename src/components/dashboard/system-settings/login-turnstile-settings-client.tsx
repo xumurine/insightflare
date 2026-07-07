@@ -43,6 +43,8 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import type { AppMessages } from "@/lib/i18n/messages";
 
+import { SystemSettingsGuideDialog } from "./system-settings-guide-dialog";
+
 interface LoginTurnstileSettingsClientProps {
   messages: AppMessages;
 }
@@ -124,11 +126,6 @@ function apiMessage(payload: ApiResponse<unknown>, fallback: string): string {
     return payload.error.message;
   }
   return fallback;
-}
-
-function makeHint(secret: string): string {
-  const value = secret.trim();
-  return value ? `••••${value.slice(-4)}` : "";
 }
 
 async function fetchConfig(): Promise<PublicLoginTurnstileAdminConfig> {
@@ -284,6 +281,7 @@ export function LoginTurnstileSettingsClient({
     toFormState(defaultConfig()),
   );
   const [secretKey, setSecretKey] = useState("");
+  const [secretKeyDirty, setSecretKeyDirty] = useState(false);
   const [testedFingerprint, setTestedFingerprint] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -307,10 +305,13 @@ export function LoginTurnstileSettingsClient({
       secretKey.trim().length > 0
     );
   }, [config, form, secretKey]);
-  const secretPlaceholder =
-    config.secretKeyConfigured && config.secretKeyHint
-      ? `${copy.loginTurnstileSecretKeySaved}: ${config.secretKeyHint}`
-      : copy.loginTurnstileSecretKeyPlaceholder;
+  const showSavedSecretKey =
+    !secretKeyDirty &&
+    config.secretKeyConfigured &&
+    Boolean(config.secretKeyHint);
+  const secretKeyDisplayValue = showSavedSecretKey
+    ? config.secretKeyHint
+    : secretKey;
 
   useEffect(() => {
     let active = true;
@@ -402,6 +403,7 @@ export function LoginTurnstileSettingsClient({
       setConfig(saved);
       setForm(toFormState(saved));
       setSecretKey("");
+      setSecretKeyDirty(false);
       setTestedFingerprint("");
       toast.success(copy.loginTurnstileSaved);
     } catch (error) {
@@ -420,6 +422,7 @@ export function LoginTurnstileSettingsClient({
       setConfig(reset);
       setForm(toFormState(reset));
       setSecretKey("");
+      setSecretKeyDirty(false);
       setTestedFingerprint("");
       setDeleteDialogOpen(false);
       toast.success(copy.loginTurnstileDeleted);
@@ -507,11 +510,20 @@ export function LoginTurnstileSettingsClient({
               </Label>
               <Input
                 id="system-login-turnstile-secret-key"
-                type="password"
-                value={secretKey}
-                placeholder={secretPlaceholder}
+                type={showSavedSecretKey ? "text" : "password"}
+                value={secretKeyDisplayValue}
+                placeholder={copy.loginTurnstileSecretKeyPlaceholder}
                 disabled={loading || saving || deletingConfig}
+                onFocus={() => {
+                  if (!showSavedSecretKey) return;
+                  setSecretKeyDirty(true);
+                  setSecretKey("");
+                }}
+                onBlur={() => {
+                  if (!secretKey.trim()) setSecretKeyDirty(false);
+                }}
                 onChange={(event) => {
+                  setSecretKeyDirty(true);
                   setSecretKey(event.target.value);
                   setTestedFingerprint("");
                 }}
@@ -522,15 +534,6 @@ export function LoginTurnstileSettingsClient({
           <div className="grid gap-3 border-t pt-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge
-                  variant={config.secretKeyConfigured ? "outline" : "secondary"}
-                >
-                  {config.secretKeyConfigured
-                    ? `${copy.loginTurnstileSecretKeySaved}: ${
-                        config.secretKeyHint || makeHint(secretKey)
-                      }`
-                    : copy.loginTurnstileSecretKeyNotSaved}
-                </Badge>
                 {secretKey.trim() ? (
                   <Badge variant={newSecretTested ? "default" : "secondary"}>
                     {newSecretTested
@@ -676,6 +679,12 @@ export function LoginTurnstileSettingsClient({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+            <SystemSettingsGuideDialog
+              triggerLabel={copy.guide}
+              title={copy.loginTurnstileGuideTitle}
+              description={copy.loginTurnstileGuideDescription}
+              steps={copy.loginTurnstileGuideSteps}
+            />
           </div>
         </form>
       </CardContent>

@@ -408,8 +408,6 @@ function applyUpdateInput(
   current: BotAnalyticsConfig,
   input: {
     accountId?: string;
-    dataset?: string;
-    normalDataset?: string;
     apiToken?: string;
     clearApiToken?: boolean;
   },
@@ -418,10 +416,6 @@ function applyUpdateInput(
     current as unknown as Record<string, unknown>,
   );
   if (input.accountId !== undefined) next.accountId = input.accountId;
-  if (input.dataset !== undefined) next.dataset = input.dataset;
-  if (input.normalDataset !== undefined) {
-    next.normalDataset = input.normalDataset;
-  }
   if (input.clearApiToken) {
     next.apiTokenEncrypted = "";
     next.apiTokenHint = "";

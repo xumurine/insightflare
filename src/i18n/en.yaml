@@ -1731,34 +1731,46 @@ requestObservation:
 systemSettings:
   title: System Settings
   subtitle: Manage instance-wide configuration for this InsightFlare deployment.
-  botAnalyticsTitle: Bot Analytics Engine
-  botAnalyticsDescription: Configure the Cloudflare credentials used to read the bot diversion Analytics Engine dataset.
+  guide: Guide
+  botAnalyticsTitle: Analytics Engine
+  botAnalyticsDescription: Configure the Cloudflare credentials used to read Analytics Engine data for Bot Protection and other analysis features.
   botAnalyticsAccountIdLabel: Cloudflare Account ID
-  botAnalyticsDatasetLabel: Analytics Engine dataset
   botAnalyticsApiTokenLabel: Cloudflare API token
-  botAnalyticsApiTokenPlaceholder: Leave blank to keep the saved API token
-  botAnalyticsTokenSaved: Token saved
-  botAnalyticsTokenNotSaved: Token not saved
-  botAnalyticsSaved: Bot analytics configuration saved.
-  botAnalyticsSaveFailed: Failed to save bot analytics configuration.
-  botAnalyticsDeleted: Bot analytics configuration deleted.
-  botAnalyticsDeleteFailed: Failed to delete bot analytics configuration.
-  botAnalyticsDeleteConfirm: Delete the bot analytics read configuration? The Bot Protection page will show configuration required until it is restored.
+  botAnalyticsApiTokenPlaceholder: View the guide to get a Cloudflare API token
+  botAnalyticsSaved: Analytics Engine configuration saved.
+  botAnalyticsSaveFailed: Failed to save Analytics Engine configuration.
+  botAnalyticsDeleted: Analytics Engine configuration deleted.
+  botAnalyticsDeleteFailed: Failed to delete Analytics Engine configuration.
+  botAnalyticsDeleteConfirm: Delete the Analytics Engine read configuration? Features that depend on Analytics Engine will show configuration required until it is restored.
   botAnalyticsEngineDisabledBadge: Analytics Engine disabled
   botAnalyticsEngineDisabledTitle: Analytics Engine is not enabled
-  botAnalyticsEngineDisabledDescription: This deployment automatically disabled the Analytics Engine binding because the Cloudflare account has not enabled Analytics Engine. Enable Analytics Engine in Cloudflare, then redeploy InsightFlare to activate bot analytics.
-  botAnalyticsEngineDisabledHint: Bot analytics settings are locked until Analytics Engine is enabled and the Worker is redeployed.
+  botAnalyticsEngineDisabledDescription: This deployment automatically disabled the Analytics Engine binding because the Cloudflare account has not enabled Analytics Engine. Enable Analytics Engine in Cloudflare, then redeploy InsightFlare to activate related analysis features.
+  botAnalyticsEngineDisabledHint: Analytics Engine settings are locked until Analytics Engine is enabled and the Worker is redeployed.
   botAnalyticsOpenCloudflare: Open Cloudflare Analytics Engine
+  botAnalyticsGuideTitle: Get Analytics Engine credentials
+  botAnalyticsGuideDescription: Analytics Engine needs Cloudflare account details and an API token that can read Analytics Engine data.
+  botAnalyticsGuideSteps:
+    - Open the Cloudflare Dashboard, enter the target account, and copy the Account ID.
+    - Enable Analytics Engine under Workers & Pages; the bot and normal request datasets are created and bound automatically during deployment.
+    - Go to My Profile → API Tokens and create a Custom token.
+    - Grant the token Account Analytics read access and scope it to the current account.
+    - Copy the token, then enter the Account ID and API token here.
   notificationEmailTitle: Email Notifications
   notificationEmailDescription: Configure the email service used for reports, alerts, and test messages.
+  notificationEmailGuideTitle: Get Resend email settings
+  notificationEmailGuideDescription: To send system email through Resend, prepare a verified sender domain and an API key.
+  notificationEmailGuideSteps:
+    - Open the Resend Dashboard and confirm the sender domain has passed DNS verification.
+    - Create a new API key from the API Keys page.
+    - Choose the permissions required to send email, then copy the generated API key.
+    - Enter the sender name, sender email, Reply-To, and Resend API key here.
+    - Save the configuration, then send a test email to confirm delivery works.
   loginTurnstileTitle: Login Turnstile Protection
   loginTurnstileDescription: When enabled, the login page runs Cloudflare Turnstile Invisible verification in the background and the server enforces it during sign-in.
   loginTurnstileEnabledLabel: Enable login protection
   loginTurnstileSiteKeyLabel: Site Key
   loginTurnstileSecretKeyLabel: Secret Key
-  loginTurnstileSecretKeyPlaceholder: Leave blank to keep the saved Secret Key
-  loginTurnstileSecretKeySaved: Saved
-  loginTurnstileSecretKeyNotSaved: Secret Key not saved
+  loginTurnstileSecretKeyPlaceholder: View the guide to get a Turnstile Secret Key
   loginTurnstileModeLabel: Verification mode
   loginTurnstileModeInvisible: Invisible
   loginTurnstileTest: Test verification
@@ -1774,6 +1786,14 @@ systemSettings:
   loginTurnstileDeleteConfirm: Delete the login Turnstile configuration? Login protection will be disabled.
   loginTurnstileLoadFailed: Failed to load login Turnstile configuration.
   loginTurnstilePrivacyNotice: Create an Invisible widget in the Cloudflare Turnstile console. For self-hosted deployments, confirm your privacy policy matches Cloudflare Turnstile requirements.
+  loginTurnstileGuideTitle: Get Turnstile credentials
+  loginTurnstileGuideDescription: Login protection needs a Cloudflare Turnstile Site Key and Secret Key.
+  loginTurnstileGuideSteps:
+    - Open the Cloudflare Dashboard and go to Turnstile.
+    - Create a new widget and choose Invisible mode.
+    - Add the current InsightFlare login domain to the allowed hostnames.
+    - Copy the Site Key and Secret Key after the widget is created.
+    - Enter the Site Key and Secret Key here, run the verification test, then save the configuration.
   enabledLabel: Enable email sending
   enabledOn: Enabled
   enabledOff: Disabled
@@ -1784,9 +1804,7 @@ systemSettings:
   replyToLabel: Reply-To email
   replyToPlaceholder: Optional, defaults to sender email
   resendApiKeyLabel: Resend API Key
-  resendApiKeyPlaceholder: Leave blank to keep the saved API key
-  resendApiKeySaved: Saved
-  clearApiKey: Clear saved API Key
+  resendApiKeyPlaceholder: View the guide to get a Resend API key
   testRecipientLabel: Test recipient
   save: Save configuration
   saving: Saving...

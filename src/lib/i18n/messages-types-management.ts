@@ -1175,14 +1175,12 @@ export interface AppManagementMessages {
   systemSettings: {
     title: string;
     subtitle: string;
+    guide: string;
     botAnalyticsTitle: string;
     botAnalyticsDescription: string;
     botAnalyticsAccountIdLabel: string;
-    botAnalyticsDatasetLabel: string;
     botAnalyticsApiTokenLabel: string;
     botAnalyticsApiTokenPlaceholder: string;
-    botAnalyticsTokenSaved: string;
-    botAnalyticsTokenNotSaved: string;
     botAnalyticsSaved: string;
     botAnalyticsSaveFailed: string;
     botAnalyticsDeleted: string;
@@ -1193,16 +1191,20 @@ export interface AppManagementMessages {
     botAnalyticsEngineDisabledDescription: string;
     botAnalyticsEngineDisabledHint: string;
     botAnalyticsOpenCloudflare: string;
+    botAnalyticsGuideTitle: string;
+    botAnalyticsGuideDescription: string;
+    botAnalyticsGuideSteps: string[];
     notificationEmailTitle: string;
     notificationEmailDescription: string;
+    notificationEmailGuideTitle: string;
+    notificationEmailGuideDescription: string;
+    notificationEmailGuideSteps: string[];
     loginTurnstileTitle: string;
     loginTurnstileDescription: string;
     loginTurnstileEnabledLabel: string;
     loginTurnstileSiteKeyLabel: string;
     loginTurnstileSecretKeyLabel: string;
     loginTurnstileSecretKeyPlaceholder: string;
-    loginTurnstileSecretKeySaved: string;
-    loginTurnstileSecretKeyNotSaved: string;
     loginTurnstileModeLabel: string;
     loginTurnstileModeInvisible: string;
     loginTurnstileTest: string;
@@ -1218,6 +1220,9 @@ export interface AppManagementMessages {
     loginTurnstileDeleteConfirm: string;
     loginTurnstileLoadFailed: string;
     loginTurnstilePrivacyNotice: string;
+    loginTurnstileGuideTitle: string;
+    loginTurnstileGuideDescription: string;
+    loginTurnstileGuideSteps: string[];
     enabledLabel: string;
     enabledOn: string;
     enabledOff: string;
@@ -1229,8 +1234,6 @@ export interface AppManagementMessages {
     replyToPlaceholder: string;
     resendApiKeyLabel: string;
     resendApiKeyPlaceholder: string;
-    resendApiKeySaved: string;
-    clearApiKey: string;
     testRecipientLabel: string;
     save: string;
     saving: string;

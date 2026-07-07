@@ -47,6 +47,8 @@ import type {
   PublicNotificationEmailConfig,
 } from "@/lib/notifications/email-config";
 
+import { SystemSettingsGuideDialog } from "./system-settings-guide-dialog";
+
 interface NotificationEmailSettingsClientProps {
   locale: Locale;
   messages: AppMessages;
@@ -235,6 +237,7 @@ export function NotificationEmailSettingsClient({
     toFormState(defaultConfig()),
   );
   const [apiKey, setApiKey] = useState("");
+  const [apiKeyDirty, setApiKeyDirty] = useState(false);
   const [testRecipient, setTestRecipient] = useState(currentUserEmail);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -254,10 +257,13 @@ export function NotificationEmailSettingsClient({
     );
   }, [apiKey, config, form]);
 
-  const apiKeyPlaceholder =
-    config.resend.configured && config.resend.apiKeyHint
-      ? `${copy.resendApiKeySaved}: ${config.resend.apiKeyHint}`
-      : copy.resendApiKeyPlaceholder;
+  const showSavedApiKey =
+    !apiKeyDirty &&
+    config.resend.configured &&
+    Boolean(config.resend.apiKeyHint);
+  const apiKeyDisplayValue = showSavedApiKey
+    ? config.resend.apiKeyHint
+    : apiKey;
 
   useEffect(() => {
     let active = true;
@@ -302,6 +308,7 @@ export function NotificationEmailSettingsClient({
       setConfig(saved);
       setForm(toFormState(saved));
       setApiKey("");
+      setApiKeyDirty(false);
       toast.success(copy.saved);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : copy.saveFailed);
@@ -317,6 +324,7 @@ export function NotificationEmailSettingsClient({
       setConfig(reset);
       setForm(toFormState(reset));
       setApiKey("");
+      setApiKeyDirty(false);
       setDeleteDialogOpen(false);
       toast.success(copy.deleted);
     } catch (error) {
@@ -462,11 +470,22 @@ export function NotificationEmailSettingsClient({
                 </Label>
                 <Input
                   id="system-email-resend-api-key"
-                  type="password"
-                  value={apiKey}
-                  placeholder={apiKeyPlaceholder}
+                  type={showSavedApiKey ? "text" : "password"}
+                  value={apiKeyDisplayValue}
+                  placeholder={copy.resendApiKeyPlaceholder}
                   disabled={loading || saving || deletingConfig}
-                  onChange={(event) => setApiKey(event.target.value)}
+                  onFocus={() => {
+                    if (!showSavedApiKey) return;
+                    setApiKeyDirty(true);
+                    setApiKey("");
+                  }}
+                  onBlur={() => {
+                    if (!apiKey.trim()) setApiKeyDirty(false);
+                  }}
+                  onChange={(event) => {
+                    setApiKeyDirty(true);
+                    setApiKey(event.target.value);
+                  }}
                 />
               </div>
             </div>
@@ -615,6 +634,12 @@ export function NotificationEmailSettingsClient({
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
+              <SystemSettingsGuideDialog
+                triggerLabel={copy.guide}
+                title={copy.notificationEmailGuideTitle}
+                description={copy.notificationEmailGuideDescription}
+                steps={copy.notificationEmailGuideSteps}
+              />
             </div>
           </form>
         </CardContent>

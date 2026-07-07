@@ -1696,34 +1696,46 @@ requestObservation:
 systemSettings:
   title: 系统设置
   subtitle: 管理当前 InsightFlare 实例的全站配置。
-  botAnalyticsTitle: 机器人分析引擎
-  botAnalyticsDescription: 配置用于读取机器人分流 Analytics Engine 数据集的 Cloudflare 凭据。
+  guide: 教程
+  botAnalyticsTitle: 分析引擎
+  botAnalyticsDescription: 配置用于读取 Analytics Engine 数据的 Cloudflare 凭据，供机器人防护等分析功能使用。
   botAnalyticsAccountIdLabel: Cloudflare Account ID
-  botAnalyticsDatasetLabel: Analytics Engine 数据集
   botAnalyticsApiTokenLabel: Cloudflare API Token
-  botAnalyticsApiTokenPlaceholder: 留空表示保留已保存的 API Token
-  botAnalyticsTokenSaved: Token 已保存
-  botAnalyticsTokenNotSaved: 尚未保存 Token
-  botAnalyticsSaved: 机器人分析配置已保存。
-  botAnalyticsSaveFailed: 保存机器人分析配置失败。
-  botAnalyticsDeleted: 机器人分析配置已删除。
-  botAnalyticsDeleteFailed: 删除机器人分析配置失败。
-  botAnalyticsDeleteConfirm: 确认删除机器人分析读取配置吗？删除后机器人防护页面会显示需要配置。
+  botAnalyticsApiTokenPlaceholder: 查看教程以获取 Cloudflare API Token
+  botAnalyticsSaved: 分析引擎配置已保存。
+  botAnalyticsSaveFailed: 保存分析引擎配置失败。
+  botAnalyticsDeleted: 分析引擎配置已删除。
+  botAnalyticsDeleteFailed: 删除分析引擎配置失败。
+  botAnalyticsDeleteConfirm: 确认删除分析引擎读取配置吗？删除后依赖 Analytics Engine 的功能会显示需要配置。
   botAnalyticsEngineDisabledBadge: Analytics Engine 已禁用
   botAnalyticsEngineDisabledTitle: Analytics Engine 尚未启用
-  botAnalyticsEngineDisabledDescription: 当前部署已自动禁用 Analytics Engine 绑定，因为 Cloudflare 账户尚未启用 Analytics Engine。请先在 Cloudflare 中启用 Analytics Engine，然后重新部署 InsightFlare 以激活机器人分析。
-  botAnalyticsEngineDisabledHint: 在启用 Analytics Engine 并重新部署 Worker 前，机器人分析设置不可修改。
+  botAnalyticsEngineDisabledDescription: 当前部署已自动禁用 Analytics Engine 绑定，因为 Cloudflare 账户尚未启用 Analytics Engine。请先在 Cloudflare 中启用 Analytics Engine，然后重新部署 InsightFlare 以激活相关分析功能。
+  botAnalyticsEngineDisabledHint: 在启用 Analytics Engine 并重新部署 Worker 前，分析引擎设置不可修改。
   botAnalyticsOpenCloudflare: 打开 Cloudflare Analytics Engine
+  botAnalyticsGuideTitle: 获取分析引擎配置
+  botAnalyticsGuideDescription: 分析引擎需要 Cloudflare 账号信息和一个可读取 Analytics Engine 的 API Token。
+  botAnalyticsGuideSteps:
+    - 打开 Cloudflare Dashboard，进入目标账号并复制 Account ID。
+    - 在 Workers & Pages 中启用 Analytics Engine；机器人和普通请求数据集会随部署自动创建并绑定。
+    - 前往 My Profile → API Tokens，创建 Custom token。
+    - 为 Token 添加 Account Analytics 读取权限，并限制到当前账号。
+    - 保存后复制 Token，回到这里填写 Account ID 和 API Token。
   notificationEmailTitle: 邮件通知
   notificationEmailDescription: 配置系统用于发送报告、告警和测试邮件的邮件服务。
+  notificationEmailGuideTitle: 获取 Resend 邮件配置
+  notificationEmailGuideDescription: 使用 Resend 发送系统邮件前，需要准备发件域名和 API Key。
+  notificationEmailGuideSteps:
+    - 打开 Resend Dashboard，并确认要作为发件人的域名已完成 DNS 验证。
+    - 在 API Keys 页面创建新的 API Key。
+    - 选择发送邮件所需的权限，并复制生成后的 API Key。
+    - 回到这里填写发件人名称、发件邮箱、Reply-To 和 Resend API Key。
+    - 保存后使用测试收件人发送一封测试邮件，确认投递链路正常。
   loginTurnstileTitle: 登录 Turnstile 保护
   loginTurnstileDescription: 启用后，登录页会在后台执行 Cloudflare Turnstile Invisible 验证，并在服务端登录流程中强制校验。
   loginTurnstileEnabledLabel: 启用登录保护
   loginTurnstileSiteKeyLabel: Site Key
   loginTurnstileSecretKeyLabel: Secret Key
-  loginTurnstileSecretKeyPlaceholder: 留空表示保留已保存的 Secret Key
-  loginTurnstileSecretKeySaved: 已保存
-  loginTurnstileSecretKeyNotSaved: 尚未保存 Secret Key
+  loginTurnstileSecretKeyPlaceholder: 查看教程以获取 Turnstile Secret Key
   loginTurnstileModeLabel: 验证模式
   loginTurnstileModeInvisible: Invisible
   loginTurnstileTest: 测试验证
@@ -1739,6 +1751,14 @@ systemSettings:
   loginTurnstileDeleteConfirm: 确认删除登录 Turnstile 配置吗？删除后登录保护将关闭。
   loginTurnstileLoadFailed: 加载登录 Turnstile 配置失败。
   loginTurnstilePrivacyNotice: 请在 Cloudflare Turnstile 控制台创建 Invisible widget。自托管站点启用后，请自行确认隐私政策与 Cloudflare Turnstile 要求匹配。
+  loginTurnstileGuideTitle: 获取 Turnstile 配置
+  loginTurnstileGuideDescription: 登录保护需要 Cloudflare Turnstile 的 Site Key 和 Secret Key。
+  loginTurnstileGuideSteps:
+    - 打开 Cloudflare Dashboard，进入 Turnstile。
+    - 新建一个 widget，并选择 Invisible 模式。
+    - 添加当前 InsightFlare 登录域名到允许的主机名列表。
+    - 创建后复制 Site Key 和 Secret Key。
+    - 回到这里填写 Site Key 和 Secret Key，先运行测试验证，再保存配置。
   enabledLabel: 启用邮件发送
   enabledOn: 开启
   enabledOff: 关闭
@@ -1749,9 +1769,7 @@ systemSettings:
   replyToLabel: Reply-To 邮箱
   replyToPlaceholder: 可选，默认使用发件人邮箱
   resendApiKeyLabel: Resend API Key
-  resendApiKeyPlaceholder: 留空表示保留已保存的 API Key
-  resendApiKeySaved: 已保存
-  clearApiKey: 清除已保存的 API Key
+  resendApiKeyPlaceholder: 查看教程以获取 Resend API Key
   testRecipientLabel: 测试收件人
   save: 保存配置
   saving: 保存中...
