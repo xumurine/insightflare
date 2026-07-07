@@ -142,7 +142,7 @@ dashboardHeader:
   filterSubtitle: フィルターは現在の概要データクエリにリアルタイムで適用されます。
   previousPeriod: 前の期間
   nextPeriod: 次の期間
-  customSelectionSummary: "選択範囲: {from} から {to}（{days} 日）"
+  customSelectionSummary: "選択範囲：{from} から {to}（{days} 日）"
 filters:
   country: 国
   device: デバイス
@@ -158,7 +158,7 @@ realtime:
   connected: 接続済み
   connecting: 接続中
   reconnecting: 再接続中
-  failed: 失敗
+  failed: 接続失敗
   recentEvents: 最近のライブイベント
   enterPage: ページに入る
   leavePage: ページを離れる
@@ -524,7 +524,7 @@ geo:
   back: 戻る
   viewOnWikipedia: Wikipedia で見る
   investigationNotice: このデータは Web 由来のため、誤りを含む場合があります。
-  timezoneDeltaVsLocal: "ローカルとの差: {delta}"
+  timezoneDeltaVsLocal: "現地時刻との差：{delta}"
   visitorCoordinates: 訪問者座標
   ipNotice: IP から推定した地域です。座標は概算であり、正確な住所を示すものではありません。
   multipleNotice: IP から推定した地域です。複数セッションのジャーニーは複数都市にまたがる場合があります。
@@ -582,8 +582,8 @@ devices:
   selectedViewportLabel: 選択中のビューポート
   openSiteLabel: サイトを開く
   previewUnavailableLabel: 現在プレビュー可能な画面サイズはありません。
-  browserByDeviceTitle: デバイス種別 x ブラウザー
-  osByDeviceTitle: デバイス種別 x OS
+  browserByDeviceTitle: デバイス種別 × ブラウザー
+  osByDeviceTitle: デバイス種別 × OS
   otherLabel: その他
   screenBucketLabels:
     phoneCompact: 小型スマートフォン
@@ -598,8 +598,8 @@ browsers:
   trendTitle: ブラウザーシェア推移
   engineTrendTitle: エンジンシェア推移
   versionBreakdownTitle: ブラウザーバージョン内訳
-  osBreakdownTitle: ブラウザー x OS
-  deviceTypeBreakdownTitle: ブラウザー x デバイス種別
+  osBreakdownTitle: ブラウザー × OS
+  deviceTypeBreakdownTitle: ブラウザー × デバイス種別
   otherLabel: その他
   browserShareTitle: ブラウザーシェア
   engineShareTitle: エンジンシェア
@@ -632,11 +632,11 @@ performance:
   p50Label: P50
   p75Label: P75
   p95Label: P95
-  ttfb: Time to First Byte
-  fcp: First Contentful Paint
-  lcp: Largest Contentful Paint
-  cls: Cumulative Layout Shift
-  inp: Interaction to Next Paint
+  ttfb: 初回バイト到達時間
+  fcp: 初回コンテンツ描画
+  lcp: 最大コンテンツ描画
+  cls: 累積レイアウトシフト
+  inp: 次の描画までの操作応答時間
   ttfbDescription: ブラウザーがサーバーから最初のバイトを受け取るまでの待機時間を測定します。バックエンド遅延、ネットワーク遅延、キャッシュ効率を反映します。
   fcpDescription: 最初のテキストまたは画像が描画された時点を測定します。訪問者がページの読み込み開始をどれだけ早く認識できるかを示します。
   lcpDescription: 表示領域内で最大のコンテンツ要素が描画完了した時点を測定します。体感上の読み込み完了を示す主要な速度指標です。
@@ -653,9 +653,9 @@ performance:
   datasetTitle: データセット概要
   interpretationTitle: 現在の読み取り
   currentReading: "{metric} の P75 は {value}、{samples} 件のサンプルに基づく体験スコアは {score}
-    です。現在の判定: {status}。"
-  metricThresholdText: "良好: {good} 以下、要改善: {good} から {poor}、不良: {poor} 超。"
-  scoreThresholdText: "良好: 90 超、要改善: 50 から 90、不良: 50 未満。"
+    です。現在の判定：{status}。"
+  metricThresholdText: "良好：{good} 以下、要改善：{good} から {poor}、不良：{poor} 超。"
+  scoreThresholdText: "良好：90 超、要改善：50 から 90、不良：50 未満。"
   countryHealthTitle: 国・地域別の状態
   countryHealthSubtitle: 国または地域ごとの {metric} の状態を境界色で示します。
   pathsTitle: パスパフォーマンス
@@ -875,8 +875,8 @@ notificationCenter:
     provider_failed: プロバイダーがメッセージを拒否しました
     network_failed: メールプロバイダーに接続できません
     unknown: 不明な理由
-  emailAttempts: "試行回数: {count}"
-  emailRetryCount: "再試行: {count}"
+  emailAttempts: "試行回数：{count}"
+  emailRetryCount: "再試行：{count}"
   emailDuration: "{duration} ms"
   typeFilterLabel: 種別
   severityFilterLabel: 重要度
@@ -1198,11 +1198,11 @@ teamManagement:
     conditionThreshold: "{window} {metric} {operator} {value}"
     conditionChange: "{window} {metric} 変化 {operator} {value}"
     conditionHealth: "{hours}h データなし"
-    summaryWhenConditions: "次の条件のうち {combinator} が一致したら、{type} 通知を送信します:"
-    summaryWhenSingleCondition: "この条件が一致したら、{type} 通知を送信します:"
+    summaryWhenConditions: "次の条件のうち {combinator} が一致したら、{type} 通知を送信します："
+    summaryWhenSingleCondition: "この条件が一致したら、{type} 通知を送信します："
     summaryConditionThreshold: "{window} {metric} {operator} {value}"
     summaryConditionChange: "{window} {metric} {mode} 変化 {operator} {value}"
-    summaryReportSchedule: "{period}: {schedule}"
+    summaryReportSchedule: "{period}：{schedule}"
     summaryMilestoneCondition: "{metric} が {step} ごとに到達"
     summaryHealthCondition: "{hours} 時間データなし"
     defaultNames:
@@ -1342,7 +1342,7 @@ teamManagement:
     createTitle: API キーを作成
     createSubtitle: この連携に必要な最小権限を選択してください。
     nameLabel: キー名
-    namePlaceholder: Production sync
+    namePlaceholder: 本番同期
     scopesTitle: 権限
     scopesDescription: API キーでメンバー、ユーザー、所有権、他のキーを管理することはできません。
     siteScopeTitle: サイトアクセス
@@ -1697,7 +1697,7 @@ requestObservation:
   reason: 理由
   request: リクエスト
   ip: IP
-  userAgent: User agent
+  userAgent: User-Agent
   confidence: 信頼度
   blocked: ブロック済み
   highConfidenceRequests: 高信頼度リクエスト
@@ -1713,7 +1713,7 @@ requestObservation:
   country: 国
   region: 地域
   city: 都市
-  colo: Colo
+  colo: データセンター
   userAgentLengthBucket: User-Agent 長
   ipPrefix: IP プレフィックス
   botReasonLabels:
@@ -1781,8 +1781,8 @@ systemSettings:
   botAnalyticsTitle: Analytics Engine
   botAnalyticsDescription: Bot 保護やその他の分析機能で Analytics Engine データを読むための Cloudflare 認証情報を設定します。
   botAnalyticsAccountIdLabel: Cloudflare Account ID
-  botAnalyticsApiTokenLabel: Cloudflare API token
-  botAnalyticsApiTokenPlaceholder: ガイドを見て Cloudflare API token を取得
+  botAnalyticsApiTokenLabel: Cloudflare API トークン
+  botAnalyticsApiTokenPlaceholder: ガイドを見て Cloudflare API トークンを取得
   botAnalyticsSaved: Analytics Engine 設定を保存しました。
   botAnalyticsSaveFailed: Analytics Engine 設定を保存できません。
   botAnalyticsDeleted: Analytics Engine 設定を削除しました。
@@ -1803,7 +1803,7 @@ systemSettings:
       と通常リクエストのデータセットはデプロイ時に自動作成・バインドされます。
     - My Profile → API Tokens に移動し、Custom token を作成します。
     - トークンに Account Analytics の読み取り権限を付与し、現在のアカウントにスコープします。
-    - トークンをコピーし、ここに Account ID と API token を入力します。
+    - トークンをコピーし、ここに Account ID と API トークンを入力します。
   notificationEmailTitle: メール通知
   notificationEmailDescription: レポート、アラート、テストメッセージで使用するメールサービスを設定します。
   notificationEmailGuideTitle: Resend メール設定を取得
@@ -1835,15 +1835,15 @@ systemSettings:
   loginTurnstileDeleteFailed: ログイン Turnstile 設定を削除できません。
   loginTurnstileDeleteConfirm: ログイン Turnstile 設定を削除しますか？ログイン保護は無効になります。
   loginTurnstileLoadFailed: ログイン Turnstile 設定を読み込めません。
-  loginTurnstilePrivacyNotice: Cloudflare Turnstile コンソールで Invisible widget
+  loginTurnstilePrivacyNotice: Cloudflare Turnstile コンソールで Invisible ウィジェット
     を作成してください。セルフホスト環境では、プライバシーポリシーが Cloudflare Turnstile の要件に合っていることを確認してください。
   loginTurnstileGuideTitle: Turnstile 認証情報を取得
   loginTurnstileGuideDescription: ログイン保護には Cloudflare Turnstile の Site Key と Secret Key が必要です。
   loginTurnstileGuideSteps:
     - Cloudflare Dashboard を開き、Turnstile に移動します。
-    - 新しい widget を作成し、Invisible モードを選択します。
+    - 新しいウィジェットを作成し、Invisible モードを選択します。
     - 現在の InsightFlare ログインドメインを許可ホスト名に追加します。
-    - widget 作成後に Site Key と Secret Key をコピーします。
+    - ウィジェット作成後に Site Key と Secret Key をコピーします。
     - ここに Site Key と Secret Key を入力し、検証テストを実行してから設定を保存します。
   enabledLabel: メール送信を有効化
   enabledOn: 有効
@@ -1855,7 +1855,7 @@ systemSettings:
   replyToLabel: Reply-To メール
   replyToPlaceholder: 任意。未指定の場合は送信者メールを使用
   resendApiKeyLabel: Resend API Key
-  resendApiKeyPlaceholder: ガイドを見て Resend API key を取得
+  resendApiKeyPlaceholder: ガイドを見て Resend API キーを取得
   testRecipientLabel: テスト宛先
   save: 設定を保存
   saving: 保存中...
@@ -1949,12 +1949,12 @@ systemPerformance:
   doDiagnosticSiteStuck: 詰まり
   doDiagnosticSiteFuture: 未来
   doDiagnosticSiteHardAged: 経過
-  doDiagnosticSiteAlarm: alarm
+  doDiagnosticSiteAlarm: Alarm
   doDiagnosticSiteAlarmNone: なし
   doDiagnosticSiteAlarmDue: 期限到来
   doDiagnosticSiteResponseMs: 応答時間
-  doDiagnosticThresholdsHint: "しきい値: stale {stale}, timeout {timeout}, hardAged
-    {hardAged}, stuck flush_attempts ≥ {stuck}"
+  doDiagnosticThresholdsHint: "しきい値：stale {stale}、timeout {timeout}、hardAged
+    {hardAged}、stuck flush_attempts ≥ {stuck}"
   doDiagnosticHealthy: 異常なバッファ行は検出されませんでした。
 loginForm:
   signingIn: サインイン中...

@@ -62,7 +62,7 @@ common:
     NORTH AMERICA: North America
     OCEANIA: Oceania
     SOUTH AMERICA: South America
-  timezone: Timezone
+  timezone: Time zone
   organization: Organization
   screenSize: Screen Size
   loading: Loading
@@ -547,7 +547,7 @@ geo:
     region: Region
     currency: Currency
     phonecode: Phone code
-    timezone: Timezone
+    timezone: Time zone
     type: Type
     iso: ISO
     coordinates: Coordinates
@@ -558,7 +558,7 @@ geo:
     gdpPerCapitaAboveAverage: "{value} USD/person ({percent}% above average)"
     gdpPerCapitaBelowAverage: "{value} USD/person ({percent}% below average)"
     marketPenetrationWindow: "{label} ({days} days)"
-    timezoneCount: "{count} timezones"
+    timezoneCount: "{count} time zones"
     typeLabels:
       country: Country
       state: State
@@ -591,8 +591,8 @@ devices:
   selectedViewportLabel: Selected viewport
   openSiteLabel: Open site
   previewUnavailableLabel: No previewable screen sizes are available right now.
-  browserByDeviceTitle: Device Type x Browser
-  osByDeviceTitle: Device Type x Operating System
+  browserByDeviceTitle: Device Type × Browser
+  osByDeviceTitle: Device Type × Operating System
   otherLabel: Other
   screenBucketLabels:
     phoneCompact: Compact Phone
@@ -607,8 +607,8 @@ browsers:
   trendTitle: Browser Share Trend
   engineTrendTitle: Engine Share Trend
   versionBreakdownTitle: Browser Version Breakdown
-  osBreakdownTitle: Browser x Operating System
-  deviceTypeBreakdownTitle: Browser x Device Type
+  osBreakdownTitle: Browser × Operating System
+  deviceTypeBreakdownTitle: Browser × Device Type
   otherLabel: Other
   browserShareTitle: Browser Share
   engineShareTitle: Engine Share
@@ -777,7 +777,7 @@ siteSettings:
     invalidInput: Please provide a valid site name and domain.
 accountSettings:
   title: Account Settings
-  subtitle: Manage your personal details, login password, and dashboard timezone.
+  subtitle: Manage your personal details, login password, and dashboard time zone.
   profileTitle: Personal Details
   profileDescription: Update your display name, username, and email.
   nicknameLabel: Display name
@@ -813,26 +813,26 @@ accountSettings:
   preferredLanguageJapanese: Japanese
   preferredLanguageSaved: Notification language saved.
   preferredLanguageSaveFailed: Failed to save notification language.
-  timeZoneTitle: Reporting Timezone
-  timeZoneDescription: Calendar ranges and aggregation buckets use this timezone
+  timeZoneTitle: Reporting Time Zone
+  timeZoneDescription: Calendar ranges and aggregation buckets use this time zone
     across the dashboard.
-  activeTimeZone: Active timezone
-  browserTimeZone: Browser timezone
+  activeTimeZone: Active time zone
+  browserTimeZone: Browser time zone
   browserUnavailable: Not detected
   browserSource: Browser
   manualSource: Manual
-  preferenceLabel: Timezone preference
+  preferenceLabel: Time zone preference
   preferenceDescription: Browser mode follows this device. Manual mode keeps the
-    same timezone on every device.
-  useBrowser: Use browser timezone
-  useCustom: Choose a timezone
-  customTimeZoneLabel: Timezone
-  customTimeZoneDescription: Choose from supported IANA timezones.
-  invalidTimeZone: Please choose a valid IANA timezone.
+    same time zone on every device.
+  useBrowser: Use browser time zone
+  useCustom: Choose a time zone
+  customTimeZoneLabel: Time zone
+  customTimeZoneDescription: Choose from supported IANA time zones.
+  invalidTimeZone: Please choose a valid IANA time zone.
   save: Save preference
   saving: Saving...
-  saved: Timezone preference saved.
-  saveFailed: Failed to save timezone preference.
+  saved: Time zone preference saved.
+  saveFailed: Failed to save time zone preference.
 notificationCenter:
   title: Notification Center
   subtitle: Review all of your notifications and reports.
@@ -1172,7 +1172,7 @@ teamManagement:
     enabledHint: Run this rule
     scheduleLabel: Schedule
     timeLabel: Time
-    timezoneLabel: Timezone
+    timezoneLabel: Time zone
     intervalLabel: Interval
     dayLabel: Day
     dayOfMonthLabel: Day of month
@@ -2013,7 +2013,7 @@ systemPerformance:
   doDiagnosticSiteStuck: stuck
   doDiagnosticSiteFuture: future
   doDiagnosticSiteHardAged: aged
-  doDiagnosticSiteAlarm: alarm
+  doDiagnosticSiteAlarm: Alarm
   doDiagnosticSiteAlarmNone: none
   doDiagnosticSiteAlarmDue: due
   doDiagnosticSiteResponseMs: Response time
