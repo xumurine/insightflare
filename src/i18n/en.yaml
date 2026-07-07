@@ -81,6 +81,20 @@ common:
   admin: Admin
   user: User
   search: Search
+  tableExport:
+    action: Export
+    title: Export CSV
+    description: Download table data as a CSV file.
+    scopeLabel: Scope
+    currentTab: Current tab
+    allTabs: All tabs
+    rowsLabel: Data
+    currentView: Current displayed data
+    rawRows: Original data
+    fileNameLabel: File name
+    download: Export CSV
+    empty: No rows available to export.
+    allTabsUnavailable: All tabs are available after their data has loaded.
   time: Time
   cycle: Cycle
   close: Close

@@ -3217,10 +3217,112 @@ export function OverviewPagesSection({
               rowsByTab={pageCardRowsForTable}
               loadingByTab={loadingByPageCardTab}
               columns={pageCardMetricColumns}
-              renderLabel={(row, { tab }) => pageCardLabel(row, tab)}
-              getRowSearchText={(row) =>
-                `${row.displayLabel ?? row.label} ${row.label}`
-              }
+              rowAdapter={{
+                renderLabel: (row, { tab, source }) =>
+                  source === "search" ? (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-2 break-words",
+                        pageCardTabMeta[tab].mono && "font-mono",
+                      )}
+                    >
+                      <LabelWithOptionalIcon
+                        label={row.label}
+                        showIcon={pageCardTabMeta[tab].showIcon}
+                        unknownLabel={messages.common.unknown}
+                      />
+                    </span>
+                  ) : (
+                    pageCardLabel(row, tab)
+                  ),
+                getSearchText: (row) => row.label,
+                getExportLabel: (row) => row.label,
+                getActive: (row) =>
+                  activePageCardQueryValue === (row.filterValue ?? row.label),
+                getInteractive: (row, tab) =>
+                  Boolean(pageCardQueryParamByTab[tab]) ||
+                  Boolean(
+                    resolvedPageCardNavigableTabs.has(
+                      tab as PageCardNavigableTab,
+                    )
+                      ? (
+                          pageCardTargetUrlResolvers?.[tab] ??
+                          resolvePageCardTargetUrl
+                        )({
+                          tab,
+                          value: row.label,
+                          unknownLabel: messages.common.unknown,
+                          fallbackHostname: pageCardDefaultHostname,
+                        })
+                      : null,
+                  ) ||
+                  (isPageCardDetailTab(tab) &&
+                    resolvedPageCardDetailTabs.has(tab)),
+                onClick: (row, { tab }) => {
+                  const rowFilterValue = row.filterValue ?? row.label;
+                  if (pageCardQueryParamByTab[tab]) {
+                    const normalized = rowFilterValue.trim();
+                    setPageCardQueryFilter(
+                      activePageCardQueryValue === normalized
+                        ? null
+                        : { tab, value: normalized },
+                    );
+                    return;
+                  }
+
+                  const rowTargetUrl = resolvedPageCardNavigableTabs.has(
+                    tab as PageCardNavigableTab,
+                  )
+                    ? (
+                        pageCardTargetUrlResolvers?.[tab] ??
+                        resolvePageCardTargetUrl
+                      )({
+                        tab,
+                        value: row.label,
+                        unknownLabel: messages.common.unknown,
+                        fallbackHostname: pageCardDefaultHostname,
+                      })
+                    : null;
+                  if (rowTargetUrl) {
+                    globalThis.window.open(
+                      rowTargetUrl,
+                      "_blank",
+                      "noopener,noreferrer",
+                    );
+                    return;
+                  }
+
+                  const rowDetailAction =
+                    isPageCardDetailTab(tab) &&
+                    resolvedPageCardDetailTabs.has(tab)
+                      ? (pageCardDetailClickResolvers?.[tab] ?? null)
+                      : null;
+                  if (rowDetailAction && isPageCardDetailTab(tab)) {
+                    rowDetailAction({
+                      tab,
+                      basePath: pageDetailBasePath,
+                      value: row.label,
+                      unknownLabel: messages.common.unknown,
+                    });
+                    return;
+                  }
+
+                  const rowDetailHref =
+                    isPageCardDetailTab(tab) &&
+                    resolvedPageCardDetailTabs.has(tab)
+                      ? (
+                          pageCardDetailHrefResolvers?.[tab] ??
+                          resolvePageCardDetailHref
+                        )({
+                          tab,
+                          basePath: pageDetailBasePath,
+                          value: row.label,
+                          unknownLabel: messages.common.unknown,
+                        })
+                      : null;
+                  if (rowDetailHref) router.push(rowDetailHref);
+                },
+              }}
               filterRows={(rows) =>
                 activePageCardQueryValue
                   ? rows.filter(
@@ -3234,92 +3336,10 @@ export function OverviewPagesSection({
               loadingLabel={messages.common.loading}
               emptyLabel={noDataText}
               search={searchConfig}
-              className="h-full"
-              getRowActive={(row) =>
-                activePageCardQueryValue === (row.filterValue ?? row.label)
-              }
-              getRowInteractive={(row, tab) =>
-                Boolean(pageCardQueryParamByTab[tab]) ||
-                Boolean(
-                  resolvedPageCardNavigableTabs.has(tab as PageCardNavigableTab)
-                    ? (
-                        pageCardTargetUrlResolvers?.[tab] ??
-                        resolvePageCardTargetUrl
-                      )({
-                        tab,
-                        value: row.label,
-                        unknownLabel: messages.common.unknown,
-                        fallbackHostname: pageCardDefaultHostname,
-                      })
-                    : null,
-                ) ||
-                (isPageCardDetailTab(tab) &&
-                  resolvedPageCardDetailTabs.has(tab))
-              }
-              onRowClick={(row, { tab }) => {
-                const rowFilterValue = row.filterValue ?? row.label;
-                if (pageCardQueryParamByTab[tab]) {
-                  const normalized = rowFilterValue.trim();
-                  setPageCardQueryFilter(
-                    activePageCardQueryValue === normalized
-                      ? null
-                      : { tab, value: normalized },
-                  );
-                  return;
-                }
-
-                const rowTargetUrl = resolvedPageCardNavigableTabs.has(
-                  tab as PageCardNavigableTab,
-                )
-                  ? (
-                      pageCardTargetUrlResolvers?.[tab] ??
-                      resolvePageCardTargetUrl
-                    )({
-                      tab,
-                      value: row.label,
-                      unknownLabel: messages.common.unknown,
-                      fallbackHostname: pageCardDefaultHostname,
-                    })
-                  : null;
-                if (rowTargetUrl) {
-                  globalThis.window.open(
-                    rowTargetUrl,
-                    "_blank",
-                    "noopener,noreferrer",
-                  );
-                  return;
-                }
-
-                const rowDetailAction =
-                  isPageCardDetailTab(tab) &&
-                  resolvedPageCardDetailTabs.has(tab)
-                    ? (pageCardDetailClickResolvers?.[tab] ?? null)
-                    : null;
-                if (rowDetailAction && isPageCardDetailTab(tab)) {
-                  rowDetailAction({
-                    tab,
-                    basePath: pageDetailBasePath,
-                    value: row.label,
-                    unknownLabel: messages.common.unknown,
-                  });
-                  return;
-                }
-
-                const rowDetailHref =
-                  isPageCardDetailTab(tab) &&
-                  resolvedPageCardDetailTabs.has(tab)
-                    ? (
-                        pageCardDetailHrefResolvers?.[tab] ??
-                        resolvePageCardDetailHref
-                      )({
-                        tab,
-                        basePath: pageDetailBasePath,
-                        value: row.label,
-                        unknownLabel: messages.common.unknown,
-                      })
-                    : null;
-                if (rowDetailHref) router.push(rowDetailHref);
+              export={{
+                labels: messages.common.tableExport,
               }}
+              className="h-full"
             />
           </div>
         ) : null}
@@ -3333,38 +3353,53 @@ export function OverviewPagesSection({
               rowsByTab={sourceCardRowsForTable}
               loadingByTab={loadingBySourceCardTab}
               columns={overviewMetricColumns}
-              renderLabel={(row, { tab }) => {
-                const displayLabel = row.displayLabel ?? row.label;
-                return (
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-2 break-words",
-                      row.mono && "font-mono",
-                    )}
-                  >
-                    <LabelWithOptionalIcon
-                      label={displayLabel}
-                      showIcon={sourceCardTabMeta[tab].showIcon}
-                      unknownLabel={sourceCardDirectLabel}
-                    />
-                    {row.targetUrl ? (
-                      <Clickable
-                        className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-                        onClick={(event) =>
-                          openPageCardRowTarget(row.targetUrl!, event)
-                        }
-                        aria-label={displayLabel}
-                        title={displayLabel}
-                      >
-                        <RiArrowRightUpLine size="1.4em" />
-                      </Clickable>
-                    ) : null}
-                  </span>
-                );
+              rowAdapter={{
+                renderLabel: (row, { tab, source }) => {
+                  const displayLabel =
+                    source === "search"
+                      ? row.label
+                      : (row.displayLabel ?? row.label);
+                  return (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-2 break-words",
+                        row.mono && "font-mono",
+                      )}
+                    >
+                      <LabelWithOptionalIcon
+                        label={displayLabel}
+                        showIcon={sourceCardTabMeta[tab].showIcon}
+                        unknownLabel={sourceCardDirectLabel}
+                      />
+                      {source !== "search" && row.targetUrl ? (
+                        <Clickable
+                          className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                          onClick={(event) =>
+                            openPageCardRowTarget(row.targetUrl!, event)
+                          }
+                          aria-label={displayLabel}
+                          title={displayLabel}
+                        >
+                          <RiArrowRightUpLine size="1.4em" />
+                        </Clickable>
+                      ) : null}
+                    </span>
+                  );
+                },
+                getSearchText: (row) => row.label,
+                getExportLabel: (row) => row.label,
+                getActive: (row) =>
+                  activeSourceCardQueryValue === row.filterValue,
+                getInteractive: () => true,
+                onClick: (row, { tab }) => {
+                  const normalized = row.filterValue.trim();
+                  setSourceCardQueryFilter(
+                    activeSourceCardQueryValue === normalized
+                      ? null
+                      : { tab, value: normalized },
+                  );
+                },
               }}
-              getRowSearchText={(row) =>
-                `${row.displayLabel ?? row.label} ${row.label}`
-              }
               filterRows={(rows) =>
                 activeSourceCardQueryValue
                   ? rows.filter(
@@ -3376,19 +3411,10 @@ export function OverviewPagesSection({
               loadingLabel={messages.common.loading}
               emptyLabel={noDataText}
               search={searchConfig}
-              className="h-full"
-              getRowActive={(row) =>
-                activeSourceCardQueryValue === row.filterValue
-              }
-              getRowInteractive={() => true}
-              onRowClick={(row, { tab }) => {
-                const normalized = row.filterValue.trim();
-                setSourceCardQueryFilter(
-                  activeSourceCardQueryValue === normalized
-                    ? null
-                    : { tab, value: normalized },
-                );
+              export={{
+                labels: messages.common.tableExport,
               }}
+              className="h-full"
             />
           </div>
         ) : null}
@@ -3406,23 +3432,41 @@ export function OverviewPagesSection({
               rowsByTab={clientDimensionCardRowsForTable}
               loadingByTab={loadingByClientDimensionCardTab}
               columns={overviewMetricColumns}
-              renderLabel={(row, { tab }) =>
-                tab === "deviceType" ? (
-                  <DeviceMeta
-                    deviceType={row.rawLabel ?? row.label}
-                    deviceLabels={messages.common.deviceLabels}
-                    unknownLabel={messages.common.unknown}
-                  />
-                ) : (
-                  <span className={cn(row.mono && "font-mono")}>
-                    <LabelWithLeadingIcon
-                      label={row.label}
-                      iconName={row.iconName}
+              rowAdapter={{
+                renderLabel: (row, { tab, source }) =>
+                  tab === "deviceType" ? (
+                    <DeviceMeta
+                      deviceType={row.rawLabel ?? row.label}
+                      deviceLabels={messages.common.deviceLabels}
+                      unknownLabel={messages.common.unknown}
                     />
-                  </span>
-                )
-              }
-              getRowSearchText={(row) => `${row.label} ${row.rawLabel ?? ""}`}
+                  ) : (
+                    <span className={cn(row.mono && "font-mono")}>
+                      <LabelWithLeadingIcon
+                        label={
+                          source === "search"
+                            ? row.rawLabel?.trim() || row.label
+                            : row.label
+                        }
+                        iconName={row.iconName}
+                      />
+                    </span>
+                  ),
+                getSearchText: (row) => row.rawLabel?.trim() || row.label,
+                getExportLabel: (row) => row.rawLabel?.trim() || row.label,
+                getActive: (row) =>
+                  activeClientDimensionCardQueryValue ===
+                  (row.filterValue ?? row.label),
+                getInteractive: () => true,
+                onClick: (row, { tab }) => {
+                  const normalized = (row.filterValue ?? row.label).trim();
+                  setClientDimensionCardQueryFilter(
+                    activeClientDimensionCardQueryValue === normalized
+                      ? null
+                      : { tab, value: normalized },
+                  );
+                },
+              }}
               filterRows={(rows) =>
                 activeClientDimensionCardQueryValue
                   ? rows.filter(
@@ -3436,20 +3480,10 @@ export function OverviewPagesSection({
               loadingLabel={messages.common.loading}
               emptyLabel={noDataText}
               search={searchConfig}
-              className="h-full"
-              getRowActive={(row) =>
-                activeClientDimensionCardQueryValue ===
-                (row.filterValue ?? row.label)
-              }
-              getRowInteractive={() => true}
-              onRowClick={(row, { tab }) => {
-                const normalized = (row.filterValue ?? row.label).trim();
-                setClientDimensionCardQueryFilter(
-                  activeClientDimensionCardQueryValue === normalized
-                    ? null
-                    : { tab, value: normalized },
-                );
+              export={{
+                labels: messages.common.tableExport,
               }}
+              className="h-full"
             />
           </div>
         ) : null}
@@ -3467,71 +3501,94 @@ export function OverviewPagesSection({
               rowsByTab={geoDimensionCardRowsForTable}
               loadingByTab={loadingByGeoDimensionCardTab}
               columns={overviewMetricColumns}
-              renderLabel={(row, { tab, source }) => {
-                const rowLocationTarget = geoDimensionRowLocationTarget(
-                  tab,
-                  row,
-                );
-                return (
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-2 break-words",
-                      row.mono && "font-mono",
-                    )}
-                  >
-                    {source === "search" ? (
-                      <LabelWithLeadingIcon
-                        label={row.rawLabel?.trim() || row.label}
-                        iconName={row.iconName}
-                      />
-                    ) : tab === "region" && row.regionBreadcrumb ? (
-                      <LazyGeoRegionBreadcrumbLabel
-                        locale={locale}
-                        countryLabel={row.regionBreadcrumb.countryLabel}
-                        countryIconName={row.regionBreadcrumb.countryIconName}
-                        regionLabel={row.regionBreadcrumb.regionLabel}
-                        countryCode={row.regionBreadcrumb.countryCode}
-                        stateCode={row.regionBreadcrumb.stateCode}
-                        hideRegion={row.regionBreadcrumb.hideRegion}
-                      />
-                    ) : tab === "city" && row.cityBreadcrumb ? (
-                      <LazyGeoCityBreadcrumbLabel
-                        locale={locale}
-                        countryLabel={row.cityBreadcrumb.countryLabel}
-                        countryIconName={row.cityBreadcrumb.countryIconName}
-                        regionLabel={row.cityBreadcrumb.regionLabel}
-                        cityLabel={row.cityBreadcrumb.cityLabel}
-                        countryCode={row.cityBreadcrumb.countryCode}
-                        stateCode={row.cityBreadcrumb.stateCode}
-                        cityNameDefault={row.cityBreadcrumb.cityNameDefault}
-                        hideRegion={row.cityBreadcrumb.hideRegion}
-                        hideCity={row.cityBreadcrumb.hideCity}
-                      />
-                    ) : (
-                      <LabelWithLeadingIcon
-                        label={row.label}
-                        iconName={row.iconName}
-                      />
-                    )}
-                    {rowLocationTarget ? (
-                      <Clickable
-                        className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-                        onClick={(event) =>
-                          openGeoDimensionLocationTarget(
-                            rowLocationTarget,
-                            event,
-                          )
-                        }
-                        aria-label={messages.common.search}
-                        title={messages.common.search}
-                      >
-                        <RiSearchLine size="1.2em" />
-                      </Clickable>
-                    ) : null}
-                  </span>
-                );
+              rowAdapter={{
+                renderLabel: (row, { tab, source }) => {
+                  const rowLocationTarget =
+                    source === "search"
+                      ? null
+                      : geoDimensionRowLocationTarget(tab, row);
+                  return (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-2 break-words",
+                        row.mono && "font-mono",
+                      )}
+                    >
+                      {source === "search" ? (
+                        <LabelWithLeadingIcon
+                          label={row.rawLabel?.trim() || row.label}
+                          iconName={row.iconName}
+                        />
+                      ) : tab === "region" && row.regionBreadcrumb ? (
+                        <LazyGeoRegionBreadcrumbLabel
+                          locale={locale}
+                          countryLabel={row.regionBreadcrumb.countryLabel}
+                          countryIconName={row.regionBreadcrumb.countryIconName}
+                          regionLabel={row.regionBreadcrumb.regionLabel}
+                          countryCode={row.regionBreadcrumb.countryCode}
+                          stateCode={row.regionBreadcrumb.stateCode}
+                          hideRegion={row.regionBreadcrumb.hideRegion}
+                        />
+                      ) : tab === "city" && row.cityBreadcrumb ? (
+                        <LazyGeoCityBreadcrumbLabel
+                          locale={locale}
+                          countryLabel={row.cityBreadcrumb.countryLabel}
+                          countryIconName={row.cityBreadcrumb.countryIconName}
+                          regionLabel={row.cityBreadcrumb.regionLabel}
+                          cityLabel={row.cityBreadcrumb.cityLabel}
+                          countryCode={row.cityBreadcrumb.countryCode}
+                          stateCode={row.cityBreadcrumb.stateCode}
+                          cityNameDefault={row.cityBreadcrumb.cityNameDefault}
+                          hideRegion={row.cityBreadcrumb.hideRegion}
+                          hideCity={row.cityBreadcrumb.hideCity}
+                        />
+                      ) : (
+                        <LabelWithLeadingIcon
+                          label={row.label}
+                          iconName={row.iconName}
+                        />
+                      )}
+                      {rowLocationTarget ? (
+                        <Clickable
+                          className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                          onClick={(event) =>
+                            openGeoDimensionLocationTarget(
+                              rowLocationTarget,
+                              event,
+                            )
+                          }
+                          aria-label={messages.common.search}
+                          title={messages.common.search}
+                        >
+                          <RiSearchLine size="1.2em" />
+                        </Clickable>
+                      ) : null}
+                    </span>
+                  );
+                },
+                getSearchText: (row) => row.rawLabel?.trim() || row.label,
+                getExportLabel: (row) => row.rawLabel?.trim() || row.label,
+                getActive: (row, tab) => {
+                  const activeGeoHighlightValue = isGeoLocationTab(tab)
+                    ? resolveGeoLocationHighlightValue(
+                        tab,
+                        activeGeoDimensionCardQueryValue,
+                      )
+                    : activeGeoDimensionCardQueryValue;
+                  return (
+                    activeGeoHighlightValue === (row.filterValue ?? row.label)
+                  );
+                },
+                getInteractive: () => true,
+                onClick: (row, { tab }) => {
+                  const normalized = (row.filterValue ?? row.label).trim();
+                  setGeoDimensionCardQueryFilter(
+                    activeGeoDimensionCardQueryValue === normalized
+                      ? null
+                      : { tab, value: normalized },
+                  );
+                },
               }}
-              getRowSearchText={(row) => `${row.label} ${row.rawLabel ?? ""}`}
               filterRows={(rows, tab) => {
                 if (!activeGeoDimensionCardQueryValue) return [...rows];
                 const activeGeoQueryValue = isGeoLocationTab(tab)
@@ -3550,27 +3607,10 @@ export function OverviewPagesSection({
               loadingLabel={messages.common.loading}
               emptyLabel={noDataText}
               search={searchConfig}
+              export={{
+                labels: messages.common.tableExport,
+              }}
               className="h-full"
-              getRowActive={(row, tab) => {
-                const activeGeoHighlightValue = isGeoLocationTab(tab)
-                  ? resolveGeoLocationHighlightValue(
-                      tab,
-                      activeGeoDimensionCardQueryValue,
-                    )
-                  : activeGeoDimensionCardQueryValue;
-                return (
-                  activeGeoHighlightValue === (row.filterValue ?? row.label)
-                );
-              }}
-              getRowInteractive={() => true}
-              onRowClick={(row, { tab }) => {
-                const normalized = (row.filterValue ?? row.label).trim();
-                setGeoDimensionCardQueryFilter(
-                  activeGeoDimensionCardQueryValue === normalized
-                    ? null
-                    : { tab, value: normalized },
-                );
-              }}
             />
           </div>
         ) : null}

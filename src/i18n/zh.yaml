@@ -81,6 +81,20 @@ common:
   admin: 管理员
   user: 普通用户
   search: 搜索
+  tableExport:
+    action: 导出
+    title: 导出 CSV
+    description: 将表格数据下载为 CSV 文件。
+    scopeLabel: 导出范围
+    currentTab: 当前标签页
+    allTabs: 全部标签页
+    rowsLabel: 数据
+    currentView: 当前显示数据
+    rawRows: 原始数据
+    fileNameLabel: 文件名
+    download: 导出 CSV
+    empty: 当前没有可导出的行。
+    allTabsUnavailable: 全部标签页需要在数据加载后才可导出。
   time: 时间
   cycle: 周期
   close: 关闭

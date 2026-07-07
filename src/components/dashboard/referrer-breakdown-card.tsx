@@ -166,41 +166,47 @@ export function ReferrerBreakdownCard({
               rowsByTab={rowsByTab}
               loadingByTab={loadingByTab}
               columns={columns}
-              renderLabel={(row, { tab: activeTab }) => {
-                const displayLabel = row.displayLabel ?? row.label;
-                return (
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-2 break-words",
-                      row.mono && "font-mono",
-                    )}
-                  >
-                    <LabelWithOptionalIcon
-                      label={displayLabel}
-                      iconLabel={row.label}
-                      showIcon
-                      unknownLabel={messages.overview.direct}
-                    />
-                    {row.targetUrl ? (
-                      <Clickable
-                        className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-                        onClick={(event) => openTarget(row.targetUrl!, event)}
-                        aria-label={displayLabel}
-                        title={displayLabel}
-                      >
-                        {activeTab === "link" ? (
-                          <RiArrowRightUpLine size="1.4em" />
-                        ) : (
-                          <RiSearchLine size="1.2em" />
-                        )}
-                      </Clickable>
-                    ) : null}
-                  </span>
-                );
+              rowAdapter={{
+                renderLabel: (row, { tab: activeTab }) => {
+                  const displayLabel = row.displayLabel ?? row.label;
+                  return (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-2 break-words",
+                        row.mono && "font-mono",
+                      )}
+                    >
+                      <LabelWithOptionalIcon
+                        label={displayLabel}
+                        iconLabel={row.label}
+                        showIcon
+                        unknownLabel={messages.overview.direct}
+                      />
+                      {row.targetUrl ? (
+                        <Clickable
+                          className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                          onClick={(event) => openTarget(row.targetUrl!, event)}
+                          aria-label={displayLabel}
+                          title={displayLabel}
+                        >
+                          {activeTab === "link" ? (
+                            <RiArrowRightUpLine size="1.4em" />
+                          ) : (
+                            <RiSearchLine size="1.2em" />
+                          )}
+                        </Clickable>
+                      ) : null}
+                    </span>
+                  );
+                },
+                getSearchText: (row) => row.label,
+                getExportLabel: (row) => row.label,
+                getActive: (row, activeTab) =>
+                  activeQueryValueByTab[activeTab] === row.filterValue,
+                getInteractive: () => true,
+                onClick: (row, { tab: activeTab }) =>
+                  toggleRowFilter(activeTab, row.filterValue),
               }}
-              getRowSearchText={(row) =>
-                `${row.displayLabel ?? row.label} ${row.label}`
-              }
               filterRows={(rows, activeTab) => {
                 const activeValue = activeQueryValueByTab[activeTab];
                 return activeValue
@@ -230,13 +236,9 @@ export function ReferrerBreakdownCard({
                     tab: activeTab.label,
                   }),
               }}
-              getRowActive={(row, activeTab) =>
-                activeQueryValueByTab[activeTab] === row.filterValue
-              }
-              getRowInteractive={() => true}
-              onRowClick={(row, { tab: activeTab }) =>
-                toggleRowFilter(activeTab, row.filterValue)
-              }
+              export={{
+                labels: messages.common.tableExport,
+              }}
             />
           </div>
         ))}

@@ -2247,19 +2247,25 @@ function CountryStatusColumn({
           value={status}
           sortByTab={{ [status]: sort } as Record<typeof status, typeof sort>}
           onSortChange={(_tab, next) => onSort(next.key)}
-          renderLabel={(row) => (
-            <span className="max-w-[18rem]">
-              <CountryLabelWithFlag label={row.label} iconName={row.iconName} />
-            </span>
-          )}
+          rowAdapter={{
+            renderLabel: (row) => (
+              <span className="max-w-[18rem]">
+                <CountryLabelWithFlag
+                  label={row.label}
+                  iconName={row.iconName}
+                />
+              </span>
+            ),
+            getSearchText: (row) => row.label,
+            getExportLabel: (row) => row.label,
+            getClassName: () =>
+              "hover:brightness-[0.98] dark:hover:brightness-125",
+          }}
           loadingLabel={messages.common.loading}
           emptyLabel={messages.common.noData}
           headerHidden
           search={false}
           progress="samples"
-          getRowClassName={() =>
-            "hover:brightness-[0.98] dark:hover:brightness-125"
-          }
         />
       </div>
     </div>
@@ -2387,19 +2393,22 @@ function PathStatusColumn({
           value={status}
           sortByTab={{ [status]: sort } as Record<typeof status, typeof sort>}
           onSortChange={(_tab, next) => onSort(next.key)}
-          renderLabel={(row) => (
-            <span className="max-w-[18rem] font-mono break-words">
-              {decodeUrlDisplayValue(row.pathname || "/")}
-            </span>
-          )}
+          rowAdapter={{
+            renderLabel: (row) => (
+              <span className="max-w-[18rem] font-mono break-words">
+                {decodeUrlDisplayValue(row.pathname || "/")}
+              </span>
+            ),
+            getSearchText: (row) => row.pathname || "/",
+            getExportLabel: (row) => row.pathname || "/",
+            getClassName: () =>
+              "hover:brightness-[0.98] dark:hover:brightness-125",
+          }}
           loadingLabel={messages.common.loading}
           emptyLabel={messages.common.noData}
           headerHidden
           search={false}
           progress="samples"
-          getRowClassName={() =>
-            "hover:brightness-[0.98] dark:hover:brightness-125"
-          }
         />
       </div>
     </div>

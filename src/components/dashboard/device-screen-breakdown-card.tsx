@@ -271,12 +271,16 @@ function ScreenValueListCard({
       rowsByTab={rowsByTab}
       loadingByTab={loadingByTab}
       columns={columns}
-      renderLabel={(item) => (
-        <span className="font-mono break-words text-foreground">
-          {item.displayLabel}
-        </span>
-      )}
-      getRowSearchText={(item) => item.displayLabel}
+      rowAdapter={{
+        renderLabel: (item) => (
+          <span className="font-mono break-words text-foreground">
+            {item.displayLabel}
+          </span>
+        ),
+        getSearchText: (item) => item.label,
+        getExportLabel: (item) => item.label,
+        getClassName: () => "hover:brightness-95",
+      }}
       compareRows={(left, right, { sort }) => {
         const primary =
           (left[sort.key] - right[sort.key]) *
@@ -293,7 +297,6 @@ function ScreenValueListCard({
       headerHidden
       className="h-full"
       search={false}
-      getRowClassName={() => "hover:brightness-95"}
     />
   );
 }

@@ -148,12 +148,18 @@ export function CampaignBreakdownCard({
                 rowsByTab={rowsByTab}
                 loadingByTab={loadingByTab}
                 columns={columns}
-                renderLabel={(row) => (
-                  <span className={cn("break-words", row.mono && "font-mono")}>
-                    {row.label}
-                  </span>
-                )}
-                getRowSearchText={(row) => row.label}
+                rowAdapter={{
+                  renderLabel: (row) => (
+                    <span
+                      className={cn("break-words", row.mono && "font-mono")}
+                    >
+                      {row.label}
+                    </span>
+                  ),
+                  getSearchText: (row) => row.label,
+                  getExportLabel: (row) => row.label,
+                  getClassName: () => "hover:brightness-95",
+                }}
                 compareRows={(left, right, { sort }) => {
                   const primary =
                     (left[sort.key] - right[sort.key]) *
@@ -176,7 +182,9 @@ export function CampaignBreakdownCard({
                       tab: tab.label,
                     }),
                 }}
-                getRowClassName={() => "hover:brightness-95"}
+                export={{
+                  labels: messages.common.tableExport,
+                }}
               />
             </div>
           );
