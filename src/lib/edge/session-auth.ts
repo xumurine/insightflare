@@ -13,10 +13,13 @@ export interface EdgeSessionClaims {
 }
 
 async function sessionSecret(env: Env): Promise<string> {
-  return (
-    (await dashboardSessionSecret(env)) ||
-    "insightflare-session-secret-change-me"
-  );
+  const secret = await dashboardSessionSecret(env);
+  if (!secret) {
+    throw new Error(
+      "MAIN_SECRET or DAILY_SALT_SECRET is required for sessions",
+    );
+  }
+  return secret;
 }
 
 function bytes(input: string): Uint8Array {

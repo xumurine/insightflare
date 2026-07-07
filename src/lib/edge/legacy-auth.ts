@@ -80,9 +80,12 @@ async function createSessionTokenForEnv(
   },
   maxAgeSeconds: number,
 ): Promise<string> {
-  const secret =
-    (await dashboardSessionSecret(env)) ||
-    "insightflare-session-secret-change-me";
+  const secret = await dashboardSessionSecret(env);
+  if (!secret) {
+    throw new Error(
+      "MAIN_SECRET or DAILY_SALT_SECRET is required for sessions",
+    );
+  }
   const payload = {
     ...claims,
     exp: Math.floor(Date.now() / 1000) + maxAgeSeconds,

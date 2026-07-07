@@ -179,7 +179,7 @@ describe("middleware", () => {
     expect(response.headers.get("x-middleware-next")).toBe("1");
   });
 
-  it("passes through app routes when no session secret is configured (auth state unknown)", async () => {
+  it("redirects app routes to the localized runtime config error when no root secret is configured", async () => {
     const cookies = await sessionCookies();
     vi.stubEnv("MAIN_SECRET", "");
     vi.stubEnv("DAILY_SALT_SECRET", "");
@@ -191,8 +191,38 @@ describe("middleware", () => {
       request("/en/app/team-a", { cookies }),
     );
 
-    // When session secret is unavailable, auth state is "unknown" and middleware passes through.
-    // Production should always configure secrets (P0-2).
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://app.test/en/runtime-config-error",
+    );
+    expect(response.headers.get("x-pathname")).toBe("/en/runtime-config-error");
+  });
+
+  it("redirects missing root secret failures using the request locale", async () => {
+    vi.stubEnv("MAIN_SECRET", "");
+    vi.stubEnv("DAILY_SALT_SECRET", "");
+    vi.doMock("@opennextjs/cloudflare", () => ({
+      getCloudflareContext: vi.fn(async () => ({ env: {} })),
+    }));
+
+    const response = await callMiddleware(request("/zh/app/team-a"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://app.test/zh/runtime-config-error",
+    );
+    expect(response.headers.get("x-pathname")).toBe("/zh/runtime-config-error");
+  });
+
+  it("allows the localized runtime config error page without a root secret", async () => {
+    vi.stubEnv("MAIN_SECRET", "");
+    vi.stubEnv("DAILY_SALT_SECRET", "");
+    vi.doMock("@opennextjs/cloudflare", () => ({
+      getCloudflareContext: vi.fn(async () => ({ env: {} })),
+    }));
+
+    const response = await callMiddleware(request("/en/runtime-config-error"));
+
     expect(response.status).toBe(200);
     expect(response.headers.get("x-middleware-next")).toBe("1");
   });

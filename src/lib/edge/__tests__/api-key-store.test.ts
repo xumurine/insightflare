@@ -108,6 +108,14 @@ describe("api key store utilities", () => {
     expect(timingSafeEqualString(left, other)).toBe(false);
   });
 
+  it("throws when hashing API keys without a root secret", async () => {
+    await expect(
+      hashApiKeySecret({} as Env, "ifk_live_prefix.secret"),
+    ).rejects.toThrow(
+      "MAIN_SECRET or DAILY_SALT_SECRET is required for API keys",
+    );
+  });
+
   it("timingSafeEqualString returns false for different lengths", () => {
     expect(timingSafeEqualString("abc", "ab")).toBe(false);
   });

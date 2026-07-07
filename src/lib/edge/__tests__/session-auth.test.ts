@@ -189,4 +189,20 @@ describe("edge session authentication", () => {
       requireSession(new Request("https://example.test"), env),
     ).resolves.toBeNull();
   });
+
+  it("throws for signed session tokens when no root secret is configured", async () => {
+    const exp = Math.floor(Date.now() / 1000) + 60;
+    const secret = await import("@/lib/secrets").then(
+      ({ deriveSecret, SECRET_PURPOSES }) =>
+        deriveSecret("root-secret", SECRET_PURPOSES.dashboardSession),
+    );
+    const token = await createToken(
+      { userId: "user-1", username: "admin", exp },
+      secret,
+    );
+
+    await expect(verifySessionToken(token, {} as Env)).rejects.toThrow(
+      "MAIN_SECRET or DAILY_SALT_SECRET is required for sessions",
+    );
+  });
 });

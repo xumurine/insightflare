@@ -97,10 +97,12 @@ export async function normalizeIngestRecord(
   const nowMs = Date.now();
   const receivedAt = clampTimestamp(envelope.request.receivedAt, nowMs);
   const eventAt = resolveTrustedClientTimestamp(client.timestamp, receivedAt);
-  const visitorSecret =
-    (await visitorDailySaltSecret(context.env)) ||
-    context.env.DAILY_SALT_SECRET ||
-    "insightflare-visitor-secret-change-me";
+  const visitorSecret = await visitorDailySaltSecret(context.env);
+  if (!visitorSecret) {
+    throw new Error(
+      "MAIN_SECRET or DAILY_SALT_SECRET is required for visitor identity",
+    );
+  }
   const startedAt = Math.min(
     resolveTrustedClientTimestamp(client.startedAt, receivedAt, eventAt),
     eventAt,

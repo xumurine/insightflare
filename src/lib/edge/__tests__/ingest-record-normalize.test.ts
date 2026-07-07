@@ -140,6 +140,28 @@ async function expectedVisitorSecret(): Promise<string> {
 }
 
 describe("normalizeIngestRecord rejection reasons", () => {
+  it("throws when visitor identity needs a secret but no root secret is configured", async () => {
+    const { context } = makeContext();
+    context.env = {} as typeof context.env;
+
+    await expect(
+      normalizeIngestRecord(
+        makeEnvelope(
+          {
+            kind: "pageview",
+            visitId: "visit-1",
+            visitorId: "",
+            hostname: "example.com",
+          },
+          { cf: { isEUCountry: true } },
+        ),
+        context,
+      ),
+    ).rejects.toThrow(
+      "MAIN_SECRET or DAILY_SALT_SECRET is required for visitor identity",
+    );
+  });
+
   it("rejects records missing required site, visit, hostname, user, or event fields", async () => {
     const { context } = makeContext();
 

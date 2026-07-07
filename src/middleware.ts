@@ -22,6 +22,34 @@ interface RedirectProfile {
   }>;
 }
 
+function hasRootSecret(source: Record<string, unknown>): boolean {
+  return Boolean(
+    String(source.MAIN_SECRET || "").trim() ||
+    String(source.DAILY_SALT_SECRET || "").trim(),
+  );
+}
+
+async function hasRuntimeRootSecret(): Promise<boolean> {
+  if (
+    hasRootSecret({
+      MAIN_SECRET: process.env.MAIN_SECRET,
+      DAILY_SALT_SECRET: process.env.DAILY_SALT_SECRET,
+    })
+  ) {
+    return true;
+  }
+
+  try {
+    const { getCloudflareContext } = await import("@opennextjs/cloudflare");
+    const context = await getCloudflareContext({ async: true });
+    return hasRootSecret(context.env as Record<string, unknown>);
+  } catch {
+    // No Cloudflare runtime context available.
+  }
+
+  return false;
+}
+
 function forwardedOrigin(request: NextRequest): string {
   const host =
     request.headers.get("x-forwarded-host") || request.headers.get("host");
@@ -192,6 +220,19 @@ function redirectWithPath(
   return response;
 }
 
+function redirectToRuntimeConfigError(
+  request: NextRequest,
+  locale: string,
+): NextResponse {
+  return redirectWithPath(
+    request,
+    `/${resolveLocale(locale)}/runtime-config-error`,
+    {
+      preserveSearch: false,
+    },
+  );
+}
+
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   const { pathname, search } = request.nextUrl;
 
@@ -260,11 +301,19 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   const localeFromPath = pathnameHasLocale(pathname)
     ? pathname.split("/")[1]
     : null;
+  const localeForRequest = localeFromPath || getLocale(request);
 
   // API 鉴权必须在各自 route handler 内完成（matcher 排除了 /api 路径，此处不会命中）。
   // WebSocket 认证在 Worker 层 (cf-worker.js) 处理，此处直接放行。
   if (pathname === "/api/private/realtime/ws") {
     return NextResponse.next();
+  }
+
+  if (
+    normalizedPathname !== `/${localeForRequest}/runtime-config-error` &&
+    !(await hasRuntimeRootSecret())
+  ) {
+    return redirectToRuntimeConfigError(request, localeForRequest);
   }
 
   // Non-locale path: unify all redirects here.

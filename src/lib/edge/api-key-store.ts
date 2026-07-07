@@ -63,10 +63,13 @@ const API_KEY_PREFIX_BYTES = 9;
 const DEFAULT_SCOPE_SET = new Set<ApiKeyScope>(API_KEY_SCOPES);
 
 async function apiKeyHashSecret(env: Env): Promise<string> {
-  return (
-    (await resolveApiKeyHashSecret(env)) ||
-    "insightflare-api-key-secret-change-me"
-  );
+  const secret = await resolveApiKeyHashSecret(env);
+  if (!secret) {
+    throw new Error(
+      "MAIN_SECRET or DAILY_SALT_SECRET is required for API keys",
+    );
+  }
+  return secret;
 }
 
 function toArrayBuffer(input: Uint8Array): ArrayBuffer {
