@@ -14,7 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { type Locale, resolveLocale } from "@/lib/i18n/config";
+import { resolveLocale } from "@/lib/i18n/config";
 import { getMessages } from "@/lib/i18n/messages";
 
 interface RuntimeConfigErrorPageProps {
@@ -23,68 +23,15 @@ interface RuntimeConfigErrorPageProps {
   }>;
 }
 
-const COPY: Record<
-  Locale,
-  {
-    title: string;
-    eyebrow: string;
-    heading: string;
-    description: string;
-    requiredTitle: string;
-    requiredDescription: string;
-    secretHint: string;
-    commandTitle: string;
-    commandDescription: string;
-    quickStartHint: string;
-    docsLabel: string;
-    homeLabel: string;
-  }
-> = {
-  en: {
-    title: "Runtime configuration required",
-    eyebrow: "Deployment paused",
-    heading: "InsightFlare needs one runtime secret before the UI can load.",
-    description:
-      "The app is running, but the dashboard is blocked because the required root secret is not available in the runtime environment.",
-    requiredTitle: "Required runtime secret",
-    requiredDescription:
-      "Set at least one of these values in your Cloudflare runtime secrets.",
-    secretHint:
-      "MAIN_SECRET is recommended. DAILY_SALT_SECRET is accepted for legacy deployments.",
-    commandTitle: "Cloudflare command",
-    commandDescription:
-      "Use the project helper to add the recommended secret, then redeploy.",
-    quickStartHint:
-      "Or, see the Quick Start section in the GitHub README to set this variable.",
-    docsLabel: "Open GitHub",
-    homeLabel: "Retry dashboard",
-  },
-  zh: {
-    title: "需要运行时配置",
-    eyebrow: "部署已暂停",
-    heading: "InsightFlare 需要一个运行时密钥后才能加载控制台。",
-    description:
-      "应用已经启动，但当前运行环境没有读取到必需的 root secret，因此暂时阻止进入控制台。",
-    requiredTitle: "必需的运行时密钥",
-    requiredDescription: "请在 Cloudflare 运行时密钥中至少设置以下其中一个值。",
-    secretHint: "推荐使用 MAIN_SECRET。旧部署仍可继续使用 DAILY_SALT_SECRET。",
-    commandTitle: "Cloudflare 命令",
-    commandDescription: "使用项目内置命令写入推荐密钥，然后重新部署。",
-    quickStartHint:
-      "或者，请查看 GitHub README 的“快速开始”章节来设置这个变量。",
-    docsLabel: "打开 GitHub",
-    homeLabel: "重试控制台",
-  },
-};
-
 export async function generateMetadata({
   params,
 }: RuntimeConfigErrorPageProps) {
   const { locale } = await params;
   const resolvedLocale = resolveLocale(locale);
+  const messages = getMessages(resolvedLocale);
 
   return {
-    title: COPY[resolvedLocale].title,
+    title: messages.runtimeConfigError.title,
   };
 }
 
@@ -94,7 +41,7 @@ export default async function RuntimeConfigErrorPage({
   const { locale } = await params;
   const resolvedLocale = resolveLocale(locale);
   const messages = getMessages(resolvedLocale);
-  const copy = COPY[resolvedLocale];
+  const copy = messages.runtimeConfigError;
 
   return (
     <main className="min-h-svh bg-background text-foreground">

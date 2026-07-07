@@ -10,7 +10,7 @@ import {
 
 describe("i18n locale config", () => {
   it("exports supported locale constants", () => {
-    expect(SUPPORTED_LOCALES).toEqual(["en", "zh"]);
+    expect(SUPPORTED_LOCALES).toEqual(["en", "zh", "ja"]);
     expect(DEFAULT_LOCALE).toBe("en");
     expect(LOCALE_COOKIE).toBe("if_locale");
   });
@@ -18,10 +18,12 @@ describe("i18n locale config", () => {
   it("validates and resolves locale values", () => {
     expect(isValidLocale("en")).toBe(true);
     expect(isValidLocale("zh")).toBe(true);
+    expect(isValidLocale("ja")).toBe(true);
     expect(isValidLocale("fr")).toBe(false);
     expect(isValidLocale(null)).toBe(false);
 
     expect(resolveLocale("zh")).toBe("zh");
+    expect(resolveLocale("ja")).toBe("ja");
     expect(resolveLocale("fr")).toBe("en");
     expect(resolveLocale(undefined)).toBe("en");
   });

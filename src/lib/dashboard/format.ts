@@ -3,6 +3,7 @@ import type { Locale } from "@/lib/i18n/config";
 const INTL_LOCALE: Record<Locale, string> = {
   en: "en-US",
   zh: "zh-CN",
+  ja: "ja-JP",
 };
 
 const DURATION_UNITS: Record<
@@ -24,6 +25,12 @@ const DURATION_UNITS: Record<
     second: "秒",
     minute: "分",
     hour: "小时",
+    join: "",
+  },
+  ja: {
+    second: "秒",
+    minute: "分",
+    hour: "時間",
     join: "",
   },
 };

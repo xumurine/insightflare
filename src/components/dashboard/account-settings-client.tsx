@@ -65,7 +65,7 @@ interface AccountSettingsClientProps {
 }
 
 type TimeZoneMode = "browser" | "custom";
-type PreferredLocale = "" | "en" | "zh";
+type PreferredLocale = "" | "en" | "zh" | "ja";
 
 interface ProfileResponse {
   ok?: boolean;
@@ -835,7 +835,7 @@ export function AccountSettingsClient({
                   disabled={preferredLocaleSaving}
                   onValueChange={(value) => {
                     if (value === "default") setPreferredLocale("");
-                    if (value === "en" || value === "zh") {
+                    if (value === "en" || value === "zh" || value === "ja") {
                       setPreferredLocale(value);
                     }
                   }}
@@ -855,6 +855,9 @@ export function AccountSettingsClient({
                     </SelectItem>
                     <SelectItem value="zh">
                       {copy.preferredLanguageChinese}
+                    </SelectItem>
+                    <SelectItem value="ja">
+                      {copy.preferredLanguageJapanese}
                     </SelectItem>
                   </SelectContent>
                 </Select>

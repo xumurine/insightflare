@@ -104,6 +104,16 @@ export default async function LoginPage({
                   <span>{t.actions.switchToChinese}</span>
                 </Link>
               </Button>
+              <Button
+                variant={resolvedLocale === "ja" ? "default" : "outline"}
+                size="xs"
+                asChild
+              >
+                <Link href={withNext("/ja/login", nextPath)}>
+                  <RiTranslate2 className="size-3" />
+                  <span>{t.actions.switchToJapanese}</span>
+                </Link>
+              </Button>
             </div>
           </div>
 

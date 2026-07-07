@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
 import { OverviewClientPage } from "@/components/dashboard/site-pages/overview-client-page";
-import { formatI18nTemplate } from "@/lib/i18n/template";
 
 import { getShareRouteContext, sharePath } from "./share-utils";
 
@@ -18,9 +17,7 @@ export async function generateMetadata({
   const { locale, slug } = await params;
   const context = await getShareRouteContext(locale, slug);
   return {
-    title: formatI18nTemplate(context.messages.share.title, {
-      siteName: context.site.name,
-    }),
+    title: context.site.name,
   };
 }
 

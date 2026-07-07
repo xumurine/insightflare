@@ -4,7 +4,7 @@ import type {
   NotificationMessageData,
   NotificationRuleData,
 } from "@/lib/edge-client-types/admin";
-import type { Locale } from "@/lib/i18n/config";
+import { isValidLocale, type Locale } from "@/lib/i18n/config";
 import { buildNotificationContent } from "@/lib/notifications/content";
 import { renderNotificationPlainText } from "@/lib/notifications/email-text";
 import type { NotificationMessage } from "@/lib/notifications/message-store";
@@ -871,7 +871,10 @@ export function generateDemoNotificationTest(body: unknown): {
     body && typeof body === "object" ? (body as Record<string, unknown>) : {};
   const teamId = String(raw.teamId || getDemoTeams()[0].id);
   const userId = String(raw.userId || getDemoUser().id);
-  const locale = raw.locale === "zh" ? "zh" : "en";
+  const requestedLocale = String(raw.locale || "");
+  const locale: Locale = isValidLocale(requestedLocale)
+    ? requestedLocale
+    : "en";
   const message = demoTypedNotificationMessage({
     id: `demo-notification-test-${nowSeconds()}`,
     teamId,

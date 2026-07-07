@@ -17,6 +17,7 @@ import type {
   TeamData,
   TrendData,
 } from "@/lib/edge-client-types";
+import type { Locale } from "@/lib/i18n/config";
 import type { PublicNotificationEmailConfig } from "@/lib/notifications/email-config";
 import type { SiteScriptSettings } from "@/lib/site-settings";
 
@@ -687,7 +688,7 @@ export async function fetchNotificationMessages(input: {
   type?: string;
   severity?: string;
   unread?: boolean;
-  locale?: "en" | "zh";
+  locale?: Locale;
   limit?: number;
 }): Promise<{
   messages: NotificationMessageData[];
@@ -729,7 +730,7 @@ export async function fetchNotificationMessages(input: {
 
 export async function fetchNotificationEmailPreview(input: {
   type: "test" | "report" | "milestone" | "threshold" | "change" | "health";
-  locale: "en" | "zh";
+  locale: Locale;
   format: "html" | "text" | "json";
 }): Promise<
   | string
@@ -774,7 +775,7 @@ export async function fetchNotificationEmailPreview(input: {
 
 export async function markNotificationMessageRead(input: {
   messageId: string;
-  locale?: "en" | "zh";
+  locale?: Locale;
 }): Promise<NotificationMessageData | null> {
   const res = await fetchEdgeJson<{
     ok: boolean;

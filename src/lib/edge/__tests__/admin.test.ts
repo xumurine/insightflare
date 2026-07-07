@@ -213,7 +213,9 @@ function publicUser(row: UserRow) {
     systemRole: row.system_role === "admin" ? "admin" : "user",
     timeZone: row.timezone || "",
     preferredLocale:
-      row.preferred_locale === "en" || row.preferred_locale === "zh"
+      row.preferred_locale === "en" ||
+      row.preferred_locale === "zh" ||
+      row.preferred_locale === "ja"
         ? row.preferred_locale
         : "",
     createdAt: row.created_at,

@@ -55,6 +55,7 @@ export default async function ResetPasswordPage({
               darkLabel={t.actions.switchToDark}
               englishLabel={t.actions.switchToEnglish}
               chineseLabel={t.actions.switchToChinese}
+              japaneseLabel={t.actions.switchToJapanese}
             />
           </div>
           <CardDescription>

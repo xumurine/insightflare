@@ -185,7 +185,7 @@ function getTeamRoleLabel(messages: AppMessages, role: string | undefined) {
 function normalizeLocalePath(pathname: string): string {
   const cleaned = pathname || "";
   if (cleaned.length === 0) return "/app";
-  const withoutLocale = cleaned.replace(/^\/(en|zh)(?=\/|$)/, "") || "/app";
+  const withoutLocale = cleaned.replace(/^\/(en|zh|ja)(?=\/|$)/, "") || "/app";
   if (withoutLocale === "/") return "/app";
   return withoutLocale.endsWith("/")
     ? withoutLocale.slice(0, -1)
@@ -561,6 +561,7 @@ export function DashboardShell({
   const localeSuffix = normalizeLocalePath(livePathname);
   const switchToEn = `/en${localeSuffix}`;
   const switchToZh = `/zh${localeSuffix}`;
+  const switchToJa = `/ja${localeSuffix}`;
   const accountHref = `/${locale}/app/account`;
   const notificationsHref = `/${locale}/app/inbox`;
   const appRootHref = `/${locale}/app`;
@@ -599,7 +600,7 @@ export function DashboardShell({
         {
           key: "request-overview",
           href: requestObservationBase,
-          label: locale === "zh" ? "总览" : "Overview",
+          label: messages.requestObservation.tabs.overview,
           queryKey: "requestTab",
           queryValue: "overview",
           queryDefault: true,
@@ -607,14 +608,14 @@ export function DashboardShell({
         {
           key: "request-abnormal",
           href: `${requestObservationBase}?requestTab=abnormal`,
-          label: locale === "zh" ? "异常请求" : "Abnormal Requests",
+          label: messages.requestObservation.tabs.abnormal,
           queryKey: "requestTab",
           queryValue: "abnormal",
         },
         {
           key: "request-normal",
           href: `${requestObservationBase}?requestTab=normal`,
-          label: locale === "zh" ? "正常请求" : "Normal Requests",
+          label: messages.requestObservation.tabs.normal,
           queryKey: "requestTab",
           queryValue: "normal",
         },
@@ -995,6 +996,7 @@ export function DashboardShell({
               user={user}
               switchToEn={switchToEn}
               switchToZh={switchToZh}
+              switchToJa={switchToJa}
               accountHref={accountHref}
               notificationsHref={notificationsHref}
               unreadAttentionCount={unreadAttentionCount}

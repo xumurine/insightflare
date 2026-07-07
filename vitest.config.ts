@@ -1,7 +1,20 @@
 import path from "path";
 import { defineConfig } from "vitest/config";
+import { parse } from "yaml";
 
 export default defineConfig({
+  plugins: [
+    {
+      name: "yaml-as-json",
+      transform(code, id) {
+        if (!/\.ya?ml$/.test(id)) return null;
+        return {
+          code: `export default ${JSON.stringify(parse(code))};`,
+          map: null,
+        };
+      },
+    },
+  ],
   oxc: false,
   esbuild: {
     jsx: "automatic",

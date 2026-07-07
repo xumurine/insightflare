@@ -53,6 +53,7 @@ export default async function InvitePage({ params }: InvitePageProps) {
               darkLabel={t.actions.switchToDark}
               englishLabel={t.actions.switchToEnglish}
               chineseLabel={t.actions.switchToChinese}
+              japaneseLabel={t.actions.switchToJapanese}
             />
           </div>
           <CardDescription>{t.accountLinks.invite.subtitle}</CardDescription>

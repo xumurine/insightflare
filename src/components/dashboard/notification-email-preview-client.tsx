@@ -19,7 +19,11 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { fetchNotificationEmailPreview } from "@/lib/edge-client";
-import type { Locale } from "@/lib/i18n/config";
+import {
+  isValidLocale,
+  type Locale,
+  SUPPORTED_LOCALES,
+} from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
 type PreviewType =
@@ -40,6 +44,12 @@ const PREVIEW_TYPES: PreviewType[] = [
   "health",
 ];
 const PREVIEW_FORMATS: PreviewFormat[] = ["html", "text", "json"];
+
+function localeLabel(messages: AppMessages, locale: Locale): string {
+  if (locale === "zh") return messages.actions.switchToChinese;
+  if (locale === "ja") return messages.actions.switchToJapanese;
+  return messages.actions.switchToEnglish;
+}
 
 export function NotificationEmailPreviewClient({
   locale,
@@ -165,15 +175,18 @@ export function NotificationEmailPreviewClient({
             <Select
               value={previewLocale}
               onValueChange={(value) => {
-                if (value === "en" || value === "zh") setPreviewLocale(value);
+                if (isValidLocale(value)) setPreviewLocale(value);
               }}
             >
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="en">English</SelectItem>
-                <SelectItem value="zh">中文</SelectItem>
+                {SUPPORTED_LOCALES.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {localeLabel(messages, item)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </Field>

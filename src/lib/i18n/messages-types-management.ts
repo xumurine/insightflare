@@ -122,6 +122,7 @@ export interface AppManagementMessages {
     preferredLanguageDefault: string;
     preferredLanguageEnglish: string;
     preferredLanguageChinese: string;
+    preferredLanguageJapanese: string;
     preferredLanguageSaved: string;
     preferredLanguageSaveFailed: string;
     activeTimeZone: string;
@@ -269,6 +270,104 @@ export interface AppManagementMessages {
       failedAt: string;
     };
   };
+  notificationEmail: {
+    common: {
+      brand: string;
+      date: string;
+      coreMetrics: string;
+      topPages: string;
+      topReferrers: string;
+      views: string;
+      visitors: string;
+      sessions: string;
+      visits: string;
+      viewsUnit: string;
+      direct: string;
+      metric: string;
+      window: string;
+      currentValue: string;
+      previousValue: string;
+      threshold: string;
+      milestone: string;
+      change: string;
+      mode: string;
+      lastSeen: string;
+      never: string;
+      noPageData: string;
+      noReferrerData: string;
+      footer: string;
+      fallbackSubject: string;
+      trackingHint: string;
+      severity: {
+        info: string;
+        success: string;
+        warning: string;
+        critical: string;
+      };
+    };
+    test: {
+      subject: string;
+      title: string;
+      summary: string;
+      body: string;
+    };
+    report: {
+      subject: string;
+      title: string;
+      summary: string;
+      periodLabels: {
+        daily: string;
+        weekly: string;
+        monthly: string;
+        quarterly: string;
+        yearly: string;
+      };
+    };
+    milestone: {
+      subject: string;
+      title: string;
+      summary: string;
+    };
+    threshold: {
+      subject: string;
+      title: string;
+      summary: string;
+      metricLabels: {
+        views: string;
+        visitors: string;
+        sessions: string;
+      };
+      windows: {
+        last_1h: string;
+        last_24h: string;
+        yesterday: string;
+      };
+    };
+    health: {
+      subject: string;
+      title: string;
+      noHistory: string;
+    };
+    change: {
+      subject: string;
+      title: string;
+      summary: string;
+    };
+  };
+  runtimeConfigError: {
+    title: string;
+    eyebrow: string;
+    heading: string;
+    description: string;
+    requiredTitle: string;
+    requiredDescription: string;
+    secretHint: string;
+    commandTitle: string;
+    commandDescription: string;
+    quickStartHint: string;
+    docsLabel: string;
+    homeLabel: string;
+  };
   login: {
     title: string;
     subtitle: string;
@@ -333,6 +432,7 @@ export interface AppManagementMessages {
     logout: string;
     switchToEnglish: string;
     switchToChinese: string;
+    switchToJapanese: string;
     switchToLight: string;
     switchToDark: string;
   };
@@ -1095,6 +1195,11 @@ export interface AppManagementMessages {
   requestObservation: {
     title: string;
     subtitle: string;
+    tabs: {
+      overview: string;
+      abnormal: string;
+      normal: string;
+    };
     refresh: string;
     loadFailed: string;
     notConfiguredTitle: string;
@@ -1171,6 +1276,52 @@ export interface AppManagementMessages {
     ipPrefix: string;
     botReasonLabels: Record<string, string>;
     requestKindLabels: Record<string, string>;
+    overviewLabels: {
+      totalRequests: string;
+      normalRequests: string;
+      abnormalRequests: string;
+      abnormalRatio: string;
+      normalRatio: string;
+      p50Latency: string;
+      p75Latency: string;
+      p95Latency: string;
+      p99Latency: string;
+      avgLatency: string;
+      pageviews: string;
+      customEvents: string;
+      overviewTrendTitle: string;
+      overviewTrendDescription: string;
+      trafficCompositionTitle: string;
+      trafficCompositionDescription: string;
+      confidenceShareTitle: string;
+      confidenceShareDescription: string;
+      normalTrafficShare: string;
+      lowConfidenceTraffic: string;
+      mediumConfidenceTraffic: string;
+      highConfidenceTraffic: string;
+      latencyTitle: string;
+      latencyDescription: string;
+      normalBreakdownTitle: string;
+      abnormalSubtitle: string;
+      normalSubtitle: string;
+      requests: string;
+      windowDays: string;
+      latencyMilliseconds: string;
+    };
+    normalDetail: {
+      title: string;
+      subtitle: string;
+      requestMethod: string;
+      edgeLatency: string;
+      eventAt: string;
+      receivedAt: string;
+      coordinates: string;
+      continent: string;
+    };
+    recentNormal: {
+      title: string;
+      description: string;
+    };
   };
   systemSettings: {
     title: string;

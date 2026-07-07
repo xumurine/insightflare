@@ -37,6 +37,7 @@ interface SidebarFooterMenusProps {
   locale: Locale;
   switchToEn: string;
   switchToZh: string;
+  switchToJa: string;
   accountHref: string;
   notificationsHref: string;
   unreadAttentionCount?: number;
@@ -71,6 +72,7 @@ export function SidebarFooterMenus({
   locale,
   switchToEn,
   switchToZh,
+  switchToJa,
   accountHref,
   notificationsHref,
   unreadAttentionCount = 0,
@@ -99,6 +101,11 @@ export function SidebarFooterMenus({
   }> = [
     { locale: "en", href: switchToEn, label: messages.actions.switchToEnglish },
     { locale: "zh", href: switchToZh, label: messages.actions.switchToChinese },
+    {
+      locale: "ja",
+      href: switchToJa,
+      label: messages.actions.switchToJapanese,
+    },
   ];
 
   async function handleLogout() {

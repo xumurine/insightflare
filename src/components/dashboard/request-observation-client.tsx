@@ -96,6 +96,7 @@ import {
 } from "@/lib/i18n/code-labels";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { formatI18nTemplate } from "@/lib/i18n/template";
 import { cn } from "@/lib/utils";
 
 interface RequestObservationClientProps {
@@ -324,7 +325,11 @@ function botEventDetailId(event: BotEvent): string {
   return event.traceId || event.rayId || "";
 }
 
-function latencyFormat(locale: Locale, valueMs: number | null | undefined) {
+function latencyFormat(
+  locale: Locale,
+  copy: AppMessages["requestObservation"],
+  valueMs: number | null | undefined,
+) {
   if (valueMs === null || valueMs === undefined || !Number.isFinite(valueMs)) {
     return "--";
   }
@@ -333,9 +338,9 @@ function latencyFormat(locale: Locale, valueMs: number | null | undefined) {
     const formatter = new Intl.NumberFormat(intlLocale(locale), {
       maximumFractionDigits: value < 100 ? 1 : 0,
     });
-    return locale === "zh"
-      ? `${formatter.format(value)} 毫秒`
-      : `${formatter.format(value)} ms`;
+    return formatI18nTemplate(copy.overviewLabels.latencyMilliseconds, {
+      value: formatter.format(value),
+    });
   }
   return durationFormat(locale, value);
 }
@@ -549,94 +554,10 @@ export function RequestObservationClient({
   const mapAnimationControls = useAnimationControls();
 
   const spanMs = Math.max(1, timeWindow.to - timeWindow.from);
-  const windowDetail =
-    locale === "zh"
-      ? `最近 ${Math.max(1, Math.ceil(spanMs / 86400000))} 天`
-      : `Last ${Math.max(1, Math.ceil(spanMs / 86400000))} days`;
-
-  const labels = useMemo(
-    () =>
-      locale === "zh"
-        ? {
-            overview: "总览",
-            abnormal: "异常请求",
-            normal: "正常请求",
-            totalRequests: "总请求数",
-            normalRequests: "正常请求",
-            abnormalRequests: "异常请求",
-            abnormalRatio: "异常请求比例",
-            normalRatio: "正常请求比例",
-            p50Latency: "P50 边缘耗时",
-            p75Latency: "P75 边缘耗时",
-            p95Latency: "P95 边缘耗时",
-            p99Latency: "P99 边缘耗时",
-            avgLatency: "平均边缘耗时",
-            pageviews: "页面浏览",
-            customEvents: "自定义事件",
-            overviewTrendTitle: "请求分流趋势",
-            overviewTrendDescription:
-              "按顶栏时间间隔分桶显示正常与异常请求，以及异常请求比例。",
-            trafficCompositionTitle: "请求构成",
-            trafficCompositionDescription:
-              "正常请求、异常请求和页面事件在同一时间轴上的变化。",
-            confidenceShareTitle: "请求置信度占比",
-            confidenceShareDescription:
-              "按请求数展示正常流量、低/中/高置信度异常流量的占比。",
-            normalTrafficShare: "正常流量",
-            lowConfidenceTraffic: "低置信度流量",
-            mediumConfidenceTraffic: "中置信度流量",
-            highConfidenceTraffic: "高置信度流量",
-            latencyTitle: "边缘耗时趋势",
-            latencyDescription:
-              "正常请求写入 AE 时记录的 P50 / P75 / P95 / P99 边缘耗时。",
-            normalBreakdownTitle: "正常请求维度",
-            abnormalSubtitle:
-              "聚焦已分流的异常请求，地图和统计表只显示红色异常流量。",
-            normalSubtitle:
-              "聚焦进入正常采集链路的请求，地图和统计表只显示绿色正常流量。",
-            requests: "请求数",
-          }
-        : {
-            overview: "Overview",
-            abnormal: "Abnormal Requests",
-            normal: "Normal Requests",
-            totalRequests: "Total Requests",
-            normalRequests: "Normal Requests",
-            abnormalRequests: "Abnormal Requests",
-            abnormalRatio: "Abnormal Request Ratio",
-            normalRatio: "Normal Request Ratio",
-            p50Latency: "P50 Edge Latency",
-            p75Latency: "P75 Edge Latency",
-            p95Latency: "P95 Edge Latency",
-            p99Latency: "P99 Edge Latency",
-            avgLatency: "Average Edge Latency",
-            pageviews: "Pageviews",
-            customEvents: "Custom Events",
-            overviewTrendTitle: "Request Routing Trend",
-            overviewTrendDescription:
-              "Normal requests, abnormal requests, and abnormal ratio bucketed by the top-bar interval.",
-            trafficCompositionTitle: "Request Composition",
-            trafficCompositionDescription:
-              "Normal requests, abnormal requests, and page events on the same timeline.",
-            confidenceShareTitle: "Request Confidence Share",
-            confidenceShareDescription:
-              "Share of normal traffic and low / medium / high-confidence abnormal traffic by request count.",
-            normalTrafficShare: "Normal Traffic",
-            lowConfidenceTraffic: "Low Confidence Traffic",
-            mediumConfidenceTraffic: "Medium Confidence Traffic",
-            highConfidenceTraffic: "High Confidence Traffic",
-            latencyTitle: "Edge Latency Trend",
-            latencyDescription:
-              "P50 / P75 / P95 / P99 edge latency captured when normal requests are written to AE.",
-            normalBreakdownTitle: "Normal Request Dimensions",
-            abnormalSubtitle:
-              "Focuses on diverted abnormal requests; the map and tables show only red abnormal traffic.",
-            normalSubtitle:
-              "Focuses on requests entering the normal collection path; the map and tables show only normal request traffic.",
-            requests: "Requests",
-          },
-    [locale],
-  );
+  const windowDetail = formatI18nTemplate(copy.overviewLabels.windowDays, {
+    days: Math.max(1, Math.ceil(spanMs / 86400000)),
+  });
+  const labels = copy.overviewLabels;
 
   const load = useMemo(
     () => async (mode: "initial" | "refresh") => {
@@ -1295,7 +1216,7 @@ export function RequestObservationClient({
                   overview?.p95LatencyMs === null ||
                   overview?.p95LatencyMs === undefined
                     ? "--"
-                    : latencyFormat(locale, overview.p95LatencyMs)
+                    : latencyFormat(locale, copy, overview.p95LatencyMs)
                 }
                 detail={labels.avgLatency}
                 loading={loading}
@@ -1514,7 +1435,7 @@ export function RequestObservationClient({
                     tickLine={false}
                     axisLine={false}
                     tickFormatter={(value) =>
-                      latencyFormat(locale, Number(value))
+                      latencyFormat(locale, copy, Number(value))
                     }
                   />
                   <ChartTooltip
@@ -1883,6 +1804,7 @@ export function RequestObservationClient({
                                   ? "--"
                                   : latencyFormat(
                                       locale,
+                                      copy,
                                       normalSummary.p95LatencyMs,
                                     )
                               }
@@ -2106,16 +2028,16 @@ function botReasonLabel(
   copy: AppMessages["requestObservation"],
   reason: string,
 ): string {
-  return copy.botReasonLabels[reason] ?? compactReason(reason);
+  const labels: Readonly<Record<string, string>> = copy.botReasonLabels;
+  return labels[reason] ?? compactReason(reason);
 }
 
 function requestKindLabel(
   copy: AppMessages["requestObservation"],
   kind: string,
 ): string {
-  return (
-    copy.requestKindLabels[kind] ?? (compactReason(kind) || emptyValue(copy))
-  );
+  const labels: Readonly<Record<string, string>> = copy.requestKindLabels;
+  return labels[kind] ?? (compactReason(kind) || emptyValue(copy));
 }
 
 function emptyValue(copy: AppMessages["requestObservation"]): string {
@@ -3009,18 +2931,14 @@ function NormalRequestDetailDrawer({
 }) {
   const empty = copy.emptyValue;
   const eventId = event ? event.traceId || event.rayId : "";
-  const title = locale === "zh" ? "正常请求详情" : "Normal Request Detail";
-  const subtitle =
-    event?.pathname ||
-    (locale === "zh"
-      ? "查看正常请求 AE 记录的链路、位置和耗时字段。"
-      : "Inspect the normal request AE record fields, location, and latency.");
-  const requestMethodLabel = locale === "zh" ? "请求方法" : "Request Method";
-  const edgeLatencyLabel = locale === "zh" ? "边缘耗时" : "Edge Latency";
-  const eventAtLabel = locale === "zh" ? "事件时间" : "Event Time";
-  const receivedAtLabel = locale === "zh" ? "接收时间" : "Received Time";
-  const coordinatesLabel = locale === "zh" ? "坐标" : "Coordinates";
-  const continentLabel = locale === "zh" ? "大洲" : "Continent";
+  const title = copy.normalDetail.title;
+  const subtitle = event?.pathname || copy.normalDetail.subtitle;
+  const requestMethodLabel = copy.normalDetail.requestMethod;
+  const edgeLatencyLabel = copy.normalDetail.edgeLatency;
+  const eventAtLabel = copy.normalDetail.eventAt;
+  const receivedAtLabel = copy.normalDetail.receivedAt;
+  const coordinatesLabel = copy.normalDetail.coordinates;
+  const continentLabel = copy.normalDetail.continent;
   const contentKey = event ? "detail" : "empty";
 
   const stopSideDrawerOverlayEvent = (
@@ -3180,7 +3098,11 @@ function NormalRequestDetailDrawer({
                       <dl className="grid gap-3 sm:grid-cols-2">
                         <DetailItem
                           label={edgeLatencyLabel}
-                          value={latencyFormat(locale, event.edgeLatencyMs)}
+                          value={latencyFormat(
+                            locale,
+                            copy,
+                            event.edgeLatencyMs,
+                          )}
                         />
                         <DetailItem
                           label={copy.location}
@@ -3857,11 +3779,8 @@ function NormalRequestsTable({
     : events.length === 0
       ? "empty"
       : "rows";
-  const title = locale === "zh" ? "最近正常请求" : "Recent Normal Requests";
-  const description =
-    locale === "zh"
-      ? "这些详细记录只写入正常请求 Analytics Engine 数据集。"
-      : "Detailed records written only to the normal request Analytics Engine dataset.";
+  const title = copy.recentNormal.title;
+  const description = copy.recentNormal.description;
   const openEvent = (event: NormalRequestEvent) => {
     setSelectedEvent(event);
     setDrawerOpen(true);
@@ -3904,13 +3823,13 @@ function NormalRequestsTable({
                   <TableHead>{copy.time}</TableHead>
                   <TableHead>{copy.site}</TableHead>
                   <TableHead>{copy.kind}</TableHead>
-                  <TableHead>Method</TableHead>
+                  <TableHead>{copy.normalDetail.requestMethod}</TableHead>
                   <TableHead>{copy.network}</TableHead>
                   <TableHead>{copy.asn}</TableHead>
                   <TableHead>{copy.location}</TableHead>
                   <TableHead>{copy.pathname}</TableHead>
                   <TableHead className="pr-4">
-                    {locale === "zh" ? "边缘耗时" : "Edge Latency"}
+                    {copy.normalDetail.edgeLatency}
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -4034,7 +3953,7 @@ function NormalRequestsTable({
                           </TableCell>
                           <TableCell className="max-w-28 pr-4">
                             <span className="block truncate font-mono tabular-nums text-muted-foreground">
-                              {latencyFormat(locale, event.edgeLatencyMs)}
+                              {latencyFormat(locale, copy, event.edgeLatencyMs)}
                             </span>
                           </TableCell>
                         </TableRow>

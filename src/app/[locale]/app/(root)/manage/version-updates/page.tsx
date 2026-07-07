@@ -13,6 +13,7 @@ import { VersionUpdateDetailsButton } from "@/components/dashboard/version-updat
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { intlLocale } from "@/lib/dashboard/format";
 import { getDashboardProfile } from "@/lib/dashboard/server";
 import { fetchGithubReleases, type GithubRelease } from "@/lib/github-releases";
 import { type Locale, resolveLocale } from "@/lib/i18n/config";
@@ -70,7 +71,7 @@ function formatDateTime(locale: Locale, value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
 
-  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
+  return new Intl.DateTimeFormat(intlLocale(locale), {
     year: "numeric",
     month: "short",
     day: "2-digit",
