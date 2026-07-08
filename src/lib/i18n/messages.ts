@@ -1101,6 +1101,8 @@ export interface AppMessages {
       memberRemoveFailed: string;
       roleChanged: string;
       roleChangeFailed: string;
+      siteAccessChanged: string;
+      siteAccessChangeFailed: string;
       invalidTeamName: string;
       inviteCreated: string;
       inviteCreateFailed: string;
@@ -1482,6 +1484,16 @@ export interface AppMessages {
       noInvites: string;
       anyEmail: string;
       revokeInvite: string;
+      siteAccessLabel: string;
+      siteAccessAll: string;
+      siteAccessRestricted: string;
+      siteAccessSelected: string;
+      siteAccessDescription: string;
+      siteAccessAdmins: string;
+      siteAccessDialogTitle: string;
+      saveSiteAccess: string;
+      cancelSiteAccess: string;
+      noSitesForAccess: string;
       inviteStatuses: {
         active: string;
         used: string;
@@ -1494,6 +1506,7 @@ export interface AppMessages {
         email: string;
         inviteCode: string;
         role: string;
+        siteAccess: string;
         joinedAt: string;
         createdAt: string;
         expiresAt: string;
@@ -3237,6 +3250,8 @@ const enMessages = {
       memberRemoveFailed: "Failed to remove member.",
       roleChanged: "Member role updated.",
       roleChangeFailed: "Failed to update member role.",
+      siteAccessChanged: "Member site access updated.",
+      siteAccessChangeFailed: "Failed to update site access.",
       invalidTeamName: "Team name must be at least 2 characters.",
       inviteCreated: "Invite link created.",
       inviteCreateFailed: "Failed to create invite link.",
@@ -3640,6 +3655,17 @@ const enMessages = {
       noInvites: "This team has no invite links yet.",
       anyEmail: "Any email",
       revokeInvite: "Revoke invite",
+      siteAccessLabel: "Site access",
+      siteAccessAll: "All sites",
+      siteAccessRestricted: "Restricted",
+      siteAccessSelected: "Selected {count} sites",
+      siteAccessDescription:
+        "Leave this set to all sites, or choose the specific sites this member can access.",
+      siteAccessAdmins: "Admins can access every site in this team.",
+      siteAccessDialogTitle: "Edit site access",
+      saveSiteAccess: "Save access",
+      cancelSiteAccess: "Cancel",
+      noSitesForAccess: "This team has no sites yet.",
       inviteStatuses: {
         active: "Active",
         used: "Used",
@@ -3652,6 +3678,7 @@ const enMessages = {
         email: "Email",
         inviteCode: "Invite token",
         role: "Role",
+        siteAccess: "Site access",
         joinedAt: "Joined",
         createdAt: "Created",
         expiresAt: "Expires",
@@ -5411,6 +5438,8 @@ const zhMessages = {
       memberRemoveFailed: "移除成员失败。",
       roleChanged: "成员角色已更新。",
       roleChangeFailed: "更新成员角色失败。",
+      siteAccessChanged: "成员站点权限已更新。",
+      siteAccessChangeFailed: "更新站点权限失败。",
       invalidTeamName: "团队名称至少 2 个字符。",
       inviteCreated: "邀请链接已创建。",
       inviteCreateFailed: "创建邀请链接失败。",
@@ -5798,6 +5827,16 @@ const zhMessages = {
       noInvites: "当前团队暂无邀请链接。",
       anyEmail: "任意邮箱",
       revokeInvite: "撤销邀请",
+      siteAccessLabel: "站点权限",
+      siteAccessAll: "全部站点",
+      siteAccessRestricted: "限定站点",
+      siteAccessSelected: "已选择 {count} 个站点",
+      siteAccessDescription: "保持为全部站点，或选择此成员可以访问的具体站点。",
+      siteAccessAdmins: "管理员可以访问此团队内的全部站点。",
+      siteAccessDialogTitle: "编辑站点权限",
+      saveSiteAccess: "保存权限",
+      cancelSiteAccess: "取消",
+      noSitesForAccess: "当前团队暂无站点。",
       inviteStatuses: {
         active: "有效",
         used: "已使用",
@@ -5810,6 +5849,7 @@ const zhMessages = {
         email: "邮箱",
         inviteCode: "邀请码",
         role: "角色",
+        siteAccess: "站点权限",
         joinedAt: "加入时间",
         createdAt: "创建时间",
         expiresAt: "过期时间",
@@ -7596,6 +7636,8 @@ const jaMessages = {
       memberRemoveFailed: "メンバーを削除できません。",
       roleChanged: "メンバー権限を更新しました。",
       roleChangeFailed: "メンバー権限を更新できません。",
+      siteAccessChanged: "メンバーのサイト権限を更新しました。",
+      siteAccessChangeFailed: "サイト権限を更新できません。",
       invalidTeamName: "チーム名は 2 文字以上にしてください。",
       inviteCreated: "招待リンクを作成しました。",
       inviteCreateFailed: "招待リンクを作成できません。",
@@ -8000,6 +8042,17 @@ const jaMessages = {
       noInvites: "このチームには招待リンクがありません。",
       anyEmail: "任意のメール",
       revokeInvite: "招待を取り消し",
+      siteAccessLabel: "サイト権限",
+      siteAccessAll: "全サイト",
+      siteAccessRestricted: "制限付き",
+      siteAccessSelected: "{count} サイト選択済み",
+      siteAccessDescription:
+        "全サイトのままにするか、このメンバーがアクセスできるサイトを選択します。",
+      siteAccessAdmins: "管理者はこのチームの全サイトにアクセスできます。",
+      siteAccessDialogTitle: "サイト権限を編集",
+      saveSiteAccess: "権限を保存",
+      cancelSiteAccess: "キャンセル",
+      noSitesForAccess: "このチームにはまだサイトがありません。",
       inviteStatuses: {
         active: "有効",
         used: "使用済み",
@@ -8012,6 +8065,7 @@ const jaMessages = {
         email: "メール",
         inviteCode: "招待トークン",
         role: "権限",
+        siteAccess: "サイト権限",
         joinedAt: "参加日時",
         createdAt: "作成日時",
         expiresAt: "有効期限",

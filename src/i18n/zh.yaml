@@ -1071,6 +1071,8 @@ teamManagement:
     memberRemoveFailed: 移除成员失败。
     roleChanged: 成员角色已更新。
     roleChangeFailed: 更新成员角色失败。
+    siteAccessChanged: 成员站点权限已更新。
+    siteAccessChangeFailed: 更新站点权限失败。
     invalidTeamName: 团队名称至少 2 个字符。
     inviteCreated: 邀请链接已创建。
     inviteCreateFailed: 创建邀请链接失败。
@@ -1430,6 +1432,16 @@ teamManagement:
     noInvites: 当前团队暂无邀请链接。
     anyEmail: 任意邮箱
     revokeInvite: 撤销邀请
+    siteAccessLabel: 站点权限
+    siteAccessAll: 全部站点
+    siteAccessRestricted: 限定站点
+    siteAccessSelected: "已选择 {count} 个站点"
+    siteAccessDescription: 保持为全部站点，或选择此成员可以访问的具体站点。
+    siteAccessAdmins: 管理员可以访问此团队内的全部站点。
+    siteAccessDialogTitle: 编辑站点权限
+    saveSiteAccess: 保存权限
+    cancelSiteAccess: 取消
+    noSitesForAccess: 当前团队暂无站点。
     inviteStatuses:
       active: 有效
       used: 已使用
@@ -1441,6 +1453,7 @@ teamManagement:
       email: 邮箱
       inviteCode: 邀请码
       role: 角色
+      siteAccess: 站点权限
       joinedAt: 加入时间
       createdAt: 创建时间
       expiresAt: 过期时间
@@ -1662,7 +1675,8 @@ requestObservation:
   notConfiguredTitle: 尚未配置 Analytics Engine 读取凭据
   notConfiguredDescription: 请先在系统设置中填写 Cloudflare Account ID 和 API Token，用于读取请求观测 Analytics Engine 数据集。
   analyticsEngineDisabledTitle: Analytics Engine 尚未启用
-  analyticsEngineDisabledDescription: 当前部署未绑定 Analytics Engine，因为 Cloudflare
+  analyticsEngineDisabledDescription:
+    当前部署未绑定 Analytics Engine，因为 Cloudflare
     账户尚未启用 Analytics Engine。请先在 Cloudflare 中启用，然后重新部署以采集请求观测数据。
   openAnalyticsEngine: 打开 Analytics Engine
   openSettings: 打开设置
@@ -1783,7 +1797,8 @@ systemSettings:
   botAnalyticsDeleteFailed: 删除分析引擎配置失败。
   botAnalyticsDeleteConfirm: 确认删除分析引擎读取配置吗？删除后依赖 Analytics Engine 的功能会显示需要配置。
   botAnalyticsEngineDisabledTitle: Analytics Engine 尚未启用
-  botAnalyticsEngineDisabledDescription: 当前部署已自动禁用 Analytics Engine 绑定，因为
+  botAnalyticsEngineDisabledDescription:
+    当前部署已自动禁用 Analytics Engine 绑定，因为
     Cloudflare 账户尚未启用 Analytics Engine。请先在 Cloudflare 中启用 Analytics
     Engine，然后重新部署 InsightFlare 以激活相关分析功能。
   botAnalyticsEngineDisabledHint: 在启用 Analytics Engine 并重新部署 Worker 前，分析引擎设置不可修改。
@@ -1913,7 +1928,8 @@ systemPerformance:
   serverTime: 服务端写入时间
   estimatedDelay: 估算延迟
   doDiagnosticTitle: DO 内部缓冲诊断
-  doDiagnosticDescription: 直接询问每个站点的 Durable Object，统计 buffered_visits /
+  doDiagnosticDescription:
+    直接询问每个站点的 Durable Object，统计 buffered_visits /
     buffered_custom_events 是否存在停滞、未来时间戳或永久未刷新（脏）行。
   doDiagnosticLoadFailed: 加载 DO 诊断数据失败。
   doDiagnosticLoading: 正在拉取每个 DO 的状态…

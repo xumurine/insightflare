@@ -17,6 +17,12 @@ import {
   nf,
   parseJson,
 } from "./admin-response";
+import {
+  assertSitesBelongToTeam,
+  normalizeMemberSiteIds,
+  parseMemberSiteIdsJson,
+  serializeMemberSiteIds,
+} from "./member-site-access";
 import { deleteSiteScriptSettings } from "./site-settings-store";
 import type { Env } from "./types";
 import { clampString } from "./utils";
@@ -268,11 +274,21 @@ export async function handleMembersAdmin(
     if (!(await canReadTeam(env, a, teamId)))
       return forb("Team access denied", undefined, req);
     const rows = await env.DB.prepare(
-      "SELECT tm.team_id AS teamId,tm.user_id AS userId,tm.role,tm.joined_at AS joinedAt,u.username,u.email,u.name FROM team_members tm INNER JOIN users u ON u.id=tm.user_id WHERE tm.team_id=? ORDER BY tm.joined_at ASC",
+      "SELECT tm.team_id AS teamId,tm.user_id AS userId,tm.role,tm.site_ids_json AS siteIdsJson,tm.joined_at AS joinedAt,u.username,u.email,u.name FROM team_members tm INNER JOIN users u ON u.id=tm.user_id WHERE tm.team_id=? ORDER BY tm.joined_at ASC",
     )
       .bind(teamId)
       .all<Record<string, unknown>>();
-    return jsonResponseFor(req, { ok: true, data: rows.results });
+    return jsonResponseFor(req, {
+      ok: true,
+      data: rows.results.map((row) => {
+        const { siteIdsJson: _siteIdsJson, ...rest } = row;
+        return {
+          ...rest,
+          role: toTeamRole(row.role),
+          siteIds: parseMemberSiteIdsJson(_siteIdsJson),
+        };
+      }),
+    });
   }
   if (req.method === "POST") {
     const body = await parseJson(req);
@@ -304,6 +320,7 @@ export async function handleMembersAdmin(
           teamId,
           userId: m.id,
           role: "owner" as TeamRole,
+          siteIds: [],
           username: m.username,
           email: m.email,
           name: m.name || "",
@@ -322,6 +339,11 @@ export async function handleMembersAdmin(
         req,
       );
     const targetRole: TeamRole = requestedRole ?? "member";
+    const siteIds =
+      targetRole === "member" ? normalizeMemberSiteIds(body.siteIds) : [];
+    if (!(await assertSitesBelongToTeam(env, teamId, siteIds))) {
+      return bad("siteIds must belong to the team", undefined, req);
+    }
     const existingRole = await env.DB.prepare(
       "SELECT role FROM team_members WHERE team_id=? AND user_id=? LIMIT 1",
     )
@@ -330,9 +352,9 @@ export async function handleMembersAdmin(
     if (existingRole && toTeamRole(existingRole.role) === "owner")
       return forb("Cannot change team owner membership", undefined, req);
     await env.DB.prepare(
-      "INSERT INTO team_members (team_id,user_id,role,joined_at) VALUES (?,?,?,unixepoch()) ON CONFLICT(team_id,user_id) DO UPDATE SET role=excluded.role",
+      "INSERT INTO team_members (team_id,user_id,role,site_ids_json,joined_at) VALUES (?,?,?,?,unixepoch()) ON CONFLICT(team_id,user_id) DO UPDATE SET role=excluded.role, site_ids_json=excluded.site_ids_json",
     )
-      .bind(teamId, m.id, targetRole)
+      .bind(teamId, m.id, targetRole, serializeMemberSiteIds(siteIds))
       .run();
     return jsonResponseFor(req, {
       ok: true,
@@ -340,6 +362,7 @@ export async function handleMembersAdmin(
         teamId,
         userId: m.id,
         role: targetRole,
+        siteIds,
         username: m.username,
         email: m.email,
         name: m.name || "",
@@ -404,6 +427,31 @@ export async function handleMembersAdmin(
       return jsonResponseFor(req, {
         ok: true,
         data: { teamId, userId, role: nextRole, updated: true },
+      });
+    }
+
+    if (intent === "update_site_access") {
+      if (existingRole === "owner" || userId === team.ownerUserId)
+        return bad("Cannot change team owner site access", undefined, req);
+      if (existingRole !== "member") {
+        return bad(
+          "Site access is only configurable for members",
+          undefined,
+          req,
+        );
+      }
+      const siteIds = normalizeMemberSiteIds(body.siteIds);
+      if (!(await assertSitesBelongToTeam(env, teamId, siteIds))) {
+        return bad("siteIds must belong to the team", undefined, req);
+      }
+      await env.DB.prepare(
+        "UPDATE team_members SET site_ids_json=? WHERE team_id=? AND user_id=?",
+      )
+        .bind(serializeMemberSiteIds(siteIds), teamId, userId)
+        .run();
+      return jsonResponseFor(req, {
+        ok: true,
+        data: { teamId, userId, siteIds, updated: true },
       });
     }
 

@@ -617,6 +617,10 @@ export function handleDemoRequest(options: {
         bodyRecord.teamId || teamId || getDemoTeams()[0].id,
       );
       const role = bodyRecord.role === "admin" ? "admin" : "member";
+      const siteIds =
+        role === "member" && Array.isArray(bodyRecord.siteIds)
+          ? bodyRecord.siteIds
+          : [];
       const token = `demo_created_${role}_${now.toString(36)}`;
       return {
         ok: true,
@@ -627,7 +631,7 @@ export function handleDemoRequest(options: {
             teamId: inviteTeamId,
             userId: "",
             email: String(bodyRecord.email || ""),
-            payload: { teamRole: role, siteAccess: { mode: "all" } },
+            payload: { teamRole: role, siteIds },
             code: token,
             url: `https://demo.insightflare.app/invite#token=${token}`,
             createdByUserId: getDemoUser().id,

@@ -214,7 +214,14 @@ export async function handleTeamDashboard(
   const team = await resolvePrivateTeam(request, env, url);
   if (team instanceof Response) return team;
 
-  return handleTeamDashboardForTeam(env, url, team.id, window, undefined, ctx);
+  return handleTeamDashboardForTeam(
+    env,
+    url,
+    team.id,
+    window,
+    team.allowedSiteIds,
+    ctx,
+  );
 }
 
 export async function handleTeamDashboardForTeam(

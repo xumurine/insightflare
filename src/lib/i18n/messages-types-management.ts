@@ -474,6 +474,8 @@ export interface AppManagementMessages {
       memberRemoveFailed: string;
       roleChanged: string;
       roleChangeFailed: string;
+      siteAccessChanged: string;
+      siteAccessChangeFailed: string;
       invalidTeamName: string;
       invalidMemberIdentifier: string;
       inviteCreated: string;
@@ -869,6 +871,16 @@ export interface AppManagementMessages {
       noInvites: string;
       anyEmail: string;
       revokeInvite: string;
+      siteAccessLabel: string;
+      siteAccessAll: string;
+      siteAccessRestricted: string;
+      siteAccessSelected: string;
+      siteAccessDescription: string;
+      siteAccessAdmins: string;
+      siteAccessDialogTitle: string;
+      saveSiteAccess: string;
+      cancelSiteAccess: string;
+      noSitesForAccess: string;
       inviteStatuses: {
         active: string;
         used: string;
@@ -881,6 +893,7 @@ export interface AppManagementMessages {
         email: string;
         inviteCode: string;
         role: string;
+        siteAccess: string;
         joinedAt: string;
         createdAt: string;
         expiresAt: string;

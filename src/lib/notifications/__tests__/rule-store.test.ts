@@ -343,10 +343,12 @@ describe("notification rule store", () => {
               })),
             };
           }
-          if (sql.includes("SELECT role FROM team_members")) {
+          if (sql.includes("SELECT role,site_ids_json")) {
             return {
               bind: vi.fn(() => ({
-                first: vi.fn(() => Promise.resolve({ role: "member" })),
+                first: vi.fn(() =>
+                  Promise.resolve({ role: "member", siteIdsJson: "[]" }),
+                ),
               })),
             };
           }

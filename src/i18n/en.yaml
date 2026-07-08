@@ -291,7 +291,8 @@ sessionDetail:
   customEvent: Custom event
   eventTitleSeparator: ": "
   visitDetailsTitle: Visit details
-  visitDetailsSubtitle: Session start, pageviews, exits, and custom events in the
+  visitDetailsSubtitle:
+    Session start, pageviews, exits, and custom events in the
     order they happened.
   location: Location
   visitorId: Visitor ID
@@ -377,7 +378,8 @@ funnels:
   title: Funnels
   subtitle: Measure conversion through multi-step user journeys.
   listTitle: Funnel definitions
-  listSubtitle: Build a reusable sequence, then inspect conversion for the current
+  listSubtitle:
+    Build a reusable sequence, then inspect conversion for the current
     dashboard window.
   create: New funnel
   createTitle: Create funnel
@@ -514,7 +516,8 @@ retention:
   legendHigh: High
   periodZero: Initial
   empty: Not enough return data in this time range.
-  emptyHint: Use a wider range or choose a coarser interval from the top selector
+  emptyHint:
+    Use a wider range or choose a coarser interval from the top selector
     to reveal the retention shape sooner.
   loadError: Unable to load retention data.
   unavailableCell: This cohort has not reached this period yet.
@@ -646,7 +649,8 @@ performance:
   lcp: Largest Contentful Paint
   cls: Cumulative Layout Shift
   inp: Interaction to Next Paint
-  ttfbDescription: Measures how long the browser waits before receiving the first
+  ttfbDescription:
+    Measures how long the browser waits before receiving the first
     byte from the server. It reflects backend latency, network delay, and cache
     effectiveness.
   fcpDescription: Measures when the first text or image is painted. It reflects
@@ -655,13 +659,15 @@ performance:
     rendering. It is the main loading speed signal for perceived page readiness.
   clsDescription: Measures unexpected layout movement during the page lifecycle.
     Lower values mean the page is visually stable.
-  inpDescription: Measures the latency of user interactions before the next paint.
+  inpDescription:
+    Measures the latency of user interactions before the next paint.
     It reflects how responsive the page feels after loading.
   msUnit: ms
   secondsUnit: s
   clsUnit: score
   score: Experience Score
-  scoreDescription: Combines P75 loading, stability, and interaction metrics into
+  scoreDescription:
+    Combines P75 loading, stability, and interaction metrics into
     a 0 to 100 experience score. Higher is better.
   great: Great
   needsImprovement: Needs Improvement
@@ -737,7 +743,8 @@ siteSettings:
   performanceGroupTitle: Performance Tracking
   performanceGroupDescription: Control Web performance metric collection with one sampling rate.
   performanceSampleRateLabel: Performance Sample Rate (%)
-  performanceSampleRateHint: A sampled visit records TTFB, FCP, LCP, CLS, and INP
+  performanceSampleRateHint:
+    A sampled visit records TTFB, FCP, LCP, CLS, and INP
     on leave. Use 0 to disable sampling or 100 for full coverage.
   booleanOn: On
   booleanOff: Off
@@ -814,7 +821,8 @@ accountSettings:
   preferredLanguageSaved: Notification language saved.
   preferredLanguageSaveFailed: Failed to save notification language.
   timeZoneTitle: Reporting Time Zone
-  timeZoneDescription: Calendar ranges and aggregation buckets use this time zone
+  timeZoneDescription:
+    Calendar ranges and aggregation buckets use this time zone
     across the dashboard.
   activeTimeZone: Active time zone
   browserTimeZone: Browser time zone
@@ -909,7 +917,8 @@ notificationCenter:
   allTypes: All types
   allSeverities: All severities
   preferencesTitle: Notification preferences
-  preferencesDescription: These settings control email delivery and which messages
+  preferencesDescription:
+    These settings control email delivery and which messages
     remain unread for attention.
   emailNotificationsLabel: Email notifications
   emailNotificationsDescription: Send email when a rule triggers.
@@ -960,7 +969,8 @@ notificationEmail:
     subject: InsightFlare notification test
     title: InsightFlare notification test
     summary: This is a test notification from InsightFlare.
-    body: This is a test notification from InsightFlare. If email is configured and
+    body:
+      This is a test notification from InsightFlare. If email is configured and
       enabled, it also verifies Resend delivery.
   report:
     subject: "{site} {periodLabel} traffic report"
@@ -991,7 +1001,8 @@ notificationEmail:
   health:
     subject: "{site} has not received traffic data for {hours} hours"
     title: "{site} has not received traffic data for {hours} hours"
-    noHistory: No historical traffic data is available. Check whether the tracking
+    noHistory:
+      No historical traffic data is available. Check whether the tracking
       script is installed correctly.
   change:
     subject: "{site} traffic change alert"
@@ -1001,16 +1012,19 @@ runtimeConfigError:
   title: Runtime configuration required
   eyebrow: Deployment paused
   heading: InsightFlare needs one runtime secret before the dashboard can load.
-  description: The app has started, but the current runtime environment could not
+  description:
+    The app has started, but the current runtime environment could not
     read the required root secret, so dashboard access is temporarily blocked.
   requiredTitle: Required runtime secret
   requiredDescription: Set at least one of the following values in your Cloudflare runtime secrets.
-  secretHint: MAIN_SECRET is recommended. Existing deployments can continue using
+  secretHint:
+    MAIN_SECRET is recommended. Existing deployments can continue using
     DAILY_SALT_SECRET.
   commandTitle: Cloudflare command
   commandDescription: Use the project helper command to write the recommended
     secret, then redeploy.
-  quickStartHint: Or see the Quick Start section in the GitHub README to configure
+  quickStartHint:
+    Or see the Quick Start section in the GitHub README to configure
     this variable.
   docsLabel: Open GitHub
   homeLabel: Retry dashboard
@@ -1108,6 +1122,8 @@ teamManagement:
     memberRemoveFailed: Failed to remove member.
     roleChanged: Member role updated.
     roleChangeFailed: Failed to update member role.
+    siteAccessChanged: Member site access updated.
+    siteAccessChangeFailed: Failed to update site access.
     invalidTeamName: Team name must be at least 2 characters.
     inviteCreated: Invite link created.
     inviteCreateFailed: Failed to create invite link.
@@ -1137,7 +1153,8 @@ teamManagement:
     subtitle: Manage event notification rules for this team.
     empty: This team has no event notification rules yet.
     forbiddenTitle: Notification rules are managed by team admins
-    forbiddenDescription: You can still view your own notifications and update your
+    forbiddenDescription:
+      You can still view your own notifications and update your
       personal notification preferences.
     rulesTitle: Notification Rules
     enabledCount: "{count} enabled rules in this team."
@@ -1446,13 +1463,15 @@ teamManagement:
     deleting: Deleting...
     deleteConfirm: Delete this team and all its data? This action cannot be undone.
     transferTitle: Transfer Ownership
-    transferSubtitle: Transfer team ownership to another member. The current owner
+    transferSubtitle:
+      Transfer team ownership to another member. The current owner
       will be demoted to admin.
     transferTargetLabel: New Owner
     transferTargetPlaceholder: Choose a team member
     transfer: Transfer ownership
     transferring: Transferring...
-    transferConfirm: This action cannot be undone. You will lose ownership but keep
+    transferConfirm:
+      This action cannot be undone. You will lose ownership but keep
       admin access. Continue?
     noTransferableMembers: No other members are available to transfer to. Add a member first.
   members:
@@ -1473,6 +1492,16 @@ teamManagement:
     noInvites: This team has no invite links yet.
     anyEmail: Any email
     revokeInvite: Revoke invite
+    siteAccessLabel: Site access
+    siteAccessAll: All sites
+    siteAccessRestricted: Restricted
+    siteAccessSelected: "Selected {count} sites"
+    siteAccessDescription: Leave this set to all sites, or choose the specific sites this member can access.
+    siteAccessAdmins: Admins can access every site in this team.
+    siteAccessDialogTitle: Edit site access
+    saveSiteAccess: Save access
+    cancelSiteAccess: Cancel
+    noSitesForAccess: This team has no sites yet.
     inviteStatuses:
       active: Active
       used: Used
@@ -1484,6 +1513,7 @@ teamManagement:
       email: Email
       inviteCode: Invite token
       role: Role
+      siteAccess: Site access
       joinedAt: Joined
       createdAt: Created
       expiresAt: Expires
@@ -1595,7 +1625,8 @@ managementPages:
     taskDefinitions:
       visit_hourly_rollup:
         name: Hourly visit aggregation
-        description: Aggregates closed visit rows into hourly rollups for dashboard
+        description:
+          Aggregates closed visit rows into hourly rollups for dashboard
           counters and trends.
         schedule: Every hour
       notification_tick:
@@ -1606,7 +1637,8 @@ adminUsers:
   title: User Management
   subtitle: Only system admins can create and manage dashboard users.
   createTitle: Create User
-  createTeamNotice: Creating a user here will also create a new Team owned by that
+  createTeamNotice:
+    Creating a user here will also create a new Team owned by that
     user. To add someone to an existing team, create an invite link from that
     team's settings.
   username: Username
@@ -1727,7 +1759,8 @@ requestObservation:
   recentShowing: Showing
   recentLoadedAll: All records loaded
   detailTitle: Bot Request Detail
-  detailSubtitle: Inspect detection signals, network context, and client data for
+  detailSubtitle:
+    Inspect detection signals, network context, and client data for
     this diverted request.
   client: Client
   edge: Edge
@@ -1792,7 +1825,8 @@ requestObservation:
     pageviews: Pageviews
     customEvents: Custom events
     overviewTrendTitle: Request routing trend
-    overviewTrendDescription: Normal requests, abnormal requests, and abnormal ratio
+    overviewTrendDescription:
+      Normal requests, abnormal requests, and abnormal ratio
       bucketed by the top-bar interval.
     trafficCompositionTitle: Request composition
     trafficCompositionDescription: Normal requests, abnormal requests, and page events on the same timeline.
@@ -1804,16 +1838,19 @@ requestObservation:
     latencyTitle: Edge latency trend
     latencyDescription: P50 / P75 / P95 / P99 edge latency recorded when normal
       requests are written to AE.
-    abnormalSubtitle: Focus on diverted abnormal requests. Maps and tables show only
+    abnormalSubtitle:
+      Focus on diverted abnormal requests. Maps and tables show only
       red abnormal traffic.
-    normalSubtitle: Focus on requests that entered the normal collection pipeline.
+    normalSubtitle:
+      Focus on requests that entered the normal collection pipeline.
       Maps and tables show only normal traffic.
     requests: Requests
     windowDays: "Last {days} days"
     latencyMilliseconds: "{value} ms"
   normalDetail:
     title: Normal Request Detail
-    subtitle: Inspect pipeline, location, and latency fields recorded for a normal
+    subtitle:
+      Inspect pipeline, location, and latency fields recorded for a normal
       request in AE.
     requestMethod: Request method
     edgeLatency: Edge latency
@@ -1851,7 +1888,8 @@ systemSettings:
     Analytics Engine is enabled and the Worker is redeployed.
   botAnalyticsOpenCloudflare: Open Cloudflare Analytics Engine
   botAnalyticsGuideTitle: Get Analytics Engine credentials
-  botAnalyticsGuideDescription: Analytics Engine needs Cloudflare account details
+  botAnalyticsGuideDescription:
+    Analytics Engine needs Cloudflare account details
     and an API token that can read Analytics Engine data.
   botAnalyticsGuideSteps:
     - Open the Cloudflare Dashboard, enter the target account, and copy the Account ID.
@@ -1862,7 +1900,8 @@ systemSettings:
   notificationEmailTitle: Email Notifications
   notificationEmailDescription: Configure the email service used for reports, alerts, and test messages.
   notificationEmailGuideTitle: Get Resend email settings
-  notificationEmailGuideDescription: To send system email through Resend, prepare
+  notificationEmailGuideDescription:
+    To send system email through Resend, prepare
     a verified sender domain and an API key.
   notificationEmailGuideSteps:
     - Open the Resend Dashboard and confirm the sender domain has passed DNS verification.
@@ -1955,7 +1994,8 @@ systemPerformance:
   delayed: Delayed
   future: Future clock
   latencyPercentileTrend: Latency Percentile Trend
-  latencyPercentileTrendDescription: P50, P75, and P95 estimated delay for trusted
+  latencyPercentileTrendDescription:
+    P50, P75, and P95 estimated delay for trusted
     samples grouped by server write time.
   throughputTrend: Accepted Event Throughput
   throughputTrendDescription: Rows grouped by server write time. Bars combine visits and custom events.
@@ -1963,7 +2003,8 @@ systemPerformance:
   customEvents: Custom Events
   anomalyBucket: Anomaly bucket
   openVisitHealth: Open Visit Backlog
-  openVisitHealthDescription: Open rows that have not been closed by leave, route
+  openVisitHealthDescription:
+    Open rows that have not been closed by leave, route
     change, or timeout finalization.
   open: Open
   stale: Stale
@@ -1985,7 +2026,8 @@ systemPerformance:
   serverTime: Server write time
   estimatedDelay: Estimated delay
   doDiagnosticTitle: DO Buffer Diagnostic
-  doDiagnosticDescription: Asks each site's Durable Object directly for the state
+  doDiagnosticDescription:
+    Asks each site's Durable Object directly for the state
     of buffered_visits / buffered_custom_events to surface stale rows,
     future-skewed timestamps, or stuck dirty rows.
   doDiagnosticLoadFailed: Failed to load DO diagnostic data.

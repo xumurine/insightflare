@@ -195,7 +195,7 @@ describe("private archive edge query handler", () => {
         ok: false,
         error: { message: "Site access denied for current user" },
       });
-      expect(membership.bind).toHaveBeenCalledWith("site-1", "user-1");
+      expect(membership.bind).toHaveBeenCalledWith("user-1", "site-1");
     });
 
     it("rejects invalid manifest time windows after authorization", async () => {
@@ -266,7 +266,14 @@ describe("private archive edge query handler", () => {
 
     it("lists authorized manifest files with encoded private fetch URLs", async () => {
       requireSessionMock.mockResolvedValue(userSession);
-      const membership = statement({ first: { ok: 1 } });
+      const membership = statement({
+        first: {
+          id: "site-1",
+          ownerUserId: "owner-1",
+          role: "member",
+          siteIdsJson: '["site-1"]',
+        },
+      });
       const list = statement({
         all: [
           {
@@ -311,7 +318,7 @@ describe("private archive edge query handler", () => {
           },
         ],
       });
-      expect(membership.bind).toHaveBeenCalledWith("site-1", "user-1");
+      expect(membership.bind).toHaveBeenCalledWith("user-1", "site-1");
       expect(list.bind).toHaveBeenCalledWith("site-1", 2, 4);
       expect(prepare).toHaveBeenCalledTimes(2);
     });
@@ -413,7 +420,7 @@ describe("private archive edge query handler", () => {
       expect(csvRow.bind).toHaveBeenCalledWith("site/export.csv");
     });
 
-    it("denies file access when a non-admin user is not a site member", async () => {
+    it("denies file access when a non-admin member lacks site access", async () => {
       requireSessionMock.mockResolvedValue(userSession);
       const archiveRow = statement({
         first: {
@@ -422,7 +429,14 @@ describe("private archive edge query handler", () => {
           siteId: "site-1",
         },
       });
-      const membership = statement({ first: { ok: 0 } });
+      const membership = statement({
+        first: {
+          id: "site-1",
+          ownerUserId: "owner-1",
+          role: "member",
+          siteIdsJson: '["site-2"]',
+        },
+      });
       const bucket = createBucket(r2Object());
       const { env } = createEnv([archiveRow, membership], bucket);
 
@@ -436,7 +450,7 @@ describe("private archive edge query handler", () => {
         ok: false,
         error: { message: "Site access denied for current user" },
       });
-      expect(membership.bind).toHaveBeenCalledWith("site-1", "user-1");
+      expect(membership.bind).toHaveBeenCalledWith("user-1", "site-1");
       expect(bucket.get).not.toHaveBeenCalled();
     });
 
@@ -475,7 +489,14 @@ describe("private archive edge query handler", () => {
           siteId: "site-1",
         },
       });
-      const membership = statement({ first: { ok: 1 } });
+      const membership = statement({
+        first: {
+          id: "site-1",
+          ownerUserId: "owner-1",
+          role: "member",
+          siteIdsJson: "[]",
+        },
+      });
       const bucket = createBucket(r2Object({ body: "full-parquet", size: 12 }));
       const { env } = createEnv([archiveRow, membership], bucket);
 
@@ -495,7 +516,7 @@ describe("private archive edge query handler", () => {
       expect(response.headers.get("etag")).toBe('"archive-etag"');
       expect(response.headers.get("content-length")).toBe("12");
       expect(await response.text()).toBe("full-parquet");
-      expect(membership.bind).toHaveBeenCalledWith("site-1", "user-1");
+      expect(membership.bind).toHaveBeenCalledWith("user-1", "site-1");
       expect(bucket.get).toHaveBeenCalledWith("site/day.parquet", undefined);
     });
 

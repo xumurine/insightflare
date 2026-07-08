@@ -403,6 +403,7 @@ export async function addAdminMember(input: {
   identifier: string;
   userId?: string;
   role?: TeamRole;
+  siteIds?: string[];
 }): Promise<MemberData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: MemberData }>({
     method: "POST",
@@ -424,6 +425,22 @@ export async function updateAdminMemberRole(input: {
     method: "PATCH",
     path: "/api/private/admin/members",
     body: { ...input, intent: "update_role" },
+  });
+  return res.data;
+}
+
+export async function updateAdminMemberSiteAccess(input: {
+  teamId: string;
+  userId: string;
+  siteIds: string[];
+}): Promise<{ teamId: string; userId: string; siteIds: string[] }> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: { teamId: string; userId: string; siteIds: string[] };
+  }>({
+    method: "PATCH",
+    path: "/api/private/admin/members",
+    body: { ...input, intent: "update_site_access" },
   });
   return res.data;
 }

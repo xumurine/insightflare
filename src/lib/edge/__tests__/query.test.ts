@@ -819,11 +819,7 @@ describe("edge query handlers", () => {
       ok: false,
       error: { message: "Site not found" },
     });
-    expect(statements[0].bind).toHaveBeenCalledWith(
-      "user-1",
-      "site-1",
-      "user-1",
-    );
+    expect(statements[0].bind).toHaveBeenCalledWith("user-1", "site-1");
   });
 
   it("returns overview metrics, comparison, detail trend, and normalized filter bindings", async () => {
@@ -1780,11 +1776,7 @@ describe("edge query handlers", () => {
       ok: false,
       error: { message: "Team not found" },
     });
-    expect(statements[0].bind).toHaveBeenCalledWith(
-      "user-1",
-      "team-1",
-      "user-1",
-    );
+    expect(statements[0].bind).toHaveBeenCalledWith("user-1", "team-1");
   });
 
   it("routes team dashboard with team auth, site summaries, trends, and empty teams", async () => {

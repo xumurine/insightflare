@@ -1,3 +1,7 @@
+import {
+  canAccessMemberSite,
+  parseMemberSiteIdsJson,
+} from "@/lib/edge/member-site-access";
 import { requireSession } from "@/lib/edge/session-auth";
 import type { Env } from "@/lib/edge/types";
 
@@ -27,24 +31,45 @@ export async function resolvePrivateSite(
 
   const site = await env.DB.prepare(
     `
-      SELECT s.id, s.name, s.domain
+      SELECT
+        s.id,
+        s.name,
+        s.domain,
+        t.owner_user_id AS ownerUserId,
+        tm.role,
+        tm.site_ids_json AS siteIdsJson
       FROM sites s
       INNER JOIN teams t ON t.id = s.team_id
       LEFT JOIN team_members tm ON tm.team_id = s.team_id AND tm.user_id = ?
-      WHERE s.id = ? AND (t.owner_user_id = ? OR tm.user_id IS NOT NULL)
+      WHERE s.id = ?
       LIMIT 1
     `,
   )
-    .bind(session.userId, siteId, session.userId)
-    .first<SiteRow>();
-  return site ?? notFound("Site not found", undefined, request);
+    .bind(session.userId, siteId)
+    .first<
+      SiteRow & {
+        ownerUserId: string;
+        role: string | null;
+        siteIdsJson: string | null;
+      }
+    >();
+  if (!site) return notFound("Site not found", undefined, request);
+  if (site.ownerUserId === session.userId) return site;
+  if (site.role === "owner" || site.role === "admin") return site;
+  if (
+    site.role &&
+    canAccessMemberSite(parseMemberSiteIdsJson(site.siteIdsJson), siteId)
+  ) {
+    return site;
+  }
+  return notFound("Site not found", undefined, request);
 }
 
 export async function resolvePrivateTeam(
   request: Request,
   env: Env,
   url: URL,
-): Promise<{ id: string } | Response> {
+): Promise<{ id: string; allowedSiteIds?: string[] } | Response> {
   const session = await requireSession(request, env);
   if (!session) return unauthorized("Unauthorized", undefined, request);
 
@@ -60,16 +85,32 @@ export async function resolvePrivateTeam(
 
   const team = await env.DB.prepare(
     `
-      SELECT t.id
+      SELECT
+        t.id,
+        t.owner_user_id AS ownerUserId,
+        tm.role,
+        tm.site_ids_json AS siteIdsJson
       FROM teams t
       LEFT JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = ?
-      WHERE t.id = ? AND (t.owner_user_id = ? OR tm.user_id IS NOT NULL)
+      WHERE t.id = ?
       LIMIT 1
     `,
   )
-    .bind(session.userId, teamId, session.userId)
-    .first<{ id: string }>();
-  return team ?? notFound("Team not found", undefined, request);
+    .bind(session.userId, teamId)
+    .first<{
+      id: string;
+      ownerUserId: string;
+      role: string | null;
+      siteIdsJson: string | null;
+    }>();
+  if (!team) return notFound("Team not found", undefined, request);
+  if (team.ownerUserId === session.userId) return { id: team.id };
+  if (team.role === "owner" || team.role === "admin") return { id: team.id };
+  if (!team.role) return notFound("Team not found", undefined, request);
+  return {
+    id: team.id,
+    allowedSiteIds: parseMemberSiteIdsJson(team.siteIdsJson),
+  };
 }
 
 export async function fetchPublicSite(

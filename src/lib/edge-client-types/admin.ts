@@ -35,6 +35,7 @@ export interface MemberData {
   teamId: string;
   userId: string;
   role: TeamRole;
+  siteIds: string[];
   joinedAt: number;
   username: string;
   email: string;
