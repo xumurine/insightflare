@@ -49,6 +49,7 @@ function pageview(overrides: Partial<NormalizedPageview> = {}) {
     visitorId: "visitor-1",
     sessionId: "session-1",
     previousVisitId: "",
+    previousVisitStartedAt: null,
     startedAt: NOW - 1_000,
     pathname: "/docs",
     queryString: "",

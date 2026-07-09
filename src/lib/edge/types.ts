@@ -71,6 +71,7 @@ export interface TrackerClientPayload {
   performanceVisitId?: string;
   eventId?: string;
   sequence?: number;
+  navigation?: string;
   timestamp?: number;
   startedAt?: number;
   pathname?: string;
@@ -160,6 +161,7 @@ export interface NormalizedVisitContext {
 export interface NormalizedPageview extends NormalizedVisitContext {
   kind: "pageview";
   previousVisitId: string;
+  previousVisitStartedAt: number | null;
   receivedAt: number;
 }
 
