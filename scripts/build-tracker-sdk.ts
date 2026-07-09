@@ -29,6 +29,33 @@ const commonOpts: esbuild.BuildOptions = {
   write: false,
 };
 
+const noPerformancePlugin: esbuild.Plugin = {
+  name: "tracker-no-performance-stub",
+  setup(build) {
+    build.onResolve({ filter: /^\.\/performance$/ }, () => ({
+      path: "tracker-no-performance-stub",
+      namespace: "tracker-no-performance-stub",
+    }));
+
+    build.onLoad(
+      { filter: /.*/, namespace: "tracker-no-performance-stub" },
+      () => ({
+        loader: "ts",
+        contents: `
+          export function createPerformanceTracker() {
+            return {
+              buildPayload() { return null; },
+              hasVisit() { return false; },
+              start() {},
+              stop() {},
+            };
+          }
+        `,
+      }),
+    );
+  },
+};
+
 function generateOutput(text: string, label: string): string {
   const escaped = JSON.stringify(text);
   return [
@@ -62,6 +89,7 @@ async function build() {
   const noPerfResult = await esbuild.build({
     ...commonOpts,
     define: { BUILD_PERFORMANCE: "false" },
+    plugins: [noPerformancePlugin],
   });
   const noPerfText = noPerfResult.outputFiles![0].text;
   const noPerfPath = resolve(root, "src/tracker/sdk.no-perf.min.ts");
