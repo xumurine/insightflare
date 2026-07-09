@@ -1145,7 +1145,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     delete (globalThis as any).IntersectionObserver;
   });
 
-  it("should normalize UA client hints when navigator.userAgentData exists", async () => {
+  it("should include UA client hints when navigator.userAgentData exists", async () => {
     const uaData = {
       brands: [{ brand: "Chromium", version: "130" }],
       mobile: false,
@@ -1747,7 +1747,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     expect(body.eventData).toEqual({ label: "kept" });
   });
 
-  it("should normalize malformed UA client hints without preserving invalid values", async () => {
+  it("should forward raw UA client hints for server-side normalization", async () => {
     (navigator as any).userAgentData = {
       brands: [
         null,
@@ -1782,10 +1782,21 @@ describe("Tracker Browser SDK Integration Suite", () => {
 
     const body = decodeFetchBody(fetchSpy);
     expect(body.uaClientHints).toEqual({
-      fullVersionList: [{ brand: "Chromium", version: "130.0.6723.92" }],
-      formFactors: ["Desktop", "Foldable"],
-      model: "Surface Pro",
-      platformVersion: "15.0.0",
+      brands: [
+        null,
+        [],
+        { brand: "", version: "1" },
+        { brand: "MissingVersion", version: "" },
+      ],
+      mobile: "false",
+      platform: "   ",
+      fullVersionList: [
+        { brand: "Chromium", version: "130.0.6723.92" },
+        { brand: "", version: "bad" },
+      ],
+      formFactors: [" Desktop ", "", "Foldable"],
+      model: " Surface Pro ",
+      platformVersion: " 15.0.0 ",
     });
   });
 
@@ -2049,9 +2060,10 @@ describe("Tracker Browser SDK Integration Suite", () => {
     const body = decodeFetchBody(fetchSpy);
     expect(body.kind).toBe("pageview");
     expect(body.uaClientHints.brands).toEqual([
+      { brand: "", version: "missing-brand" },
       { brand: "Chromium", version: "130" },
     ]);
-    expect(body.uaClientHints.formFactors).toEqual(["Desktop", "Tablet"]);
+    expect(body.uaClientHints.formFactors).toEqual(["Desktop", "", "Tablet"]);
     expect(body.uaClientHints.model).toBe("Surface");
   });
 

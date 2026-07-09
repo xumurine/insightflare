@@ -114,6 +114,7 @@
     "prettier": "^3.8.3",
     "rlog-js": "^2.1.0",
     "tailwindcss": "^4.3.0",
+    "terser": "^5.49.0",
     "tsx": "^4.22.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.59.4",
