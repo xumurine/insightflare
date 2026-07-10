@@ -1094,9 +1094,8 @@ teamManagement:
     openAnalytics: 查看分析
   widgets:
     title: 小组件
-    subtitle: 管理当前团队各站点的小组件配置。
-    noSites: 当前团队还没有可配置小组件的站点。
-    openWidgets: 管理小组件
+    subtitle: 小组件功能正在开发中。
+    underConstruction: 正在施工中
   notifications:
     title: 事件通知
     subtitle: 管理当前团队的事件通知规则。

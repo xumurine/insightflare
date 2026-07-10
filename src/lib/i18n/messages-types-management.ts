@@ -501,8 +501,7 @@ export interface AppManagementMessages {
     widgets: {
       title: string;
       subtitle: string;
-      noSites: string;
-      openWidgets: string;
+      underConstruction: string;
     };
     notifications: {
       title: string;

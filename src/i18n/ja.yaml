@@ -1100,9 +1100,8 @@ teamManagement:
     openAnalytics: アナリティクスを開く
   widgets:
     title: ウィジェット
-    subtitle: このチームのサイト用ウィジェット設定を管理します。
-    noSites: このチームにはウィジェットで利用可能なサイトがありません。
-    openWidgets: ウィジェットを管理
+    subtitle: ウィジェット機能を開発中です。
+    underConstruction: 準備中
   notifications:
     title: イベント通知
     subtitle: このチームのイベント通知ルールを管理します。

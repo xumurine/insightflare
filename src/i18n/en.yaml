@@ -1145,9 +1145,8 @@ teamManagement:
     openAnalytics: Open analytics
   widgets:
     title: Widgets
-    subtitle: Manage widget configuration for sites in this team.
-    noSites: No site is available for widgets in this team.
-    openWidgets: Manage widgets
+    subtitle: Widget functionality is being built.
+    underConstruction: Under construction
   notifications:
     title: Event Notifications
     subtitle: Manage event notification rules for this team.

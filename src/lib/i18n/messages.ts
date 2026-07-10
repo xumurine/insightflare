@@ -1127,8 +1127,7 @@ export interface AppMessages {
     widgets: {
       title: string;
       subtitle: string;
-      noSites: string;
-      openWidgets: string;
+      underConstruction: string;
     };
     notifications: {
       title: string;
@@ -3275,9 +3274,8 @@ const enMessages = {
     },
     widgets: {
       title: "Widgets",
-      subtitle: "Manage widget configuration for sites in this team.",
-      noSites: "No site is available for widgets in this team.",
-      openWidgets: "Manage widgets",
+      subtitle: "Widget functionality is being built.",
+      underConstruction: "Under construction",
     },
     notifications: {
       title: "Event Notifications",
@@ -5463,9 +5461,8 @@ const zhMessages = {
     },
     widgets: {
       title: "小组件",
-      subtitle: "管理当前团队各站点的小组件配置。",
-      noSites: "当前团队还没有可配置小组件的站点。",
-      openWidgets: "管理小组件",
+      subtitle: "小组件功能正在开发中。",
+      underConstruction: "正在施工中",
     },
     notifications: {
       title: "事件通知",
@@ -7661,9 +7658,8 @@ const jaMessages = {
     },
     widgets: {
       title: "ウィジェット",
-      subtitle: "このチームのサイト用ウィジェット設定を管理します。",
-      noSites: "このチームにはウィジェットで利用可能なサイトがありません。",
-      openWidgets: "ウィジェットを管理",
+      subtitle: "ウィジェット機能を開発中です。",
+      underConstruction: "準備中",
     },
     notifications: {
       title: "イベント通知",
