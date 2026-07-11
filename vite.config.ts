@@ -50,6 +50,9 @@ export default defineConfig(({ mode }) => {
   return {
     define: {
       "import.meta.env.VITE_APP_VERSION": JSON.stringify(packageJson.version),
+      "import.meta.env.VITE_COMMIT_SHA": JSON.stringify(
+        process.env.COMMIT_SHA || "",
+      ),
       "import.meta.env.VITE_DEMO_MODE": JSON.stringify(demoMode),
       "import.meta.env.VITE_INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED":
         JSON.stringify("0"),

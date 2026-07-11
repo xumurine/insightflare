@@ -37,6 +37,20 @@ test("public links are present in the server-rendered HTML", async ({
   expect(html).toContain("已启用");
 });
 
+test("keeps the full version updates dashboard in the server-rendered HTML", async ({
+  request,
+}) => {
+  const response = await request.get("/zh/app/manage/version-updates");
+  expect(response.status()).toBe(200);
+  const html = await response.text();
+  expect(html).toContain("当前版本");
+  expect(html).toContain("最新版本");
+  expect(html).toContain("当前提交");
+  expect(html).toContain("发布数");
+  expect(html).toContain("更新说明");
+  expect(html).toContain("查看详细变更");
+});
+
 test("keeps client navigation on the server function endpoint", async ({
   page,
 }) => {
