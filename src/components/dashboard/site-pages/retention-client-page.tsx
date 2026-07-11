@@ -1,5 +1,3 @@
-"use client";
-
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import {
   type RemixiconComponentType,

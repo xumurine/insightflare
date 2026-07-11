@@ -1,7 +1,4 @@
-"use client";
-
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
   RiAddLine,
   RiCheckboxCircleLine,
@@ -85,6 +82,7 @@ import {
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
+import Link from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 interface TeamNotificationsClientProps {

@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
 import {
   RiCloseLine,
@@ -119,7 +117,7 @@ function apiMessage(payload: ApiResponse<unknown>, fallback: string): string {
 }
 
 async function fetchEmailConfig(): Promise<PublicNotificationEmailConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: API_PATH,
@@ -143,7 +141,7 @@ async function fetchEmailConfig(): Promise<PublicNotificationEmailConfig> {
 async function saveEmailConfig(
   body: Record<string, unknown>,
 ): Promise<PublicNotificationEmailConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: API_PATH,
@@ -171,7 +169,7 @@ async function saveEmailConfig(
 }
 
 async function deleteEmailConfig(): Promise<PublicNotificationEmailConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: API_PATH,
@@ -199,7 +197,7 @@ async function sendTestEmail(to: string): Promise<TestEmailResponse> {
   const path = `${API_PATH}/test`;
   const body = { to };
 
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path,

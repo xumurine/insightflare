@@ -1,8 +1,5 @@
-"use client";
-
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Map, { type MapRef, useControl } from "react-map-gl/maplibre";
-import { useTheme } from "next-themes";
 import type { MapViewState } from "@deck.gl/core";
 import { GeoJsonLayer, ScatterplotLayer } from "@deck.gl/layers";
 import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
@@ -11,6 +8,7 @@ import isoCountries from "i18n-iso-countries";
 import type { Map as MaplibreMap, StyleSpecification } from "maplibre-gl";
 import { animate, AnimatePresence, motion } from "motion/react";
 
+import { useTheme } from "@/components/theme-provider";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Spinner } from "@/components/ui/spinner";

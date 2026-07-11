@@ -1,8 +1,9 @@
-import "server-only";
+import "@tanstack/react-start/server-only";
 
 import { cache } from "react";
 
 import {
+  type AccountUserData,
   fetchAdminMe,
   fetchAdminSites,
   fetchNotificationMessages,
@@ -10,21 +11,14 @@ import {
   type SiteData,
   type TeamData,
 } from "@/lib/edge-client";
-import type { Locale } from "@/lib/i18n/config";
+export { buildSitePath } from "@/lib/dashboard/paths";
 
 export interface SiteWithSlug extends SiteData {
   slug: string;
 }
 
 export interface DashboardContext {
-  user: {
-    id: string;
-    username: string;
-    email: string;
-    name: string;
-    systemRole: "admin" | "user";
-    timeZone?: string;
-  };
+  user: AccountUserData;
   teams: TeamData[];
   teamGroups: SessionTeamGroups;
   activeTeam: TeamData;
@@ -33,14 +27,7 @@ export interface DashboardContext {
 }
 
 export interface DashboardTeamContext {
-  user: {
-    id: string;
-    username: string;
-    email: string;
-    name: string;
-    systemRole: "admin" | "user";
-    timeZone?: string;
-  };
+  user: AccountUserData;
   teams: TeamData[];
   teamGroups: SessionTeamGroups;
   activeTeam: TeamData;
@@ -49,14 +36,7 @@ export interface DashboardTeamContext {
 }
 
 export interface DashboardRootContext {
-  user: {
-    id: string;
-    username: string;
-    email: string;
-    name: string;
-    systemRole: "admin" | "user";
-    timeZone?: string;
-  };
+  user: AccountUserData;
   teams: TeamData[];
   teamGroups: SessionTeamGroups;
   unreadAttentionCount: number;
@@ -233,28 +213,3 @@ export const getTeamDefaultSite = cache(
     };
   },
 );
-
-export function buildSitePath(
-  locale: Locale,
-  teamSlug: string,
-  siteSlug: string,
-  section?:
-    | "realtime"
-    | "pages"
-    | "referrers"
-    | "sessions"
-    | "campaigns"
-    | "events"
-    | "funnels"
-    | "visitors"
-    | "retention"
-    | "geo"
-    | "devices"
-    | "browsers"
-    | "performance"
-    | "settings",
-): string {
-  const base = `/${locale}/app/${teamSlug}/${siteSlug}`;
-  if (!section) return base;
-  return `${base}/${section}`;
-}

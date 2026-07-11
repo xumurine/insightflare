@@ -1,10 +1,4 @@
-"use client";
-
 import { useState } from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useTheme } from "next-themes";
 import {
   RiArrowDownSLine,
   RiComputerLine,
@@ -15,6 +9,7 @@ import {
 } from "@remixicon/react";
 
 import { DashboardHeaderControls } from "@/components/dashboard/dashboard-header-controls";
+import { useTheme } from "@/components/theme-provider";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -47,6 +42,9 @@ import {
   SUPPORTED_LOCALES,
 } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import Image from "@/lib/image";
+import Link from "@/lib/router";
+import { usePathname, useRouter } from "@/lib/router";
 
 interface ShareHeaderProps {
   locale: Locale;

@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
 import {
   RiCloseLine,
@@ -58,7 +56,7 @@ const ANALYTICS_ENGINE_ENABLE_URL =
   "https://dash.cloudflare.com/?to=/:account/workers/analytics-engine";
 
 function demoAnalyticsEngineDisabled(): boolean {
-  return process.env.NEXT_PUBLIC_INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED === "1";
+  return import.meta.env.VITE_INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED === "1";
 }
 
 function defaultConfig(): PublicBotAnalyticsConfig {
@@ -98,7 +96,7 @@ function apiMessage(payload: ApiResponse<unknown>, fallback: string): string {
 }
 
 async function fetchConfig(): Promise<PublicBotAnalyticsConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     return {
       ...defaultConfig(),
       analyticsEngineDisabled: demoAnalyticsEngineDisabled(),
@@ -122,7 +120,7 @@ async function fetchConfig(): Promise<PublicBotAnalyticsConfig> {
 async function saveConfig(
   body: Record<string, unknown>,
 ): Promise<PublicBotAnalyticsConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     return {
       ...defaultConfig(),
       accountId: String(body.accountId || ""),
@@ -149,7 +147,7 @@ async function saveConfig(
 }
 
 async function deleteConfig(): Promise<PublicBotAnalyticsConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     return defaultConfig();
   }
 

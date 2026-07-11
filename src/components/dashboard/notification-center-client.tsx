@@ -1,7 +1,4 @@
-"use client";
-
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   type RemixiconComponentType,
   RiAlertLine,
@@ -40,6 +37,7 @@ import {
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
+import { usePathname, useRouter, useSearchParams } from "@/lib/router";
 
 interface NotificationCenterClientProps {
   locale: Locale;

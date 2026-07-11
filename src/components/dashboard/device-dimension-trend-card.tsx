@@ -1,5 +1,3 @@
-"use client";
-
 import { resolveDeviceTypeMeta } from "@/components/dashboard/journey-display";
 import { ShareTrendCard } from "@/components/dashboard/share-trend-card";
 import { fetchClientDimensionTrend } from "@/lib/dashboard/client-data";

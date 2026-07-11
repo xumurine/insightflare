@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
 import {
   type RemixiconComponentType,
@@ -84,7 +82,7 @@ const LATENCY_SERIES_COLORS = {
 async function fetchSystemPerformance(
   minutes: SystemPerformanceWindowMinutes,
 ): Promise<SystemPerformanceData> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     return handleDemoRequest({
       path: "/api/private/admin/system-performance",
@@ -114,7 +112,7 @@ async function fetchSystemPerformance(
 }
 
 async function fetchDoDiagnostic(): Promise<DoDiagnosticAggregate> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     return handleDemoRequest({
       path: "/api/private/admin/do-diagnostic",

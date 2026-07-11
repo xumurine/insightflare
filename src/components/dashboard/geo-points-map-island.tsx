@@ -1,8 +1,7 @@
-"use client";
-
-import dynamic from "next/dynamic";
+import { createIsomorphicFn } from "@tanstack/react-start";
 
 import { Spinner } from "@/components/ui/spinner";
+import dynamic from "@/lib/dynamic";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
@@ -31,17 +30,6 @@ interface GeoPointsMapIslandProps {
 
 const DEFAULT_MAP_HEIGHT_CLASS = "h-[460px]";
 
-const GeoPointsMapClient = dynamic<GeoPointsMapIslandProps>(
-  () =>
-    import("@/components/dashboard/geo-points-map").then(
-      (module) => module.GeoPointsMap,
-    ),
-  {
-    ssr: false,
-    loading: () => <GeoPointsMapFallback />,
-  },
-);
-
 function GeoPointsMapFallback() {
   return (
     <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-md border border-border/70 bg-muted/20">
@@ -49,6 +37,21 @@ function GeoPointsMapFallback() {
     </div>
   );
 }
+
+const GeoPointsMapClient = createIsomorphicFn()
+  .server(() => GeoPointsMapFallback)
+  .client(() =>
+    dynamic<GeoPointsMapIslandProps>(
+      () =>
+        import("@/components/dashboard/geo-points-map").then(
+          (module) => module.GeoPointsMap,
+        ),
+      {
+        ssr: false,
+        loading: GeoPointsMapFallback,
+      },
+    ),
+  )();
 
 export type { GeoPointsMapCountryCount, GeoPointsMapPoint };
 

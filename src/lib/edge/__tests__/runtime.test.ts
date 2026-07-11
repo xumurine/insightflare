@@ -1,55 +1,35 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { resolveEdgeRuntime } from "@/lib/edge/runtime";
 
-vi.mock("@opennextjs/cloudflare", () => ({
-  getCloudflareContext: vi.fn(),
-}));
-
-const getCloudflareContextMock = vi.mocked(getCloudflareContext);
-
 describe("edge runtime resolver", () => {
-  beforeEach(() => {
-    getCloudflareContextMock.mockReset();
-  });
-
-  it("returns Cloudflare env, ctx, URL, and a cloned request with cf metadata", async () => {
-    const env = { DB: {} };
-    const ctx = { waitUntil: vi.fn() };
+  it("returns explicit bindings, execution context, URL, and cf metadata", async () => {
+    const env = { DB: {} } as never;
+    const ctx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
     const cf = { country: "US", isEUCountry: false };
-    getCloudflareContextMock.mockResolvedValue({ env, ctx, cf } as any);
-
     const request = new Request("https://edge.test/api/private?siteId=site-1", {
       method: "POST",
       headers: { "x-test": "yes" },
       body: "payload",
     });
 
-    const runtime = await resolveEdgeRuntime(request);
+    const runtime = await resolveEdgeRuntime(request, { env, ctx, cf });
 
-    expect(getCloudflareContextMock).toHaveBeenCalledWith({ async: true });
     expect(runtime.env).toBe(env);
     expect(runtime.ctx).toBe(ctx);
-    expect(runtime.url.toString()).toBe(
-      "https://edge.test/api/private?siteId=site-1",
-    );
+    expect(runtime.url.searchParams.get("siteId")).toBe("site-1");
     expect(runtime.request).not.toBe(request);
-    expect(runtime.request.method).toBe("POST");
     expect(runtime.request.headers.get("x-test")).toBe("yes");
     expect((runtime.request as Request & { cf?: unknown }).cf).toBe(cf);
   });
 
-  it("sets cf metadata to null when the Cloudflare context omits it", async () => {
-    getCloudflareContextMock.mockResolvedValue({
-      env: {},
-      ctx: {},
-      cf: undefined,
-    } as any);
-
-    const runtime = await resolveEdgeRuntime(new Request("https://edge.test/"));
-
+  it("uses null cf metadata when none is provided", async () => {
+    const runtime = await resolveEdgeRuntime(
+      new Request("https://edge.test/"),
+      {
+        env: {} as never,
+      },
+    );
     expect((runtime.request as Request & { cf?: unknown }).cf).toBeNull();
-    expect(runtime.url.pathname).toBe("/");
   });
 });

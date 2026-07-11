@@ -23,6 +23,7 @@ import type { SiteScriptSettings } from "@/lib/site-settings";
 
 import { getSessionToken } from "./auth";
 import { DEFAULT_EDGE_BASE_URL } from "./constants";
+import { requestHeader } from "./request-headers";
 
 export type * from "@/lib/edge-client-types";
 
@@ -53,12 +54,12 @@ async function edgeBaseUrl(): Promise<string> {
   }
 
   try {
-    const { headers } = await import("next/headers");
-    const h = await headers();
-    const host = h.get("x-forwarded-host") || h.get("host");
+    const host =
+      (await requestHeader("x-forwarded-host")) ||
+      (await requestHeader("host"));
     if (host) {
       const proto =
-        h.get("x-forwarded-proto") ||
+        (await requestHeader("x-forwarded-proto")) ||
         (host.startsWith("localhost") || host.startsWith("127.0.0.1")
           ? "http"
           : "https");
@@ -114,7 +115,7 @@ function withFilters(
 }
 
 async function fetchEdgeJson<T>(options: FetchEdgeOptions): Promise<T> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     return handleDemoRequest({
       path: options.path,

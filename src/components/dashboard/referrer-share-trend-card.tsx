@@ -1,5 +1,3 @@
-"use client";
-
 import { useMemo } from "react";
 
 import { DIRECT_REFERRER_FILTER_VALUE } from "@/components/dashboard/referrer-utils";

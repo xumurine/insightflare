@@ -1,8 +1,4 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   RiAddLine,
   RiArrowDownLine,
@@ -98,6 +94,8 @@ import type {
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
+import Link from "@/lib/router";
+import { useRouter } from "@/lib/router";
 
 type TeamTab = "sites" | "settings" | "members";
 
@@ -373,7 +371,7 @@ async function fetchTeamDashboard(
   teamId: string,
   window: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">,
 ): Promise<TeamDashboardData> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: "/api/private/team-dashboard",
@@ -425,7 +423,7 @@ async function fetchTeamDashboard(
 }
 
 async function fetchTeamMembers(teamId: string): Promise<MemberData[]> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: "/api/private/admin/members",
@@ -448,7 +446,7 @@ async function fetchTeamMembers(teamId: string): Promise<MemberData[]> {
 }
 
 async function fetchTeamSites(teamId: string): Promise<SiteData[]> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: "/api/private/admin/sites",
@@ -471,7 +469,7 @@ async function fetchTeamSites(teamId: string): Promise<SiteData[]> {
 }
 
 async function fetchTeamInvites(teamId: string): Promise<TeamInviteData[]> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: "/api/private/admin/team-invites",
@@ -505,7 +503,7 @@ async function postJson<T>(
   body: Record<string, unknown>,
   method: "POST" | "PATCH" = "POST",
 ): Promise<T> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: url,

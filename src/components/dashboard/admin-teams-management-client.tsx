@@ -1,7 +1,4 @@
-"use client";
-
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   RiAddLine,
   RiArrowRightLine,
@@ -32,6 +29,7 @@ import type { TeamData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
+import { useRouter } from "@/lib/router";
 
 interface AdminTeamsManagementClientProps {
   locale: Locale;
@@ -46,7 +44,7 @@ interface ApiResponse<T> {
 }
 
 async function fetchTeams(): Promise<TeamData[]> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: "/api/private/admin/teams",

@@ -6,7 +6,7 @@ export interface Env {
   ARCHIVE_BUCKET?: R2Bucket;
   MAIN_SECRET?: string;
   DAILY_SALT_SECRET?: string;
-  NEXT_PUBLIC_DEMO_MODE?: string;
+  DEMO_MODE?: string;
   DISABLE_CRON_TASKS?: string;
   ADMIN_WS_TOKEN?: string;
   PARQUET_WASM_URL?: string;

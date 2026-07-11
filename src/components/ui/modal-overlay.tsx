@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, type HTMLMotionProps, motion } from "motion/react";

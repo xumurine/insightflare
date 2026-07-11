@@ -1,7 +1,4 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
-import dynamic from "next/dynamic";
 
 import { BrowserCrossBreakdownGrid } from "@/components/dashboard/browser-cross-breakdown-grid";
 import { BrowserEngineShareTrendCard } from "@/components/dashboard/browser-engine-share-trend-card";
@@ -45,6 +42,7 @@ import {
   fetchEventsTrend,
 } from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import dynamic from "@/lib/dynamic";
 import type { EventsSummaryData, EventsTrendData } from "@/lib/edge-client";
 import {
   buildLandingEmbedDemoSitePath,

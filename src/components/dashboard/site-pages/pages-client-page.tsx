@@ -1,7 +1,4 @@
-"use client";
-
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import {
   RiArrowDownLine,
   RiArrowRightSLine,
@@ -34,6 +31,7 @@ import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import Link from "@/lib/router";
 
 const PAGE_CARD_PAGE_SIZE = 12;
 const PAGE_CARD_CHART_MAX_POINTS = 36;

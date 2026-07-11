@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
 import { RiGlobalLine } from "@remixicon/react";
 import { Cell, Pie, PieChart } from "recharts";

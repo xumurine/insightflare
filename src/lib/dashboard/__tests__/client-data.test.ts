@@ -187,11 +187,11 @@ describe("Dashboard Client Data Processing Utilities", () => {
     };
 
     beforeAll(() => {
-      process.env.NEXT_PUBLIC_DEMO_MODE = "1";
+      process.env.VITE_DEMO_MODE = "1";
     });
 
     afterAll(() => {
-      delete process.env.NEXT_PUBLIC_DEMO_MODE;
+      delete process.env.VITE_DEMO_MODE;
     });
 
     it(
@@ -521,7 +521,7 @@ describe("Dashboard Client Data Processing Utilities", () => {
     const suppressUnhandled = () => {};
 
     beforeAll(() => {
-      delete process.env.NEXT_PUBLIC_DEMO_MODE;
+      delete process.env.VITE_DEMO_MODE;
       // The dedupe path adds a finally-chain off the in-flight promise. When the
       // primary promise rejects (e.g. on HTTP 500), the secondary chain surfaces
       // as a stray unhandled rejection one tick later. Suppress globally for
@@ -1464,7 +1464,7 @@ describe("Dashboard Client Data Processing Utilities", () => {
         },
       } as AbortSignal;
 
-      process.env.NEXT_PUBLIC_DEMO_MODE = "1";
+      process.env.VITE_DEMO_MODE = "1";
       try {
         await expect(
           fetchVisitorDetail(
@@ -1481,7 +1481,7 @@ describe("Dashboard Client Data Processing Utilities", () => {
           message: "Aborted",
         });
       } finally {
-        delete process.env.NEXT_PUBLIC_DEMO_MODE;
+        delete process.env.VITE_DEMO_MODE;
       }
       expect(fetchMock).not.toHaveBeenCalled();
       expect(abortedReads).toBeGreaterThanOrEqual(2);

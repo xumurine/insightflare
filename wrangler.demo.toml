@@ -1,15 +1,15 @@
 name = "insightflare-demo"
-main = "./workers/cf-worker.js"
+main = "./src/server.ts"
 compatibility_date = "2026-03-01"
 workers_dev = true
 compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
 [assets]
-directory = "./.open-next/assets"
+directory = "./public"
 binding = "ASSETS"
 
 [vars]
-NEXT_PUBLIC_DEMO_MODE = "1"
+DEMO_MODE = "1"
 DISABLE_CRON_TASKS = "1"
 SESSION_WINDOW_MINUTES = "30"
 SCRIPT_CACHE_TTL_SECONDS = "3600"

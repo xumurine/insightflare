@@ -1,5 +1,3 @@
-"use client";
-
 import { type MutableRefObject, useEffect, useRef, useState } from "react";
 import { Icon } from "@iconify/react";
 

@@ -3,12 +3,15 @@
 .open-next
 .playwright-cli
 .wrangler
+.tanstack
 dist
 node_modules
 output
 tmp
 coverage
+playwright-report
+test-results
+src/routeTree.gen.ts
 *.log
 *.tsbuildinfo
-next-env.d.ts
 **/*.md

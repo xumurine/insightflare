@@ -1,5 +1,6 @@
 node_modules
 .wrangler
+.tanstack
 dist
 .cache
 .next
@@ -10,9 +11,11 @@ dist
 *.log
 *.vars
 *.ae-disabled.toml
-next-env.d.ts
+*.ae-disabled.json
 src/tracker/sdk.min.ts
 src/tracker/sdk.no-perf.min.ts
 coverage
 logs/
 plan/
+playwright-report/
+test-results/

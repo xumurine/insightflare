@@ -1,12 +1,10 @@
-"use client";
-
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { RiTranslate2 } from "@remixicon/react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { type Locale, SUPPORTED_LOCALES } from "@/lib/i18n/config";
+import Link from "@/lib/router";
 
 interface AccountLinkPageActionsProps {
   locale: Locale;

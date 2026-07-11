@@ -1,7 +1,4 @@
-"use client";
-
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   RiArrowRightLine,
   RiBarChartBoxLine,
@@ -63,6 +60,7 @@ import type { SiteData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
+import { useRouter } from "@/lib/router";
 import {
   DEFAULT_SITE_SCRIPT_SETTINGS,
   formatListInput,
@@ -148,7 +146,7 @@ async function postJson<T>(
   body: Record<string, unknown>,
   method: "POST" | "PATCH" = "POST",
 ): Promise<T> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: url.split("?")[0],
@@ -321,7 +319,7 @@ export function SettingsClientPage({
     setLoadingSettings(true);
 
     const loadConfig = async () => {
-      if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+      if (import.meta.env.VITE_DEMO_MODE === "1") {
         const { handleDemoRequest } = await import("@/lib/realtime/mock");
         const result = handleDemoRequest({
           path: "/api/private/admin/site-config",
@@ -376,7 +374,7 @@ export function SettingsClientPage({
     setScriptSnippet("");
 
     const loadSnippet = async () => {
-      if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+      if (import.meta.env.VITE_DEMO_MODE === "1") {
         const { handleDemoRequest } = await import("@/lib/realtime/mock");
         const result = handleDemoRequest({
           path: "/api/private/admin/script-snippet",

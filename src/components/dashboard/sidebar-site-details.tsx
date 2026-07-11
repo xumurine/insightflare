@@ -1,7 +1,4 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 
 import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
 import { SiteBrandIcon } from "@/components/dashboard/site-brand-icon";
@@ -22,6 +19,7 @@ import {
 } from "@/lib/dashboard/time-zone";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import Link from "@/lib/router";
 
 interface SiteOverviewMetrics {
   views: number;
@@ -142,7 +140,7 @@ async function fetchTeamDashboard(
   window: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">,
   signal?: AbortSignal,
 ): Promise<TeamDashboardData> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: "/api/private/team-dashboard",

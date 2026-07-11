@@ -1,5 +1,3 @@
-"use client";
-
 import {
   useCallback,
   useEffect,
@@ -8,7 +6,6 @@ import {
   useRef,
   useState,
 } from "react";
-import dynamic from "next/dynamic";
 import { RiSearchLine } from "@remixicon/react";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -30,6 +27,7 @@ import {
 } from "@/lib/client-history";
 import { fetchSessions } from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import dynamic from "@/lib/dynamic";
 import type { JourneySession, SessionsMeta } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";

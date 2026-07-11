@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RiCloseLine,
@@ -129,7 +127,7 @@ function apiMessage(payload: ApiResponse<unknown>, fallback: string): string {
 }
 
 async function fetchConfig(): Promise<PublicLoginTurnstileAdminConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: API_PATH,
@@ -153,7 +151,7 @@ async function fetchConfig(): Promise<PublicLoginTurnstileAdminConfig> {
 async function saveConfig(
   body: Record<string, unknown>,
 ): Promise<PublicLoginTurnstileAdminConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: API_PATH,
@@ -181,7 +179,7 @@ async function saveConfig(
 }
 
 async function deleteConfig(): Promise<PublicLoginTurnstileAdminConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: API_PATH,
@@ -212,7 +210,7 @@ async function testConfig(body: {
 }): Promise<void> {
   const path = `${API_PATH}/test`;
 
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path,

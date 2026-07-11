@@ -8,7 +8,7 @@ import type { TimeWindow } from "@/lib/dashboard/query-state";
 
 describe("dashboard client geo data helpers", () => {
   const realFetch = globalThis.fetch;
-  const realDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE;
+  const realDemoMode = process.env.VITE_DEMO_MODE;
   const window: TimeWindow = {
     preset: "24h",
     from: 1000,
@@ -20,9 +20,9 @@ describe("dashboard client geo data helpers", () => {
   afterEach(() => {
     globalThis.fetch = realFetch;
     if (realDemoMode == null) {
-      delete process.env.NEXT_PUBLIC_DEMO_MODE;
+      delete process.env.VITE_DEMO_MODE;
     } else {
-      process.env.NEXT_PUBLIC_DEMO_MODE = realDemoMode;
+      process.env.VITE_DEMO_MODE = realDemoMode;
     }
     vi.restoreAllMocks();
   });
@@ -39,7 +39,7 @@ describe("dashboard client geo data helpers", () => {
   }
 
   it("normalizes geo point payload sections and serializes geo options", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({
         ok: true,
@@ -105,7 +105,7 @@ describe("dashboard client geo data helpers", () => {
   });
 
   it("falls back to empty geo points when payload sections are not arrays or fetch fails", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -137,7 +137,7 @@ describe("dashboard client geo data helpers", () => {
   });
 
   it("normalizes geo dimension labels for generic, region, and city tabs", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -240,7 +240,7 @@ describe("dashboard client geo data helpers", () => {
   });
 
   it("returns an empty dimension list when the endpoint fails", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("offline"));
 
     await expect(

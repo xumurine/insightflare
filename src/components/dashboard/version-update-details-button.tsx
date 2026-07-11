@@ -1,7 +1,4 @@
-"use client";
-
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import {
   RiExternalLinkLine,
   RiGitCommitLine,
@@ -20,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
+import Link from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 export type VersionUpdateDetailsLabels = {

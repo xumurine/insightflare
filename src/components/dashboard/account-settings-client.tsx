@@ -1,7 +1,4 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   RiComputerLine,
   RiGlobalLine,
@@ -57,6 +54,7 @@ import {
 } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { useRouter } from "@/lib/router";
 
 interface AccountSettingsClientProps {
   locale: Locale;

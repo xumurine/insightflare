@@ -1,0 +1,92 @@
+import { expect, test } from "@playwright/test";
+
+test("serves Hono health checks through the unified Worker", async ({
+  request,
+}) => {
+  const response = await request.get("/healthz");
+  expect(response.ok()).toBe(true);
+});
+
+test("localizes the root route and selects the demo team", async ({ page }) => {
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/zh\/app\/xeoos-team\/?$/);
+});
+
+test("renders and hydrates the widgets construction page", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+
+  await page.goto("/zh/app/xeoos-team/widgets");
+  await expect(page.getByText("正在施工中")).toBeVisible();
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-overlayscrollbars-initialize",
+  );
+  expect(errors).toEqual([]);
+});
+
+test("public links are present in the server-rendered HTML", async ({
+  request,
+}) => {
+  const response = await request.get("/zh/app/xeoos-team/public-links");
+  expect(response.status()).toBe(200);
+  const html = await response.text();
+  expect(html).toContain("公开链接");
+  expect(html).toContain("SaaS");
+  expect(html).toContain("已启用");
+});
+
+test("keeps client navigation on the server function endpoint", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+
+  await page.goto("/zh/app/xeoos-team/widgets");
+  const transition = page.locator("[data-page-transition]").first();
+  await expect(transition).toHaveAttribute(
+    "data-page-transition-ready",
+    "true",
+  );
+  await expect(transition).toHaveAttribute("data-transition", "idle");
+  await page
+    .locator('a[href="/zh/app/xeoos-team/public-links"]')
+    .first()
+    .click({ noWaitAfter: true });
+  await expect(transition).toHaveAttribute("data-transition", "exit");
+  await expect(page).toHaveURL(/\/zh\/app\/xeoos-team\/public-links\/?$/);
+  await expect(page.getByText("公开链接").first()).toBeVisible();
+  await expect(transition).toHaveAttribute("data-transition", "idle");
+  expect(errors).toEqual([]);
+});
+
+test("loads the original JetBrains Mono web font", async ({ page }) => {
+  await page.goto("/zh/app/xeoos-team/widgets");
+  await expect(
+    page.locator('link[rel="preload"][as="font"][type="font/woff2"]'),
+  ).toHaveCount(1);
+  await expect(page.locator("body")).toHaveCSS(
+    "font-family",
+    /JetBrains Mono Variable/,
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.fonts.check('400 16px "JetBrains Mono Variable"'),
+      ),
+    )
+    .toBe(true);
+});
+
+test("server-renders analytics pages without the migration loading placeholder", async ({
+  request,
+}) => {
+  const response = await request.get("/zh/app/xeoos-team/acme-corp-com");
+  expect(response.status()).toBe(200);
+  const html = await response.text();
+  expect(html).toContain("Corporate Website");
+  expect(html).not.toContain('aria-busy="true" aria-label="Loading"');
+});

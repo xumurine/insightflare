@@ -1,7 +1,4 @@
-"use client";
-
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { RiAddLine, RiCloseLine } from "@remixicon/react";
 import { toast } from "sonner";
 
@@ -33,6 +30,7 @@ import type { TeamData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
+import { useRouter } from "@/lib/router";
 
 interface TeamSelectOption {
   slug: string;

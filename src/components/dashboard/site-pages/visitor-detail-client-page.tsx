@@ -1,5 +1,3 @@
-"use client";
-
 import {
   type CSSProperties,
   type ReactNode,
@@ -8,9 +6,6 @@ import {
   useRef,
   useState,
 } from "react";
-import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useTheme } from "next-themes";
 import {
   RiArrowLeftLine,
   RiCalendarEventLine,
@@ -65,6 +60,7 @@ import type {
   VisitorDetailMapTheme,
   VisitorLocationPoint,
 } from "@/components/dashboard/site-pages/visitor-detail-map-stage";
+import { useTheme } from "@/components/theme-provider";
 import {
   Card,
   CardContent,
@@ -84,6 +80,7 @@ import {
   percentFormat,
 } from "@/lib/dashboard/format";
 import { zonedParts } from "@/lib/dashboard/time-zone";
+import dynamic from "@/lib/dynamic";
 import type {
   JourneyEvent,
   JourneyPerformanceMetricSummary,
@@ -100,6 +97,7 @@ import {
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
+import Link from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 interface VisitorDetailClientPageProps {

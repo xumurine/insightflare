@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
 import { RiBarChartBoxLine } from "@remixicon/react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";

@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from "react";
 import { RiArrowDownSLine, RiCheckLine } from "@remixicon/react";
 import { Popover as PopoverPrimitive } from "radix-ui";

@@ -1,7 +1,4 @@
-"use client";
-
-import dynamic from "next/dynamic";
-
+import dynamic from "@/lib/dynamic";
 import type { Locale } from "@/lib/i18n/config";
 
 import type { RealtimeRollingTrendPoint } from "./realtime-rolling-trend-chart";

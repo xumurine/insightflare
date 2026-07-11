@@ -1,7 +1,4 @@
-"use client";
-
 import { type MouseEvent, useMemo } from "react";
-import { usePathname } from "next/navigation";
 import {
   RiArrowRightUpLine,
   RiSearchLine,
@@ -29,6 +26,7 @@ import { numberFormat } from "@/lib/dashboard/format";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
+import { usePathname } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 type ReferrerSortKey = "views" | "visitors";

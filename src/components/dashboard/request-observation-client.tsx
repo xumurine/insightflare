@@ -1,5 +1,3 @@
-"use client";
-
 import {
   type KeyboardEvent,
   type MouseEvent,
@@ -10,8 +8,6 @@ import {
   useRef,
   useState,
 } from "react";
-import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
 import {
   RiFileList3Line,
   RiGlobalLine,
@@ -97,6 +93,8 @@ import {
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
+import Link from "@/lib/router";
+import { usePathname, useSearchParams } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 interface RequestObservationClientProps {
@@ -1911,7 +1909,7 @@ async function withDemoOverlayData(
 async function fetchRequestObservation(
   timeWindow: TimeWindow,
 ): Promise<RequestObservationData> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     return generateDemoRequestObservation(demoMinutesForWindow(timeWindow));
   }
 
@@ -1948,7 +1946,7 @@ async function fetchRequestObservationDetail(
   timeWindow: TimeWindow,
   event: BotEvent,
 ): Promise<BotEvent | null> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") return event;
+  if (import.meta.env.VITE_DEMO_MODE === "1") return event;
 
   const params = new URLSearchParams({
     from: String(Math.floor(timeWindow.from)),

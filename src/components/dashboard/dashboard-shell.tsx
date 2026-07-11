@@ -1,8 +1,4 @@
-"use client";
-
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import {
   RiApps2Line,
   RiArrowLeftLine,
@@ -75,6 +71,8 @@ import {
 } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import Link from "@/lib/router";
+import { usePathname } from "@/lib/router";
 
 interface TeamSectionNavItem {
   key: string;
@@ -771,7 +769,7 @@ export function DashboardShell({
                 <p className="text-xl text-primary flex gap-2 items-center justify-center md:justify-start">
                   <span>{messages.appName}</span>
                   <span className="text-muted-foreground">
-                    {process.env.NEXT_PUBLIC_DEMO_MODE ? "Demo" : "v1"}
+                    {import.meta.env.VITE_DEMO_MODE === "1" ? "Demo" : "v1"}
                   </span>
                 </p>
               </div>

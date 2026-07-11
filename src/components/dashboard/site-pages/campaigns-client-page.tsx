@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
 
 import { CampaignBreakdownCard } from "@/components/dashboard/campaign-breakdown-card";

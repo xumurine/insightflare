@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
 import {
   RiAddLine,
@@ -269,7 +267,7 @@ export function ApiKeysClient({
   );
 
   async function loadKeys() {
-    if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+    if (import.meta.env.VITE_DEMO_MODE === "1") {
       setKeys(buildDemoApiKeys(teamId, sites));
       setLoading(false);
       return;
@@ -318,7 +316,7 @@ export function ApiKeysClient({
     }
     setSubmitting(true);
     try {
-      if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+      if (import.meta.env.VITE_DEMO_MODE === "1") {
         const created = createDemoApiKey({
           teamId,
           name: name.trim(),
@@ -369,7 +367,7 @@ export function ApiKeysClient({
   async function revokeKey(keyId: string) {
     setBusyKeyId(keyId);
     try {
-      if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+      if (import.meta.env.VITE_DEMO_MODE === "1") {
         setKeys((current) =>
           current.map((key) =>
             key.id === keyId
@@ -407,7 +405,7 @@ export function ApiKeysClient({
   async function rotateKey(keyId: string) {
     setBusyKeyId(keyId);
     try {
-      if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+      if (import.meta.env.VITE_DEMO_MODE === "1") {
         const source = keys.find((key) => key.id === keyId);
         if (!source) return;
         const rotated = createDemoApiKey({

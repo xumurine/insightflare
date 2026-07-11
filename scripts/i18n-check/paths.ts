@@ -36,8 +36,6 @@ export function joinPath(parts: string[]): string {
 export function isRelevantSourceFile(filePath: string): boolean {
   const normalized = asPosix(filePath);
   if (normalized.includes("/node_modules/")) return false;
-  if (normalized.includes("/.next/")) return false;
-  if (normalized.includes("/.open-next/")) return false;
   return (
     normalized.startsWith(asPosix(SRC_DIR)) ||
     normalized.startsWith(asPosix(SCRIPTS_DIR))

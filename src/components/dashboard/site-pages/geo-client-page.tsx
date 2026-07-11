@@ -1,5 +1,3 @@
-"use client";
-
 import {
   type ReactNode,
   startTransition,
@@ -7,7 +5,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import dynamic from "next/dynamic";
 
 import { GeoCountryStatsPanel } from "@/components/dashboard/geo-country-stats-panel";
 import type { GeoClientMapStageProps } from "@/components/dashboard/site-pages/geo-client-map-stage";
@@ -46,6 +43,7 @@ import {
   resolveGeoStateTranslation,
 } from "@/lib/dashboard/geo-translation";
 import type { DashboardFilters } from "@/lib/dashboard/query-state";
+import dynamic from "@/lib/dynamic";
 import type { OverviewGeoPointsData } from "@/lib/edge-client";
 import { resolveCountryLabel } from "@/lib/i18n/code-labels";
 import type { Locale } from "@/lib/i18n/config";

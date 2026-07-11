@@ -1,173 +1,112 @@
-import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
-
 import { SESSION_COOKIE } from "@/lib/constants";
+import type { Env } from "@/lib/edge/types";
 import {
   DEFAULT_LOCALE,
+  isValidLocale,
   LOCALE_COOKIE,
   resolveLocale,
   SUPPORTED_LOCALES,
 } from "@/lib/i18n/config";
-import { isValidLocale } from "@/lib/i18n/config";
 import { dashboardSessionSecret } from "@/lib/secrets";
-import { hasConfiguredSessionSecret, verifySessionToken } from "@/lib/session";
+import { verifySessionToken } from "@/lib/session";
 
 type AuthState = "authenticated" | "unauthenticated" | "unknown";
+type InternalFetch = (request: Request) => Promise<Response>;
 
 const DEMO_DEFAULT_TEAM_SLUG = "xeoos-team";
+const LOCALE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 interface RedirectProfile {
-  teams: Array<{
-    slug: string;
-  }>;
+  teams: Array<{ slug: string }>;
 }
 
-function hasRootSecret(source: Record<string, unknown>): boolean {
+export interface PageRequestDecision {
+  locale: string | null;
+  pathname: string;
+  response: Response | null;
+}
+
+function cookieValue(request: Request, name: string): string {
+  const header = request.headers.get("cookie") || "";
+  for (const part of header.split(";")) {
+    const [key, ...value] = part.trim().split("=");
+    if (key === name) {
+      try {
+        return decodeURIComponent(value.join("="));
+      } catch {
+        return value.join("=");
+      }
+    }
+  }
+  return "";
+}
+
+function hasRootSecret(env: Env): boolean {
   return Boolean(
-    String(source.MAIN_SECRET || "").trim() ||
-    String(source.DAILY_SALT_SECRET || "").trim(),
+    String(env.MAIN_SECRET || "").trim() ||
+    String(env.DAILY_SALT_SECRET || "").trim(),
   );
 }
 
-async function hasRuntimeRootSecret(): Promise<boolean> {
-  if (
-    hasRootSecret({
-      MAIN_SECRET: process.env.MAIN_SECRET,
-      DAILY_SALT_SECRET: process.env.DAILY_SALT_SECRET,
-    })
-  ) {
-    return true;
-  }
-
-  try {
-    const { getCloudflareContext } = await import("@opennextjs/cloudflare");
-    const context = await getCloudflareContext({ async: true });
-    return hasRootSecret(context.env as Record<string, unknown>);
-  } catch {
-    // No Cloudflare runtime context available.
-  }
-
-  return false;
-}
-
-function forwardedOrigin(request: NextRequest): string {
-  const host =
-    request.headers.get("x-forwarded-host") || request.headers.get("host");
-  const proto = request.headers.get("x-forwarded-proto") || "https";
-  if (!host) return request.nextUrl.origin;
-  return `${proto}://${host}`;
-}
-
-async function resolveSessionSecretForMiddleware(): Promise<string | null> {
-  if (hasConfiguredSessionSecret()) {
-    const fromProcess = await dashboardSessionSecret({
-      MAIN_SECRET: process.env.MAIN_SECRET,
-      DAILY_SALT_SECRET: process.env.DAILY_SALT_SECRET,
-    });
-    if (fromProcess) return fromProcess;
-  }
-
-  try {
-    const { getCloudflareContext } = await import("@opennextjs/cloudflare");
-    const context = await getCloudflareContext({ async: true });
-    const env = context.env as Record<string, unknown>;
-    return dashboardSessionSecret(env);
-  } catch {
-    // No Cloudflare runtime context available.
-  }
-
-  return null;
-}
-
-async function authState(request: NextRequest): Promise<AuthState> {
-  const token = request.cookies.get(SESSION_COOKIE)?.value || "";
+async function authState(request: Request, env: Env): Promise<AuthState> {
+  const token = cookieValue(request, SESSION_COOKIE);
   if (!token) return "unauthenticated";
-
-  const secret = await resolveSessionSecretForMiddleware();
+  const secret = await dashboardSessionSecret(env);
   if (!secret) return "unknown";
-
-  const session = await verifySessionToken(token, secret);
-  return session ? "authenticated" : "unauthenticated";
+  return (await verifySessionToken(token, secret))
+    ? "authenticated"
+    : "unauthenticated";
 }
 
 async function fetchRedirectProfile(
-  request: NextRequest,
+  request: Request,
+  internalFetch: InternalFetch,
 ): Promise<RedirectProfile | null> {
-  const token = request.cookies.get(SESSION_COOKIE)?.value || "";
+  const token = cookieValue(request, SESSION_COOKIE);
   if (!token) return null;
 
   try {
-    const url = request.nextUrl.clone();
-    url.pathname = "/api/private/session";
-    url.search = "";
-    const fetchUrl = new URL(
-      `${url.pathname}${url.search}`,
-      forwardedOrigin(request),
+    const url = new URL("/api/private/session", request.url);
+    const response = await internalFetch(
+      new Request(url, {
+        headers: { authorization: `Bearer ${token}` },
+      }),
     );
-
-    const response = await fetch(fetchUrl.toString(), {
-      method: "GET",
-      headers: {
-        authorization: `Bearer ${token}`,
-      },
-      cache: "no-store",
-    });
-
     if (!response.ok) return null;
-
     const payload = (await response.json()) as {
       ok?: boolean;
-      data?: {
-        teams?: Array<{
-          slug?: unknown;
-        }>;
-      };
+      data?: { teams?: Array<{ slug?: unknown }> };
     };
     if (!payload.ok) return null;
-
     const teams = Array.isArray(payload.data?.teams)
       ? payload.data.teams
-          .map((team) => String(team?.slug || "").trim())
-          .filter((slug) => slug.length > 0)
+          .map((team) => String(team.slug || "").trim())
+          .filter(Boolean)
+          .map((slug) => ({ slug }))
       : [];
-
-    return {
-      teams: teams.map((slug) => ({ slug })),
-    };
+    return { teams };
   } catch {
     return null;
   }
 }
 
-function getLocale(request: NextRequest): string {
-  const acceptLang = request.headers.get("accept-language");
-  if (acceptLang) {
-    const preferred = acceptLang
+function requestLocale(request: Request): string {
+  const acceptLanguage = request.headers.get("accept-language");
+  if (acceptLanguage) {
+    const preferred = acceptLanguage
       .split(",")
       .map((part) => part.trim().split(";")[0].trim().toLowerCase())
-      .map((tag) => {
-        // Try exact match first (e.g. "zh"), then language-only prefix (e.g. "zh" from "zh-cn")
-        if (isValidLocale(tag)) return tag;
-        const lang = tag.slice(0, 2);
-        return isValidLocale(lang) ? lang : null;
-      })
-      .find(
-        (code): code is (typeof SUPPORTED_LOCALES)[number] => code !== null,
-      );
+      .map((tag) => (isValidLocale(tag) ? tag : tag.slice(0, 2)))
+      .find(isValidLocale);
     if (preferred) return preferred;
   }
-
-  const cookieLocale = request.cookies.get(LOCALE_COOKIE)?.value;
-  if (cookieLocale && isValidLocale(cookieLocale)) {
-    return cookieLocale;
-  }
-
-  return DEFAULT_LOCALE;
+  const locale = cookieValue(request, LOCALE_COOKIE);
+  return isValidLocale(locale) ? locale : DEFAULT_LOCALE;
 }
 
 function pathnameHasLocale(pathname: string): boolean {
   return SUPPORTED_LOCALES.some(
-    (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`,
+    (locale) => pathname === `/${locale}` || pathname.startsWith(`/${locale}/`),
   );
 }
 
@@ -176,203 +115,174 @@ function normalizePathname(pathname: string): string {
   return pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
 }
 
-function toLocalizedPath(pathname: string, locale: string): string {
+function localizedPath(pathname: string, locale: string): string {
   const normalized = normalizePathname(pathname);
-
-  if (normalized === "/") {
-    return `/${locale}/app`;
-  }
-  return `/${locale}${normalized}`;
+  return normalized === "/" ? `/${locale}/app` : `/${locale}${normalized}`;
 }
 
 function localeFromPathname(pathname: string): string | null {
   const segment = pathname.split("/")[1];
-  if (isValidLocale(segment)) {
-    return segment;
-  }
-  return null;
+  return isValidLocale(segment) ? segment : null;
 }
 
-function redirectWithPath(
-  request: NextRequest,
+export function localeCookie(locale: string): string {
+  return `${LOCALE_COOKIE}=${encodeURIComponent(resolveLocale(locale))}; Path=/; Max-Age=${LOCALE_COOKIE_MAX_AGE}; SameSite=Lax`;
+}
+
+function redirectResponse(
+  request: Request,
   pathname: string,
-  options?: { preserveSearch?: boolean },
-): NextResponse {
+  preserveSearch = false,
+): Response {
   const url = new URL(request.url);
   url.pathname = normalizePathname(pathname);
-  if (!options?.preserveSearch) {
-    url.search = "";
-  }
-  const response = NextResponse.redirect(url);
-  response.headers.set("x-pathname", url.pathname);
-
+  if (!preserveSearch) url.search = "";
+  const headers = new Headers({
+    location: url.toString(),
+    "x-pathname": url.pathname,
+  });
   const locale = localeFromPathname(url.pathname);
-  if (locale) {
-    response.cookies.set({
-      name: LOCALE_COOKIE,
-      value: locale,
-      path: "/",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 365,
-    });
-  }
-
-  return response;
+  if (locale) headers.append("set-cookie", localeCookie(locale));
+  return new Response(null, { status: 307, headers });
 }
 
-function redirectToRuntimeConfigError(
-  request: NextRequest,
-  locale: string,
-): NextResponse {
-  return redirectWithPath(
-    request,
-    `/${resolveLocale(locale)}/runtime-config-error`,
-    {
-      preserveSearch: false,
-    },
-  );
-}
-
-export async function middleware(request: NextRequest): Promise<NextResponse> {
-  const { pathname, search } = request.nextUrl;
-
-  // Demo mode: skip all auth checks
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    if (pathname === "/api/private/realtime/ws") return NextResponse.next();
-    if (pathname.startsWith("/api/private")) {
-      return NextResponse.next();
-    }
-    if (!pathnameHasLocale(pathname)) {
-      const locale = getLocale(request);
-      return redirectWithPath(request, toLocalizedPath(pathname, locale), {
-        preserveSearch: true,
-      });
-    }
-    const demoLocale = pathname.split("/")[1];
-    const demoNormalized = normalizePathname(pathname);
-    if (demoLocale && demoNormalized === `/${demoLocale}`) {
-      return redirectWithPath(request, `/${demoLocale}/app`, {
-        preserveSearch: true,
-      });
-    }
-    const demoRest = pathname.replace(/^\/[^/]+/, "") || "/";
-    const demoNormalizedRest = normalizePathname(demoRest);
-    if (demoNormalizedRest === "/app") {
-      return redirectWithPath(
-        request,
-        `/${demoLocale}/app/${DEMO_DEFAULT_TEAM_SLUG}`,
-        { preserveSearch: false },
-      );
-    }
-    if (demoNormalizedRest === "/login") {
-      return redirectWithPath(request, `/${demoLocale}/app`, {
-        preserveSearch: false,
-      });
-    }
-    const demoResponse = NextResponse.next();
-    demoResponse.headers.set("x-pathname", pathname);
-    if (demoLocale && isValidLocale(demoLocale)) {
-      demoResponse.cookies.set({
-        name: LOCALE_COOKIE,
-        value: resolveLocale(demoLocale),
-        path: "/",
-        sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 365,
-      });
-    }
-    return demoResponse;
-  }
-
-  let state: AuthState | null = null;
-  let redirectProfile: RedirectProfile | null | undefined;
-  const ensureAuthState = async (): Promise<AuthState> => {
-    if (!state) {
-      state = await authState(request);
-    }
-    return state;
-  };
-  const ensureRedirectProfile = async (): Promise<RedirectProfile | null> => {
-    if (redirectProfile === undefined) {
-      redirectProfile = await fetchRedirectProfile(request);
-    }
-    return redirectProfile;
-  };
+export async function resolvePageRequest(
+  request: Request,
+  env: Env,
+  internalFetch: InternalFetch,
+): Promise<PageRequestDecision> {
+  const url = new URL(request.url);
+  const { pathname } = url;
   const normalizedPathname = normalizePathname(pathname);
-  const localeFromPath = pathnameHasLocale(pathname)
-    ? pathname.split("/")[1]
-    : null;
-  const localeForRequest = localeFromPath || getLocale(request);
+  const localeFromPath = localeFromPathname(pathname);
+  const localeForRequest = localeFromPath || requestLocale(request);
+  const demoMode = env.DEMO_MODE === "1";
 
-  // API 鉴权必须在各自 route handler 内完成（matcher 排除了 /api 路径，此处不会命中）。
-  // WebSocket 认证在 Worker 层 (cf-worker.js) 处理，此处直接放行。
-  if (pathname === "/api/private/realtime/ws") {
-    return NextResponse.next();
+  if (demoMode) {
+    if (!pathnameHasLocale(pathname)) {
+      return {
+        locale: localeForRequest,
+        pathname,
+        response: redirectResponse(
+          request,
+          localizedPath(pathname, localeForRequest),
+          true,
+        ),
+      };
+    }
+    if (normalizedPathname === `/${localeFromPath}`) {
+      return {
+        locale: localeFromPath,
+        pathname,
+        response: redirectResponse(request, `/${localeFromPath}/app`, true),
+      };
+    }
+    const rest = normalizePathname(pathname.replace(/^\/[^/]+/, "") || "/");
+    if (rest === "/app") {
+      return {
+        locale: localeFromPath,
+        pathname,
+        response: redirectResponse(
+          request,
+          `/${localeFromPath}/app/${DEMO_DEFAULT_TEAM_SLUG}`,
+        ),
+      };
+    }
+    if (rest === "/login") {
+      return {
+        locale: localeFromPath,
+        pathname,
+        response: redirectResponse(request, `/${localeFromPath}/app`),
+      };
+    }
+    return { locale: localeFromPath, pathname, response: null };
   }
 
   if (
     normalizedPathname !== `/${localeForRequest}/runtime-config-error` &&
-    !(await hasRuntimeRootSecret())
+    !hasRootSecret(env)
   ) {
-    return redirectToRuntimeConfigError(request, localeForRequest);
+    return {
+      locale: localeForRequest,
+      pathname,
+      response: redirectResponse(
+        request,
+        `/${resolveLocale(localeForRequest)}/runtime-config-error`,
+      ),
+    };
   }
 
-  // Non-locale path: unify all redirects here.
   if (!pathnameHasLocale(pathname)) {
-    const locale = getLocale(request);
-    return redirectWithPath(request, toLocalizedPath(pathname, locale), {
-      preserveSearch: true,
-    });
+    return {
+      locale: localeForRequest,
+      pathname,
+      response: redirectResponse(
+        request,
+        localizedPath(pathname, localeForRequest),
+        true,
+      ),
+    };
+  }
+  if (normalizedPathname === `/${localeFromPath}`) {
+    return {
+      locale: localeFromPath,
+      pathname,
+      response: redirectResponse(request, `/${localeFromPath}/app`, true),
+    };
   }
 
-  if (localeFromPath && normalizedPathname === `/${localeFromPath}`) {
-    return redirectWithPath(request, `/${localeFromPath}/app`, {
-      preserveSearch: true,
-    });
-  }
-
+  let state: AuthState | null = null;
+  const ensureAuthState = async () => {
+    state ??= await authState(request, env);
+    return state;
+  };
   const restPath = pathname.replace(/^\/[^/]+/, "") || "/";
   const normalizedRestPath = normalizePathname(restPath);
 
-  // Protected routes under /[locale]/app/*
   if (restPath.startsWith("/app")) {
-    const currentAuthState = await ensureAuthState();
-    if (currentAuthState === "unauthenticated") {
-      const url = request.nextUrl.clone();
-      url.pathname = `/${localeFromPath}/login`;
-      url.searchParams.set("next", `${pathname}${search}`);
-      const response = NextResponse.redirect(url);
-      response.cookies.set({
-        name: LOCALE_COOKIE,
-        value: resolveLocale(localeFromPath),
-        path: "/",
-        sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 365,
+    if ((await ensureAuthState()) === "unauthenticated") {
+      const loginUrl = new URL(`/${localeFromPath}/login`, request.url);
+      loginUrl.searchParams.set("next", `${pathname}${url.search}`);
+      const headers = new Headers({
+        location: loginUrl.toString(),
+        "x-pathname": loginUrl.pathname,
       });
-      return response;
+      headers.append(
+        "set-cookie",
+        localeCookie(localeFromPath || DEFAULT_LOCALE),
+      );
+      return {
+        locale: localeFromPath,
+        pathname,
+        response: new Response(null, { status: 307, headers }),
+      };
     }
 
-    const appSegments = normalizedRestPath
-      .split("/")
-      .filter((segment) => segment.length > 0);
-    if (appSegments.length === 1) {
-      const profile = await ensureRedirectProfile();
-      if (profile && profile.teams.length === 1) {
-        return redirectWithPath(
-          request,
-          `/${localeFromPath}/app/${profile.teams[0].slug}`,
-          { preserveSearch: false },
-        );
+    const segments = normalizedRestPath.split("/").filter(Boolean);
+    if (segments.length === 1) {
+      const profile = await fetchRedirectProfile(request, internalFetch);
+      if (profile?.teams.length === 1) {
+        return {
+          locale: localeFromPath,
+          pathname,
+          response: redirectResponse(
+            request,
+            `/${localeFromPath}/app/${profile.teams[0].slug}`,
+          ),
+        };
       }
     }
-
-    if (appSegments.length === 2) {
-      const legacyTab = request.nextUrl.searchParams.get("tab");
-      if (legacyTab === "settings" || legacyTab === "members") {
-        return redirectWithPath(
-          request,
-          `/${localeFromPath}/app/${appSegments[1]}/${legacyTab}`,
-          { preserveSearch: false },
-        );
+    if (segments.length === 2) {
+      const tab = url.searchParams.get("tab");
+      if (tab === "settings" || tab === "members") {
+        return {
+          locale: localeFromPath,
+          pathname,
+          response: redirectResponse(
+            request,
+            `/${localeFromPath}/app/${segments[1]}/${tab}`,
+          ),
+        };
       }
     }
   }
@@ -381,27 +291,32 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     normalizedRestPath === "/login" &&
     (await ensureAuthState()) === "authenticated"
   ) {
-    return redirectWithPath(request, `/${localeFromPath}/app`, {
-      preserveSearch: false,
-    });
+    return {
+      locale: localeFromPath,
+      pathname,
+      response: redirectResponse(request, `/${localeFromPath}/app`),
+    };
   }
 
-  const response = NextResponse.next();
-  response.headers.set("x-pathname", pathname);
-  if (localeFromPath) {
-    response.cookies.set({
-      name: LOCALE_COOKIE,
-      value: resolveLocale(localeFromPath),
-      path: "/",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 365,
-    });
-  }
-  return response;
+  return { locale: localeFromPath, pathname, response: null };
 }
 
-export const config = {
-  matcher: [
-    "/((?!api|_next/static|_next/image|collect|script\\.js|healthz|favicon\\.ico|.*\\..*).*)",
-  ],
-};
+export async function middleware(
+  request: Request,
+  env?: Env,
+  internalFetch: InternalFetch = fetch,
+): Promise<Response> {
+  const runtimeEnv =
+    env ??
+    ({
+      ...process.env,
+      DEMO_MODE: process.env.VITE_DEMO_MODE,
+    } as unknown as Env);
+  const decision = await resolvePageRequest(request, runtimeEnv, internalFetch);
+  if (decision.response) return decision.response;
+  const headers = new Headers({ "x-pathname": decision.pathname });
+  if (decision.locale) {
+    headers.append("set-cookie", localeCookie(decision.locale));
+  }
+  return new Response(null, { status: 200, headers });
+}

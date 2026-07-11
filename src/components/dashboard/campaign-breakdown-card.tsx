@@ -1,5 +1,3 @@
-"use client";
-
 import { useMemo } from "react";
 import { RiPriceTag3Line } from "@remixicon/react";
 

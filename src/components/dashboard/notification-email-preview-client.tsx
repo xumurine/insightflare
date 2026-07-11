@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import { RiMailSendLine, RiRefreshLine } from "@remixicon/react";
 import { toast } from "sonner";

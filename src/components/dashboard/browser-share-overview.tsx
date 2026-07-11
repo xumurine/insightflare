@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 
 import { ShareRadialCard } from "@/components/dashboard/share-radial-card";

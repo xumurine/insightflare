@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import {
   RiAddLine,
@@ -73,7 +71,7 @@ function epochSecondsToMs(value: number): number {
 }
 
 async function getUsers(): Promise<AccountUserData[]> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: "/api/private/admin/users",

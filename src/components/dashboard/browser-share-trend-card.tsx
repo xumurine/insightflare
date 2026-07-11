@@ -1,5 +1,3 @@
-"use client";
-
 import { ShareTrendCard } from "@/components/dashboard/share-trend-card";
 import { fetchBrowserTrend } from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";

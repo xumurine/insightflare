@@ -95,7 +95,7 @@ function isProduction(): boolean {
 
 // 检查是否为 Demo 模式
 function isDemoMode(): boolean {
-  return process.env.NEXT_PUBLIC_DEMO_MODE === "1";
+  return process.env.DEMO_MODE === "1";
 }
 
 // 导出的环境检查函数

@@ -1,5 +1,3 @@
-"use client";
-
 import {
   type KeyboardEvent,
   type MouseEvent,
@@ -11,8 +9,6 @@ import {
   useRef,
   useState,
 } from "react";
-import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
 import type { RemixiconComponentType } from "@remixicon/react";
 import {
   RiArrowDownSLine,
@@ -108,6 +104,7 @@ import type {
   EventPayloadFilterValue,
   TimeWindow,
 } from "@/lib/dashboard/query-state";
+import dynamic from "@/lib/dynamic";
 import type {
   EventField,
   EventFieldValueStat,
@@ -120,6 +117,7 @@ import type {
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
+import { useRouter } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 const EVENT_PAGE_SIZE = 80;

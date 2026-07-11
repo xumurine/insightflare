@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 
 import { resolveDeviceTypeMeta } from "@/components/dashboard/journey-display";

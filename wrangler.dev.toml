@@ -1,9 +1,14 @@
 name = "insightflare-dev"
-main = "./workers/dev-worker.js"
+main = "./src/server.ts"
 compatibility_date = "2026-03-01"
 compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
 [vars]
+DEMO_MODE = "0"
 SESSION_WINDOW_MINUTES = "30"
 SCRIPT_CACHE_TTL_SECONDS = "3600"
 PARQUET_WASM_URL = "https://cdn.jsdelivr.net/npm/parquet-wasm@0.7.1/esm/parquet_wasm_bg.wasm"

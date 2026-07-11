@@ -1,9 +1,4 @@
-"use client";
-
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useTheme } from "next-themes";
 import {
   RiArrowLeftLine,
   RiCalendarEventLine,
@@ -53,6 +48,7 @@ import type {
   SessionDetailMapTheme,
   SessionLocationPoint,
 } from "@/components/dashboard/site-pages/session-detail-map-stage";
+import { useTheme } from "@/components/theme-provider";
 import {
   Card,
   CardContent,
@@ -67,6 +63,7 @@ import {
 } from "@/lib/dashboard/client-data";
 import { intlLocale, numberFormat } from "@/lib/dashboard/format";
 import { buildPageDetailHref } from "@/lib/dashboard/page-detail";
+import dynamic from "@/lib/dynamic";
 import type {
   JourneyEvent,
   JourneyPerformanceMetricSummary,
@@ -81,6 +78,7 @@ import {
 } from "@/lib/i18n/code-labels";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import Link from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 interface SessionDetailClientPageProps {

@@ -1,5 +1,3 @@
-"use client";
-
 import {
   type MouseEvent,
   useCallback,
@@ -9,7 +7,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { usePathname, useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import {
   RiArrowDownLine,
@@ -91,6 +88,7 @@ import {
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
+import { usePathname, useRouter } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 interface OverviewClientPageProps {
