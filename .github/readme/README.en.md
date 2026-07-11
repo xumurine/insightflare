@@ -323,9 +323,9 @@ Available methods:
 
 | Layer    | Technologies                                                                                   |
 | -------- | ---------------------------------------------------------------------------------------------- |
-| Frontend | Next.js 16, React 19, Tailwind CSS 4, Radix UI, shadcn, Recharts, deck.gl, maplibre-gl, Motion |
-| Backend  | Cloudflare Workers, Durable Objects, D1, R2, KV                                                |
-| Build    | OpenNext for Cloudflare, Wrangler 4, TypeScript 5                                              |
+| Frontend | TanStack Start 1, TanStack Router, Vite 8, React 19, Tailwind CSS 4, Radix UI, shadcn, Recharts, deck.gl, maplibre-gl, Motion |
+| Backend  | Cloudflare Workers, Durable Objects, D1, R2, KV                                                                         |
+| Build    | Cloudflare Vite Plugin, Wrangler 4, TypeScript 5                                                                       |
 
 ---
 
@@ -350,14 +350,14 @@ If you do not use the deploy button, deploy with the steps below:
 4. Set environment variables by referring to `.dev.vars.example`
 5. Start the development server: `npm run dev`
 
-Set `NEXT_PUBLIC_DEMO_MODE=1` to make the development server automatically enable Demo Mode and use frontend mock data for UI testing.
+`npm run dev:ui` starts the Vite development server in Demo Mode and uses frontend mock data for UI testing. To enable Demo Mode with `npm run dev`, set `DEMO_MODE=1`.
 
 ## Common Commands
 
 | Command                                       | Purpose                                                            |
 | --------------------------------------------- | ------------------------------------------------------------------ |
-| `npm run dev`                                 | Local Worker + dashboard development (use `http://127.0.0.1:8787`) |
-| `npm run dev:ui`                              | Start only the Next.js UI dev server in Demo Mode                  |
+| `npm run dev`                                 | Vite + Cloudflare Workers local development (use `http://localhost:3000`) |
+| `npm run dev:ui`                              | Start the Vite dashboard development server in Demo Mode                   |
 | `npm run preview:local`                       | Build with local resources and run Wrangler preview                |
 | `npm run build`                               | Cloudflare managed build entrypoint                                |
 | `npm run build:local`                         | Local precheck + local D1 migration + build                        |

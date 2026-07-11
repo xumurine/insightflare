@@ -1,10 +1,9 @@
 .cache
-.next
-.open-next
 .playwright-cli
 .wrangler
 .tanstack
 dist
+.output
 node_modules
 output
 tmp

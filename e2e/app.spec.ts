@@ -77,6 +77,18 @@ test("keeps client navigation on the server function endpoint", async ({
   expect(errors).toEqual([]);
 });
 
+test("keeps flat and 3D map renderers isolated", async ({ page }) => {
+  await page.goto("/zh/app/xeoos-team/acme-corp-com");
+  await expect(page.locator('[data-geo-map-mode="flat"]')).toBeVisible({
+    timeout: 15_000,
+  });
+
+  await page.goto("/zh/app/manage/request-observation");
+  await expect(page.locator('[data-geo-map-mode="3d"]')).toBeVisible({
+    timeout: 15_000,
+  });
+});
+
 test("loads the original JetBrains Mono web font", async ({ page }) => {
   await page.goto("/zh/app/xeoos-team/widgets");
   await expect(

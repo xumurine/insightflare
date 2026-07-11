@@ -12,8 +12,6 @@ export default [
   {
     ignores: [
       ".cache/**",
-      ".next/**",
-      ".open-next/**",
       ".output/**",
       ".playwright-cli/**",
       ".tanstack/**",

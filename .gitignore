@@ -3,8 +3,7 @@ node_modules
 .tanstack
 dist
 .cache
-.next
-.open-next
+.output
 *.tsbuildinfo
 .env
 .env.*

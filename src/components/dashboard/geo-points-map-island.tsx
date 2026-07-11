@@ -8,7 +8,7 @@ import type { AppMessages } from "@/lib/i18n/messages";
 import type {
   GeoPointsMapCountryCount,
   GeoPointsMapPoint,
-} from "./geo-points-map";
+} from "./geo-points-map-3d";
 
 interface GeoPointsMapIslandProps {
   locale: Locale;
@@ -38,13 +38,38 @@ function GeoPointsMapFallback() {
   );
 }
 
-const GeoPointsMapClient = createIsomorphicFn()
+type FlatGeoPointsMapProps = Omit<
+  GeoPointsMapIslandProps,
+  | "projectionMode"
+  | "autoRotate"
+  | "collapseOverlappingPointColors"
+  | "pointCrossfadeEnabled"
+>;
+
+type GeoPointsMap3DProps = Omit<GeoPointsMapIslandProps, "projectionMode">;
+
+const FlatGeoPointsMapClient = createIsomorphicFn()
   .server(() => GeoPointsMapFallback)
   .client(() =>
-    dynamic<GeoPointsMapIslandProps>(
+    dynamic<FlatGeoPointsMapProps>(
       () =>
-        import("@/components/dashboard/geo-points-map").then(
-          (module) => module.GeoPointsMap,
+        import("@/components/dashboard/geo-points-map-flat").then(
+          (module) => module.FlatGeoPointsMap,
+        ),
+      {
+        ssr: false,
+        loading: GeoPointsMapFallback,
+      },
+    ),
+  )();
+
+const GeoPointsMap3DClient = createIsomorphicFn()
+  .server(() => GeoPointsMapFallback)
+  .client(() =>
+    dynamic<GeoPointsMap3DProps>(
+      () =>
+        import("@/components/dashboard/geo-points-map-3d").then(
+          (module) => module.GeoPointsMap3D,
         ),
       {
         ssr: false,
@@ -57,11 +82,27 @@ export type { GeoPointsMapCountryCount, GeoPointsMapPoint };
 
 export function GeoPointsMapIsland({
   heightClassName,
+  projectionMode = "mercator",
+  autoRotate,
+  collapseOverlappingPointColors,
+  pointCrossfadeEnabled,
   ...props
 }: GeoPointsMapIslandProps) {
+  const isGlobe = projectionMode === "globe";
+
   return (
     <div className={`${heightClassName ?? DEFAULT_MAP_HEIGHT_CLASS} w-full`}>
-      <GeoPointsMapClient {...props} heightClassName="h-full" />
+      {isGlobe ? (
+        <GeoPointsMap3DClient
+          {...props}
+          autoRotate={autoRotate}
+          collapseOverlappingPointColors={collapseOverlappingPointColors}
+          pointCrossfadeEnabled={pointCrossfadeEnabled}
+          heightClassName="h-full"
+        />
+      ) : (
+        <FlatGeoPointsMapClient {...props} heightClassName="h-full" />
+      )}
     </div>
   );
 }
