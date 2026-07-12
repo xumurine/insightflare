@@ -46,6 +46,11 @@ import type {
 import { fetchPrivateJson, fetchPrivateJsonMutate } from "./client-request";
 import { withFilters } from "./client-utils";
 
+function emptySessionsUnlessAborted(error: unknown): SessionsData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptySessions();
+}
+
 export async function fetchOverview(
   siteId: string,
   window: TimeWindow,
@@ -191,6 +196,7 @@ export async function fetchSessions(
     sortBy?: SessionListSortKey;
     sortDir?: SortDirection;
     search?: string;
+    signal?: AbortSignal;
   },
 ): Promise<SessionsData> {
   const params: Record<string, string | number> = {
@@ -210,15 +216,18 @@ export async function fetchSessions(
   if (options?.sortDir) params.sortDir = options.sortDir;
   const search = options?.search?.trim();
   if (search) params.search = search;
-  return fetchPrivateJson<SessionsData>(
-    "/api/private/sessions",
-    withFilters(
-      {
-        ...params,
-      },
-      filters,
-    ),
-  ).catch(emptySessions);
+  const requestParams = withFilters(
+    {
+      ...params,
+    },
+    filters,
+  );
+  const request = options?.signal
+    ? fetchPrivateJson<SessionsData>("/api/private/sessions", requestParams, {
+        signal: options.signal,
+      })
+    : fetchPrivateJson<SessionsData>("/api/private/sessions", requestParams);
+  return request.catch(emptySessionsUnlessAborted);
 }
 
 export async function fetchSessionDetail(
