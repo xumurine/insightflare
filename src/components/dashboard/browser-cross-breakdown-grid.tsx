@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { RiBarChartBoxLine } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
@@ -370,6 +371,13 @@ function BrowserCrossStackedBarCard({
   );
 }
 
+function emptyBreakdownUnlessAborted(
+  error: unknown,
+): BrowserCrossBreakdownData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyBrowserCrossBreakdown();
+}
+
 export function BrowserCrossBreakdownGrid({
   locale,
   messages,
@@ -377,32 +385,26 @@ export function BrowserCrossBreakdownGrid({
   window,
   filters,
 }: BrowserCrossBreakdownGridProps) {
-  const [loading, setLoading] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
-  const [breakdownData, setBreakdownData] = useState<BrowserCrossBreakdownData>(
-    () => emptyBrowserCrossBreakdown(),
-  );
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    fetchBrowserCrossBreakdown(siteId, window, filters)
-      .catch(() => emptyBrowserCrossBreakdown())
-      .then((nextData) => {
-        if (!active) return;
-        setBreakdownData(nextData);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-        setHydrated(true);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [filters, siteId, window.from, window.to]);
+  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const { data, isFetching } = useQuery({
+    queryKey: [
+      "dashboard",
+      "browser-cross-breakdown",
+      siteId,
+      window.from,
+      window.to,
+      window.timeZone,
+      filtersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchBrowserCrossBreakdown(siteId, window, filters, { signal }).catch(
+        emptyBreakdownUnlessAborted,
+      ),
+    enabled: typeof window !== "undefined",
+  });
+  const breakdownData = data ?? emptyBrowserCrossBreakdown();
+  const loading = isFetching;
+  const hydrated = data !== undefined;
 
   const operatingSystem = useMemo(
     () => buildCrossDisplayDimension(breakdownData.operatingSystem, messages),

@@ -163,23 +163,31 @@ export async function fetchBrowserCrossBreakdown(
     browserLimit?: number;
     osLimit?: number;
     deviceTypeLimit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<BrowserCrossBreakdownData> {
-  return fetchPrivateJson<BrowserCrossBreakdownData>(
-    "/api/private/browser-cross-breakdown",
-    withFilters(
-      {
-        siteId,
-        from: window.from,
-        to: window.to,
-        timeZone: window.timeZone,
-        browserLimit: options?.browserLimit ?? 8,
-        osLimit: options?.osLimit ?? 6,
-        deviceTypeLimit: options?.deviceTypeLimit ?? 5,
-      },
-      filters,
-    ),
+  const requestParams = withFilters(
+    {
+      siteId,
+      from: window.from,
+      to: window.to,
+      timeZone: window.timeZone,
+      browserLimit: options?.browserLimit ?? 8,
+      osLimit: options?.osLimit ?? 6,
+      deviceTypeLimit: options?.deviceTypeLimit ?? 5,
+    },
+    filters,
   );
+  return options?.signal
+    ? fetchPrivateJson<BrowserCrossBreakdownData>(
+        "/api/private/browser-cross-breakdown",
+        requestParams,
+        { signal: options.signal },
+      )
+    : fetchPrivateJson<BrowserCrossBreakdownData>(
+        "/api/private/browser-cross-breakdown",
+        requestParams,
+      );
 }
 
 export async function fetchBrowserRadar(
