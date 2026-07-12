@@ -15,6 +15,7 @@ import {
   RiLineChartLine,
   RiSearchLine,
 } from "@remixicon/react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
 
 import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
@@ -127,6 +128,11 @@ function emptyTrendData(interval: TimeWindow["interval"]): TrendData {
     interval,
     data: [],
   };
+}
+
+function fallbackUnlessAborted<T>(error: unknown, fallback: () => T): T {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return fallback();
 }
 
 const METRIC_AREA_COLOR = "var(--color-chart-1)";
@@ -3632,42 +3638,43 @@ export function OverviewMetricsSection({
   window,
   filters,
 }: OverviewDataSectionProps) {
-  const [loading, setLoading] = useState(true);
-  const [overview, setOverview] = useState<OverviewData>(emptyOverviewData);
-  const [previousOverview, setPreviousOverview] =
-    useState<OverviewData>(emptyOverviewData);
-  const [detailSeries, setDetailSeries] = useState<TrendData["data"]>([]);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setOverview(emptyOverviewData());
-    setPreviousOverview(emptyOverviewData());
-
-    const previousTo = Math.max(window.from - 1, 0);
-    const previousFrom = Math.max(previousTo - (window.to - window.from), 0);
-    const previousWindow: TimeWindow = {
-      ...window,
-      from: previousFrom,
-      to: previousTo,
-    };
-
-    (async () => {
+  const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
+  const {
+    data: metricsData,
+    isFetching,
+    isPending,
+  } = useQuery({
+    queryKey: [
+      "dashboard",
+      "overview-metrics",
+      siteId,
+      window.from,
+      window.to,
+      window.interval,
+      window.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => {
       const current = await fetchOverview(siteId, window, filters, {
         includeChange: true,
         includeDetail: true,
-      }).catch(() => emptyOverviewData());
-      if (!active) return;
-      setOverview(current);
-
+        signal,
+      }).catch((error) => fallbackUnlessAborted(error, emptyOverviewData));
+      const previousTo = Math.max(window.from - 1, 0);
+      const previousFrom = Math.max(previousTo - (window.to - window.from), 0);
+      const previousWindow: TimeWindow = {
+        ...window,
+        from: previousFrom,
+        to: previousTo,
+      };
       const [previous, trend] = await Promise.all([
         current.previousData
           ? Promise.resolve({
               ok: current.ok,
               data: current.previousData,
             } as OverviewData)
-          : fetchOverview(siteId, previousWindow, filters).catch(() =>
-              emptyOverviewData(),
+          : fetchOverview(siteId, previousWindow, filters, { signal }).catch(
+              (error) => fallbackUnlessAborted(error, emptyOverviewData),
             ),
         current.detail
           ? Promise.resolve({
@@ -3675,23 +3682,26 @@ export function OverviewMetricsSection({
               interval: current.detail.interval,
               data: current.detail.data,
             } as TrendData)
-          : fetchTrend(siteId, window, filters).catch(() =>
-              emptyTrendData(window.interval),
+          : fetchTrend(siteId, window, filters, { signal }).catch((error) =>
+              fallbackUnlessAborted(error, () =>
+                emptyTrendData(window.interval),
+              ),
             ),
       ]);
 
-      if (!active) return;
-      setPreviousOverview(previous);
-      setDetailSeries(trend.data);
-    })().finally(() => {
-      if (!active) return;
-      setLoading(false);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [filters, siteId, window.from, window.interval, window.to]);
+      return {
+        overview: current,
+        previousOverview: previous,
+        detailSeries: trend.data,
+      };
+    },
+    enabled: typeof window !== "undefined",
+    placeholderData: keepPreviousData,
+  });
+  const loading = isPending || isFetching;
+  const overview = metricsData?.overview ?? emptyOverviewData();
+  const previousOverview = metricsData?.previousOverview ?? emptyOverviewData();
+  const detailSeries = metricsData?.detailSeries ?? [];
 
   const pagesPerSessionFormatter = useMemo(
     () =>
@@ -3868,56 +3878,49 @@ export function OverviewTrendSection({
   window,
   filters,
 }: OverviewDataSectionProps) {
-  const [loading, setLoading] = useState(true);
-  const [trendHydrated, setTrendHydrated] = useState(false);
-  const [trendData, setTrendData] = useState<TrendData>(() =>
-    emptyTrendData(window.interval),
+  const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
+  const currentDataWindow = useMemo(
+    () => ({
+      from: window.from,
+      to: window.to,
+      interval: window.interval,
+      timeZone: window.timeZone,
+    }),
+    [window.from, window.interval, window.timeZone, window.to],
   );
-  const [dataWindow, setDataWindow] = useState<
-    Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">
-  >(() => ({
-    from: window.from,
-    to: window.to,
-    interval: window.interval,
-    timeZone: window.timeZone,
-  }));
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    fetchTrend(siteId, window, filters)
-      .catch(() => emptyTrendData(window.interval))
-      .then((nextTrend) => {
-        if (!active) return;
-        setTrendData(nextTrend);
-        setDataWindow({
-          from: window.from,
-          to: window.to,
-          interval: window.interval,
-          timeZone: window.timeZone,
-        });
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-        setTrendHydrated(true);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    filters,
-    siteId,
-    window.from,
-    window.interval,
-    window.timeZone,
-    window.to,
-  ]);
+  const {
+    data: trendQueryData,
+    isFetching,
+    isPending,
+  } = useQuery({
+    queryKey: [
+      "dashboard",
+      "overview-trend",
+      siteId,
+      window.from,
+      window.to,
+      window.interval,
+      window.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => ({
+      trendData: await fetchTrend(siteId, window, filters, { signal }).catch(
+        (error) =>
+          fallbackUnlessAborted(error, () => emptyTrendData(window.interval)),
+      ),
+      dataWindow: currentDataWindow,
+    }),
+    enabled: typeof window !== "undefined",
+    placeholderData: keepPreviousData,
+  });
+  const loading = isPending || isFetching;
+  const trendData =
+    trendQueryData?.trendData ?? emptyTrendData(window.interval);
+  const dataWindow = trendQueryData?.dataWindow ?? currentDataWindow;
+  const hasTrendData = Boolean(trendQueryData);
 
   const trendDisplayData = useMemo(() => {
-    if (!trendHydrated && loading) {
+    if (!hasTrendData && isPending) {
       return buildEmptyTrendData(dataWindow);
     }
     return normalizeTrendData(dataWindow, trendData.data);
@@ -3926,8 +3929,8 @@ export function OverviewTrendSection({
     dataWindow.interval,
     dataWindow.timeZone,
     dataWindow.to,
-    loading,
-    trendHydrated,
+    hasTrendData,
+    isPending,
     trendData.data,
   ]);
   const visitorTrendChartData = useMemo(
@@ -3939,7 +3942,7 @@ export function OverviewTrendSection({
       })),
     [trendDisplayData],
   );
-  const showTrendOverlayLoading = loading && trendHydrated;
+  const showTrendOverlayLoading = loading && hasTrendData;
 
   return (
     <Card className="overflow-visible">

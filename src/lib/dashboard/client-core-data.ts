@@ -53,6 +53,7 @@ export async function fetchOverview(
   options?: {
     includeChange?: boolean;
     includeDetail?: boolean;
+    signal?: AbortSignal;
   },
 ): Promise<OverviewData> {
   return fetchPrivateJson<OverviewData>(
@@ -70,6 +71,7 @@ export async function fetchOverview(
       },
       filters,
     ),
+    { signal: options?.signal },
   );
 }
 
@@ -77,6 +79,7 @@ export async function fetchTrend(
   siteId: string,
   window: TimeWindow,
   filters?: DashboardFilters,
+  options?: { signal?: AbortSignal },
 ): Promise<TrendData> {
   return fetchPrivateJson<TrendData>(
     "/api/private/trend",
@@ -90,6 +93,7 @@ export async function fetchTrend(
       },
       filters,
     ),
+    { signal: options?.signal },
   );
 }
 

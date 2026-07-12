@@ -15,6 +15,11 @@ import type {
 import { fetchPrivateJson } from "./client-request";
 import { withFilters } from "./client-utils";
 
+function emptyGeoPointsUnlessAborted(error: unknown): OverviewGeoPointsData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyOverviewGeoPoints();
+}
+
 function normalizeGeoDimensionLabel(
   tab: OverviewGeoDimensionTab,
   row: Record<string, unknown>,
@@ -105,7 +110,7 @@ export async function fetchOverviewGeoPoints(
           }))
         : [],
     }))
-    .catch(() => emptyOverviewGeoPoints());
+    .catch(emptyGeoPointsUnlessAborted);
 }
 
 export async function fetchOverviewGeoDimensionTab(

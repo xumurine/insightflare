@@ -567,6 +567,35 @@ describe("Dashboard Client Data Processing Utilities", () => {
       expect((out as any).data.views).toBe(42);
     });
 
+    it("forwards query cancellation signals for overview and trend requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockImplementation(() =>
+          Promise.resolve(freshJsonResponse({ ok: true, data: [] })),
+        );
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await Promise.all([
+        fetchOverview("signal-overview", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+        fetchTrend("signal-trend", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ]);
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls).toEqual(
+        expect.arrayContaining([
+          [
+            expect.any(String),
+            expect.objectContaining({ signal: controller.signal }),
+          ],
+        ]),
+      );
+    });
+
     it("should propagate non-OK HTTP responses as thrown errors", async () => {
       globalThis.fetch = vi
         .fn()
@@ -989,6 +1018,17 @@ describe("Dashboard Client Data Processing Utilities", () => {
         expect.any(String),
         expect.objectContaining({ signal: controller.signal }),
       );
+    });
+
+    it("preserves aborted overview geo point requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchOverviewGeoPoints("geo-points-aborted", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
     });
 
     it("should return empty fallback payloads when recoverable endpoints fail", async () => {
