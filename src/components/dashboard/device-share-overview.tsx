@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { resolveDeviceTypeMeta } from "@/components/dashboard/journey-display";
 import { ShareRadialCard } from "@/components/dashboard/share-radial-card";
@@ -12,6 +13,11 @@ import type { AppMessages } from "@/lib/i18n/messages";
 
 function emptyTrend(): BrowserTrendData {
   return { ok: true, interval: "day", series: [], data: [] };
+}
+
+function emptyTrendUnlessAborted(error: unknown): BrowserTrendData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyTrend();
 }
 
 function seriesLabel(
@@ -37,41 +43,37 @@ export function DeviceShareOverview({
   window,
   filters,
 }: DeviceShareOverviewProps) {
-  const [deviceTrend, setDeviceTrend] = useState<BrowserTrendData>(emptyTrend);
-  const [osTrend, setOsTrend] = useState<BrowserTrendData>(emptyTrend);
-  const [loading, setLoading] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    Promise.all([
-      fetchClientDimensionTrend(siteId, window, "deviceType", filters, {
-        limit: 5,
-      }).catch(() => emptyTrend()),
-      fetchClientDimensionTrend(siteId, window, "operatingSystem", filters, {
-        limit: 5,
-      }).catch(() => emptyTrend()),
-    ])
-      .then(([nextDeviceTrend, nextOsTrend]) => {
-        if (!active) return;
-        setDeviceTrend(nextDeviceTrend);
-        setOsTrend(nextOsTrend);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-        setHydrated(true);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [filters, siteId, window.from, window.interval, window.to]);
-
-  const showOverlayLoading = loading && hydrated;
-  const showInitialLoading = loading && !hydrated;
+  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const { data, isFetching } = useQuery({
+    queryKey: [
+      "dashboard",
+      "device-share-overview",
+      siteId,
+      window.from,
+      window.to,
+      window.interval,
+      window.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => {
+      const [deviceTrend, osTrend] = await Promise.all([
+        fetchClientDimensionTrend(siteId, window, "deviceType", filters, {
+          limit: 5,
+          signal,
+        }).catch(emptyTrendUnlessAborted),
+        fetchClientDimensionTrend(siteId, window, "operatingSystem", filters, {
+          limit: 5,
+          signal,
+        }).catch(emptyTrendUnlessAborted),
+      ]);
+      return { deviceTrend, osTrend };
+    },
+    enabled: typeof window !== "undefined",
+  });
+  const deviceTrend = data?.deviceTrend ?? emptyTrend();
+  const osTrend = data?.osTrend ?? emptyTrend();
+  const showOverlayLoading = isFetching && data !== undefined;
+  const showInitialLoading = isFetching && data === undefined;
 
   return (
     <div className="relative">
