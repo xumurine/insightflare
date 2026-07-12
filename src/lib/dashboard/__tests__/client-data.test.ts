@@ -974,6 +974,23 @@ describe("Dashboard Client Data Processing Utilities", () => {
       expect(params.get("granularity")).toBe("day");
     });
 
+    it("forwards cancellation signals for overview geo point requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchOverviewGeoPoints("geo-points-signal", mockWindow, undefined, {
+        signal: controller.signal,
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
     it("should return empty fallback payloads when recoverable endpoints fail", async () => {
       const fetchMock = vi.fn().mockRejectedValue(new Error("offline"));
       globalThis.fetch = fetchMock as any;

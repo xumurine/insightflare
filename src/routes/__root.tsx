@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router";
 
 import { GlobalScrollbars } from "@/components/global-scrollbars";
+import { AppQueryProvider } from "@/components/query-client-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -54,12 +55,14 @@ function RootDocument() {
         <ScriptOnce>{THEME_INIT_SCRIPT}</ScriptOnce>
         <GlobalScrollbars />
         <ScriptOnce>{ESBUILD_NAME_HELPER_SCRIPT}</ScriptOnce>
-        <ThemeProvider>
-          <TooltipProvider>
-            <Outlet />
-          </TooltipProvider>
-          <Toaster />
-        </ThemeProvider>
+        <AppQueryProvider>
+          <ThemeProvider>
+            <TooltipProvider>
+              <Outlet />
+            </TooltipProvider>
+            <Toaster />
+          </ThemeProvider>
+        </AppQueryProvider>
         {import.meta.env.VITE_DEMO_MODE === "1" ? (
           <script defer src={DEMO_ANALYTICS_SCRIPT_SRC} />
         ) : null}

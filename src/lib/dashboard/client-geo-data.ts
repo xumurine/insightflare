@@ -39,6 +39,7 @@ export async function fetchOverviewGeoPoints(
   options?: {
     limit?: number;
     applyGeoFilter?: boolean;
+    signal?: AbortSignal;
   },
 ): Promise<OverviewGeoPointsData> {
   return fetchPrivateJson<OverviewGeoPointsData>(
@@ -54,6 +55,7 @@ export async function fetchOverviewGeoPoints(
       },
       filters,
     ),
+    { signal: options?.signal },
   )
     .then((payload) => ({
       ok: payload.ok,
