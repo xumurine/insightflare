@@ -422,6 +422,23 @@ describe("admin bot analytics handlers", () => {
             { status: 200 },
           );
         }
+        if (sql.includes("blob15 AS label")) {
+          return new Response(
+            jsonEachRow([
+              {
+                label: "13335",
+                count: 42,
+                highConfidence: 17,
+              },
+              {
+                label: "16509",
+                count: 31,
+                highConfidence: 9,
+              },
+            ]),
+            { status: 200 },
+          );
+        }
         return new Response("", { status: 200 });
       });
 
@@ -497,6 +514,33 @@ describe("admin bot analytics handlers", () => {
       longitude: 139.692,
       pointCount: 1,
     });
+    expect(body.abnormal.dimensions.network.asn).toEqual([
+      {
+        key: "13335\u0000\u0000",
+        label: "13335",
+        count: 42,
+        highConfidence: 17,
+        country: "",
+        region: "",
+      },
+      {
+        key: "16509\u0000\u0000",
+        label: "16509",
+        count: 31,
+        highConfidence: 9,
+        country: "",
+        region: "",
+      },
+    ]);
+    expect(
+      allSql.some(
+        (statement) =>
+          statement.includes("blob15 AS label") &&
+          statement.includes("GROUP BY label") &&
+          statement.includes("count() AS count") &&
+          statement.includes("LIMIT 30"),
+      ),
+    ).toBe(true);
     expect(body.trend.some((point: any) => point.baselineCount === 99)).toBe(
       true,
     );
@@ -664,7 +708,7 @@ describe("admin bot analytics handlers", () => {
     const body = await jsonOf(response);
 
     expect(response.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(7);
+    expect(fetchMock).toHaveBeenCalledTimes(19);
     const firstSql = String(
       (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body || "",
     );
@@ -831,7 +875,7 @@ describe("admin bot analytics handlers", () => {
     const body = await jsonOf(response);
 
     expect(response.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(18);
     expect(
       fetchMock.mock.calls.some(([, init]) =>
         String((init as RequestInit | undefined)?.body || "").includes(

@@ -29,6 +29,7 @@ import { clampString, ONE_HOUR_MS } from "./utils";
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
+const NETWORK_DIMENSION_LIMIT = 30;
 const WINDOW_OPTIONS_MINUTES = new Set([60, 1440, 10080, 43200]);
 const MAX_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 const CF_ANALYTICS_ENGINE_SQL_ENDPOINT =
@@ -36,6 +37,13 @@ const CF_ANALYTICS_ENGINE_SQL_ENDPOINT =
 
 type AdminActor = Awaited<ReturnType<typeof requireActor>>;
 type BotAnalyticsInterval = "minute" | "hour" | "day" | "week";
+type NetworkDimension =
+  | "asOrganization"
+  | "asn"
+  | "country"
+  | "region"
+  | "city"
+  | "colo";
 
 interface BotAnalyticsEvent {
   timestamp: string;
@@ -345,6 +353,53 @@ function buildMapPointsSql(input: {
   `;
 }
 
+function buildNetworkDimensionSql(input: {
+  dataset: string;
+  from: number;
+  to: number;
+  source: "normal" | "abnormal";
+  dimension: NetworkDimension;
+}) {
+  const dataset = analyticsDatasetIdentifier(input.dataset);
+  const fromSeconds = Math.floor(input.from / 1000);
+  const toSeconds = Math.ceil(input.to / 1000);
+  const columns =
+    input.source === "abnormal"
+      ? {
+          asOrganization: ["blob16 AS label"],
+          asn: ["blob15 AS label"],
+          country: ["blob10 AS label"],
+          region: ["blob11 AS label", "blob10 AS country"],
+          city: ["blob12 AS label", "blob10 AS country", "blob11 AS region"],
+          colo: ["blob14 AS label"],
+        }
+      : {
+          asOrganization: ["blob12 AS label"],
+          asn: ["blob11 AS label"],
+          country: ["blob6 AS label"],
+          region: ["blob7 AS label", "blob6 AS country"],
+          city: ["blob8 AS label", "blob6 AS country", "blob7 AS region"],
+          colo: ["blob10 AS label"],
+        };
+  const groupColumns = columns[input.dimension];
+  const highConfidenceSelect =
+    input.source === "abnormal"
+      ? ",\n      countIf(blob3 = 'high') AS highConfidence"
+      : ",\n      0 AS highConfidence";
+  return `
+    SELECT
+      ${groupColumns.join(",\n      ")},
+      count() AS count${highConfidenceSelect}
+    FROM ${dataset}
+    WHERE timestamp >= toDateTime(${fromSeconds})
+      AND timestamp <= toDateTime(${toSeconds})
+    GROUP BY ${groupColumns.map((column) => column.split(" AS ")[1]).join(", ")}
+    ORDER BY count DESC
+    LIMIT ${NETWORK_DIMENSION_LIMIT}
+    FORMAT JSONEachRow
+  `;
+}
+
 function buildBotAnalyticsDetailSql(input: {
   dataset: string;
   since: number;
@@ -643,12 +698,6 @@ function shouldRetryBotAnalyticsWithoutDoubles(result: {
   );
 }
 
-function bucketSizeMs(minutes: number): number {
-  if (minutes <= 1440) return ONE_HOUR_MS;
-  if (minutes <= 10080) return 6 * ONE_HOUR_MS;
-  return 24 * ONE_HOUR_MS;
-}
-
 function buildTrendBuckets(
   from: number,
   to: number,
@@ -676,97 +725,19 @@ function bucketTimestamp(
   return startOfZonedInterval(timestampMs, interval, timeZone);
 }
 
-function aggregateEvents(
-  events: BotAnalyticsEvent[],
-  minutes: number,
-  now = Date.now(),
-) {
-  const since = now - minutes * 60 * 1000;
-  const bucketMs = bucketSizeMs(minutes);
+function aggregateSampleReasons(events: BotAnalyticsEvent[]) {
   const reasonCounts = new Map<string, number>();
-  const countryCounts = new Map<string, number>();
-  const asnCounts = new Map<
-    string,
-    { asn: number; asOrganization: string; count: number }
-  >();
-  const trend = new Map<number, number>();
-  const mapPoints = new Map<
-    string,
-    {
-      latitude: number;
-      longitude: number;
-      country: string;
-      pointCount: number;
-    }
-  >();
-
-  for (const bucket of buildTrendBuckets(since, now, "hour", "UTC")) {
-    trend.set(bucket, 0);
-  }
 
   for (const event of events) {
     for (const reason of event.reasons) {
       reasonCounts.set(reason, (reasonCounts.get(reason) || 0) + 1);
     }
-    if (event.country) {
-      countryCounts.set(
-        event.country,
-        (countryCounts.get(event.country) || 0) + 1,
-      );
-    }
-    if (event.asn) {
-      const key = String(event.asn);
-      const current = asnCounts.get(key);
-      if (current) current.count += 1;
-      else {
-        asnCounts.set(key, {
-          asn: event.asn,
-          asOrganization: event.asOrganization,
-          count: 1,
-        });
-      }
-    }
-    if (event.receivedAt > 0) {
-      const bucket = Math.floor(event.receivedAt / bucketMs) * bucketMs;
-      trend.set(bucket, (trend.get(bucket) || 0) + 1);
-    }
-    if (event.latitude !== null && event.longitude !== null) {
-      const key = `${event.country}:${event.latitude.toFixed(3)}:${event.longitude.toFixed(3)}`;
-      const current = mapPoints.get(key);
-      if (current) current.pointCount += 1;
-      else {
-        mapPoints.set(key, {
-          latitude: event.latitude,
-          longitude: event.longitude,
-          country: event.country,
-          pointCount: 1,
-        });
-      }
-    }
   }
 
-  const sortCounts = <T extends { count: number }>(items: T[]) =>
-    items.sort((left, right) => right.count - left.count).slice(0, 10);
-
-  return {
-    mapPoints: [...mapPoints.values()],
-    trend: [...trend.entries()]
-      .sort((left, right) => left[0] - right[0])
-      .map(([timestampMs, count]) => ({ timestampMs, count })),
-    reasons: sortCounts(
-      [...reasonCounts.entries()].map(([reason, count]) => ({
-        reason,
-        count,
-      })),
-    ),
-    countries: sortCounts(
-      [...countryCounts.entries()].map(([country, count]) => ({
-        country,
-        count,
-      })),
-    ),
-    asns: sortCounts([...asnCounts.values()]),
-  };
+  return [...reasonCounts.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((left, right) => right.count - left.count)
+    .slice(0, 10);
 }
 
 async function siteLookup(
@@ -832,6 +803,25 @@ function normalizeMapRows(rows: Record<string, unknown>[]) {
         pointCount: number;
       } => row.latitude !== null && row.longitude !== null,
     );
+}
+
+function normalizeNetworkDimensionRows(rows: Record<string, unknown>[]) {
+  return rows.map((row) => {
+    const label = clampString(String(row.label || ""), 255);
+    const country = clampString(String(row.country || ""), 10);
+    const region = clampString(String(row.region || ""), 128);
+    return {
+      key: [label, country, region].join("\u0000"),
+      label,
+      count: Math.max(0, Math.trunc(toFiniteNumber(row.count))),
+      highConfidence: Math.max(
+        0,
+        Math.trunc(toFiniteNumber(row.highConfidence)),
+      ),
+      country,
+      region,
+    };
+  });
 }
 
 function aggregateNormalEvents(events: NormalAnalyticsEvent[]) {
@@ -1384,7 +1374,6 @@ export async function handleBotAnalyticsAdmin(
   const normalEvents = normalRawRows.map((row) =>
     normalizeNormalRow(row, sites),
   );
-  const aggregates = aggregateEvents(events, minutes, to);
   const uniqueAsns = new Set(events.map((event) => event.asn).filter(Boolean));
   const uniqueCountries = new Set(
     events.map((event) => event.country).filter(Boolean),
@@ -1470,6 +1459,85 @@ export async function handleBotAnalyticsAdmin(
       req,
     );
   }
+
+  const networkDimensions: NetworkDimension[] = [
+    "asOrganization",
+    "asn",
+    "country",
+    "region",
+    "city",
+    "colo",
+  ];
+  const networkDimensionResults = await Promise.all(
+    networkDimensions.flatMap((dimension) => [
+      queryAnalyticsRows({
+        accountId: config.accountId,
+        token,
+        sql: buildNetworkDimensionSql({
+          dataset: config.dataset,
+          from,
+          to,
+          source: "abnormal",
+          dimension,
+        }),
+      }),
+      queryAnalyticsRows({
+        accountId: config.accountId,
+        token,
+        sql: buildNetworkDimensionSql({
+          dataset: config.normalDataset,
+          from,
+          to,
+          source: "normal",
+          dimension,
+        }),
+      }),
+    ]),
+  );
+  const failedNetworkDimensionResult = networkDimensionResults.find(
+    (result) => !result.ok,
+  );
+  if (failedNetworkDimensionResult && !failedNetworkDimensionResult.ok) {
+    return bad(
+      cloudflareAnalyticsErrorMessage(failedNetworkDimensionResult),
+      "bot_analytics_query_failed",
+      req,
+    );
+  }
+  const networkDimensionRows = networkDimensionResults.map((result) =>
+    result.ok ? result.rows : [],
+  );
+  const abnormalNetworkDimensions = Object.fromEntries(
+    networkDimensions.map((dimension, index) => [
+      dimension,
+      normalizeNetworkDimensionRows(networkDimensionRows[index * 2]),
+    ]),
+  );
+  const normalNetworkDimensions = Object.fromEntries(
+    networkDimensions.map((dimension, index) => [
+      dimension,
+      normalizeNetworkDimensionRows(networkDimensionRows[index * 2 + 1]),
+    ]),
+  );
+  const organizationsByAsn = new Map(
+    events
+      .filter((event) => event.asn && event.asOrganization)
+      .map((event) => [String(event.asn), event.asOrganization]),
+  );
+  const aggregates = {
+    reasons: aggregateSampleReasons(events),
+    countries: abnormalNetworkDimensions.country.map((row) => ({
+      country: row.label,
+      count: row.count,
+    })),
+    asns: abnormalNetworkDimensions.asn
+      .map((row) => ({
+        asn: Math.trunc(toFiniteNumber(row.label)),
+        asOrganization: organizationsByAsn.get(row.label) || "",
+        count: row.count,
+      }))
+      .filter((row) => row.asn > 0),
+  };
 
   const trendWithRatio = mergeTrendRows({
     from,
@@ -1598,6 +1666,9 @@ export async function handleBotAnalyticsAdmin(
       reasons: aggregates.reasons,
       countries: aggregates.countries,
       asns: aggregates.asns,
+      dimensions: {
+        network: abnormalNetworkDimensions,
+      },
     },
     normal: {
       summary: {
@@ -1614,6 +1685,9 @@ export async function handleBotAnalyticsAdmin(
       },
       mapPoints: normalMapPoints,
       events: normalEvents.map(serializeNormalListEvent),
+      dimensions: {
+        network: normalNetworkDimensions,
+      },
     },
   });
 }

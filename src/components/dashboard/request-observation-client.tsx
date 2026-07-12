@@ -188,6 +188,15 @@ interface RequestTrendPoint {
   p99LatencyMs: number | null;
 }
 
+interface RequestNetworkDimensionRow {
+  key: string;
+  label: string;
+  count: number;
+  highConfidence: number;
+  country: string;
+  region: string;
+}
+
 interface RequestObservationData {
   ok: true;
   configured: boolean;
@@ -249,6 +258,11 @@ interface RequestObservationData {
     reasons?: Array<{ reason: string; count: number }>;
     countries?: Array<{ country: string; count: number }>;
     asns?: Array<{ asn: number; asOrganization: string; count: number }>;
+    dimensions?: {
+      network?: Partial<
+        Record<NetworkDimensionTab, RequestNetworkDimensionRow[]>
+      >;
+    };
   };
   normal?: {
     summary: {
@@ -267,6 +281,11 @@ interface RequestObservationData {
     };
     mapPoints: RequestMapPoint[];
     events: NormalRequestEvent[];
+    dimensions?: {
+      network?: Partial<
+        Record<NetworkDimensionTab, RequestNetworkDimensionRow[]>
+      >;
+    };
   };
 }
 
@@ -1009,7 +1028,8 @@ export function RequestObservationClient({
       Object.fromEntries(
         networkTabs.map((tab) => [
           tab.value,
-          toAsyncDimensionRows(
+          toAsyncNetworkDimensionRows(
+            data?.abnormal?.dimensions?.network?.[tab.value],
             aggregateDimensionRows(abnormalEvents, copy, (event) =>
               valuesForNetworkTab(event, tab.value),
             ),
@@ -1021,7 +1041,7 @@ export function RequestObservationClient({
           ),
         ]),
       ) as Record<NetworkDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [abnormalEvents, copy, locale, networkTabs],
+    [abnormalEvents, copy, data, locale, networkTabs],
   );
   const clientRowsByTab = useMemo(
     () =>
@@ -1057,7 +1077,8 @@ export function RequestObservationClient({
       Object.fromEntries(
         networkTabs.map((tab) => [
           tab.value,
-          toAsyncDimensionRows(
+          toAsyncNetworkDimensionRows(
+            data?.normal?.dimensions?.network?.[tab.value],
             aggregateNormalDimensionRows(normalEvents, copy, (event) =>
               valuesForNormalNetworkTab(event, tab.value),
             ),
@@ -1069,7 +1090,7 @@ export function RequestObservationClient({
           ),
         ]),
       ) as Record<NetworkDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [copy, locale, networkTabs, normalEvents],
+    [copy, data, locale, networkTabs, normalEvents],
   );
 
   const requestKey = `${timeWindow.interval}:${data?.generatedAt ?? 0}`;
@@ -2452,6 +2473,37 @@ function toAsyncDimensionRows(
                 options.unknownLabel
               ? cityAppearance(row, options.locale, options.unknownLabel)
               : undefined,
+  }));
+}
+
+function toAsyncNetworkDimensionRows(
+  rows: RequestNetworkDimensionRow[] | undefined,
+  fallbackRows: BotDimensionRow[],
+  options: {
+    networkTab: NetworkDimensionTab;
+    locale: Locale;
+    unknownLabel: string;
+  },
+): AsyncDimensionBreakdownRow[] {
+  if (!rows) return toAsyncDimensionRows(fallbackRows, options);
+
+  const dimensionRows = rows.map((row) => ({
+    label:
+      options.networkTab === "asn" && row.label
+        ? `AS${row.label}`
+        : row.label || options.unknownLabel,
+    count: row.count,
+    highConfidence: row.highConfidence,
+    sampleEvent: {
+      country: row.country,
+      region: row.region,
+      city: options.networkTab === "city" ? row.label : "",
+    } as BotEvent,
+  }));
+
+  return toAsyncDimensionRows(dimensionRows, options).map((row, index) => ({
+    ...row,
+    key: rows[index]?.key || row.key,
   }));
 }
 
