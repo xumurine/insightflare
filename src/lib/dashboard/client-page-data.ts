@@ -17,6 +17,11 @@ import { fetchTrend } from "./client-core-data";
 import { fetchPrivateJson } from "./client-request";
 import { withFilters } from "./client-utils";
 
+function fallbackUnlessAborted<T>(error: unknown, fallback: () => T): T {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return fallback();
+}
+
 export async function fetchPagesDashboard(
   siteId: string,
   window: TimeWindow,
@@ -24,6 +29,7 @@ export async function fetchPagesDashboard(
   options?: {
     page?: number;
     pageSize?: number;
+    signal?: AbortSignal;
   },
 ): Promise<PagesDashboardData> {
   return fetchPrivateJson<PagesDashboardData>(
@@ -40,6 +46,7 @@ export async function fetchPagesDashboard(
       },
       filters,
     ),
+    { signal: options?.signal },
   );
 }
 
@@ -49,6 +56,7 @@ export async function fetchPagesShareTrend(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<BrowserTrendData> {
   const limit = Math.max(1, Math.min(options?.limit ?? 5, 12));
@@ -56,23 +64,28 @@ export async function fetchPagesShareTrend(
     fetchPagesDashboard(siteId, window, filters, {
       page: 1,
       pageSize: limit,
-    }).catch(
-      () =>
-        ({
-          ok: true,
-          interval: window.interval,
-          data: [],
-          meta: {
-            page: 1,
-            pageSize: limit,
-            returned: 0,
-            hasMore: false,
-            nextPage: null,
-          },
-        }) satisfies PagesDashboardData,
+      signal: options?.signal,
+    }).catch((error) =>
+      fallbackUnlessAborted(
+        error,
+        () =>
+          ({
+            ok: true,
+            interval: window.interval,
+            data: [],
+            meta: {
+              page: 1,
+              pageSize: limit,
+              returned: 0,
+              hasMore: false,
+              nextPage: null,
+            },
+          }) satisfies PagesDashboardData,
+      ),
     ),
-    fetchTrend(siteId, window, filters).catch(() =>
-      emptyTrend(window.interval),
+    fetchTrend(siteId, window, filters, { signal: options?.signal }).catch(
+      (error) =>
+        fallbackUnlessAborted(error, () => emptyTrend(window.interval)),
     ),
   ]);
 

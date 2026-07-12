@@ -19,6 +19,7 @@ export async function fetchClientDimensionTrend(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<BrowserTrendData> {
   return fetchPrivateJson<BrowserTrendData>(
@@ -35,6 +36,7 @@ export async function fetchClientDimensionTrend(
       },
       filters,
     ),
+    { signal: options?.signal },
   );
 }
 
@@ -74,6 +76,7 @@ export async function fetchBrowserTrend(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<BrowserTrendData> {
   return fetchPrivateJson<BrowserTrendData>(
@@ -89,6 +92,7 @@ export async function fetchBrowserTrend(
       },
       filters,
     ),
+    { signal: options?.signal },
   );
 }
 
@@ -98,6 +102,7 @@ export async function fetchBrowserEngineTrend(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<BrowserTrendData> {
   return fetchPrivateJson<BrowserTrendData>(
@@ -113,6 +118,7 @@ export async function fetchBrowserEngineTrend(
       },
       filters,
     ),
+    { signal: options?.signal },
   );
 }
 

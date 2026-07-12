@@ -1,11 +1,6 @@
-import {
-  type ComponentType,
-  type ReactNode,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { type ComponentType, type ReactNode, useMemo } from "react";
 import { RiLineChartLine } from "@remixicon/react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
@@ -50,6 +45,7 @@ export type ShareTrendFetcher = (
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ) => Promise<BrowserTrendData>;
 
@@ -59,6 +55,7 @@ interface ShareTrendCardProps {
   siteId: string;
   window: TimeWindow;
   filters: DashboardFilters;
+  queryKey: readonly unknown[];
   title: string;
   fetchTrend: ShareTrendFetcher;
   limit?: number;
@@ -77,6 +74,11 @@ function emptyTrendData(interval: DashboardInterval): BrowserTrendData {
     series: [],
     data: [],
   };
+}
+
+function fallbackUnlessAborted<T>(error: unknown, fallback: () => T): T {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return fallback();
 }
 
 function tickDateFormat(
@@ -181,6 +183,7 @@ export function ShareTrendCard({
   siteId,
   window,
   filters,
+  queryKey,
   title,
   fetchTrend,
   limit = 5,
@@ -189,55 +192,50 @@ export function ShareTrendCard({
   formatSeriesLabel,
   resolveSeriesIcon,
 }: ShareTrendCardProps) {
-  const [loading, setLoading] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
-  const [trendData, setTrendData] = useState<BrowserTrendData>(() =>
-    emptyTrendData(window.interval),
+  const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
+  const currentDataWindow = useMemo(
+    () => ({
+      from: window.from,
+      to: window.to,
+      interval: window.interval,
+      timeZone: window.timeZone,
+    }),
+    [window.from, window.interval, window.timeZone, window.to],
   );
-  const [dataWindow, setDataWindow] = useState<
-    Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">
-  >(() => ({
-    from: window.from,
-    to: window.to,
-    interval: window.interval,
-    timeZone: window.timeZone,
-  }));
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    fetchTrend(siteId, window, filters, { limit })
-      .catch(() => emptyTrendData(window.interval))
-      .then((nextTrend) => {
-        if (!active) return;
-        setTrendData(nextTrend);
-        setDataWindow({
-          from: window.from,
-          to: window.to,
-          interval: window.interval,
-          timeZone: window.timeZone,
-        });
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-        setHydrated(true);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    fetchTrend,
-    filters,
-    limit,
-    siteId,
-    window.from,
-    window.interval,
-    window.timeZone,
-    window.to,
-  ]);
+  const {
+    data: trendQueryData,
+    isFetching,
+    isPending,
+  } = useQuery({
+    queryKey: [
+      "dashboard",
+      "share-trend",
+      ...queryKey,
+      siteId,
+      window.from,
+      window.to,
+      window.interval,
+      window.timeZone,
+      filtersKey,
+      limit,
+    ],
+    queryFn: async ({ signal }) => ({
+      trendData: await fetchTrend(siteId, window, filters, {
+        limit,
+        signal,
+      }).catch((error) =>
+        fallbackUnlessAborted(error, () => emptyTrendData(window.interval)),
+      ),
+      dataWindow: currentDataWindow,
+    }),
+    enabled: typeof window !== "undefined",
+    placeholderData: keepPreviousData,
+  });
+  const loading = isPending || isFetching;
+  const trendData =
+    trendQueryData?.trendData ?? emptyTrendData(window.interval);
+  const dataWindow = trendQueryData?.dataWindow ?? currentDataWindow;
+  const hydrated = Boolean(trendQueryData);
 
   const localeCode = intlLocale(locale);
   const axisTickFormatter = useMemo(

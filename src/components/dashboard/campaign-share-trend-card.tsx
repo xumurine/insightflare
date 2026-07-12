@@ -44,6 +44,7 @@ function CampaignTrendPanel({
       siteId={siteId}
       window={window}
       filters={filters}
+      queryKey={["campaign", tab]}
       title={title}
       fetchTrend={fetchTrend}
       otherLabel={messages.browsers.otherLabel}

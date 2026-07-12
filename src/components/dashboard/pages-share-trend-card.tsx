@@ -26,6 +26,7 @@ export function PagesShareTrendCard({
       siteId={siteId}
       window={window}
       filters={filters}
+      queryKey={["pages"]}
       title={messages.pages.trendTitle}
       fetchTrend={fetchPagesShareTrend}
       limit={5}

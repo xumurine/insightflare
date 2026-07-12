@@ -26,6 +26,7 @@ export function BrowserEngineShareTrendCard({
       siteId={siteId}
       window={window}
       filters={filters}
+      queryKey={["browser-engine"]}
       title={messages.browsers.engineTrendTitle}
       fetchTrend={fetchBrowserEngineTrend}
     />

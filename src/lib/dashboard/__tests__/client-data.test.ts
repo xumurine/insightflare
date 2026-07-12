@@ -596,6 +596,42 @@ describe("Dashboard Client Data Processing Utilities", () => {
       );
     });
 
+    it("forwards query cancellation signals for share trend data sources", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockImplementation(() =>
+          Promise.resolve(freshJsonResponse({ ok: true, data: [] })),
+        );
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+      const options = { limit: 5, signal: controller.signal };
+
+      await Promise.all([
+        fetchClientDimensionTrend(
+          "signal-client-dimension",
+          mockWindow,
+          "browser",
+          undefined,
+          options,
+        ),
+        fetchBrowserTrend("signal-browser", mockWindow, undefined, options),
+        fetchBrowserEngineTrend(
+          "signal-browser-engine",
+          mockWindow,
+          undefined,
+          options,
+        ),
+        fetchUtmTrend("signal-utm", mockWindow, "source", undefined, options),
+        fetchReferrerTrend("signal-referrer", mockWindow, undefined, options),
+        fetchPagesShareTrend("signal-pages", mockWindow, undefined, options),
+      ]);
+
+      expect(fetchMock).toHaveBeenCalledTimes(7);
+      for (const [, init] of fetchMock.mock.calls) {
+        expect((init as RequestInit).signal).toBe(controller.signal);
+      }
+    });
+
     it("should propagate non-OK HTTP responses as thrown errors", async () => {
       globalThis.fetch = vi
         .fn()

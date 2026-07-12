@@ -20,7 +20,7 @@ async function fetchDeviceTypeTrend(
   siteId: string,
   window: TimeWindow,
   filters?: DashboardFilters,
-  options?: { limit?: number },
+  options?: { limit?: number; signal?: AbortSignal },
 ) {
   return fetchClientDimensionTrend(
     siteId,
@@ -35,7 +35,7 @@ async function fetchOperatingSystemTrend(
   siteId: string,
   window: TimeWindow,
   filters?: DashboardFilters,
-  options?: { limit?: number },
+  options?: { limit?: number; signal?: AbortSignal },
 ) {
   return fetchClientDimensionTrend(
     siteId,
@@ -68,6 +68,7 @@ export function DeviceDimensionTrendCard({
       siteId={siteId}
       window={window}
       filters={filters}
+      queryKey={["device-dimension", dimension]}
       title={title}
       fetchTrend={fetchTrend}
       otherLabel={messages.devices.otherLabel}

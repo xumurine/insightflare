@@ -71,6 +71,7 @@ export async function fetchUtmTrend(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<BrowserTrendData> {
   return fetchPrivateJson<BrowserTrendData>(
@@ -87,6 +88,7 @@ export async function fetchUtmTrend(
       },
       filters,
     ),
+    { signal: options?.signal },
   );
 }
 
@@ -96,6 +98,7 @@ export async function fetchReferrerTrend(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<BrowserTrendData> {
   return fetchPrivateJson<BrowserTrendData>(
@@ -111,6 +114,7 @@ export async function fetchReferrerTrend(
       },
       filters,
     ),
+    { signal: options?.signal },
   );
 }
 
