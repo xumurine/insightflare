@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { ShareRadialCard } from "@/components/dashboard/share-radial-card";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -16,6 +17,11 @@ function emptyTrend(): BrowserTrendData {
   return { ok: true, interval: "day", series: [], data: [] };
 }
 
+function emptyTrendUnlessAborted(error: unknown): BrowserTrendData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyTrend();
+}
+
 interface BrowserShareOverviewProps {
   locale: Locale;
   messages: AppMessages;
@@ -31,38 +37,36 @@ export function BrowserShareOverview({
   window: tw,
   filters,
 }: BrowserShareOverviewProps) {
-  const [browserTrend, setBrowserTrend] =
-    useState<BrowserTrendData>(emptyTrend);
-  const [engineTrend, setEngineTrend] = useState<BrowserTrendData>(emptyTrend);
-  const [loading, setLoading] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    Promise.all([
-      fetchBrowserTrend(siteId, tw, filters, { limit: 5 }).catch(() =>
-        emptyTrend(),
-      ),
-      fetchBrowserEngineTrend(siteId, tw, filters, { limit: 5 }).catch(() =>
-        emptyTrend(),
-      ),
-    ]).then(([bt, et]) => {
-      if (!active) return;
-      setBrowserTrend(bt);
-      setEngineTrend(et);
-      setLoading(false);
-      setHydrated(true);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [siteId, tw.from, tw.to, filters]);
-
-  const showOverlayLoading = loading && hydrated;
-  const showInitialLoading = loading && !hydrated;
+  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const { data, isFetching } = useQuery({
+    queryKey: [
+      "dashboard",
+      "browser-share-overview",
+      siteId,
+      tw.from,
+      tw.to,
+      tw.interval,
+      tw.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => {
+      const [browserTrend, engineTrend] = await Promise.all([
+        fetchBrowserTrend(siteId, tw, filters, { limit: 5, signal }).catch(
+          emptyTrendUnlessAborted,
+        ),
+        fetchBrowserEngineTrend(siteId, tw, filters, {
+          limit: 5,
+          signal,
+        }).catch(emptyTrendUnlessAborted),
+      ]);
+      return { browserTrend, engineTrend };
+    },
+    enabled: typeof window !== "undefined",
+  });
+  const browserTrend = data?.browserTrend ?? emptyTrend();
+  const engineTrend = data?.engineTrend ?? emptyTrend();
+  const showOverlayLoading = isFetching && data !== undefined;
+  const showInitialLoading = isFetching && data === undefined;
 
   return (
     <div className="relative">
