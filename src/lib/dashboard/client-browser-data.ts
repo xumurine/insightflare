@@ -129,22 +129,30 @@ export async function fetchBrowserVersionBreakdown(
   options?: {
     browserLimit?: number;
     versionLimit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<BrowserVersionBreakdownData> {
-  return fetchPrivateJson<BrowserVersionBreakdownData>(
-    "/api/private/browser-version-breakdown",
-    withFilters(
-      {
-        siteId,
-        from: window.from,
-        to: window.to,
-        timeZone: window.timeZone,
-        browserLimit: options?.browserLimit ?? 0,
-        versionLimit: options?.versionLimit ?? 5,
-      },
-      filters,
-    ),
+  const requestParams = withFilters(
+    {
+      siteId,
+      from: window.from,
+      to: window.to,
+      timeZone: window.timeZone,
+      browserLimit: options?.browserLimit ?? 0,
+      versionLimit: options?.versionLimit ?? 5,
+    },
+    filters,
   );
+  return options?.signal
+    ? fetchPrivateJson<BrowserVersionBreakdownData>(
+        "/api/private/browser-version-breakdown",
+        requestParams,
+        { signal: options.signal },
+      )
+    : fetchPrivateJson<BrowserVersionBreakdownData>(
+        "/api/private/browser-version-breakdown",
+        requestParams,
+      );
 }
 
 export async function fetchBrowserCrossBreakdown(

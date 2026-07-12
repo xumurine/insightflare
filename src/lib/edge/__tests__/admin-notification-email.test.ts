@@ -526,7 +526,7 @@ describe("admin notification email handlers", () => {
     const env = createEnv([]);
     const encrypted = await encryptNotificationSecret(env, "re_test_secret");
     const fetchMock = vi
-      .spyOn(globalThis, "fetch")
+      .fn<typeof fetch>()
       .mockRejectedValue(new TypeError("offline"));
     const networkFailure = await handleNotificationEmailTestAdmin(
       jsonRequest({ to: "receiver@example.test" }, "POST"),
@@ -542,14 +542,13 @@ describe("admin notification email handlers", () => {
           }),
         }),
       ]),
-      { deadlineMs: 500, maxAttempts: 1 },
+      { fetchImpl: fetchMock, deadlineMs: 500, maxAttempts: 1 },
     );
     const body = await jsonOf(networkFailure);
 
     expect(networkFailure.status).toBe(400);
     expect(body.error.code).toBe("resend_request_failed");
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    fetchMock.mockRestore();
   });
 
   it("summarizes Resend errors without leaking API keys", async () => {
