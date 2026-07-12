@@ -51,6 +51,11 @@ function emptySessionsUnlessAborted(error: unknown): SessionsData {
   return emptySessions();
 }
 
+function emptyVisitorsUnlessAborted(error: unknown): VisitorsData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyVisitors();
+}
+
 export async function fetchOverview(
   siteId: string,
   window: TimeWindow,
@@ -134,6 +139,7 @@ export async function fetchVisitors(
     sortBy?: VisitorListSortKey;
     sortDir?: SortDirection;
     search?: string;
+    signal?: AbortSignal;
   },
 ): Promise<VisitorsData> {
   const params: Record<string, string | number> = {
@@ -153,15 +159,18 @@ export async function fetchVisitors(
   if (options?.sortDir) params.sortDir = options.sortDir;
   const search = options?.search?.trim();
   if (search) params.search = search;
-  return fetchPrivateJson<VisitorsData>(
-    "/api/private/visitors",
-    withFilters(
-      {
-        ...params,
-      },
-      filters,
-    ),
-  ).catch(emptyVisitors);
+  const requestParams = withFilters(
+    {
+      ...params,
+    },
+    filters,
+  );
+  const request = options?.signal
+    ? fetchPrivateJson<VisitorsData>("/api/private/visitors", requestParams, {
+        signal: options.signal,
+      })
+    : fetchPrivateJson<VisitorsData>("/api/private/visitors", requestParams);
+  return request.catch(emptyVisitorsUnlessAborted);
 }
 
 export async function fetchVisitorDetail(

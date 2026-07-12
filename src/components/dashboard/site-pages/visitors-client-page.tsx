@@ -1,16 +1,10 @@
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   RiArrowDownSLine,
   RiArrowUpSLine,
   RiSearchLine,
 } from "@remixicon/react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { ClickableTableCell } from "@/components/dashboard/clickable-table-cell";
 import {
@@ -48,7 +42,7 @@ import { fetchVisitors } from "@/lib/dashboard/client-data";
 import { numberFormat } from "@/lib/dashboard/format";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import dynamic from "@/lib/dynamic";
-import type { VisitorsData, VisitorsMeta } from "@/lib/edge-client";
+import type { VisitorsData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { cn } from "@/lib/utils";
@@ -102,14 +96,6 @@ interface VisitorSortState {
 const DEFAULT_VISITOR_SORT: VisitorSortState = {
   key: "lastSeenAt",
   direction: "desc",
-};
-
-const INITIAL_VISITOR_META: VisitorsMeta = {
-  page: 1,
-  pageSize: VISITOR_PAGE_SIZE,
-  returned: 0,
-  hasMore: false,
-  nextPage: null,
 };
 
 function shortId(value: string): string {
@@ -276,12 +262,6 @@ export function VisitorsClientPage({
     filters: DashboardFilters;
     window: TimeWindow;
   };
-  const [rows, setRows] = useState<VisitorRow[]>([]);
-  const [meta, setMeta] = useState<VisitorsMeta>(INITIAL_VISITOR_META);
-  const [loadingInitial, setLoadingInitial] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState(false);
-  const [appendError, setAppendError] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState<VisitorSortState>(DEFAULT_VISITOR_SORT);
@@ -293,31 +273,7 @@ export function VisitorsClientPage({
   const detailVisitorId = searchParams.get(DETAIL_QUERY_PARAM)?.trim() || "";
   const [detailSessionId, setDetailSessionId] = useState("");
   const openedDetailFromListRef = useRef(false);
-  const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
-  const requestKey = useMemo(
-    () =>
-      [
-        siteId,
-        timeWindow.from,
-        timeWindow.to,
-        filtersKey,
-        debouncedQuery,
-        sort.key,
-        sort.direction,
-      ].join(":"),
-    [
-      debouncedQuery,
-      filtersKey,
-      siteId,
-      sort.direction,
-      sort.key,
-      timeWindow.from,
-      timeWindow.to,
-    ],
-  );
-  const replacingRows =
-    loadingInitial || latestRequestKeyRef.current !== requestKey;
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -338,80 +294,60 @@ export function VisitorsClientPage({
     return () => window.clearTimeout(timeoutId);
   }, [query]);
 
-  const loadPage = useEffectEvent(
-    async (page: number, mode: "replace" | "append") => {
-      const capturedRequestKey = latestRequestKeyRef.current;
-
-      if (mode === "replace") {
-        setLoadingInitial(true);
-        setError(false);
-        setAppendError(false);
-      } else {
-        setLoadingMore(true);
-        setAppendError(false);
-      }
-
-      try {
-        const payload = await fetchVisitors(siteId, timeWindow, filters, {
-          page,
-          pageSize: VISITOR_PAGE_SIZE,
-          sortBy: sort.key,
-          sortDir: sort.direction,
-          search: debouncedQuery,
-        });
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-
-        setRows((current) =>
-          mode === "append"
-            ? appendUniqueVisitors(current, payload.data)
-            : payload.data,
-        );
-        setMeta(payload.meta);
-        setError(false);
-        setAppendError(false);
-      } catch {
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        if (mode === "replace") {
-          setRows([]);
-          setMeta(INITIAL_VISITOR_META);
-          setError(true);
-          setAppendError(false);
-        } else {
-          setAppendError(true);
-        }
-      } finally {
-        if (latestRequestKeyRef.current === capturedRequestKey) {
-          if (mode === "replace") {
-            setLoadingInitial(false);
-          } else {
-            setLoadingMore(false);
-          }
-        }
-      }
-    },
-  );
-
-  const loadNextPage = useEffectEvent(() => {
-    if (
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      !meta.hasMore ||
-      meta.nextPage === null
-    ) {
-      return;
-    }
-    void loadPage(meta.nextPage, "append");
+  const {
+    data,
+    error: queryError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchNextPageError,
+    isFetching,
+    isFetchingNextPage,
+    isPending,
+  } = useInfiniteQuery({
+    queryKey: [
+      "dashboard",
+      "visitors",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.timeZone,
+      filtersKey,
+      debouncedQuery,
+      sort.key,
+      sort.direction,
+    ],
+    queryFn: ({ pageParam, signal }) =>
+      fetchVisitors(siteId, timeWindow, filters, {
+        page: pageParam,
+        pageSize: VISITOR_PAGE_SIZE,
+        sortBy: sort.key,
+        sortDir: sort.direction,
+        search: debouncedQuery,
+        signal,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.meta.hasMore ? lastPage.meta.nextPage : undefined,
+    enabled: typeof window !== "undefined",
   });
-
-  useEffect(() => {
-    latestRequestKeyRef.current = requestKey;
-    setRows([]);
-    setMeta(INITIAL_VISITOR_META);
-    setError(false);
-    setAppendError(false);
-    void loadPage(1, "replace");
-  }, [requestKey]);
+  const rows = useMemo(
+    () =>
+      data?.pages.reduce<VisitorRow[]>(
+        (current, page) => appendUniqueVisitors(current, page.data),
+        [],
+      ) ?? [],
+    [data?.pages],
+  );
+  const loadingInitial = isPending;
+  const loadingMore = isFetchingNextPage;
+  const error = Boolean(queryError) && rows.length === 0;
+  const appendError = isFetchNextPageError;
+  const replacingRows = isPending || (isFetching && !isFetchingNextPage);
+  const hasMore = hasNextPage ?? false;
+  const loadNextPage = () => {
+    if (loadingInitial || loadingMore || appendError || !hasMore) return;
+    void fetchNextPage();
+  };
 
   useEffect(() => {
     const target = sentinelNode;
@@ -421,7 +357,7 @@ export function VisitorsClientPage({
       loadingMore ||
       appendError ||
       error ||
-      !meta.hasMore ||
+      !hasMore ||
       typeof IntersectionObserver === "undefined"
     ) {
       return;
@@ -456,10 +392,10 @@ export function VisitorsClientPage({
   }, [
     appendError,
     error,
+    fetchNextPage,
+    hasMore,
     loadingInitial,
     loadingMore,
-    meta.hasMore,
-    meta.nextPage,
     sentinelNode,
   ]);
 
@@ -507,7 +443,7 @@ export function VisitorsClientPage({
     ? "loading"
     : error
       ? "error"
-      : rows.length === 0 && !meta.hasMore
+      : rows.length === 0 && !hasMore
         ? "empty"
         : "rows";
 
@@ -597,7 +533,7 @@ export function VisitorsClientPage({
                     {labels.loadError}
                   </TableCell>
                 </TableRow>
-              ) : rows.length === 0 && !meta.hasMore ? (
+              ) : rows.length === 0 && !hasMore ? (
                 <TableRow>
                   <TableCell
                     colSpan={11}
@@ -724,7 +660,7 @@ export function VisitorsClientPage({
                         {labels.loadError}
                       </TableCell>
                     </TableRow>
-                  ) : meta.hasMore ? (
+                  ) : hasMore ? (
                     Array.from(
                       { length: VISITOR_SKELETON_ROWS },
                       (_, index) => (

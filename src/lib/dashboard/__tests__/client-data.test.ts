@@ -1120,6 +1120,34 @@ describe("Dashboard Client Data Processing Utilities", () => {
       ).rejects.toMatchObject({ name: "AbortError" });
     });
 
+    it("forwards cancellation signals for visitor list requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [], meta: {} }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchVisitors("visitors-signal", mockWindow, undefined, {
+        signal: controller.signal,
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted visitor list requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchVisitors("visitors-aborted", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
     it("preserves aborted overview geo point requests", async () => {
       const controller = new AbortController();
       controller.abort();
