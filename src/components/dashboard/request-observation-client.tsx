@@ -197,6 +197,29 @@ interface RequestNetworkDimensionRow {
   region: string;
 }
 
+interface RequestDetailCursor {
+  timestamp: string;
+  traceId: string;
+  rayId: string;
+}
+
+interface RequestObservationPageData {
+  ok: true;
+  configured: boolean;
+  generatedAt: number;
+  page: {
+    source: "abnormal" | "normal";
+    events: BotEvent[] | NormalRequestEvent[];
+    hasMore: boolean;
+    nextCursor: RequestDetailCursor | null;
+  };
+}
+
+interface RequestObservationDimensionData {
+  ok: true;
+  dimension: { rows: RequestNetworkDimensionRow[] };
+}
+
 interface RequestObservationData {
   ok: true;
   configured: boolean;
@@ -258,6 +281,8 @@ interface RequestObservationData {
     reasons?: Array<{ reason: string; count: number }>;
     countries?: Array<{ country: string; count: number }>;
     asns?: Array<{ asn: number; asOrganization: string; count: number }>;
+    hasMore?: boolean;
+    nextCursor?: RequestDetailCursor | null;
     dimensions?: {
       network?: Partial<
         Record<NetworkDimensionTab, RequestNetworkDimensionRow[]>
@@ -281,6 +306,8 @@ interface RequestObservationData {
     };
     mapPoints: RequestMapPoint[];
     events: NormalRequestEvent[];
+    hasMore?: boolean;
+    nextCursor?: RequestDetailCursor | null;
     dimensions?: {
       network?: Partial<
         Record<NetworkDimensionTab, RequestNetworkDimensionRow[]>
@@ -297,7 +324,7 @@ interface RequestObservationDetailData {
 }
 
 const DIMENSION_ROW_LIMIT = 30;
-const BOT_EVENT_FETCH_LIMIT = 500;
+const BOT_EVENT_FETCH_LIMIT = 100;
 const BOT_EVENT_PAGE_SIZE = 80;
 const BOT_EVENT_SKELETON_ROWS = 8;
 const ABNORMAL_POINT_COLOR: [number, number, number] = [239, 68, 68];
@@ -523,6 +550,8 @@ function withRequestObservabilityDefaults(
       reasons: data.abnormal?.reasons ?? data.reasons,
       countries: data.abnormal?.countries ?? data.countries,
       asns: data.abnormal?.asns ?? data.asns,
+      hasMore: data.abnormal?.hasMore ?? false,
+      nextCursor: data.abnormal?.nextCursor ?? null,
     },
     normal: {
       summary: {
@@ -545,6 +574,8 @@ function withRequestObservabilityDefaults(
       },
       mapPoints: normalMapPoints,
       events: normalEvents,
+      hasMore: data.normal?.hasMore ?? false,
+      nextCursor: data.normal?.nextCursor ?? null,
     },
   };
 }
@@ -568,6 +599,9 @@ export function RequestObservationClient({
   const [data, setData] = useState<RequestObservationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState<"abnormal" | "normal" | null>(
+    null,
+  );
   const mapAnimationControls = useAnimationControls();
 
   const spanMs = Math.max(1, timeWindow.to - timeWindow.from);
@@ -596,6 +630,67 @@ export function RequestObservationClient({
   useEffect(() => {
     void load("initial");
   }, [load]);
+
+  const loadMoreEvents = useMemo(
+    () => async (source: "abnormal" | "normal") => {
+      const section = data?.[source];
+      if (
+        !section?.hasMore ||
+        !section.nextCursor ||
+        loadingMore !== null ||
+        import.meta.env.VITE_DEMO_MODE === "1"
+      ) {
+        return;
+      }
+      setLoadingMore(source);
+      try {
+        const page = await fetchRequestObservationPage(
+          timeWindow,
+          source,
+          section.nextCursor,
+        );
+        setData((current) => {
+          if (!current || page.page.source !== source) return current;
+          if (source === "abnormal") {
+            return {
+              ...current,
+              events: [...current.events, ...(page.page.events as BotEvent[])],
+              abnormal: {
+                ...current.abnormal!,
+                events: [
+                  ...current.abnormal!.events,
+                  ...(page.page.events as BotEvent[]),
+                ],
+                hasMore: page.page.hasMore,
+                nextCursor: page.page.nextCursor,
+              },
+            };
+          }
+          return {
+            ...current,
+            normalEvents: [
+              ...(current.normalEvents ?? []),
+              ...(page.page.events as NormalRequestEvent[]),
+            ],
+            normal: {
+              ...current.normal!,
+              events: [
+                ...current.normal!.events,
+                ...(page.page.events as NormalRequestEvent[]),
+              ],
+              hasMore: page.page.hasMore,
+              nextCursor: page.page.nextCursor,
+            },
+          };
+        });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : copy.loadFailed);
+      } finally {
+        setLoadingMore(null);
+      }
+    },
+    [copy.loadFailed, data, loadingMore, timeWindow],
+  );
 
   const formatter = useMemo(
     () => new Intl.NumberFormat(intlLocale(locale)),
@@ -994,103 +1089,47 @@ export function RequestObservationClient({
     [copy],
   );
 
-  const detectionRowsByTab = useMemo(
+  const loadAbnormalDimensionRows = useMemo(
     () =>
-      Object.fromEntries(
-        detectionTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateDimensionRows(abnormalEvents, copy, (event) =>
-              valuesForDetectionTab(event, tab.value, copy),
-            ),
+      async (
+        group: "detection" | "target" | "network" | "client",
+        tab: string,
+      ) =>
+        toAsyncAggregatedDimensionRows(
+          await fetchRequestObservationDimension(
+            timeWindow,
+            "abnormal",
+            group,
+            tab,
           ),
-        ]),
-      ) as Record<DetectionDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [abnormalEvents, copy, detectionTabs],
+          group === "network"
+            ? {
+                networkTab: tab as NetworkDimensionTab,
+                locale,
+                unknownLabel: copy.emptyValue,
+              }
+            : undefined,
+        ),
+    [copy.emptyValue, locale, timeWindow],
   );
-  const abnormalTargetRowsByTab = useMemo(
-    () =>
-      Object.fromEntries(
-        targetTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateDimensionRows(abnormalEvents, copy, (event) =>
-              valuesForTargetTab(event, tab.value),
-            ),
-            { targetTab: tab.value },
-          ),
-        ]),
-      ) as Record<TargetDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [abnormalEvents, copy, targetTabs],
-  );
-  const abnormalNetworkRowsByTab = useMemo(
-    () =>
-      Object.fromEntries(
-        networkTabs.map((tab) => [
-          tab.value,
-          toAsyncNetworkDimensionRows(
-            data?.abnormal?.dimensions?.network?.[tab.value],
-            aggregateDimensionRows(abnormalEvents, copy, (event) =>
-              valuesForNetworkTab(event, tab.value),
-            ),
-            {
-              networkTab: tab.value,
+  const loadNormalDimensionRows = useMemo(
+    () => async (group: "target" | "network", tab: string) =>
+      toAsyncAggregatedDimensionRows(
+        await fetchRequestObservationDimension(
+          timeWindow,
+          "normal",
+          group,
+          tab,
+        ),
+        group === "network"
+          ? {
+              networkTab: tab as NetworkDimensionTab,
               locale,
               unknownLabel: copy.emptyValue,
-            },
-          ),
-        ]),
-      ) as Record<NetworkDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [abnormalEvents, copy, data, locale, networkTabs],
-  );
-  const clientRowsByTab = useMemo(
-    () =>
-      Object.fromEntries(
-        clientTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateDimensionRows(abnormalEvents, copy, (event) =>
-              valuesForClientTab(event, tab.value),
-            ),
-          ),
-        ]),
-      ) as Record<ClientDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [abnormalEvents, clientTabs, copy],
-  );
-  const normalTargetRowsByTab = useMemo(
-    () =>
-      Object.fromEntries(
-        targetTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateNormalDimensionRows(normalEvents, copy, (event) =>
-              valuesForNormalTargetTab(event, tab.value),
-            ),
-            { targetTab: tab.value },
-          ),
-        ]),
-      ) as Record<TargetDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [copy, normalEvents, targetTabs],
-  );
-  const normalNetworkRowsByTab = useMemo(
-    () =>
-      Object.fromEntries(
-        networkTabs.map((tab) => [
-          tab.value,
-          toAsyncNetworkDimensionRows(
-            data?.normal?.dimensions?.network?.[tab.value],
-            aggregateNormalDimensionRows(normalEvents, copy, (event) =>
-              valuesForNormalNetworkTab(event, tab.value),
-            ),
-            {
-              networkTab: tab.value,
-              locale,
-              unknownLabel: copy.emptyValue,
-            },
-          ),
-        ]),
-      ) as Record<NetworkDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [copy, data, locale, networkTabs, normalEvents],
+            }
+          : undefined,
+      ),
+    [copy.emptyValue, locale, timeWindow],
   );
 
   const requestKey = `${timeWindow.interval}:${data?.generatedAt ?? 0}`;
@@ -1688,14 +1727,9 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={detectionTabs}
-                          rowsByTab={detectionRowsByTab}
-                          loadingByTab={{
-                            reason: loading,
-                            confidence: loading,
-                            kind: loading,
-                            botScoreBucket: loading,
-                            verifiedBotCategory: loading,
-                          }}
+                          loadRows={(tab) =>
+                            loadAbnormalDimensionRows("detection", tab)
+                          }
                           requestKey={`${requestKey}:${abnormalEvents.length}:detection`}
                           className="h-full"
                           secondaryMetricLabel={copy.highConfidenceRequests}
@@ -1705,13 +1739,9 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={targetTabs}
-                          rowsByTab={abnormalTargetRowsByTab}
-                          loadingByTab={{
-                            site: loading,
-                            hostname: loading,
-                            pathname: loading,
-                            origin: loading,
-                          }}
+                          loadRows={(tab) =>
+                            loadAbnormalDimensionRows("target", tab)
+                          }
                           requestKey={`${requestKey}:${abnormalEvents.length}:target`}
                           className="h-full"
                           secondaryMetricLabel={copy.highConfidenceRequests}
@@ -1721,15 +1751,9 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={networkTabs}
-                          rowsByTab={abnormalNetworkRowsByTab}
-                          loadingByTab={{
-                            asOrganization: loading,
-                            asn: loading,
-                            country: loading,
-                            region: loading,
-                            city: loading,
-                            colo: loading,
-                          }}
+                          loadRows={(tab) =>
+                            loadAbnormalDimensionRows("network", tab)
+                          }
                           requestKey={`${requestKey}:${abnormalEvents.length}:network`}
                           className="h-full"
                           secondaryMetricLabel={copy.highConfidenceRequests}
@@ -1739,13 +1763,9 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={clientTabs}
-                          rowsByTab={clientRowsByTab}
-                          loadingByTab={{
-                            ip: loading,
-                            userAgent: loading,
-                            userAgentLengthBucket: loading,
-                            ipPrefix: loading,
-                          }}
+                          loadRows={(tab) =>
+                            loadAbnormalDimensionRows("client", tab)
+                          }
                           requestKey={`${requestKey}:${abnormalEvents.length}:client`}
                           className="h-full"
                           secondaryMetricLabel={copy.highConfidenceRequests}
@@ -1759,6 +1779,9 @@ export function RequestObservationClient({
                         copy={copy}
                         events={abnormalEvents}
                         loading={loading}
+                        hasMore={data?.abnormal?.hasMore ?? false}
+                        loadingMore={loadingMore === "abnormal"}
+                        onLoadMore={() => void loadMoreEvents("abnormal")}
                         requestKey={`${requestKey}:${abnormalEvents.length}`}
                         timeWindow={timeWindow}
                       />
@@ -1839,13 +1862,9 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={targetTabs}
-                          rowsByTab={normalTargetRowsByTab}
-                          loadingByTab={{
-                            site: loading,
-                            hostname: loading,
-                            pathname: loading,
-                            origin: loading,
-                          }}
+                          loadRows={(tab) =>
+                            loadNormalDimensionRows("target", tab)
+                          }
                           requestKey={`${requestKey}:${normalEvents.length}:normal-target`}
                           className="h-full"
                           showVisitors={false}
@@ -1855,15 +1874,9 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={networkTabs}
-                          rowsByTab={normalNetworkRowsByTab}
-                          loadingByTab={{
-                            asOrganization: loading,
-                            asn: loading,
-                            country: loading,
-                            region: loading,
-                            city: loading,
-                            colo: loading,
-                          }}
+                          loadRows={(tab) =>
+                            loadNormalDimensionRows("network", tab)
+                          }
                           requestKey={`${requestKey}:${normalEvents.length}:normal-network`}
                           className="h-full"
                           showVisitors={false}
@@ -1877,6 +1890,9 @@ export function RequestObservationClient({
                         copy={copy}
                         events={normalEvents}
                         loading={loading}
+                        hasMore={data?.normal?.hasMore ?? false}
+                        loadingMore={loadingMore === "normal"}
+                        onLoadMore={() => void loadMoreEvents("normal")}
                         requestKey={`${requestKey}:${normalEvents.length}`}
                       />
                     </div>
@@ -1961,6 +1977,57 @@ async function fetchRequestObservation(
     );
   }
   return withDemoOverlayData(timeWindow, payload);
+}
+
+async function fetchRequestObservationPage(
+  timeWindow: TimeWindow,
+  source: "abnormal" | "normal",
+  cursor: RequestDetailCursor,
+): Promise<RequestObservationPageData> {
+  const params = new URLSearchParams({
+    from: String(Math.floor(timeWindow.from)),
+    to: String(Math.floor(timeWindow.to)),
+    interval: timeWindow.interval,
+    timeZone: timeWindow.timeZone,
+    page: source,
+    limit: String(BOT_EVENT_FETCH_LIMIT),
+    cursor: JSON.stringify(cursor),
+  });
+  const response = await fetch(`/api/private/admin/bot-analytics?${params}`, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+  const payload = (await response.json()) as RequestObservationPageData;
+  if (!response.ok || payload.ok !== true) {
+    throw new Error("load_bot_protection_failed");
+  }
+  return payload;
+}
+
+async function fetchRequestObservationDimension(
+  timeWindow: TimeWindow,
+  source: "abnormal" | "normal",
+  group: "detection" | "target" | "network" | "client",
+  tab: string,
+): Promise<RequestNetworkDimensionRow[]> {
+  const params = new URLSearchParams({
+    from: String(Math.floor(timeWindow.from)),
+    to: String(Math.floor(timeWindow.to)),
+    interval: timeWindow.interval,
+    timeZone: timeWindow.timeZone,
+    dimensionSource: source,
+    dimensionGroup: group,
+    dimensionTab: tab,
+  });
+  const response = await fetch(`/api/private/admin/bot-analytics?${params}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  const payload = (await response.json()) as RequestObservationDimensionData;
+  if (!response.ok || payload.ok !== true)
+    throw new Error("load_bot_protection_failed");
+  return payload.dimension.rows;
 }
 
 async function fetchRequestObservationDetail(
@@ -2092,7 +2159,7 @@ function ipPrefix(ip: string): string {
   return value;
 }
 
-function valuesForDetectionTab(
+function _valuesForDetectionTab(
   event: BotEvent,
   tab: DetectionDimensionTab,
   copy: AppMessages["requestObservation"],
@@ -2106,7 +2173,7 @@ function valuesForDetectionTab(
   return [event.verifiedBotCategory];
 }
 
-function valuesForTargetTab(
+function _valuesForTargetTab(
   event: BotEvent,
   tab: TargetDimensionTab,
 ): string[] {
@@ -2118,7 +2185,7 @@ function valuesForTargetTab(
   return [event.origin];
 }
 
-function valuesForNetworkTab(
+function _valuesForNetworkTab(
   event: BotEvent,
   tab: NetworkDimensionTab,
 ): string[] {
@@ -2130,7 +2197,7 @@ function valuesForNetworkTab(
   return [event.colo];
 }
 
-function valuesForClientTab(
+function _valuesForClientTab(
   event: BotEvent,
   tab: ClientDimensionTab,
 ): string[] {
@@ -2142,7 +2209,7 @@ function valuesForClientTab(
   return [ipPrefix(event.ip)];
 }
 
-function aggregateDimensionRows(
+function _aggregateDimensionRows(
   events: BotEvent[],
   copy: AppMessages["requestObservation"],
   resolveValues: (event: BotEvent) => string[],
@@ -2476,7 +2543,7 @@ function toAsyncDimensionRows(
   }));
 }
 
-function toAsyncNetworkDimensionRows(
+function _toAsyncNetworkDimensionRows(
   rows: RequestNetworkDimensionRow[] | undefined,
   fallbackRows: BotDimensionRow[],
   options: {
@@ -2505,6 +2572,28 @@ function toAsyncNetworkDimensionRows(
     ...row,
     key: rows[index]?.key || row.key,
   }));
+}
+
+function toAsyncAggregatedDimensionRows(
+  rows: RequestNetworkDimensionRow[],
+  options?: Parameters<typeof toAsyncDimensionRows>[1],
+): AsyncDimensionBreakdownRow[] {
+  return toAsyncDimensionRows(
+    rows.map((row) => ({
+      label:
+        options?.networkTab === "asn" && row.label
+          ? `AS${row.label}`
+          : row.label || options?.unknownLabel || "--",
+      count: row.count,
+      highConfidence: row.highConfidence,
+      sampleEvent: {
+        country: row.country,
+        region: row.region,
+        city: row.label,
+      } as BotEvent,
+    })),
+    options,
+  ).map((row, index) => ({ ...row, key: rows[index]?.key || row.key }));
 }
 
 function displayValue(
@@ -3269,6 +3358,9 @@ function BotEventsTable({
   copy,
   events,
   loading,
+  hasMore,
+  loadingMore,
+  onLoadMore,
   requestKey,
   timeWindow,
 }: {
@@ -3277,6 +3369,9 @@ function BotEventsTable({
   copy: AppMessages["requestObservation"];
   events: BotEvent[];
   loading: boolean;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
   requestKey: string;
   timeWindow: TimeWindow;
 }) {
@@ -3323,23 +3418,28 @@ function BotEventsTable({
     () => events.slice(0, visibleCount),
     [events, visibleCount],
   );
-  const hasMore = visibleCount < events.length;
+  const hasMoreEvents = visibleCount < events.length || hasMore;
 
   useEffect(() => {
     const target = sentinelNode;
     if (
       !target ||
       loading ||
-      !hasMore ||
+      !hasMoreEvents ||
+      loadingMore ||
       typeof IntersectionObserver === "undefined"
     ) {
       return;
     }
 
     const loadMore = () => {
-      setVisibleCount((current) =>
-        Math.min(current + BOT_EVENT_PAGE_SIZE, events.length),
-      );
+      if (visibleCount < events.length) {
+        setVisibleCount((current) =>
+          Math.min(current + BOT_EVENT_PAGE_SIZE, events.length),
+        );
+        return;
+      }
+      onLoadMore();
     };
     const observer = new IntersectionObserver(
       (entries) => {
@@ -3365,7 +3465,15 @@ function BotEventsTable({
       window.cancelAnimationFrame(frameId);
       observer.disconnect();
     };
-  }, [events.length, hasMore, loading, sentinelNode]);
+  }, [
+    events.length,
+    hasMoreEvents,
+    loading,
+    loadingMore,
+    onLoadMore,
+    sentinelNode,
+    visibleCount,
+  ]);
 
   const updateDetailParam = (detailId: string, mode: "push" | "replace") => {
     const nextParams = new URLSearchParams(window.location.search);
@@ -3472,7 +3580,7 @@ function BotEventsTable({
           </div>
           <div className="shrink-0 text-xs text-muted-foreground">
             {!loading && events.length > 0
-              ? hasMore
+              ? hasMoreEvents
                 ? `${copy.recentShowing} ${numberFormat(locale, visibleEvents.length)} / ${numberFormat(locale, events.length)}`
                 : copy.recentLoadedAll
               : ""}
@@ -3637,7 +3745,7 @@ function BotEventsTable({
                         </TableRow>
                       );
                     })}
-                    {hasMore ? (
+                    {hasMoreEvents ? (
                       <BotEventRowSkeleton
                         key={`sentinel-${visibleEvents.length}`}
                         index={visibleEvents.length}
@@ -3667,7 +3775,7 @@ function BotEventsTable({
   );
 }
 
-function valuesForNormalTargetTab(
+function _valuesForNormalTargetTab(
   event: NormalRequestEvent,
   tab: TargetDimensionTab,
 ): string[] {
@@ -3679,7 +3787,7 @@ function valuesForNormalTargetTab(
   return [event.origin];
 }
 
-function valuesForNormalNetworkTab(
+function _valuesForNormalNetworkTab(
   event: NormalRequestEvent,
   tab: NetworkDimensionTab,
 ): string[] {
@@ -3691,7 +3799,7 @@ function valuesForNormalNetworkTab(
   return [event.colo];
 }
 
-function aggregateNormalDimensionRows(
+function _aggregateNormalDimensionRows(
   events: NormalRequestEvent[],
   copy: AppMessages["requestObservation"],
   resolveValues: (event: NormalRequestEvent) => string[],
@@ -3748,6 +3856,9 @@ function NormalRequestsTable({
   copy,
   events,
   loading,
+  hasMore,
+  loadingMore,
+  onLoadMore,
   requestKey,
 }: {
   locale: Locale;
@@ -3755,6 +3866,9 @@ function NormalRequestsTable({
   copy: AppMessages["requestObservation"];
   events: NormalRequestEvent[];
   loading: boolean;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
   requestKey: string;
 }) {
   const [visibleCount, setVisibleCount] = useState(BOT_EVENT_PAGE_SIZE);
@@ -3780,23 +3894,28 @@ function NormalRequestsTable({
     () => events.slice(0, visibleCount),
     [events, visibleCount],
   );
-  const hasMore = visibleCount < events.length;
+  const hasMoreEvents = visibleCount < events.length || hasMore;
 
   useEffect(() => {
     const target = sentinelNode;
     if (
       !target ||
       loading ||
-      !hasMore ||
+      !hasMoreEvents ||
+      loadingMore ||
       typeof IntersectionObserver === "undefined"
     ) {
       return;
     }
 
     const loadMore = () => {
-      setVisibleCount((current) =>
-        Math.min(current + BOT_EVENT_PAGE_SIZE, events.length),
-      );
+      if (visibleCount < events.length) {
+        setVisibleCount((current) =>
+          Math.min(current + BOT_EVENT_PAGE_SIZE, events.length),
+        );
+        return;
+      }
+      onLoadMore();
     };
     const observer = new IntersectionObserver(
       (entries) => {
@@ -3822,7 +3941,15 @@ function NormalRequestsTable({
       window.cancelAnimationFrame(frameId);
       observer.disconnect();
     };
-  }, [events.length, hasMore, loading, sentinelNode]);
+  }, [
+    events.length,
+    hasMoreEvents,
+    loading,
+    loadingMore,
+    onLoadMore,
+    sentinelNode,
+    visibleCount,
+  ]);
 
   const bodyState = loading
     ? "loading"
@@ -3857,7 +3984,7 @@ function NormalRequestsTable({
           </div>
           <div className="shrink-0 text-xs text-muted-foreground">
             {!loading && events.length > 0
-              ? hasMore
+              ? hasMoreEvents
                 ? `${copy.recentShowing} ${numberFormat(locale, visibleEvents.length)} / ${numberFormat(locale, events.length)}`
                 : copy.recentLoadedAll
               : ""}
@@ -4009,7 +4136,7 @@ function NormalRequestsTable({
                         </TableRow>
                       );
                     })}
-                    {hasMore ? (
+                    {hasMoreEvents ? (
                       <BotEventRowSkeleton
                         key={`sentinel-${visibleEvents.length}`}
                         index={visibleEvents.length}
