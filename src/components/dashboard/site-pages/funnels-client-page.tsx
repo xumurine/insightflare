@@ -15,6 +15,7 @@ import {
   RiFilter2Line,
   RiSave3Line,
 } from "@remixicon/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -86,6 +87,7 @@ import type {
   FunnelAnalysisStep,
   FunnelDefinition,
   FunnelDetailData,
+  FunnelListData,
   FunnelStep,
 } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
@@ -757,43 +759,26 @@ function FunnelDetailDrawer({
     filters: DashboardFilters;
     window: TimeWindow;
   };
-  const [payload, setPayload] = useState<FunnelDetailData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(false);
-
-    fetchFunnelDetail(siteId, funnelId, timeWindow, filters)
-      .then((data) => {
-        if (cancelled) return;
-        setPayload(data);
-        setError(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setPayload(null);
-        setError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    filters,
-    filtersKey,
-    funnelId,
-    siteId,
-    timeWindow.from,
-    timeWindow.timeZone,
-    timeWindow.to,
-  ]);
+  const {
+    data: payload,
+    isError: error,
+    isPending: loading,
+  } = useQuery({
+    queryKey: [
+      "dashboard",
+      "funnel-detail",
+      siteId,
+      funnelId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.timeZone,
+      filtersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchFunnelDetail(siteId, funnelId, timeWindow, filters, { signal }),
+    enabled: typeof window !== "undefined" && Boolean(funnelId),
+  });
 
   if (loading) return <FunnelDetailLoading labels={labels} />;
   if (error || !payload) {
@@ -831,9 +816,7 @@ export function FunnelsClientPage({
   const searchParams = useLiveSearchParams();
   const detailFunnelId = searchParams.get(DETAIL_QUERY_PARAM)?.trim() || "";
   const openedDetailFromListRef = useRef(false);
-  const [funnels, setFunnels] = useState<FunnelDefinition[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<FunnelDefinition | null>(
@@ -843,24 +826,20 @@ export function FunnelsClientPage({
   const [candidates, setCandidates] =
     useState<FunnelCandidateState>(emptyCandidates);
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
-
-  const loadFunnels = useCallback(async () => {
-    setLoading(true);
-    setError(false);
-    try {
-      const payload = await fetchFunnels(siteId);
-      setFunnels(payload.funnels);
-    } catch {
-      setFunnels([]);
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [siteId]);
-
-  useEffect(() => {
-    void loadFunnels();
-  }, [loadFunnels]);
+  const funnelsQueryKey = useMemo(
+    () => ["dashboard", "funnels", siteId] as const,
+    [siteId],
+  );
+  const {
+    data: funnelsData,
+    isError: error,
+    isPending: loading,
+  } = useQuery({
+    queryKey: funnelsQueryKey,
+    queryFn: ({ signal }) => fetchFunnels(siteId, { signal }),
+    enabled: typeof window !== "undefined",
+  });
+  const funnels = funnelsData?.funnels ?? [];
 
   useEffect(() => {
     if (!detailFunnelId) openedDetailFromListRef.current = false;
@@ -930,7 +909,13 @@ export function FunnelsClientPage({
       setCreating(true);
       try {
         const payload = await createFunnel(siteId, name, steps);
-        setFunnels((current) => [payload.funnel, ...current]);
+        queryClient.setQueryData<FunnelListData>(
+          funnelsQueryKey,
+          (current) => ({
+            ok: true,
+            funnels: [payload.funnel, ...(current?.funnels ?? [])],
+          }),
+        );
         setCreateOpen(false);
         toast.success(labels.created);
         openFunnelDetail(payload.funnel.id);
@@ -944,7 +929,14 @@ export function FunnelsClientPage({
         setCreating(false);
       }
     },
-    [labels.createFailed, labels.created, openFunnelDetail, siteId],
+    [
+      funnelsQueryKey,
+      labels.createFailed,
+      labels.created,
+      openFunnelDetail,
+      queryClient,
+      siteId,
+    ],
   );
 
   const handleDelete = useCallback(async () => {
@@ -953,8 +945,15 @@ export function FunnelsClientPage({
     setDeleting(true);
     try {
       await deleteFunnel(siteId, target.id);
-      setFunnels((current) =>
-        current.filter((funnel) => funnel.id !== target.id),
+      queryClient.setQueryData<FunnelListData>(funnelsQueryKey, (current) =>
+        current
+          ? {
+              ...current,
+              funnels: current.funnels.filter(
+                (funnel) => funnel.id !== target.id,
+              ),
+            }
+          : current,
       );
       if (detailFunnelId === target.id) closeFunnelDetail();
       setDeleteTarget(null);
@@ -972,8 +971,10 @@ export function FunnelsClientPage({
     closeFunnelDetail,
     deleteTarget,
     detailFunnelId,
+    funnelsQueryKey,
     labels.deleteFailed,
     labels.deleted,
+    queryClient,
     siteId,
   ]);
 

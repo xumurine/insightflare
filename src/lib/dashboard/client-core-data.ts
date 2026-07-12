@@ -265,10 +265,19 @@ export async function fetchSessionDetail(
   );
 }
 
-export async function fetchFunnels(siteId: string): Promise<FunnelListData> {
-  return fetchPrivateJson<FunnelListData>("/api/private/funnels", {
-    siteId,
-  });
+export async function fetchFunnels(
+  siteId: string,
+  options?: { signal?: AbortSignal },
+): Promise<FunnelListData> {
+  return options?.signal
+    ? fetchPrivateJson<FunnelListData>(
+        "/api/private/funnels",
+        { siteId },
+        {
+          signal: options.signal,
+        },
+      )
+    : fetchPrivateJson<FunnelListData>("/api/private/funnels", { siteId });
 }
 
 export async function fetchFunnelDetail(
@@ -276,6 +285,7 @@ export async function fetchFunnelDetail(
   funnelId: string,
   window: TimeWindow,
   filters?: DashboardFilters,
+  options?: { signal?: AbortSignal },
 ): Promise<FunnelDetailData> {
   const normalizedFunnelId = funnelId.trim();
   if (!normalizedFunnelId) {
@@ -293,7 +303,7 @@ export async function fetchFunnelDetail(
       },
       filters,
     ),
-    { dedupe: false },
+    { dedupe: false, signal: options?.signal },
   );
 }
 

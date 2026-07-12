@@ -21,6 +21,8 @@ import {
   fetchEventTypeDetail,
   fetchEventTypeFieldValues,
   fetchEventTypesTab,
+  fetchFunnelDetail,
+  fetchFunnels,
   fetchOverview,
   fetchOverviewClientDimensionTab,
   fetchOverviewGeoDimensionTab,
@@ -1312,6 +1314,39 @@ describe("Dashboard Client Data Processing Utilities", () => {
         fetchRetention("retention-aborted", mockWindow, undefined, {
           signal: controller.signal,
         }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("forwards cancellation signals for funnel requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, funnels: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchFunnels("funnels-signal", { signal: controller.signal });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted funnel requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchFunnels("funnels-aborted", { signal: controller.signal }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      await expect(
+        fetchFunnelDetail(
+          "funnel-detail-aborted",
+          "funnel-1",
+          mockWindow,
+          undefined,
+          { signal: controller.signal },
+        ),
       ).rejects.toMatchObject({ name: "AbortError" });
     });
 
