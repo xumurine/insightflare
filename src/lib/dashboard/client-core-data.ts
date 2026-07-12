@@ -536,20 +536,31 @@ export async function fetchPerformance(
   siteId: string,
   window: TimeWindow,
   filters?: DashboardFilters,
+  options?: { signal?: AbortSignal },
 ): Promise<PerformanceData> {
-  return fetchPrivateJson<PerformanceData>(
-    "/api/private/performance",
-    withFilters(
-      {
-        siteId,
-        from: window.from,
-        to: window.to,
-        timeZone: window.timeZone,
-        interval: window.interval,
-      },
-      filters,
-    ),
-  ).catch(() => emptyPerformance(window.interval));
+  const requestParams = withFilters(
+    {
+      siteId,
+      from: window.from,
+      to: window.to,
+      timeZone: window.timeZone,
+      interval: window.interval,
+    },
+    filters,
+  );
+  const request = options?.signal
+    ? fetchPrivateJson<PerformanceData>(
+        "/api/private/performance",
+        requestParams,
+        { signal: options.signal },
+      )
+    : fetchPrivateJson<PerformanceData>(
+        "/api/private/performance",
+        requestParams,
+      );
+  return request.catch((error) =>
+    fallbackUnlessAborted(error, () => emptyPerformance(window.interval)),
+  );
 }
 
 export async function fetchRetention(

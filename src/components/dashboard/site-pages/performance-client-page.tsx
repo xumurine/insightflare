@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@iconify/react";
 import {
   RiCheckboxCircleFill,
@@ -9,6 +9,7 @@ import {
   RiRouteLine,
   RiSpeedUpLine,
 } from "@remixicon/react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import {
   CartesianGrid,
@@ -2512,55 +2513,41 @@ export function PerformanceClientPage({
     window: TimeWindow;
   };
   const [activePanel, setActivePanel] = useState<PerformancePanelKey>("score");
-  const [loading, setLoading] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
-  const [performanceData, setPerformanceData] = useState<PerformanceData>(() =>
-    emptyPerformance(window.interval),
-  );
-  const [dataWindow, setDataWindow] = useState<
-    Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">
-  >(() => ({
+  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const { data, isFetching: loading } = useQuery({
+    queryKey: [
+      "dashboard",
+      "performance",
+      siteId,
+      window.from,
+      window.to,
+      window.interval,
+      window.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => ({
+      performanceData: await fetchPerformance(siteId, window, filters, {
+        signal,
+      }),
+      dataWindow: {
+        from: window.from,
+        to: window.to,
+        interval: window.interval,
+        timeZone: window.timeZone,
+      },
+    }),
+    placeholderData: keepPreviousData,
+    enabled: typeof window !== "undefined",
+  });
+  const performanceData =
+    data?.performanceData ?? emptyPerformance(window.interval);
+  const dataWindow = data?.dataWindow ?? {
     from: window.from,
     to: window.to,
     interval: window.interval,
     timeZone: window.timeZone,
-  }));
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    fetchPerformance(siteId, window, filters)
-      .catch(() => emptyPerformance(window.interval))
-      .then((payload) => {
-        if (!active) return;
-        startTransition(() => {
-          setPerformanceData(payload);
-          setDataWindow({
-            from: window.from,
-            to: window.to,
-            interval: window.interval,
-            timeZone: window.timeZone,
-          });
-        });
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-        setHydrated(true);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    filters,
-    siteId,
-    window.from,
-    window.interval,
-    window.timeZone,
-    window.to,
-  ]);
+  };
+  const hydrated = data !== undefined;
 
   const activeSummary = useMemo(() => {
     if (activePanel === "score") return scoreSummary(performanceData);
