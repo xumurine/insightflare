@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { CampaignBreakdownCard } from "@/components/dashboard/campaign-breakdown-card";
 import { CampaignShareTrendCard } from "@/components/dashboard/campaign-share-trend-card";
@@ -21,6 +22,13 @@ interface CampaignsClientPageProps {
 }
 
 const EMPTY_ROWS: CampaignRawRowsByTab["source"] = [];
+const EMPTY_ROWS_BY_TAB: CampaignRawRowsByTab = {
+  source: EMPTY_ROWS,
+  medium: EMPTY_ROWS,
+  campaign: EMPTY_ROWS,
+  term: EMPTY_ROWS,
+  content: EMPTY_ROWS,
+};
 
 function extractDimensionRows(
   payload: unknown,
@@ -41,6 +49,13 @@ function extractDimensionRows(
   return EMPTY_ROWS;
 }
 
+function emptyRowsUnlessAborted(
+  error: unknown,
+): CampaignRawRowsByTab["source"] {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return EMPTY_ROWS;
+}
+
 export function CampaignsClientPage({
   locale,
   messages,
@@ -50,14 +65,6 @@ export function CampaignsClientPage({
     filters: DashboardFilters;
     window: TimeWindow;
   };
-  const [loading, setLoading] = useState(true);
-  const [rowsByTab, setRowsByTab] = useState<CampaignRawRowsByTab>({
-    source: EMPTY_ROWS,
-    medium: EMPTY_ROWS,
-    campaign: EMPTY_ROWS,
-    term: EMPTY_ROWS,
-    content: EMPTY_ROWS,
-  });
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const requestFilters = useMemo(() => ({ ...filters }), [filtersKey]);
   const requestWindow = useMemo(
@@ -71,50 +78,40 @@ export function CampaignsClientPage({
     [window.from, window.interval, window.preset, window.timeZone, window.to],
   );
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    Promise.all([
-      fetchUtmDimension(siteId, requestWindow, "source", requestFilters)
-        .then((payload) => extractDimensionRows(payload))
-        .catch(() => EMPTY_ROWS),
-      fetchUtmDimension(siteId, requestWindow, "medium", requestFilters)
-        .then((payload) => extractDimensionRows(payload))
-        .catch(() => EMPTY_ROWS),
-      fetchUtmDimension(siteId, requestWindow, "campaign", requestFilters)
-        .then((payload) => extractDimensionRows(payload))
-        .catch(() => EMPTY_ROWS),
-      fetchUtmDimension(siteId, requestWindow, "term", requestFilters)
-        .then((payload) => extractDimensionRows(payload))
-        .catch(() => EMPTY_ROWS),
-      fetchUtmDimension(siteId, requestWindow, "content", requestFilters)
-        .then((payload) => extractDimensionRows(payload))
-        .catch(() => EMPTY_ROWS),
-    ])
-      .then(([source, medium, campaign, term, content]) => {
-        if (!active) return;
-        setRowsByTab({
-          source,
-          medium,
-          campaign,
-          term,
-          content,
-        });
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [requestFilters, requestWindow, siteId]);
+  const { data: rowsByTab, isFetching: loading } = useQuery({
+    queryKey: [
+      "dashboard",
+      "campaign-breakdown",
+      siteId,
+      window.from,
+      window.to,
+      window.interval,
+      window.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => {
+      const loadDimension = (tab: keyof CampaignRawRowsByTab) =>
+        fetchUtmDimension(siteId, requestWindow, tab, requestFilters, {
+          signal,
+        })
+          .then((payload) => extractDimensionRows(payload))
+          .catch(emptyRowsUnlessAborted);
+      const [source, medium, campaign, term, content] = await Promise.all([
+        loadDimension("source"),
+        loadDimension("medium"),
+        loadDimension("campaign"),
+        loadDimension("term"),
+        loadDimension("content"),
+      ]);
+      return { source, medium, campaign, term, content };
+    },
+    enabled: typeof window !== "undefined",
+  });
+  const resolvedRowsByTab = rowsByTab ?? EMPTY_ROWS_BY_TAB;
 
   const normalizedRowsByTab = useMemo(
-    () => buildCampaignRowsByTab(rowsByTab, messages.campaigns.notSet),
-    [messages.campaigns.notSet, rowsByTab],
+    () => buildCampaignRowsByTab(resolvedRowsByTab, messages.campaigns.notSet),
+    [messages.campaigns.notSet, resolvedRowsByTab],
   );
 
   return (
