@@ -44,6 +44,7 @@ export async function fetchOverviewPageCardTab(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<OverviewTabRows> {
   const endpoint =
@@ -62,7 +63,8 @@ export async function fetchOverviewPageCardTab(
       },
       filters,
     ),
-  ).catch(() => emptyOverviewTab());
+    { signal: options?.signal },
+  ).catch(emptyOverviewTabUnlessAborted);
   const rows = normalizeOverviewRows(payload.data);
   return tab === "query"
     ? rows.map((row) => ({

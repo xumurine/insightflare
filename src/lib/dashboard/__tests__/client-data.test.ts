@@ -1510,6 +1510,42 @@ describe("Dashboard Client Data Processing Utilities", () => {
       ).rejects.toMatchObject({ name: "AbortError" });
     });
 
+    it("forwards cancellation signals for overview page tab requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchOverviewPageCardTab(
+        "page-tab-signal",
+        mockWindow,
+        "title",
+        undefined,
+        { signal: controller.signal },
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted overview page tab requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchOverviewPageCardTab(
+          "page-tab-aborted",
+          mockWindow,
+          "title",
+          undefined,
+          { signal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
     it("preserves aborted overview geo point requests", async () => {
       const controller = new AbortController();
       controller.abort();

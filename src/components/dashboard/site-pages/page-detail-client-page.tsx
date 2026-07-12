@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { AsyncDimensionBreakdownCard } from "@/components/dashboard/async-dimension-breakdown-card";
 import {
@@ -78,9 +79,6 @@ export function PageDetailClientPage({
     filters: DashboardFilters;
     window: TimeWindow;
   };
-  const [titles, setTitles] = useState<string[]>([]);
-  const [titlesLoading, setTitlesLoading] = useState(true);
-
   const detailFilters = useMemo(
     () => buildPageDetailFilters(filters, pagePath),
     [filters, pagePath],
@@ -221,36 +219,23 @@ export function PageDetailClientPage({
     ],
   );
 
-  useEffect(() => {
-    let active = true;
-    setTitles([]);
-    setTitlesLoading(true);
-
-    fetchOverviewPageCardTab(siteId, window, "title", detailFilters, {
-      limit: 3,
-    })
-      .then((rows) => {
-        if (!active) return;
-        setTitles(
-          rows
-            .map((row) => String(row.label ?? "").trim())
-            .filter((value) => value.length > 0)
-            .slice(0, 3),
-        );
-      })
-      .catch(() => {
-        if (!active) return;
-        setTitles([]);
-      })
-      .finally(() => {
-        if (!active) return;
-        setTitlesLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [detailRequestKey]);
+  const { data: titleRows, isFetching: titlesLoading } = useQuery({
+    queryKey: ["dashboard", "page-detail-titles", detailRequestKey],
+    queryFn: ({ signal }) =>
+      fetchOverviewPageCardTab(siteId, window, "title", detailFilters, {
+        limit: 3,
+        signal,
+      }),
+    enabled: typeof window !== "undefined",
+  });
+  const titles = useMemo(
+    () =>
+      (titleRows ?? [])
+        .map((row) => String(row.label ?? "").trim())
+        .filter((value) => value.length > 0)
+        .slice(0, 3),
+    [titleRows],
+  );
 
   const displayPagePath = decodeUrlDisplayValue(pagePath);
   const primaryTitle = titles[0] ?? displayPagePath;
