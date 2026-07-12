@@ -89,6 +89,18 @@ test("keeps flat and 3D map renderers isolated", async ({ page }) => {
   });
 });
 
+test("loads pages analytics through the client data layer", async ({
+  page,
+}) => {
+  await page.goto("/zh/app/xeoos-team/acme-corp-com/pages");
+  await expect(
+    page.getByRole("heading", { name: "页面分析" }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "查看详情: /", exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
+});
+
 test("loads the original JetBrains Mono web font", async ({ page }) => {
   await page.goto("/zh/app/xeoos-team/widgets");
   await expect(
