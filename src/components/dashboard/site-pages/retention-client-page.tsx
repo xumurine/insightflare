@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useMemo } from "react";
 import {
   type RemixiconComponentType,
   RiCalendarLine,
@@ -7,6 +7,7 @@ import {
   RiPulseLine,
   RiRepeat2Line,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
@@ -953,9 +954,6 @@ export function RetentionClientPage({
     filters: DashboardFilters;
     window: TimeWindow;
   };
-  const [payload, setPayload] = useState<RetentionData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const granularity = timeWindow.interval;
   const loadingShape = useMemo(
@@ -970,43 +968,31 @@ export function RetentionClientPage({
     ],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(false);
-
-    fetchRetention(siteId, timeWindow, filters, { granularity })
-      .then((data) => {
-        if (cancelled) return;
-        setPayload(data);
-        setError(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setPayload(null);
-        setError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    filters,
-    filtersKey,
-    granularity,
-    siteId,
-    timeWindow.from,
-    timeWindow.to,
-    timeWindow.interval,
-  ]);
+  const {
+    data: payload,
+    isError: error,
+    isFetching: loading,
+  } = useQuery({
+    queryKey: [
+      "dashboard",
+      "retention",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      granularity,
+      filtersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchRetention(siteId, timeWindow, filters, { granularity, signal }),
+    enabled: typeof window !== "undefined",
+  });
 
   const viewModel = useMemo(
     () =>
       buildRetentionViewModel(
-        payload,
+        payload ?? null,
         locale,
         messages,
         labels,

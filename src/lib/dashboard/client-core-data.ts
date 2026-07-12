@@ -548,20 +548,23 @@ export async function fetchRetention(
   filters?: DashboardFilters,
   options?: {
     granularity?: RetentionGranularity;
+    signal?: AbortSignal;
   },
 ): Promise<RetentionData> {
   const granularity = options?.granularity ?? "week";
-  return fetchPrivateJson<RetentionData>(
-    "/api/private/retention",
-    withFilters(
-      {
-        siteId,
-        from: window.from,
-        to: window.to,
-        timeZone: window.timeZone,
-        granularity,
-      },
-      filters,
-    ),
+  const requestParams = withFilters(
+    {
+      siteId,
+      from: window.from,
+      to: window.to,
+      timeZone: window.timeZone,
+      granularity,
+    },
+    filters,
   );
+  return options?.signal
+    ? fetchPrivateJson<RetentionData>("/api/private/retention", requestParams, {
+        signal: options.signal,
+      })
+    : fetchPrivateJson<RetentionData>("/api/private/retention", requestParams);
 }
