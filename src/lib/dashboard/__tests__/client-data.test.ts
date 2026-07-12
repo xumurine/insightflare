@@ -1215,6 +1215,42 @@ describe("Dashboard Client Data Processing Utilities", () => {
       ).rejects.toMatchObject({ name: "AbortError" });
     });
 
+    it("forwards cancellation signals for event type detail requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: {} }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchEventTypeDetail(
+        "event-type-detail-signal",
+        mockWindow,
+        "Signup",
+        undefined,
+        { signal: controller.signal },
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted event type detail requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchEventTypeDetail(
+          "event-type-detail-aborted",
+          mockWindow,
+          "Signup",
+          undefined,
+          { signal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
     it("preserves aborted overview geo point requests", async () => {
       const controller = new AbortController();
       controller.abort();

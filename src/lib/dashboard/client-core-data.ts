@@ -437,25 +437,38 @@ export async function fetchEventTypeDetail(
   window: TimeWindow,
   eventName: string,
   filters?: DashboardFilters,
+  options?: { signal?: AbortSignal },
 ): Promise<EventTypeDetailData> {
   const normalizedEventName = eventName.trim();
   if (!normalizedEventName) {
     return emptyEventTypeDetail("");
   }
-  return fetchPrivateJson<EventTypeDetailData>(
-    "/api/private/event-type-detail",
-    withFilters(
-      {
-        siteId,
-        from: window.from,
-        to: window.to,
-        timeZone: window.timeZone,
-        interval: window.interval,
-        eventName: normalizedEventName,
-      },
-      filters,
+  const requestParams = withFilters(
+    {
+      siteId,
+      from: window.from,
+      to: window.to,
+      timeZone: window.timeZone,
+      interval: window.interval,
+      eventName: normalizedEventName,
+    },
+    filters,
+  );
+  const request = options?.signal
+    ? fetchPrivateJson<EventTypeDetailData>(
+        "/api/private/event-type-detail",
+        requestParams,
+        { signal: options.signal },
+      )
+    : fetchPrivateJson<EventTypeDetailData>(
+        "/api/private/event-type-detail",
+        requestParams,
+      );
+  return request.catch((error) =>
+    fallbackUnlessAborted(error, () =>
+      emptyEventTypeDetail(normalizedEventName),
     ),
-  ).catch(() => emptyEventTypeDetail(normalizedEventName));
+  );
 }
 
 export async function fetchEventTypeFieldValues(

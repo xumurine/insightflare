@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { RiPulseLine } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 
 import { JourneyDetailStateSwitch } from "@/components/dashboard/journey-detail-state";
 import { useDetailModalClose } from "@/components/dashboard/site-pages/detail-query-modal";
@@ -113,12 +114,6 @@ export function EventTypeDetailClientPage({
     () => parseOverviewCardFilters(new URLSearchParams(liveSearchParamsKey)),
     [liveSearchParamsKey],
   );
-  const [detail, setDetail] = useState<EventTypeDetailData>(() =>
-    emptyEventTypeDetail(eventName),
-  );
-  const [loading, setLoading] = useState(Boolean(eventName));
-  const [error, setError] = useState(false);
-
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const requestFilters = useMemo(() => ({ ...filters }), [filtersKey]);
   const requestWindow = useMemo(
@@ -152,6 +147,30 @@ export function EventTypeDetailClientPage({
       siteId,
     ],
   );
+  const {
+    data,
+    isError: error,
+    isFetching: loading,
+    isPending,
+  } = useQuery({
+    queryKey: [
+      "dashboard",
+      "event-type-detail",
+      siteId,
+      eventName,
+      requestWindow.from,
+      requestWindow.to,
+      requestWindow.interval,
+      requestWindow.timeZone,
+      filtersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchEventTypeDetail(siteId, requestWindow, eventName, requestFilters, {
+        signal,
+      }),
+    enabled: typeof window !== "undefined" && Boolean(eventName),
+  });
+  const detail = data ?? emptyEventTypeDetail(eventName);
   const contextCardDataOverride = useMemo<OverviewPagesSectionCardData>(
     () => ({
       page: detail.cards.page,
@@ -166,7 +185,7 @@ export function EventTypeDetailClientPage({
       detail.cards.source,
     ],
   );
-  const initialLoading = loading && detail.summary.events === 0;
+  const initialLoading = isPending && detail.summary.events === 0;
   const detailStateKey = initialLoading
     ? "event-type-loading"
     : `event-type-content-${requestKey}-${error ? "error" : "ready"}`;
@@ -179,36 +198,6 @@ export function EventTypeDetailClientPage({
       })),
     [detail.trend.data],
   );
-
-  useEffect(() => {
-    if (!eventName) {
-      setDetail(emptyEventTypeDetail(""));
-      setLoading(false);
-      setError(false);
-      return;
-    }
-
-    let active = true;
-    setLoading(true);
-    setError(false);
-    fetchEventTypeDetail(siteId, requestWindow, eventName, requestFilters)
-      .then((payload) => {
-        if (!active) return;
-        setDetail(payload);
-      })
-      .catch(() => {
-        if (!active) return;
-        setDetail(emptyEventTypeDetail(eventName));
-        setError(true);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [eventName, requestFilters, requestKey, requestWindow, siteId]);
 
   if (!eventName) {
     return (
