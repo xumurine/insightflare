@@ -56,6 +56,11 @@ function emptyVisitorsUnlessAborted(error: unknown): VisitorsData {
   return emptyVisitors();
 }
 
+function fallbackUnlessAborted<T>(error: unknown, fallback: () => T): T {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return fallback();
+}
+
 export async function fetchOverview(
   siteId: string,
   window: TimeWindow,
@@ -320,19 +325,30 @@ export async function fetchEventsSummary(
   siteId: string,
   window: TimeWindow,
   filters?: DashboardFilters,
+  options?: { signal?: AbortSignal },
 ): Promise<EventsSummaryData> {
-  return fetchPrivateJson<EventsSummaryData>(
-    "/api/private/events-summary",
-    withFilters(
-      {
-        siteId,
-        from: window.from,
-        to: window.to,
-        timeZone: window.timeZone,
-      },
-      filters,
-    ),
-  ).catch(emptyEventsSummary);
+  const requestParams = withFilters(
+    {
+      siteId,
+      from: window.from,
+      to: window.to,
+      timeZone: window.timeZone,
+    },
+    filters,
+  );
+  const request = options?.signal
+    ? fetchPrivateJson<EventsSummaryData>(
+        "/api/private/events-summary",
+        requestParams,
+        { signal: options.signal },
+      )
+    : fetchPrivateJson<EventsSummaryData>(
+        "/api/private/events-summary",
+        requestParams,
+      );
+  return request.catch((error) =>
+    fallbackUnlessAborted(error, emptyEventsSummary),
+  );
 }
 
 export async function fetchEventsTrend(
@@ -342,6 +358,7 @@ export async function fetchEventsTrend(
   options?: {
     limit?: number;
     eventName?: string;
+    signal?: AbortSignal;
   },
 ): Promise<EventsTrendData> {
   const params: Record<string, string | number> = {
@@ -354,10 +371,20 @@ export async function fetchEventsTrend(
   };
   const eventName = options?.eventName?.trim();
   if (eventName) params.eventName = eventName;
-  return fetchPrivateJson<EventsTrendData>(
-    "/api/private/events-trend",
-    withFilters(params, filters),
-  ).catch(() => emptyEventsTrend(window.interval));
+  const requestParams = withFilters(params, filters);
+  const request = options?.signal
+    ? fetchPrivateJson<EventsTrendData>(
+        "/api/private/events-trend",
+        requestParams,
+        { signal: options.signal },
+      )
+    : fetchPrivateJson<EventsTrendData>(
+        "/api/private/events-trend",
+        requestParams,
+      );
+  return request.catch((error) =>
+    fallbackUnlessAborted(error, () => emptyEventsTrend(window.interval)),
+  );
 }
 
 export async function fetchEventsRecords(

@@ -1148,6 +1148,45 @@ describe("Dashboard Client Data Processing Utilities", () => {
       ).rejects.toMatchObject({ name: "AbortError" });
     });
 
+    it("forwards cancellation signals for event overview requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await Promise.all([
+        fetchEventsSummary("events-summary-signal", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+        fetchEventsTrend("events-trend-signal", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ]);
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted event overview requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchEventsSummary("events-summary-aborted", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      await expect(
+        fetchEventsTrend("events-trend-aborted", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
     it("preserves aborted overview geo point requests", async () => {
       const controller = new AbortController();
       controller.abort();
