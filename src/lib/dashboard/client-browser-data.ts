@@ -178,17 +178,25 @@ export async function fetchBrowserRadar(
   siteId: string,
   window: TimeWindow,
   filters?: DashboardFilters,
+  options?: { signal?: AbortSignal },
 ): Promise<BrowserRadarData> {
-  return fetchPrivateJson<BrowserRadarData>(
-    "/api/private/browser-radar",
-    withFilters(
-      {
-        siteId,
-        from: window.from,
-        to: window.to,
-        timeZone: window.timeZone,
-      },
-      filters,
-    ),
+  const requestParams = withFilters(
+    {
+      siteId,
+      from: window.from,
+      to: window.to,
+      timeZone: window.timeZone,
+    },
+    filters,
   );
+  return options?.signal
+    ? fetchPrivateJson<BrowserRadarData>(
+        "/api/private/browser-radar",
+        requestParams,
+        { signal: options.signal },
+      )
+    : fetchPrivateJson<BrowserRadarData>(
+        "/api/private/browser-radar",
+        requestParams,
+      );
 }
