@@ -1187,6 +1187,34 @@ describe("Dashboard Client Data Processing Utilities", () => {
       ).rejects.toMatchObject({ name: "AbortError" });
     });
 
+    it("forwards cancellation signals for event record requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [], meta: {} }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchEventsRecords("event-records-signal", mockWindow, undefined, {
+        signal: controller.signal,
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted event record requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchEventsRecords("event-records-aborted", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
     it("preserves aborted overview geo point requests", async () => {
       const controller = new AbortController();
       controller.abort();

@@ -4,7 +4,6 @@ import {
   type PointerEvent,
   type ReactNode,
   useEffect,
-  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -24,6 +23,7 @@ import {
   RiSearchLine,
   RiStackLine,
 } from "@remixicon/react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
@@ -110,7 +110,6 @@ import type {
   EventFieldValueStat,
   EventRecord,
   EventRecordDetailData,
-  EventsRecordsMeta,
   EventsTrendData,
   EventTrendSeries,
 } from "@/lib/edge-client";
@@ -168,14 +167,6 @@ export type EventPageCopy = AppMessages["events"];
 export const DEFAULT_EVENT_RECORD_SORT: EventRecordSortState = {
   key: "occurredAt",
   direction: "desc",
-};
-
-const INITIAL_EVENT_META: EventsRecordsMeta = {
-  page: 1,
-  pageSize: EVENT_PAGE_SIZE,
-  returned: 0,
-  hasMore: false,
-  nextPage: null,
 };
 
 function shortId(value: string): string {
@@ -1670,12 +1661,6 @@ export function EventRecordsSection({
   filters: DashboardFilters;
   eventName?: string;
 }) {
-  const [rows, setRows] = useState<EventRecord[]>([]);
-  const [meta, setMeta] = useState<EventsRecordsMeta>(INITIAL_EVENT_META);
-  const [loadingInitial, setLoadingInitial] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState(false);
-  const [appendError, setAppendError] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState<EventRecordSortState>(
@@ -1690,37 +1675,7 @@ export function EventRecordsSection({
     null,
   );
   const [detailLoading, setDetailLoading] = useState(false);
-  const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
-  const requestKey = useMemo(
-    () =>
-      [
-        siteId,
-        timeWindow.from,
-        timeWindow.to,
-        timeWindow.interval,
-        timeWindow.timeZone,
-        filtersKey,
-        debouncedQuery,
-        sort.key,
-        sort.direction,
-        eventName ?? "",
-      ].join(":"),
-    [
-      debouncedQuery,
-      eventName,
-      filtersKey,
-      siteId,
-      sort.direction,
-      sort.key,
-      timeWindow.from,
-      timeWindow.interval,
-      timeWindow.timeZone,
-      timeWindow.to,
-    ],
-  );
-  const replacingRows =
-    loadingInitial || latestRequestKeyRef.current !== requestKey;
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -1729,79 +1684,63 @@ export function EventRecordsSection({
     return () => window.clearTimeout(timeoutId);
   }, [query]);
 
-  const loadPage = useEffectEvent(
-    async (page: number, mode: "replace" | "append") => {
-      const capturedRequestKey = latestRequestKeyRef.current;
-      if (mode === "replace") {
-        setLoadingInitial(true);
-        setError(false);
-        setAppendError(false);
-      } else {
-        setLoadingMore(true);
-        setAppendError(false);
-      }
-
-      try {
-        const payload = await fetchEventsRecords(siteId, timeWindow, filters, {
-          page,
-          pageSize: EVENT_PAGE_SIZE,
-          sortBy: sort.key,
-          sortDir: sort.direction,
-          search: debouncedQuery,
-          eventName,
-        });
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        setRows((current) =>
-          mode === "append"
-            ? appendUniqueEvents(current, payload.data)
-            : payload.data,
-        );
-        setMeta(payload.meta);
-        setError(false);
-        setAppendError(false);
-      } catch {
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        if (mode === "replace") {
-          setRows([]);
-          setMeta(INITIAL_EVENT_META);
-          setError(true);
-          setAppendError(false);
-        } else {
-          setAppendError(true);
-        }
-      } finally {
-        if (latestRequestKeyRef.current === capturedRequestKey) {
-          if (mode === "replace") {
-            setLoadingInitial(false);
-          } else {
-            setLoadingMore(false);
-          }
-        }
-      }
-    },
-  );
-
-  const loadNextPage = useEffectEvent(() => {
-    if (
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      !meta.hasMore ||
-      meta.nextPage === null
-    ) {
-      return;
-    }
-    void loadPage(meta.nextPage, "append");
+  const {
+    data,
+    error: queryError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchNextPageError,
+    isFetching,
+    isFetchingNextPage,
+    isPending,
+  } = useInfiniteQuery({
+    queryKey: [
+      "dashboard",
+      "event-records",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      filtersKey,
+      debouncedQuery,
+      sort.key,
+      sort.direction,
+      eventName ?? "",
+    ],
+    queryFn: ({ pageParam, signal }) =>
+      fetchEventsRecords(siteId, timeWindow, filters, {
+        page: pageParam,
+        pageSize: EVENT_PAGE_SIZE,
+        sortBy: sort.key,
+        sortDir: sort.direction,
+        search: debouncedQuery,
+        eventName,
+        signal,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.meta.hasMore ? lastPage.meta.nextPage : undefined,
+    enabled: typeof window !== "undefined",
   });
-
-  useEffect(() => {
-    latestRequestKeyRef.current = requestKey;
-    setRows([]);
-    setMeta(INITIAL_EVENT_META);
-    setError(false);
-    setAppendError(false);
-    void loadPage(1, "replace");
-  }, [requestKey]);
+  const rows = useMemo(
+    () =>
+      data?.pages.reduce<EventRecord[]>(
+        (current, page) => appendUniqueEvents(current, page.data),
+        [],
+      ) ?? [],
+    [data?.pages],
+  );
+  const loadingInitial = isPending;
+  const loadingMore = isFetchingNextPage;
+  const error = Boolean(queryError) && rows.length === 0;
+  const appendError = isFetchNextPageError;
+  const replacingRows = isPending || (isFetching && !isFetchingNextPage);
+  const hasMore = hasNextPage ?? false;
+  const loadNextPage = () => {
+    if (loadingInitial || loadingMore || appendError || !hasMore) return;
+    void fetchNextPage();
+  };
 
   useEffect(() => {
     const target = sentinelNode;
@@ -1811,7 +1750,7 @@ export function EventRecordsSection({
       loadingMore ||
       appendError ||
       error ||
-      !meta.hasMore ||
+      !hasMore ||
       typeof IntersectionObserver === "undefined"
     ) {
       return;
@@ -1846,10 +1785,10 @@ export function EventRecordsSection({
   }, [
     appendError,
     error,
+    fetchNextPage,
+    hasMore,
     loadingInitial,
     loadingMore,
-    meta.hasMore,
-    meta.nextPage,
     sentinelNode,
   ]);
 
@@ -1919,7 +1858,7 @@ export function EventRecordsSection({
         loadingMore={loadingMore}
         error={error}
         appendError={appendError}
-        hasMore={meta.hasMore}
+        hasMore={hasMore}
         sentinelRef={setSentinelNode}
       />
 

@@ -398,6 +398,7 @@ export async function fetchEventsRecords(
     sortDir?: SortDirection;
     search?: string;
     eventName?: string;
+    signal?: AbortSignal;
   },
 ): Promise<EventsRecordsData> {
   const pageSize = options?.pageSize ?? 80;
@@ -415,10 +416,20 @@ export async function fetchEventsRecords(
   if (search) params.search = search;
   const eventName = options?.eventName?.trim();
   if (eventName) params.eventName = eventName;
-  return fetchPrivateJson<EventsRecordsData>(
-    "/api/private/events-records",
-    withFilters(params, filters),
-  ).catch(() => emptyEventsRecords(pageSize));
+  const requestParams = withFilters(params, filters);
+  const request = options?.signal
+    ? fetchPrivateJson<EventsRecordsData>(
+        "/api/private/events-records",
+        requestParams,
+        { signal: options.signal },
+      )
+    : fetchPrivateJson<EventsRecordsData>(
+        "/api/private/events-records",
+        requestParams,
+      );
+  return request.catch((error) =>
+    fallbackUnlessAborted(error, () => emptyEventsRecords(pageSize)),
+  );
 }
 
 export async function fetchEventTypeDetail(
