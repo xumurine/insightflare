@@ -1056,6 +1056,42 @@ describe("Dashboard Client Data Processing Utilities", () => {
       );
     });
 
+    it("forwards cancellation signals for overview source tabs", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchOverviewSourceCardTab(
+        "source-tab-signal",
+        mockWindow,
+        "domain",
+        undefined,
+        { signal: controller.signal },
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted overview source tab requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchOverviewSourceCardTab(
+          "source-tab-aborted",
+          mockWindow,
+          "domain",
+          undefined,
+          { signal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
     it("preserves aborted overview geo point requests", async () => {
       const controller = new AbortController();
       controller.abort();
