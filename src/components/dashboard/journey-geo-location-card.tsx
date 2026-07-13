@@ -4,6 +4,7 @@ import {
   RiInformationLine,
   RiMapPin2Line,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -803,10 +804,6 @@ export function JourneyGeoLocationCard({
   const entriesKey = entries.map((entry) => entry.key).join("|");
   const firstEntryKey = entries[0]?.key ?? "";
   const [selectedKey, setSelectedKey] = useState(firstEntryKey);
-  const [loading, setLoading] = useState(false);
-  const [investigation, setInvestigation] =
-    useState<GeoInvestigationInfo | null>(null);
-  const [wikiSummary, setWikiSummary] = useState<GeoWikiSummary | null>(null);
 
   useEffect(() => {
     setSelectedKey((current) =>
@@ -816,41 +813,32 @@ export function JourneyGeoLocationCard({
 
   const selectedEntry =
     entries.find((entry) => entry.key === selectedKey) ?? entries[0] ?? null;
-
-  useEffect(() => {
-    if (!selectedEntry) {
-      setLoading(false);
-      setInvestigation(null);
-      setWikiSummary(null);
-      return;
-    }
-
-    let active = true;
-    setLoading(true);
-    setInvestigation(null);
-    setWikiSummary(null);
-
-    fetchJourneyGeoInvestigation(selectedEntry.location, locale, messages)
-      .then(async (info) => {
-        const wiki = info?.wikidataId
-          ? await fetchGeoWikiSummary(info.wikidataId, locale)
-          : null;
-        if (!active) return;
-        setInvestigation(info);
-        setWikiSummary(wiki);
-        setLoading(false);
-      })
-      .catch(() => {
-        if (!active) return;
-        setInvestigation(null);
-        setWikiSummary(null);
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [locale, messages, selectedEntry]);
+  const investigationQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "journey-geo-investigation",
+      locale,
+      selectedEntry?.key ?? "",
+    ],
+    queryFn: async () => {
+      if (!selectedEntry) return null;
+      const investigation = await fetchJourneyGeoInvestigation(
+        selectedEntry.location,
+        locale,
+        messages,
+      );
+      const wikiSummary = investigation?.wikidataId
+        ? await fetchGeoWikiSummary(investigation.wikidataId, locale)
+        : null;
+      return { investigation, wikiSummary };
+    },
+    enabled: typeof window !== "undefined" && Boolean(selectedEntry),
+    retry: false,
+    staleTime: Infinity,
+  });
+  const loading = investigationQuery.isPending;
+  const investigation = investigationQuery.data?.investigation ?? null;
+  const wikiSummary = investigationQuery.data?.wikiSummary ?? null;
 
   if (!selectedEntry) return null;
 
