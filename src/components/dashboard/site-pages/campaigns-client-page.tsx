@@ -1,11 +1,11 @@
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useMemo } from "react";
 
 import { CampaignBreakdownCard } from "@/components/dashboard/campaign-breakdown-card";
 import { CampaignShareTrendCard } from "@/components/dashboard/campaign-share-trend-card";
 import {
-  buildCampaignRowsByTab,
+  buildCampaignRows,
   type CampaignRawRowsByTab,
+  type CampaignTab,
 } from "@/components/dashboard/campaign-utils";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
@@ -22,14 +22,6 @@ interface CampaignsClientPageProps {
 }
 
 const EMPTY_ROWS: CampaignRawRowsByTab["source"] = [];
-const EMPTY_ROWS_BY_TAB: CampaignRawRowsByTab = {
-  source: EMPTY_ROWS,
-  medium: EMPTY_ROWS,
-  campaign: EMPTY_ROWS,
-  term: EMPTY_ROWS,
-  content: EMPTY_ROWS,
-};
-
 function extractDimensionRows(
   payload: unknown,
 ): CampaignRawRowsByTab["source"] {
@@ -78,41 +70,32 @@ export function CampaignsClientPage({
     [window.from, window.interval, window.preset, window.timeZone, window.to],
   );
 
-  const { data: rowsByTab, isFetching: loading } = useQuery({
-    queryKey: [
-      "dashboard",
-      "campaign-breakdown",
-      siteId,
-      window.from,
-      window.to,
-      window.interval,
-      window.timeZone,
-      filtersKey,
-    ],
-    queryFn: async ({ signal }) => {
-      const loadDimension = (tab: keyof CampaignRawRowsByTab) =>
-        fetchUtmDimension(siteId, requestWindow, tab, requestFilters, {
-          signal,
-        })
-          .then((payload) => extractDimensionRows(payload))
-          .catch(emptyRowsUnlessAborted);
-      const [source, medium, campaign, term, content] = await Promise.all([
-        loadDimension("source"),
-        loadDimension("medium"),
-        loadDimension("campaign"),
-        loadDimension("term"),
-        loadDimension("content"),
-      ]);
-      return { source, medium, campaign, term, content };
+  const loadRows = useCallback(
+    async (tab: CampaignTab, signal: AbortSignal) => {
+      try {
+        const payload = await fetchUtmDimension(
+          siteId,
+          requestWindow,
+          tab,
+          requestFilters,
+          { signal },
+        );
+        return buildCampaignRows(
+          extractDimensionRows(payload),
+          tab,
+          messages.campaigns.notSet,
+        );
+      } catch (error) {
+        return buildCampaignRows(
+          emptyRowsUnlessAborted(error),
+          tab,
+          messages.campaigns.notSet,
+        );
+      }
     },
-    enabled: typeof window !== "undefined",
-  });
-  const resolvedRowsByTab = rowsByTab ?? EMPTY_ROWS_BY_TAB;
-
-  const normalizedRowsByTab = useMemo(
-    () => buildCampaignRowsByTab(resolvedRowsByTab, messages.campaigns.notSet),
-    [messages.campaigns.notSet, resolvedRowsByTab],
+    [messages.campaigns.notSet, requestFilters, requestWindow, siteId],
   );
+  const requestKey = `${siteId}:${window.from}:${window.to}:${window.interval}:${window.timeZone}:${filtersKey}:${locale}`;
 
   return (
     <div className="space-y-6">
@@ -132,8 +115,8 @@ export function CampaignsClientPage({
       <CampaignBreakdownCard
         locale={locale}
         messages={messages}
-        rowsByTab={normalizedRowsByTab}
-        loading={loading}
+        loadRows={loadRows}
+        requestKey={requestKey}
       />
     </div>
   );
