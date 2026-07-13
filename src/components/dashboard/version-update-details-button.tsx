@@ -4,6 +4,7 @@ import {
   RiGitCommitLine,
   RiListCheck2,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -87,34 +88,17 @@ export function VersionUpdateDetailsButton({
   labels,
 }: VersionUpdateDetailsButtonProps) {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [details, setDetails] = useState<ComparePayload | null>(null);
+  const detailsQuery = useQuery({
+    queryKey: ["dashboard", "release-compare", baseTag, headRef],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ head: headRef });
+      if (baseTag) params.set("base", baseTag);
 
-  const title = useMemo(() => {
-    if (baseTag) return `${baseTag} -> ${releaseTag}`;
-    return releaseTag;
-  }, [baseTag, releaseTag]);
-
-  async function loadDetails(): Promise<void> {
-    if (details || loading) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const params = new URLSearchParams({
-        head: headRef,
-      });
-      if (baseTag) {
-        params.set("base", baseTag);
-      }
-
-      const response = await fetch(`/api/private/releases/compare?${params}`, {
-        method: "GET",
-      });
+      const response = await fetch(
+        `/api/private/releases/compare?${params.toString()}`,
+        { method: "GET", signal },
+      );
       const payload = (await response.json()) as CompareResponse;
-
       if (!response.ok || !payload.ok) {
         throw new Error(
           payload.ok
@@ -122,22 +106,27 @@ export function VersionUpdateDetailsButton({
             : payload.message || labels.detailsFailed,
         );
       }
+      return payload.data;
+    },
+    enabled: typeof window !== "undefined" && open,
+    retry: false,
+    staleTime: Infinity,
+  });
+  const loading = detailsQuery.isPending;
+  const details = detailsQuery.data ?? null;
+  const error = detailsQuery.isError
+    ? detailsQuery.error instanceof Error
+      ? detailsQuery.error.message
+      : labels.detailsFailed
+    : null;
 
-      setDetails(payload.data);
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error ? loadError.message : labels.detailsFailed,
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+  const title = useMemo(() => {
+    if (baseTag) return `${baseTag} -> ${releaseTag}`;
+    return releaseTag;
+  }, [baseTag, releaseTag]);
 
   function handleOpenChange(nextOpen: boolean): void {
     setOpen(nextOpen);
-    if (nextOpen) {
-      void loadDetails();
-    }
   }
 
   const detailStateKey = loading
