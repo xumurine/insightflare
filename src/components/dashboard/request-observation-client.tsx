@@ -200,8 +200,7 @@ interface RequestNetworkDimensionRow {
 
 interface RequestDetailCursor {
   timestamp: string;
-  traceId: string;
-  rayId: string;
+  receivedAt: number;
 }
 
 interface RequestObservationPageData {

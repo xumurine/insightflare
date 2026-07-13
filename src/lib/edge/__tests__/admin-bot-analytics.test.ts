@@ -758,7 +758,7 @@ describe("admin bot analytics handlers", () => {
       (fetchMock.mock.calls[1]?.[1] as RequestInit | undefined)?.body || "",
     );
     expect(firstSql).toContain("double1 AS receivedAt");
-    expect(fallbackSql).not.toContain("double1");
+    expect(fallbackSql).not.toContain("double1 AS receivedAt");
     expect(fallbackSql).toContain("ORDER BY timestamp DESC");
     expect(
       fetchMock.mock.calls
@@ -1069,8 +1069,8 @@ describe("admin bot analytics handlers", () => {
     );
     expect(firstDetailSql).toContain("double1 AS receivedAt");
     expect(fallbackDetailSql).not.toContain("double1 AS receivedAt");
-    expect(fallbackDetailSql).toContain("blob19 = 'trace-detail'");
     expect(fallbackDetailSql).toContain("blob18 = 'ray-detail'");
+    expect(fallbackDetailSql).not.toContain("blob19");
 
     const upsert = statement();
     const clearResponse = await handleBotAnalyticsConfigAdmin(
@@ -1166,9 +1166,17 @@ describe("admin bot analytics handlers", () => {
       events: [expect.objectContaining({ traceId: "trace-1" })],
     });
     expect(pageBody.page.nextCursor).toMatchObject({
-      traceId: "trace-1",
-      rayId: "ray-1",
+      timestamp: "2026-07-03 10:00:00",
+      receivedAt: 1783072800000,
     });
+    expect(
+      fetchMock.mock.calls.every(
+        ([, init]) =>
+          !String((init as RequestInit | undefined)?.body || "").includes(
+            "blob19",
+          ),
+      ),
+    ).toBe(true);
 
     const dimensionResponse = await handleBotAnalyticsAdmin(
       request(
@@ -1234,7 +1242,7 @@ describe("admin bot analytics handlers", () => {
 
     const normalPage = await handleBotAnalyticsAdmin(
       request(
-        `/api/private/admin/bot-analytics?page=normal&cursor=${encodeURIComponent(JSON.stringify({ timestamp: "2026-07-03 10:00:00", traceId: "trace-1", rayId: "ray-1" }))}`,
+        `/api/private/admin/bot-analytics?page=normal&cursor=${encodeURIComponent(JSON.stringify({ timestamp: "2026-07-03 10:00:00", receivedAt: 1783072800000 }))}`,
       ),
       createEnv([
         statement({
@@ -1245,7 +1253,7 @@ describe("admin bot analytics handlers", () => {
         }),
       ]),
       new URL(
-        `https://app.test/api/private/admin/bot-analytics?page=normal&cursor=${encodeURIComponent(JSON.stringify({ timestamp: "2026-07-03 10:00:00", traceId: "trace-1", rayId: "ray-1" }))}`,
+        `https://app.test/api/private/admin/bot-analytics?page=normal&cursor=${encodeURIComponent(JSON.stringify({ timestamp: "2026-07-03 10:00:00", receivedAt: 1783072800000 }))}`,
       ),
     );
     expect(normalPage.status).toBe(200);

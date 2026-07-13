@@ -49,8 +49,7 @@ type DimensionGroup = "detection" | "target" | "network" | "client";
 
 interface DetailCursor {
   timestamp: string;
-  traceId: string;
-  rayId: string;
+  receivedAt: number;
 }
 
 const DIMENSION_TABS: Record<DimensionGroup, readonly string[]> = {
@@ -203,8 +202,7 @@ function parseDetailCursor(url: URL): DetailCursor | null {
     if (!timestamp) return null;
     return {
       timestamp,
-      traceId: clampString(String(value.traceId || ""), 128),
-      rayId: clampString(String(value.rayId || ""), 120),
+      receivedAt: Math.max(0, toFiniteNumber(value.receivedAt)),
     };
   } catch {
     return null;
@@ -247,16 +245,14 @@ function buildBotAnalyticsSql(input: {
     ? `
       AND (
         timestamp < toDateTime(${analyticsSqlString(input.cursor.timestamp)})
-        OR (
+        ${
+          input.includeDoubles
+            ? `OR (
           timestamp = toDateTime(${analyticsSqlString(input.cursor.timestamp)})
-          AND (
-            blob19 < ${analyticsSqlString(input.cursor.traceId)}
-            OR (
-              blob19 = ${analyticsSqlString(input.cursor.traceId)}
-              AND blob18 < ${analyticsSqlString(input.cursor.rayId)}
-            )
-          )
-        )
+          AND double1 < ${input.cursor.receivedAt}
+        )`
+            : ""
+        }
       )`
     : "";
   return `
@@ -280,12 +276,12 @@ function buildBotAnalyticsSql(input: {
       blob16 AS asOrganization,
       blob17 AS verifiedBotCategory,
       blob18 AS rayId,
-      blob19 AS traceId,
-      blob20 AS metadataJson${doubleSelect}
+      '' AS traceId,
+      '' AS metadataJson${doubleSelect}
     FROM ${dataset}
     WHERE timestamp >= toDateTime(${fromSeconds})
       AND timestamp <= toDateTime(${toSeconds})${cursorFilter}
-    ORDER BY timestamp DESC, blob19 DESC, blob18 DESC
+    ORDER BY timestamp DESC${input.includeDoubles ? ", double1 DESC" : ""}
     LIMIT ${input.limit}
     FORMAT JSONEachRow
   `;
@@ -316,16 +312,14 @@ function buildNormalAnalyticsSql(input: {
     ? `
       AND (
         timestamp < toDateTime(${analyticsSqlString(input.cursor.timestamp)})
-        OR (
+        ${
+          input.includeDoubles
+            ? `OR (
           timestamp = toDateTime(${analyticsSqlString(input.cursor.timestamp)})
-          AND (
-            blob14 < ${analyticsSqlString(input.cursor.traceId)}
-            OR (
-              blob14 = ${analyticsSqlString(input.cursor.traceId)}
-              AND blob13 < ${analyticsSqlString(input.cursor.rayId)}
-            )
-          )
-        )
+          AND double1 < ${input.cursor.receivedAt}
+        )`
+            : ""
+        }
       )`
     : "";
   return `
@@ -350,7 +344,7 @@ function buildNormalAnalyticsSql(input: {
     FROM ${dataset}
     WHERE timestamp >= toDateTime(${fromSeconds})
       AND timestamp <= toDateTime(${toSeconds})${cursorFilter}
-    ORDER BY timestamp DESC, blob14 DESC, blob13 DESC
+    ORDER BY timestamp DESC${input.includeDoubles ? ", double1 DESC" : ""}
     LIMIT ${input.limit}
     FORMAT JSONEachRow
   `;
@@ -582,8 +576,10 @@ function buildBotAnalyticsDetailSql(input: {
       double5 AS botScore,
       double6 AS userAgentLength`
     : "";
+  // Existing datasets may have been created before traceId and metadataJson
+  // were added, so blob19/blob20 are not guaranteed to exist. rayId is the
+  // last compatible identity field in the original layout.
   const identityFilters = [
-    input.traceId ? `blob19 = ${analyticsSqlString(input.traceId)}` : "",
     input.rayId ? `blob18 = ${analyticsSqlString(input.rayId)}` : "",
   ].filter(Boolean);
   return `
@@ -607,8 +603,8 @@ function buildBotAnalyticsDetailSql(input: {
       blob16 AS asOrganization,
       blob17 AS verifiedBotCategory,
       blob18 AS rayId,
-      blob19 AS traceId,
-      blob20 AS metadataJson${doubleSelect}
+      '' AS traceId,
+      '' AS metadataJson${doubleSelect}
     FROM ${dataset}
     WHERE timestamp >= toDateTime(${sinceSeconds})
       AND (${identityFilters.join(" OR ") || "0"})
@@ -856,8 +852,7 @@ function detailCursorForEvent(
 ): DetailCursor {
   return {
     timestamp: event.timestamp,
-    traceId: event.traceId,
-    rayId: event.rayId,
+    receivedAt: event.receivedAt,
   };
 }
 
