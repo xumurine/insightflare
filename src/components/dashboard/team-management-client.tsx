@@ -19,6 +19,7 @@ import {
   RiSave3Line,
   RiSettings3Line,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 
@@ -370,6 +371,7 @@ function SiteAccessSelectorButtons({
 async function fetchTeamDashboard(
   teamId: string,
   window: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">,
+  signal?: AbortSignal,
 ): Promise<TeamDashboardData> {
   if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
@@ -403,6 +405,7 @@ async function fetchTeamDashboard(
     {
       method: "GET",
       credentials: "include",
+      signal,
     },
   );
   if (!response.ok) throw new Error("fetch_team_dashboard_failed");
@@ -422,7 +425,10 @@ async function fetchTeamDashboard(
   };
 }
 
-async function fetchTeamMembers(teamId: string): Promise<MemberData[]> {
+async function fetchTeamMembers(
+  teamId: string,
+  signal?: AbortSignal,
+): Promise<MemberData[]> {
   if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
@@ -436,6 +442,7 @@ async function fetchTeamMembers(teamId: string): Promise<MemberData[]> {
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   if (!response.ok) throw new Error("fetch_team_members_failed");
   const payload = (await response.json()) as {
@@ -445,7 +452,10 @@ async function fetchTeamMembers(teamId: string): Promise<MemberData[]> {
   return Array.isArray(payload.data) ? payload.data : [];
 }
 
-async function fetchTeamSites(teamId: string): Promise<SiteData[]> {
+async function fetchTeamSites(
+  teamId: string,
+  signal?: AbortSignal,
+): Promise<SiteData[]> {
   if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
@@ -459,6 +469,7 @@ async function fetchTeamSites(teamId: string): Promise<SiteData[]> {
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   if (!response.ok) throw new Error("fetch_team_sites_failed");
   const payload = (await response.json()) as {
@@ -468,7 +479,10 @@ async function fetchTeamSites(teamId: string): Promise<SiteData[]> {
   return Array.isArray(payload.data) ? payload.data : [];
 }
 
-async function fetchTeamInvites(teamId: string): Promise<TeamInviteData[]> {
+async function fetchTeamInvites(
+  teamId: string,
+  signal?: AbortSignal,
+): Promise<TeamInviteData[]> {
   if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
@@ -482,6 +496,7 @@ async function fetchTeamInvites(teamId: string): Promise<TeamInviteData[]> {
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   if (!response.ok) throw new Error("fetch_team_invites_failed");
   const payload = (await response.json()) as {
@@ -599,6 +614,35 @@ export function TeamManagementClient({
   );
   const canManageSites = canManage;
   const isRealOwner = activeTeam.ownerUserId === currentUserId;
+  const managementDataQuery = useQuery({
+    queryKey: ["dashboard", "team-management-data", activeTeam.id, canManage],
+    queryFn: async ({ signal }) => {
+      const [members, invites, sites] = await Promise.all([
+        fetchTeamMembers(activeTeam.id, signal),
+        canManage
+          ? fetchTeamInvites(activeTeam.id, signal)
+          : Promise.resolve([]),
+        canManage ? fetchTeamSites(activeTeam.id, signal) : Promise.resolve([]),
+      ]);
+      return { members, invites, sites };
+    },
+    enabled:
+      typeof window !== "undefined" &&
+      (activeTab === "settings" || activeTab === "members"),
+  });
+  const dashboardQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "team-dashboard",
+      activeTeam.id,
+      window.from,
+      window.to,
+      window.interval,
+      window.timeZone,
+    ],
+    queryFn: ({ signal }) => fetchTeamDashboard(activeTeam.id, window, signal),
+    enabled: typeof window !== "undefined" && activeTab === "sites",
+  });
   const transferableMembers = useMemo(
     () => members.filter((m) => m.userId !== activeTeam.ownerUserId),
     [members, activeTeam.ownerUserId],
@@ -606,35 +650,13 @@ export function TeamManagementClient({
 
   useEffect(() => {
     if (activeTab !== "settings" && activeTab !== "members") return;
-    let active = true;
-    setLoading(true);
-
-    Promise.all([
-      fetchTeamMembers(activeTeam.id),
-      canManage ? fetchTeamInvites(activeTeam.id) : Promise.resolve([]),
-      canManage ? fetchTeamSites(activeTeam.id) : Promise.resolve([]),
-    ])
-      .then(([nextMembers, nextInvites, nextSites]) => {
-        if (!active) return;
-        setMembers(nextMembers);
-        setInvites(nextInvites);
-        setSites(nextSites.map(withSiteSlug));
-      })
-      .catch(() => {
-        if (!active) return;
-        setMembers([]);
-        setInvites([]);
-        setSites([]);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [activeTeam.id, activeTab, canManage]);
+    setLoading(managementDataQuery.isPending);
+    if (managementDataQuery.isPending) return;
+    const data = managementDataQuery.data;
+    setMembers(data?.members ?? []);
+    setInvites(data?.invites ?? []);
+    setSites((data?.sites ?? []).map(withSiteSlug));
+  }, [activeTab, managementDataQuery.data, managementDataQuery.isPending]);
 
   useEffect(() => {
     setCreateSiteDialogOpen(false);
@@ -672,89 +694,63 @@ export function TeamManagementClient({
 
   useEffect(() => {
     if (activeTab !== "sites") return;
-
-    let active = true;
-    setLoading(true);
-    setAnalyticsLoading(true);
-
-    fetchTeamDashboard(activeTeam.id, window)
-      .then((dashboard) => {
-        if (!active) return;
-        const nextSites = dashboard.sites.map(withSiteSlug);
-        const sortedSites = sortSitesForInitialOrder(dashboard.sites);
-        setSites(nextSites);
-        setSiteOrder((currentOrder) => {
-          const nextIds = sortedSites.map((site) => site.id);
-          if (currentOrder.length === 0) return nextIds;
-          const knownIds = new Set(currentOrder);
-          const appended = nextIds.filter((id) => !knownIds.has(id));
-          if (appended.length === 0) return currentOrder;
-          return [...currentOrder, ...appended];
-        });
-        setSiteOverviewById(
-          Object.fromEntries(
-            dashboard.sites.map((site) => [
-              site.id,
-              site.overview ?? emptyOverviewMetrics(),
-            ]),
-          ),
-        );
-        setSiteChangeRatesById(
-          Object.fromEntries(
-            dashboard.sites.map((site) => [
-              site.id,
-              {
-                views: normalizeChangeRate(site.changeRates?.views),
-                visitors: normalizeChangeRate(site.changeRates?.visitors),
-                sessions: normalizeChangeRate(site.changeRates?.sessions),
-                bounceRate: normalizeChangeRate(site.changeRates?.bounceRate),
-                avgDurationMs: normalizeChangeRate(
-                  site.changeRates?.avgDurationMs,
-                ),
-                pagesPerSession: normalizeChangeRate(
-                  site.changeRates?.pagesPerSession,
-                ),
-              },
-            ]),
-          ),
-        );
-        setTeamTrend(dashboard.trend);
-        setChartWindow({
-          from: window.from,
-          to: window.to,
-          interval: window.interval,
-          timeZone: window.timeZone,
-        });
-      })
-      .catch(() => {
-        if (!active) return;
-        setSites([]);
-        setSiteOverviewById({});
-        setSiteChangeRatesById({});
-        setTeamTrend([]);
-        setChartWindow({
-          from: window.from,
-          to: window.to,
-          interval: window.interval,
-          timeZone: window.timeZone,
-        });
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-        setAnalyticsLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
+    setLoading(dashboardQuery.isPending);
+    setAnalyticsLoading(dashboardQuery.isPending);
+    const dashboard = dashboardQuery.data;
+    if (!dashboard) return;
+    const nextSites = dashboard.sites.map(withSiteSlug);
+    const sortedSites = sortSitesForInitialOrder(dashboard.sites);
+    setSites(nextSites);
+    setSiteOrder((currentOrder) => {
+      const nextIds = sortedSites.map((site) => site.id);
+      if (currentOrder.length === 0) return nextIds;
+      const knownIds = new Set(currentOrder);
+      const appended = nextIds.filter((id) => !knownIds.has(id));
+      if (appended.length === 0) return currentOrder;
+      return [...currentOrder, ...appended];
+    });
+    setSiteOverviewById(
+      Object.fromEntries(
+        dashboard.sites.map((site) => [
+          site.id,
+          site.overview ?? emptyOverviewMetrics(),
+        ]),
+      ),
+    );
+    setSiteChangeRatesById(
+      Object.fromEntries(
+        dashboard.sites.map((site) => [
+          site.id,
+          {
+            views: normalizeChangeRate(site.changeRates?.views),
+            visitors: normalizeChangeRate(site.changeRates?.visitors),
+            sessions: normalizeChangeRate(site.changeRates?.sessions),
+            bounceRate: normalizeChangeRate(site.changeRates?.bounceRate),
+            avgDurationMs: normalizeChangeRate(site.changeRates?.avgDurationMs),
+            pagesPerSession: normalizeChangeRate(
+              site.changeRates?.pagesPerSession,
+            ),
+          },
+        ]),
+      ),
+    );
+    setTeamTrend(dashboard.trend);
+    setChartWindow({
+      from: window.from,
+      to: window.to,
+      interval: window.interval,
+      timeZone: window.timeZone,
+    });
+    setLoading(false);
+    setAnalyticsLoading(false);
   }, [
-    activeTeam.id,
     activeTab,
+    dashboardQuery.data,
+    dashboardQuery.isPending,
     window.from,
-    window.to,
     window.interval,
     window.timeZone,
+    window.to,
   ]);
 
   useEffect(() => {
@@ -764,17 +760,11 @@ export function TeamManagementClient({
   }, [activeTab]);
 
   async function refreshMembers() {
-    const nextMembers = await fetchTeamMembers(activeTeam.id);
-    setMembers(nextMembers);
+    await managementDataQuery.refetch();
   }
 
   async function refreshInvites() {
-    if (!canManage) {
-      setInvites([]);
-      return;
-    }
-    const nextInvites = await fetchTeamInvites(activeTeam.id);
-    setInvites(nextInvites);
+    await managementDataQuery.refetch();
   }
 
   function toggleInviteSite(siteId: string, checked: boolean) {
