@@ -99,6 +99,7 @@ vi.mock("@/lib/edge/api-v1", () => ({
       .filter(Boolean),
   handleAnalytics: vi.fn(),
   handleApiV1: vi.fn(),
+  handleApiV1ForPrincipal: vi.fn(),
   handleBatch: vi.fn(),
   handleCapabilities: vi.fn(),
   handleEvents: vi.fn(),

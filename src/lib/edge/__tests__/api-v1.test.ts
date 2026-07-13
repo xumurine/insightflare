@@ -8,6 +8,7 @@ import {
 } from "@/lib/edge/api-key-store";
 import {
   handleApiV1,
+  handleApiV1ForPrincipal,
   handleCapabilities,
   handleRoot,
   handleToken,
@@ -365,6 +366,18 @@ describe("api v1 gateway", () => {
     expect(body.data.links.openapi).toBe("/.well-known/openapi.json");
     expect(body.meta.generatedAt).toEqual(expect.any(String));
     expect(JSON.stringify(body)).not.toContain('"ok"');
+  });
+
+  it("serves root discovery through the authenticated dispatcher", async () => {
+    const req = request("/api/v1");
+    const response = await handleApiV1ForPrincipal(
+      req,
+      createEnv([]),
+      new URL(req.url),
+      principal(),
+    );
+
+    expect(response.status).toBe(200);
   });
 
   it("rejects non-GET discovery requests", async () => {
@@ -1015,6 +1028,43 @@ describe("api v1 gateway", () => {
       },
       meta: { partialFailure: true },
     });
+  });
+
+  it("authenticates a batch once and reuses its principal", async () => {
+    const generated = await keyRow();
+    const env = createEnv([authMatch(generated.row)]);
+    const prepare = vi.spyOn(env.DB, "prepare");
+    const path = "/api/v1/batch";
+
+    const response = await handleApiV1(
+      request(path, generated.apiKey, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          requests: [
+            {
+              id: "first",
+              method: "GET",
+              path: "/api/v1/capabilities",
+            },
+            {
+              id: "second",
+              method: "GET",
+              path: "/api/v1/capabilities",
+            },
+          ],
+        }),
+      }),
+      env,
+      new URL(`https://edge.test${path}`),
+    );
+
+    expect(response.status).toBe(200);
+    expect(
+      prepare.mock.calls.filter(([sql]) =>
+        String(sql).includes("FROM api_keys"),
+      ),
+    ).toHaveLength(1);
   });
 
   // ── additional coverage: method-not-allowed paths ───────────────

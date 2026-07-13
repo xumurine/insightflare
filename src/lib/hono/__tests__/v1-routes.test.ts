@@ -6,6 +6,7 @@ import type * as ApiV1Module from "@/lib/edge/api-v1";
 import {
   handleAnalytics,
   handleApiV1,
+  handleApiV1ForPrincipal,
   handleBatch,
   handleCapabilities,
   handleEvents,
@@ -37,6 +38,7 @@ vi.mock("@/lib/edge/api-v1", async (importOriginal) => {
     ...actual,
     handleAnalytics: vi.fn(),
     handleApiV1: vi.fn(),
+    handleApiV1ForPrincipal: vi.fn(),
     handleBatch: vi.fn(),
     handleCapabilities: vi.fn(),
     handleEvents: vi.fn(),
@@ -90,6 +92,9 @@ describe("Hono API v1 routes", () => {
     );
     vi.mocked(handleSitesCollection).mockResolvedValue(new Response("sites"));
     vi.mocked(handleAnalytics).mockResolvedValue(new Response("analytics"));
+    vi.mocked(handleApiV1ForPrincipal).mockResolvedValue(
+      new Response("batch-subrequest"),
+    );
     vi.mocked(handleBatch).mockResolvedValue(new Response("batch"));
     vi.mocked(handleEvents).mockResolvedValue(new Response("events"));
     vi.mocked(handleFunnels).mockResolvedValue(new Response("funnels"));
@@ -214,7 +219,7 @@ describe("Hono API v1 routes", () => {
     });
   });
 
-  it("dispatches batch subrequests through the Hono v1 route map", async () => {
+  it("dispatches batch subrequests with the authenticated principal", async () => {
     vi.mocked(handleBatch).mockImplementation(
       async (_request, batchEnv, _url, _principal, dispatch) =>
         dispatch!(
@@ -229,8 +234,16 @@ describe("Hono API v1 routes", () => {
       ctx,
     );
 
-    await expect(response.text()).resolves.toBe("capabilities");
-    expect(handleCapabilities).toHaveBeenCalled();
+    await expect(response.text()).resolves.toBe("batch-subrequest");
+    expect(authenticateApiKey).toHaveBeenCalledTimes(1);
+    expect(handleApiV1ForPrincipal).toHaveBeenCalledWith(
+      expect.any(Request),
+      env,
+      new URL("https://app.test/api/v1/capabilities"),
+      principal,
+      ctx,
+    );
+    expect(handleCapabilities).not.toHaveBeenCalled();
     expect(handleApiV1).not.toHaveBeenCalled();
   });
 });
