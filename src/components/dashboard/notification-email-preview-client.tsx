@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { RiMailSendLine, RiRefreshLine } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -61,35 +62,37 @@ export function NotificationEmailPreviewClient({
   const [type, setType] = useState<PreviewType>("report");
   const [previewLocale, setPreviewLocale] = useState<Locale>(locale);
   const [format, setFormat] = useState<PreviewFormat>("html");
-  const [loading, setLoading] = useState(false);
-  const [subject, setSubject] = useState("");
-  const [payload, setPayload] = useState("");
-
-  async function loadPreview() {
-    setLoading(true);
-    try {
-      const result = await fetchNotificationEmailPreview({
+  const previewQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "notification-email-preview",
+      type,
+      previewLocale,
+      format,
+    ],
+    queryFn: () =>
+      fetchNotificationEmailPreview({
         type,
         locale: previewLocale,
         format,
-      });
-      if (typeof result === "string") {
-        setSubject("");
-        setPayload(result);
-      } else {
-        setSubject(result.subject);
-        setPayload(JSON.stringify(result, null, 2));
-      }
-    } catch {
-      toast.error(page.loadFailed);
-    } finally {
-      setLoading(false);
-    }
-  }
+      }),
+    enabled: typeof window !== "undefined",
+  });
+  const loading = previewQuery.isFetching;
+  const subject =
+    typeof previewQuery.data === "string"
+      ? ""
+      : previewQuery.data?.subject || "";
+  const payload =
+    typeof previewQuery.data === "string"
+      ? previewQuery.data
+      : previewQuery.data
+        ? JSON.stringify(previewQuery.data, null, 2)
+        : "";
 
   useEffect(() => {
-    void loadPreview();
-  }, [format, previewLocale, type]);
+    if (previewQuery.isError) toast.error(page.loadFailed);
+  }, [page.loadFailed, previewQuery.errorUpdatedAt, previewQuery.isError]);
 
   return (
     <div className="space-y-4">
@@ -101,7 +104,7 @@ export function NotificationEmailPreviewClient({
             type="button"
             variant="outline"
             disabled={loading}
-            onClick={() => void loadPreview()}
+            onClick={() => void previewQuery.refetch()}
           >
             <span className="inline-flex size-4 shrink-0 items-center justify-center">
               {loading ? (
