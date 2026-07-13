@@ -15,6 +15,7 @@ import {
   RiRefreshLine,
   RiTimeLine,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
@@ -106,6 +107,7 @@ async function fetchScheduledTasks(params: {
   runId?: string;
   page?: number;
   pageSize?: number;
+  signal?: AbortSignal;
 }): Promise<ScheduledTasksData> {
   const query: Record<string, string | number> = {
     page: params.page ?? 1,
@@ -120,7 +122,7 @@ async function fetchScheduledTasks(params: {
   return fetchPrivateJson<ScheduledTasksData>(
     "/api/private/admin/scheduled-tasks",
     query,
-    { dedupe: false },
+    { dedupe: false, signal: params.signal },
   );
 }
 
@@ -924,11 +926,6 @@ export function ScheduledTasksClient({
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [status, setStatus] = useState("all");
   const [selectedRunId, setSelectedRunId] = useState("");
-  const [selectedRun, setSelectedRun] = useState<ScheduledTaskRunGroup | null>(
-    null,
-  );
-  const [selectedLogs, setSelectedLogs] = useState<ScheduledTaskRunLog[]>([]);
-  const [detailLoading, setDetailLoading] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const requestKey = useMemo(
     () => [status, refreshNonce].join(":"),
@@ -1073,44 +1070,45 @@ export function ScheduledTasksClient({
     sentinelNode,
   ]);
 
+  const detailQuery = useQuery({
+    queryKey: ["dashboard", "scheduled-task-run", selectedRunId],
+    queryFn: ({ signal }) =>
+      fetchScheduledTasks({
+        runId: selectedRunId,
+        page: 1,
+        pageSize: 1,
+        signal,
+      }),
+    enabled:
+      typeof window !== "undefined" && drawerOpen && Boolean(selectedRunId),
+  });
+  const selectedRun =
+    detailQuery.data?.selectedRun ??
+    runs.find((run) => run.id === selectedRunId) ??
+    null;
+  const selectedLogs = selectedRun ? (detailQuery.data?.logs ?? []) : [];
+  const detailLoading = detailQuery.isPending;
+
   useEffect(() => {
-    if (!drawerOpen || !selectedRunId) return;
-    let active = true;
-    setDetailLoading(true);
-    fetchScheduledTasks({
-      runId: selectedRunId,
-      page: 1,
-      pageSize: 1,
-    })
-      .then((payload) => {
-        if (!active) return;
-        setSelectedRun(payload.selectedRun);
-        setSelectedLogs(payload.selectedRun ? payload.logs : []);
-      })
-      .catch((caught) => {
-        if (!active) return;
-        const message = caught instanceof Error ? caught.message : t.loadFailed;
-        setSelectedLogs([]);
-        toast.error(message || t.loadFailed);
-      })
-      .finally(() => {
-        if (active) setDetailLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [drawerOpen, selectedRunId, t.loadFailed]);
+    if (!detailQuery.isError) return;
+    const message =
+      detailQuery.error instanceof Error
+        ? detailQuery.error.message
+        : t.loadFailed;
+    toast.error(message || t.loadFailed);
+  }, [
+    detailQuery.error,
+    detailQuery.errorUpdatedAt,
+    detailQuery.isError,
+    t.loadFailed,
+  ]);
 
   const resetSelection = () => {
     setSelectedRunId("");
-    setSelectedRun(null);
-    setSelectedLogs([]);
     setDrawerOpen(false);
   };
   const openRun = (run: ScheduledTaskRunGroup) => {
     setSelectedRunId(run.id);
-    setSelectedRun(run);
-    setSelectedLogs([]);
     setDrawerOpen(true);
   };
   const failedOrPartial =
