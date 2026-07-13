@@ -27,7 +27,6 @@ interface TaskResult extends StepResult {
 
 interface CheckOptions {
   verbose: boolean;
-  skipBuild: boolean;
 }
 
 export const rlog = createScriptLogger({
@@ -36,20 +35,35 @@ export const rlog = createScriptLogger({
 
 const tasks: CheckTask[] = [
   {
-    name: "Quality",
+    name: "Format",
     steps: [
       {
         name: "Format",
         args: ["run", "format:check"],
       },
+    ],
+  },
+  {
+    name: "Lint",
+    steps: [
       {
         name: "Lint",
         args: ["run", "lint"],
       },
+    ],
+  },
+  {
+    name: "Translations",
+    steps: [
       {
         name: "Translations",
         args: ["run", "check:i18n"],
       },
+    ],
+  },
+  {
+    name: "Typecheck",
+    steps: [
       {
         name: "Typecheck",
         args: ["run", "typecheck"],
@@ -169,42 +183,32 @@ async function runTask(task: CheckTask, verbose: boolean): Promise<TaskResult> {
 }
 
 function parseArgs(argv: string[]): CheckOptions {
-  const knownArgs = new Set([
-    "--verbose",
-    "--skip-build",
-    "--no-build",
-    "--help",
-    "-h",
-  ]);
+  const knownArgs = new Set(["--verbose", "--help", "-h"]);
   const unknownArgs = argv.filter((arg) => !knownArgs.has(arg));
 
   if (argv.includes("--help") || argv.includes("-h")) {
-    rlog.info("Usage: tsx scripts/check.ts [--verbose] [--skip-build]");
+    rlog.info("Usage: tsx scripts/check.ts [--verbose]");
     rlog.info(
-      "Runs the same quality, coverage, spec, and build checks used by CI. Use --skip-build for commit-time checks.",
+      "Runs the same quality, coverage, spec, and build checks used by CI.",
     );
     process.exit(0);
   }
 
   if (unknownArgs.length > 0) {
     rlog.error(`Unknown option: ${unknownArgs.join(", ")}`);
-    rlog.info("Usage: tsx scripts/check.ts [--verbose] [--skip-build]");
+    rlog.info("Usage: tsx scripts/check.ts [--verbose]");
     process.exit(1);
   }
 
   return {
     verbose: argv.includes("--verbose"),
-    skipBuild: argv.includes("--skip-build") || argv.includes("--no-build"),
   };
 }
 
 export async function runCli(argv = process.argv.slice(2)): Promise<void> {
-  const { verbose, skipBuild } = parseArgs(argv);
-  const selectedTasks = skipBuild
-    ? tasks.filter((task) => task.name !== "Build")
-    : tasks;
+  const { verbose } = parseArgs(argv);
   const results = await Promise.all(
-    selectedTasks.map((task) => runTask(task, verbose)),
+    tasks.map((task) => runTask(task, verbose)),
   );
   const failures = results.filter((result) => !result.ok);
 

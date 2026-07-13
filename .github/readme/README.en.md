@@ -1,7 +1,7 @@
 # InsightFlare
 
 <!-- auto-readme-i18n-switcher start -->
-| English | [中文](/.github/readme/README.zh.md) |
+| English | [中文](/.github/readme/README.zh.md) | [日本語](/.github/readme/README.ja.md) |
 <!-- auto-readme-i18n-switcher end -->
 
 > A powerful, privacy-friendly open source web analytics tool that runs entirely on Cloudflare.
@@ -321,11 +321,11 @@ Available methods:
 
 ## Tech Stack
 
-| Layer    | Technologies                                                                                   |
-| -------- | ---------------------------------------------------------------------------------------------- |
+| Layer    | Technologies                                                                                                                  |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | Frontend | TanStack Start 1, TanStack Router, Vite 8, React 19, Tailwind CSS 4, Radix UI, shadcn, Recharts, deck.gl, maplibre-gl, Motion |
-| Backend  | Cloudflare Workers, Durable Objects, D1, R2, KV                                                                         |
-| Build    | Cloudflare Vite Plugin, Wrangler 4, TypeScript 5                                                                       |
+| Backend  | Cloudflare Workers, Durable Objects, D1, R2, KV                                                                               |
+| Build    | Cloudflare Vite Plugin, Wrangler 4, TypeScript 5                                                                              |
 
 ---
 
@@ -354,28 +354,28 @@ If you do not use the deploy button, deploy with the steps below:
 
 ## Common Commands
 
-| Command                                       | Purpose                                                            |
-| --------------------------------------------- | ------------------------------------------------------------------ |
-| `npm run dev`                                 | Vite + Cloudflare Workers local development (use `http://localhost:3000`) |
+| Command                                       | Purpose                                                                    |
+| --------------------------------------------- | -------------------------------------------------------------------------- |
+| `npm run dev`                                 | Vite + Cloudflare Workers local development (use `http://localhost:3000`)  |
 | `npm run dev:ui`                              | Start the Vite dashboard development server in Demo Mode                   |
-| `npm run preview:local`                       | Build with local resources and run Wrangler preview                |
-| `npm run build`                               | Cloudflare managed build entrypoint                                |
-| `npm run build:local`                         | Local precheck + local D1 migration + build                        |
-| `npm run build:demo`                          | Demo build without resource bindings                               |
-| `npm run deploy`                              | Cloudflare managed deploy entrypoint                               |
-| `npm run publish`                             | Build and publish from an allowed Cloudflare environment           |
-| `npm run publish:demo`                        | Build and publish the demo Worker                                  |
-| `npm run check`                               | Run typecheck + lint + format + i18n + tests + spec checks         |
-| `npm run typecheck`                           | TypeScript type checking                                           |
-| `npm run lint` / `lint:fix`                   | ESLint                                                             |
-| `npm run format` / `format:check`             | Prettier                                                           |
-| `npm run check:i18n`                          | Validate translation key completeness                              |
-| `npm run db:migrate:local`                    | Local D1 migration                                                 |
-| `npm run db:migrate:cf`                       | Cloudflare D1 migration                                            |
-| `npm run db:migration:create`                 | Create a new migration file                                        |
-| `npm run ops:secret:main`                     | Set the `MAIN_SECRET` Worker secret                                |
-| `npm run ops:secret:bootstrap-admin-password` | Set the bootstrap admin password secret                            |
-| `npm run ops:tail`                            | View online Worker logs                                            |
+| `npm run preview:local`                       | Build with local resources and run Wrangler preview                        |
+| `npm run build`                               | Cloudflare managed build entrypoint                                        |
+| `npm run build:local`                         | Local precheck + local D1 migration + build                                |
+| `npm run build:demo`                          | Demo build without resource bindings                                       |
+| `npm run deploy`                              | Cloudflare managed deploy entrypoint                                       |
+| `npm run publish`                             | Build and publish from an allowed Cloudflare environment                   |
+| `npm run publish:demo`                        | Build and publish the demo Worker                                          |
+| `npm run check`                               | Run build + typecheck + lint + format + i18n + tests + spec checks         |
+| `npm run typecheck`                           | TypeScript type checking                                                   |
+| `npm run lint` / `lint:fix`                   | ESLint                                                                     |
+| `npm run format` / `format:check`             | Prettier                                                                   |
+| `npm run check:i18n`                          | Validate translation key completeness                                      |
+| `npm run db:migrate:local`                    | Local D1 migration                                                         |
+| `npm run db:migrate:cf`                       | Cloudflare D1 migration                                                    |
+| `npm run db:migration:create`                 | Create a new migration file                                                |
+| `npm run ops:secret:main`                     | Set the `MAIN_SECRET` Worker secret                                        |
+| `npm run ops:secret:bootstrap-admin-password` | Set the bootstrap admin password secret                                    |
+| `npm run ops:tail`                            | View online Worker logs                                                    |
 
 ---
 
