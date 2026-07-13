@@ -11,6 +11,7 @@ import {
   na,
   nf,
   normalizeErrorMessage,
+  readJsonResponse,
   toErrorCode,
   una,
 } from "@/lib/response";
@@ -71,6 +72,24 @@ describe("response helpers", () => {
       }),
     );
     expect(withContext).toMatchObject({ ok: true, requestId: "ctx-1" });
+  });
+
+  it("reuses internal JSON payloads and falls back for external responses", async () => {
+    const internal = j({ rows: [{ value: 1 }] });
+    const internalJson = vi.spyOn(internal, "json");
+
+    await expect(readJsonResponse(internal)).resolves.toEqual({
+      rows: [{ value: 1 }],
+    });
+    expect(internalJson).not.toHaveBeenCalled();
+
+    const external = new Response('{"ok":true}', {
+      headers: { "content-type": "application/json" },
+    });
+    const externalJson = vi.spyOn(external, "json");
+
+    await expect(readJsonResponse(external)).resolves.toEqual({ ok: true });
+    expect(externalJson).toHaveBeenCalledTimes(1);
   });
 
   it("normalizes error codes and common error response shortcuts", async () => {

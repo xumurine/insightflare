@@ -4,7 +4,37 @@ export interface ResponseContext {
   requestId: string;
 }
 
+// Responses created inside the current isolate can be consumed by another
+// internal handler. Retain their structured payload weakly so those handlers
+// do not need to parse JSON that was just serialized.
+const jsonResponsePayloads = new WeakMap<Response, unknown>();
+
 export const j = jsonResponse;
+
+function createJsonResponse(
+  payload: unknown,
+  status: number,
+  extraHeaders?: Record<string, string>,
+): Response {
+  const response = new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      ...(extraHeaders ?? {}),
+    },
+  });
+  jsonResponsePayloads.set(response, payload);
+  return response;
+}
+
+export async function readJsonResponse<T = unknown>(
+  response: Response,
+): Promise<T> {
+  if (jsonResponsePayloads.has(response)) {
+    return jsonResponsePayloads.get(response) as T;
+  }
+  return (await response.json()) as T;
+}
 
 export function getRequestId(request?: Request | null): string {
   if (request) {
@@ -31,13 +61,7 @@ export function jsonResponse(
   status = 200,
   extraHeaders?: Record<string, string>,
 ): Response {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...(extraHeaders ?? {}),
-    },
-  });
+  return createJsonResponse(payload, status, extraHeaders);
 }
 
 export function jsonResponseFor(
@@ -51,13 +75,7 @@ export function jsonResponseFor(
     requestId: getRequestId(req),
     timestamp: new Date().toISOString(),
   };
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...(extraHeaders ?? {}),
-    },
-  });
+  return createJsonResponse(body, status, extraHeaders);
 }
 
 export function jsonResponseWith(
@@ -72,13 +90,7 @@ export function jsonResponseWith(
     requestId: ctx.requestId,
     timestamp: new Date().toISOString(),
   };
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...(extraHeaders ?? {}),
-    },
-  });
+  return createJsonResponse(body, status, extraHeaders);
 }
 
 export function errorResponse(
@@ -111,20 +123,15 @@ export function errorResponse(
     );
   }
 
-  return new Response(
-    JSON.stringify({
+  return createJsonResponse(
+    {
       ok: false,
       requestId,
       timestamp: new Date().toISOString(),
       error: { code, message: clientMessage },
-    }),
-    {
-      status,
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        ...(extraHeaders ?? {}),
-      },
     },
+    status,
+    extraHeaders,
   );
 }
 

@@ -9,12 +9,14 @@ import {
 import {
   handleApiV1,
   handleApiV1ForPrincipal,
+  handleBatch,
   handleCapabilities,
   handleRoot,
   handleToken,
   handleTokenCheck,
 } from "@/lib/edge/api-v1";
 import type { Env } from "@/lib/edge/types";
+import { j } from "@/lib/response";
 
 vi.mock("@/lib/edge/query/router", () => ({
   routeQuery: vi.fn(),
@@ -764,6 +766,24 @@ describe("api v1 gateway", () => {
     });
   });
 
+  it("reuses structured payloads from internal legacy queries", async () => {
+    const internalResponse = j({
+      ok: true,
+      data: { views: 10, sessions: 8 },
+      interval: "day",
+    });
+    const json = vi.spyOn(internalResponse, "json");
+    routeQueryMock.mockResolvedValueOnce(internalResponse);
+
+    const { response } = await authed(
+      "/api/v1/sites/site-1/analytics/overview?preset=last_7_days",
+      [siteMatch("site-1", "Blog")],
+    );
+
+    expect(response.status).toBe(200);
+    expect(json).not.toHaveBeenCalled();
+  });
+
   it("uses cursor pagination for events, visitors, and sessions", async () => {
     routeQueryMock.mockResolvedValue(
       new Response(
@@ -1065,6 +1085,36 @@ describe("api v1 gateway", () => {
         String(sql).includes("FROM api_keys"),
       ),
     ).toHaveLength(1);
+  });
+
+  it("reuses structured payloads from internal batch responses", async () => {
+    const childResponse = j({ data: { value: 1 } });
+    const json = vi.spyOn(childResponse, "json");
+    const batchRequest = new Request("https://edge.test/api/v1/batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        requests: [
+          { id: "child", method: "GET", path: "/api/v1/capabilities" },
+        ],
+      }),
+    });
+
+    const response = await handleBatch(
+      batchRequest,
+      {} as Env,
+      new URL(batchRequest.url),
+      principal(),
+      async () => childResponse,
+    );
+
+    expect(response.status).toBe(200);
+    expect(json).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        responses: [{ id: "child", status: 200, body: { data: { value: 1 } } }],
+      },
+    });
   });
 
   // ── additional coverage: method-not-allowed paths ───────────────

@@ -1,5 +1,6 @@
 import type { z } from "zod";
 
+import { readJsonResponse } from "@/lib/response";
 import { DEFAULT_SITE_SCRIPT_SETTINGS } from "@/lib/site-settings";
 import {
   FunnelAnalyzeInputSchema,
@@ -486,7 +487,7 @@ function buildInternalUrl(url: URL, timeRange?: ParsedTimeRange): URL {
 
 async function legacyJson(response: Response): Promise<LegacyPayload> {
   try {
-    return (await response.json()) as LegacyPayload;
+    return await readJsonResponse<LegacyPayload>(response);
   } catch {
     return {};
   }
@@ -2647,7 +2648,7 @@ export async function handleBatch(
       return {
         id: item.id,
         status: response.status,
-        body: response.status === 204 ? null : await response.json(),
+        body: response.status === 204 ? null : await readJsonResponse(response),
       };
     }),
   );
