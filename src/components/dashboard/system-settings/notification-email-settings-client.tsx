@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RiCloseLine,
   RiDeleteBinLine,
@@ -6,6 +6,7 @@ import {
   RiSave3Line,
   RiSendPlane2Line,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import {
@@ -116,7 +117,9 @@ function apiMessage(payload: ApiResponse<unknown>, fallback: string): string {
   return fallback;
 }
 
-async function fetchEmailConfig(): Promise<PublicNotificationEmailConfig> {
+async function fetchEmailConfig(
+  signal?: AbortSignal,
+): Promise<PublicNotificationEmailConfig> {
   if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
@@ -129,6 +132,7 @@ async function fetchEmailConfig(): Promise<PublicNotificationEmailConfig> {
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   const payload =
     (await response.json()) as ApiResponse<PublicNotificationEmailConfig>;
@@ -237,11 +241,17 @@ export function NotificationEmailSettingsClient({
   const [apiKey, setApiKey] = useState("");
   const [apiKeyDirty, setApiKeyDirty] = useState(false);
   const [testRecipient, setTestRecipient] = useState(currentUserEmail);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingConfig, setDeletingConfig] = useState(false);
+  const configAppliedRef = useRef(false);
+  const configQuery = useQuery({
+    queryKey: ["dashboard", "notification-email-config"],
+    queryFn: ({ signal }) => fetchEmailConfig(signal),
+    enabled: typeof window !== "undefined",
+  });
+  const loading = configQuery.isPending;
 
   const hasChanges = useMemo(() => {
     const persisted = toFormState(config);
@@ -264,26 +274,18 @@ export function NotificationEmailSettingsClient({
     : apiKey;
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetchEmailConfig()
-      .then((nextConfig) => {
-        if (!active) return;
-        setConfig(nextConfig);
-        setForm(toFormState(nextConfig));
-      })
-      .catch(() => {
-        if (!active) return;
-        toast.error(copy.loadFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [copy.loadFailed]);
+    if (configQuery.isPending || configAppliedRef.current) return;
+    if (configQuery.isError) toast.error(copy.loadFailed);
+    const nextConfig = configQuery.data ?? defaultConfig();
+    setConfig(nextConfig);
+    setForm(toFormState(nextConfig));
+    configAppliedRef.current = true;
+  }, [
+    copy.loadFailed,
+    configQuery.data,
+    configQuery.isError,
+    configQuery.isPending,
+  ]);
 
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
