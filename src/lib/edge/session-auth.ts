@@ -12,18 +12,42 @@ export interface EdgeSessionClaims {
   exp: number;
 }
 
-async function sessionSecret(env: Env): Promise<string> {
+// The secret is deployment configuration, so this cache cannot grow from
+// request input. Cache the import promise to also coalesce concurrent starts.
+const sessionHmacKeyCache = new Map<string, Promise<CryptoKey>>();
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+async function sessionHmacKey(env: Env): Promise<CryptoKey> {
   const secret = await dashboardSessionSecret(env);
   if (!secret) {
     throw new Error(
       "MAIN_SECRET or DAILY_SALT_SECRET is required for sessions",
     );
   }
-  return secret;
+  let keyPromise = sessionHmacKeyCache.get(secret);
+  if (!keyPromise) {
+    keyPromise = crypto.subtle.importKey(
+      "raw",
+      toBuffer(bytes(secret)),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    sessionHmacKeyCache.set(secret, keyPromise);
+  }
+  try {
+    return await keyPromise;
+  } catch (error) {
+    if (sessionHmacKeyCache.get(secret) === keyPromise) {
+      sessionHmacKeyCache.delete(secret);
+    }
+    throw error;
+  }
 }
 
 function bytes(input: string): Uint8Array {
-  return new TextEncoder().encode(input);
+  return textEncoder.encode(input);
 }
 
 function toBuffer(input: Uint8Array): ArrayBuffer {
@@ -44,28 +68,17 @@ function base64UrlDecode(input: string): Uint8Array {
   return out;
 }
 
-function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1) {
-    diff |= a[i] ^ b[i];
-  }
-  return diff === 0;
-}
-
-async function hmacSha256(
+async function verifyHmacSha256(
   message: string,
-  secret: string,
-): Promise<Uint8Array> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    toBuffer(bytes(secret)),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
+  signature: Uint8Array,
+  key: CryptoKey,
+): Promise<boolean> {
+  return crypto.subtle.verify(
+    "HMAC",
+    key,
+    toBuffer(signature),
+    toBuffer(bytes(message)),
   );
-  const sig = await crypto.subtle.sign("HMAC", key, toBuffer(bytes(message)));
-  return new Uint8Array(sig);
 }
 
 function extractBearerToken(request: Request): string {
@@ -101,18 +114,18 @@ export async function verifySessionToken(
   const [payloadPart, signaturePart] = token.split(".");
   if (!payloadPart || !signaturePart) return null;
 
-  const expectedSig = await hmacSha256(payloadPart, await sessionSecret(env));
+  const key = await sessionHmacKey(env);
   let actualSig: Uint8Array;
   try {
     actualSig = base64UrlDecode(signaturePart);
   } catch {
     return null;
   }
-  if (!bytesEqual(expectedSig, actualSig)) return null;
+  if (!(await verifyHmacSha256(payloadPart, actualSig, key))) return null;
 
   let parsed: unknown;
   try {
-    const payloadJson = new TextDecoder().decode(base64UrlDecode(payloadPart));
+    const payloadJson = textDecoder.decode(base64UrlDecode(payloadPart));
     parsed = JSON.parse(payloadJson) as unknown;
   } catch {
     return null;

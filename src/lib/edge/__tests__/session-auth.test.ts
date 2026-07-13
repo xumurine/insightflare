@@ -17,10 +17,7 @@ function base64UrlEncode(input: string | Uint8Array): string {
     .replace(/=+$/g, "");
 }
 
-async function createToken(
-  payload: Record<string, unknown>,
-  secret: string,
-): Promise<string> {
+async function createToken(payload: unknown, secret: string): Promise<string> {
   const payloadPart = base64UrlEncode(JSON.stringify(payload));
   const key = await crypto.subtle.importKey(
     "raw",
@@ -131,6 +128,61 @@ describe("edge session authentication", () => {
     });
   });
 
+  it("reuses the imported verification key across requests", async () => {
+    const root = `session-cache-${crypto.randomUUID()}`;
+    const secret = await import("@/lib/secrets").then(
+      ({ deriveSecret, SECRET_PURPOSES }) =>
+        deriveSecret(root, SECRET_PURPOSES.dashboardSession),
+    );
+    const exp = Math.floor(Date.now() / 1000) + 60;
+    const token = await createToken(
+      { userId: "user-cache", username: "cached", exp },
+      secret,
+    );
+    const importKey = vi.spyOn(crypto.subtle, "importKey");
+
+    await verifySessionToken(token, { MAIN_SECRET: root } as Env);
+    await verifySessionToken(token, { MAIN_SECRET: root } as Env);
+
+    expect(importKey).toHaveBeenCalledTimes(2);
+    importKey.mockRestore();
+  });
+
+  it("coalesces failed imports, clears them, and retries", async () => {
+    const root = `session-retry-${crypto.randomUUID()}`;
+    const secret = await import("@/lib/secrets").then(
+      ({ dashboardSessionSecret }) =>
+        dashboardSessionSecret({ MAIN_SECRET: root }),
+    );
+    expect(secret).toBeTruthy();
+    const token = await createToken(
+      {
+        userId: "user-retry",
+        username: "retry",
+        exp: Math.floor(Date.now() / 1000) + 60,
+      },
+      secret!,
+    );
+    const importKey = vi
+      .spyOn(crypto.subtle, "importKey")
+      .mockRejectedValueOnce(new Error("import failed"));
+
+    const attempts = await Promise.allSettled([
+      verifySessionToken(token, { MAIN_SECRET: root } as Env),
+      verifySessionToken(token, { MAIN_SECRET: root } as Env),
+    ]);
+
+    expect(attempts.map((attempt) => attempt.status)).toEqual([
+      "rejected",
+      "rejected",
+    ]);
+    await expect(
+      verifySessionToken(token, { MAIN_SECRET: root } as Env),
+    ).resolves.toMatchObject({ userId: "user-retry" });
+    expect(importKey).toHaveBeenCalledTimes(2);
+    importKey.mockRestore();
+  });
+
   it("rejects malformed, tampered, incomplete, and expired tokens", async () => {
     const env = { MAIN_SECRET: "root-secret" } as Env;
     const secret = await import("@/lib/secrets").then(
@@ -152,6 +204,7 @@ describe("edge session authentication", () => {
       { username: "admin", exp: validPayload.exp },
       secret,
     );
+    const invalidPayload = await createToken(null, secret);
 
     await expect(verifySessionToken("", env)).resolves.toBeNull();
     await expect(verifySessionToken("too-short", env)).resolves.toBeNull();
@@ -163,6 +216,7 @@ describe("edge session authentication", () => {
     ).resolves.toBeNull();
     await expect(verifySessionToken(expired, env)).resolves.toBeNull();
     await expect(verifySessionToken(missingUser, env)).resolves.toBeNull();
+    await expect(verifySessionToken(invalidPayload, env)).resolves.toBeNull();
   });
 
   it("requires a session token from requests", async () => {
