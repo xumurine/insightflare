@@ -196,6 +196,7 @@ interface RequestNetworkDimensionRow {
   highConfidence: number;
   country: string;
   region: string;
+  iconLabel?: string;
 }
 
 interface RequestDetailCursor {
@@ -1129,7 +1130,14 @@ export function RequestObservationClient({
                 locale,
                 unknownLabel: copy.emptyValue,
               }
-            : undefined,
+            : group === "target"
+              ? { targetTab: tab as TargetDimensionTab }
+              : group === "detection"
+                ? {
+                    detectionTab: tab as DetectionDimensionTab,
+                    copy,
+                  }
+                : undefined,
         ),
     [copy.emptyValue, locale, timeWindow],
   );
@@ -1148,7 +1156,9 @@ export function RequestObservationClient({
               locale,
               unknownLabel: copy.emptyValue,
             }
-          : undefined,
+          : group === "target"
+            ? { targetTab: tab as TargetDimensionTab }
+            : undefined,
       ),
     [copy.emptyValue, locale, timeWindow],
   );
@@ -2143,6 +2153,18 @@ function botReasonLabel(
   return labels[reason] ?? compactReason(reason);
 }
 
+function botReasonCombinationLabel(
+  copy: AppMessages["requestObservation"],
+  value: string,
+): string {
+  return value
+    .split(",")
+    .map((reason) => reason.trim())
+    .filter(Boolean)
+    .map((reason) => botReasonLabel(copy, reason))
+    .join(", ");
+}
+
 function requestKindLabel(
   copy: AppMessages["requestObservation"],
   kind: string,
@@ -2601,20 +2623,28 @@ function _toAsyncNetworkDimensionRows(
 
 function toAsyncAggregatedDimensionRows(
   rows: RequestNetworkDimensionRow[],
-  options?: Parameters<typeof toAsyncDimensionRows>[1],
+  options?: Parameters<typeof toAsyncDimensionRows>[1] & {
+    detectionTab?: DetectionDimensionTab;
+    copy?: AppMessages["requestObservation"];
+  },
 ): AsyncDimensionBreakdownRow[] {
   return toAsyncDimensionRows(
     rows.map((row) => ({
       label:
-        options?.networkTab === "asn" && row.label
-          ? `AS${row.label}`
-          : row.label || options?.unknownLabel || "--",
+        options?.detectionTab === "reason" && options.copy
+          ? botReasonCombinationLabel(options.copy, row.label)
+          : options?.networkTab === "asn" && row.label
+            ? `AS${row.label}`
+            : row.label || options?.unknownLabel || "--",
       count: row.count,
       highConfidence: row.highConfidence,
       sampleEvent: {
         country: row.country,
-        region: row.region,
+        region: options?.networkTab === "region" ? row.label : row.region,
         city: row.label,
+        siteDomain: row.iconLabel,
+        hostname: options?.targetTab === "hostname" ? row.label : "",
+        origin: options?.targetTab === "origin" ? row.label : "",
       } as BotEvent,
     })),
     options,

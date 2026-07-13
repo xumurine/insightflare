@@ -1142,6 +1142,19 @@ describe("admin bot analytics handlers", () => {
             { status: 200 },
           );
         }
+        if (sql.includes("blob11 AS label, blob10 AS country")) {
+          return new Response(
+            jsonEachRow([
+              {
+                label: "Tokyo",
+                country: "JP",
+                count: 12,
+                highConfidence: 7,
+              },
+            ]),
+            { status: 200 },
+          );
+        }
         if (sql.includes("GROUP BY label")) {
           return new Response(
             jsonEachRow([{ label: "13335", count: 12, highConfidence: 7 }]),
@@ -1229,7 +1242,34 @@ describe("admin bot analytics handlers", () => {
     const siteDimensionBody = await jsonOf(siteDimensionResponse);
     expect(siteDimensionResponse.status).toBe(200);
     expect(siteDimensionBody.dimension.rows).toEqual([
-      expect.objectContaining({ label: "Site", count: 12 }),
+      expect.objectContaining({
+        label: "Site",
+        iconLabel: "site.test",
+        count: 12,
+      }),
+    ]);
+
+    const regionDimensionResponse = await handleBotAnalyticsAdmin(
+      request(
+        "/api/private/admin/bot-analytics?dimensionSource=abnormal&dimensionGroup=network&dimensionTab=region",
+      ),
+      createEnv([
+        statement({
+          first: row({ apiTokenEncrypted: encrypted, configured: true }),
+        }),
+      ]),
+      new URL(
+        "https://app.test/api/private/admin/bot-analytics?dimensionSource=abnormal&dimensionGroup=network&dimensionTab=region",
+      ),
+    );
+    const regionDimensionBody = await jsonOf(regionDimensionResponse);
+    expect(regionDimensionResponse.status).toBe(200);
+    expect(regionDimensionBody.dimension.rows).toEqual([
+      expect.objectContaining({
+        label: "Tokyo",
+        country: "JP",
+        region: "Tokyo",
+      }),
     ]);
 
     for (const [source, group, tab] of [

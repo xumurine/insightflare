@@ -1580,6 +1580,9 @@ export async function handleBotAnalyticsAdmin(
         req,
       );
     let rows = normalizeNetworkDimensionRows(result.rows);
+    if (dimensionTab === "region") {
+      rows = rows.map((row) => ({ ...row, region: row.label }));
+    }
     if (dimensionTab === "site") {
       const sites = await siteLookupByIds(
         env,
@@ -1590,6 +1593,7 @@ export async function handleBotAnalyticsAdmin(
         return {
           ...row,
           label: site?.name || site?.domain || row.label,
+          iconLabel: site?.domain || undefined,
         };
       });
     }
