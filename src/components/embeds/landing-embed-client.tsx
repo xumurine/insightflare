@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { BrowserCrossBreakdownGrid } from "@/components/dashboard/browser-cross-breakdown-grid";
 import { BrowserEngineShareTrendCard } from "@/components/dashboard/browser-engine-share-trend-card";
@@ -427,14 +428,31 @@ function EventsEmbedBlock({
   const labels = messages.events;
   const { window: timeWindow } = useDashboardQuery();
   const filters = useOverviewEmbedFilters();
-  const [summary, setSummary] = useState<EventsSummaryData>(() =>
-    emptyEventsSummary(),
-  );
-  const [trend, setTrend] = useState<EventsTrendData>(() =>
-    emptyEventsTrend(timeWindow.interval),
-  );
-  const [loading, setLoading] = useState(true);
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const eventsQuery = useQuery({
+    queryKey: [
+      "embed",
+      "landing-events",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => {
+      const [summary, trend] = await Promise.all([
+        fetchEventsSummary(siteId, timeWindow, filters, { signal }),
+        fetchEventsTrend(siteId, timeWindow, filters, { limit: 8, signal }),
+      ]);
+      return { summary, trend };
+    },
+    enabled: typeof window !== "undefined",
+  });
+  const summary = eventsQuery.data?.summary ?? emptyEventsSummary();
+  const trend =
+    eventsQuery.data?.trend ?? emptyEventsTrend(timeWindow.interval);
+  const loading = eventsQuery.isPending;
   const eventCardDataOverride = useMemo(
     () => buildEventCardDataOverride(summary.cards.event.name),
     [summary.cards.event.name],
@@ -447,40 +465,6 @@ function EventsEmbedBlock({
     () => pathname.replace(/\/events$/, ""),
     [pathname],
   );
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    void Promise.all([
-      fetchEventsSummary(siteId, timeWindow, filters),
-      fetchEventsTrend(siteId, timeWindow, filters, { limit: 8 }),
-    ])
-      .then(([nextSummary, nextTrend]) => {
-        if (!active) return;
-        setSummary(nextSummary);
-        setTrend(nextTrend);
-      })
-      .catch(() => {
-        if (!active) return;
-        setSummary(emptyEventsSummary());
-        setTrend(emptyEventsTrend(timeWindow.interval));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    filters,
-    filtersKey,
-    siteId,
-    timeWindow.from,
-    timeWindow.interval,
-    timeWindow.timeZone,
-    timeWindow.to,
-  ]);
 
   if (view === "events-trend") {
     return (
