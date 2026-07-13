@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type SetStateAction, useEffect, useMemo, useState } from "react";
 import {
   RiAddLine,
   RiCheckboxBlankCircleLine,
@@ -9,6 +9,7 @@ import {
   RiKey2Line,
   RiRefreshLine,
 } from "@remixicon/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { TableActionButton } from "@/components/dashboard/table-action-button";
@@ -246,8 +247,29 @@ export function ApiKeysClient({
 }: ApiKeysClientProps) {
   const copy = messages.teamManagement.apiKeys;
   const cancelLabel = messages.teamSelect.cancel;
-  const [keys, setKeys] = useState<ApiKeyData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const keysQueryKey = ["dashboard", "api-keys", teamId] as const;
+  const keysQuery = useQuery({
+    queryKey: keysQueryKey,
+    queryFn: async ({ signal }) => {
+      if (import.meta.env.VITE_DEMO_MODE === "1") {
+        return buildDemoApiKeys(teamId, sites);
+      }
+      const response = await fetch(
+        `/api/private/admin/api-keys?teamId=${encodeURIComponent(teamId)}`,
+        { credentials: "include", cache: "no-store", signal },
+      );
+      return readPayload<ApiKeyData[]>(response);
+    },
+    enabled: typeof window !== "undefined",
+  });
+  const keys = keysQuery.data ?? [];
+  const loading = keysQuery.isPending;
+  const setKeys = (updater: SetStateAction<ApiKeyData[]>) => {
+    queryClient.setQueryData<ApiKeyData[]>(keysQueryKey, (current = []) =>
+      typeof updater === "function" ? updater(current) : updater,
+    );
+  };
   const [createOpen, setCreateOpen] = useState(false);
   const [secretOpen, setSecretOpen] = useState(false);
   const [revealedSecret, setRevealedSecret] = useState("");
@@ -266,32 +288,9 @@ export function ApiKeysClient({
     [sites],
   );
 
-  async function loadKeys() {
-    if (import.meta.env.VITE_DEMO_MODE === "1") {
-      setKeys(buildDemoApiKeys(teamId, sites));
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const response = await fetch(
-        `/api/private/admin/api-keys?teamId=${encodeURIComponent(teamId)}`,
-        {
-          credentials: "include",
-          cache: "no-store",
-        },
-      );
-      setKeys(await readPayload<ApiKeyData[]>(response));
-    } catch {
-      toast.error(copy.loadFailed);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    void loadKeys();
-  }, [teamId]);
+    if (keysQuery.isError) toast.error(copy.loadFailed);
+  }, [copy.loadFailed, keysQuery.errorUpdatedAt, keysQuery.isError]);
 
   function toggleScope(scope: ApiKeyScope) {
     setScopes((current) =>
