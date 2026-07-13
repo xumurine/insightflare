@@ -7,6 +7,7 @@ import {
   RiFileList3Line,
   RiKey2Line,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
@@ -70,7 +71,7 @@ function epochSecondsToMs(value: number): number {
   return value > 0 && value < 100_000_000_000 ? value * 1000 : value;
 }
 
-async function getUsers(): Promise<AccountUserData[]> {
+async function getUsers(signal?: AbortSignal): Promise<AccountUserData[]> {
   if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
@@ -82,6 +83,7 @@ async function getUsers(): Promise<AccountUserData[]> {
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   const payload = (await response.json()) as ApiResponse<AccountUserData[]>;
   if (!response.ok || !payload.ok || !Array.isArray(payload.data)) {
@@ -102,8 +104,6 @@ export function AdminUsersManagementClient({
   const { timeZone } = useDashboardQueryControls();
   const t = messages.adminUsers;
   const defaultTeamNameTemplate = t.defaultTeamName;
-  const [users, setUsers] = useState<AccountUserData[]>([]);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -125,29 +125,27 @@ export function AdminUsersManagementClient({
     null,
   );
   const [deleteUserDialogOpen, setDeleteUserDialogOpen] = useState(false);
+  const usersQuery = useQuery({
+    queryKey: ["dashboard", "admin-users"],
+    queryFn: ({ signal }) => getUsers(signal),
+    enabled: typeof window !== "undefined",
+  });
+  const users = usersQuery.data ?? [];
+  const loading = usersQuery.isPending;
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    getUsers()
-      .then((data) => {
-        if (!active) return;
-        setUsers(data);
-      })
-      .catch((error) => {
-        if (!active) return;
-        const message = error instanceof Error ? error.message : t.loadFailed;
-        toast.error(message || t.loadFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [t.loadFailed]);
+    if (!usersQuery.isError) return;
+    const message =
+      usersQuery.error instanceof Error
+        ? usersQuery.error.message
+        : t.loadFailed;
+    toast.error(message || t.loadFailed);
+  }, [
+    t.loadFailed,
+    usersQuery.error,
+    usersQuery.errorUpdatedAt,
+    usersQuery.isError,
+  ]);
 
   useEffect(() => {
     if (teamNameTouched) return;
@@ -158,8 +156,7 @@ export function AdminUsersManagementClient({
   }, [defaultTeamNameTemplate, name, teamNameTouched, username]);
 
   async function refreshUsers() {
-    const data = await getUsers();
-    setUsers(data);
+    await usersQuery.refetch();
   }
 
   async function handleCreateUser() {
