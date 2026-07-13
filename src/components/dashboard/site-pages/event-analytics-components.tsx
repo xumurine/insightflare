@@ -1098,7 +1098,7 @@ function EventRecordsTable({
         : "rows";
 
   return (
-    <AnalyticsTableCard>
+    <AnalyticsTableCard minTableWidth="92rem">
       <Table className="min-w-[92rem]">
         <TableHeader>
           <TableRow>

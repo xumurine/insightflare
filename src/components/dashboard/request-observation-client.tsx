@@ -3576,8 +3576,7 @@ function BotEventsTable({
           </div>
         </div>
 
-        <Card className="py-0">
-          <CardContent className="px-0">
+        <AnalyticsTableCard minTableWidth="92rem">
             <Table className="min-w-[92rem]">
               <TableHeader>
                 <TableRow>
@@ -3745,8 +3744,7 @@ function BotEventsTable({
                 )}
               </AutoTransition>
             </Table>
-          </CardContent>
-        </Card>
+        </AnalyticsTableCard>
       </section>
 
       <BotRequestDetailDrawer

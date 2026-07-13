@@ -412,7 +412,7 @@ function ScheduledTaskRunsTable({
         : "rows";
 
   return (
-    <AnalyticsTableCard>
+    <AnalyticsTableCard minTableWidth="82rem">
       <Table className="min-w-[82rem]">
         <TableHeader>
           <TableRow>
