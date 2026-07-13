@@ -710,6 +710,7 @@ export async function fetchNotificationMessages(input: {
   unread?: boolean;
   locale?: Locale;
   limit?: number;
+  signal?: AbortSignal;
 }): Promise<{
   messages: NotificationMessageData[];
   unreadAttentionCount: number;
@@ -729,6 +730,7 @@ export async function fetchNotificationMessages(input: {
       ...(input.locale ? { locale: input.locale } : {}),
       ...(input.limit ? { limit: input.limit } : {}),
     },
+    signal: input.signal,
   });
   const data =
     res.data && typeof res.data === "object"

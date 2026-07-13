@@ -572,6 +572,11 @@ describe("edge client request wrappers", () => {
       "http://127.0.0.1:8787/api/private/notifications?teamId=team-1&siteId=site-1&type=report&severity=warning&unread=1&locale=zh&limit=25",
     );
 
+    const controller = new AbortController();
+    fetchMock().mockResolvedValueOnce(jsonResponse({ ok: true, data: null }));
+    await fetchNotificationMessages({ signal: controller.signal });
+    expect(lastFetchCall()[1].signal).toBe(controller.signal);
+
     fetchMock().mockResolvedValueOnce(jsonResponse({ ok: true, data: null }));
     await expect(fetchNotificationMessages({})).resolves.toEqual({
       messages: [],
