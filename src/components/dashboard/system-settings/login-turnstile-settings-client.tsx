@@ -6,6 +6,7 @@ import {
   RiShieldCheckLine,
   RiTestTubeLine,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import {
@@ -126,7 +127,9 @@ function apiMessage(payload: ApiResponse<unknown>, fallback: string): string {
   return fallback;
 }
 
-async function fetchConfig(): Promise<PublicLoginTurnstileAdminConfig> {
+async function fetchConfig(
+  signal?: AbortSignal,
+): Promise<PublicLoginTurnstileAdminConfig> {
   if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
@@ -139,6 +142,7 @@ async function fetchConfig(): Promise<PublicLoginTurnstileAdminConfig> {
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   const payload =
     (await response.json()) as ApiResponse<PublicLoginTurnstileAdminConfig>;
@@ -281,11 +285,17 @@ export function LoginTurnstileSettingsClient({
   const [secretKey, setSecretKey] = useState("");
   const [secretKeyDirty, setSecretKeyDirty] = useState(false);
   const [testedFingerprint, setTestedFingerprint] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingConfig, setDeletingConfig] = useState(false);
+  const configAppliedRef = useRef(false);
+  const configQuery = useQuery({
+    queryKey: ["dashboard", "login-turnstile-config"],
+    queryFn: ({ signal }) => fetchConfig(signal),
+    enabled: typeof window !== "undefined",
+  });
+  const loading = configQuery.isPending;
 
   const currentFingerprint = `${form.siteKey.trim()}::${secretKey.trim()}`;
   const newSecretTested =
@@ -312,30 +322,27 @@ export function LoginTurnstileSettingsClient({
     : secretKey;
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetchConfig()
-      .then((nextConfig) => {
-        if (!active) return;
-        setConfig(nextConfig);
-        setForm(toFormState(nextConfig));
-      })
-      .catch(() => {
-        if (!active) return;
-        toast.error(copy.loginTurnstileLoadFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
+    if (configQuery.isPending || configAppliedRef.current) return;
+    if (configQuery.isError) toast.error(copy.loginTurnstileLoadFailed);
+    const nextConfig = configQuery.data ?? defaultConfig();
+    setConfig(nextConfig);
+    setForm(toFormState(nextConfig));
+    configAppliedRef.current = true;
+  }, [
+    configQuery.data,
+    configQuery.isError,
+    configQuery.isPending,
+    copy.loginTurnstileLoadFailed,
+  ]);
+
+  useEffect(() => {
     return () => {
-      active = false;
       const widgetId = widgetIdRef.current;
       if (widgetId && window.turnstile?.remove) {
         window.turnstile.remove(widgetId);
       }
     };
-  }, [copy.loginTurnstileLoadFailed]);
+  }, []);
 
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
