@@ -16,6 +16,7 @@ import {
   RiRobot2Line,
   RiShieldCheckLine,
 } from "@remixicon/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, useAnimationControls } from "motion/react";
 import {
   Area,
@@ -591,18 +592,46 @@ export function RequestObservationClient({
   messages,
 }: RequestObservationClientProps) {
   const copy = messages.requestObservation;
+  const queryClient = useQueryClient();
   const { window: timeWindow } = useDashboardQuery();
   const searchParams = useSearchParams();
   const activeTab = normalizeRequestObservationTab(
     searchParams.get("requestTab"),
   );
-  const [data, setData] = useState<RequestObservationData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState<"abnormal" | "normal" | null>(
     null,
   );
   const mapAnimationControls = useAnimationControls();
+  const observationQueryKey = [
+    "dashboard",
+    "request-observation",
+    timeWindow.from,
+    timeWindow.to,
+    timeWindow.interval,
+    timeWindow.timeZone,
+  ] as const;
+  const observationQuery = useQuery({
+    queryKey: observationQueryKey,
+    queryFn: ({ signal }) => fetchRequestObservation(timeWindow, signal),
+    enabled: typeof window !== "undefined",
+  });
+  const data = observationQuery.data ?? null;
+  const loading = observationQuery.isPending;
+  const refreshing = observationQuery.isFetching && !observationQuery.isPending;
+  const setData = (
+    updater:
+      | RequestObservationData
+      | null
+      | ((
+          current: RequestObservationData | null,
+        ) => RequestObservationData | null),
+  ) => {
+    queryClient.setQueryData<RequestObservationData | null>(
+      observationQueryKey,
+      (current = null) =>
+        typeof updater === "function" ? updater(current) : updater,
+    );
+  };
 
   const spanMs = Math.max(1, timeWindow.to - timeWindow.from);
   const windowDetail = formatI18nTemplate(copy.overviewLabels.windowDays, {
@@ -610,26 +639,19 @@ export function RequestObservationClient({
   });
   const labels = copy.overviewLabels;
 
-  const load = useMemo(
-    () => async (mode: "initial" | "refresh") => {
-      if (mode === "initial") setLoading(true);
-      else setRefreshing(true);
-      try {
-        const next = await fetchRequestObservation(timeWindow);
-        setData(next);
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : copy.loadFailed);
-      } finally {
-        if (mode === "initial") setLoading(false);
-        else setRefreshing(false);
-      }
-    },
-    [copy.loadFailed, timeWindow],
-  );
-
   useEffect(() => {
-    void load("initial");
-  }, [load]);
+    if (!observationQuery.isError) return;
+    const message =
+      observationQuery.error instanceof Error
+        ? observationQuery.error.message
+        : copy.loadFailed;
+    toast.error(message || copy.loadFailed);
+  }, [
+    copy.loadFailed,
+    observationQuery.error,
+    observationQuery.errorUpdatedAt,
+    observationQuery.isError,
+  ]);
 
   const loadMoreEvents = useMemo(
     () => async (source: "abnormal" | "normal") => {
@@ -1220,7 +1242,7 @@ export function RequestObservationClient({
           type="button"
           variant="outline"
           className="bg-background/90 backdrop-blur"
-          onClick={() => load("refresh")}
+          onClick={() => void observationQuery.refetch()}
           disabled={loading || refreshing}
         >
           {refreshing ? (
@@ -1945,6 +1967,7 @@ async function withDemoOverlayData(
 
 async function fetchRequestObservation(
   timeWindow: TimeWindow,
+  signal?: AbortSignal,
 ): Promise<RequestObservationData> {
   if (import.meta.env.VITE_DEMO_MODE === "1") {
     return generateDemoRequestObservation(demoMinutesForWindow(timeWindow));
@@ -1961,6 +1984,7 @@ async function fetchRequestObservation(
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   const payload = (await response.json()) as
     | RequestObservationData
