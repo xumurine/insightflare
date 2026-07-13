@@ -42,6 +42,7 @@ interface FetchEdgeOptions {
   params?: Record<string, string | number>;
   body?: unknown;
   isPublic?: boolean;
+  signal?: AbortSignal;
 }
 
 async function edgeBaseUrl(): Promise<string> {
@@ -157,6 +158,7 @@ async function fetchEdgeJson<T>(options: FetchEdgeOptions): Promise<T> {
     headers,
     body: method === "GET" ? undefined : JSON.stringify(options.body ?? {}),
     cache: "no-store",
+    signal: options.signal,
   });
 
   if (!res.ok) {
@@ -884,12 +886,15 @@ export type NotificationPreferencesUpdate = Partial<
   attention?: Partial<NotificationPreferencesData["attention"]>;
 };
 
-export async function fetchNotificationPreferences(): Promise<NotificationPreferencesData> {
+export async function fetchNotificationPreferences(options?: {
+  signal?: AbortSignal;
+}): Promise<NotificationPreferencesData> {
   const res = await fetchEdgeJson<{
     ok: boolean;
     data: NotificationPreferencesData;
   }>({
     path: "/api/private/notifications/preferences",
+    signal: options?.signal,
   });
   return normalizeNotificationPreferencesData(res.data);
 }

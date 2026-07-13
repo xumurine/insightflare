@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RiComputerLine,
   RiGlobalLine,
@@ -7,6 +7,7 @@ import {
   RiSave3Line,
   RiUserSettingsLine,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
@@ -123,10 +124,15 @@ export function AccountSettingsClient({
     useState<NotificationPreferencesData | null>(null);
   const [draftNotificationPreferences, setDraftNotificationPreferences] =
     useState<NotificationPreferencesData | null>(null);
-  const [notificationPreferencesLoading, setNotificationPreferencesLoading] =
-    useState(true);
   const [notificationPreferencesSaving, setNotificationPreferencesSaving] =
     useState(false);
+  const appliedNotificationPreferencesUserIdRef = useRef<string | null>(null);
+  const notificationPreferencesQuery = useQuery({
+    queryKey: ["dashboard", "notification-preferences", user.id],
+    queryFn: ({ signal }) => fetchNotificationPreferences({ signal }),
+    enabled: typeof window !== "undefined",
+  });
+  const notificationPreferencesLoading = notificationPreferencesQuery.isPending;
   const timeZones = useMemo(() => supportedTimeZones(), []);
   const [mode, setMode] = useState<TimeZoneMode>(
     timeZonePreference ? "custom" : "browser",
@@ -205,30 +211,30 @@ export function AccountSettingsClient({
   }, [timeZone, timeZonePreference]);
 
   useEffect(() => {
-    let active = true;
-
-    setNotificationPreferencesLoading(true);
-    fetchNotificationPreferences()
-      .then((nextPreferences) => {
-        if (!active) return;
-        const normalized =
-          normalizeNotificationPreferencesData(nextPreferences);
-        setNotificationPreferences(normalized);
-        setDraftNotificationPreferences(normalized);
-      })
-      .catch(() => {
-        if (!active) return;
-        toast.error(notificationCopy.preferencesSaveFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setNotificationPreferencesLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [notificationCopy.preferencesSaveFailed]);
+    if (
+      notificationPreferencesQuery.isPending ||
+      appliedNotificationPreferencesUserIdRef.current === user.id
+    ) {
+      return;
+    }
+    if (notificationPreferencesQuery.isError) {
+      toast.error(notificationCopy.preferencesSaveFailed);
+      appliedNotificationPreferencesUserIdRef.current = user.id;
+      return;
+    }
+    const normalized = normalizeNotificationPreferencesData(
+      notificationPreferencesQuery.data,
+    );
+    setNotificationPreferences(normalized);
+    setDraftNotificationPreferences(normalized);
+    appliedNotificationPreferencesUserIdRef.current = user.id;
+  }, [
+    notificationCopy.preferencesSaveFailed,
+    notificationPreferencesQuery.data,
+    notificationPreferencesQuery.isError,
+    notificationPreferencesQuery.isPending,
+    user.id,
+  ]);
 
   const nextPreference = mode === "browser" ? "" : selectedCustomTimeZone;
   const canSavePreferredLocale =

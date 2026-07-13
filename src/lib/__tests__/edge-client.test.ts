@@ -526,6 +526,10 @@ describe("edge client request wrappers", () => {
       "http://127.0.0.1:8787/api/private/notifications/preferences",
     );
 
+    const controller = new AbortController();
+    await fetchNotificationPreferences({ signal: controller.signal });
+    expect(lastFetchCall()[1].signal).toBe(controller.signal);
+
     await updateNotificationPreferences({
       email: true,
       attention: { alertsCreateUnread: false },
