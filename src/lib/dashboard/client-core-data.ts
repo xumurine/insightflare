@@ -519,6 +519,7 @@ export async function fetchEventRecordDetail(
   siteId: string,
   eventId: string,
   window?: TimeWindow,
+  options?: { signal?: AbortSignal },
 ): Promise<EventRecordDetailData> {
   const normalizedEventId = eventId.trim();
   if (!normalizedEventId) return emptyEventRecordDetail();
@@ -529,7 +530,8 @@ export async function fetchEventRecordDetail(
       eventId: normalizedEventId,
       ...(window ? { from: window.from, to: window.to } : {}),
     },
-  ).catch(emptyEventRecordDetail);
+    { signal: options?.signal },
+  ).catch((error) => fallbackUnlessAborted(error, emptyEventRecordDetail));
 }
 
 export async function fetchPerformance(

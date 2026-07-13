@@ -338,6 +338,33 @@ describe("fetchEventRecordDetail", () => {
     const result = await fetchEventRecordDetail("site-1", "evt-1");
     expect(result).toEqual(emptyEventRecordDetail());
   });
+
+  it("forwards cancellation signals and preserves aborts", async () => {
+    const controller = new AbortController();
+    fetchPrivateJsonMock.mockResolvedValueOnce(emptyEventRecordDetail());
+
+    await fetchEventRecordDetail("site-1", "evt-1", window, {
+      signal: controller.signal,
+    });
+
+    expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
+      "/api/private/event-record-detail",
+      expect.objectContaining({ siteId: "site-1", eventId: "evt-1" }),
+      { signal: controller.signal },
+    );
+
+    const aborted = new AbortController();
+    aborted.abort();
+    fetchPrivateJsonMock.mockRejectedValueOnce(
+      new DOMException("Aborted", "AbortError"),
+    );
+
+    await expect(
+      fetchEventRecordDetail("site-1", "evt-1", window, {
+        signal: aborted.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+  });
 });
 
 describe("fetchEventsTrend", () => {

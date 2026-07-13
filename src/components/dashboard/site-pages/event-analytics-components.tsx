@@ -23,7 +23,7 @@ import {
   RiSearchLine,
   RiStackLine,
 } from "@remixicon/react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
@@ -1671,10 +1671,6 @@ export function EventRecordsSection({
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState("");
-  const [detail, setDetail] = useState<EventRecordDetailData["data"] | null>(
-    null,
-  );
-  const [detailLoading, setDetailLoading] = useState(false);
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
 
   useEffect(() => {
@@ -1792,22 +1788,22 @@ export function EventRecordsSection({
     sentinelNode,
   ]);
 
-  useEffect(() => {
-    if (!drawerOpen || !selectedEventId) return;
-    let active = true;
-    setDetailLoading(true);
-    fetchEventRecordDetail(siteId, selectedEventId, timeWindow)
-      .then((payload) => {
-        if (!active) return;
-        setDetail(payload.data);
-      })
-      .finally(() => {
-        if (active) setDetailLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [drawerOpen, selectedEventId, siteId, timeWindow]);
+  const detailQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "event-record-detail",
+      siteId,
+      selectedEventId,
+      timeWindow.from,
+      timeWindow.to,
+    ],
+    queryFn: ({ signal }) =>
+      fetchEventRecordDetail(siteId, selectedEventId, timeWindow, { signal }),
+    enabled:
+      typeof window !== "undefined" && drawerOpen && Boolean(selectedEventId),
+  });
+  const detail = detailQuery.data?.data ?? null;
+  const detailLoading = detailQuery.isPending;
 
   const toggleSort = (key: EventRecordSortKey) => {
     setSort((current) =>
@@ -1822,7 +1818,6 @@ export function EventRecordsSection({
 
   const openRecord = (eventId: string) => {
     setSelectedEventId(eventId);
-    setDetail(null);
     setDrawerOpen(true);
   };
 
