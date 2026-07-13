@@ -26,8 +26,8 @@ import {
 } from "./query/core";
 import { normalizeFunnelSteps, queryFunnelAnalysis } from "./query/funnels";
 import {
+  queryAllPerformanceTrendsFromD1,
   queryPerformanceSummariesFromD1,
-  queryPerformanceTrendFromD1,
 } from "./query/performance";
 import { routeQuery } from "./query/router";
 import { handleTeamDashboardForTeam } from "./query/team";
@@ -994,24 +994,16 @@ async function queryPerformanceTimeseriesData(
   const filters = parseFilters(url);
   const interval = parseInterval(url);
   const buckets = buildTimeBuckets(window, interval);
-  const metricKeys = Object.keys(
-    PERFORMANCE_METRIC_COLUMNS,
-  ) as PerformanceMetricKey[];
-  const series = await Promise.all(
-    metricKeys.map((metric) =>
-      queryPerformanceTrendFromD1(
-        env,
-        siteId,
-        window,
-        interval,
-        filters,
-        metric,
-      ),
-    ),
+  const series = await queryAllPerformanceTrendsFromD1(
+    env,
+    siteId,
+    window,
+    interval,
+    filters,
   );
   const rows = new Map<number, Record<string, unknown>>();
-  for (const [metricIndex, points] of series.entries()) {
-    const metric = metricKeys[metricIndex]!;
+  for (const metric of Object.keys(series) as PerformanceMetricKey[]) {
+    const points = series[metric];
     for (const point of points) {
       const bucket = buckets[point.bucket] ?? {
         timestampMs: point.timestampMs,

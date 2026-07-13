@@ -703,7 +703,17 @@ function commonQueryMatches(): SqlMatch[] {
     ),
     allMatch(
       ["thresholds.bucket AS bucket"],
-      [{ bucket: 0, avgValue: 50, p50: 40, p75: 60, p95: 90, samples: 4 }],
+      [
+        {
+          metric: "ttfb",
+          bucket: 0,
+          avgValue: 50,
+          p50: 40,
+          p75: 60,
+          p95: 90,
+          samples: 4,
+        },
+      ],
     ),
     allMatch(
       ["SELECT sessionId, browser, os, osVersion"],
