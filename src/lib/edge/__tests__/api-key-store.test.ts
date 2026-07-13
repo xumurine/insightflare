@@ -108,6 +108,19 @@ describe("api key store utilities", () => {
     expect(timingSafeEqualString(left, other)).toBe(false);
   });
 
+  it("reuses derived and imported HMAC keys", async () => {
+    const importKey = vi.spyOn(crypto.subtle, "importKey");
+    const env = {
+      MAIN_SECRET: `api-key-cache-${crypto.randomUUID()}`,
+    } as Env;
+
+    await hashApiKeySecret(env, "ifk_live_prefix.secret");
+    await hashApiKeySecret(env, "ifk_live_prefix.secret");
+
+    expect(importKey).toHaveBeenCalledTimes(2);
+    importKey.mockRestore();
+  });
+
   it("throws when hashing API keys without a root secret", async () => {
     await expect(
       hashApiKeySecret({} as Env, "ifk_live_prefix.secret"),
@@ -128,6 +141,7 @@ describe("api key store utilities", () => {
       normalizeApiKeyScopes([
         "analytics:read",
         "unknown",
+        null,
         "site:read",
         "analytics:read",
       ]),
@@ -181,6 +195,14 @@ describe("toPublicApiKey", () => {
     expect(pub.revokedByUserId).toBe("");
     expect(pub.rotatedFromKeyId).toBe("");
     expect(pub.lastUsedAt).toBeNull();
+  });
+
+  it("treats malformed and non-array JSON fields as empty", () => {
+    expect(
+      toPublicApiKey(
+        makeRow({ scopes_json: "not-json", site_ids_json: '"site-1"' }),
+      ),
+    ).toMatchObject({ scopes: [], siteIds: [] });
   });
 
   it("reflects revoked status", () => {
