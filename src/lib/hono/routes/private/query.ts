@@ -6,7 +6,7 @@ import {
   DASHBOARD_QUERY_PATHS,
   dispatchQueryRoute,
 } from "@/lib/edge/query/router";
-import { handleTeamDashboard } from "@/lib/edge/query/team";
+import { handleTeamDashboardForSession } from "@/lib/edge/query/team";
 import { dashboardCacheMiddleware } from "@/lib/hono/middleware/dashboard-cache";
 import {
   requireMethodMiddleware,
@@ -40,7 +40,16 @@ export const privateQueryRoutes = new Hono<AppEnv>();
 
 privateQueryRoutes.all("/team-dashboard", (c) => {
   if (c.req.raw.method !== "GET") return notAllowed();
-  return handleTeamDashboard(c.req.raw, c.env, requestUrl(c));
+  const session = c.get("session");
+  if (!session) {
+    throw new Error("private session context missing");
+  }
+  return handleTeamDashboardForSession(
+    c.req.raw,
+    c.env,
+    requestUrl(c),
+    session,
+  );
 });
 
 privateQueryRoutes.use(

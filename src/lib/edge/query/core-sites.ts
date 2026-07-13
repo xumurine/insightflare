@@ -2,7 +2,10 @@ import {
   canAccessMemberSite,
   parseMemberSiteIdsJson,
 } from "@/lib/edge/member-site-access";
-import { requireSession } from "@/lib/edge/session-auth";
+import {
+  type EdgeSessionClaims,
+  requireSession,
+} from "@/lib/edge/session-auth";
 import type { Env } from "@/lib/edge/types";
 
 import { normalizeFilterValue } from "./core-parsers";
@@ -17,6 +20,15 @@ export async function resolvePrivateSite(
   const session = await requireSession(request, env);
   if (!session) return unauthorized("Unauthorized", undefined, request);
 
+  return resolvePrivateSiteForSession(request, env, url, session);
+}
+
+export async function resolvePrivateSiteForSession(
+  request: Request,
+  env: Env,
+  url: URL,
+  session: EdgeSessionClaims,
+): Promise<SiteRow | Response> {
   const siteId = normalizeFilterValue(url.searchParams.get("siteId"));
   if (!siteId) return badRequest("siteId is required", undefined, request);
 
@@ -73,6 +85,15 @@ export async function resolvePrivateTeam(
   const session = await requireSession(request, env);
   if (!session) return unauthorized("Unauthorized", undefined, request);
 
+  return resolvePrivateTeamForSession(request, env, url, session);
+}
+
+export async function resolvePrivateTeamForSession(
+  request: Request,
+  env: Env,
+  url: URL,
+  session: EdgeSessionClaims,
+): Promise<{ id: string; allowedSiteIds?: string[] } | Response> {
   const teamId = normalizeFilterValue(url.searchParams.get("teamId"));
   if (!teamId) return badRequest("teamId is required", undefined, request);
 
