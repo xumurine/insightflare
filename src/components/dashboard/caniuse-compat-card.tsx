@@ -11,6 +11,7 @@ import {
   RiExternalLinkLine,
   RiInformationLine,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -189,9 +190,32 @@ export function CanIUseCompatCard({
   const [indexLoading, setIndexLoading] = useState(true);
 
   /* -- browser data -- */
-  const [browserData, setBrowserData] =
-    useState<BrowserVersionBreakdownData>(emptyBreakdown);
-  const [browserLoading, setBrowserLoading] = useState(true);
+  const browserDataQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "caniuse-browser-versions",
+      siteId,
+      tw.from,
+      tw.to,
+      tw.timeZone,
+      filters,
+    ],
+    queryFn: async ({ signal }) => {
+      try {
+        return await fetchBrowserVersionBreakdown(siteId, tw, filters, {
+          browserLimit: 0,
+          versionLimit: 0,
+          signal,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") throw error;
+        return emptyBreakdown();
+      }
+    },
+    enabled: typeof window !== "undefined",
+  });
+  const browserData = browserDataQuery.data ?? emptyBreakdown();
+  const browserLoading = browserDataQuery.isPending;
 
   /* -- search UI -- */
   const [query, setQuery] = useState("");
@@ -243,28 +267,6 @@ export function CanIUseCompatCard({
       active = false;
     };
   }, []);
-
-  /* ---- fetch site browser data ---- */
-  useEffect(() => {
-    let active = true;
-    setBrowserLoading(true);
-
-    fetchBrowserVersionBreakdown(siteId, tw, filters, {
-      browserLimit: 0,
-      versionLimit: 0,
-    })
-      .catch(() => emptyBreakdown())
-      .then((d) => {
-        if (active) setBrowserData(d);
-      })
-      .finally(() => {
-        if (active) setBrowserLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [siteId, tw.from, tw.to, filters]);
 
   /* ---- fetch feature detail ---- */
   useEffect(() => {
