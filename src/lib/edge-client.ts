@@ -337,10 +337,14 @@ export async function transferAdminTeamOwner(input: {
   return res.data;
 }
 
-export async function fetchAdminSites(teamId: string): Promise<SiteData[]> {
+export async function fetchAdminSites(
+  teamId: string,
+  options?: { signal?: AbortSignal },
+): Promise<SiteData[]> {
   const res = await fetchEdgeJson<{ ok: boolean; data: SiteData[] }>({
     path: "/api/private/admin/sites",
     params: { teamId },
+    signal: options?.signal,
   });
   return res.data;
 }
@@ -393,10 +397,14 @@ export async function removeAdminSite(input: {
   return res.data;
 }
 
-export async function fetchAdminMembers(teamId: string): Promise<MemberData[]> {
+export async function fetchAdminMembers(
+  teamId: string,
+  options?: { signal?: AbortSignal },
+): Promise<MemberData[]> {
   const res = await fetchEdgeJson<{ ok: boolean; data: MemberData[] }>({
     path: "/api/private/admin/members",
     params: { teamId },
+    signal: options?.signal,
   });
   return res.data;
 }
@@ -593,6 +601,7 @@ export async function removeAdminUser(input: {
 
 export async function fetchNotificationRules(input: {
   teamId: string;
+  signal?: AbortSignal;
 }): Promise<NotificationRuleData[]> {
   const res = await fetchEdgeJson<{
     ok: boolean;
@@ -600,16 +609,20 @@ export async function fetchNotificationRules(input: {
   }>({
     path: "/api/private/admin/notification-rules",
     params: { teamId: input.teamId },
+    signal: input.signal,
   });
   return Array.isArray(res.data) ? (res.data as NotificationRuleData[]) : [];
 }
 
-export async function fetchNotificationEmailConfig(): Promise<PublicNotificationEmailConfig> {
+export async function fetchNotificationEmailConfig(options?: {
+  signal?: AbortSignal;
+}): Promise<PublicNotificationEmailConfig> {
   const res = await fetchEdgeJson<{
     ok: boolean;
     data: PublicNotificationEmailConfig;
   }>({
     path: "/api/private/admin/notification-email",
+    signal: options?.signal,
   });
   return res.data;
 }

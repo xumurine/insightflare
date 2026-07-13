@@ -12,6 +12,7 @@ import {
   RiPlayCircleLine,
   RiSave3Line,
 } from "@remixicon/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { JsonTreePanel } from "@/components/dashboard/json-tree";
@@ -1820,15 +1821,11 @@ export function TeamNotificationsClient({
   currentUserId,
 }: TeamNotificationsClientProps) {
   const copy = messages.teamManagement.notifications;
-  const [rules, setRules] = useState<NotificationRuleData[]>([]);
-  const [sites, setSites] = useState<SiteData[]>([]);
-  const [members, setMembers] = useState<MemberData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [previewingId, setPreviewingId] = useState("");
   const [runningId, setRunningId] = useState("");
-  const [emailConfigured, setEmailConfigured] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
@@ -1839,6 +1836,38 @@ export function TeamNotificationsClient({
     useState<NotificationRuleEvaluationData | null>(null);
   const [form, setForm] = useState<RuleFormState>(EMPTY_FORM);
   const nowSeconds = Math.floor(Date.now() / 1000);
+  const rulesQueryKey = [
+    "dashboard",
+    "team-notification-rules",
+    teamId,
+  ] as const;
+  const rulesQuery = useQuery({
+    queryKey: rulesQueryKey,
+    queryFn: async ({ signal }) => {
+      const [rules, sites, members, emailConfig] = await Promise.all([
+        fetchNotificationRules({ teamId, signal }),
+        fetchAdminSites(teamId, { signal }),
+        fetchAdminMembers(teamId, { signal }),
+        fetchNotificationEmailConfig({ signal }),
+      ]);
+      return {
+        rules,
+        sites,
+        members,
+        emailConfigured:
+          emailConfig.enabled &&
+          emailConfig.provider === "resend" &&
+          Boolean(emailConfig.fromEmail) &&
+          emailConfig.resend.configured,
+      };
+    },
+    enabled: typeof window !== "undefined",
+  });
+  const rules = rulesQuery.data?.rules ?? [];
+  const sites = rulesQuery.data?.sites ?? [];
+  const members = rulesQuery.data?.members ?? [];
+  const emailConfigured = rulesQuery.data?.emailConfigured ?? false;
+  const loading = rulesQuery.isPending;
 
   const siteById = useMemo(
     () => new Map(sites.map((site) => [site.id, site])),
@@ -1854,35 +1883,9 @@ export function TeamNotificationsClient({
   );
   const canCreateRule = sites.length > 0;
 
-  async function loadRules() {
-    setLoading(true);
-    try {
-      const [nextRules, nextSites, nextMembers, emailConfig] =
-        await Promise.all([
-          fetchNotificationRules({ teamId }),
-          fetchAdminSites(teamId),
-          fetchAdminMembers(teamId),
-          fetchNotificationEmailConfig(),
-        ]);
-      setRules(nextRules);
-      setSites(nextSites);
-      setMembers(nextMembers);
-      setEmailConfigured(
-        emailConfig.enabled &&
-          emailConfig.provider === "resend" &&
-          Boolean(emailConfig.fromEmail) &&
-          emailConfig.resend.configured,
-      );
-    } catch {
-      toast.error(copy.loadRulesFailed);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    void loadRules();
-  }, [teamId]);
+    if (rulesQuery.isError) toast.error(copy.loadRulesFailed);
+  }, [copy.loadRulesFailed, rulesQuery.errorUpdatedAt, rulesQuery.isError]);
 
   function openCreate(type: RuleFormType = "report") {
     if (!canCreateRule) return;
@@ -1917,14 +1920,10 @@ export function TeamNotificationsClient({
     setSaving(true);
     try {
       const payload = buildRulePayload(copy, form, sites);
-      const saved = form.id
-        ? await updateNotificationRule({ ruleId: form.id, teamId, ...payload })
-        : await createNotificationRule({ teamId, ...payload });
-      setRules((current) =>
-        form.id
-          ? current.map((rule) => (rule.id === saved.id ? saved : rule))
-          : [saved, ...current],
-      );
+      await (form.id
+        ? updateNotificationRule({ ruleId: form.id, teamId, ...payload })
+        : createNotificationRule({ teamId, ...payload }));
+      await queryClient.invalidateQueries({ queryKey: rulesQueryKey });
       setDialogOpen(false);
       toast.success(form.id ? copy.ruleUpdated : copy.ruleCreated);
     } catch {
@@ -1936,13 +1935,11 @@ export function TeamNotificationsClient({
 
   async function toggleRule(rule: NotificationRuleData) {
     try {
-      const updated = await updateNotificationRule({
+      await updateNotificationRule({
         ruleId: rule.id,
         enabled: !rule.enabled,
       });
-      setRules((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item)),
-      );
+      await queryClient.invalidateQueries({ queryKey: rulesQueryKey });
     } catch {
       toast.error(copy.updateRuleFailed);
     }
@@ -1957,7 +1954,7 @@ export function TeamNotificationsClient({
       return;
     try {
       await deleteNotificationRule({ ruleId: rule.id });
-      setRules((current) => current.filter((item) => item.id !== rule.id));
+      await queryClient.invalidateQueries({ queryKey: rulesQueryKey });
       toast.success(copy.ruleDeleted);
     } catch {
       toast.error(copy.deleteRuleFailed);
@@ -2006,7 +2003,7 @@ export function TeamNotificationsClient({
           failed: Number(result.summary.emailFailed ?? 0),
         }),
       );
-      await loadRules();
+      await queryClient.invalidateQueries({ queryKey: rulesQueryKey });
     } catch {
       toast.error(copy.runFailed);
     } finally {
