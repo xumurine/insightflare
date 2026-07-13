@@ -13,6 +13,7 @@ import {
   DetailDrawer,
 } from "@/components/dashboard/site-pages/detail-query-modal";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+import { useInfiniteTableSentinel } from "@/components/dashboard/use-infinite-table-sentinel";
 import { Input } from "@/components/ui/input";
 import {
   pushUrlWithoutNavigation,
@@ -33,7 +34,7 @@ interface SessionsClientPageProps {
   pathname: string;
 }
 
-const SESSION_PAGE_SIZE = 80;
+const SESSION_PAGE_SIZE = 50;
 const SESSION_SKELETON_ROWS = 8;
 
 const SessionDetailClientPage = dynamic(
@@ -91,9 +92,6 @@ export function SessionsClientPage({
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState<SessionSortState>(DEFAULT_SESSION_SORT);
-  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
-    null,
-  );
   const searchParams = useLiveSearchParams();
   const detailSessionId = searchParams.get(DETAIL_QUERY_PARAM)?.trim() || "";
   const openedDetailFromListRef = useRef(false);
@@ -167,55 +165,11 @@ export function SessionsClientPage({
     void fetchNextPage();
   };
 
-  useEffect(() => {
-    const target = sentinelNode;
-    if (
-      !target ||
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      error ||
-      !hasMore ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) {
-          loadNextPage();
-        }
-      },
-      {
-        root: null,
-        rootMargin: "360px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    const frameId = window.requestAnimationFrame(() => {
-      const rect = target.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
-        loadNextPage();
-      }
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [
-    appendError,
-    error,
-    fetchNextPage,
-    hasMore,
-    loadingInitial,
-    loadingMore,
-    sentinelNode,
-  ]);
+  const sentinelRef = useInfiniteTableSentinel({
+    enabled:
+      !loadingInitial && !loadingMore && !appendError && !error && hasMore,
+    onReachEnd: loadNextPage,
+  });
 
   const toggleSort = (key: SessionSortKey) => {
     setSort((current) =>
@@ -284,7 +238,7 @@ export function SessionsClientPage({
         appendError={appendError}
         hasMore={hasMore}
         skeletonRows={SESSION_SKELETON_ROWS}
-        sentinelRef={setSentinelNode}
+        sentinelRef={sentinelRef}
       />
 
       {detailSessionId ? (

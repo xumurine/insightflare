@@ -29,6 +29,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 
+import { AnalyticsTableCard } from "@/components/dashboard/analytics-table-card";
 import {
   AsyncDimensionBreakdownCard,
   type AsyncDimensionBreakdownLabelAppearance,
@@ -44,6 +45,7 @@ import {
 } from "@/components/dashboard/journey-display";
 import { ShareRadialCard } from "@/components/dashboard/share-radial-card";
 import { EVENT_RECORD_DRAWER_Z_INDEX } from "@/components/dashboard/site-pages/floating-layer";
+import { useInfiniteTableSentinel } from "@/components/dashboard/use-infinite-table-sentinel";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
@@ -325,8 +327,7 @@ interface RequestObservationDetailData {
 }
 
 const DIMENSION_ROW_LIMIT = 30;
-const BOT_EVENT_FETCH_LIMIT = 100;
-const BOT_EVENT_PAGE_SIZE = 80;
+const BOT_EVENT_FETCH_LIMIT = 50;
 const BOT_EVENT_SKELETON_ROWS = 8;
 const ABNORMAL_POINT_COLOR: [number, number, number] = [239, 68, 68];
 const NORMAL_POINT_COLOR: [number, number, number] = [34, 197, 154];
@@ -1813,7 +1814,6 @@ export function RequestObservationClient({
                         hasMore={data?.abnormal?.hasMore ?? false}
                         loadingMore={loadingMore === "abnormal"}
                         onLoadMore={() => void loadMoreEvents("abnormal")}
-                        requestKey={`${requestKey}:${abnormalEvents.length}`}
                         timeWindow={timeWindow}
                       />
                     </div>
@@ -1924,7 +1924,6 @@ export function RequestObservationClient({
                         hasMore={data?.normal?.hasMore ?? false}
                         loadingMore={loadingMore === "normal"}
                         onLoadMore={() => void loadMoreEvents("normal")}
-                        requestKey={`${requestKey}:${normalEvents.length}`}
                       />
                     </div>
                   </div>
@@ -3416,7 +3415,6 @@ function BotEventsTable({
   hasMore,
   loadingMore,
   onLoadMore,
-  requestKey,
   timeWindow,
 }: {
   locale: Locale;
@@ -3427,15 +3425,10 @@ function BotEventsTable({
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
-  requestKey: string;
   timeWindow: TimeWindow;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [visibleCount, setVisibleCount] = useState(BOT_EVENT_PAGE_SIZE);
-  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
-    null,
-  );
   const [selectedEvent, setSelectedEvent] = useState<BotEvent | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -3475,10 +3468,6 @@ function BotEventsTable({
     : null;
 
   useEffect(() => {
-    setVisibleCount(BOT_EVENT_PAGE_SIZE);
-  }, [requestKey]);
-
-  useEffect(() => {
     setDetailParam(searchParams.get("detail")?.trim() || "");
   }, [searchParams]);
 
@@ -3497,66 +3486,10 @@ function BotEventsTable({
     return () => window.clearInterval(interval);
   }, []);
 
-  const visibleEvents = useMemo(
-    () => events.slice(0, visibleCount),
-    [events, visibleCount],
-  );
-  const hasMoreEvents = visibleCount < events.length || hasMore;
-
-  useEffect(() => {
-    const target = sentinelNode;
-    if (
-      !target ||
-      loading ||
-      !hasMoreEvents ||
-      loadingMore ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const loadMore = () => {
-      if (visibleCount < events.length) {
-        setVisibleCount((current) =>
-          Math.min(current + BOT_EVENT_PAGE_SIZE, events.length),
-        );
-        return;
-      }
-      onLoadMore();
-    };
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) loadMore();
-      },
-      {
-        root: null,
-        rootMargin: "360px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    const frameId = window.requestAnimationFrame(() => {
-      const rect = target.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
-        loadMore();
-      }
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [
-    events.length,
-    hasMoreEvents,
-    loading,
-    loadingMore,
-    onLoadMore,
-    sentinelNode,
-    visibleCount,
-  ]);
+  const sentinelRef = useInfiniteTableSentinel({
+    enabled: !loading && !loadingMore && hasMore,
+    onReachEnd: onLoadMore,
+  });
 
   const updateDetailParam = (detailId: string, mode: "push" | "replace") => {
     const nextParams = new URLSearchParams(window.location.search);
@@ -3636,8 +3569,8 @@ function BotEventsTable({
           </div>
           <div className="shrink-0 text-xs text-muted-foreground">
             {!loading && events.length > 0
-              ? hasMoreEvents
-                ? `${copy.recentShowing} ${numberFormat(locale, visibleEvents.length)} / ${numberFormat(locale, events.length)}`
+              ? hasMore
+                ? `${copy.recentShowing} ${numberFormat(locale, events.length)}`
                 : copy.recentLoadedAll
               : ""}
           </div>
@@ -3690,7 +3623,7 @@ function BotEventsTable({
                   </TableRow>
                 ) : (
                   <>
-                    {visibleEvents.map((event, index) => {
+                    {events.map((event, index) => {
                       const reasonLabel = botReasonLabel(
                         copy,
                         event.reasons[0] || event.confidence || "",
@@ -3801,11 +3734,11 @@ function BotEventsTable({
                         </TableRow>
                       );
                     })}
-                    {hasMoreEvents ? (
+                    {hasMore ? (
                       <BotEventRowSkeleton
-                        key={`sentinel-${visibleEvents.length}`}
-                        index={visibleEvents.length}
-                        sentinelRef={setSentinelNode}
+                        key={`sentinel-${events.length}`}
+                        index={events.length}
+                        sentinelRef={sentinelRef}
                       />
                     ) : null}
                   </>
@@ -3915,7 +3848,6 @@ function NormalRequestsTable({
   hasMore,
   loadingMore,
   onLoadMore,
-  requestKey,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -3925,12 +3857,8 @@ function NormalRequestsTable({
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
-  requestKey: string;
+  requestKey?: string;
 }) {
-  const [visibleCount, setVisibleCount] = useState(BOT_EVENT_PAGE_SIZE);
-  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
-    null,
-  );
   const [selectedEvent, setSelectedEvent] = useState<NormalRequestEvent | null>(
     null,
   );
@@ -3938,74 +3866,14 @@ function NormalRequestsTable({
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    setVisibleCount(BOT_EVENT_PAGE_SIZE);
-  }, [requestKey]);
-
-  useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(interval);
   }, []);
 
-  const visibleEvents = useMemo(
-    () => events.slice(0, visibleCount),
-    [events, visibleCount],
-  );
-  const hasMoreEvents = visibleCount < events.length || hasMore;
-
-  useEffect(() => {
-    const target = sentinelNode;
-    if (
-      !target ||
-      loading ||
-      !hasMoreEvents ||
-      loadingMore ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const loadMore = () => {
-      if (visibleCount < events.length) {
-        setVisibleCount((current) =>
-          Math.min(current + BOT_EVENT_PAGE_SIZE, events.length),
-        );
-        return;
-      }
-      onLoadMore();
-    };
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) loadMore();
-      },
-      {
-        root: null,
-        rootMargin: "360px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    const frameId = window.requestAnimationFrame(() => {
-      const rect = target.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
-        loadMore();
-      }
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [
-    events.length,
-    hasMoreEvents,
-    loading,
-    loadingMore,
-    onLoadMore,
-    sentinelNode,
-    visibleCount,
-  ]);
+  const sentinelRef = useInfiniteTableSentinel({
+    enabled: !loading && !loadingMore && hasMore,
+    onReachEnd: onLoadMore,
+  });
 
   const bodyState = loading
     ? "loading"
@@ -4040,171 +3908,160 @@ function NormalRequestsTable({
           </div>
           <div className="shrink-0 text-xs text-muted-foreground">
             {!loading && events.length > 0
-              ? hasMoreEvents
-                ? `${copy.recentShowing} ${numberFormat(locale, visibleEvents.length)} / ${numberFormat(locale, events.length)}`
+              ? hasMore
+                ? `${copy.recentShowing} ${numberFormat(locale, events.length)}`
                 : copy.recentLoadedAll
               : ""}
           </div>
         </div>
 
-        <Card className="py-0">
-          <CardContent className="px-0">
-            <Table className="min-w-[80rem]">
-              <TableHeader>
+        <AnalyticsTableCard>
+          <Table className="min-w-[80rem]">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-4">{copy.id}</TableHead>
+                <TableHead>{copy.time}</TableHead>
+                <TableHead>{copy.site}</TableHead>
+                <TableHead>{copy.kind}</TableHead>
+                <TableHead>{copy.normalDetail.requestMethod}</TableHead>
+                <TableHead>{copy.network}</TableHead>
+                <TableHead>{copy.asn}</TableHead>
+                <TableHead>{copy.location}</TableHead>
+                <TableHead>{copy.pathname}</TableHead>
+                <TableHead className="pr-4">
+                  {copy.normalDetail.edgeLatency}
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <AutoTransition
+              as="tbody"
+              transitionKey={bodyState}
+              initial={false}
+              duration={0.18}
+              type="fade"
+              presenceMode="wait"
+              aria-busy={loading}
+              data-slot="table-body"
+              className="[&_tr:last-child]:border-0"
+            >
+              {loading ? (
+                Array.from({ length: BOT_EVENT_SKELETON_ROWS }, (_, index) => (
+                  <BotEventRowSkeleton key={index} index={index} />
+                ))
+              ) : events.length === 0 ? (
                 <TableRow>
-                  <TableHead className="pl-4">{copy.id}</TableHead>
-                  <TableHead>{copy.time}</TableHead>
-                  <TableHead>{copy.site}</TableHead>
-                  <TableHead>{copy.kind}</TableHead>
-                  <TableHead>{copy.normalDetail.requestMethod}</TableHead>
-                  <TableHead>{copy.network}</TableHead>
-                  <TableHead>{copy.asn}</TableHead>
-                  <TableHead>{copy.location}</TableHead>
-                  <TableHead>{copy.pathname}</TableHead>
-                  <TableHead className="pr-4">
-                    {copy.normalDetail.edgeLatency}
-                  </TableHead>
+                  <TableCell
+                    colSpan={10}
+                    className="h-28 text-center text-muted-foreground"
+                  >
+                    {copy.noData}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <AutoTransition
-                as="tbody"
-                transitionKey={bodyState}
-                initial={false}
-                duration={0.18}
-                type="fade"
-                presenceMode="wait"
-                aria-busy={loading}
-                data-slot="table-body"
-                className="[&_tr:last-child]:border-0"
-              >
-                {loading ? (
-                  Array.from(
-                    { length: BOT_EVENT_SKELETON_ROWS },
-                    (_, index) => (
-                      <BotEventRowSkeleton key={index} index={index} />
-                    ),
-                  )
-                ) : events.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={10}
-                      className="h-28 text-center text-muted-foreground"
-                    >
-                      {copy.noData}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  <>
-                    {visibleEvents.map((event, index) => {
-                      const eventId = event.traceId || event.rayId || "";
-                      const rowKey =
-                        eventId ||
-                        `${event.siteId}:${event.pathname}:${event.receivedAt}`;
-                      return (
-                        <TableRow
-                          key={`${rowKey}:${index}`}
-                          role="button"
-                          tabIndex={0}
-                          className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-                          onClick={() => openEvent(event)}
-                          onKeyDown={(keyboardEvent) =>
-                            handleKeyDown(keyboardEvent, event)
-                          }
-                        >
-                          <TableCell className="pl-4 max-w-36">
-                            <div className="flex w-28 min-w-0 items-center gap-2">
-                              <VisitorAvatar
-                                seed={eventId || "normal"}
-                                className="size-6"
-                              />
-                              <span
-                                className="min-w-0 truncate font-mono"
-                                title={eventId || undefined}
-                              >
-                                {eventId ? shortId(eventId) : "--"}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="max-w-36 font-mono text-muted-foreground">
-                            <span className="block truncate">
-                              {formatRelativeTime(
-                                locale,
-                                event.receivedAt,
-                                now,
-                              )}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-48">
-                            <span
-                              className="block truncate font-medium"
-                              title={event.siteName}
-                            >
-                              {event.siteName ||
-                                event.siteDomain ||
-                                event.siteId}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-28">
-                            <Badge variant="outline">
-                              {requestKindLabel(copy, event.kind)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="max-w-24">
-                            <span className="block truncate font-mono">
-                              {event.requestMethod || "--"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-44">
-                            <span
-                              className="block truncate"
-                              title={event.asOrganization || undefined}
-                            >
-                              {event.asOrganization || "--"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-24">
-                            <span className="block truncate font-mono">
-                              {event.asn ? `AS${event.asn}` : "--"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-52">
-                            <CountryRegionMeta
-                              locale={locale}
-                              messages={messages}
-                              country={event.country || ""}
-                              region={event.region}
-                              className="w-full"
+              ) : (
+                <>
+                  {events.map((event, index) => {
+                    const eventId = event.traceId || event.rayId || "";
+                    const rowKey =
+                      eventId ||
+                      `${event.siteId}:${event.pathname}:${event.receivedAt}`;
+                    return (
+                      <TableRow
+                        key={`${rowKey}:${index}`}
+                        role="button"
+                        tabIndex={0}
+                        className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                        onClick={() => openEvent(event)}
+                        onKeyDown={(keyboardEvent) =>
+                          handleKeyDown(keyboardEvent, event)
+                        }
+                      >
+                        <TableCell className="pl-4 max-w-36">
+                          <div className="flex w-28 min-w-0 items-center gap-2">
+                            <VisitorAvatar
+                              seed={eventId || "normal"}
+                              className="size-6"
                             />
-                          </TableCell>
-                          <TableCell className="max-w-64">
                             <span
-                              className="block truncate font-mono"
-                              title={event.pathname || "/"}
+                              className="min-w-0 truncate font-mono"
+                              title={eventId || undefined}
                             >
-                              {event.pathname || "/"}
+                              {eventId ? shortId(eventId) : "--"}
                             </span>
-                          </TableCell>
-                          <TableCell className="max-w-28 pr-4">
-                            <span className="block truncate font-mono tabular-nums text-muted-foreground">
-                              {latencyFormat(locale, copy, event.edgeLatencyMs)}
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                    {hasMoreEvents ? (
-                      <BotEventRowSkeleton
-                        key={`sentinel-${visibleEvents.length}`}
-                        index={visibleEvents.length}
-                        sentinelRef={setSentinelNode}
-                      />
-                    ) : null}
-                  </>
-                )}
-              </AutoTransition>
-            </Table>
-          </CardContent>
-        </Card>
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-36 font-mono text-muted-foreground">
+                          <span className="block truncate">
+                            {formatRelativeTime(locale, event.receivedAt, now)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-48">
+                          <span
+                            className="block truncate font-medium"
+                            title={event.siteName}
+                          >
+                            {event.siteName || event.siteDomain || event.siteId}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-28">
+                          <Badge variant="outline">
+                            {requestKindLabel(copy, event.kind)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="max-w-24">
+                          <span className="block truncate font-mono">
+                            {event.requestMethod || "--"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-44">
+                          <span
+                            className="block truncate"
+                            title={event.asOrganization || undefined}
+                          >
+                            {event.asOrganization || "--"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-24">
+                          <span className="block truncate font-mono">
+                            {event.asn ? `AS${event.asn}` : "--"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-52">
+                          <CountryRegionMeta
+                            locale={locale}
+                            messages={messages}
+                            country={event.country || ""}
+                            region={event.region}
+                            className="w-full"
+                          />
+                        </TableCell>
+                        <TableCell className="max-w-64">
+                          <span
+                            className="block truncate font-mono"
+                            title={event.pathname || "/"}
+                          >
+                            {event.pathname || "/"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-28 pr-4">
+                          <span className="block truncate font-mono tabular-nums text-muted-foreground">
+                            {latencyFormat(locale, copy, event.edgeLatencyMs)}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {hasMore ? (
+                    <BotEventRowSkeleton
+                      key={`sentinel-${events.length}`}
+                      index={events.length}
+                      sentinelRef={sentinelRef}
+                    />
+                  ) : null}
+                </>
+              )}
+            </AutoTransition>
+          </Table>
+        </AnalyticsTableCard>
       </section>
 
       <NormalRequestDetailDrawer

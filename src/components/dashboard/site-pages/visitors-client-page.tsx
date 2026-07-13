@@ -6,6 +6,7 @@ import {
 } from "@remixicon/react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
+import { AnalyticsTableCard } from "@/components/dashboard/analytics-table-card";
 import { ClickableTableCell } from "@/components/dashboard/clickable-table-cell";
 import {
   BrowserMeta,
@@ -22,8 +23,8 @@ import {
   DetailDrawer,
 } from "@/components/dashboard/site-pages/detail-query-modal";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+import { useInfiniteTableSentinel } from "@/components/dashboard/use-infinite-table-sentinel";
 import { AutoTransition } from "@/components/ui/auto-transition";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -56,7 +57,7 @@ interface VisitorsClientPageProps {
 
 type VisitorRow = VisitorsData["data"][number];
 
-const VISITOR_PAGE_SIZE = 80;
+const VISITOR_PAGE_SIZE = 50;
 const VISITOR_SKELETON_ROWS = 8;
 
 const VisitorDetailClientPage = dynamic(
@@ -266,9 +267,6 @@ export function VisitorsClientPage({
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState<VisitorSortState>(DEFAULT_VISITOR_SORT);
   const [now, setNow] = useState(() => Date.now());
-  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
-    null,
-  );
   const searchParams = useLiveSearchParams();
   const detailVisitorId = searchParams.get(DETAIL_QUERY_PARAM)?.trim() || "";
   const [detailSessionId, setDetailSessionId] = useState("");
@@ -349,55 +347,11 @@ export function VisitorsClientPage({
     void fetchNextPage();
   };
 
-  useEffect(() => {
-    const target = sentinelNode;
-    if (
-      !target ||
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      error ||
-      !hasMore ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) {
-          loadNextPage();
-        }
-      },
-      {
-        root: null,
-        rootMargin: "360px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    const frameId = window.requestAnimationFrame(() => {
-      const rect = target.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
-        loadNextPage();
-      }
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [
-    appendError,
-    error,
-    fetchNextPage,
-    hasMore,
-    loadingInitial,
-    loadingMore,
-    sentinelNode,
-  ]);
+  const sentinelRef = useInfiniteTableSentinel({
+    enabled:
+      !loadingInitial && !loadingMore && !appendError && !error && hasMore,
+    onReachEnd: loadNextPage,
+  });
 
   const toggleSort = (key: VisitorSortKey) => {
     setSort((current) =>
@@ -464,222 +418,215 @@ export function VisitorsClientPage({
         />
       </div>
 
-      <Card className="py-0">
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
+      <AnalyticsTableCard>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-32 pl-4">{labels.visitor}</TableHead>
+              <TableHead>{labels.sessionId}</TableHead>
+              <SortHeader
+                label={labels.firstSeen}
+                active={sort.key === "firstSeenAt"}
+                direction={sort.direction}
+                onClick={() => toggleSort("firstSeenAt")}
+              />
+              <SortHeader
+                label={labels.lastSeen}
+                active={sort.key === "lastSeenAt"}
+                direction={sort.direction}
+                onClick={() => toggleSort("lastSeenAt")}
+              />
+              <SortHeader
+                label={labels.sessions}
+                active={sort.key === "sessions"}
+                direction={sort.direction}
+                onClick={() => toggleSort("sessions")}
+                align="right"
+                className="text-right"
+              />
+              <SortHeader
+                label={labels.pageViews}
+                active={sort.key === "views"}
+                direction={sort.direction}
+                onClick={() => toggleSort("views")}
+                align="center"
+                className="text-center"
+              />
+              <TableHead>{labels.referrer}</TableHead>
+              <TableHead>{labels.location}</TableHead>
+              <TableHead>{labels.os}</TableHead>
+              <TableHead>{labels.browser}</TableHead>
+              <TableHead className="pr-4">{labels.device}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <AutoTransition
+            as="tbody"
+            transitionKey={bodyState}
+            initial={false}
+            duration={0.18}
+            type="fade"
+            presenceMode="wait"
+            aria-busy={replacingRows || loadingMore}
+            data-slot="table-body"
+            className="[&_tr:last-child]:border-0"
+          >
+            {replacingRows ? (
+              Array.from({ length: VISITOR_SKELETON_ROWS }, (_, index) => (
+                <VisitorRowSkeleton
+                  key={`initial-skeleton-${index}`}
+                  index={index}
+                />
+              ))
+            ) : error ? (
               <TableRow>
-                <TableHead className="w-32 pl-4">{labels.visitor}</TableHead>
-                <TableHead>{labels.sessionId}</TableHead>
-                <SortHeader
-                  label={labels.firstSeen}
-                  active={sort.key === "firstSeenAt"}
-                  direction={sort.direction}
-                  onClick={() => toggleSort("firstSeenAt")}
-                />
-                <SortHeader
-                  label={labels.lastSeen}
-                  active={sort.key === "lastSeenAt"}
-                  direction={sort.direction}
-                  onClick={() => toggleSort("lastSeenAt")}
-                />
-                <SortHeader
-                  label={labels.sessions}
-                  active={sort.key === "sessions"}
-                  direction={sort.direction}
-                  onClick={() => toggleSort("sessions")}
-                  align="right"
-                  className="text-right"
-                />
-                <SortHeader
-                  label={labels.pageViews}
-                  active={sort.key === "views"}
-                  direction={sort.direction}
-                  onClick={() => toggleSort("views")}
-                  align="center"
-                  className="text-center"
-                />
-                <TableHead>{labels.referrer}</TableHead>
-                <TableHead>{labels.location}</TableHead>
-                <TableHead>{labels.os}</TableHead>
-                <TableHead>{labels.browser}</TableHead>
-                <TableHead className="pr-4">{labels.device}</TableHead>
+                <TableCell
+                  colSpan={11}
+                  className="h-28 text-center text-muted-foreground"
+                >
+                  {labels.loadError}
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <AutoTransition
-              as="tbody"
-              transitionKey={bodyState}
-              initial={false}
-              duration={0.18}
-              type="fade"
-              presenceMode="wait"
-              aria-busy={replacingRows || loadingMore}
-              data-slot="table-body"
-              className="[&_tr:last-child]:border-0"
-            >
-              {replacingRows ? (
-                Array.from({ length: VISITOR_SKELETON_ROWS }, (_, index) => (
-                  <VisitorRowSkeleton
-                    key={`initial-skeleton-${index}`}
-                    index={index}
-                  />
-                ))
-              ) : error ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={11}
-                    className="h-28 text-center text-muted-foreground"
-                  >
-                    {labels.loadError}
-                  </TableCell>
-                </TableRow>
-              ) : rows.length === 0 && !hasMore ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={11}
-                    className="h-28 text-center text-muted-foreground"
-                  >
-                    {labels.empty}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                <>
-                  {rows.map((row) => {
-                    const openDetail = () => openVisitorDetail(row.visitorId);
-                    return (
-                      <TableRow
-                        key={row.visitorId}
-                        className="group cursor-pointer"
+            ) : rows.length === 0 && !hasMore ? (
+              <TableRow>
+                <TableCell
+                  colSpan={11}
+                  className="h-28 text-center text-muted-foreground"
+                >
+                  {labels.empty}
+                </TableCell>
+              </TableRow>
+            ) : (
+              <>
+                {rows.map((row) => {
+                  const openDetail = () => openVisitorDetail(row.visitorId);
+                  return (
+                    <TableRow
+                      key={row.visitorId}
+                      className="group cursor-pointer"
+                    >
+                      <ClickableTableCell
+                        onClick={openDetail}
+                        className="w-32"
+                        buttonClassName="pl-4"
+                        focusable
+                        ariaLabel={`${labels.visitor}: ${row.visitorId}`}
                       >
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="w-32"
-                          buttonClassName="pl-4"
-                          focusable
-                          ariaLabel={`${labels.visitor}: ${row.visitorId}`}
-                        >
-                          <div className="flex w-28 items-center gap-2">
-                            <VisitorAvatar
-                              seed={row.visitorId}
-                              className="size-6"
-                            />
-                            <span className="truncate">{labels.anonymous}</span>
-                          </div>
-                        </ClickableTableCell>
-                        <ClickableTableCell onClick={openDetail}>
-                          <SessionIdValue value={row.sessionId} />
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="font-mono text-muted-foreground"
-                        >
-                          {formatRelativeTime(locale, row.firstSeenAt, now)}
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="font-mono text-muted-foreground"
-                        >
-                          {formatRelativeTime(locale, row.lastSeenAt, now)}
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="text-right font-mono tabular-nums"
-                        >
-                          {numberFormat(locale, row.sessions)}
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="text-center"
-                        >
-                          <span className="font-mono tabular-nums">
-                            {numberFormat(locale, row.views)}
-                          </span>
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="max-w-48"
-                        >
-                          <ReferrerMeta
-                            referrerHost={row.referrerHost || ""}
-                            referrerUrl={row.referrerUrl}
-                            directLabel={messages.overview.direct}
+                        <div className="flex w-28 items-center gap-2">
+                          <VisitorAvatar
+                            seed={row.visitorId}
+                            className="size-6"
                           />
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="max-w-52"
-                        >
-                          <CountryRegionMeta
-                            locale={locale}
-                            messages={messages}
-                            country={row.country || ""}
-                            region={row.region}
-                            regionCode={row.regionCode}
-                          />
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="max-w-40"
-                        >
-                          <OsMeta
-                            os={row.os || ""}
-                            version={row.osVersion}
-                            unknownLabel={messages.common.unknown}
-                          />
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="max-w-40"
-                        >
-                          <BrowserMeta
-                            browser={row.browser || ""}
-                            version={row.browserVersion}
-                            unknownLabel={messages.common.unknown}
-                          />
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="max-w-36"
-                          buttonClassName="pr-4"
-                        >
-                          <DeviceMeta
-                            deviceType={row.deviceType || ""}
-                            deviceLabels={messages.common.deviceLabels}
-                            unknownLabel={messages.common.unknown}
-                          />
-                        </ClickableTableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {appendError ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={11}
-                        className="h-16 text-center text-muted-foreground"
+                          <span className="truncate">{labels.anonymous}</span>
+                        </div>
+                      </ClickableTableCell>
+                      <ClickableTableCell onClick={openDetail}>
+                        <SessionIdValue value={row.sessionId} />
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openDetail}
+                        className="font-mono text-muted-foreground"
                       >
-                        {labels.loadError}
-                      </TableCell>
-                    </TableRow>
-                  ) : hasMore ? (
-                    Array.from(
-                      { length: VISITOR_SKELETON_ROWS },
-                      (_, index) => (
-                        <VisitorRowSkeleton
-                          key={`append-skeleton-${rows.length}-${index}`}
-                          index={index}
-                          sentinelRef={
-                            index === 0 ? setSentinelNode : undefined
-                          }
+                        {formatRelativeTime(locale, row.firstSeenAt, now)}
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openDetail}
+                        className="font-mono text-muted-foreground"
+                      >
+                        {formatRelativeTime(locale, row.lastSeenAt, now)}
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openDetail}
+                        className="text-right font-mono tabular-nums"
+                      >
+                        {numberFormat(locale, row.sessions)}
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openDetail}
+                        className="text-center"
+                      >
+                        <span className="font-mono tabular-nums">
+                          {numberFormat(locale, row.views)}
+                        </span>
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openDetail}
+                        className="max-w-48"
+                      >
+                        <ReferrerMeta
+                          referrerHost={row.referrerHost || ""}
+                          referrerUrl={row.referrerUrl}
+                          directLabel={messages.overview.direct}
                         />
-                      ),
-                    )
-                  ) : null}
-                </>
-              )}
-            </AutoTransition>
-          </Table>
-        </CardContent>
-      </Card>
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openDetail}
+                        className="max-w-52"
+                      >
+                        <CountryRegionMeta
+                          locale={locale}
+                          messages={messages}
+                          country={row.country || ""}
+                          region={row.region}
+                          regionCode={row.regionCode}
+                        />
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openDetail}
+                        className="max-w-40"
+                      >
+                        <OsMeta
+                          os={row.os || ""}
+                          version={row.osVersion}
+                          unknownLabel={messages.common.unknown}
+                        />
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openDetail}
+                        className="max-w-40"
+                      >
+                        <BrowserMeta
+                          browser={row.browser || ""}
+                          version={row.browserVersion}
+                          unknownLabel={messages.common.unknown}
+                        />
+                      </ClickableTableCell>
+                      <ClickableTableCell
+                        onClick={openDetail}
+                        className="max-w-36"
+                        buttonClassName="pr-4"
+                      >
+                        <DeviceMeta
+                          deviceType={row.deviceType || ""}
+                          deviceLabels={messages.common.deviceLabels}
+                          unknownLabel={messages.common.unknown}
+                        />
+                      </ClickableTableCell>
+                    </TableRow>
+                  );
+                })}
+                {appendError ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={11}
+                      className="h-16 text-center text-muted-foreground"
+                    >
+                      {labels.loadError}
+                    </TableCell>
+                  </TableRow>
+                ) : hasMore ? (
+                  Array.from({ length: VISITOR_SKELETON_ROWS }, (_, index) => (
+                    <VisitorRowSkeleton
+                      key={`append-skeleton-${rows.length}-${index}`}
+                      index={index}
+                      sentinelRef={index === 0 ? sentinelRef : undefined}
+                    />
+                  ))
+                ) : null}
+              </>
+            )}
+          </AutoTransition>
+        </Table>
+      </AnalyticsTableCard>
 
       {detailVisitorId ? (
         <DetailDrawer

@@ -27,6 +27,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
+import { AnalyticsTableCard } from "@/components/dashboard/analytics-table-card";
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import {
@@ -48,6 +49,7 @@ import {
   EVENT_RECORD_DRAWER_Z_INDEX,
   NESTED_DETAIL_DRAWER_Z_INDEX,
 } from "@/components/dashboard/site-pages/floating-layer";
+import { useInfiniteTableSentinel } from "@/components/dashboard/use-infinite-table-sentinel";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
@@ -119,7 +121,7 @@ import { navigateWithTransition } from "@/lib/page-transition";
 import { useRouter } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
-const EVENT_PAGE_SIZE = 80;
+const EVENT_PAGE_SIZE = 50;
 const EVENT_SKELETON_ROWS = 8;
 const OTHER_SERIES_KEY = "other";
 const FIELD_TREE_CHILD_TRANSITION = {
@@ -1096,193 +1098,187 @@ function EventRecordsTable({
         : "rows";
 
   return (
-    <Card className="py-0">
-      <CardContent className="px-0">
-        <Table className="min-w-[92rem]">
-          <TableHeader>
+    <AnalyticsTableCard>
+      <Table className="min-w-[92rem]">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="pl-4">{labels.visitor}</TableHead>
+            <SortHeader
+              label={labels.eventName}
+              active={sort.key === "eventName"}
+              direction={sort.direction}
+              onClick={() => onSort("eventName")}
+            />
+            <TableHead>{labels.eventId}</TableHead>
+            <SortHeader
+              label={labels.occurredAt}
+              active={sort.key === "occurredAt"}
+              direction={sort.direction}
+              onClick={() => onSort("occurredAt")}
+            />
+            <SortHeader
+              label={labels.page}
+              active={sort.key === "pathname"}
+              direction={sort.direction}
+              onClick={() => onSort("pathname")}
+            />
+            <TableHead>{labels.referrer}</TableHead>
+            <TableHead>{labels.location}</TableHead>
+            <TableHead>{labels.os}</TableHead>
+            <TableHead>{labels.browser}</TableHead>
+            <TableHead>{labels.device}</TableHead>
+            <TableHead className="pr-4 text-right">{labels.payload}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <AutoTransition
+          as="tbody"
+          transitionKey={bodyState}
+          initial={false}
+          duration={0.18}
+          type="fade"
+          presenceMode="wait"
+          aria-busy={loadingRows || loadingMore}
+          data-slot="table-body"
+          className="[&_tr:last-child]:border-0"
+        >
+          {loadingRows ? (
+            Array.from({ length: EVENT_SKELETON_ROWS }, (_, index) => (
+              <EventRowSkeleton key={index} index={index} />
+            ))
+          ) : error ? (
             <TableRow>
-              <TableHead className="pl-4">{labels.visitor}</TableHead>
-              <SortHeader
-                label={labels.eventName}
-                active={sort.key === "eventName"}
-                direction={sort.direction}
-                onClick={() => onSort("eventName")}
-              />
-              <TableHead>{labels.eventId}</TableHead>
-              <SortHeader
-                label={labels.occurredAt}
-                active={sort.key === "occurredAt"}
-                direction={sort.direction}
-                onClick={() => onSort("occurredAt")}
-              />
-              <SortHeader
-                label={labels.page}
-                active={sort.key === "pathname"}
-                direction={sort.direction}
-                onClick={() => onSort("pathname")}
-              />
-              <TableHead>{labels.referrer}</TableHead>
-              <TableHead>{labels.location}</TableHead>
-              <TableHead>{labels.os}</TableHead>
-              <TableHead>{labels.browser}</TableHead>
-              <TableHead>{labels.device}</TableHead>
-              <TableHead className="pr-4 text-right">
-                {labels.payload}
-              </TableHead>
+              <TableCell
+                colSpan={11}
+                className="h-28 text-center text-muted-foreground"
+              >
+                {labels.loadError}
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <AutoTransition
-            as="tbody"
-            transitionKey={bodyState}
-            initial={false}
-            duration={0.18}
-            type="fade"
-            presenceMode="wait"
-            aria-busy={loadingRows || loadingMore}
-            data-slot="table-body"
-            className="[&_tr:last-child]:border-0"
-          >
-            {loadingRows ? (
-              Array.from({ length: EVENT_SKELETON_ROWS }, (_, index) => (
-                <EventRowSkeleton key={index} index={index} />
-              ))
-            ) : error ? (
-              <TableRow>
-                <TableCell
-                  colSpan={11}
-                  className="h-28 text-center text-muted-foreground"
+          ) : rows.length === 0 && !hasMore ? (
+            <TableRow>
+              <TableCell
+                colSpan={11}
+                className="h-28 text-center text-muted-foreground"
+              >
+                {labels.empty}
+              </TableCell>
+            </TableRow>
+          ) : (
+            <>
+              {rows.map((row) => (
+                <TableRow
+                  key={row.eventId}
+                  role="button"
+                  tabIndex={0}
+                  className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                  onClick={() => onOpenRecord(row.eventId)}
+                  onKeyDown={(event) => handleKeyDown(event, row.eventId)}
                 >
-                  {labels.loadError}
-                </TableCell>
-              </TableRow>
-            ) : rows.length === 0 && !hasMore ? (
-              <TableRow>
-                <TableCell
-                  colSpan={11}
-                  className="h-28 text-center text-muted-foreground"
-                >
-                  {labels.empty}
-                </TableCell>
-              </TableRow>
-            ) : (
-              <>
-                {rows.map((row) => (
-                  <TableRow
-                    key={row.eventId}
-                    role="button"
-                    tabIndex={0}
-                    className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-                    onClick={() => onOpenRecord(row.eventId)}
-                    onKeyDown={(event) => handleKeyDown(event, row.eventId)}
-                  >
-                    <TableCell className="max-w-36 pl-4">
-                      <div className="flex w-28 min-w-0 items-center gap-2">
-                        <VisitorAvatar
-                          seed={row.visitorId || row.eventId}
-                          className="size-6"
-                        />
-                        <span className="min-w-0 truncate font-mono">
-                          {shortId(
-                            row.visitorId || row.sessionId || row.visitId,
-                          )}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-48">
-                      <span
-                        className="block truncate font-medium"
-                        title={row.eventName}
-                      >
-                        {row.eventName}
+                  <TableCell className="max-w-36 pl-4">
+                    <div className="flex w-28 min-w-0 items-center gap-2">
+                      <VisitorAvatar
+                        seed={row.visitorId || row.eventId}
+                        className="size-6"
+                      />
+                      <span className="min-w-0 truncate font-mono">
+                        {shortId(row.visitorId || row.sessionId || row.visitId)}
                       </span>
-                    </TableCell>
-                    <TableCell className="max-w-32">
-                      <span className="block truncate font-mono text-muted-foreground">
-                        {shortId(row.eventId)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-36 font-mono text-muted-foreground">
-                      <span className="block truncate">
-                        {formatRelativeTime(locale, row.occurredAt, now)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-64">
-                      <span
-                        className="block truncate font-mono"
-                        title={formatPath(row.pathname)}
-                      >
-                        {formatPath(row.pathname)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-44">
-                      <ReferrerMeta
-                        referrerHost={row.referrerHost || ""}
-                        directLabel={messages.overview.direct}
-                        className="w-full"
-                      />
-                    </TableCell>
-                    <TableCell className="max-w-52">
-                      <CountryRegionMeta
-                        locale={locale}
-                        messages={messages}
-                        country={row.country || ""}
-                        region={row.region}
-                        className="w-full"
-                      />
-                    </TableCell>
-                    <TableCell className="max-w-40">
-                      <OsMeta
-                        os={row.os || ""}
-                        version={row.osVersion}
-                        unknownLabel={messages.common.unknown}
-                        className="w-full"
-                      />
-                    </TableCell>
-                    <TableCell className="max-w-40">
-                      <BrowserMeta
-                        browser={row.browser || ""}
-                        version={row.browserVersion}
-                        unknownLabel={messages.common.unknown}
-                        className="w-full"
-                      />
-                    </TableCell>
-                    <TableCell className="max-w-36">
-                      <DeviceMeta
-                        deviceType={row.deviceType || ""}
-                        deviceLabels={messages.common.deviceLabels}
-                        unknownLabel={messages.common.unknown}
-                        className="w-full"
-                      />
-                    </TableCell>
-                    <TableCell className="pr-4 text-right font-mono tabular-nums">
-                      {numberFormat(locale, row.valueCount)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {appendError ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={11}
-                      className="h-16 text-center text-muted-foreground"
+                    </div>
+                  </TableCell>
+                  <TableCell className="max-w-48">
+                    <span
+                      className="block truncate font-medium"
+                      title={row.eventName}
                     >
-                      {labels.loadError}
-                    </TableCell>
-                  </TableRow>
-                ) : hasMore ? (
-                  Array.from({ length: EVENT_SKELETON_ROWS }, (_, index) => (
-                    <EventRowSkeleton
-                      key={`append-${rows.length}-${index}`}
-                      index={index}
-                      sentinelRef={index === 0 ? sentinelRef : undefined}
+                      {row.eventName}
+                    </span>
+                  </TableCell>
+                  <TableCell className="max-w-32">
+                    <span className="block truncate font-mono text-muted-foreground">
+                      {shortId(row.eventId)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="max-w-36 font-mono text-muted-foreground">
+                    <span className="block truncate">
+                      {formatRelativeTime(locale, row.occurredAt, now)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="max-w-64">
+                    <span
+                      className="block truncate font-mono"
+                      title={formatPath(row.pathname)}
+                    >
+                      {formatPath(row.pathname)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="max-w-44">
+                    <ReferrerMeta
+                      referrerHost={row.referrerHost || ""}
+                      directLabel={messages.overview.direct}
+                      className="w-full"
                     />
-                  ))
-                ) : null}
-              </>
-            )}
-          </AutoTransition>
-        </Table>
-      </CardContent>
-    </Card>
+                  </TableCell>
+                  <TableCell className="max-w-52">
+                    <CountryRegionMeta
+                      locale={locale}
+                      messages={messages}
+                      country={row.country || ""}
+                      region={row.region}
+                      className="w-full"
+                    />
+                  </TableCell>
+                  <TableCell className="max-w-40">
+                    <OsMeta
+                      os={row.os || ""}
+                      version={row.osVersion}
+                      unknownLabel={messages.common.unknown}
+                      className="w-full"
+                    />
+                  </TableCell>
+                  <TableCell className="max-w-40">
+                    <BrowserMeta
+                      browser={row.browser || ""}
+                      version={row.browserVersion}
+                      unknownLabel={messages.common.unknown}
+                      className="w-full"
+                    />
+                  </TableCell>
+                  <TableCell className="max-w-36">
+                    <DeviceMeta
+                      deviceType={row.deviceType || ""}
+                      deviceLabels={messages.common.deviceLabels}
+                      unknownLabel={messages.common.unknown}
+                      className="w-full"
+                    />
+                  </TableCell>
+                  <TableCell className="pr-4 text-right font-mono tabular-nums">
+                    {numberFormat(locale, row.valueCount)}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {appendError ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={11}
+                    className="h-16 text-center text-muted-foreground"
+                  >
+                    {labels.loadError}
+                  </TableCell>
+                </TableRow>
+              ) : hasMore ? (
+                Array.from({ length: EVENT_SKELETON_ROWS }, (_, index) => (
+                  <EventRowSkeleton
+                    key={`append-${rows.length}-${index}`}
+                    index={index}
+                    sentinelRef={index === 0 ? sentinelRef : undefined}
+                  />
+                ))
+              ) : null}
+            </>
+          )}
+        </AutoTransition>
+      </Table>
+    </AnalyticsTableCard>
   );
 }
 
@@ -1666,9 +1662,6 @@ export function EventRecordsSection({
   const [sort, setSort] = useState<EventRecordSortState>(
     DEFAULT_EVENT_RECORD_SORT,
   );
-  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
-    null,
-  );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
@@ -1738,55 +1731,11 @@ export function EventRecordsSection({
     void fetchNextPage();
   };
 
-  useEffect(() => {
-    const target = sentinelNode;
-    if (
-      !target ||
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      error ||
-      !hasMore ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) {
-          loadNextPage();
-        }
-      },
-      {
-        root: null,
-        rootMargin: "360px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    const frameId = window.requestAnimationFrame(() => {
-      const rect = target.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
-        loadNextPage();
-      }
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [
-    appendError,
-    error,
-    fetchNextPage,
-    hasMore,
-    loadingInitial,
-    loadingMore,
-    sentinelNode,
-  ]);
+  const sentinelRef = useInfiniteTableSentinel({
+    enabled:
+      !loadingInitial && !loadingMore && !appendError && !error && hasMore,
+    onReachEnd: loadNextPage,
+  });
 
   const detailQuery = useQuery({
     queryKey: [
@@ -1854,7 +1803,7 @@ export function EventRecordsSection({
         error={error}
         appendError={appendError}
         hasMore={hasMore}
-        sentinelRef={setSentinelNode}
+        sentinelRef={sentinelRef}
       />
 
       <EventRecordDetailDrawer

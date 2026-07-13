@@ -17,12 +17,14 @@ import {
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { AnalyticsTableCard } from "@/components/dashboard/analytics-table-card";
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { JsonTreePanel } from "@/components/dashboard/json-tree";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { EVENT_RECORD_DRAWER_Z_INDEX } from "@/components/dashboard/site-pages/floating-layer";
 import { TableActionButton } from "@/components/dashboard/table-action-button";
+import { useInfiniteTableSentinel } from "@/components/dashboard/use-infinite-table-sentinel";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
@@ -410,172 +412,165 @@ function ScheduledTaskRunsTable({
         : "rows";
 
   return (
-    <Card className="py-0">
-      <CardContent className="px-0">
-        <Table className="min-w-[82rem]">
-          <TableHeader>
+    <AnalyticsTableCard>
+      <Table className="min-w-[82rem]">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="pl-4">{labels.scheduledAt}</TableHead>
+            <TableHead>{labels.startedAt}</TableHead>
+            <TableHead>{labels.finishedAt}</TableHead>
+            <TableHead>{labels.trigger}</TableHead>
+            <TableHead>{labels.statusLabel}</TableHead>
+            <TableHead className="text-right">{labels.duration}</TableHead>
+            <TableHead>{labels.taskResult}</TableHead>
+            <TableHead className="text-right">{labels.taskCount}</TableHead>
+            <TableHead className="text-right">{labels.subtaskCount}</TableHead>
+            <TableHead className="pr-4 text-right">{labels.logs}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <AutoTransition
+          as="tbody"
+          transitionKey={bodyState}
+          initial={false}
+          duration={0.18}
+          type="fade"
+          presenceMode="wait"
+          aria-busy={loadingRows || loadingMore}
+          data-slot="table-body"
+          className="[&_tr:last-child]:border-0"
+        >
+          {loadingRows ? (
+            Array.from({ length: RUN_SKELETON_ROWS }, (_, index) => (
+              <ScheduledRunRowSkeleton key={index} index={index} />
+            ))
+          ) : error ? (
             <TableRow>
-              <TableHead className="pl-4">{labels.scheduledAt}</TableHead>
-              <TableHead>{labels.startedAt}</TableHead>
-              <TableHead>{labels.finishedAt}</TableHead>
-              <TableHead>{labels.trigger}</TableHead>
-              <TableHead>{labels.statusLabel}</TableHead>
-              <TableHead className="text-right">{labels.duration}</TableHead>
-              <TableHead>{labels.taskResult}</TableHead>
-              <TableHead className="text-right">{labels.taskCount}</TableHead>
-              <TableHead className="text-right">
-                {labels.subtaskCount}
-              </TableHead>
-              <TableHead className="pr-4 text-right">{labels.logs}</TableHead>
+              <TableCell
+                colSpan={RUN_TABLE_COLUMN_COUNT}
+                className="h-28 text-center text-muted-foreground"
+              >
+                {labels.loadFailed}
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <AutoTransition
-            as="tbody"
-            transitionKey={bodyState}
-            initial={false}
-            duration={0.18}
-            type="fade"
-            presenceMode="wait"
-            aria-busy={loadingRows || loadingMore}
-            data-slot="table-body"
-            className="[&_tr:last-child]:border-0"
-          >
-            {loadingRows ? (
-              Array.from({ length: RUN_SKELETON_ROWS }, (_, index) => (
-                <ScheduledRunRowSkeleton key={index} index={index} />
-              ))
-            ) : error ? (
-              <TableRow>
-                <TableCell
-                  colSpan={RUN_TABLE_COLUMN_COUNT}
-                  className="h-28 text-center text-muted-foreground"
-                >
-                  {labels.loadFailed}
-                </TableCell>
-              </TableRow>
-            ) : rows.length === 0 && !hasMore ? (
-              <TableRow>
-                <TableCell
-                  colSpan={RUN_TABLE_COLUMN_COUNT}
-                  className="h-28 text-center text-muted-foreground"
-                >
-                  {labels.noRuns}
-                </TableCell>
-              </TableRow>
-            ) : (
-              <>
-                {rows.map((run) => {
-                  const selected = selectedRunId === run.id;
-                  return (
-                    <TableRow
-                      key={run.id}
-                      role="button"
-                      tabIndex={0}
-                      className={cn(
-                        "group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-                        selected && "bg-muted/55",
+          ) : rows.length === 0 && !hasMore ? (
+            <TableRow>
+              <TableCell
+                colSpan={RUN_TABLE_COLUMN_COUNT}
+                className="h-28 text-center text-muted-foreground"
+              >
+                {labels.noRuns}
+              </TableCell>
+            </TableRow>
+          ) : (
+            <>
+              {rows.map((run) => {
+                const selected = selectedRunId === run.id;
+                return (
+                  <TableRow
+                    key={run.id}
+                    role="button"
+                    tabIndex={0}
+                    className={cn(
+                      "group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+                      selected && "bg-muted/55",
+                    )}
+                    onClick={() => onOpenRun(run)}
+                    onKeyDown={(event) => handleKeyDown(event, run)}
+                  >
+                    <TableCell className="pl-4 font-mono text-xs">
+                      {formatDateOrDash(locale, run.scheduledAt, timeZone)}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {shortDateTimeWithSeconds(
+                        locale,
+                        run.startedAt,
+                        timeZone,
                       )}
-                      onClick={() => onOpenRun(run)}
-                      onKeyDown={(event) => handleKeyDown(event, run)}
-                    >
-                      <TableCell className="pl-4 font-mono text-xs">
-                        {formatDateOrDash(locale, run.scheduledAt, timeZone)}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {shortDateTimeWithSeconds(
-                          locale,
-                          run.startedAt,
-                          timeZone,
-                        )}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {formatDateOrDash(locale, run.finishedAt, timeZone)}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {run.triggerType}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge
-                          status={run.status}
-                          labels={labels.status}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatDuration(locale, run.durationMs)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex min-w-40 flex-wrap items-center gap-1.5 text-xs">
-                          <Badge variant="outline">
-                            {numberFormat(locale, run.taskCount)}
-                          </Badge>
-                          {run.successCount > 0 ? (
-                            <span className="font-mono text-emerald-600 dark:text-emerald-400">
-                              {labels.status.success}:
-                              {numberFormat(locale, run.successCount)}
-                            </span>
-                          ) : null}
-                          {run.failedCount > 0 ? (
-                            <span className="font-mono text-destructive">
-                              {labels.status.failed}:
-                              {numberFormat(locale, run.failedCount)}
-                            </span>
-                          ) : null}
-                          {run.partialCount > 0 ? (
-                            <span className="font-mono text-amber-600 dark:text-amber-400">
-                              {labels.status.partial}:
-                              {numberFormat(locale, run.partialCount)}
-                            </span>
-                          ) : null}
-                          {run.runningCount > 0 ? (
-                            <span className="font-mono text-sky-600 dark:text-sky-400">
-                              {labels.status.running}:
-                              {numberFormat(locale, run.runningCount)}
-                            </span>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {numberFormat(locale, run.taskCount)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {numberFormat(locale, runSubtaskCount(run))}
-                      </TableCell>
-                      <TableCell className="pr-4 text-right">
-                        <TableActionButton
-                          label={`${numberFormat(locale, run.logsCount)} ${labels.viewLogs}`}
-                          onClick={() => onOpenRun(run)}
-                          className={cn(selected && "text-foreground")}
-                        >
-                          <RiFileList3Line className="size-4" />
-                        </TableActionButton>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {appendError ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={RUN_TABLE_COLUMN_COUNT}
-                      className="h-16 text-center text-muted-foreground"
-                    >
-                      {labels.loadFailed}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {formatDateOrDash(locale, run.finishedAt, timeZone)}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {run.triggerType}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={run.status} labels={labels.status} />
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatDuration(locale, run.durationMs)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex min-w-40 flex-wrap items-center gap-1.5 text-xs">
+                        <Badge variant="outline">
+                          {numberFormat(locale, run.taskCount)}
+                        </Badge>
+                        {run.successCount > 0 ? (
+                          <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                            {labels.status.success}:
+                            {numberFormat(locale, run.successCount)}
+                          </span>
+                        ) : null}
+                        {run.failedCount > 0 ? (
+                          <span className="font-mono text-destructive">
+                            {labels.status.failed}:
+                            {numberFormat(locale, run.failedCount)}
+                          </span>
+                        ) : null}
+                        {run.partialCount > 0 ? (
+                          <span className="font-mono text-amber-600 dark:text-amber-400">
+                            {labels.status.partial}:
+                            {numberFormat(locale, run.partialCount)}
+                          </span>
+                        ) : null}
+                        {run.runningCount > 0 ? (
+                          <span className="font-mono text-sky-600 dark:text-sky-400">
+                            {labels.status.running}:
+                            {numberFormat(locale, run.runningCount)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {numberFormat(locale, run.taskCount)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {numberFormat(locale, runSubtaskCount(run))}
+                    </TableCell>
+                    <TableCell className="pr-4 text-right">
+                      <TableActionButton
+                        label={`${numberFormat(locale, run.logsCount)} ${labels.viewLogs}`}
+                        onClick={() => onOpenRun(run)}
+                        className={cn(selected && "text-foreground")}
+                      >
+                        <RiFileList3Line className="size-4" />
+                      </TableActionButton>
                     </TableCell>
                   </TableRow>
-                ) : hasMore ? (
-                  Array.from({ length: RUN_SKELETON_ROWS }, (_, index) => (
-                    <ScheduledRunRowSkeleton
-                      key={`append-${rows.length}-${index}`}
-                      index={index}
-                      sentinelRef={index === 0 ? sentinelRef : undefined}
-                    />
-                  ))
-                ) : null}
-              </>
-            )}
-          </AutoTransition>
-        </Table>
-      </CardContent>
-    </Card>
+                );
+              })}
+              {appendError ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={RUN_TABLE_COLUMN_COUNT}
+                    className="h-16 text-center text-muted-foreground"
+                  >
+                    {labels.loadFailed}
+                  </TableCell>
+                </TableRow>
+              ) : hasMore ? (
+                Array.from({ length: RUN_SKELETON_ROWS }, (_, index) => (
+                  <ScheduledRunRowSkeleton
+                    key={`append-${rows.length}-${index}`}
+                    index={index}
+                    sentinelRef={index === 0 ? sentinelRef : undefined}
+                  />
+                ))
+              ) : null}
+            </>
+          )}
+        </AutoTransition>
+      </Table>
+    </AnalyticsTableCard>
   );
 }
 
@@ -910,9 +905,6 @@ export function ScheduledTasksClient({
 }: ScheduledTasksClientProps) {
   const t = messages.managementPages.scheduledTasks;
   const { timeZone } = useDashboardQueryControls();
-  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
-    null,
-  );
   const [status, setStatus] = useState("all");
   const [selectedRunId, setSelectedRunId] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -950,10 +942,6 @@ export function ScheduledTasksClient({
     runsQuery.isPending ||
     (runsQuery.isFetching && !runsQuery.isFetchingNextPage);
 
-  useEffect(() => {
-    setSentinelNode(null);
-  }, [status]);
-
   const loadNextPage = useEffectEvent(() => {
     if (
       loadingInitial ||
@@ -966,55 +954,15 @@ export function ScheduledTasksClient({
     void runsQuery.fetchNextPage();
   });
 
-  useEffect(() => {
-    const target = sentinelNode;
-    if (
-      !target ||
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      error ||
-      !runsMeta.hasMore ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) {
-          loadNextPage();
-        }
-      },
-      {
-        root: null,
-        rootMargin: "360px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    const frameId = window.requestAnimationFrame(() => {
-      const rect = target.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
-        loadNextPage();
-      }
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [
-    appendError,
-    error,
-    loadingInitial,
-    loadingMore,
-    runsMeta.hasMore,
-    runsMeta.nextPage,
-    sentinelNode,
-  ]);
+  const sentinelRef = useInfiniteTableSentinel({
+    enabled:
+      !loadingInitial &&
+      !loadingMore &&
+      !appendError &&
+      !error &&
+      runsMeta.hasMore,
+    onReachEnd: loadNextPage,
+  });
 
   const detailQuery = useQuery({
     queryKey: ["dashboard", "scheduled-task-run", selectedRunId],
@@ -1293,7 +1241,7 @@ export function ScheduledTasksClient({
           error={error}
           appendError={appendError}
           hasMore={runsMeta.hasMore}
-          sentinelRef={setSentinelNode}
+          sentinelRef={sentinelRef}
         />
       </section>
 
