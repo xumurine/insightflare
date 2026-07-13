@@ -1914,9 +1914,28 @@ export function EventFieldsCard({
     () => JSON.stringify(effectiveFilters ?? {}),
     [effectiveFilters],
   );
-  const [filteredFields, setFilteredFields] = useState<EventField[]>([]);
-  const [filteredFieldsLoading, setFilteredFieldsLoading] = useState(false);
-  const [filteredFieldsError, setFilteredFieldsError] = useState(false);
+  const filteredFieldsQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "event-filtered-fields",
+      siteId,
+      eventName,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      effectiveFiltersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchEventTypeDetail(siteId, timeWindow, eventName, effectiveFilters, {
+        signal,
+      }),
+    enabled:
+      typeof window !== "undefined" && activePayloadFilterCount > 0 && !loading,
+  });
+  const filteredFields = filteredFieldsQuery.data?.fields ?? [];
+  const filteredFieldsLoading = filteredFieldsQuery.isPending;
+  const filteredFieldsError = filteredFieldsQuery.isError;
   const activeFields =
     activePayloadFilterCount > 0
       ? filteredFieldsLoading && filteredFields.length === 0
@@ -1975,9 +1994,6 @@ export function EventFieldsCard({
   const [expandedFieldKeys, setExpandedFieldKeys] = useState<Set<string>>(
     () => new Set(defaultExpandedFieldKeys),
   );
-  const [fieldValues, setFieldValues] = useState<EventFieldValueStat[]>([]);
-  const [fieldValuesLoading, setFieldValuesLoading] = useState(false);
-  const [fieldValuesError, setFieldValuesError] = useState(false);
 
   const selectedField = useMemo(() => {
     if (activeFields.length === 0) return null;
@@ -1998,99 +2014,38 @@ export function EventFieldsCard({
     setExpandedFieldKeys(new Set(defaultExpandedFieldKeys));
   }, [defaultExpandedFieldKeys, fieldRequestKey]);
 
-  useEffect(() => {
-    if (activePayloadFilterCount === 0) {
-      setFilteredFields([]);
-      setFilteredFieldsLoading(false);
-      setFilteredFieldsError(false);
-      return;
-    }
-    if (loading) return;
-
-    let active = true;
-    setFilteredFieldsLoading(true);
-    setFilteredFieldsError(false);
-
-    fetchEventTypeDetail(siteId, timeWindow, eventName, effectiveFilters)
-      .then((payload) => {
-        if (!active) return;
-        setFilteredFields(payload.fields);
-      })
-      .catch(() => {
-        if (!active) return;
-        setFilteredFields([]);
-        setFilteredFieldsError(true);
-      })
-      .finally(() => {
-        if (active) setFilteredFieldsLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    activePayloadFilterCount,
-    effectiveFilters,
-    effectiveFiltersKey,
-    eventName,
-    loading,
-    siteId,
-    timeWindow,
-  ]);
-
-  useEffect(() => {
-    if (fieldListLoading) return;
-    if (!selectedField) {
-      setFieldValues([]);
-      setFieldValuesLoading(false);
-      setFieldValuesError(false);
-      return;
-    }
-
-    let active = true;
-    setFieldValuesLoading(true);
-    setFieldValuesError(false);
-
-    fetchEventTypeFieldValues(
+  const fieldValuesQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "event-field-values",
       siteId,
-      timeWindow,
       eventName,
-      selectedField.path,
-      selectedField.valueType,
-      effectiveFilters,
-      {
-        limit: 25,
-      },
-    )
-      .then((payload) => {
-        if (!active) return;
-        setFieldValues(payload.data);
-      })
-      .catch(() => {
-        if (!active) return;
-        setFieldValues([]);
-        setFieldValuesError(true);
-      })
-      .finally(() => {
-        if (active) setFieldValuesLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    effectiveFilters,
-    effectiveFiltersKey,
-    eventName,
-    fieldListLoading,
-    selectedField?.path,
-    selectedField?.valueType,
-    siteId,
-    timeWindow.from,
-    timeWindow.interval,
-    timeWindow.timeZone,
-    timeWindow.to,
-  ]);
+      selectedField?.path ?? "",
+      selectedField?.valueType ?? "",
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      effectiveFiltersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchEventTypeFieldValues(
+        siteId,
+        timeWindow,
+        eventName,
+        selectedField?.path ?? "",
+        selectedField?.valueType ?? "string",
+        effectiveFilters,
+        { limit: 25, signal },
+      ),
+    enabled:
+      typeof window !== "undefined" &&
+      !fieldListLoading &&
+      Boolean(selectedField),
+  });
+  const fieldValues = fieldValuesQuery.data?.data ?? [];
+  const fieldValuesLoading = fieldValuesQuery.isPending;
+  const fieldValuesError = fieldValuesQuery.isError;
 
   const fieldValueTotal = useMemo(
     () =>

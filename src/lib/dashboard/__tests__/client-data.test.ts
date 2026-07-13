@@ -1269,6 +1269,29 @@ describe("Dashboard Client Data Processing Utilities", () => {
       ).rejects.toMatchObject({ name: "AbortError" });
     });
 
+    it("forwards cancellation signals for event field values", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchEventTypeFieldValues(
+        "event-field-values-signal",
+        mockWindow,
+        "Signup",
+        "payload.plan",
+        "string",
+        undefined,
+        { signal: controller.signal },
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
     it("forwards cancellation signals for UTM dimension requests", async () => {
       const fetchMock = vi
         .fn()

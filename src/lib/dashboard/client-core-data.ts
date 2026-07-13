@@ -490,6 +490,7 @@ export async function fetchEventTypeFieldValues(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<EventFieldValuesData> {
   const normalizedEventName = eventName.trim();
@@ -512,7 +513,12 @@ export async function fetchEventTypeFieldValues(
       },
       filters,
     ),
-  ).catch(() => emptyEventFieldValues(normalizedFieldPath, fieldValueType));
+    { signal: options?.signal },
+  ).catch((error) =>
+    fallbackUnlessAborted(error, () =>
+      emptyEventFieldValues(normalizedFieldPath, fieldValueType),
+    ),
+  );
 }
 
 export async function fetchEventRecordDetail(
