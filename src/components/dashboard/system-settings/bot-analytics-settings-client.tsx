@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RiCloseLine,
   RiDeleteBinLine,
@@ -6,6 +6,7 @@ import {
   RiLineChartLine,
   RiSave3Line,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import {
@@ -95,7 +96,9 @@ function apiMessage(payload: ApiResponse<unknown>, fallback: string): string {
   return fallback;
 }
 
-async function fetchConfig(): Promise<PublicBotAnalyticsConfig> {
+async function fetchConfig(
+  signal?: AbortSignal,
+): Promise<PublicBotAnalyticsConfig> {
   if (import.meta.env.VITE_DEMO_MODE === "1") {
     return {
       ...defaultConfig(),
@@ -108,6 +111,7 @@ async function fetchConfig(): Promise<PublicBotAnalyticsConfig> {
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   const payload =
     (await response.json()) as ApiResponse<PublicBotAnalyticsConfig>;
@@ -171,10 +175,16 @@ export function BotAnalyticsSettingsClient({
   const [form, setForm] = useState<FormState>(() => toFormState(config));
   const [apiToken, setApiToken] = useState("");
   const [apiTokenDirty, setApiTokenDirty] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const configAppliedRef = useRef(false);
+  const configQuery = useQuery({
+    queryKey: ["dashboard", "bot-analytics-config"],
+    queryFn: ({ signal }) => fetchConfig(signal),
+    enabled: typeof window !== "undefined",
+  });
+  const loading = configQuery.isPending;
   const analyticsEngineDisabled = config.analyticsEngineDisabled;
   const showSavedApiToken =
     !apiTokenDirty && config.apiTokenConfigured && Boolean(config.apiTokenHint);
@@ -186,26 +196,25 @@ export function BotAnalyticsSettingsClient({
     : copy.botAnalyticsApiTokenPlaceholder;
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetchConfig()
-      .then((next) => {
-        if (cancelled) return;
-        setConfig(next);
-        setForm(toFormState(next));
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : copy.loadFailed);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [copy.loadFailed]);
+    if (configQuery.isPending || configAppliedRef.current) return;
+    if (configQuery.isError) {
+      toast.error(
+        configQuery.error instanceof Error
+          ? configQuery.error.message
+          : copy.loadFailed,
+      );
+    }
+    const next = configQuery.data ?? defaultConfig();
+    setConfig(next);
+    setForm(toFormState(next));
+    configAppliedRef.current = true;
+  }, [
+    copy.loadFailed,
+    configQuery.data,
+    configQuery.error,
+    configQuery.isError,
+    configQuery.isPending,
+  ]);
 
   const hasChanges = useMemo(
     () =>
