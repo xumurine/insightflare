@@ -181,13 +181,30 @@ export function CanIUseCompatCard({
   window: tw,
   filters,
 }: CanIUseCompatCardProps) {
-  /* -- catalog state -- */
-  const [searchIndex, setSearchIndex] = useState<CaniuseSearchEntry[]>([]);
-  const [hotFeatures, setHotFeatures] = useState<CaniuseHotFeature[]>([]);
-  const [trendingFeatures, setTrendingFeatures] = useState<
-    CaniuseTrendingFeature[]
-  >([]);
-  const [indexLoading, setIndexLoading] = useState(true);
+  const catalogQuery = useQuery({
+    queryKey: ["dashboard", "caniuse-catalog"],
+    queryFn: async ({ signal }) => {
+      const [searchIndex, hotFeatures, trendingFeatures] = await Promise.all([
+        fetch(CANIUSE_BASE, { signal }).then(
+          (response) => response.json() as Promise<CaniuseSearchEntry[]>,
+        ),
+        fetch(`${CANIUSE_BASE}/hot/`, { signal }).then(
+          (response) => response.json() as Promise<CaniuseHotFeature[]>,
+        ),
+        fetch(`${CANIUSE_BASE}/trending/`, { signal }).then(
+          (response) => response.json() as Promise<CaniuseTrendingFeature[]>,
+        ),
+      ]);
+      return { searchIndex, hotFeatures, trendingFeatures };
+    },
+    enabled: typeof window !== "undefined",
+    retry: false,
+    staleTime: Infinity,
+  });
+  const searchIndex = catalogQuery.data?.searchIndex ?? [];
+  const hotFeatures = catalogQuery.data?.hotFeatures ?? [];
+  const trendingFeatures = catalogQuery.data?.trendingFeatures ?? [];
+  const indexLoading = catalogQuery.isPending;
 
   /* -- browser data -- */
   const browserDataQuery = useQuery({
@@ -225,106 +242,56 @@ export function CanIUseCompatCard({
 
   /* -- selected feature -- */
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [featureDetail, setFeatureDetail] =
-    useState<CaniuseFeatureDetail | null>(null);
-  const [featureLoading, setFeatureLoading] = useState(false);
-
-  /* -- preview details for default view -- */
-  const [previewDetails, setPreviewDetails] = useState<
-    Record<string, CaniuseFeatureDetail>
-  >({});
+  const featureQuery = useQuery({
+    queryKey: ["dashboard", "caniuse-feature", selectedId],
+    queryFn: ({ signal }) =>
+      fetch(`${CANIUSE_BASE}/feature/${selectedId}/`, { signal }).then(
+        (response) => response.json() as Promise<CaniuseFeatureDetail>,
+      ),
+    enabled: typeof window !== "undefined" && Boolean(selectedId),
+    retry: false,
+    staleTime: Infinity,
+  });
+  const featureDetail = featureQuery.data ?? null;
+  const featureLoading = featureQuery.isPending;
+  const previewIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const feature of hotFeatures.slice(0, 10)) ids.add(feature.id);
+    for (const feature of trendingFeatures.slice(0, 10)) ids.add(feature.id);
+    return [...ids].sort();
+  }, [hotFeatures, trendingFeatures]);
+  const previewDetailsQuery = useQuery({
+    queryKey: ["dashboard", "caniuse-feature-previews", previewIds],
+    queryFn: async ({ signal }) => {
+      const results = await Promise.all(
+        previewIds.map((id) =>
+          fetch(`${CANIUSE_BASE}/feature/${id}/`, { signal })
+            .then(
+              (response) => response.json() as Promise<CaniuseFeatureDetail>,
+            )
+            .then((detail) => [id, detail] as const)
+            .catch((error: unknown) => {
+              if (error instanceof Error && error.name === "AbortError") {
+                throw error;
+              }
+              return null;
+            }),
+        ),
+      );
+      return Object.fromEntries(
+        results.filter(
+          (result): result is readonly [string, CaniuseFeatureDetail] =>
+            result !== null,
+        ),
+      );
+    },
+    enabled: typeof window !== "undefined" && previewIds.length > 0,
+    retry: false,
+    staleTime: Infinity,
+  });
+  const previewDetails = previewDetailsQuery.data ?? {};
 
   const m = messages.browsers;
-
-  /* ---- fetch catalog on mount ---- */
-  useEffect(() => {
-    let active = true;
-    setIndexLoading(true);
-
-    Promise.all([
-      fetch(CANIUSE_BASE).then(
-        (r) => r.json() as Promise<CaniuseSearchEntry[]>,
-      ),
-      fetch(`${CANIUSE_BASE}/hot/`).then(
-        (r) => r.json() as Promise<CaniuseHotFeature[]>,
-      ),
-      fetch(`${CANIUSE_BASE}/trending/`).then(
-        (r) => r.json() as Promise<CaniuseTrendingFeature[]>,
-      ),
-    ])
-      .then(([idx, hot, trend]) => {
-        if (!active) return;
-        setSearchIndex(idx);
-        setHotFeatures(hot);
-        setTrendingFeatures(trend);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setIndexLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  /* ---- fetch feature detail ---- */
-  useEffect(() => {
-    if (!selectedId) {
-      setFeatureDetail(null);
-      return;
-    }
-
-    let active = true;
-    setFeatureLoading(true);
-
-    fetch(`${CANIUSE_BASE}/feature/${selectedId}/`)
-      .then((r) => r.json() as Promise<CaniuseFeatureDetail>)
-      .then((d) => {
-        if (active) setFeatureDetail(d);
-      })
-      .catch(() => {
-        if (active) setFeatureDetail(null);
-      })
-      .finally(() => {
-        if (active) setFeatureLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [selectedId]);
-
-  /* ---- batch-fetch preview details for default view ---- */
-  useEffect(() => {
-    if (hotFeatures.length === 0 && trendingFeatures.length === 0) return;
-
-    const ids = new Set<string>();
-    for (const f of hotFeatures.slice(0, 10)) ids.add(f.id);
-    for (const f of trendingFeatures.slice(0, 10)) ids.add(f.id);
-
-    let active = true;
-
-    Promise.all(
-      [...ids].map((id) =>
-        fetch(`${CANIUSE_BASE}/feature/${id}/`)
-          .then((r) => r.json() as Promise<CaniuseFeatureDetail>)
-          .then((d) => [id, d] as const)
-          .catch(() => null),
-      ),
-    ).then((results) => {
-      if (!active) return;
-      const map: Record<string, CaniuseFeatureDetail> = {};
-      for (const r of results) {
-        if (r) map[r[0]] = r[1];
-      }
-      setPreviewDetails(map);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [hotFeatures, trendingFeatures]);
 
   /* ---- click outside ---- */
   useEffect(() => {
@@ -444,7 +411,6 @@ export function CanIUseCompatCard({
 
   const clearSelection = useCallback(() => {
     setSelectedId(null);
-    setFeatureDetail(null);
   }, []);
 
   function handleKeyDown(e: React.KeyboardEvent) {
