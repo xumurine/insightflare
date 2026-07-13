@@ -914,6 +914,10 @@ async function siteLookup(
   events: Array<BotAnalyticsEvent | NormalAnalyticsEvent>,
 ) {
   const ids = [...new Set(events.map((event) => event.siteId).filter(Boolean))];
+  return siteLookupByIds(env, ids);
+}
+
+async function siteLookupByIds(env: Env, ids: string[]) {
   if (ids.length === 0)
     return new Map<string, { name: string; domain: string }>();
   const placeholders = ids.map(() => "?").join(",");
@@ -1575,7 +1579,20 @@ export async function handleBotAnalyticsAdmin(
         "bot_analytics_query_failed",
         req,
       );
-    const rows = normalizeNetworkDimensionRows(result.rows);
+    let rows = normalizeNetworkDimensionRows(result.rows);
+    if (dimensionTab === "site") {
+      const sites = await siteLookupByIds(
+        env,
+        rows.map((row) => row.label).filter(Boolean),
+      );
+      rows = rows.map((row) => {
+        const site = sites.get(row.label);
+        return {
+          ...row,
+          label: site?.name || site?.domain || row.label,
+        };
+      });
+    }
     return jsonResponseFor(req, {
       ok: true,
       configured: true,

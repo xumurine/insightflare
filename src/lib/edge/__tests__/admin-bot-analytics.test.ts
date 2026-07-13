@@ -1136,6 +1136,12 @@ describe("admin bot analytics handlers", () => {
       .spyOn(globalThis, "fetch")
       .mockImplementation(async (_input, init) => {
         const sql = String((init as RequestInit | undefined)?.body || "");
+        if (sql.includes("blob1 AS label")) {
+          return new Response(
+            jsonEachRow([{ label: "site-1", count: 12, highConfidence: 7 }]),
+            { status: 200 },
+          );
+        }
         if (sql.includes("GROUP BY label")) {
           return new Response(
             jsonEachRow([{ label: "13335", count: 12, highConfidence: 7 }]),
@@ -1203,6 +1209,28 @@ describe("admin bot analytics handlers", () => {
         ),
       ),
     ).toBe(true);
+
+    const siteDimensionResponse = await handleBotAnalyticsAdmin(
+      request(
+        "/api/private/admin/bot-analytics?dimensionSource=abnormal&dimensionGroup=target&dimensionTab=site",
+      ),
+      createEnv([
+        statement({
+          first: row({ apiTokenEncrypted: encrypted, configured: true }),
+        }),
+        statement({
+          all: [{ id: "site-1", name: "Site", domain: "site.test" }],
+        }),
+      ]),
+      new URL(
+        "https://app.test/api/private/admin/bot-analytics?dimensionSource=abnormal&dimensionGroup=target&dimensionTab=site",
+      ),
+    );
+    const siteDimensionBody = await jsonOf(siteDimensionResponse);
+    expect(siteDimensionResponse.status).toBe(200);
+    expect(siteDimensionBody.dimension.rows).toEqual([
+      expect.objectContaining({ label: "Site", count: 12 }),
+    ]);
 
     for (const [source, group, tab] of [
       ["abnormal", "detection", "confidence"],
