@@ -13,6 +13,7 @@ import {
   RiDownloadLine,
   RiSearchLine,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
@@ -416,9 +417,6 @@ export function TabbedDataTableCard<
   const [rawLoadedRowsByTab, setRawLoadedRowsByTab] = useState<
     Record<TTab, readonly TRow[] | null>
   >(() => createTabRecord(tabs, () => null));
-  const [internalLoadingByTab, setInternalLoadingByTab] = useState<
-    Record<TTab, boolean>
-  >(() => createTabRecord(tabs, () => false));
   const [sortByTab, setSortByTab] = useState<
     Record<TTab, TabbedDataTableSortState<TKey>>
   >(() =>
@@ -442,27 +440,35 @@ export function TabbedDataTableCard<
   const [exportRows, setExportRows] =
     useState<TabbedDataTableExportRows>("currentView");
   const [exportFilename, setExportFilename] = useState("");
-  const [loadVersion, setLoadVersion] = useState(0);
   const deferredSearchTerm = useDeferredValue(searchTerm);
-  const latestLoadRowsRef = useRef(loadRows);
-  const latestNormalizeRowsRef = useRef(normalizeRows);
   const latestTabsRef = useRef(tabs);
   const latestColumnsRef = useRef(columns);
-  const loadedRowsByTabRef = useRef(loadedRowsByTab);
-  const rawLoadedRowsByTabRef = useRef(rawLoadedRowsByTab);
-  const loadingByTabRef = useRef(internalLoadingByTab);
-
-  loadedRowsByTabRef.current = loadedRowsByTab;
-  rawLoadedRowsByTabRef.current = rawLoadedRowsByTab;
-  loadingByTabRef.current = internalLoadingByTab;
-
-  useEffect(() => {
-    latestLoadRowsRef.current = loadRows;
-  }, [loadRows]);
-
-  useEffect(() => {
-    latestNormalizeRowsRef.current = normalizeRows;
-  }, [normalizeRows]);
+  const externalRowsByTab = (rowsByTab ?? {}) as Partial<
+    Record<TTab, readonly TRow[] | null>
+  >;
+  const activeExternalRows = externalRowsByTab[activeTab];
+  const dataQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "tabbed-data",
+      requestKey ?? "",
+      tabsKey,
+      activeTab,
+    ],
+    queryFn: async ({ signal }) => {
+      if (!loadRows) return [] as readonly TRow[];
+      try {
+        return await loadRows(activeTab, signal);
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") throw error;
+        return [] as readonly TRow[];
+      }
+    },
+    enabled:
+      typeof window !== "undefined" &&
+      Boolean(loadRows) &&
+      activeExternalRows === undefined,
+  });
 
   useEffect(() => {
     latestTabsRef.current = tabs;
@@ -482,7 +488,6 @@ export function TabbedDataTableCard<
     const nextColumns = latestColumnsRef.current;
     setLoadedRowsByTab(createTabRecord(nextTabs, () => null));
     setRawLoadedRowsByTab(createTabRecord(nextTabs, () => null));
-    setInternalLoadingByTab(createTabRecord(nextTabs, () => false));
     setSortByTab(
       createTabRecord(nextTabs, (tab) => {
         const tabColumns = getColumnsForTab(nextColumns, tab.value);
@@ -498,64 +503,20 @@ export function TabbedDataTableCard<
     );
     setSearchTab(null);
     setSearchTerm("");
-    setLoadVersion((previous) => previous + 1);
   }, [defaultSort?.direction, defaultSort?.key, requestKey, tabsKey]);
 
   useEffect(() => {
-    if (!latestLoadRowsRef.current) return;
-    if (
-      loadedRowsByTabRef.current[activeTab] !== null ||
-      loadingByTabRef.current[activeTab]
-    ) {
+    if (activeExternalRows !== undefined || dataQuery.data === undefined)
       return;
-    }
-
-    const controller = new AbortController();
-    setInternalLoadingByTab((previous) => ({
+    setRawLoadedRowsByTab((previous) => ({
       ...previous,
-      [activeTab]: true,
+      [activeTab]: dataQuery.data,
     }));
-
-    latestLoadRowsRef
-      .current(activeTab, controller.signal)
-      .then((nextRows) => {
-        if (controller.signal.aborted) return;
-        const normalizedRows = latestNormalizeRowsRef.current(
-          nextRows,
-          activeTab,
-        );
-        setRawLoadedRowsByTab((previous) => ({
-          ...previous,
-          [activeTab]: nextRows,
-        }));
-        setLoadedRowsByTab((previous) => ({
-          ...previous,
-          [activeTab]: normalizedRows,
-        }));
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setRawLoadedRowsByTab((previous) => ({
-          ...previous,
-          [activeTab]: [],
-        }));
-        setLoadedRowsByTab((previous) => ({
-          ...previous,
-          [activeTab]: [],
-        }));
-      })
-      .finally(() => {
-        if (controller.signal.aborted) return;
-        setInternalLoadingByTab((previous) => ({
-          ...previous,
-          [activeTab]: false,
-        }));
-      });
-
-    return () => {
-      controller.abort();
-    };
-  }, [activeTab, loadVersion, requestKey]);
+    setLoadedRowsByTab((previous) => ({
+      ...previous,
+      [activeTab]: normalizeRows(dataQuery.data, activeTab),
+    }));
+  }, [activeExternalRows, activeTab, dataQuery.data, normalizeRows]);
 
   useEffect(() => {
     if (searchTab !== null) return;
@@ -579,18 +540,18 @@ export function TabbedDataTableCard<
     ...DEFAULT_EXPORT_LABELS,
     ...exportConfig?.labels,
   };
-  const externalRowsByTab = (rowsByTab ?? {}) as Partial<
-    Record<TTab, readonly TRow[] | null>
-  >;
   const activeSearchTab = searchTab ?? activeTab;
 
   const rawRowsByTab = useMemo(() => {
     return createTabRecord(tabs, (tab) => {
       const externalRows = externalRowsByTab[tab.value];
       if (externalRows !== undefined) return externalRows;
+      if (tab.value === activeTab && dataQuery.data !== undefined) {
+        return dataQuery.data;
+      }
       return rawLoadedRowsByTab[tab.value];
     });
-  }, [externalRowsByTab, rawLoadedRowsByTab, tabs]);
+  }, [activeTab, dataQuery.data, externalRowsByTab, rawLoadedRowsByTab, tabs]);
 
   const resolvedRowsByTab = useMemo(() => {
     return createTabRecord(tabs, (tab) => {
@@ -600,16 +561,31 @@ export function TabbedDataTableCard<
           ? null
           : normalizeRows(externalRows, tab.value);
       }
+      if (tab.value === activeTab && dataQuery.data !== undefined) {
+        return normalizeRows(dataQuery.data, tab.value);
+      }
       return loadedRowsByTab[tab.value];
     });
-  }, [externalRowsByTab, loadedRowsByTab, normalizeRows, tabs]);
+  }, [
+    activeTab,
+    dataQuery.data,
+    externalRowsByTab,
+    loadedRowsByTab,
+    normalizeRows,
+    tabs,
+  ]);
 
   const resolvedLoadingByTab = useMemo(
     () =>
       createTabRecord(tabs, (tab) =>
-        Boolean(loadingByTab?.[tab.value] ?? internalLoadingByTab[tab.value]),
+        Boolean(
+          loadingByTab?.[tab.value] ??
+          (tab.value === activeTab &&
+            dataQuery.isFetching &&
+            dataQuery.data === undefined),
+        ),
       ),
-    [internalLoadingByTab, loadingByTab, tabs],
+    [activeTab, dataQuery.data, dataQuery.isFetching, loadingByTab, tabs],
   );
 
   const sortedRowsByTab = useMemo(() => {
