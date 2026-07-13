@@ -134,6 +134,7 @@ export async function fetchReferrerRadar(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<ReferrerRadarData> {
   return fetchPrivateJson<ReferrerRadarData>(
@@ -148,5 +149,6 @@ export async function fetchReferrerRadar(
       },
       filters,
     ),
+    { signal: options?.signal },
   );
 }

@@ -633,10 +633,14 @@ describe("Dashboard Client Data Processing Utilities", () => {
         ),
         fetchUtmTrend("signal-utm", mockWindow, "source", undefined, options),
         fetchReferrerTrend("signal-referrer", mockWindow, undefined, options),
+        fetchReferrerRadar("signal-referrer-radar", mockWindow, undefined, {
+          limit: 24,
+          signal: controller.signal,
+        }),
         fetchPagesShareTrend("signal-pages", mockWindow, undefined, options),
       ]);
 
-      expect(fetchMock).toHaveBeenCalledTimes(8);
+      expect(fetchMock).toHaveBeenCalledTimes(9);
       for (const [, init] of fetchMock.mock.calls) {
         expect((init as RequestInit).signal).toBe(controller.signal);
       }
