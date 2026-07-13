@@ -2057,6 +2057,7 @@ async function fetchRequestObservationDimension(
 async function fetchRequestObservationDetail(
   timeWindow: TimeWindow,
   event: BotEvent,
+  signal?: AbortSignal,
 ): Promise<BotEvent | null> {
   if (import.meta.env.VITE_DEMO_MODE === "1") return event;
 
@@ -2074,6 +2075,7 @@ async function fetchRequestObservationDetail(
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   const payload = (await response.json()) as
     | RequestObservationDetailData
@@ -3406,14 +3408,42 @@ function BotEventsTable({
     null,
   );
   const [selectedEvent, setSelectedEvent] = useState<BotEvent | null>(null);
-  const [detailEvent, setDetailEvent] = useState<BotEvent | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [detailParam, setDetailParam] = useState(
     () => searchParams.get("detail")?.trim() || "",
   );
+  const selectedEventId = selectedEvent ? botEventDetailId(selectedEvent) : "";
+  const selectedEventCacheKey = selectedEventId
+    ? selectedEventId
+    : selectedEvent
+      ? `${selectedEvent.siteId}:${selectedEvent.pathname}:${selectedEvent.receivedAt}`
+      : "";
+  const detailQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "request-observation-detail",
+      selectedEventCacheKey,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+    ],
+    queryFn: ({ signal }) =>
+      selectedEvent
+        ? fetchRequestObservationDetail(timeWindow, selectedEvent, signal)
+        : null,
+    enabled:
+      typeof window !== "undefined" && drawerOpen && Boolean(selectedEvent),
+    retry: false,
+  });
+  const detailEvent = detailQuery.data ?? null;
+  const detailLoading = detailQuery.isPending;
+  const detailError = detailQuery.isError
+    ? detailQuery.error instanceof Error
+      ? detailQuery.error.message
+      : "load_bot_protection_detail_failed"
+    : null;
 
   useEffect(() => {
     setVisibleCount(BOT_EVENT_PAGE_SIZE);
@@ -3517,8 +3547,6 @@ function BotEventsTable({
 
   const openEvent = (event: BotEvent, options?: { syncUrl?: boolean }) => {
     setSelectedEvent(event);
-    setDetailEvent(null);
-    setDetailError(null);
     setDrawerOpen(true);
 
     if (options?.syncUrl !== false) {
@@ -3548,31 +3576,6 @@ function BotEventsTable({
     }
     openEvent(matchingEvent, { syncUrl: false });
   }, [detailParam, events, selectedEvent]);
-
-  useEffect(() => {
-    if (!drawerOpen || !selectedEvent) return;
-    let active = true;
-    setDetailLoading(true);
-    fetchRequestObservationDetail(timeWindow, selectedEvent)
-      .then((detail) => {
-        if (!active) return;
-        setDetailEvent(detail ?? selectedEvent);
-      })
-      .catch((error) => {
-        if (!active) return;
-        setDetailError(
-          error instanceof Error
-            ? error.message
-            : "load_bot_protection_detail_failed",
-        );
-      })
-      .finally(() => {
-        if (active) setDetailLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [drawerOpen, selectedEvent, timeWindow]);
 
   const handleKeyDown = (
     keyboardEvent: KeyboardEvent<HTMLTableRowElement>,
