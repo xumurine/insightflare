@@ -823,8 +823,6 @@ export function FunnelsClientPage({
     null,
   );
   const [deleting, setDeleting] = useState(false);
-  const [candidates, setCandidates] =
-    useState<FunnelCandidateState>(emptyCandidates);
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const funnelsQueryKey = useMemo(
     () => ["dashboard", "funnels", siteId] as const,
@@ -845,39 +843,32 @@ export function FunnelsClientPage({
     if (!detailFunnelId) openedDetailFromListRef.current = false;
   }, [detailFunnelId]);
 
-  useEffect(() => {
-    if (!createOpen) return;
-    let cancelled = false;
-
-    void Promise.all([
-      fetchOverviewPageCardTab(siteId, timeWindow, "path", filters, {
-        limit: 100,
-      }),
-      fetchEventTypesTab(siteId, timeWindow, filters, { limit: 100 }),
-    ])
-      .then(([pageviews, events]) => {
-        if (cancelled) return;
-        setCandidates({
-          pageviews: pageviews.map((row) => row.label).filter(Boolean),
-          events: events.map((row) => row.label).filter(Boolean),
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setCandidates(emptyCandidates());
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    createOpen,
-    filters,
-    filtersKey,
-    siteId,
-    timeWindow.from,
-    timeWindow.timeZone,
-    timeWindow.to,
-  ]);
+  const candidatesQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "funnel-candidates",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => {
+      const [pageviews, events] = await Promise.all([
+        fetchOverviewPageCardTab(siteId, timeWindow, "path", filters, {
+          limit: 100,
+          signal,
+        }),
+        fetchEventTypesTab(siteId, timeWindow, filters, { limit: 100, signal }),
+      ]);
+      return {
+        pageviews: pageviews.map((row) => row.label).filter(Boolean),
+        events: events.map((row) => row.label).filter(Boolean),
+      };
+    },
+    enabled: typeof window !== "undefined" && createOpen,
+  });
+  const candidates = candidatesQuery.data ?? emptyCandidates();
 
   const openFunnelDetail = useCallback(
     (funnelId: string) => {

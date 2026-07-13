@@ -637,10 +637,14 @@ describe("Dashboard Client Data Processing Utilities", () => {
           limit: 24,
           signal: controller.signal,
         }),
+        fetchEventTypesTab("signal-event-types", mockWindow, undefined, {
+          limit: 100,
+          signal: controller.signal,
+        }),
         fetchPagesShareTrend("signal-pages", mockWindow, undefined, options),
       ]);
 
-      expect(fetchMock).toHaveBeenCalledTimes(9);
+      expect(fetchMock).toHaveBeenCalledTimes(10);
       for (const [, init] of fetchMock.mock.calls) {
         expect((init as RequestInit).signal).toBe(controller.signal);
       }

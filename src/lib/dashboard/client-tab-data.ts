@@ -145,6 +145,7 @@ export async function fetchEventTypesTab(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<OverviewTabRows> {
   const payload = await fetchPrivateJson<OverviewTabData>(
@@ -159,7 +160,8 @@ export async function fetchEventTypesTab(
       },
       filters,
     ),
-  ).catch(() => emptyOverviewTab());
+    { signal: options?.signal },
+  ).catch(emptyOverviewTabUnlessAborted);
   return normalizeOverviewRows(payload.data);
 }
 
