@@ -3631,39 +3631,37 @@ interface OverviewDataSectionProps {
   filters: DashboardFilters;
 }
 
-export function OverviewMetricsSection({
-  locale,
-  messages,
+function useOverviewSummaryQuery({
   siteId,
-  window,
+  window: timeWindow,
   filters,
-}: OverviewDataSectionProps) {
+}: Pick<OverviewDataSectionProps, "siteId" | "window" | "filters">) {
   const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
-  const {
-    data: metricsData,
-    isFetching,
-    isPending,
-  } = useQuery({
+
+  return useQuery({
     queryKey: [
       "dashboard",
-      "overview-metrics",
+      "overview-summary",
       siteId,
-      window.from,
-      window.to,
-      window.interval,
-      window.timeZone,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
       filtersKey,
     ],
     queryFn: async ({ signal }) => {
-      const current = await fetchOverview(siteId, window, filters, {
+      const current = await fetchOverview(siteId, timeWindow, filters, {
         includeChange: true,
         includeDetail: true,
         signal,
       }).catch((error) => fallbackUnlessAborted(error, emptyOverviewData));
-      const previousTo = Math.max(window.from - 1, 0);
-      const previousFrom = Math.max(previousTo - (window.to - window.from), 0);
+      const previousTo = Math.max(timeWindow.from - 1, 0);
+      const previousFrom = Math.max(
+        previousTo - (timeWindow.to - timeWindow.from),
+        0,
+      );
       const previousWindow: TimeWindow = {
-        ...window,
+        ...timeWindow,
         from: previousFrom,
         to: previousTo,
       };
@@ -3682,9 +3680,9 @@ export function OverviewMetricsSection({
               interval: current.detail.interval,
               data: current.detail.data,
             } as TrendData)
-          : fetchTrend(siteId, window, filters, { signal }).catch((error) =>
+          : fetchTrend(siteId, timeWindow, filters, { signal }).catch((error) =>
               fallbackUnlessAborted(error, () =>
-                emptyTrendData(window.interval),
+                emptyTrendData(timeWindow.interval),
               ),
             ),
       ]);
@@ -3692,16 +3690,36 @@ export function OverviewMetricsSection({
       return {
         overview: current,
         previousOverview: previous,
-        detailSeries: trend.data,
+        trendData: trend,
+        dataWindow: {
+          from: timeWindow.from,
+          to: timeWindow.to,
+          interval: timeWindow.interval,
+          timeZone: timeWindow.timeZone,
+        },
       };
     },
     enabled: typeof window !== "undefined",
     placeholderData: keepPreviousData,
   });
+}
+
+export function OverviewMetricsSection({
+  locale,
+  messages,
+  siteId,
+  window,
+  filters,
+}: OverviewDataSectionProps) {
+  const {
+    data: metricsData,
+    isFetching,
+    isPending,
+  } = useOverviewSummaryQuery({ siteId, window, filters });
   const loading = isPending || isFetching;
   const overview = metricsData?.overview ?? emptyOverviewData();
   const previousOverview = metricsData?.previousOverview ?? emptyOverviewData();
-  const detailSeries = metricsData?.detailSeries ?? [];
+  const detailSeries = metricsData?.trendData.data ?? [];
 
   const pagesPerSessionFormatter = useMemo(
     () =>
@@ -3878,7 +3896,6 @@ export function OverviewTrendSection({
   window,
   filters,
 }: OverviewDataSectionProps) {
-  const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
   const currentDataWindow = useMemo(
     () => ({
       from: window.from,
@@ -3892,27 +3909,7 @@ export function OverviewTrendSection({
     data: trendQueryData,
     isFetching,
     isPending,
-  } = useQuery({
-    queryKey: [
-      "dashboard",
-      "overview-trend",
-      siteId,
-      window.from,
-      window.to,
-      window.interval,
-      window.timeZone,
-      filtersKey,
-    ],
-    queryFn: async ({ signal }) => ({
-      trendData: await fetchTrend(siteId, window, filters, { signal }).catch(
-        (error) =>
-          fallbackUnlessAborted(error, () => emptyTrendData(window.interval)),
-      ),
-      dataWindow: currentDataWindow,
-    }),
-    enabled: typeof window !== "undefined",
-    placeholderData: keepPreviousData,
-  });
+  } = useOverviewSummaryQuery({ siteId, window, filters });
   const loading = isPending || isFetching;
   const trendData =
     trendQueryData?.trendData ?? emptyTrendData(window.interval);

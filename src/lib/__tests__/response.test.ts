@@ -92,6 +92,21 @@ describe("response helpers", () => {
     expect(externalJson).toHaveBeenCalledTimes(1);
   });
 
+  it("defers body serialization for structured internal responses", async () => {
+    const stringify = vi.spyOn(JSON, "stringify");
+    const response = jsonResponseWith(
+      { requestId: "internal-1", deferJsonSerialization: true },
+      { rows: [{ value: 1 }] },
+    );
+
+    expect(stringify).not.toHaveBeenCalled();
+    expect(await response.text()).toBe("");
+    await expect(readJsonResponse(response)).resolves.toMatchObject({
+      requestId: "internal-1",
+      rows: [{ value: 1 }],
+    });
+  });
+
   it("normalizes error codes and common error response shortcuts", async () => {
     expect(toErrorCode(" Bad input! ")).toBe("bad_input");
     expect(toErrorCode("!!!")).toBe("error");

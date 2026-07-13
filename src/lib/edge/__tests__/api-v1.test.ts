@@ -758,7 +758,7 @@ describe("api v1 gateway", () => {
       "site-1",
       "overview-geo-country",
       expect.any(URL),
-      { publicMode: false },
+      { publicMode: false, deferJsonSerialization: true },
       expect.any(Request),
     );
     expect(await breakdown.response.json()).toMatchObject({

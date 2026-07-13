@@ -386,8 +386,17 @@ export async function queryDimensionAggregate(
   filters: DashboardFilters,
   limit: number,
   d1Expr: string,
+  options?: { excludeEmpty?: boolean },
 ): Promise<DimensionRow[]> {
-  return queryVisitDimensionFromD1(env, siteId, window, filters, limit, d1Expr);
+  return queryVisitDimensionFromD1(
+    env,
+    siteId,
+    window,
+    filters,
+    limit,
+    d1Expr,
+    options,
+  );
 }
 
 export async function handlePages(

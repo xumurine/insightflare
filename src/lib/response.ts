@@ -2,6 +2,11 @@ export type JsonRecord = Record<string, unknown>;
 
 export interface ResponseContext {
   requestId: string;
+  /**
+   * Internal callers can retain the structured payload without paying to
+   * serialize a Response body that will never be sent to a client.
+   */
+  deferJsonSerialization?: boolean;
 }
 
 // Responses created inside the current isolate can be consumed by another
@@ -15,14 +20,18 @@ function createJsonResponse(
   payload: unknown,
   status: number,
   extraHeaders?: Record<string, string>,
+  deferJsonSerialization = false,
 ): Response {
-  const response = new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...(extraHeaders ?? {}),
+  const response = new Response(
+    deferJsonSerialization ? null : JSON.stringify(payload),
+    {
+      status,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        ...(extraHeaders ?? {}),
+      },
     },
-  });
+  );
   jsonResponsePayloads.set(response, payload);
   return response;
 }
@@ -90,7 +99,12 @@ export function jsonResponseWith(
     requestId: ctx.requestId,
     timestamp: new Date().toISOString(),
   };
-  return createJsonResponse(body, status, extraHeaders);
+  return createJsonResponse(
+    body,
+    status,
+    extraHeaders,
+    ctx.deferJsonSerialization,
+  );
 }
 
 export function errorResponse(

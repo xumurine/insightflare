@@ -370,6 +370,21 @@ function commonQueryMatches(): SqlMatch[] {
         },
       ],
     ),
+    allMatch(
+      ["COALESCE(pathname, '') AS value", "dimension_rollup AS"],
+      [{ value: "/pricing", views: 1, sessions: 1, visitors: 1 }],
+    ),
+    allMatch(
+      [
+        "COALESCE(TRIM(COALESCE(browser, '')), '') AS value",
+        "dimension_rollup AS",
+      ],
+      [{ value: "Chrome", views: 1, sessions: 1, visitors: 1 }],
+    ),
+    allMatch(
+      ["COALESCE(country, '') AS value", "dimension_rollup AS"],
+      [{ value: "US", views: 1, sessions: 1, visitors: 1 }],
+    ),
     allMatch(["dimension_rollup AS"], dimensionRows),
     allMatch(
       ["event_with_context AS", "event_rollup AS"],

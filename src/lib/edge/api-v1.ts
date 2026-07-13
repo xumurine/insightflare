@@ -1165,7 +1165,7 @@ async function runLegacyQuery(
     siteId,
     queryName,
     internalUrl,
-    { publicMode: false },
+    { publicMode: false, deferJsonSerialization: true },
     request,
   );
   const payload = await legacyJson(response);
@@ -1416,7 +1416,10 @@ async function handleTeamAnalytics(
     principal.teamId,
     toQueryWindow(timeRange),
     hasFullSiteAccess(principal) ? undefined : principal.siteIds,
-    { requestId: request.headers.get("cf-ray") || "team-analytics" },
+    {
+      requestId: request.headers.get("cf-ray") || "team-analytics",
+      deferJsonSerialization: true,
+    },
   );
   const payload = await legacyJson(dashboard);
   if (!dashboard.ok) {
