@@ -616,6 +616,14 @@ describe("Dashboard Client Data Processing Utilities", () => {
           undefined,
           options,
         ),
+        fetchClientCrossBreakdown(
+          "signal-client-cross",
+          mockWindow,
+          "deviceType",
+          "browser",
+          undefined,
+          options,
+        ),
         fetchBrowserTrend("signal-browser", mockWindow, undefined, options),
         fetchBrowserEngineTrend(
           "signal-browser-engine",
@@ -628,7 +636,7 @@ describe("Dashboard Client Data Processing Utilities", () => {
         fetchPagesShareTrend("signal-pages", mockWindow, undefined, options),
       ]);
 
-      expect(fetchMock).toHaveBeenCalledTimes(7);
+      expect(fetchMock).toHaveBeenCalledTimes(8);
       for (const [, init] of fetchMock.mock.calls) {
         expect((init as RequestInit).signal).toBe(controller.signal);
       }

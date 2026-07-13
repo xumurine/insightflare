@@ -49,6 +49,7 @@ export async function fetchClientCrossBreakdown(
   options?: {
     primaryLimit?: number;
     secondaryLimit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<BrowserCrossBreakdownDimensionData> {
   const response = await fetchPrivateJson<ClientCrossBreakdownData>(
@@ -66,6 +67,7 @@ export async function fetchClientCrossBreakdown(
       },
       filters,
     ),
+    { signal: options?.signal },
   );
   return response.data;
 }

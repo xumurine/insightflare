@@ -4,6 +4,7 @@ import {
   RiComputerLine,
   RiExternalLinkLine,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { Cell, Pie, PieChart } from "recharts";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
@@ -487,30 +488,35 @@ export function DeviceScreenBreakdownCard({
   window,
   filters,
 }: DeviceScreenBreakdownCardProps) {
-  const [loading, setLoading] = useState(true);
-  const [screenTrend, setScreenTrend] = useState<BrowserTrendData>(emptyTrend);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    fetchClientDimensionTrend(siteId, window, "screenSize", filters, {
-      limit: 10,
-    })
-      .catch(() => emptyTrend())
-      .then((nextTrend) => {
-        if (!active) return;
-        setScreenTrend(nextTrend);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [filters, siteId, window.from, window.to, window.interval]);
+  const screenTrendQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "device-screen-breakdown",
+      siteId,
+      window.from,
+      window.to,
+      window.timeZone,
+      window.interval,
+      filters,
+    ],
+    queryFn: async ({ signal }) => {
+      try {
+        return await fetchClientDimensionTrend(
+          siteId,
+          window,
+          "screenSize",
+          filters,
+          { limit: 10, signal },
+        );
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") throw error;
+        return emptyTrend();
+      }
+    },
+    enabled: typeof window !== "undefined",
+  });
+  const screenTrend = screenTrendQuery.data ?? emptyTrend();
+  const loading = screenTrendQuery.isPending;
 
   const totalVisitors = useMemo(
     () => screenTrend.series.reduce((sum, item) => sum + item.visitors, 0),
