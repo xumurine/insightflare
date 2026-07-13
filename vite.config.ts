@@ -38,7 +38,12 @@ function ssrMapStubs() {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const demoMode = mode === "demo" || env.DEMO_MODE === "1" ? "1" : "0";
+  const isE2E = process.env.INSIGHTFLARE_E2E === "1";
+  const demoMode =
+    !isE2E &&
+    (mode === "demo" || (process.env.DEMO_MODE ?? env.DEMO_MODE) === "1")
+      ? "1"
+      : "0";
   const configPath =
     process.env.CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH ||
     (demoMode === "1"

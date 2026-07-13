@@ -165,7 +165,7 @@ async function writeRunManifest(
         debug: options.debug,
         headed: options.headed,
         keep: options.keep,
-        phase: 2,
+        phase: 3,
         port: environment.port,
         runId: environment.id,
         ui: options.ui,
@@ -429,6 +429,7 @@ function workerEnvironment(environment: Environment): NodeJS.ProcessEnv {
     CLOUDFLARE_CF_FETCH_ENABLED: "false",
     CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH: environment.configPath,
     INSIGHTFLARE_LOCAL_PERSISTENCE_PATH: environment.persistencePath,
+    INSIGHTFLARE_E2E: "1",
     INSIGHTFLARE_PORT: String(environment.port),
     MAIN_SECRET: environment.mainSecret,
   };
@@ -445,7 +446,7 @@ async function runPlaywright(
   const args = [
     localBin("@playwright/test", "cli.js"),
     "test",
-    "e2e/bootstrap-login.spec.ts",
+    "e2e/team-site-bootstrap.spec.ts",
     "--config",
     "playwright.config.ts",
   ];
@@ -465,6 +466,12 @@ async function runPlaywright(
         "playwright",
       ),
       INSIGHTFLARE_E2E_BASE_URL: environment.baseURL,
+      INSIGHTFLARE_E2E_MANIFEST: path.join(
+        environment.directory,
+        "manifest",
+        "seed.json",
+      ),
+      INSIGHTFLARE_E2E_RUN_ID: environment.id,
     },
     logPath: path.join(environment.directory, "logs", "playwright.log"),
     name: "Playwright",
@@ -551,7 +558,7 @@ async function main(): Promise<void> {
     await runPlaywright(activeEnvironment, options);
     succeeded = true;
     rlog.success(
-      `E2E bootstrap login passed in ${((Date.now() - startedAt) / 1000).toFixed(2)}s.`,
+      `E2E passed in ${((Date.now() - startedAt) / 1000).toFixed(2)}s.`,
     );
   } finally {
     await stopProcess(worker);
