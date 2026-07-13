@@ -46,6 +46,8 @@ export default defineConfig(({ mode }) => {
       : mode === "local" || mode === "development"
         ? "./wrangler.dev.toml"
         : "./wrangler.toml");
+  const persistencePath = process.env.INSIGHTFLARE_LOCAL_PERSISTENCE_PATH;
+  const port = Number(process.env.INSIGHTFLARE_PORT || "3000");
 
   return {
     define: {
@@ -74,14 +76,22 @@ export default defineConfig(({ mode }) => {
         },
       },
       ssrMapStubs(),
-      cloudflare({ configPath, viteEnvironment: { name: "ssr" } }),
+      cloudflare({
+        configPath,
+        persistState: persistencePath ? { path: persistencePath } : true,
+        viteEnvironment: { name: "ssr" },
+      }),
       tanstackStart(),
       react(),
       tailwindcss(),
     ],
     server: {
-      port: 3000,
+      host: "127.0.0.1",
+      port: Number.isInteger(port) && port > 0 ? port : 3000,
       strictPort: true,
+      watch: {
+        ignored: ["**/.tmp/e2e/**"],
+      },
     },
   };
 });

@@ -10,8 +10,9 @@ export const Route = createFileRoute("/$locale/app/$teamSlug")({
     if (!teamContext) throw notFound();
     return { teamContext };
   },
-  head: ({ match }) => ({
-    meta: [{ title: match.context.teamContext.activeTeam.name }],
-  }),
+  head: ({ match }) => {
+    const title = match.context.teamContext?.activeTeam?.name;
+    return { meta: title ? [{ title }] : [] };
+  },
   component: Outlet,
 });
