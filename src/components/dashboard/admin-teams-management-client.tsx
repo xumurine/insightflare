@@ -5,6 +5,7 @@ import {
   RiFileList3Line,
   RiSettings3Line,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
@@ -43,7 +44,7 @@ interface ApiResponse<T> {
   message?: string;
 }
 
-async function fetchTeams(): Promise<TeamData[]> {
+async function fetchTeams(signal?: AbortSignal): Promise<TeamData[]> {
   if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
@@ -55,6 +56,7 @@ async function fetchTeams(): Promise<TeamData[]> {
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   const payload = (await response.json()) as ApiResponse<TeamData[]>;
   if (!response.ok || !payload.ok || !Array.isArray(payload.data)) {
@@ -70,38 +72,33 @@ export function AdminTeamsManagementClient({
   const { timeZone } = useDashboardQueryControls();
   const router = useRouter();
   const t = messages.adminTeams;
-  const [teams, setTeams] = useState<TeamData[]>([]);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const teamsQuery = useQuery({
+    queryKey: ["dashboard", "admin-teams"],
+    queryFn: ({ signal }) => fetchTeams(signal),
+    enabled: typeof window !== "undefined",
+  });
+  const teams = teamsQuery.data ?? [];
+  const loading = teamsQuery.isPending;
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetchTeams()
-      .then((data) => {
-        if (!active) return;
-        setTeams(data);
-      })
-      .catch((error) => {
-        if (!active) return;
-        const message = error instanceof Error ? error.message : t.loadFailed;
-        toast.error(message || t.loadFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [t.loadFailed]);
+    if (!teamsQuery.isError) return;
+    const message =
+      teamsQuery.error instanceof Error
+        ? teamsQuery.error.message
+        : t.loadFailed;
+    toast.error(message || t.loadFailed);
+  }, [
+    t.loadFailed,
+    teamsQuery.error,
+    teamsQuery.errorUpdatedAt,
+    teamsQuery.isError,
+  ]);
 
   async function refreshTeams() {
-    const data = await fetchTeams();
-    setTeams(data);
+    await teamsQuery.refetch();
   }
 
   async function handleCreateTeam() {
