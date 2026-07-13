@@ -3,7 +3,6 @@ import {
   useEffect,
   useEffectEvent,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import {
@@ -15,7 +14,7 @@ import {
   RiRefreshLine,
   RiTimeLine,
 } from "@remixicon/react";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
@@ -911,114 +910,61 @@ export function ScheduledTasksClient({
 }: ScheduledTasksClientProps) {
   const t = messages.managementPages.scheduledTasks;
   const { timeZone } = useDashboardQueryControls();
-  const [data, setData] = useState<ScheduledTasksData | null>(null);
-  const [runs, setRuns] = useState<ScheduledTaskRunGroup[]>([]);
-  const [runsMeta, setRunsMeta] =
-    useState<ScheduledTaskRunsMeta>(INITIAL_RUN_META);
-  const [loadingInitial, setLoadingInitial] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState(false);
-  const [appendError, setAppendError] = useState(false);
   const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
     null,
   );
-  const latestRequestKeyRef = useRef("");
-  const [refreshNonce, setRefreshNonce] = useState(0);
   const [status, setStatus] = useState("all");
   const [selectedRunId, setSelectedRunId] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const requestKey = useMemo(
-    () => [status, refreshNonce].join(":"),
-    [refreshNonce, status],
+  const runsQuery = useInfiniteQuery({
+    queryKey: ["dashboard", "scheduled-tasks", status],
+    queryFn: ({ pageParam, signal }) =>
+      fetchScheduledTasks({
+        status,
+        page: pageParam,
+        pageSize: RUN_PAGE_SIZE,
+        signal,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.runsMeta.hasMore
+        ? (lastPage.runsMeta.nextPage ?? undefined)
+        : undefined,
+    enabled: typeof window !== "undefined",
+  });
+  const runs = useMemo(
+    () =>
+      runsQuery.data?.pages.reduce<ScheduledTaskRunGroup[]>(
+        (current, page) => appendUniqueRuns(current, page.runs),
+        [],
+      ) ?? [],
+    [runsQuery.data?.pages],
   );
+  const data = runsQuery.data?.pages.at(-1) ?? null;
+  const runsMeta = data?.runsMeta ?? INITIAL_RUN_META;
+  const loadingInitial = runsQuery.isPending;
+  const loadingMore = runsQuery.isFetchingNextPage;
+  const error = runsQuery.isError && runs.length === 0;
+  const appendError = runsQuery.isFetchNextPageError;
   const replacingRows =
-    loadingInitial || latestRequestKeyRef.current !== requestKey;
+    runsQuery.isPending ||
+    (runsQuery.isFetching && !runsQuery.isFetchingNextPage);
 
-  const loadPage = useEffectEvent(
-    async (page: number, mode: "replace" | "append") => {
-      const capturedRequestKey = latestRequestKeyRef.current;
-      if (mode === "replace") {
-        setLoadingInitial(true);
-        setError(false);
-        setAppendError(false);
-      } else {
-        setLoadingMore(true);
-        setAppendError(false);
-      }
-
-      try {
-        const payload = await fetchScheduledTasks({
-          status,
-          page,
-          pageSize: RUN_PAGE_SIZE,
-        });
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        setRuns((current) =>
-          mode === "append"
-            ? appendUniqueRuns(current, payload.runs)
-            : payload.runs,
-        );
-        setRunsMeta(payload.runsMeta);
-        setData((current) =>
-          mode === "append" && current
-            ? {
-                ...current,
-                generatedAt: payload.generatedAt,
-                retentionDays: payload.retentionDays,
-                tasks: payload.tasks,
-                health: payload.health,
-              }
-            : payload,
-        );
-        setError(false);
-        setAppendError(false);
-      } catch (caught) {
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        if (mode === "replace") {
-          const message =
-            caught instanceof Error ? caught.message : t.loadFailed;
-          setRuns([]);
-          setRunsMeta(INITIAL_RUN_META);
-          setError(true);
-          setAppendError(false);
-          toast.error(message || t.loadFailed);
-        } else {
-          setAppendError(true);
-        }
-      } finally {
-        if (latestRequestKeyRef.current === capturedRequestKey) {
-          if (mode === "replace") {
-            setLoadingInitial(false);
-          } else {
-            setLoadingMore(false);
-          }
-        }
-      }
-    },
-  );
+  useEffect(() => {
+    setSentinelNode(null);
+  }, [status]);
 
   const loadNextPage = useEffectEvent(() => {
     if (
       loadingInitial ||
       loadingMore ||
       appendError ||
-      !runsMeta.hasMore ||
-      runsMeta.nextPage === null
+      !runsQuery.hasNextPage
     ) {
       return;
     }
-    void loadPage(runsMeta.nextPage, "append");
+    void runsQuery.fetchNextPage();
   });
-
-  useEffect(() => {
-    latestRequestKeyRef.current = requestKey;
-    setRuns([]);
-    setRunsMeta(INITIAL_RUN_META);
-    setError(false);
-    setAppendError(false);
-    setSentinelNode(null);
-    void loadPage(1, "replace");
-  }, [requestKey]);
 
   useEffect(() => {
     const target = sentinelNode;
@@ -1090,6 +1036,19 @@ export function ScheduledTasksClient({
   const detailLoading = detailQuery.isPending;
 
   useEffect(() => {
+    if (!runsQuery.isError || runs.length > 0) return;
+    const message =
+      runsQuery.error instanceof Error ? runsQuery.error.message : t.loadFailed;
+    toast.error(message || t.loadFailed);
+  }, [
+    runs.length,
+    runsQuery.error,
+    runsQuery.errorUpdatedAt,
+    runsQuery.isError,
+    t.loadFailed,
+  ]);
+
+  useEffect(() => {
     if (!detailQuery.isError) return;
     const message =
       detailQuery.error instanceof Error
@@ -1144,7 +1103,7 @@ export function ScheduledTasksClient({
               variant="outline"
               className="gap-2"
               disabled={replacingRows}
-              onClick={() => setRefreshNonce((value) => value + 1)}
+              onClick={() => void runsQuery.refetch()}
             >
               <span className="inline-flex size-4 shrink-0 items-center justify-center">
                 {replacingRows ? (
