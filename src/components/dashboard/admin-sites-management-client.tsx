@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { RiAddLine, RiFileList3Line, RiLineChartLine } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
@@ -53,7 +54,10 @@ function siteSlug(site: SiteData): string {
   return site.id.slice(0, 8);
 }
 
-async function fetchSites(teamId: string): Promise<SiteData[]> {
+async function fetchSites(
+  teamId: string,
+  signal?: AbortSignal,
+): Promise<SiteData[]> {
   if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
@@ -68,6 +72,7 @@ async function fetchSites(teamId: string): Promise<SiteData[]> {
       method: "GET",
       credentials: "include",
       cache: "no-store",
+      signal,
     },
   );
   const payload = (await response.json()) as ApiResponse<SiteData[]>;
@@ -85,36 +90,31 @@ export function AdminSitesManagementClient({
   const { timeZone } = useDashboardQueryControls();
   const router = useRouter();
   const t = messages.adminSites;
-  const [sites, setSites] = useState<SiteData[]>([]);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
   const [publicSlug, setPublicSlug] = useState("");
+  const sitesQuery = useQuery({
+    queryKey: ["dashboard", "admin-sites", activeTeam.id],
+    queryFn: ({ signal }) => fetchSites(activeTeam.id, signal),
+    enabled: typeof window !== "undefined" && Boolean(activeTeam.id),
+  });
+  const sites = sitesQuery.data ?? [];
+  const loading = sitesQuery.isPending;
 
   useEffect(() => {
-    if (!activeTeam.id) return;
-    let active = true;
-    setLoading(true);
-    fetchSites(activeTeam.id)
-      .then((data) => {
-        if (!active) return;
-        setSites(data);
-      })
-      .catch((error) => {
-        if (!active) return;
-        const message = error instanceof Error ? error.message : t.loadFailed;
-        toast.error(message || t.loadFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [activeTeam.id, t.loadFailed]);
+    if (!sitesQuery.isError) return;
+    const message =
+      sitesQuery.error instanceof Error
+        ? sitesQuery.error.message
+        : t.loadFailed;
+    toast.error(message || t.loadFailed);
+  }, [
+    sitesQuery.error,
+    sitesQuery.errorUpdatedAt,
+    sitesQuery.isError,
+    t.loadFailed,
+  ]);
 
   async function handleCreateSite() {
     const team = activeTeam;
