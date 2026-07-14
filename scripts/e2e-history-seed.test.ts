@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildHistorySeed } from "./seed-history";
+import { buildHistorySeed } from "./e2e/seed-history";
 
 describe("history E2E seed", () => {
   it("creates deterministic, schema-derived SQL and manifest truth", () => {
