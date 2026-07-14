@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 
-import { expect, type Page, test } from "@playwright/test";
+import { type Browser, expect, type Page, test } from "@playwright/test";
 
 function requiredEnvironmentValue(name: string): string {
   const value = process.env[name];
@@ -69,12 +69,30 @@ type TeamInvite = {
 
 type CreatedTeamInvite = { invite: TeamInvite; url: string };
 
+type OverviewMetrics = {
+  bounces: number;
+  sessions: number;
+  views: number;
+  visitors: number;
+};
+
+type DashboardPage = { pathname: string; sessions: number; views: number };
+
+type EventType = { label: string; views: number };
+
+type TrackerExpectation = {
+  customEvents: Array<{ eventName: string; pathname: string }>;
+  overview: Pick<OverviewMetrics, "views">;
+  pageviews: string[];
+};
+
 type SeedManifest = {
   apiKeys: Partial<Record<"analyticsRead" | "revoked", CreatedApiKey>>;
   invites: Partial<Record<"active" | "revoked", CreatedTeamInvite>>;
   runId: string;
   sites: Partial<Record<"siteA" | "siteB" | "siteC", Site>>;
   teams: Partial<Record<"teamA" | "teamB", Team>>;
+  tracker?: Partial<Record<"siteA", TrackerExpectation>>;
   users: Partial<
     Record<
       "admin" | "memberA" | "outsider" | "ownerA" | "ownerB" | "restrictedA",
@@ -161,6 +179,40 @@ async function apiRequest<T>(
     },
     { body, cache, method, path },
   );
+}
+
+function siteQueryPath(siteId: string, path: string): string {
+  const params = new URLSearchParams({
+    from: "0",
+    siteId,
+    to: String(Date.now()),
+  });
+  return `/api/private/${path}?${params.toString()}`;
+}
+
+async function flushSite(page: Page, siteId: string) {
+  const flushed = await apiRequest<{ flushed: boolean; siteId: string }>(
+    page,
+    "POST",
+    "/api/private/admin/e2e/flush",
+    { siteId },
+  );
+  expect(flushed.status).toBe(200);
+  expect(flushed.payload.data).toEqual({ flushed: true, siteId });
+}
+
+async function readSiteOverview(page: Page, siteId: string) {
+  const overview = await apiRequest<OverviewMetrics>(
+    page,
+    "GET",
+    siteQueryPath(siteId, "overview"),
+    undefined,
+    "no-store",
+  );
+  expect(overview.status).toBe(200);
+  expect(overview.payload.ok).toBe(true);
+  expect(overview.payload.data).toBeDefined();
+  return overview.payload.data as OverviewMetrics;
 }
 
 async function createSiteThroughUi(
@@ -863,14 +915,7 @@ test.describe.serial("release E2E flow", () => {
     );
 
     await signIn(page, "admin", adminPassword);
-    const flushed = await apiRequest<{ flushed: boolean; siteId: string }>(
-      page,
-      "POST",
-      "/api/private/admin/e2e/flush",
-      { siteId: siteA?.id || "" },
-    );
-    expect(flushed.status).toBe(200);
-    expect(flushed.payload.data).toEqual({ flushed: true, siteId: siteA?.id });
+    await flushSite(page, siteA?.id || "");
     const performance = await apiRequest<unknown>(
       page,
       "GET",
@@ -882,5 +927,156 @@ test.describe.serial("release E2E flow", () => {
     };
     expect(systemPerformance.summary?.visits).toBeGreaterThanOrEqual(1);
     expect(systemPerformance.summary?.customEvents).toBeGreaterThanOrEqual(1);
+
+    const pageviews = collectPayloads
+      .filter(
+        (entry): entry is { kind: "pageview"; pathname: string } =>
+          entry.kind === "pageview" && typeof entry.pathname === "string",
+      )
+      .map((entry) => entry.pathname);
+    const customEvents = collectPayloads
+      .filter(
+        (entry): entry is { kind: "custom_event"; pathname: string } =>
+          entry.kind === "custom_event" && typeof entry.pathname === "string",
+      )
+      .map((entry) => ({
+        eventName: "signup_clicked",
+        pathname: entry.pathname,
+      }));
+    expect(pageviews).toEqual(["/", "/spa/checkout"]);
+    expect(customEvents).toEqual([
+      { eventName: "signup_clicked", pathname: "/" },
+    ]);
+    seed.tracker = {
+      siteA: {
+        customEvents,
+        overview: { views: pageviews.length },
+        pageviews,
+      },
+    };
+    await saveManifest();
+  });
+
+  test("10. site analytics API and dashboard render the real tracker manifest", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const siteA = seed.sites.siteA;
+    const teamA = seed.teams.teamA;
+    const expected = seed.tracker?.siteA;
+    expect(siteA).toBeDefined();
+    expect(teamA).toBeDefined();
+    expect(expected).toBeDefined();
+
+    await signIn(page, "owner-a", ownerAPassword);
+    const overview = await readSiteOverview(page, siteA?.id || "");
+    expect(overview.views).toBe(expected?.overview.views);
+
+    const pages = await apiRequest<DashboardPage[]>(
+      page,
+      "GET",
+      siteQueryPath(siteA?.id || "", "pages"),
+      undefined,
+      "no-store",
+    );
+    expect(pages.status).toBe(200);
+    expect(pages.payload.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ pathname: "/", views: 1 }),
+        expect.objectContaining({ pathname: "/spa/checkout", views: 1 }),
+      ]),
+    );
+
+    const eventTypes = await apiRequest<EventType[]>(
+      page,
+      "GET",
+      siteQueryPath(siteA?.id || "", "event-types"),
+      undefined,
+      "no-store",
+    );
+    expect(eventTypes.status).toBe(200);
+    expect(eventTypes.payload.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "signup_clicked", views: 1 }),
+      ]),
+    );
+
+    const dashboardOverview = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/private/overview") &&
+        response.request().method() === "GET",
+    );
+    await page.goto(`/zh/app/${teamA?.slug}/analytics-a-example-test`, {
+      waitUntil: "domcontentloaded",
+    });
+    const dashboardResponse = await dashboardOverview;
+    expect(dashboardResponse.status()).toBe(200);
+    const dashboardPayload =
+      (await dashboardResponse.json()) as ApiEnvelope<OverviewMetrics>;
+    expect(dashboardPayload.data?.views).toBe(expected?.overview.views);
+    await expect(
+      page.getByText(String(expected?.overview.views), { exact: true }).first(),
+    ).toBeVisible();
+  });
+
+  test("11. bot and invalid collect requests do not change normal site analytics", async ({
+    browser,
+    page,
+  }: {
+    browser: Browser;
+    page: Page;
+  }) => {
+    test.setTimeout(60_000);
+    const siteA = seed.sites.siteA;
+    const expected = seed.tracker?.siteA;
+    expect(siteA).toBeDefined();
+    expect(expected).toBeDefined();
+
+    await signIn(page, "admin", adminPassword);
+    const before = await readSiteOverview(page, siteA?.id || "");
+    expect(before.views).toBe(expected?.overview.views);
+
+    const botContext = await browser.newContext({
+      userAgent:
+        "Mozilla/5.0 (compatible; Googlebot/2.1; +https://www.google.com/bot.html)",
+    });
+    try {
+      const botPage = await botContext.newPage();
+      let botCollects = 0;
+      botPage.on("request", (request) => {
+        if (request.url().endsWith("/collect") && request.method() === "POST") {
+          botCollects += 1;
+        }
+      });
+      await botPage.goto(
+        `${testSiteURL}/?siteId=${encodeURIComponent(siteA?.id || "")}`,
+        { waitUntil: "domcontentloaded" },
+      );
+      await expect.poll(() => botCollects).toBeGreaterThanOrEqual(1);
+    } finally {
+      await botContext.close();
+    }
+
+    const invalidCollectStatus = await page.evaluate(async (siteId) => {
+      const response = await fetch("/collect", {
+        body: JSON.stringify({
+          collectToken: "not-a-valid-e2e-collect-token",
+          hostname: "127.0.0.1",
+          kind: "pageview",
+          pathname: "/invalid-token",
+          siteId,
+          timestamp: Date.now(),
+          visitId: crypto.randomUUID(),
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      return response.status;
+    }, siteA?.id || "");
+    expect(invalidCollectStatus).toBe(204);
+
+    await flushSite(page, siteA?.id || "");
+    const after = await readSiteOverview(page, siteA?.id || "");
+    expect(after).toEqual(before);
   });
 });
