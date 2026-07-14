@@ -99,6 +99,17 @@ type DimensionMetric = {
 
 type ReferrerMetric = { referrer: string; sessions: number; views: number };
 
+type PerformancePayload = {
+  routes?: Array<{
+    metrics: { lcp: { p75: number | null; samples: number } };
+    pathname: string;
+    views: number;
+  }>;
+  summaries?: {
+    lcp: { avg: number | null; p75: number | null; samples: number };
+  };
+};
+
 type TrackerExpectation = {
   customEvents: Array<{ eventName: string; pathname: string }>;
   overview: Pick<OverviewMetrics, "views">;
@@ -1323,6 +1334,104 @@ test.describe.serial("release E2E flow", () => {
         }),
       ]),
     );
+
+    const countries = await apiRequest<DimensionMetric[]>(
+      page,
+      "GET",
+      path("countries"),
+      undefined,
+      "no-store",
+    );
+    expect(countries.status).toBe(200);
+    expect(countries.payload.data).toEqual(
+      expect.arrayContaining(
+        ["CN", "DE", "JP", "US"].map((label) =>
+          expect.objectContaining({ label, views: 30 }),
+        ),
+      ),
+    );
+
+    const devices = await apiRequest<DimensionMetric[]>(
+      page,
+      "GET",
+      path("overview-client-device-type"),
+      undefined,
+      "no-store",
+    );
+    expect(devices.status).toBe(200);
+    expect(devices.payload.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "desktop", views: 80 }),
+        expect.objectContaining({ label: "mobile", views: 40 }),
+      ]),
+    );
+
+    const browsers = await apiRequest<DimensionMetric[]>(
+      page,
+      "GET",
+      path("overview-client-browser"),
+      undefined,
+      "no-store",
+    );
+    expect(browsers.status).toBe(200);
+    expect(browsers.payload.data).toEqual(
+      expect.arrayContaining(
+        ["Chrome", "Edge", "Firefox", "Safari"].map((label) =>
+          expect.objectContaining({ label, views: 30 }),
+        ),
+      ),
+    );
+
+    const performance = await apiRequest<unknown>(
+      page,
+      "GET",
+      `${path("performance")}&interval=month`,
+      undefined,
+      "no-store",
+    );
+    const performancePayload = performance.payload as ApiEnvelope<unknown> &
+      PerformancePayload;
+    expect(performance.status).toBe(200);
+    expect(performancePayload.summaries?.lcp).toEqual(
+      expect.objectContaining({
+        avg: 1550,
+        p75: 1700,
+        samples: 120,
+      }),
+    );
+    expect(performancePayload.routes).toEqual(
+      expect.arrayContaining(
+        Object.entries(history.pages).map(([pathname, views]) =>
+          expect.objectContaining({
+            metrics: expect.objectContaining({
+              lcp: expect.objectContaining({ samples: views }),
+            }),
+            pathname,
+            views,
+          }),
+        ),
+      ),
+    );
+
+    const visitors = await apiRequest<Array<{ visitorId: string }>>(
+      page,
+      "GET",
+      `${path("visitors")}&limit=30`,
+      undefined,
+      "no-store",
+    );
+    expect(visitors.status).toBe(200);
+    expect(visitors.payload.data).toHaveLength(24);
+
+    const sessions = await apiRequest<Array<{ sessionId: string }>>(
+      page,
+      "GET",
+      `${path("sessions")}&limit=50`,
+      undefined,
+      "no-store",
+    );
+    expect(sessions.status).toBe(200);
+    expect(sessions.payload.data).toHaveLength(40);
   });
 
   test("13. E2E clock is token-protected and can expire an existing session", async ({
