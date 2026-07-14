@@ -142,10 +142,12 @@ async function apiRequest<T>(
   method: "GET" | "POST" | "PATCH",
   path: string,
   body?: Record<string, unknown>,
+  cache?: RequestCache,
 ) {
   return page.evaluate(
-    async ({ body, method, path }) => {
+    async ({ body, cache, method, path }) => {
       const response = await fetch(path, {
+        cache,
         method,
         credentials: "include",
         headers: body ? { "content-type": "application/json" } : undefined,
@@ -156,7 +158,7 @@ async function apiRequest<T>(
         status: response.status,
       };
     },
-    { body, method, path },
+    { body, cache, method, path },
   );
 }
 
@@ -735,5 +737,67 @@ test.describe.serial("release E2E flow", () => {
       { token: revokedToken },
     );
     expect(revokedInspection.status).toBe(400);
+  });
+
+  test("8. public sharing only resolves while the owner enables its slug", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const siteA = seed.sites.siteA;
+    expect(siteA).toBeDefined();
+
+    await signIn(page, "owner-a", ownerAPassword);
+    const enabled = await apiRequest<Site>(
+      page,
+      "PATCH",
+      "/api/private/admin/sites",
+      {
+        publicEnabled: true,
+        publicSlug: "e2e-analytics-a",
+        siteId: siteA?.id || "",
+      },
+    );
+    expect(enabled.status).toBe(200);
+    expect(enabled.payload.data).toMatchObject({
+      id: siteA?.id,
+      publicEnabled: true,
+      publicSlug: "e2e-analytics-a",
+    });
+    seed.sites.siteA = enabled.payload.data;
+    await saveManifest();
+
+    await page.context().clearCookies();
+    const publicSite = await apiRequest<{ id: string; name: string }>(
+      page,
+      "GET",
+      "/api/public/share/e2e-analytics-a/site",
+      undefined,
+      "no-store",
+    );
+    expect(publicSite.status).toBe(200);
+    expect(publicSite.payload.data).toMatchObject({ id: siteA?.id });
+
+    await signIn(page, "owner-a", ownerAPassword);
+    const disabled = await apiRequest<Site>(
+      page,
+      "PATCH",
+      "/api/private/admin/sites",
+      { publicEnabled: false, siteId: siteA?.id || "" },
+    );
+    expect(disabled.status).toBe(200);
+    expect(disabled.payload.data).toMatchObject({
+      id: siteA?.id,
+      publicEnabled: false,
+      publicSlug: "",
+    });
+    await page.context().clearCookies();
+    const unavailable = await apiRequest<unknown>(
+      page,
+      "GET",
+      "/api/public/share/e2e-analytics-a/site",
+      undefined,
+      "no-store",
+    );
+    expect(unavailable.status).toBe(404);
   });
 });
