@@ -1370,6 +1370,52 @@ test.describe.serial("release E2E flow", () => {
     expect(before.status).toBe(200);
     expect(before.payload?.data?.nowMs).toBe(e2eNowMs);
 
+    const collectToken = await page.evaluate(async (siteId) => {
+      const script = await fetch(
+        `/script.js?siteId=${encodeURIComponent(siteId)}`,
+        { cache: "no-store" },
+      ).then((response) => response.text());
+      return script.match(/collectToken:"([^"\\]+)"/)?.[1] || "";
+    }, siteA?.id || "");
+    expect(collectToken).not.toBe("");
+
+    const analyticsBeforeExpiredToken = await readSiteOverview(
+      page,
+      siteA?.id || "",
+    );
+    const tokenExpiredAt = await e2eControlRequest<{ nowMs: number }>(
+      page,
+      "POST",
+      "clock/advance",
+      { deltaMs: 13 * 60 * 60 * 1000 },
+    );
+    expect(tokenExpiredAt.status).toBe(200);
+
+    const expiredCollectStatus = await page.evaluate(
+      async ({ collectToken, siteId, timestamp }) => {
+        const response = await fetch("/collect", {
+          body: JSON.stringify({
+            collectToken,
+            hostname: "history.e2e.test",
+            kind: "pageview",
+            pathname: "/expired-token",
+            siteId,
+            timestamp,
+            visitId: crypto.randomUUID(),
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        });
+        return response.status;
+      },
+      { collectToken, siteId: siteA?.id || "", timestamp: e2eNowMs },
+    );
+    expect(expiredCollectStatus).toBe(204);
+    await flushSite(page, siteA?.id || "");
+    expect(await readSiteOverview(page, siteA?.id || "")).toEqual(
+      analyticsBeforeExpiredToken,
+    );
+
     const advanced = await e2eControlRequest<{ nowMs: number }>(
       page,
       "POST",
@@ -1378,7 +1424,9 @@ test.describe.serial("release E2E flow", () => {
     );
     expect(advanced.status).toBe(200);
     expect(advanced.payload?.data?.nowMs).toBe(
-      (before.payload?.data?.nowMs || 0) + 31 * 24 * 60 * 60 * 1000,
+      (before.payload?.data?.nowMs || 0) +
+        13 * 60 * 60 * 1000 +
+        31 * 24 * 60 * 60 * 1000,
     );
 
     const expired = await apiRequest<unknown>(
