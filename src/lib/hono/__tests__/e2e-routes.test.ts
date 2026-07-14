@@ -85,7 +85,16 @@ describe("E2E control routes", () => {
       }),
       env as never,
     );
+    const invalidAdvance = await e2eRoutes.fetch(
+      controlRequest("clock/advance", {
+        body: JSON.stringify({ deltaMs: -1 }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+      env as never,
+    );
     expect(invalid.status).toBe(400);
+    expect(invalidAdvance.status).toBe(400);
     expect(await set.json()).toMatchObject({ data: { nowMs: 1_000 } });
     expect(await advance.json()).toMatchObject({ data: { nowMs: 1_250 } });
   });
@@ -112,11 +121,30 @@ describe("E2E control routes", () => {
       controlRequest("ingest/status?siteId=site-1"),
       env as never,
     );
+    const flushFailed = await e2eRoutes.fetch(
+      controlRequest("ingest/flush", {
+        body: JSON.stringify({ siteId: "site-1" }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+      createEnv({ response: new Response("failed", { status: 500 }) }) as never,
+    );
+    const statusMissing = await e2eRoutes.fetch(
+      controlRequest("ingest/status"),
+      createEnv({ exists: false }) as never,
+    );
+    const statusFailed = await e2eRoutes.fetch(
+      controlRequest("ingest/status?siteId=site-1"),
+      createEnv({ response: new Response("failed", { status: 500 }) }) as never,
+    );
     expect(scheduled.status).toBe(200);
     expect(runScheduledTask).toHaveBeenCalledTimes(2);
     expect(invalidFlush.status).toBe(400);
     expect(flushed.status).toBe(200);
     expect(status.status).toBe(200);
+    expect(flushFailed.status).toBe(502);
+    expect(statusMissing.status).toBe(400);
+    expect(statusFailed.status).toBe(502);
     expect(env.stub.fetch).toHaveBeenCalledWith(
       "https://ingest.internal/diagnostic",
     );
