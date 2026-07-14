@@ -50,7 +50,28 @@ type Member = {
   username: string;
 };
 
+type ApiKey = {
+  id: string;
+  name: string;
+  scopes: string[];
+  siteIds: string[];
+  status: "active" | "expired" | "revoked";
+  teamId: string;
+};
+
+type CreatedApiKey = { key: ApiKey; secret: string };
+
+type TeamInvite = {
+  id: string;
+  payload: { siteIds?: string[]; teamRole?: "admin" | "member" };
+  status: "active" | "revoked" | "used" | "expired";
+};
+
+type CreatedTeamInvite = { invite: TeamInvite; url: string };
+
 type SeedManifest = {
+  apiKeys: Partial<Record<"analyticsRead" | "revoked", CreatedApiKey>>;
+  invites: Partial<Record<"active" | "revoked", CreatedTeamInvite>>;
   runId: string;
   sites: Partial<Record<"siteA" | "siteB" | "siteC", Site>>;
   teams: Partial<Record<"teamA" | "teamB", Team>>;
@@ -74,6 +95,8 @@ const restrictedAPassword = "e2e-restricted-a-password";
 const outsiderPassword = "e2e-outsider-password";
 
 const seed: SeedManifest = {
+  apiKeys: {},
+  invites: {},
   runId,
   users: {
     admin: {
@@ -508,5 +531,209 @@ test.describe.serial("release E2E flow", () => {
       `/api/private/admin/sites?teamId=${encodeURIComponent(teamB?.id || "")}`,
     );
     expect(outsiderOtherTeamRead.status).toBe(403);
+  });
+
+  test("6. team owner creates scoped API keys and members cannot manage them", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const teamA = seed.teams.teamA;
+    const siteA = seed.sites.siteA;
+    expect(teamA).toBeDefined();
+    expect(siteA).toBeDefined();
+
+    await signIn(page, "owner-a", ownerAPassword);
+    const analyticsRead = await apiRequest<CreatedApiKey>(
+      page,
+      "POST",
+      "/api/private/admin/api-keys",
+      {
+        expiresInDays: 30,
+        name: "E2E Analytics Site A Read",
+        scopes: ["analytics:read"],
+        siteIds: [siteA?.id || ""],
+        teamId: teamA?.id || "",
+      },
+    );
+    expect(analyticsRead.status).toBe(200);
+    expect(analyticsRead.payload.data).toMatchObject({
+      key: {
+        name: "E2E Analytics Site A Read",
+        scopes: ["analytics:read"],
+        siteIds: [siteA?.id],
+        status: "active",
+        teamId: teamA?.id,
+      },
+    });
+    expect(analyticsRead.payload.data?.secret).toMatch(/^ifk_live_/);
+    seed.apiKeys.analyticsRead = analyticsRead.payload.data;
+
+    const revocable = await apiRequest<CreatedApiKey>(
+      page,
+      "POST",
+      "/api/private/admin/api-keys",
+      {
+        expiresInDays: 30,
+        name: "E2E Revoked Key",
+        scopes: ["site:read"],
+        siteIds: [siteA?.id || ""],
+        teamId: teamA?.id || "",
+      },
+    );
+    expect(revocable.status).toBe(200);
+    const revoked = await apiRequest<ApiKey>(
+      page,
+      "PATCH",
+      "/api/private/admin/api-keys",
+      {
+        intent: "revoke",
+        keyId: revocable.payload.data?.key.id || "",
+        teamId: teamA?.id || "",
+      },
+    );
+    expect(revoked.status).toBe(200);
+    expect(revoked.payload.data).toMatchObject({
+      id: revocable.payload.data?.key.id,
+      status: "revoked",
+    });
+    seed.apiKeys.revoked = revocable.payload.data;
+
+    const listed = await apiRequest<ApiKey[]>(
+      page,
+      "GET",
+      `/api/private/admin/api-keys?teamId=${encodeURIComponent(teamA?.id || "")}`,
+    );
+    expect(listed.status).toBe(200);
+    expect(listed.payload.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: analyticsRead.payload.data?.key.id }),
+        expect.objectContaining({
+          id: revocable.payload.data?.key.id,
+          status: "revoked",
+        }),
+      ]),
+    );
+    expect(JSON.stringify(listed.payload.data)).not.toContain(
+      analyticsRead.payload.data?.secret || "",
+    );
+    await saveManifest();
+
+    await signIn(page, "member-a", memberAPassword);
+    const denied = await apiRequest<ApiKey[]>(
+      page,
+      "GET",
+      `/api/private/admin/api-keys?teamId=${encodeURIComponent(teamA?.id || "")}`,
+    );
+    expect(denied.status).toBe(403);
+  });
+
+  test("7. team invites preserve site scope, support registration, and can be revoked", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const teamA = seed.teams.teamA;
+    const siteA = seed.sites.siteA;
+    expect(teamA).toBeDefined();
+    expect(siteA).toBeDefined();
+
+    await signIn(page, "owner-a", ownerAPassword);
+    const active = await apiRequest<CreatedTeamInvite>(
+      page,
+      "POST",
+      "/api/private/admin/team-invites",
+      {
+        email: "invitee-a@example.test",
+        expiresInHours: 24,
+        role: "member",
+        siteIds: [siteA?.id || ""],
+        teamId: teamA?.id || "",
+      },
+    );
+    expect(active.status).toBe(200);
+    expect(active.payload.data).toMatchObject({
+      invite: {
+        payload: { siteIds: [siteA?.id], teamRole: "member" },
+        status: "active",
+      },
+    });
+    seed.invites.active = active.payload.data;
+    const token = new URL(
+      active.payload.data?.url || "http://invalid/",
+    ).hash.replace(/^#token=/, "");
+    expect(token).not.toBe("");
+
+    await page.context().clearCookies();
+    const inspected = await apiRequest<{ allowsRegistration: boolean }>(
+      page,
+      "POST",
+      "/api/public/account-links/inspect",
+      { token },
+    );
+    expect(inspected.status).toBe(200);
+    expect(inspected.payload.data).toMatchObject({ allowsRegistration: true });
+    const accepted = await apiRequest<{ user: User }>(
+      page,
+      "POST",
+      "/api/public/account-links/complete",
+      {
+        email: "invitee-a@example.test",
+        name: "E2E Invitee A",
+        password: "e2e-invitee-a-password",
+        token,
+        username: "invitee-a",
+      },
+    );
+    expect(accepted.status).toBe(200);
+    expect(accepted.payload.data?.user).toMatchObject({
+      username: "invitee-a",
+    });
+    const reused = await apiRequest<unknown>(
+      page,
+      "POST",
+      "/api/public/account-links/complete",
+      { token },
+    );
+    expect(reused.status).toBe(400);
+
+    await signIn(page, "owner-a", ownerAPassword);
+    const revocable = await apiRequest<CreatedTeamInvite>(
+      page,
+      "POST",
+      "/api/private/admin/team-invites",
+      {
+        email: "revoked-invite@example.test",
+        expiresInHours: 24,
+        role: "member",
+        siteIds: [],
+        teamId: teamA?.id || "",
+      },
+    );
+    expect(revocable.status).toBe(200);
+    const revoked = await apiRequest<TeamInvite>(
+      page,
+      "PATCH",
+      "/api/private/admin/team-invites",
+      {
+        intent: "revoke",
+        inviteId: revocable.payload.data?.invite.id || "",
+        teamId: teamA?.id || "",
+      },
+    );
+    expect(revoked.status).toBe(200);
+    expect(revoked.payload.data).toMatchObject({ status: "revoked" });
+    seed.invites.revoked = revocable.payload.data;
+    await saveManifest();
+
+    await page.context().clearCookies();
+    const revokedToken = new URL(
+      revocable.payload.data?.url || "http://invalid/",
+    ).hash.replace(/^#token=/, "");
+    const revokedInspection = await apiRequest<unknown>(
+      page,
+      "POST",
+      "/api/public/account-links/inspect",
+      { token: revokedToken },
+    );
+    expect(revokedInspection.status).toBe(400);
   });
 });
