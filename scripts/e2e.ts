@@ -446,7 +446,7 @@ async function runPlaywright(
   const args = [
     localBin("@playwright/test", "cli.js"),
     "test",
-    "e2e/team-site-bootstrap.spec.ts",
+    "e2e/release-flow.spec.ts",
     "--config",
     "playwright.config.ts",
   ];
