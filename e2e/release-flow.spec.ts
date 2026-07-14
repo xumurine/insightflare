@@ -88,6 +88,7 @@ const adminPassword = requiredEnvironmentValue(
 );
 const manifestPath = requiredEnvironmentValue("INSIGHTFLARE_E2E_MANIFEST");
 const runId = requiredEnvironmentValue("INSIGHTFLARE_E2E_RUN_ID");
+const testSiteURL = requiredEnvironmentValue("INSIGHTFLARE_E2E_TEST_SITE_URL");
 const ownerAPassword = "e2e-owner-a-password";
 const ownerBPassword = "e2e-owner-b-password";
 const memberAPassword = "e2e-member-a-password";
@@ -799,5 +800,87 @@ test.describe.serial("release E2E flow", () => {
       "no-store",
     );
     expect(unavailable.status).toBe(404);
+  });
+
+  test("9. real browser tracking reaches the DO and persists pageviews and events", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const siteA = seed.sites.siteA;
+    expect(siteA).toBeDefined();
+
+    await signIn(page, "owner-a", ownerAPassword);
+    const trackingConfig = await apiRequest<Record<string, unknown>>(
+      page,
+      "POST",
+      "/api/private/admin/site-config",
+      {
+        config: { domainWhitelist: ["127.0.0.1"] },
+        siteId: siteA?.id || "",
+      },
+    );
+    expect(trackingConfig.status).toBe(200);
+
+    const collectPayloads: Array<{ kind?: string; pathname?: string }> = [];
+    page.on("request", (request) => {
+      if (!request.url().endsWith("/collect") || request.method() !== "POST")
+        return;
+      try {
+        collectPayloads.push(
+          JSON.parse(request.postData() || "{}") as {
+            kind?: string;
+            pathname?: string;
+          },
+        );
+      } catch {
+        // The request itself remains the authoritative browser-side evidence.
+      }
+    });
+    await page.context().clearCookies();
+    await page.goto(
+      `${testSiteURL}/?siteId=${encodeURIComponent(siteA?.id || "")}`,
+      {
+        waitUntil: "domcontentloaded",
+      },
+    );
+    await expect(page.locator("#signup")).toBeVisible();
+    await page.locator("#signup").click();
+    await page.locator("#spa-route").click();
+    await expect
+      .poll(
+        () =>
+          collectPayloads.filter((entry) => entry.kind === "pageview").length,
+      )
+      .toBeGreaterThanOrEqual(2);
+    expect(collectPayloads).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "custom_event", pathname: "/" }),
+        expect.objectContaining({
+          kind: "pageview",
+          pathname: "/spa/checkout",
+        }),
+      ]),
+    );
+
+    await signIn(page, "admin", adminPassword);
+    const flushed = await apiRequest<{ flushed: boolean; siteId: string }>(
+      page,
+      "POST",
+      "/api/private/admin/e2e/flush",
+      { siteId: siteA?.id || "" },
+    );
+    expect(flushed.status).toBe(200);
+    expect(flushed.payload.data).toEqual({ flushed: true, siteId: siteA?.id });
+    const performance = await apiRequest<unknown>(
+      page,
+      "GET",
+      "/api/private/admin/system-performance?minutes=15",
+    );
+    expect(performance.status).toBe(200);
+    const systemPerformance = performance.payload as unknown as {
+      summary?: { customEvents?: number; visits?: number };
+    };
+    expect(systemPerformance.summary?.visits).toBeGreaterThanOrEqual(1);
+    expect(systemPerformance.summary?.customEvents).toBeGreaterThanOrEqual(1);
   });
 });

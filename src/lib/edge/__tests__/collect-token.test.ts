@@ -119,7 +119,9 @@ describe("collect token", () => {
         }),
       ),
     ).toBe("203.0.113.4");
-    expect(requestIp(new Request("https://collector.test/collect"))).toBe("");
+    expect(requestIp(new Request("https://collector.test/collect"))).toBe(
+      "0.0.0.0",
+    );
   });
 
   it("rejects malformed, tampered, and mismatched tokens", async () => {

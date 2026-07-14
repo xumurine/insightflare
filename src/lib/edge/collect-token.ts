@@ -103,7 +103,9 @@ export function requestIp(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for")?.trim();
   if (forwarded) return normalizeIp(forwarded.split(",")[0] || "");
   const realIp = request.headers.get("x-real-ip")?.trim();
-  return realIp ? normalizeIp(realIp) : "";
+  // Local Workers and self-hosted deployments can legitimately lack a proxy
+  // forwarding header. Keep token issuance and verification consistent there.
+  return realIp ? normalizeIp(realIp) : "0.0.0.0";
 }
 
 function encodePayload(payload: CollectTokenPayload): string {

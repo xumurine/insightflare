@@ -16,6 +16,7 @@ export interface Env {
   SITE_SETTINGS_KV?: KVNamespace;
   INSIGHTFLARE_LOGIN_TURNSTILE_DISABLED?: string;
   INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED?: string;
+  INSIGHTFLARE_E2E?: string;
 }
 
 export interface SerializedRequestPayload {

@@ -3,6 +3,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
+import { createServer, type Server } from "node:http";
 import net from "node:net";
 import path from "node:path";
 import process from "node:process";
@@ -32,12 +33,18 @@ interface Environment {
   mainSecret: string;
   persistencePath: string;
   port: number;
+  testSiteURL: string;
 }
 
 interface StartedProcess {
   child: ChildProcess;
   exited: Promise<void>;
   name: string;
+}
+
+interface StartedTestSite {
+  server: Server;
+  url: string;
 }
 
 function optionValue(argv: string[], name: string): string | undefined {
@@ -102,6 +109,7 @@ binding = "ASSETS"
 [vars]
 DEMO_MODE = "0"
 DISABLE_CRON_TASKS = "1"
+INSIGHTFLARE_E2E = "1"
 MAIN_SECRET = ${tomlString(input.mainSecret)}
 BOOTSTRAP_ADMIN_PASSWORD = ${tomlString(input.adminPassword)}
 SESSION_WINDOW_MINUTES = "30"
@@ -199,6 +207,7 @@ async function createEnvironment(options: Options): Promise<Environment> {
     mainSecret: randomBytes(32).toString("hex"),
     persistencePath,
     port: await findOpenPort(),
+    testSiteURL: "",
   };
   environment.baseURL = `http://127.0.0.1:${environment.port}`;
 
@@ -212,6 +221,43 @@ async function createEnvironment(options: Options): Promise<Environment> {
   );
   await writeRunManifest(environment, options);
   return environment;
+}
+
+function testSiteHtml(workerURL: string, requestURL: URL): string {
+  const siteId = requestURL.searchParams.get("siteId") || "";
+  const scriptURL = `${workerURL}/script.js?siteId=${encodeURIComponent(siteId)}`;
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>InsightFlare E2E Test Site</title>
+<script defer src="${scriptURL}"></script></head>
+<body><main><h1>E2E Test Site</h1><a id="product-link" href="/product?siteId=${encodeURIComponent(siteId)}">Product</a>
+<button id="signup" data-insightflare-event="signup_clicked" data-insightflare-event-plan="pro">Sign up</button>
+<button id="spa-route">SPA checkout</button></main>
+<script>document.getElementById('spa-route').addEventListener('click',()=>history.pushState({},'', '/spa/checkout?siteId=${encodeURIComponent(siteId)}&utm_source=e2e'));</script>
+</body></html>`;
+}
+
+async function startTestSite(workerURL: string): Promise<StartedTestSite> {
+  const server = createServer((request, response) => {
+    const requestURL = new URL(request.url || "/", "http://127.0.0.1");
+    response.writeHead(200, {
+      "cache-control": "no-store",
+      "content-type": "text/html; charset=utf-8",
+    });
+    response.end(testSiteHtml(workerURL, requestURL));
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen({ host: "127.0.0.1", port: 0 }, () => resolve());
+  });
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("Unable to start E2E test site.");
+  return { server, url: `http://127.0.0.1:${address.port}` };
+}
+
+async function stopTestSite(testSite: StartedTestSite | null): Promise<void> {
+  if (!testSite) return;
+  await new Promise<void>((resolve) => testSite.server.close(() => resolve()));
 }
 
 function childExitError(
@@ -472,6 +518,7 @@ async function runPlaywright(
         "seed.json",
       ),
       INSIGHTFLARE_E2E_RUN_ID: environment.id,
+      INSIGHTFLARE_E2E_TEST_SITE_URL: environment.testSiteURL,
     },
     logPath: path.join(environment.directory, "logs", "playwright.log"),
     name: "Playwright",
@@ -482,6 +529,7 @@ async function runPlaywright(
 async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2));
   let worker: StartedProcess | null = null;
+  let testSite: StartedTestSite | null = null;
   let environment: Environment | null = null;
   let succeeded = false;
   const startedAt = Date.now();
@@ -552,6 +600,11 @@ async function main(): Promise<void> {
       await waitForReady(activeEnvironment.baseURL, startedWorker);
       return startedWorker;
     });
+    testSite = await runPreparationStep("Starting E2E test site", () =>
+      startTestSite(activeEnvironment.baseURL),
+    );
+    activeEnvironment.testSiteURL = testSite.url;
+    await writeRunManifest(activeEnvironment, options);
     rlog.progress(PREPARATION_PROGRESS_MAX, PREPARATION_PROGRESS_MAX);
     rlog.success("Test environment is ready.");
     rlog.info("Running Playwright E2E...");
@@ -561,6 +614,7 @@ async function main(): Promise<void> {
       `E2E passed in ${((Date.now() - startedAt) / 1000).toFixed(2)}s.`,
     );
   } finally {
+    await stopTestSite(testSite);
     await stopProcess(worker);
     if (environment) {
       if (succeeded && !options.keep) {
