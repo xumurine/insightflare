@@ -215,6 +215,28 @@ async function readSiteOverview(page: Page, siteId: string) {
   return overview.payload.data as OverviewMetrics;
 }
 
+function waitForCollectResponse(
+  page: Page,
+  expected: { kind: string; pathname: string },
+) {
+  return page.waitForResponse((response) => {
+    if (!response.url().endsWith("/collect")) return false;
+    const request = response.request();
+    if (request.method() !== "POST") return false;
+    try {
+      const payload = JSON.parse(request.postData() || "{}") as {
+        kind?: string;
+        pathname?: string;
+      };
+      return (
+        payload.kind === expected.kind && payload.pathname === expected.pathname
+      );
+    } catch {
+      return false;
+    }
+  });
+}
+
 async function createSiteThroughUi(
   page: Page,
   input: {
@@ -889,21 +911,44 @@ test.describe.serial("release E2E flow", () => {
       }
     });
     await page.context().clearCookies();
+    const initialCollect = waitForCollectResponse(page, {
+      kind: "pageview",
+      pathname: "/",
+    });
     await page.goto(
       `${testSiteURL}/?siteId=${encodeURIComponent(siteA?.id || "")}`,
       {
         waitUntil: "domcontentloaded",
       },
     );
+    expect((await initialCollect).status()).toBe(204);
     await expect(page.locator("#signup")).toBeVisible();
+    const signupCollect = waitForCollectResponse(page, {
+      kind: "custom_event",
+      pathname: "/",
+    });
     await page.locator("#signup").click();
+    expect((await signupCollect).status()).toBe(204);
+    const spaCollect = waitForCollectResponse(page, {
+      kind: "pageview",
+      pathname: "/spa/checkout",
+    });
     await page.locator("#spa-route").click();
+    await expect(page).toHaveURL(/\/spa\/checkout\?siteId=/);
+    expect((await spaCollect).status()).toBe(204);
+    const productCollect = waitForCollectResponse(page, {
+      kind: "pageview",
+      pathname: "/product",
+    });
+    await page.locator("#product-link").click();
+    await expect(page).toHaveURL(/\/product\?siteId=/);
+    expect((await productCollect).status()).toBe(204);
     await expect
       .poll(
         () =>
           collectPayloads.filter((entry) => entry.kind === "pageview").length,
       )
-      .toBeGreaterThanOrEqual(2);
+      .toBeGreaterThanOrEqual(3);
     expect(collectPayloads).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "custom_event", pathname: "/" }),
@@ -911,6 +956,7 @@ test.describe.serial("release E2E flow", () => {
           kind: "pageview",
           pathname: "/spa/checkout",
         }),
+        expect.objectContaining({ kind: "pageview", pathname: "/product" }),
       ]),
     );
 
@@ -943,7 +989,7 @@ test.describe.serial("release E2E flow", () => {
         eventName: "signup_clicked",
         pathname: entry.pathname,
       }));
-    expect(pageviews).toEqual(["/", "/spa/checkout"]);
+    expect(pageviews).toEqual(["/", "/spa/checkout", "/product"]);
     expect(customEvents).toEqual([
       { eventName: "signup_clicked", pathname: "/" },
     ]);
@@ -984,6 +1030,7 @@ test.describe.serial("release E2E flow", () => {
       expect.arrayContaining([
         expect.objectContaining({ pathname: "/", views: 1 }),
         expect.objectContaining({ pathname: "/spa/checkout", views: 1 }),
+        expect.objectContaining({ pathname: "/product", views: 1 }),
       ]),
     );
 
