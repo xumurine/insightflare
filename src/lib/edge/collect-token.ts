@@ -1,5 +1,6 @@
 import { collectTokenSigningSecret } from "@/lib/secrets";
 
+import { appNow } from "./e2e-clock";
 import type { Env } from "./types";
 
 const COLLECT_TOKEN_AUDIENCE = "collect";
@@ -180,7 +181,7 @@ export async function issueCollectToken(input: {
       "MAIN_SECRET or DAILY_SALT_SECRET is required to sign collect tokens",
     );
   }
-  const now = Math.floor(input.nowSeconds ?? Date.now() / 1000);
+  const now = Math.floor(input.nowSeconds ?? appNow() / 1000);
   const payload = encodePayload({
     aud: COLLECT_TOKEN_AUDIENCE,
     siteId: input.siteId,
@@ -238,7 +239,7 @@ export async function verifyCollectToken(input: {
   const payload = decodePayload(payloadPart);
   if (!payload) return { ok: false, reason: "invalid_collect_token_payload" };
 
-  const now = Math.floor(input.nowSeconds ?? Date.now() / 1000);
+  const now = Math.floor(input.nowSeconds ?? appNow() / 1000);
   if (payload.exp <= now) return { ok: false, reason: "expired_collect_token" };
   if (payload.iat > now + 60)
     return { ok: false, reason: "future_collect_token" };

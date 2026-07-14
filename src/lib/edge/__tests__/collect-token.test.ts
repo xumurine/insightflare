@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   COLLECT_TOKEN_TTL_SECONDS,
@@ -6,9 +6,15 @@ import {
   requestIp,
   verifyCollectToken,
 } from "@/lib/edge/collect-token";
+import { setE2eClock } from "@/lib/edge/e2e-clock";
 import { collectTokenSigningSecret } from "@/lib/secrets";
 
 const env = { MAIN_SECRET: "main-secret" };
+const CLOCK_KEY = "__insightflare_e2e_clock__";
+
+afterEach(() => {
+  Reflect.deleteProperty(globalThis, CLOCK_KEY);
+});
 
 function b64u(input: unknown): string {
   const json = typeof input === "string" ? input : JSON.stringify(input);
@@ -90,6 +96,27 @@ describe("collect token", () => {
         iat: 1000,
         exp: 1000 + COLLECT_TOKEN_TTL_SECONDS,
       },
+    });
+  });
+
+  it("uses the controlled E2E clock when callers do not supply a time", async () => {
+    setE2eClock(1_000_000);
+    const token = await issueCollectToken({
+      env,
+      siteId: "site-1",
+      ip: "203.0.113.7",
+    });
+
+    await expect(
+      verifyCollectToken({
+        env,
+        token,
+        siteId: "site-1",
+        ip: "203.0.113.7",
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      payload: { exp: 1_000 + COLLECT_TOKEN_TTL_SECONDS, iat: 1_000 },
     });
   });
 

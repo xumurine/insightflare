@@ -15,6 +15,7 @@ const rlog = createScriptLogger({ logFile: "e2e.log" });
 const MIGRATION_PROGRESS_MAX = 85;
 const TRACKER_BUILD_PROGRESS = 90;
 const PREPARATION_PROGRESS_MAX = 100;
+const E2E_INITIAL_NOW_MS = Date.UTC(2026, 6, 13, 12);
 
 interface Options {
   debug: boolean;
@@ -32,6 +33,7 @@ interface Environment {
   directory: string;
   id: string;
   mainSecret: string;
+  nowMs: number;
   persistencePath: string;
   port: number;
   testSiteURL: string;
@@ -94,6 +96,7 @@ function generatedWranglerConfig(input: {
   controlToken: string;
   id: string;
   mainSecret: string;
+  nowMs: number;
 }): string {
   const root = (relativePath: string) =>
     tomlString(path.join(ROOT_DIR, relativePath));
@@ -113,6 +116,7 @@ DEMO_MODE = "0"
 DISABLE_CRON_TASKS = "1"
 INSIGHTFLARE_E2E = "1"
 INSIGHTFLARE_E2E_CONTROL_TOKEN = ${tomlString(input.controlToken)}
+INSIGHTFLARE_E2E_NOW = ${tomlString(String(input.nowMs))}
 MAIN_SECRET = ${tomlString(input.mainSecret)}
 BOOTSTRAP_ADMIN_PASSWORD = ${tomlString(input.adminPassword)}
 SESSION_WINDOW_MINUTES = "30"
@@ -173,7 +177,12 @@ async function writeRunManifest(
       {
         baseURL: environment.baseURL,
         createdAt: new Date().toISOString(),
-        clock: { nowMs: null },
+        clock: {
+          initialNow: new Date(environment.nowMs).toISOString(),
+          nowMs: environment.nowMs,
+          sessionWindowMinutes: 30,
+          timeZone: "Asia/Shanghai",
+        },
         debug: options.debug,
         headed: options.headed,
         keep: options.keep,
@@ -210,6 +219,7 @@ async function createEnvironment(options: Options): Promise<Environment> {
     directory,
     id,
     mainSecret: randomBytes(32).toString("hex"),
+    nowMs: E2E_INITIAL_NOW_MS,
     persistencePath,
     port: await findOpenPort(),
     testSiteURL: "",
@@ -223,6 +233,7 @@ async function createEnvironment(options: Options): Promise<Environment> {
       controlToken: environment.controlToken,
       id: environment.id,
       mainSecret: environment.mainSecret,
+      nowMs: environment.nowMs,
     }),
   );
   await writeRunManifest(environment, options);
@@ -447,7 +458,7 @@ async function waitForReady(
 
 async function initializeE2eClock(environment: Environment): Promise<void> {
   const response = await fetch(`${environment.baseURL}/__e2e__/clock/set`, {
-    body: JSON.stringify({ nowMs: Date.now() }),
+    body: JSON.stringify({ nowMs: environment.nowMs }),
     headers: {
       "content-type": "application/json",
       "x-insightflare-e2e-token": environment.controlToken,
@@ -541,6 +552,7 @@ async function runPlaywright(
         "seed.json",
       ),
       INSIGHTFLARE_E2E_PERSISTENCE_PATH: environment.persistencePath,
+      INSIGHTFLARE_E2E_NOW_MS: String(environment.nowMs),
       INSIGHTFLARE_E2E_RUN_ID: environment.id,
       INSIGHTFLARE_E2E_TEST_SITE_URL: environment.testSiteURL,
     },

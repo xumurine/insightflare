@@ -107,6 +107,12 @@ type TrackerExpectation = {
 
 type SeedManifest = {
   apiKeys: Partial<Record<"analyticsRead" | "revoked", CreatedApiKey>>;
+  clock: {
+    initialNow: string;
+    nowMs: number;
+    sessionWindowMinutes: number;
+    timeZone: string;
+  };
   invites: Partial<Record<"active" | "revoked", CreatedTeamInvite>>;
   runId: string;
   history?: Partial<Record<"siteB", HistorySeedManifest>>;
@@ -133,6 +139,10 @@ const d1Name = requiredEnvironmentValue("INSIGHTFLARE_E2E_D1_NAME");
 const persistencePath = requiredEnvironmentValue(
   "INSIGHTFLARE_E2E_PERSISTENCE_PATH",
 );
+const e2eNowMs = Number(requiredEnvironmentValue("INSIGHTFLARE_E2E_NOW_MS"));
+if (!Number.isFinite(e2eNowMs)) {
+  throw new Error("INSIGHTFLARE_E2E_NOW_MS must be a timestamp.");
+}
 const ownerAPassword = "e2e-owner-a-password";
 const ownerBPassword = "e2e-owner-b-password";
 const memberAPassword = "e2e-member-a-password";
@@ -141,6 +151,12 @@ const outsiderPassword = "e2e-outsider-password";
 
 const seed: SeedManifest = {
   apiKeys: {},
+  clock: {
+    initialNow: new Date(e2eNowMs).toISOString(),
+    nowMs: e2eNowMs,
+    sessionWindowMinutes: 30,
+    timeZone: "Asia/Shanghai",
+  },
   invites: {},
   runId,
   users: {
@@ -262,7 +278,7 @@ async function seedHistoricalVisits(
   siteId: string,
 ): Promise<HistorySeedManifest> {
   const history = buildHistorySeed({
-    nowMs: Date.now(),
+    nowMs: e2eNowMs,
     runId,
     siteId,
   });
@@ -1352,7 +1368,7 @@ test.describe.serial("release E2E flow", () => {
       "clock",
     );
     expect(before.status).toBe(200);
-    expect(before.payload?.data?.nowMs).toEqual(expect.any(Number));
+    expect(before.payload?.data?.nowMs).toBe(e2eNowMs);
 
     const advanced = await e2eControlRequest<{ nowMs: number }>(
       page,
