@@ -1,5 +1,6 @@
 import { SESSION_COOKIE, SESSION_DURATION_SECONDS } from "@/lib/constants";
 import { handleAuthLoginAdmin } from "@/lib/edge/admin-users";
+import { appNow } from "@/lib/edge/e2e-clock";
 import { readLoginTurnstileRuntimeConfig } from "@/lib/edge/login-turnstile-runtime";
 import { decryptLoginTurnstileSecret } from "@/lib/edge/secret-encryption";
 import { verifyTurnstileToken } from "@/lib/edge/turnstile-siteverify";
@@ -88,7 +89,7 @@ async function createSessionTokenForEnv(
   }
   const payload = {
     ...claims,
-    exp: Math.floor(Date.now() / 1000) + maxAgeSeconds,
+    exp: Math.floor(appNow() / 1000) + maxAgeSeconds,
   };
   const encodedPayload = base64UrlEncode(bytes(JSON.stringify(payload)));
   const signature = await hmacSha256(encodedPayload, secret);

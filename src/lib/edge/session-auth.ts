@@ -1,5 +1,6 @@
 import { dashboardSessionSecret } from "@/lib/secrets";
 
+import { appNow } from "./e2e-clock";
 import type { Env } from "./types";
 
 export type EdgeSystemRole = "admin" | "user";
@@ -140,7 +141,7 @@ export async function verifySessionToken(
     maybe.systemRole === "admin" ? "admin" : "user";
   const exp = Number(maybe.exp || 0);
   if (!userId || !username || !Number.isFinite(exp) || exp <= 0) return null;
-  if (Math.floor(Date.now() / 1000) >= exp) return null;
+  if (Math.floor(appNow() / 1000) >= exp) return null;
 
   return {
     userId,

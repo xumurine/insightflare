@@ -28,6 +28,7 @@ interface Environment {
   adminPassword: string;
   baseURL: string;
   configPath: string;
+  controlToken: string;
   directory: string;
   id: string;
   mainSecret: string;
@@ -90,6 +91,7 @@ function workerName(id: string): string {
 
 function generatedWranglerConfig(input: {
   adminPassword: string;
+  controlToken: string;
   id: string;
   mainSecret: string;
 }): string {
@@ -110,6 +112,7 @@ binding = "ASSETS"
 DEMO_MODE = "0"
 DISABLE_CRON_TASKS = "1"
 INSIGHTFLARE_E2E = "1"
+INSIGHTFLARE_E2E_CONTROL_TOKEN = ${tomlString(input.controlToken)}
 MAIN_SECRET = ${tomlString(input.mainSecret)}
 BOOTSTRAP_ADMIN_PASSWORD = ${tomlString(input.adminPassword)}
 SESSION_WINDOW_MINUTES = "30"
@@ -170,6 +173,7 @@ async function writeRunManifest(
       {
         baseURL: environment.baseURL,
         createdAt: new Date().toISOString(),
+        clock: { nowMs: null },
         debug: options.debug,
         headed: options.headed,
         keep: options.keep,
@@ -202,6 +206,7 @@ async function createEnvironment(options: Options): Promise<Environment> {
     adminPassword: `e2e-${randomBytes(24).toString("hex")}`,
     baseURL: "",
     configPath: path.join(configDirectory, "wrangler.e2e.toml"),
+    controlToken: randomBytes(32).toString("hex"),
     directory,
     id,
     mainSecret: randomBytes(32).toString("hex"),
@@ -215,6 +220,7 @@ async function createEnvironment(options: Options): Promise<Environment> {
     environment.configPath,
     generatedWranglerConfig({
       adminPassword: environment.adminPassword,
+      controlToken: environment.controlToken,
       id: environment.id,
       mainSecret: environment.mainSecret,
     }),
@@ -439,6 +445,20 @@ async function waitForReady(
   throw new Error(`E2E worker did not become ready: ${lastError}`);
 }
 
+async function initializeE2eClock(environment: Environment): Promise<void> {
+  const response = await fetch(`${environment.baseURL}/__e2e__/clock/set`, {
+    body: JSON.stringify({ nowMs: Date.now() }),
+    headers: {
+      "content-type": "application/json",
+      "x-insightflare-e2e-token": environment.controlToken,
+    },
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error(`Unable to initialize E2E clock: ${response.status}.`);
+  }
+}
+
 async function stopProcess(
   processToStop: StartedProcess | null,
 ): Promise<void> {
@@ -511,6 +531,7 @@ async function runPlaywright(
         "artifacts",
         "playwright",
       ),
+      INSIGHTFLARE_E2E_CONTROL_TOKEN: environment.controlToken,
       INSIGHTFLARE_E2E_BASE_URL: environment.baseURL,
       INSIGHTFLARE_E2E_MANIFEST: path.join(
         environment.directory,
@@ -598,6 +619,7 @@ async function main(): Promise<void> {
         name: "E2E worker",
       });
       await waitForReady(activeEnvironment.baseURL, startedWorker);
+      await initializeE2eClock(activeEnvironment);
       return startedWorker;
     });
     testSite = await runPreparationStep("Starting E2E test site", () =>

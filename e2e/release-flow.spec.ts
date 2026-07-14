@@ -107,6 +107,7 @@ const adminPassword = requiredEnvironmentValue(
 const manifestPath = requiredEnvironmentValue("INSIGHTFLARE_E2E_MANIFEST");
 const runId = requiredEnvironmentValue("INSIGHTFLARE_E2E_RUN_ID");
 const testSiteURL = requiredEnvironmentValue("INSIGHTFLARE_E2E_TEST_SITE_URL");
+const controlToken = requiredEnvironmentValue("INSIGHTFLARE_E2E_CONTROL_TOKEN");
 const ownerAPassword = "e2e-owner-a-password";
 const ownerBPassword = "e2e-owner-b-password";
 const memberAPassword = "e2e-member-a-password";
@@ -181,6 +182,34 @@ async function apiRequest<T>(
   );
 }
 
+async function e2eControlRequest<T>(
+  page: Page,
+  method: "GET" | "POST",
+  path: string,
+  body?: Record<string, unknown>,
+  token = controlToken,
+) {
+  return page.evaluate(
+    async ({ body, method, path, token }) => {
+      const response = await fetch(`/__e2e__/${path}`, {
+        body: body ? JSON.stringify(body) : undefined,
+        headers: {
+          ...(body ? { "content-type": "application/json" } : {}),
+          "x-insightflare-e2e-token": token,
+        },
+        method,
+      });
+      return {
+        payload: (await response
+          .json()
+          .catch(() => null)) as ApiEnvelope<T> | null,
+        status: response.status,
+      };
+    },
+    { body, method, path, token },
+  );
+}
+
 function siteQueryPath(siteId: string, path: string): string {
   const params = new URLSearchParams({
     from: "0",
@@ -191,14 +220,14 @@ function siteQueryPath(siteId: string, path: string): string {
 }
 
 async function flushSite(page: Page, siteId: string) {
-  const flushed = await apiRequest<{ flushed: boolean; siteId: string }>(
+  const flushed = await e2eControlRequest<{ flushed: boolean; siteId: string }>(
     page,
     "POST",
-    "/api/private/admin/e2e/flush",
+    "ingest/flush",
     { siteId },
   );
   expect(flushed.status).toBe(200);
-  expect(flushed.payload.data).toEqual({ flushed: true, siteId });
+  expect(flushed.payload?.data).toEqual({ flushed: true, siteId });
 }
 
 async function readSiteOverview(page: Page, siteId: string) {
@@ -1125,5 +1154,69 @@ test.describe.serial("release E2E flow", () => {
     await flushSite(page, siteA?.id || "");
     const after = await readSiteOverview(page, siteA?.id || "");
     expect(after).toEqual(before);
+  });
+
+  test("12. E2E clock is token-protected and can expire an existing session", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await signIn(page, "admin", adminPassword);
+
+    const siteA = seed.sites.siteA;
+    expect(siteA).toBeDefined();
+    const ingestStatus = await e2eControlRequest<{ visits?: unknown }>(
+      page,
+      "GET",
+      `ingest/status?siteId=${encodeURIComponent(siteA?.id || "")}`,
+    );
+    expect(ingestStatus.status).toBe(200);
+    expect(ingestStatus.payload?.ok).toBe(true);
+
+    const scheduled = await e2eControlRequest<{ scheduledAt: number }>(
+      page,
+      "POST",
+      "scheduled/run",
+    );
+    expect(scheduled.status).toBe(200);
+    expect(scheduled.payload?.data?.scheduledAt).toEqual(expect.any(Number));
+    const scheduledTasks = await apiRequest<{
+      tasks?: Array<{ key: string; runs?: number }>;
+    }>(page, "GET", "/api/private/admin/scheduled-tasks");
+    expect(scheduledTasks.status).toBe(200);
+
+    const missingToken = await e2eControlRequest<unknown>(
+      page,
+      "GET",
+      "clock",
+      undefined,
+      "wrong-token",
+    );
+    expect(missingToken.status).toBe(404);
+
+    const before = await e2eControlRequest<{ nowMs: number | null }>(
+      page,
+      "GET",
+      "clock",
+    );
+    expect(before.status).toBe(200);
+    expect(before.payload?.data?.nowMs).toEqual(expect.any(Number));
+
+    const advanced = await e2eControlRequest<{ nowMs: number }>(
+      page,
+      "POST",
+      "clock/advance",
+      { deltaMs: 31 * 24 * 60 * 60 * 1000 },
+    );
+    expect(advanced.status).toBe(200);
+    expect(advanced.payload?.data?.nowMs).toBe(
+      (before.payload?.data?.nowMs || 0) + 31 * 24 * 60 * 60 * 1000,
+    );
+
+    const expired = await apiRequest<unknown>(
+      page,
+      "GET",
+      "/api/private/session",
+    );
+    expect(expired.status).toBe(401);
   });
 });
