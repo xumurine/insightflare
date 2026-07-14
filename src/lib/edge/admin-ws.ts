@@ -1,3 +1,4 @@
+import { appNow } from "./e2e-clock";
 import {
   canAccessMemberSite,
   parseMemberSiteIdsJson,
@@ -68,7 +69,7 @@ async function verifySessionToken(
 
     const { userId, username, exp } = parsed;
     if (!userId || !username || !exp) return null;
-    if (Math.floor(Date.now() / 1000) >= Number(exp)) return null;
+    if (Math.floor(appNow() / 1000) >= Number(exp)) return null;
 
     return parsed as Record<string, string>;
   } catch {
