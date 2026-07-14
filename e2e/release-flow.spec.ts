@@ -1124,7 +1124,109 @@ test.describe.serial("release E2E flow", () => {
     await saveManifest();
   });
 
-  test("10. site analytics API and dashboard render the real tracker manifest", async ({
+  test("10. realtime websocket receives a visitor before the durable object flush", async ({
+    browser,
+    page,
+  }: {
+    browser: Browser;
+    page: Page;
+  }) => {
+    test.setTimeout(60_000);
+    const siteA = seed.sites.siteA;
+    const expected = seed.tracker?.siteA;
+    expect(siteA).toBeDefined();
+    expect(expected).toBeDefined();
+
+    await signIn(page, "owner-a", ownerAPassword);
+    const initialSnapshot = await page.evaluate(
+      (siteId) =>
+        new Promise<{ activeNow: number | null }>((resolve, reject) => {
+          const state = window as Window & {
+            __e2eRealtime?: { messages: unknown[]; socket: WebSocket };
+          };
+          const socket = new WebSocket(
+            `${location.origin.replace(/^http/, "ws")}/api/private/realtime/ws?siteId=${encodeURIComponent(siteId)}`,
+          );
+          const messages: unknown[] = [];
+          state.__e2eRealtime = { messages, socket };
+          const timeout = window.setTimeout(() => {
+            socket.close();
+            reject(
+              new Error("Realtime websocket did not send an initial snapshot."),
+            );
+          }, 10_000);
+          socket.addEventListener("message", (event) => {
+            const message = JSON.parse(String(event.data)) as {
+              data?: { activeNow?: number | null };
+              type?: string;
+            };
+            messages.push(message);
+            if (message.type !== "snapshot") return;
+            window.clearTimeout(timeout);
+            resolve({ activeNow: message.data?.activeNow ?? null });
+          });
+          socket.addEventListener("error", () => {
+            window.clearTimeout(timeout);
+            reject(new Error("Realtime websocket failed to connect."));
+          });
+        }),
+      siteA?.id || "",
+    );
+    expect(initialSnapshot.activeNow).toEqual(expect.any(Number));
+
+    const visitorContext = await browser.newContext();
+    try {
+      const visitorPage = await visitorContext.newPage();
+      const collected = waitForCollectResponse(visitorPage, {
+        kind: "pageview",
+        pathname: "/realtime",
+      });
+      await visitorPage.goto(
+        `${testSiteURL}/realtime?siteId=${encodeURIComponent(siteA?.id || "")}`,
+        { waitUntil: "domcontentloaded" },
+      );
+      expect((await collected).status()).toBe(204);
+
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const state = window as Window & {
+              __e2eRealtime?: {
+                messages: Array<{
+                  data?: { pathname?: string };
+                  type?: string;
+                }>;
+              };
+            };
+            return state.__e2eRealtime?.messages.some(
+              (message) =>
+                message.type === "event" &&
+                message.data?.pathname === "/realtime",
+            );
+          }),
+        )
+        .toBe(true);
+    } finally {
+      await visitorContext.close();
+    }
+
+    await flushSite(page, siteA?.id || "");
+    expected?.pageviews.push("/realtime");
+    if (expected) expected.overview.views = expected.pageviews.length;
+    await saveManifest();
+    expect(await readSiteOverview(page, siteA?.id || "")).toMatchObject(
+      expected?.overview || {},
+    );
+    await page.evaluate(() => {
+      const state = window as Window & {
+        __e2eRealtime?: { socket: WebSocket };
+      };
+      state.__e2eRealtime?.socket.close();
+      delete state.__e2eRealtime;
+    });
+  });
+
+  test("11. site analytics API and dashboard render the real tracker manifest", async ({
     page,
   }) => {
     test.setTimeout(60_000);
@@ -1187,7 +1289,7 @@ test.describe.serial("release E2E flow", () => {
     ).toBeVisible();
   });
 
-  test("11. bot and invalid collect requests do not change normal site analytics", async ({
+  test("12. bot and invalid collect requests do not change normal site analytics", async ({
     browser,
     page,
   }: {
@@ -1248,7 +1350,7 @@ test.describe.serial("release E2E flow", () => {
     expect(after).toEqual(before);
   });
 
-  test("12. historical D1 seed matches analytics query truth", async ({
+  test("13. historical D1 seed matches analytics query truth", async ({
     page,
   }) => {
     test.setTimeout(60_000);
@@ -1434,7 +1536,7 @@ test.describe.serial("release E2E flow", () => {
     expect(sessions.payload.data).toHaveLength(40);
   });
 
-  test("13. E2E clock is token-protected and can expire an existing session", async ({
+  test("14. E2E clock is token-protected and can expire an existing session", async ({
     page,
   }) => {
     test.setTimeout(60_000);
