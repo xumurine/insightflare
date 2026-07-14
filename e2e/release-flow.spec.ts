@@ -1,6 +1,16 @@
+import { execFile } from "node:child_process";
 import { writeFile } from "node:fs/promises";
+import path from "node:path";
+import { promisify } from "node:util";
 
 import { type Browser, expect, type Page, test } from "@playwright/test";
+
+import {
+  buildHistorySeed,
+  type HistorySeedManifest,
+} from "../scripts/e2e/seed-history";
+
+const execFileAsync = promisify(execFile);
 
 function requiredEnvironmentValue(name: string): string {
   const value = process.env[name];
@@ -80,6 +90,15 @@ type DashboardPage = { pathname: string; sessions: number; views: number };
 
 type EventType = { label: string; views: number };
 
+type DimensionMetric = {
+  label: string;
+  sessions: number;
+  views: number;
+  visitors: number;
+};
+
+type ReferrerMetric = { referrer: string; sessions: number; views: number };
+
 type TrackerExpectation = {
   customEvents: Array<{ eventName: string; pathname: string }>;
   overview: Pick<OverviewMetrics, "views">;
@@ -90,6 +109,7 @@ type SeedManifest = {
   apiKeys: Partial<Record<"analyticsRead" | "revoked", CreatedApiKey>>;
   invites: Partial<Record<"active" | "revoked", CreatedTeamInvite>>;
   runId: string;
+  history?: Partial<Record<"siteB", HistorySeedManifest>>;
   sites: Partial<Record<"siteA" | "siteB" | "siteC", Site>>;
   teams: Partial<Record<"teamA" | "teamB", Team>>;
   tracker?: Partial<Record<"siteA", TrackerExpectation>>;
@@ -108,6 +128,11 @@ const manifestPath = requiredEnvironmentValue("INSIGHTFLARE_E2E_MANIFEST");
 const runId = requiredEnvironmentValue("INSIGHTFLARE_E2E_RUN_ID");
 const testSiteURL = requiredEnvironmentValue("INSIGHTFLARE_E2E_TEST_SITE_URL");
 const controlToken = requiredEnvironmentValue("INSIGHTFLARE_E2E_CONTROL_TOKEN");
+const configPath = requiredEnvironmentValue("INSIGHTFLARE_E2E_CONFIG_PATH");
+const d1Name = requiredEnvironmentValue("INSIGHTFLARE_E2E_D1_NAME");
+const persistencePath = requiredEnvironmentValue(
+  "INSIGHTFLARE_E2E_PERSISTENCE_PATH",
+);
 const ownerAPassword = "e2e-owner-a-password";
 const ownerBPassword = "e2e-owner-b-password";
 const memberAPassword = "e2e-member-a-password";
@@ -217,6 +242,46 @@ function siteQueryPath(siteId: string, path: string): string {
     to: String(Date.now()),
   });
   return `/api/private/${path}?${params.toString()}`;
+}
+
+function siteQueryPathForWindow(
+  siteId: string,
+  path: string,
+  from: number,
+  to: number,
+): string {
+  const params = new URLSearchParams({
+    from: String(from),
+    siteId,
+    to: String(to),
+  });
+  return `/api/private/${path}?${params.toString()}`;
+}
+
+async function seedHistoricalVisits(
+  siteId: string,
+): Promise<HistorySeedManifest> {
+  const history = buildHistorySeed({
+    nowMs: Date.now(),
+    runId,
+    siteId,
+  });
+  const sqlPath = path.join(path.dirname(manifestPath), "history-seed.sql");
+  await writeFile(sqlPath, history.sql);
+  await execFileAsync(process.execPath, [
+    path.join(process.cwd(), "node_modules", "wrangler", "bin", "wrangler.js"),
+    "d1",
+    "execute",
+    d1Name,
+    "--config",
+    configPath,
+    "--file",
+    sqlPath,
+    "--local",
+    "--persist-to",
+    persistencePath,
+  ]);
+  return history.manifest;
 }
 
 async function flushSite(page: Page, siteId: string) {
@@ -1156,7 +1221,95 @@ test.describe.serial("release E2E flow", () => {
     expect(after).toEqual(before);
   });
 
-  test("12. E2E clock is token-protected and can expire an existing session", async ({
+  test("12. historical D1 seed matches analytics query truth", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const siteB = seed.sites.siteB;
+    expect(siteB).toBeDefined();
+
+    const history = await seedHistoricalVisits(siteB?.id || "");
+    seed.history = { siteB: history };
+    await saveManifest();
+
+    await signIn(page, "owner-a", ownerAPassword);
+    const path = (resource: string) =>
+      siteQueryPathForWindow(
+        siteB?.id || "",
+        resource,
+        history.fromMs - 1,
+        history.toMs + 1,
+      );
+
+    const overview = await apiRequest<OverviewMetrics>(
+      page,
+      "GET",
+      path("overview"),
+      undefined,
+      "no-store",
+    );
+    expect(overview.status).toBe(200);
+    expect(overview.payload.data).toMatchObject({
+      sessions: 40,
+      views: history.totalVisits,
+      visitors: 24,
+    });
+
+    const pages = await apiRequest<DashboardPage[]>(
+      page,
+      "GET",
+      path("pages"),
+      undefined,
+      "no-store",
+    );
+    expect(pages.status).toBe(200);
+    expect(pages.payload.data).toEqual(
+      expect.arrayContaining(
+        Object.entries(history.pages).map(([pathname, views]) =>
+          expect.objectContaining({ pathname, views }),
+        ),
+      ),
+    );
+
+    const referrers = await apiRequest<ReferrerMetric[]>(
+      page,
+      "GET",
+      path("referrers"),
+      undefined,
+      "no-store",
+    );
+    expect(referrers.status).toBe(200);
+    expect(referrers.payload.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          referrer: "google.com",
+          sessions: 40,
+          views: 40,
+        }),
+      ]),
+    );
+
+    const campaign = await apiRequest<DimensionMetric[]>(
+      page,
+      "GET",
+      path("utm-campaign"),
+      undefined,
+      "no-store",
+    );
+    expect(campaign.status).toBe(200);
+    expect(campaign.payload.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "summer-launch",
+          sessions: 24,
+          views: 24,
+          visitors: 24,
+        }),
+      ]),
+    );
+  });
+
+  test("13. E2E clock is token-protected and can expire an existing session", async ({
     page,
   }) => {
     test.setTimeout(60_000);
