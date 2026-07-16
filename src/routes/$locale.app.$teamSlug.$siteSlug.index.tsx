@@ -2,10 +2,18 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { OverviewClientPage } from "@/components/dashboard/site-pages/overview-client-page";
 import { buildSitePath } from "@/lib/dashboard/paths";
+import { dashboardPageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/$locale/app/$teamSlug/$siteSlug/")({
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.overview.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.overview.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: SiteOverviewPage,
 });

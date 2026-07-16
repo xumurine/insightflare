@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { dashboardPageTitle } from "@/lib/page-title";
 import Link from "@/lib/router";
 
 function safeNextPath(value: string | undefined, locale: string) {
@@ -31,7 +32,14 @@ export const Route = createFileRoute("/$locale/login")({
     next: typeof search.next === "string" ? search.next : undefined,
   }),
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.login.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.login.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: Page,
 });

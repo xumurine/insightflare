@@ -1,12 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { RealtimeClientPage } from "@/components/dashboard/site-pages/realtime-client-page";
+import { dashboardPageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute(
   "/$locale/app/$teamSlug/$siteSlug/realtime",
 )({
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.realtime.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.realtime.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: Page,
 });

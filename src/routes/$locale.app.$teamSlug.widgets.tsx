@@ -2,10 +2,18 @@ import { RiHammerLine } from "@remixicon/react";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
+import { dashboardPageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/$locale/app/$teamSlug/widgets")({
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.teamManagement.widgets.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.teamManagement.widgets.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: WidgetsPage,
 });

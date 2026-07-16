@@ -10,10 +10,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { dashboardPageTitle } from "@/lib/page-title";
 import Link from "@/lib/router";
 export const Route = createFileRoute("/$locale/invite")({
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.accountLinks.invite.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.accountLinks.invite.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: Page,
 });

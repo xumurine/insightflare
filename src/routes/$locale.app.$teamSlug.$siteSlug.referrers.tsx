@@ -2,12 +2,20 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { ReferrersClientPage } from "@/components/dashboard/site-pages/referrers-client-page";
 import { buildSitePath } from "@/lib/dashboard/paths";
+import { dashboardPageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute(
   "/$locale/app/$teamSlug/$siteSlug/referrers",
 )({
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.referrers.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.referrers.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: Page,
 });

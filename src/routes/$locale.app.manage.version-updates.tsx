@@ -17,6 +17,7 @@ import { loadVersionReleases } from "@/lib/dashboard/route-data";
 import { type GithubRelease } from "@/lib/github-releases";
 import { type Locale, resolveLocale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { dashboardPageTitle } from "@/lib/page-title";
 import Link from "@/lib/router";
 import { cn } from "@/lib/utils";
 
@@ -89,7 +90,14 @@ export const Route = createFileRoute("/$locale/app/manage/version-updates")({
   },
   loader: () => loadVersionReleases(),
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.managementNav.versionUpdates }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.managementNav.versionUpdates,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: Page,
 });

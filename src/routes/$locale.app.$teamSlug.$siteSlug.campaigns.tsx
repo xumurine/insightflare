@@ -2,12 +2,20 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { CampaignsClientPage } from "@/components/dashboard/site-pages/campaigns-client-page";
 import { buildSitePath } from "@/lib/dashboard/paths";
+import { dashboardPageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute(
   "/$locale/app/$teamSlug/$siteSlug/campaigns",
 )({
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.campaigns.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.campaigns.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: Page,
 });

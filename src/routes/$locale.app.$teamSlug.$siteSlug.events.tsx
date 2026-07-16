@@ -2,11 +2,19 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { EventsClientPage } from "@/components/dashboard/site-pages/events-client-page";
 import { buildSitePath } from "@/lib/dashboard/paths";
+import { dashboardPageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/$locale/app/$teamSlug/$siteSlug/events")(
   {
     head: ({ match }) => ({
-      meta: [{ title: match.context.messages.events.title }],
+      meta: [
+        {
+          title: dashboardPageTitle(
+            match.context.messages.events.title,
+            match.context,
+          ),
+        },
+      ],
     }),
     component: Page,
   },

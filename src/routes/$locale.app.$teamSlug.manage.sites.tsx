@@ -2,6 +2,7 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 
 import { AdminSitesManagementClient } from "@/components/dashboard/admin-sites-management-client";
 import { canManageTeam } from "@/lib/dashboard/permissions";
+import { dashboardPageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/$locale/app/$teamSlug/manage/sites")({
   beforeLoad: ({ context }) => {
@@ -10,7 +11,14 @@ export const Route = createFileRoute("/$locale/app/$teamSlug/manage/sites")({
       throw notFound();
   },
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.adminSites.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.adminSites.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: Page,
 });

@@ -1,12 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { PerformanceClientPage } from "@/components/dashboard/site-pages/performance-client-page";
+import { dashboardPageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute(
   "/$locale/app/$teamSlug/$siteSlug/performance",
 )({
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.performance.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.performance.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: Page,
 });

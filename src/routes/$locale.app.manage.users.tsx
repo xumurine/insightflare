@@ -1,12 +1,20 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 
 import { AdminUsersManagementClient } from "@/components/dashboard/admin-users-management-client";
+import { dashboardPageTitle } from "@/lib/page-title";
 export const Route = createFileRoute("/$locale/app/manage/users")({
   beforeLoad: ({ context }) => {
     if (context.dashboardRoot?.user.systemRole !== "admin") throw notFound();
   },
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.adminUsers.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.adminUsers.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: Page,
 });

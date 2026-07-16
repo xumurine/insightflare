@@ -4,12 +4,20 @@ import { PageHeading } from "@/components/dashboard/page-heading";
 import { BotAnalyticsSettingsClient } from "@/components/dashboard/system-settings/bot-analytics-settings-client";
 import { LoginTurnstileSettingsClient } from "@/components/dashboard/system-settings/login-turnstile-settings-client";
 import { NotificationEmailSettingsClient } from "@/components/dashboard/system-settings/notification-email-settings-client";
+import { dashboardPageTitle } from "@/lib/page-title";
 export const Route = createFileRoute("/$locale/app/manage/system-settings")({
   beforeLoad: ({ context }) => {
     if (context.dashboardRoot?.user.systemRole !== "admin") throw notFound();
   },
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.systemSettings.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.systemSettings.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: Page,
 });

@@ -1,10 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { GeoClientPage } from "@/components/dashboard/site-pages/geo-client-page";
+import { dashboardPageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/$locale/app/$teamSlug/$siteSlug/geo")({
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.geo.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.geo.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: Page,
 });

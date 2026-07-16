@@ -14,11 +14,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { dashboardPageTitle } from "@/lib/page-title";
 import Link from "@/lib/router";
 
 export const Route = createFileRoute("/$locale/app/")({
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.teamEntry.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.teamEntry.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: AppIndexPage,
 });

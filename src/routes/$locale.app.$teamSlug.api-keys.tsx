@@ -3,6 +3,7 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 import { ApiKeysClient } from "@/components/dashboard/api-keys-client";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { canManageTeam } from "@/lib/dashboard/permissions";
+import { dashboardPageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/$locale/app/$teamSlug/api-keys")({
   beforeLoad: ({ context }) => {
@@ -11,7 +12,14 @@ export const Route = createFileRoute("/$locale/app/$teamSlug/api-keys")({
       throw notFound();
   },
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.teamManagement.apiKeys.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.teamManagement.apiKeys.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: Page,
 });

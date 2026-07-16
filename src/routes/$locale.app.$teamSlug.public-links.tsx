@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { canManageTeam } from "@/lib/dashboard/permissions";
 import { loadRequestOrigin } from "@/lib/dashboard/route-data";
+import { dashboardPageTitle } from "@/lib/page-title";
 import Link from "@/lib/router";
 
 export const Route = createFileRoute("/$locale/app/$teamSlug/public-links")({
@@ -31,7 +32,14 @@ export const Route = createFileRoute("/$locale/app/$teamSlug/public-links")({
   },
   loader: () => loadRequestOrigin(),
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.teamManagement.publicLinks.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.teamManagement.publicLinks.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: PublicLinksPage,
 });

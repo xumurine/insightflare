@@ -10,10 +10,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { dashboardPageTitle } from "@/lib/page-title";
 import Link from "@/lib/router";
 export const Route = createFileRoute("/$locale/reset-password")({
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.accountLinks.resetPassword.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.accountLinks.resetPassword.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: Page,
 });

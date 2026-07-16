@@ -2,12 +2,20 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { FunnelsClientPage } from "@/components/dashboard/site-pages/funnels-client-page";
 import { buildSitePath } from "@/lib/dashboard/paths";
+import { dashboardPageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute(
   "/$locale/app/$teamSlug/$siteSlug/funnels",
 )({
   head: ({ match }) => ({
-    meta: [{ title: match.context.messages.funnels.title }],
+    meta: [
+      {
+        title: dashboardPageTitle(
+          match.context.messages.funnels.title,
+          match.context,
+        ),
+      },
+    ],
   }),
   component: Page,
 });

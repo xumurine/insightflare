@@ -4,11 +4,17 @@ import { createFileRoute } from "@tanstack/react-router";
 import { TeamNotificationsClient } from "@/components/dashboard/team-notifications-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { canManageTeam } from "@/lib/dashboard/permissions";
+import { dashboardPageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute("/$locale/app/$teamSlug/notifications")({
   head: ({ match }) => ({
     meta: [
-      { title: match.context.messages.teamManagement.notifications.title },
+      {
+        title: dashboardPageTitle(
+          match.context.messages.teamManagement.notifications.title,
+          match.context,
+        ),
+      },
     ],
   }),
   component: Page,

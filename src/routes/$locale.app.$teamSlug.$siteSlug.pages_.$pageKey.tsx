@@ -6,6 +6,7 @@ import {
   PAGE_DETAIL_QUERY_PARAM,
 } from "@/lib/dashboard/page-detail";
 import { buildSitePath } from "@/lib/dashboard/paths";
+import { dashboardPageTitle } from "@/lib/page-title";
 
 export const Route = createFileRoute(
   "/$locale/app/$teamSlug/$siteSlug/pages_/$pageKey",
@@ -16,9 +17,11 @@ export const Route = createFileRoute(
   head: ({ match }) => ({
     meta: [
       {
-        title:
+        title: dashboardPageTitle(
           normalizePagePath(match.search[PAGE_DETAIL_QUERY_PARAM]) ||
-          match.context.messages.pages.title,
+            match.context.messages.pages.title,
+          match.context,
+        ),
       },
     ],
   }),
