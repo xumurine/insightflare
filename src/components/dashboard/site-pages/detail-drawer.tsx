@@ -1,5 +1,3 @@
-"use client";
-
 import {
   createContext,
   type CSSProperties,
@@ -24,6 +22,7 @@ import {
   setDetailDrawerLayer,
   subscribeDetailDrawerLayers,
 } from "@/components/dashboard/site-pages/floating-layer";
+import { ModalOverlay } from "@/components/ui/modal-overlay";
 import {
   prepareNativeScrollbarHost,
   shouldUseNativeScrollbars,
@@ -507,11 +506,11 @@ export function DetailDrawer({
           className={cn("fixed inset-0 z-[96]", rootClassName)}
           style={rootStyle}
         >
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: isClosing ? 0 : 1 }}
-            transition={{ duration: 0.25 }}
-            className="fixed inset-0 z-0 bg-black/50 backdrop-blur-sm"
+          <ModalOverlay
+            className="z-0 bg-black/50 backdrop-blur-sm"
+            layerId={layerId}
+            open={!isClosing}
+            zIndex={0}
             onClick={handleClose}
           />
 

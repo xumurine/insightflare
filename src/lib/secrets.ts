@@ -18,6 +18,10 @@ export interface SecretSource {
   DAILY_SALT_SECRET?: string;
 }
 
+// Roots and purposes come from deployment configuration, not request input.
+// Cache resolved values so hot requests avoid repeating HMAC key derivation.
+const derivedSecretCache = new Map<string, string>();
+
 function bytes(input: string): Uint8Array {
   const encoded = new TextEncoder().encode(input);
   const out = new Uint8Array(encoded.length);
@@ -68,18 +72,33 @@ export async function deriveSecret(
   return hex(new Uint8Array(signature));
 }
 
+async function cachedDerivedSecret(
+  root: string,
+  purpose: string,
+): Promise<string> {
+  const cacheKey = `${root.length}:${root}${purpose}`;
+  const cached = derivedSecretCache.get(cacheKey);
+  if (cached) return cached;
+
+  const derived = await deriveSecret(root, purpose);
+  derivedSecretCache.set(cacheKey, derived);
+  return derived;
+}
+
 export async function dashboardSessionSecret(
   source: SecretSource,
 ): Promise<string | null> {
   const root = rootSecret(source);
-  return root ? deriveSecret(root, SECRET_PURPOSES.dashboardSession) : null;
+  return root
+    ? cachedDerivedSecret(root, SECRET_PURPOSES.dashboardSession)
+    : null;
 }
 
 export async function apiKeyHashSecret(
   source: SecretSource,
 ): Promise<string | null> {
   const root = rootSecret(source);
-  return root ? deriveSecret(root, SECRET_PURPOSES.apiKeyHash) : null;
+  return root ? cachedDerivedSecret(root, SECRET_PURPOSES.apiKeyHash) : null;
 }
 
 export async function accountActionTokenHashSecret(
@@ -87,7 +106,7 @@ export async function accountActionTokenHashSecret(
 ): Promise<string | null> {
   const root = rootSecret(source);
   return root
-    ? deriveSecret(root, SECRET_PURPOSES.accountActionTokenHash)
+    ? cachedDerivedSecret(root, SECRET_PURPOSES.accountActionTokenHash)
     : null;
 }
 
@@ -95,12 +114,16 @@ export async function visitorDailySaltSecret(
   source: SecretSource,
 ): Promise<string | null> {
   const root = rootSecret(source);
-  return root ? deriveSecret(root, SECRET_PURPOSES.visitorDailySalt) : null;
+  return root
+    ? cachedDerivedSecret(root, SECRET_PURPOSES.visitorDailySalt)
+    : null;
 }
 
 export async function collectTokenSigningSecret(
   source: SecretSource,
 ): Promise<string | null> {
   const root = rootSecret(source);
-  return root ? deriveSecret(root, SECRET_PURPOSES.collectTokenSigning) : null;
+  return root
+    ? cachedDerivedSecret(root, SECRET_PURPOSES.collectTokenSigning)
+    : null;
 }

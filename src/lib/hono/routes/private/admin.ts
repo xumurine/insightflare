@@ -31,6 +31,7 @@ import {
 } from "@/lib/edge/admin-sites";
 import {
   handleDoDiagnosticAdmin,
+  handleE2eFlushAdmin,
   handleSystemPerformanceAdmin,
 } from "@/lib/edge/admin-system";
 import { handleTeamInvitesAdmin } from "@/lib/edge/admin-team-invites";
@@ -110,5 +111,8 @@ privateAdminRoutes.all("/scheduled-tasks", (c) =>
 );
 privateAdminRoutes.all("/do-diagnostic", (c) =>
   handleDoDiagnosticAdmin(c.req.raw, c.env, requestUrl(c), requireActor),
+);
+privateAdminRoutes.all("/e2e/flush", (c) =>
+  handleE2eFlushAdmin(c.req.raw, c.env, requestUrl(c), requireActor),
 );
 privateAdminRoutes.all("/*", () => nf());

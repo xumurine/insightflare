@@ -528,6 +528,7 @@ describe("admin handler low branches", () => {
       "team-1",
       "member-2",
       "member",
+      "[]",
     );
     await expect(jsonOf(added)).resolves.toMatchObject({
       data: { role: "member", name: "" },

@@ -1,6 +1,10 @@
 import { toTeamRole } from "@/lib/dashboard/permissions";
 
 import type { Actor } from "./admin-auth";
+import {
+  canAccessMemberSite,
+  parseMemberSiteIdsJson,
+} from "./member-site-access";
 import type { Env } from "./types";
 
 export const toSlug = (v: string) =>
@@ -11,17 +15,26 @@ export const toSlug = (v: string) =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
 
-async function teamRole(
+export interface TeamMembershipAccess {
+  role: string;
+  siteIds: string[];
+}
+
+export async function teamMembershipAccess(
   env: Env,
   teamId: string,
   userId: string,
-): Promise<string | null> {
+): Promise<TeamMembershipAccess | null> {
   const row = await env.DB.prepare(
-    "SELECT role FROM team_members WHERE team_id=? AND user_id=? LIMIT 1",
+    "SELECT role,site_ids_json AS siteIdsJson FROM team_members WHERE team_id=? AND user_id=? LIMIT 1",
   )
     .bind(teamId, userId)
-    .first<{ role: string }>();
-  return row?.role ?? null;
+    .first<{ role: string; siteIdsJson?: string | null }>();
+  if (!row) return null;
+  return {
+    role: row.role,
+    siteIds: parseMemberSiteIdsJson(row.siteIdsJson ?? "[]"),
+  };
 }
 
 export async function teamById(
@@ -53,7 +66,7 @@ export async function canReadTeam(
   if (a.isAdmin) return true;
   const team = await teamById(env, teamId);
   if (team?.ownerUserId === a.user.id) return true;
-  return Boolean(await teamRole(env, teamId, a.user.id));
+  return Boolean(await teamMembershipAccess(env, teamId, a.user.id));
 }
 
 export async function canManageTeam(
@@ -64,7 +77,8 @@ export async function canManageTeam(
   if (a.isAdmin) return true;
   const team = await teamById(env, teamId);
   if (team?.ownerUserId === a.user.id) return true;
-  const r = toTeamRole(await teamRole(env, teamId, a.user.id));
+  const membership = await teamMembershipAccess(env, teamId, a.user.id);
+  const r = toTeamRole(membership?.role);
   return r === "owner" || r === "admin";
 }
 
@@ -76,7 +90,10 @@ export async function canAdministerTeam(
   if (a.isAdmin) return true;
   const team = await teamById(env, teamId);
   if (team?.ownerUserId === a.user.id) return true;
-  return toTeamRole(await teamRole(env, teamId, a.user.id)) === "owner";
+  return (
+    toTeamRole((await teamMembershipAccess(env, teamId, a.user.id))?.role) ===
+    "owner"
+  );
 }
 
 export async function canReadSite(
@@ -86,7 +103,14 @@ export async function canReadSite(
 ): Promise<boolean> {
   const teamId = await siteTeam(env, siteId);
   if (!teamId) return false;
-  return canReadTeam(env, a, teamId);
+  if (a.isAdmin) return true;
+  const team = await teamById(env, teamId);
+  if (team?.ownerUserId === a.user.id) return true;
+  const membership = await teamMembershipAccess(env, teamId, a.user.id);
+  if (!membership) return false;
+  const role = toTeamRole(membership.role);
+  if (role === "owner" || role === "admin") return true;
+  return canAccessMemberSite(membership.siteIds, siteId);
 }
 
 export async function canManageSite(

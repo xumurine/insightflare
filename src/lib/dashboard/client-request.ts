@@ -57,7 +57,7 @@ export async function fetchPrivateJson<T>(
     ? publicPathForPrivateRequest(path, publicSlug)
     : path;
   const requestParams = publicSlug ? paramsWithoutSiteId(params) : params;
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     if (options?.signal?.aborted) {
       throwAbortError();
@@ -101,7 +101,7 @@ export async function fetchPrivateJsonMutate<T>(
   params?: PrivateRequestParams,
   body?: unknown,
 ): Promise<T> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     return handleDemoRequest({ path, method, params, body }) as T;
   }

@@ -56,11 +56,15 @@ export interface CreatedAccountActionToken {
 
 const TOKEN_BYTES = 32;
 const TYPE_SET = new Set<string>(ACCOUNT_ACTION_TOKEN_TYPES);
-const FALLBACK_TOKEN_HASH_SECRET =
-  "insightflare-account-action-token-secret-change-me";
 
 async function accountActionTokenHashSecret(env: Env): Promise<string> {
-  return (await resolveTokenHashSecret(env)) || FALLBACK_TOKEN_HASH_SECRET;
+  const secret = await resolveTokenHashSecret(env);
+  if (!secret) {
+    throw new Error(
+      "MAIN_SECRET or DAILY_SALT_SECRET is required for account action tokens",
+    );
+  }
+  return secret;
 }
 
 function toArrayBuffer(input: Uint8Array): ArrayBuffer {

@@ -1,13 +1,5 @@
-"use client";
-
-import {
-  type ReactNode,
-  startTransition,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import dynamic from "next/dynamic";
+import { type ReactNode, useMemo } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { GeoCountryStatsPanel } from "@/components/dashboard/geo-country-stats-panel";
 import type { GeoClientMapStageProps } from "@/components/dashboard/site-pages/geo-client-map-stage";
@@ -46,6 +38,7 @@ import {
   resolveGeoStateTranslation,
 } from "@/lib/dashboard/geo-translation";
 import type { DashboardFilters } from "@/lib/dashboard/query-state";
+import dynamic from "@/lib/dynamic";
 import type { OverviewGeoPointsData } from "@/lib/edge-client";
 import { resolveCountryLabel } from "@/lib/i18n/code-labels";
 import type { Locale } from "@/lib/i18n/config";
@@ -1184,117 +1177,77 @@ export function GeoClientPage({
     () => dashboardFilterSignature(requestFilters),
     [requestFilters],
   );
-  const [loading, setLoading] = useState(true);
-  const [geoPointsData, setGeoPointsData] = useState<OverviewGeoPointsData>(
-    emptyOverviewGeoPoints(),
-  );
-  const [geoTabRows, setGeoTabRows] = useState<OverviewGeoTabRows>([]);
-  const [activeLocation, setActiveLocation] =
-    useState<ParsedGeoLocation | null>(null);
-  const [locationFocus, setLocationFocus] =
-    useState<GeoLocationFocusResponse | null>(null);
-  const [geoInvestigation, setGeoInvestigation] =
-    useState<GeoInvestigationInfo | null>(null);
-  const [geoWikiSummary, setGeoWikiSummary] = useState<GeoWikiSummary | null>(
-    null,
-  );
-  const [geoDirectoryEntries, setGeoDirectoryEntries] = useState<
-    GeoDirectoryEntry[] | null
-  >(null);
-
-  useEffect(() => {
-    let active = true;
-    const wikidataId = geoInvestigation?.wikidataId ?? null;
-
-    if (!wikidataId || !activeLocation || activeLocation.level === "country") {
-      setGeoWikiSummary(null);
-      return () => {
-        active = false;
+  const { data: geoData, isFetching: loading } = useQuery({
+    queryKey: [
+      "dashboard",
+      "geo",
+      siteId,
+      window.from,
+      window.to,
+      window.interval,
+      window.timeZone,
+      locale,
+      requestedLocation?.canonical ?? "",
+      requestFiltersKey,
+    ],
+    queryFn: async ({ signal }) => {
+      const dimensionTab = !requestedLocation
+        ? null
+        : requestedLocation.level === "country"
+          ? "region"
+          : "city";
+      const [geoPointsData, geoTabRows, geoLocaleBundle] = await Promise.all([
+        fetchOverviewGeoPoints(siteId, window, requestFilters, {
+          limit: 5000,
+          applyGeoFilter: Boolean(requestedLocation?.canonical),
+          signal,
+        }),
+        dimensionTab
+          ? fetchOverviewGeoDimensionTab(
+              siteId,
+              window,
+              dimensionTab,
+              requestFilters,
+              {
+                limit: dimensionTab === "city" ? 600 : 400,
+                signal,
+              },
+            )
+          : Promise.resolve([] as OverviewGeoTabRows),
+        fetchGeoLocaleBundle(
+          requestedLocation,
+          locale,
+          messages.common.unknown,
+          geoMessages,
+        ),
+      ]);
+      return {
+        geoPointsData,
+        geoTabRows,
+        activeLocation: requestedLocation,
+        locationFocus: geoLocaleBundle.focus,
+        geoInvestigation: geoLocaleBundle.investigation,
+        geoDirectoryEntries: geoLocaleBundle.directoryEntries,
       };
-    }
-
-    setGeoWikiSummary(null);
-
-    fetchGeoWikiSummary(wikidataId, locale).then((summary) => {
-      if (!active) return;
-      setGeoWikiSummary(summary);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    activeLocation?.canonical,
-    activeLocation?.level,
-    geoInvestigation?.wikidataId,
-    locale,
-  ]);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    const dimensionTab = !requestedLocation
-      ? null
-      : requestedLocation?.level === "country"
-        ? "region"
-        : "city";
-
-    Promise.all([
-      fetchOverviewGeoPoints(siteId, window, requestFilters, {
-        limit: 5000,
-        applyGeoFilter: Boolean(requestedLocation?.canonical),
-      }),
-      dimensionTab
-        ? fetchOverviewGeoDimensionTab(
-            siteId,
-            window,
-            dimensionTab,
-            requestFilters,
-            {
-              limit: dimensionTab === "city" ? 600 : 400,
-            },
-          )
-        : Promise.resolve([] as OverviewGeoTabRows),
-      fetchGeoLocaleBundle(
-        requestedLocation,
-        locale,
-        messages.common.unknown,
-        geoMessages,
-      ),
-    ])
-      .then(([nextGeoPoints, nextGeoTabRows, nextGeoLocaleBundle]) => {
-        if (!active) return;
-        startTransition(() => {
-          setGeoPointsData(nextGeoPoints);
-          setGeoTabRows(nextGeoTabRows);
-          setLocationFocus(nextGeoLocaleBundle.focus);
-          setGeoInvestigation(nextGeoLocaleBundle.investigation);
-          setGeoDirectoryEntries(nextGeoLocaleBundle.directoryEntries);
-          setActiveLocation(requestedLocation);
-          setLoading(false);
-        });
-      })
-      .catch(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    locale,
-    requestedLocation?.canonical,
-    requestFilters,
-    requestFiltersKey,
-    messages.common.unknown,
-    geoMessages,
-    siteId,
-    window.from,
-    window.interval,
-    window.to,
-  ]);
+    },
+    placeholderData: keepPreviousData,
+    enabled: typeof window !== "undefined",
+  });
+  const geoPointsData = geoData?.geoPointsData ?? emptyOverviewGeoPoints();
+  const geoTabRows = geoData?.geoTabRows ?? [];
+  const activeLocation = geoData?.activeLocation ?? null;
+  const locationFocus = geoData?.locationFocus ?? null;
+  const geoInvestigation = geoData?.geoInvestigation ?? null;
+  const geoDirectoryEntries = geoData?.geoDirectoryEntries ?? null;
+  const wikidataId = geoInvestigation?.wikidataId ?? "";
+  const { data: geoWikiSummary } = useQuery({
+    queryKey: ["dashboard", "geo-wiki-summary", locale, wikidataId],
+    queryFn: () => fetchGeoWikiSummary(wikidataId, locale),
+    enabled:
+      typeof window !== "undefined" &&
+      Boolean(wikidataId) &&
+      activeLocation?.level !== "country",
+  });
 
   const points = useMemo(
     () => resolveGeoPoints(geoPointsData, activeLocation),

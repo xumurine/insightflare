@@ -1,12 +1,8 @@
-"use client";
-
 import { useMemo } from "react";
 import { RiPriceTag3Line } from "@remixicon/react";
 
 import {
-  CAMPAIGN_TABS,
   type CampaignBreakdownRow,
-  type CampaignRowsByTab,
   type CampaignTab,
 } from "@/components/dashboard/campaign-utils";
 import {
@@ -26,8 +22,11 @@ type CampaignBreakdownGroupKey = "acquisition" | "signals";
 interface CampaignBreakdownCardProps {
   locale: Locale;
   messages: AppMessages;
-  rowsByTab: CampaignRowsByTab;
-  loading: boolean;
+  loadRows: (
+    tab: CampaignTab,
+    signal: AbortSignal,
+  ) => Promise<CampaignBreakdownRow[]>;
+  requestKey: string;
 }
 
 const CAMPAIGN_BREAKDOWN_GROUPS: Array<{
@@ -47,8 +46,8 @@ const CAMPAIGN_BREAKDOWN_GROUPS: Array<{
 export function CampaignBreakdownCard({
   locale,
   messages,
-  rowsByTab,
-  loading,
+  loadRows,
+  requestKey,
 }: CampaignBreakdownCardProps) {
   const tabMeta = useMemo<Record<CampaignTab, TabbedDataTableTab<CampaignTab>>>(
     () => ({
@@ -109,18 +108,6 @@ export function CampaignBreakdownCard({
     ],
     [locale, messages.common.sessions, messages.common.views],
   );
-  const loadingByTab = useMemo(
-    () =>
-      CAMPAIGN_TABS.reduce(
-        (acc, tab) => {
-          acc[tab] = loading;
-          return acc;
-        },
-        {} as Record<CampaignTab, boolean>,
-      ),
-    [loading],
-  );
-
   return (
     <section className="space-y-3">
       <div className="space-y-1">
@@ -145,15 +132,21 @@ export function CampaignBreakdownCard({
                 CampaignSortKey
               >
                 tabs={groupTabs}
-                rowsByTab={rowsByTab}
-                loadingByTab={loadingByTab}
+                loadRows={loadRows}
+                requestKey={`${requestKey}:${group.key}`}
                 columns={columns}
-                renderLabel={(row) => (
-                  <span className={cn("break-words", row.mono && "font-mono")}>
-                    {row.label}
-                  </span>
-                )}
-                getRowSearchText={(row) => row.label}
+                rowAdapter={{
+                  renderLabel: (row) => (
+                    <span
+                      className={cn("break-words", row.mono && "font-mono")}
+                    >
+                      {row.label}
+                    </span>
+                  ),
+                  getSearchText: (row) => row.label,
+                  getExportLabel: (row) => row.label,
+                  getClassName: () => "hover:brightness-95",
+                }}
                 compareRows={(left, right, { sort }) => {
                   const primary =
                     (left[sort.key] - right[sort.key]) *
@@ -176,7 +169,9 @@ export function CampaignBreakdownCard({
                       tab: tab.label,
                     }),
                 }}
-                getRowClassName={() => "hover:brightness-95"}
+                export={{
+                  labels: messages.common.tableExport,
+                }}
               />
             </div>
           );

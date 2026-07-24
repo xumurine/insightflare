@@ -930,10 +930,11 @@ describe("IngestDurableObject", () => {
       ctx.object,
       envelope({
         visitId: "visit-2",
-        previousVisitId: "visit-1",
+        navigation: "route",
         startedAt: NOW - 10_000,
         timestamp: NOW - 10_000,
         pathname: "/second",
+        referrerUrl: "https://example.com/first",
       }),
     );
     await postIngest(
@@ -987,8 +988,8 @@ describe("IngestDurableObject", () => {
         visit_id: "visit-2",
         status: "complete",
         ended_at: NOW - 5_000,
-        duration_ms: 4567,
-        duration_source: "reported",
+        duration_ms: 5000,
+        duration_source: "server",
         perf_ttfb_ms: 1.235,
         perf_fcp_ms: null,
         perf_lcp_ms: 2500,
@@ -1039,6 +1040,71 @@ describe("IngestDurableObject", () => {
       {
         visit_id: "tab-a-visit",
         status: "open",
+      },
+      {
+        visit_id: "tab-b-visit",
+        status: "open",
+      },
+    ]);
+  });
+
+  it("closes the matching route referrer instead of another active tab", async () => {
+    const ctx = createTestDo();
+
+    await postIngest(
+      ctx.object,
+      envelope({
+        visitId: "tab-a-visit",
+        startedAt: NOW - 30_000,
+        timestamp: NOW - 30_000,
+        pathname: "/tab-a",
+      }),
+    );
+    await postIngest(
+      ctx.object,
+      envelope({
+        visitId: "tab-b-visit",
+        startedAt: NOW - 10_000,
+        timestamp: NOW - 10_000,
+        pathname: "/tab-b",
+      }),
+    );
+    await postIngest(
+      ctx.object,
+      envelope({
+        visitId: "tab-a-next",
+        navigation: "route",
+        startedAt: NOW - 5_000,
+        timestamp: NOW - 5_000,
+        pathname: "/tab-a/next",
+        referrerUrl: "https://example.com/tab-a",
+      }),
+    );
+
+    const rows = localRows<{
+      visit_id: string;
+      status: string;
+      ended_at: number | null;
+      duration_ms: number | null;
+    }>(
+      ctx.sql,
+      `
+        SELECT visit_id, status, ended_at, duration_ms
+        FROM buffered_visits
+        ORDER BY visit_id
+      `,
+    );
+
+    expect(rows).toMatchObject([
+      {
+        visit_id: "tab-a-next",
+        status: "open",
+      },
+      {
+        visit_id: "tab-a-visit",
+        status: "complete",
+        ended_at: NOW - 5_000,
+        duration_ms: 25_000,
       },
       {
         visit_id: "tab-b-visit",
@@ -1144,7 +1210,7 @@ describe("IngestDurableObject", () => {
       hidden_at: null,
       ended_at: NOW,
       duration_ms: 20_000,
-      duration_source: "reported",
+      duration_source: "server",
       exit_reason: "pagehide",
     });
   });

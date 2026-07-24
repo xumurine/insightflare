@@ -16,6 +16,10 @@ import {
   parseJson,
 } from "./admin-response";
 import {
+  assertSitesBelongToTeam,
+  normalizeMemberSiteIds,
+} from "./member-site-access";
+import {
   decryptTeamInviteToken,
   encryptTeamInviteToken,
 } from "./secret-encryption";
@@ -58,20 +62,6 @@ function normalizeInviteEmail(input: unknown): string {
 function isValidEmail(input: string): boolean {
   if (!input) return true;
   return input.length >= 3 && input.includes("@");
-}
-
-function safeSiteAccess(input: unknown): Record<string, unknown> {
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
-    return { mode: "all" };
-  }
-  try {
-    const cloned = JSON.parse(JSON.stringify(input)) as unknown;
-    return cloned && typeof cloned === "object" && !Array.isArray(cloned)
-      ? (cloned as Record<string, unknown>)
-      : { mode: "all" };
-  } catch {
-    return { mode: "all" };
-  }
 }
 
 function inviteUrl(req: Request, token: string): string {
@@ -198,6 +188,12 @@ export async function handleTeamInvitesAdmin(
       return bad("A valid email is required", undefined, req);
     }
 
+    const siteIds =
+      role === "member" ? normalizeMemberSiteIds(body.siteIds) : [];
+    if (!(await assertSitesBelongToTeam(env, teamId, siteIds))) {
+      return bad("siteIds must belong to the team", undefined, req);
+    }
+
     const expiresInHours = toPositiveHours(
       body.expiresInHours,
       config.defaultInviteExpiresInHours,
@@ -208,7 +204,7 @@ export async function handleTeamInvitesAdmin(
       email: email || null,
       tokenPayload: async (token) => ({
         teamRole: role,
-        siteAccess: safeSiteAccess(body.siteAccess),
+        siteIds,
         allowRegistration: actor.isAdmin || config.allowTeamAdminCreateUsers,
         ...(await encryptedInviteTokenPayload(env, token)),
       }),

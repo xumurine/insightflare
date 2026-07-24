@@ -1,6 +1,4 @@
 const GITHUB_API_BASE = "https://api.github.com";
-const RELEASES_REVALIDATE_SECONDS = 1800;
-const COMPARE_REVALIDATE_SECONDS = 1800;
 
 type GithubReleaseApiItem = {
   id: number;
@@ -114,9 +112,7 @@ export async function fetchGithubReleases(
         "User-Agent": "InsightFlare",
         "X-GitHub-Api-Version": "2022-11-28",
       },
-      next: {
-        revalidate: RELEASES_REVALIDATE_SECONDS,
-      },
+      cache: "no-store",
     },
   );
 
@@ -169,9 +165,7 @@ export async function fetchGithubCompare(
         "User-Agent": "InsightFlare",
         "X-GitHub-Api-Version": "2022-11-28",
       },
-      next: {
-        revalidate: COMPARE_REVALIDATE_SECONDS,
-      },
+      cache: "no-store",
     },
   );
 

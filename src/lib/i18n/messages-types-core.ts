@@ -70,6 +70,21 @@ export interface AppCoreMessages {
     admin: string;
     user: string;
     search: string;
+    tableExport: {
+      action: string;
+      title: string;
+      description: string;
+      scopeLabel: string;
+      currentTab: string;
+      allTabs: string;
+      rowsLabel: string;
+      currentView: string;
+      rawRows: string;
+      fileNameLabel: string;
+      download: string;
+      empty: string;
+      allTabsUnavailable: string;
+    };
     time: string;
     cycle: string;
     close: string;

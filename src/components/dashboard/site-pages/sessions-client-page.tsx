@@ -1,15 +1,6 @@
-"use client";
-
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import dynamic from "next/dynamic";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RiSearchLine } from "@remixicon/react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
 import {
@@ -22,6 +13,7 @@ import {
   DetailDrawer,
 } from "@/components/dashboard/site-pages/detail-query-modal";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+import { useInfiniteTableSentinel } from "@/components/dashboard/use-infinite-table-sentinel";
 import { Input } from "@/components/ui/input";
 import {
   pushUrlWithoutNavigation,
@@ -30,7 +22,8 @@ import {
 } from "@/lib/client-history";
 import { fetchSessions } from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
-import type { JourneySession, SessionsMeta } from "@/lib/edge-client";
+import dynamic from "@/lib/dynamic";
+import type { JourneySession } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
@@ -41,7 +34,7 @@ interface SessionsClientPageProps {
   pathname: string;
 }
 
-const SESSION_PAGE_SIZE = 80;
+const SESSION_PAGE_SIZE = 50;
 const SESSION_SKELETON_ROWS = 8;
 
 const SessionDetailClientPage = dynamic(
@@ -60,14 +53,6 @@ const SessionDetailClientPage = dynamic(
 const DEFAULT_SESSION_SORT: SessionSortState = {
   key: "startedAt",
   direction: "desc",
-};
-
-const INITIAL_SESSION_META: SessionsMeta = {
-  page: 1,
-  pageSize: SESSION_PAGE_SIZE,
-  returned: 0,
-  hasMore: false,
-  nextPage: null,
 };
 
 function appendUniqueSessions(
@@ -104,46 +89,13 @@ export function SessionsClientPage({
     filters: DashboardFilters;
     window: TimeWindow;
   };
-  const [rows, setRows] = useState<JourneySession[]>([]);
-  const [meta, setMeta] = useState<SessionsMeta>(INITIAL_SESSION_META);
-  const [loadingInitial, setLoadingInitial] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState(false);
-  const [appendError, setAppendError] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState<SessionSortState>(DEFAULT_SESSION_SORT);
-  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
-    null,
-  );
   const searchParams = useLiveSearchParams();
   const detailSessionId = searchParams.get(DETAIL_QUERY_PARAM)?.trim() || "";
   const openedDetailFromListRef = useRef(false);
-  const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
-  const requestKey = useMemo(
-    () =>
-      [
-        siteId,
-        timeWindow.from,
-        timeWindow.to,
-        filtersKey,
-        debouncedQuery,
-        sort.key,
-        sort.direction,
-      ].join(":"),
-    [
-      debouncedQuery,
-      filtersKey,
-      siteId,
-      sort.direction,
-      sort.key,
-      timeWindow.from,
-      timeWindow.to,
-    ],
-  );
-  const replacingRows =
-    loadingInitial || latestRequestKeyRef.current !== requestKey;
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -158,130 +110,66 @@ export function SessionsClientPage({
     }
   }, [detailSessionId]);
 
-  const loadPage = useEffectEvent(
-    async (page: number, mode: "replace" | "append") => {
-      const capturedRequestKey = latestRequestKeyRef.current;
-
-      if (mode === "replace") {
-        setLoadingInitial(true);
-        setError(false);
-        setAppendError(false);
-      } else {
-        setLoadingMore(true);
-        setAppendError(false);
-      }
-
-      try {
-        const payload = await fetchSessions(siteId, timeWindow, filters, {
-          page,
-          pageSize: SESSION_PAGE_SIZE,
-          sortBy: sort.key,
-          sortDir: sort.direction,
-          search: debouncedQuery,
-        });
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-
-        setRows((current) =>
-          mode === "append"
-            ? appendUniqueSessions(current, payload.data)
-            : payload.data,
-        );
-        setMeta(payload.meta);
-        setError(false);
-        setAppendError(false);
-      } catch {
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        if (mode === "replace") {
-          setRows([]);
-          setMeta(INITIAL_SESSION_META);
-          setError(true);
-          setAppendError(false);
-        } else {
-          setAppendError(true);
-        }
-      } finally {
-        if (latestRequestKeyRef.current === capturedRequestKey) {
-          if (mode === "replace") {
-            setLoadingInitial(false);
-          } else {
-            setLoadingMore(false);
-          }
-        }
-      }
-    },
-  );
-
-  const loadNextPage = useEffectEvent(() => {
-    if (
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      !meta.hasMore ||
-      meta.nextPage === null
-    ) {
-      return;
-    }
-    void loadPage(meta.nextPage, "append");
+  const {
+    data,
+    error: queryError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchNextPageError,
+    isFetching,
+    isFetchingNextPage,
+    isPending,
+  } = useInfiniteQuery({
+    queryKey: [
+      "dashboard",
+      "sessions",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.timeZone,
+      filtersKey,
+      debouncedQuery,
+      sort.key,
+      sort.direction,
+    ],
+    queryFn: ({ pageParam, signal }) =>
+      fetchSessions(siteId, timeWindow, filters, {
+        page: pageParam,
+        pageSize: SESSION_PAGE_SIZE,
+        sortBy: sort.key,
+        sortDir: sort.direction,
+        search: debouncedQuery,
+        signal,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.meta.hasMore ? lastPage.meta.nextPage : undefined,
+    enabled: typeof window !== "undefined",
   });
+  const rows = useMemo(
+    () =>
+      data?.pages.reduce<JourneySession[]>(
+        (current, page) => appendUniqueSessions(current, page.data),
+        [],
+      ) ?? [],
+    [data?.pages],
+  );
+  const loadingInitial = isPending;
+  const loadingMore = isFetchingNextPage;
+  const error = Boolean(queryError) && rows.length === 0;
+  const appendError = isFetchNextPageError;
+  const replacingRows = isPending || (isFetching && !isFetchingNextPage);
+  const hasMore = hasNextPage ?? false;
+  const loadNextPage = () => {
+    if (loadingInitial || loadingMore || appendError || !hasMore) return;
+    void fetchNextPage();
+  };
 
-  useEffect(() => {
-    latestRequestKeyRef.current = requestKey;
-    setRows([]);
-    setMeta(INITIAL_SESSION_META);
-    setError(false);
-    setAppendError(false);
-    void loadPage(1, "replace");
-  }, [requestKey]);
-
-  useEffect(() => {
-    const target = sentinelNode;
-    if (
-      !target ||
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      error ||
-      !meta.hasMore ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) {
-          loadNextPage();
-        }
-      },
-      {
-        root: null,
-        rootMargin: "360px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    const frameId = window.requestAnimationFrame(() => {
-      const rect = target.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
-        loadNextPage();
-      }
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [
-    appendError,
-    error,
-    loadingInitial,
-    loadingMore,
-    meta.hasMore,
-    meta.nextPage,
-    sentinelNode,
-  ]);
+  const sentinelRef = useInfiniteTableSentinel({
+    enabled:
+      !loadingInitial && !loadingMore && !appendError && !error && hasMore,
+    onReachEnd: loadNextPage,
+  });
 
   const toggleSort = (key: SessionSortKey) => {
     setSort((current) =>
@@ -348,9 +236,9 @@ export function SessionsClientPage({
         loadingMore={loadingMore}
         error={error}
         appendError={appendError}
-        hasMore={meta.hasMore}
+        hasMore={hasMore}
         skeletonRows={SESSION_SKELETON_ROWS}
-        sentinelRef={setSentinelNode}
+        sentinelRef={sentinelRef}
       />
 
       {detailSessionId ? (

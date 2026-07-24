@@ -180,6 +180,7 @@ describe("edge query dimensions low-level coverage", () => {
     expect(calls).toHaveLength(2);
     expect(calls[0].sql).toContain("ORDER BY fv2.started_at DESC");
     expect(calls[1].sql).toContain("ORDER BY fv2.started_at ASC");
+    expect(calls[0].sql).toContain("WHERE TRIM(value) != ''");
     expect(calls[0].bindings).toEqual([...visitBindings(), "Chrome", 5]);
     expect(calls[1].bindings).toEqual([...visitBindings(), "Chrome", 3]);
   });

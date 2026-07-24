@@ -2,6 +2,7 @@ import {
   queryOverviewForSitesFromHourlyRollups,
   queryTrendForSitesFromHourlyRollups,
 } from "@/lib/edge/hourly-rollup";
+import type { EdgeSessionClaims } from "@/lib/edge/session-auth";
 import type { Env } from "@/lib/edge/types";
 
 import type {
@@ -22,6 +23,7 @@ import {
   PRIVATE_CACHE_HEADERS,
   queryD1All,
   resolvePrivateTeam,
+  resolvePrivateTeamForSession,
   type ResponseContext,
   timeBucketCase,
   timeBucketTimestamp,
@@ -214,7 +216,36 @@ export async function handleTeamDashboard(
   const team = await resolvePrivateTeam(request, env, url);
   if (team instanceof Response) return team;
 
-  return handleTeamDashboardForTeam(env, url, team.id, window, undefined, ctx);
+  return handleTeamDashboardForTeam(
+    env,
+    url,
+    team.id,
+    window,
+    team.allowedSiteIds,
+    ctx,
+  );
+}
+
+export async function handleTeamDashboardForSession(
+  request: Request,
+  env: Env,
+  url: URL,
+  session: EdgeSessionClaims,
+  ctx?: ResponseContext,
+): Promise<Response> {
+  const window = parseWindow(url);
+  if (!window) return badRequest("Invalid time window");
+  const team = await resolvePrivateTeamForSession(request, env, url, session);
+  if (team instanceof Response) return team;
+
+  return handleTeamDashboardForTeam(
+    env,
+    url,
+    team.id,
+    window,
+    team.allowedSiteIds,
+    ctx,
+  );
 }
 
 export async function handleTeamDashboardForTeam(

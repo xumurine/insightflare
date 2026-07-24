@@ -137,7 +137,7 @@ export function targetSuggestion(
 export function targetEnv(target: DeployTarget): NodeJS.ProcessEnv {
   return {
     ...process.env,
-    ...(target === "demo" ? { NEXT_PUBLIC_DEMO_MODE: "1" } : {}),
+    ...(target === "demo" ? { DEMO_MODE: "1" } : {}),
   };
 }
 

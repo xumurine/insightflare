@@ -1,16 +1,12 @@
 name = "insightflare"
-main = "./workers/cf-worker.js"
+main = "./src/server.ts"
 compatibility_date = "2026-03-01"
 workers_dev = true
 compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
-[assets]
-directory = "./.open-next/assets"
-binding = "ASSETS"
-
 [vars]
 SESSION_WINDOW_MINUTES = "30"
-SCRIPT_CACHE_TTL_SECONDS = "3600"
+SCRIPT_CACHE_TTL_SECONDS = "600"
 PARQUET_WASM_URL = "https://cdn.jsdelivr.net/npm/parquet-wasm@0.7.1/esm/parquet_wasm_bg.wasm"
 
 [triggers]
@@ -61,7 +57,7 @@ name = "ravelloh"
 
 [env.ravelloh.vars]
 SESSION_WINDOW_MINUTES = "30"
-SCRIPT_CACHE_TTL_SECONDS = "3600"
+SCRIPT_CACHE_TTL_SECONDS = "600"
 PARQUET_WASM_URL = "https://cdn.jsdelivr.net/npm/parquet-wasm@0.7.1/esm/parquet_wasm_bg.wasm"
 
 [env.ravelloh.triggers]

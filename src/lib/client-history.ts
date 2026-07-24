@@ -1,5 +1,3 @@
-"use client";
-
 import { useMemo, useSyncExternalStore } from "react";
 
 const URL_STATE_CHANGE_EVENT = "insightflare:url-state-change";

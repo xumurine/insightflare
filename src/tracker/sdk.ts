@@ -34,7 +34,6 @@ let currentVisit: {
   href: string;
   routeKey: string;
   referrerUrl: string;
-  eventSequence: number;
 } | null = null;
 let pendingRouteChange: {
   href: string;
@@ -119,13 +118,11 @@ function pagePayloadBase(
   referrerUrl: string,
   startedAt: number,
   eventAt: number,
-  previousVisitId = "",
 ): any {
   const url = new URL(href, window.location.href);
   return {
     siteId: SITE_ID,
     visitId: currentVisit!.id,
-    ...(previousVisitId ? { previousVisitId } : {}),
     timestamp: eventAt,
     startedAt,
     pathname: url.pathname || "/",
@@ -200,7 +197,7 @@ function startVisit(
   href: string,
   referrerUrl: string,
   startedAt: number,
-  previousVisitId = "",
+  navigation = "",
 ): void {
   leaveSent = false;
   pendingHiddenAt = 0;
@@ -210,7 +207,6 @@ function startVisit(
     href,
     routeKey: routeKey(href),
     referrerUrl,
-    eventSequence: 0,
   };
 
   if (BUILD_PERFORMANCE && !performanceTracker.hasVisit()) {
@@ -231,9 +227,9 @@ function startVisit(
         currentVisit.referrerUrl,
         currentVisit.startedAt,
         currentVisit.startedAt,
-        previousVisitId,
       ),
       kind: "pageview",
+      ...(navigation ? { navigation } : {}),
     },
     false,
   );
@@ -315,12 +311,11 @@ function commitRouteChange(routeChange: {
   routeChangeTimer = 0;
   const nextKey = routeKey(routeChange.href);
   if (!currentVisit || nextKey === currentVisit.routeKey) return;
-  const previousVisitId = currentVisit.id;
   startVisit(
     routeChange.href,
     routeChange.referrerUrl,
     routeChange.transitionAt,
-    previousVisitId,
+    "route",
   );
 }
 
@@ -449,7 +444,6 @@ function track(eventName: string, eventData?: unknown): void {
     );
   }
   flushPendingRouteChange();
-  currentVisit.eventSequence = (currentVisit.eventSequence || 0) + 1;
   send(
     {
       ...pagePayloadBase(
@@ -460,7 +454,6 @@ function track(eventName: string, eventData?: unknown): void {
       ),
       kind: "custom_event",
       eventId: crypto.randomUUID(),
-      sequence: currentVisit.eventSequence,
       eventName: normalizedName,
       eventData: Object.assign(
         {},

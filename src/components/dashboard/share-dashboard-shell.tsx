@@ -1,7 +1,4 @@
-"use client";
-
 import type { ReactNode } from "react";
-import { usePathname } from "next/navigation";
 
 import { AnalyticsTabs } from "@/components/dashboard/analytics-tabs";
 import { DashboardQueryProvider } from "@/components/dashboard/dashboard-query-provider";
@@ -10,6 +7,7 @@ import { PageTransition } from "@/components/page-transition";
 import { publicDashboardSiteId } from "@/lib/dashboard/client-request";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { usePathname } from "@/lib/router";
 
 interface ShareDashboardShellProps {
   locale: Locale;

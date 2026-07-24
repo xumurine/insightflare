@@ -24,6 +24,7 @@ import {
   parseLimit,
   parseWindow,
   PERFORMANCE_METRIC_COLUMNS,
+  PERFORMANCE_METRIC_KEYS,
   performanceMetricColumn,
   queryD1All,
   type ResponseContext,
@@ -32,6 +33,15 @@ import {
   timeBucketTimestamp,
   visitSourceBindings,
 } from "./core";
+
+const ALL_PERFORMANCE_METRIC_VISITS_SQL = PERFORMANCE_METRIC_KEYS.map(
+  (metric) => {
+    const column = PERFORMANCE_METRIC_COLUMNS[metric];
+    return `SELECT bucket, '${metric}' AS metric, ${column} AS metricValue
+  FROM bucketed_visits
+  WHERE ${column} IS NOT NULL`;
+  },
+).join("\n  UNION ALL\n  ");
 
 export async function queryPerformanceSummariesFromD1(
   env: Env,
@@ -197,6 +207,106 @@ ORDER BY thresholds.bucket ASC
     p95: roundPerformanceValue(row.p95),
     samples: Number(row.samples ?? 0),
   }));
+}
+
+export async function queryAllPerformanceTrendsFromD1(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  interval: Interval,
+  filters: DashboardFilters,
+): Promise<Record<PerformanceMetricKey, PerformanceTrendPointRow[]>> {
+  const filter = buildVisitFilterSql(filters);
+  const buckets = buildTimeBuckets(window, interval);
+  const bucket = timeBucketCase(buckets, "started_at");
+  const sql = `
+WITH
+${buildVisitSourceCte()},
+bucketed_visits AS (
+  SELECT
+    ${bucket.sql} AS bucket,
+    perf_ttfb_ms,
+    perf_fcp_ms,
+    perf_lcp_ms,
+    perf_cls,
+    perf_inp_ms
+  FROM visit_source
+  ${filter.clause}
+),
+metric_visits AS (
+  ${ALL_PERFORMANCE_METRIC_VISITS_SQL}
+),
+ordered_values AS (
+  SELECT
+    metric,
+    bucket,
+    metricValue,
+    ROW_NUMBER() OVER (
+      PARTITION BY metric, bucket
+      ORDER BY metricValue ASC
+    ) AS rowNum,
+    COUNT(*) OVER (PARTITION BY metric, bucket) AS sampleCount
+  FROM metric_visits
+),
+bucket_thresholds AS (
+  SELECT
+    metric,
+    bucket,
+    sampleCount,
+    AVG(metricValue) AS avgValue,
+    CAST(((sampleCount * 50) + 99) / 100 AS INTEGER) AS p50Rank,
+    CAST(((sampleCount * 75) + 99) / 100 AS INTEGER) AS p75Rank,
+    CAST(((sampleCount * 95) + 99) / 100 AS INTEGER) AS p95Rank
+  FROM ordered_values
+  GROUP BY metric, bucket, sampleCount
+)
+SELECT
+  thresholds.metric AS metric,
+  thresholds.bucket AS bucket,
+  thresholds.sampleCount AS samples,
+  thresholds.avgValue AS avgValue,
+  MIN(CASE WHEN ordered.rowNum >= thresholds.p50Rank THEN ordered.metricValue END) AS p50,
+  MIN(CASE WHEN ordered.rowNum >= thresholds.p75Rank THEN ordered.metricValue END) AS p75,
+  MIN(CASE WHEN ordered.rowNum >= thresholds.p95Rank THEN ordered.metricValue END) AS p95
+FROM bucket_thresholds thresholds
+JOIN ordered_values ordered
+  ON ordered.metric = thresholds.metric
+ AND ordered.bucket = thresholds.bucket
+GROUP BY
+  thresholds.metric,
+  thresholds.bucket,
+  thresholds.sampleCount,
+  thresholds.avgValue
+ORDER BY thresholds.metric ASC, thresholds.bucket ASC
+`;
+  const rows = await queryD1All<Record<string, unknown>>(env, sql, [
+    ...visitSourceBindings(siteId, window),
+    ...bucket.bindings,
+    ...filter.bindings,
+  ]);
+  const trends: Record<PerformanceMetricKey, PerformanceTrendPointRow[]> = {
+    ttfb: [],
+    fcp: [],
+    lcp: [],
+    cls: [],
+    inp: [],
+  };
+
+  for (const row of rows) {
+    const metric = String(row.metric ?? "") as PerformanceMetricKey;
+    if (!(metric in PERFORMANCE_METRIC_COLUMNS)) continue;
+    const bucketIndex = Number(row.bucket ?? 0);
+    trends[metric].push({
+      bucket: bucketIndex,
+      timestampMs: timeBucketTimestamp(buckets, bucketIndex),
+      avg: roundPerformanceValue(row.avgValue),
+      p50: roundPerformanceValue(row.p50),
+      p75: roundPerformanceValue(row.p75),
+      p95: roundPerformanceValue(row.p95),
+      samples: Number(row.samples ?? 0),
+    });
+  }
+  return trends;
 }
 
 export async function queryPerformanceRoutesFromD1(
@@ -454,64 +564,18 @@ export async function handlePerformance(
   const filters = parseFilters(url);
   const interval = parseInterval(url);
   const routeLimit = parseLimit(url, 18, 50);
-  const [summaries, ttfb, fcp, lcp, cls, inp, routes, countries] =
-    await Promise.all([
-      queryPerformanceSummariesFromD1(env, siteId, window, filters),
-      queryPerformanceTrendFromD1(
-        env,
-        siteId,
-        window,
-        interval,
-        filters,
-        "ttfb",
-      ),
-      queryPerformanceTrendFromD1(
-        env,
-        siteId,
-        window,
-        interval,
-        filters,
-        "fcp",
-      ),
-      queryPerformanceTrendFromD1(
-        env,
-        siteId,
-        window,
-        interval,
-        filters,
-        "lcp",
-      ),
-      queryPerformanceTrendFromD1(
-        env,
-        siteId,
-        window,
-        interval,
-        filters,
-        "cls",
-      ),
-      queryPerformanceTrendFromD1(
-        env,
-        siteId,
-        window,
-        interval,
-        filters,
-        "inp",
-      ),
-      queryPerformanceRoutesFromD1(env, siteId, window, filters, routeLimit),
-      queryPerformanceCountriesFromD1(env, siteId, window, filters),
-    ]);
+  const [summaries, trends, routes, countries] = await Promise.all([
+    queryPerformanceSummariesFromD1(env, siteId, window, filters),
+    queryAllPerformanceTrendsFromD1(env, siteId, window, interval, filters),
+    queryPerformanceRoutesFromD1(env, siteId, window, filters, routeLimit),
+    queryPerformanceCountriesFromD1(env, siteId, window, filters),
+  ]);
 
   return jsonResponseWith(ctx!, {
     ok: true,
     interval,
     summaries,
-    trends: {
-      ttfb,
-      fcp,
-      lcp,
-      cls,
-      inp,
-    },
+    trends,
     routes,
     countries,
   });

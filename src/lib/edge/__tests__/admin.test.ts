@@ -213,7 +213,9 @@ function publicUser(row: UserRow) {
     systemRole: row.system_role === "admin" ? "admin" : "user",
     timeZone: row.timezone || "",
     preferredLocale:
-      row.preferred_locale === "en" || row.preferred_locale === "zh"
+      row.preferred_locale === "en" ||
+      row.preferred_locale === "zh" ||
+      row.preferred_locale === "ja"
         ? row.preferred_locale
         : "",
     createdAt: row.created_at,
@@ -557,6 +559,32 @@ describe("private admin edge handler", () => {
           createEnv([statement({ first: null })]).env,
           actor,
           "missing-site",
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        canReadSite(
+          createEnv([
+            statement({ first: { team_id: "team-1" } }),
+            statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+            statement({
+              first: { role: "member", siteIdsJson: '["site-1"]' },
+            }),
+          ]).env,
+          actor,
+          "site-1",
+        ),
+      ).resolves.toBe(true);
+      await expect(
+        canReadSite(
+          createEnv([
+            statement({ first: { team_id: "team-1" } }),
+            statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+            statement({
+              first: { role: "member", siteIdsJson: '["site-2"]' },
+            }),
+          ]).env,
+          actor,
+          "site-1",
         ),
       ).resolves.toBe(false);
 
@@ -2305,6 +2333,8 @@ describe("private admin edge handler", () => {
         statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
         statement({ first: { role: "member" } }),
         statement({ all: rows }),
+        statement({ first: { id: "team-1", ownerUserId: "owner-1" } }),
+        statement({ first: { role: "member", siteIdsJson: "[]" } }),
       ]);
 
       const response = await dispatch(
@@ -2834,6 +2864,7 @@ describe("private admin edge handler", () => {
           teamId: "team-1",
           userId: "member-1",
           role: "admin",
+          siteIds: [],
           username: "member",
           email: "member@example.test",
           name: "",
@@ -2843,6 +2874,7 @@ describe("private admin edge handler", () => {
         "team-1",
         "member-1",
         "admin",
+        "[]",
       );
     });
 

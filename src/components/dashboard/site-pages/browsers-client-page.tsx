@@ -1,5 +1,3 @@
-"use client";
-
 import { BrowserCrossBreakdownGrid } from "@/components/dashboard/browser-cross-breakdown-grid";
 import { BrowserEngineShareTrendCard } from "@/components/dashboard/browser-engine-share-trend-card";
 import { BrowserPerformanceRadarCard } from "@/components/dashboard/browser-performance-radar-card";

@@ -1,5 +1,3 @@
-"use client";
-
 import {
   type ReactNode,
   useCallback,
@@ -9,8 +7,6 @@ import {
   useState,
 } from "react";
 import { type DateRange } from "react-day-picker";
-import { usePathname } from "next/navigation";
-import NumberFlow, { continuous } from "@number-flow/react";
 import {
   RiArrowDownSLine,
   RiArrowLeftSLine,
@@ -31,6 +27,7 @@ import {
   RealtimeStatusDot,
   realtimeStatusText,
 } from "@/components/dashboard/realtime-status-indicator";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
@@ -116,6 +113,7 @@ import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
 import { isRealtimeMockEnabled } from "@/lib/realtime/client";
 import type { RealtimeConnectionState } from "@/lib/realtime/types";
+import { usePathname } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 interface DashboardHeaderControlsProps {
@@ -407,9 +405,9 @@ function RealtimeActiveBadge({
           >
             {showValue ? (
               <span key="active-now-value" className="inline-flex items-center">
-                <NumberFlow
+                <AnimatedNumber
                   value={activeNow}
-                  plugins={[continuous]}
+                  continuous
                   className="font-mono tabular-nums"
                 />
               </span>

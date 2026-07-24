@@ -145,6 +145,14 @@ describe("account action token utilities", () => {
     expect(left).not.toBe(other);
   });
 
+  it("throws when hashing account action tokens without a root secret", async () => {
+    await expect(
+      hashAccountActionToken({} as Env, generateAccountActionToken()),
+    ).rejects.toThrow(
+      "MAIN_SECRET or DAILY_SALT_SECRET is required for account action tokens",
+    );
+  });
+
   it("creates records without storing the plain token", async () => {
     const uuidSpy = vi
       .spyOn(crypto, "randomUUID")

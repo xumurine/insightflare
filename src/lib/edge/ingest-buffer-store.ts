@@ -130,13 +130,42 @@ export async function findRecentVisitorSession(
     visitId: string;
     startedAt: number;
     sessionWindowMs: number;
+    routePreviousHostname?: string;
+    routePreviousPathname?: string;
+    routePreviousQueryString?: string;
+    routePreviousHashFragment?: string;
   },
 ): Promise<RecentVisitorSession | null> {
   const cutoff = input.startedAt - input.sessionWindowMs;
+  const routeMatchEnabled =
+    input.routePreviousHostname && input.routePreviousPathname ? 1 : 0;
+  const routePreviousHostname = input.routePreviousHostname || "";
+  const routePreviousPathname = input.routePreviousPathname || "";
+  const routePreviousQueryString = input.routePreviousQueryString || "";
+  const routePreviousHashFragment = input.routePreviousHashFragment || "";
   const buffered = context.sqlOne<RecentVisitorSession>(
     `
       SELECT
         session_id AS sessionId,
+        visit_id AS visitId,
+        status,
+        CASE
+          WHEN ? = 1
+            AND status IN ('open', 'hidden_pending')
+            AND hostname = ?
+            AND pathname = ?
+            AND query_string = ?
+            AND hash_fragment = ?
+            THEN 2
+          WHEN ? = 1
+            AND status IN ('open', 'hidden_pending')
+            AND hostname = ?
+            AND pathname = ?
+            AND (query_string = ? OR query_string = '' OR ? = '')
+            AND (hash_fragment = ? OR hash_fragment = '' OR ? = '')
+            THEN 1
+          ELSE 0
+        END AS routeMatch,
         started_at AS startedAt,
         last_activity_at AS lastActivityAt
       FROM buffered_visits
@@ -145,9 +174,25 @@ export async function findRecentVisitorSession(
         AND visit_id != ?
         AND session_id != ''
         AND last_activity_at >= ?
-      ORDER BY last_activity_at DESC, started_at DESC
+      ORDER BY
+        routeMatch DESC,
+        CASE WHEN status IN ('open', 'hidden_pending') THEN 0 ELSE 1 END,
+        last_activity_at DESC,
+        started_at DESC
       LIMIT 1
     `,
+    routeMatchEnabled,
+    routePreviousHostname,
+    routePreviousPathname,
+    routePreviousQueryString,
+    routePreviousHashFragment,
+    routeMatchEnabled,
+    routePreviousHostname,
+    routePreviousPathname,
+    routePreviousQueryString,
+    routePreviousQueryString,
+    routePreviousHashFragment,
+    routePreviousHashFragment,
     input.siteId,
     input.visitorId,
     input.visitId,
@@ -159,6 +204,25 @@ export async function findRecentVisitorSession(
     `
       SELECT
         session_id AS sessionId,
+        visit_id AS visitId,
+        status,
+        CASE
+          WHEN ? = 1
+            AND status IN ('open', 'hidden_pending')
+            AND hostname = ?
+            AND pathname = ?
+            AND query_string = ?
+            AND hash_fragment = ?
+            THEN 2
+          WHEN ? = 1
+            AND status IN ('open', 'hidden_pending')
+            AND hostname = ?
+            AND pathname = ?
+            AND (query_string = ? OR query_string = '' OR ? = '')
+            AND (hash_fragment = ? OR hash_fragment = '' OR ? = '')
+            THEN 1
+          ELSE 0
+        END AS routeMatch,
         started_at AS startedAt,
         last_activity_at AS lastActivityAt
       FROM visits
@@ -167,11 +231,32 @@ export async function findRecentVisitorSession(
         AND visit_id != ?
         AND session_id != ''
         AND last_activity_at >= ?
-      ORDER BY last_activity_at DESC, started_at DESC
+      ORDER BY
+        routeMatch DESC,
+        CASE WHEN status IN ('open', 'hidden_pending') THEN 0 ELSE 1 END,
+        last_activity_at DESC,
+        started_at DESC
       LIMIT 1
     `,
   )
-    .bind(input.siteId, input.visitorId, input.visitId, cutoff)
+    .bind(
+      routeMatchEnabled,
+      routePreviousHostname,
+      routePreviousPathname,
+      routePreviousQueryString,
+      routePreviousHashFragment,
+      routeMatchEnabled,
+      routePreviousHostname,
+      routePreviousPathname,
+      routePreviousQueryString,
+      routePreviousQueryString,
+      routePreviousHashFragment,
+      routePreviousHashFragment,
+      input.siteId,
+      input.visitorId,
+      input.visitId,
+      cutoff,
+    )
     .first<RecentVisitorSession>();
 
   return persisted ?? null;

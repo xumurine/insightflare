@@ -1,5 +1,3 @@
-"use client";
-
 import { DeviceCrossBreakdownGrid } from "@/components/dashboard/device-cross-breakdown-grid";
 import { DeviceDimensionTrendCard } from "@/components/dashboard/device-dimension-trend-card";
 import { DeviceScreenBreakdownCard } from "@/components/dashboard/device-screen-breakdown-card";

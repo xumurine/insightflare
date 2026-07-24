@@ -1,7 +1,6 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { RiCopyrightLine, RiMapPin2Line } from "@remixicon/react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import {
   type GeoPointsMapCountryCount,
@@ -44,10 +43,7 @@ export function OverviewGeoPointsMapCard({
   selectedCountryCode,
   onCountrySelect,
 }: OverviewGeoPointsMapCardProps) {
-  const [loading, setLoading] = useState(true);
-  const [geoPointsData, setGeoPointsData] = useState(
-    emptyOverviewGeoPointsData(),
-  );
+  const emptyGeoPointsData = useMemo(() => emptyOverviewGeoPointsData(), []);
   const requestFilters = useMemo<DashboardFilters>(
     () => ({
       ...filters,
@@ -64,28 +60,29 @@ export function OverviewGeoPointsMapCard({
     [requestFilters],
   );
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    fetchOverviewGeoPoints(siteId, window, requestFilters, { limit: 5000 })
-      .then((next) => {
-        if (!active) return;
-        setGeoPointsData(next);
-      })
-      .catch(() => {
-        if (!active) return;
-        setGeoPointsData(emptyOverviewGeoPointsData());
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [requestFiltersKey, siteId, window.from, window.interval, window.to]);
+  const {
+    data: geoPointsData = emptyGeoPointsData,
+    isFetching,
+    isPending,
+  } = useQuery({
+    queryKey: [
+      "dashboard",
+      "overview-geo-points",
+      siteId,
+      window.from,
+      window.to,
+      window.interval,
+      window.timeZone,
+      requestFiltersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchOverviewGeoPoints(siteId, window, requestFilters, {
+        limit: 5000,
+        signal,
+      }),
+    enabled: typeof window !== "undefined",
+    placeholderData: keepPreviousData,
+  });
 
   const points = useMemo<GeoPointsMapPoint[]>(
     () =>
@@ -129,7 +126,7 @@ export function OverviewGeoPointsMapCard({
         <GeoPointsMapIsland
           locale={locale}
           messages={messages}
-          loading={loading}
+          loading={isPending || isFetching}
           points={points}
           countryCounts={countryCounts}
           selectedCountryCode={selectedCountryCode}

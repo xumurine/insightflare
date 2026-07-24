@@ -32,7 +32,7 @@ describe("shouldUseHono", () => {
     "/collect/",
     "/admin/ws",
     "/admin/users",
-  ])("leaves %s on the OpenNext path", (pathname) => {
+  ])("leaves %s on the application router path", (pathname) => {
     expect(shouldUseHono(pathname)).toBe(false);
   });
 });

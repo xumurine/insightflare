@@ -344,33 +344,11 @@ export class IngestDurableObject extends DurableObject {
   private async handlePageview(record: NormalizedPageview): Promise<void> {
     const now = toUnixSeconds(record.receivedAt);
 
-    const prevVisit = record.previousVisitId
-      ? this.sqlOne<{
-          visitId: string;
-          startedAt: number;
-          visitorId: string;
-          pathname: string;
-          country: string;
-          browser: string;
-        }>(
-          `
-            SELECT visit_id AS visitId, started_at AS startedAt, visitor_id AS visitorId,
-                   pathname, country, browser
-            FROM buffered_visits
-            WHERE site_id = ?
-              AND visitor_id = ?
-              AND visit_id = ?
-              AND status IN ('open', 'hidden_pending')
-            ORDER BY started_at DESC
-            LIMIT 1
-          `,
-          record.siteId,
-          record.visitorId,
-          record.previousVisitId,
-        )
-      : null;
-    if (prevVisit) {
-      const durationMs = Math.max(0, record.startedAt - prevVisit.startedAt);
+    if (record.previousVisitId && record.previousVisitStartedAt !== null) {
+      const durationMs = Math.max(
+        0,
+        record.startedAt - record.previousVisitStartedAt,
+      );
       const closedPrevious = this.sqlRun(
         `
           UPDATE buffered_visits
@@ -390,13 +368,13 @@ export class IngestDurableObject extends DurableObject {
         record.startedAt,
         durationMs,
         now,
-        prevVisit.visitId,
+        record.previousVisitId,
       );
       if (closedPrevious > 0) {
         logDoTrace("do_previous_visit_closed", {
           traceId: record.traceId || "",
           siteId: record.siteId,
-          visitId: prevVisit.visitId,
+          visitId: record.previousVisitId,
           nextVisitId: record.visitId,
           durationMs,
         });
@@ -520,13 +498,8 @@ export class IngestDurableObject extends DurableObject {
         hiddenAt !== null && reportedLeaveAt - hiddenAt > HIDDEN_LEAVE_GRACE_MS;
       const leaveAt = useHiddenFallback ? hiddenAt : reportedLeaveAt;
       closedLeaveAt = leaveAt;
-      const durationMs =
-        !useHiddenFallback &&
-        typeof record.durationMs === "number" &&
-        Number.isFinite(record.durationMs)
-          ? Math.max(0, Math.floor(record.durationMs))
-          : Math.max(0, leaveAt - visit.startedAt);
-      const durationSource = useHiddenFallback ? "hidden" : "reported";
+      const durationMs = Math.max(0, leaveAt - visit.startedAt);
+      const durationSource = useHiddenFallback ? "hidden" : "server";
       const exitReason = useHiddenFallback
         ? "hidden_timeout"
         : record.exitReason || "pagehide";
@@ -896,6 +869,10 @@ export class IngestDurableObject extends DurableObject {
     visitId: string;
     startedAt: number;
     sessionWindowMs: number;
+    routePreviousHostname?: string;
+    routePreviousPathname?: string;
+    routePreviousQueryString?: string;
+    routePreviousHashFragment?: string;
   }): Promise<RecentVisitorSession | null> {
     return findRecentVisitorSessionInBufferStore(
       this.bufferStoreContext(),

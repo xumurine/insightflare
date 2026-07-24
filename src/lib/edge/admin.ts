@@ -33,6 +33,7 @@ import {
 } from "./admin-sites";
 import {
   handleDoDiagnosticAdmin,
+  handleE2eFlushAdmin,
   handleSystemPerformanceAdmin,
 } from "./admin-system";
 import { handleTeamInvitesAdmin } from "./admin-team-invites";
@@ -117,5 +118,7 @@ export async function handlePrivateAdmin(
     return handleScheduledTasksAdmin(request, env, url, requireActor);
   if (p === "/api/private/admin/do-diagnostic")
     return handleDoDiagnosticAdmin(request, env, url, requireActor);
+  if (p === "/api/private/admin/e2e/flush")
+    return handleE2eFlushAdmin(request, env, url, requireActor);
   return nf();
 }

@@ -1,10 +1,4 @@
-"use client";
-
 import { useState } from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useTheme } from "next-themes";
 import {
   RiArrowDownSLine,
   RiComputerLine,
@@ -15,6 +9,7 @@ import {
 } from "@remixicon/react";
 
 import { DashboardHeaderControls } from "@/components/dashboard/dashboard-header-controls";
+import { useTheme } from "@/components/theme-provider";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -41,8 +36,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { Locale } from "@/lib/i18n/config";
+import {
+  isValidLocale,
+  type Locale,
+  SUPPORTED_LOCALES,
+} from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import Image from "@/lib/image";
+import Link from "@/lib/router";
+import { usePathname, useRouter } from "@/lib/router";
 
 interface ShareHeaderProps {
   locale: Locale;
@@ -52,8 +54,14 @@ interface ShareHeaderProps {
 }
 
 function localeSwitchPath(pathname: string, locale: Locale): string {
-  const withoutLocale = pathname.replace(/^\/(en|zh)(?=\/|$)/, "") || "/";
+  const withoutLocale = pathname.replace(/^\/(en|zh|ja)(?=\/|$)/, "") || "/";
   return `/${locale}${withoutLocale}`;
+}
+
+function localeLabel(messages: AppMessages, locale: Locale): string {
+  if (locale === "zh") return messages.actions.switchToChinese;
+  if (locale === "ja") return messages.actions.switchToJapanese;
+  return messages.actions.switchToEnglish;
 }
 
 function pickThemeIcon(theme: string) {
@@ -242,28 +250,19 @@ export function ShareHeader({
               <DrawerTitle>{messages.common.language}</DrawerTitle>
             </DrawerHeader>
             <div className="grid gap-2 px-4 pb-4">
-              <DrawerClose asChild>
-                <Button
-                  type="button"
-                  variant={locale === "en" ? "default" : "outline"}
-                  className="justify-start"
-                  onClick={() => switchLocale("en")}
-                >
-                  <RiTranslate2 className="size-4" />
-                  <span>{messages.actions.switchToEnglish}</span>
-                </Button>
-              </DrawerClose>
-              <DrawerClose asChild>
-                <Button
-                  type="button"
-                  variant={locale === "zh" ? "default" : "outline"}
-                  className="justify-start"
-                  onClick={() => switchLocale("zh")}
-                >
-                  <RiTranslate2 className="size-4" />
-                  <span>{messages.actions.switchToChinese}</span>
-                </Button>
-              </DrawerClose>
+              {SUPPORTED_LOCALES.map((item) => (
+                <DrawerClose key={item} asChild>
+                  <Button
+                    type="button"
+                    variant={locale === item ? "default" : "outline"}
+                    className="justify-start"
+                    onClick={() => switchLocale(item)}
+                  >
+                    <RiTranslate2 className="size-4" />
+                    <span>{localeLabel(messages, item)}</span>
+                  </Button>
+                </DrawerClose>
+              ))}
             </div>
           </DrawerContent>
         </Drawer>
@@ -289,12 +288,14 @@ export function ShareHeader({
             <DropdownMenuRadioGroup
               value={locale}
               onValueChange={(value) => {
-                const nextLocale = value === "zh" ? "zh" : "en";
-                switchLocale(nextLocale);
+                if (isValidLocale(value)) switchLocale(value);
               }}
             >
-              <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="zh">中文</DropdownMenuRadioItem>
+              {SUPPORTED_LOCALES.map((item) => (
+                <DropdownMenuRadioItem key={item} value={item}>
+                  {localeLabel(messages, item)}
+                </DropdownMenuRadioItem>
+              ))}
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -1,6 +1,7 @@
 import { argon2id } from "@noble/hashes/argon2.js";
 
 import { toTeamRole } from "@/lib/dashboard/permissions";
+import { isValidLocale } from "@/lib/i18n/config";
 import { una } from "@/lib/response";
 
 import { uniqueTeamSlug } from "./admin-access";
@@ -186,10 +187,7 @@ export const toPublicUser = (u: UserRow) => ({
   name: u.name || "",
   systemRole: u.system_role === "admin" ? "admin" : "user",
   timeZone: u.timezone || "",
-  preferredLocale:
-    u.preferred_locale === "en" || u.preferred_locale === "zh"
-      ? u.preferred_locale
-      : "",
+  preferredLocale: isValidLocale(u.preferred_locale) ? u.preferred_locale : "",
   createdAt: u.created_at,
   updatedAt: u.updated_at,
 });

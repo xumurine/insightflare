@@ -370,6 +370,21 @@ function commonQueryMatches(): SqlMatch[] {
         },
       ],
     ),
+    allMatch(
+      ["COALESCE(pathname, '') AS value", "dimension_rollup AS"],
+      [{ value: "/pricing", views: 1, sessions: 1, visitors: 1 }],
+    ),
+    allMatch(
+      [
+        "COALESCE(TRIM(COALESCE(browser, '')), '') AS value",
+        "dimension_rollup AS",
+      ],
+      [{ value: "Chrome", views: 1, sessions: 1, visitors: 1 }],
+    ),
+    allMatch(
+      ["COALESCE(country, '') AS value", "dimension_rollup AS"],
+      [{ value: "US", views: 1, sessions: 1, visitors: 1 }],
+    ),
     allMatch(["dimension_rollup AS"], dimensionRows),
     allMatch(
       ["event_with_context AS", "event_rollup AS"],
@@ -703,7 +718,17 @@ function commonQueryMatches(): SqlMatch[] {
     ),
     allMatch(
       ["thresholds.bucket AS bucket"],
-      [{ bucket: 0, avgValue: 50, p50: 40, p75: 60, p95: 90, samples: 4 }],
+      [
+        {
+          metric: "ttfb",
+          bucket: 0,
+          avgValue: 50,
+          p50: 40,
+          p75: 60,
+          p95: 90,
+          samples: 4,
+        },
+      ],
     ),
     allMatch(
       ["SELECT sessionId, browser, os, osVersion"],
@@ -819,11 +844,7 @@ describe("edge query handlers", () => {
       ok: false,
       error: { message: "Site not found" },
     });
-    expect(statements[0].bind).toHaveBeenCalledWith(
-      "user-1",
-      "site-1",
-      "user-1",
-    );
+    expect(statements[0].bind).toHaveBeenCalledWith("user-1", "site-1");
   });
 
   it("returns overview metrics, comparison, detail trend, and normalized filter bindings", async () => {
@@ -1780,11 +1801,7 @@ describe("edge query handlers", () => {
       ok: false,
       error: { message: "Team not found" },
     });
-    expect(statements[0].bind).toHaveBeenCalledWith(
-      "user-1",
-      "team-1",
-      "user-1",
-    );
+    expect(statements[0].bind).toHaveBeenCalledWith("user-1", "team-1");
   });
 
   it("routes team dashboard with team auth, site summaries, trends, and empty teams", async () => {

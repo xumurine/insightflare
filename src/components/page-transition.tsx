@@ -1,7 +1,11 @@
-"use client";
-
-import { useCallback, useEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { useRouterState } from "@tanstack/react-router";
 import { OverlayScrollbars } from "overlayscrollbars";
 
 import { shouldUseNativeScrollbars } from "@/components/ui/overlay-scrollbar";
@@ -9,6 +13,7 @@ import {
   type NavigateRequest,
   registerPageTransitionHandler,
 } from "@/lib/page-transition";
+import { useRouter } from "@/lib/router";
 
 interface PageTransitionProps {
   children: React.ReactNode;
@@ -46,18 +51,24 @@ function scrollPageToTop(behavior: ScrollBehavior) {
 export function PageTransition({ children }: PageTransitionProps) {
   const EXIT_DURATION_MS = 280;
   const ENTER_DURATION_MS = 320;
-  const pathname = usePathname();
+  const resolvedLocation = useRouterState({
+    select: (state) => state.resolvedLocation ?? state.location,
+  });
+  const routerStatus = useRouterState({ select: (state) => state.status });
+  const pathname = resolvedLocation.pathname;
   const router = useRouter();
   const reduceMotion = useRef(false);
   const exitingRef = useRef(false);
+  const navigationStartedRef = useRef(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<NavigateRequest | null>(null);
   const previousPathnameRef = useRef(pathname);
+  const [isReady, setIsReady] = useState(false);
   const [transitionState, setTransitionState] = useState<
     "idle" | "enter" | "exit"
   >("idle");
-  const routeKey = pathname;
+  const routeKey = `${resolvedLocation.pathname}${resolvedLocation.searchStr}${resolvedLocation.hash}`;
 
   const performNavigation = useCallback(
     (request: NavigateRequest) => {
@@ -108,8 +119,10 @@ export function PageTransition({ children }: PageTransitionProps) {
         clearTimeout(timeoutRef.current);
       }
       timeoutRef.current = setTimeout(() => {
+        timeoutRef.current = null;
         const next = pendingRef.current;
         if (!next) return;
+        navigationStartedRef.current = true;
         performNavigation(next);
       }, EXIT_DURATION_MS);
     },
@@ -127,59 +140,17 @@ export function PageTransition({ children }: PageTransitionProps) {
     return () => media.removeEventListener("change", update);
   }, []);
 
-  useEffect(() => {
-    const unregister = registerPageTransitionHandler((request) => {
-      startExit(request);
-    });
-
-    const handleClick = (event: MouseEvent) => {
-      if (event.button !== 0) return;
-      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-        return;
-
-      const target = event.target as HTMLElement | null;
-      const link = target?.closest("a[href]") as HTMLAnchorElement | null;
-      if (!link) return;
-      if (link.closest("[data-skip-page-transition]")) return;
-      if (link.target && link.target !== "_self") return;
-      if (link.hasAttribute("download")) return;
-
-      const href = link.getAttribute("href");
-      if (
-        !href ||
-        href.startsWith("#") ||
-        href.startsWith("mailto:") ||
-        href.startsWith("tel:") ||
-        href.startsWith("javascript:")
-      ) {
-        return;
-      }
-
-      let url: URL;
-      try {
-        url = new URL(href, window.location.href);
-      } catch {
-        return;
-      }
-
-      if (url.origin !== window.location.origin) return;
-
-      const destination = `${url.pathname}${url.search}${url.hash}`;
-      const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-      if (destination === current) return;
-
-      event.preventDefault();
-      startExit({ href: destination });
-    };
-
-    document.addEventListener("click", handleClick, true);
-    return () => {
-      unregister();
-      document.removeEventListener("click", handleClick, true);
-    };
+  useLayoutEffect(() => {
+    const unregister = registerPageTransitionHandler((request) =>
+      startExit(request),
+    );
+    setIsReady(true);
+    return unregister;
   }, [startExit]);
 
   useEffect(() => {
+    if (!exitingRef.current) return;
+
     if (enterTimeoutRef.current) {
       clearTimeout(enterTimeoutRef.current);
       enterTimeoutRef.current = null;
@@ -190,6 +161,7 @@ export function PageTransition({ children }: PageTransitionProps) {
     }
     const shouldEnter = exitingRef.current && !reduceMotion.current;
     exitingRef.current = false;
+    navigationStartedRef.current = false;
     pendingRef.current = null;
     if (shouldEnter) {
       setTransitionState("enter");
@@ -204,7 +176,30 @@ export function PageTransition({ children }: PageTransitionProps) {
   }, [routeKey]);
 
   useEffect(() => {
+    if (
+      routerStatus === "idle" &&
+      navigationStartedRef.current &&
+      exitingRef.current
+    ) {
+      // A redirect, cancelled navigation, or same-route resolution may not
+      // change the resolved location. Do not leave the outgoing view hidden.
+      exitingRef.current = false;
+      navigationStartedRef.current = false;
+      pendingRef.current = null;
+      setTransitionState("enter");
+      enterTimeoutRef.current = setTimeout(() => {
+        setTransitionState("idle");
+        enterTimeoutRef.current = null;
+      }, ENTER_DURATION_MS);
+    }
+  }, [routerStatus]);
+
+  useEffect(() => {
     return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
       if (enterTimeoutRef.current) {
         clearTimeout(enterTimeoutRef.current);
         enterTimeoutRef.current = null;
@@ -226,7 +221,11 @@ export function PageTransition({ children }: PageTransitionProps) {
   }, [pathname]);
 
   return (
-    <div data-page-transition data-transition={transitionState}>
+    <div
+      data-page-transition
+      data-page-transition-ready={isReady || undefined}
+      data-transition={transitionState}
+    >
       {children}
     </div>
   );

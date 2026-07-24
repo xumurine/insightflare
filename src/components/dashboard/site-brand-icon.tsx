@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
 
 import { AutoTransition } from "@/components/ui/auto-transition";

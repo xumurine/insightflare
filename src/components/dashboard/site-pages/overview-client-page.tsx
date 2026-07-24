@@ -1,5 +1,3 @@
-"use client";
-
 import {
   type MouseEvent,
   useCallback,
@@ -9,7 +7,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { usePathname, useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import {
   RiArrowDownLine,
@@ -18,6 +15,7 @@ import {
   RiLineChartLine,
   RiSearchLine,
 } from "@remixicon/react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
 
 import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
@@ -91,6 +89,7 @@ import {
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
+import { usePathname, useRouter } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 interface OverviewClientPageProps {
@@ -129,6 +128,11 @@ function emptyTrendData(interval: TimeWindow["interval"]): TrendData {
     interval,
     data: [],
   };
+}
+
+function fallbackUnlessAborted<T>(error: unknown, fallback: () => T): T {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return fallback();
 }
 
 const METRIC_AREA_COLOR = "var(--color-chart-1)";
@@ -3217,10 +3221,112 @@ export function OverviewPagesSection({
               rowsByTab={pageCardRowsForTable}
               loadingByTab={loadingByPageCardTab}
               columns={pageCardMetricColumns}
-              renderLabel={(row, { tab }) => pageCardLabel(row, tab)}
-              getRowSearchText={(row) =>
-                `${row.displayLabel ?? row.label} ${row.label}`
-              }
+              rowAdapter={{
+                renderLabel: (row, { tab, source }) =>
+                  source === "search" ? (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-2 break-words",
+                        pageCardTabMeta[tab].mono && "font-mono",
+                      )}
+                    >
+                      <LabelWithOptionalIcon
+                        label={row.label}
+                        showIcon={pageCardTabMeta[tab].showIcon}
+                        unknownLabel={messages.common.unknown}
+                      />
+                    </span>
+                  ) : (
+                    pageCardLabel(row, tab)
+                  ),
+                getSearchText: (row) => row.label,
+                getExportLabel: (row) => row.label,
+                getActive: (row) =>
+                  activePageCardQueryValue === (row.filterValue ?? row.label),
+                getInteractive: (row, tab) =>
+                  Boolean(pageCardQueryParamByTab[tab]) ||
+                  Boolean(
+                    resolvedPageCardNavigableTabs.has(
+                      tab as PageCardNavigableTab,
+                    )
+                      ? (
+                          pageCardTargetUrlResolvers?.[tab] ??
+                          resolvePageCardTargetUrl
+                        )({
+                          tab,
+                          value: row.label,
+                          unknownLabel: messages.common.unknown,
+                          fallbackHostname: pageCardDefaultHostname,
+                        })
+                      : null,
+                  ) ||
+                  (isPageCardDetailTab(tab) &&
+                    resolvedPageCardDetailTabs.has(tab)),
+                onClick: (row, { tab }) => {
+                  const rowFilterValue = row.filterValue ?? row.label;
+                  if (pageCardQueryParamByTab[tab]) {
+                    const normalized = rowFilterValue.trim();
+                    setPageCardQueryFilter(
+                      activePageCardQueryValue === normalized
+                        ? null
+                        : { tab, value: normalized },
+                    );
+                    return;
+                  }
+
+                  const rowTargetUrl = resolvedPageCardNavigableTabs.has(
+                    tab as PageCardNavigableTab,
+                  )
+                    ? (
+                        pageCardTargetUrlResolvers?.[tab] ??
+                        resolvePageCardTargetUrl
+                      )({
+                        tab,
+                        value: row.label,
+                        unknownLabel: messages.common.unknown,
+                        fallbackHostname: pageCardDefaultHostname,
+                      })
+                    : null;
+                  if (rowTargetUrl) {
+                    globalThis.window.open(
+                      rowTargetUrl,
+                      "_blank",
+                      "noopener,noreferrer",
+                    );
+                    return;
+                  }
+
+                  const rowDetailAction =
+                    isPageCardDetailTab(tab) &&
+                    resolvedPageCardDetailTabs.has(tab)
+                      ? (pageCardDetailClickResolvers?.[tab] ?? null)
+                      : null;
+                  if (rowDetailAction && isPageCardDetailTab(tab)) {
+                    rowDetailAction({
+                      tab,
+                      basePath: pageDetailBasePath,
+                      value: row.label,
+                      unknownLabel: messages.common.unknown,
+                    });
+                    return;
+                  }
+
+                  const rowDetailHref =
+                    isPageCardDetailTab(tab) &&
+                    resolvedPageCardDetailTabs.has(tab)
+                      ? (
+                          pageCardDetailHrefResolvers?.[tab] ??
+                          resolvePageCardDetailHref
+                        )({
+                          tab,
+                          basePath: pageDetailBasePath,
+                          value: row.label,
+                          unknownLabel: messages.common.unknown,
+                        })
+                      : null;
+                  if (rowDetailHref) router.push(rowDetailHref);
+                },
+              }}
               filterRows={(rows) =>
                 activePageCardQueryValue
                   ? rows.filter(
@@ -3234,92 +3340,10 @@ export function OverviewPagesSection({
               loadingLabel={messages.common.loading}
               emptyLabel={noDataText}
               search={searchConfig}
-              className="h-full"
-              getRowActive={(row) =>
-                activePageCardQueryValue === (row.filterValue ?? row.label)
-              }
-              getRowInteractive={(row, tab) =>
-                Boolean(pageCardQueryParamByTab[tab]) ||
-                Boolean(
-                  resolvedPageCardNavigableTabs.has(tab as PageCardNavigableTab)
-                    ? (
-                        pageCardTargetUrlResolvers?.[tab] ??
-                        resolvePageCardTargetUrl
-                      )({
-                        tab,
-                        value: row.label,
-                        unknownLabel: messages.common.unknown,
-                        fallbackHostname: pageCardDefaultHostname,
-                      })
-                    : null,
-                ) ||
-                (isPageCardDetailTab(tab) &&
-                  resolvedPageCardDetailTabs.has(tab))
-              }
-              onRowClick={(row, { tab }) => {
-                const rowFilterValue = row.filterValue ?? row.label;
-                if (pageCardQueryParamByTab[tab]) {
-                  const normalized = rowFilterValue.trim();
-                  setPageCardQueryFilter(
-                    activePageCardQueryValue === normalized
-                      ? null
-                      : { tab, value: normalized },
-                  );
-                  return;
-                }
-
-                const rowTargetUrl = resolvedPageCardNavigableTabs.has(
-                  tab as PageCardNavigableTab,
-                )
-                  ? (
-                      pageCardTargetUrlResolvers?.[tab] ??
-                      resolvePageCardTargetUrl
-                    )({
-                      tab,
-                      value: row.label,
-                      unknownLabel: messages.common.unknown,
-                      fallbackHostname: pageCardDefaultHostname,
-                    })
-                  : null;
-                if (rowTargetUrl) {
-                  globalThis.window.open(
-                    rowTargetUrl,
-                    "_blank",
-                    "noopener,noreferrer",
-                  );
-                  return;
-                }
-
-                const rowDetailAction =
-                  isPageCardDetailTab(tab) &&
-                  resolvedPageCardDetailTabs.has(tab)
-                    ? (pageCardDetailClickResolvers?.[tab] ?? null)
-                    : null;
-                if (rowDetailAction && isPageCardDetailTab(tab)) {
-                  rowDetailAction({
-                    tab,
-                    basePath: pageDetailBasePath,
-                    value: row.label,
-                    unknownLabel: messages.common.unknown,
-                  });
-                  return;
-                }
-
-                const rowDetailHref =
-                  isPageCardDetailTab(tab) &&
-                  resolvedPageCardDetailTabs.has(tab)
-                    ? (
-                        pageCardDetailHrefResolvers?.[tab] ??
-                        resolvePageCardDetailHref
-                      )({
-                        tab,
-                        basePath: pageDetailBasePath,
-                        value: row.label,
-                        unknownLabel: messages.common.unknown,
-                      })
-                    : null;
-                if (rowDetailHref) router.push(rowDetailHref);
+              export={{
+                labels: messages.common.tableExport,
               }}
+              className="h-full"
             />
           </div>
         ) : null}
@@ -3333,38 +3357,53 @@ export function OverviewPagesSection({
               rowsByTab={sourceCardRowsForTable}
               loadingByTab={loadingBySourceCardTab}
               columns={overviewMetricColumns}
-              renderLabel={(row, { tab }) => {
-                const displayLabel = row.displayLabel ?? row.label;
-                return (
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-2 break-words",
-                      row.mono && "font-mono",
-                    )}
-                  >
-                    <LabelWithOptionalIcon
-                      label={displayLabel}
-                      showIcon={sourceCardTabMeta[tab].showIcon}
-                      unknownLabel={sourceCardDirectLabel}
-                    />
-                    {row.targetUrl ? (
-                      <Clickable
-                        className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-                        onClick={(event) =>
-                          openPageCardRowTarget(row.targetUrl!, event)
-                        }
-                        aria-label={displayLabel}
-                        title={displayLabel}
-                      >
-                        <RiArrowRightUpLine size="1.4em" />
-                      </Clickable>
-                    ) : null}
-                  </span>
-                );
+              rowAdapter={{
+                renderLabel: (row, { tab, source }) => {
+                  const displayLabel =
+                    source === "search"
+                      ? row.label
+                      : (row.displayLabel ?? row.label);
+                  return (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-2 break-words",
+                        row.mono && "font-mono",
+                      )}
+                    >
+                      <LabelWithOptionalIcon
+                        label={displayLabel}
+                        showIcon={sourceCardTabMeta[tab].showIcon}
+                        unknownLabel={sourceCardDirectLabel}
+                      />
+                      {source !== "search" && row.targetUrl ? (
+                        <Clickable
+                          className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                          onClick={(event) =>
+                            openPageCardRowTarget(row.targetUrl!, event)
+                          }
+                          aria-label={displayLabel}
+                          title={displayLabel}
+                        >
+                          <RiArrowRightUpLine size="1.4em" />
+                        </Clickable>
+                      ) : null}
+                    </span>
+                  );
+                },
+                getSearchText: (row) => row.label,
+                getExportLabel: (row) => row.label,
+                getActive: (row) =>
+                  activeSourceCardQueryValue === row.filterValue,
+                getInteractive: () => true,
+                onClick: (row, { tab }) => {
+                  const normalized = row.filterValue.trim();
+                  setSourceCardQueryFilter(
+                    activeSourceCardQueryValue === normalized
+                      ? null
+                      : { tab, value: normalized },
+                  );
+                },
               }}
-              getRowSearchText={(row) =>
-                `${row.displayLabel ?? row.label} ${row.label}`
-              }
               filterRows={(rows) =>
                 activeSourceCardQueryValue
                   ? rows.filter(
@@ -3376,19 +3415,10 @@ export function OverviewPagesSection({
               loadingLabel={messages.common.loading}
               emptyLabel={noDataText}
               search={searchConfig}
-              className="h-full"
-              getRowActive={(row) =>
-                activeSourceCardQueryValue === row.filterValue
-              }
-              getRowInteractive={() => true}
-              onRowClick={(row, { tab }) => {
-                const normalized = row.filterValue.trim();
-                setSourceCardQueryFilter(
-                  activeSourceCardQueryValue === normalized
-                    ? null
-                    : { tab, value: normalized },
-                );
+              export={{
+                labels: messages.common.tableExport,
               }}
+              className="h-full"
             />
           </div>
         ) : null}
@@ -3406,23 +3436,41 @@ export function OverviewPagesSection({
               rowsByTab={clientDimensionCardRowsForTable}
               loadingByTab={loadingByClientDimensionCardTab}
               columns={overviewMetricColumns}
-              renderLabel={(row, { tab }) =>
-                tab === "deviceType" ? (
-                  <DeviceMeta
-                    deviceType={row.rawLabel ?? row.label}
-                    deviceLabels={messages.common.deviceLabels}
-                    unknownLabel={messages.common.unknown}
-                  />
-                ) : (
-                  <span className={cn(row.mono && "font-mono")}>
-                    <LabelWithLeadingIcon
-                      label={row.label}
-                      iconName={row.iconName}
+              rowAdapter={{
+                renderLabel: (row, { tab, source }) =>
+                  tab === "deviceType" ? (
+                    <DeviceMeta
+                      deviceType={row.rawLabel ?? row.label}
+                      deviceLabels={messages.common.deviceLabels}
+                      unknownLabel={messages.common.unknown}
                     />
-                  </span>
-                )
-              }
-              getRowSearchText={(row) => `${row.label} ${row.rawLabel ?? ""}`}
+                  ) : (
+                    <span className={cn(row.mono && "font-mono")}>
+                      <LabelWithLeadingIcon
+                        label={
+                          source === "search"
+                            ? row.rawLabel?.trim() || row.label
+                            : row.label
+                        }
+                        iconName={row.iconName}
+                      />
+                    </span>
+                  ),
+                getSearchText: (row) => row.rawLabel?.trim() || row.label,
+                getExportLabel: (row) => row.rawLabel?.trim() || row.label,
+                getActive: (row) =>
+                  activeClientDimensionCardQueryValue ===
+                  (row.filterValue ?? row.label),
+                getInteractive: () => true,
+                onClick: (row, { tab }) => {
+                  const normalized = (row.filterValue ?? row.label).trim();
+                  setClientDimensionCardQueryFilter(
+                    activeClientDimensionCardQueryValue === normalized
+                      ? null
+                      : { tab, value: normalized },
+                  );
+                },
+              }}
               filterRows={(rows) =>
                 activeClientDimensionCardQueryValue
                   ? rows.filter(
@@ -3436,20 +3484,10 @@ export function OverviewPagesSection({
               loadingLabel={messages.common.loading}
               emptyLabel={noDataText}
               search={searchConfig}
-              className="h-full"
-              getRowActive={(row) =>
-                activeClientDimensionCardQueryValue ===
-                (row.filterValue ?? row.label)
-              }
-              getRowInteractive={() => true}
-              onRowClick={(row, { tab }) => {
-                const normalized = (row.filterValue ?? row.label).trim();
-                setClientDimensionCardQueryFilter(
-                  activeClientDimensionCardQueryValue === normalized
-                    ? null
-                    : { tab, value: normalized },
-                );
+              export={{
+                labels: messages.common.tableExport,
               }}
+              className="h-full"
             />
           </div>
         ) : null}
@@ -3467,71 +3505,94 @@ export function OverviewPagesSection({
               rowsByTab={geoDimensionCardRowsForTable}
               loadingByTab={loadingByGeoDimensionCardTab}
               columns={overviewMetricColumns}
-              renderLabel={(row, { tab, source }) => {
-                const rowLocationTarget = geoDimensionRowLocationTarget(
-                  tab,
-                  row,
-                );
-                return (
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-2 break-words",
-                      row.mono && "font-mono",
-                    )}
-                  >
-                    {source === "search" ? (
-                      <LabelWithLeadingIcon
-                        label={row.rawLabel?.trim() || row.label}
-                        iconName={row.iconName}
-                      />
-                    ) : tab === "region" && row.regionBreadcrumb ? (
-                      <LazyGeoRegionBreadcrumbLabel
-                        locale={locale}
-                        countryLabel={row.regionBreadcrumb.countryLabel}
-                        countryIconName={row.regionBreadcrumb.countryIconName}
-                        regionLabel={row.regionBreadcrumb.regionLabel}
-                        countryCode={row.regionBreadcrumb.countryCode}
-                        stateCode={row.regionBreadcrumb.stateCode}
-                        hideRegion={row.regionBreadcrumb.hideRegion}
-                      />
-                    ) : tab === "city" && row.cityBreadcrumb ? (
-                      <LazyGeoCityBreadcrumbLabel
-                        locale={locale}
-                        countryLabel={row.cityBreadcrumb.countryLabel}
-                        countryIconName={row.cityBreadcrumb.countryIconName}
-                        regionLabel={row.cityBreadcrumb.regionLabel}
-                        cityLabel={row.cityBreadcrumb.cityLabel}
-                        countryCode={row.cityBreadcrumb.countryCode}
-                        stateCode={row.cityBreadcrumb.stateCode}
-                        cityNameDefault={row.cityBreadcrumb.cityNameDefault}
-                        hideRegion={row.cityBreadcrumb.hideRegion}
-                        hideCity={row.cityBreadcrumb.hideCity}
-                      />
-                    ) : (
-                      <LabelWithLeadingIcon
-                        label={row.label}
-                        iconName={row.iconName}
-                      />
-                    )}
-                    {rowLocationTarget ? (
-                      <Clickable
-                        className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-                        onClick={(event) =>
-                          openGeoDimensionLocationTarget(
-                            rowLocationTarget,
-                            event,
-                          )
-                        }
-                        aria-label={messages.common.search}
-                        title={messages.common.search}
-                      >
-                        <RiSearchLine size="1.2em" />
-                      </Clickable>
-                    ) : null}
-                  </span>
-                );
+              rowAdapter={{
+                renderLabel: (row, { tab, source }) => {
+                  const rowLocationTarget =
+                    source === "search"
+                      ? null
+                      : geoDimensionRowLocationTarget(tab, row);
+                  return (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-2 break-words",
+                        row.mono && "font-mono",
+                      )}
+                    >
+                      {source === "search" ? (
+                        <LabelWithLeadingIcon
+                          label={row.rawLabel?.trim() || row.label}
+                          iconName={row.iconName}
+                        />
+                      ) : tab === "region" && row.regionBreadcrumb ? (
+                        <LazyGeoRegionBreadcrumbLabel
+                          locale={locale}
+                          countryLabel={row.regionBreadcrumb.countryLabel}
+                          countryIconName={row.regionBreadcrumb.countryIconName}
+                          regionLabel={row.regionBreadcrumb.regionLabel}
+                          countryCode={row.regionBreadcrumb.countryCode}
+                          stateCode={row.regionBreadcrumb.stateCode}
+                          hideRegion={row.regionBreadcrumb.hideRegion}
+                        />
+                      ) : tab === "city" && row.cityBreadcrumb ? (
+                        <LazyGeoCityBreadcrumbLabel
+                          locale={locale}
+                          countryLabel={row.cityBreadcrumb.countryLabel}
+                          countryIconName={row.cityBreadcrumb.countryIconName}
+                          regionLabel={row.cityBreadcrumb.regionLabel}
+                          cityLabel={row.cityBreadcrumb.cityLabel}
+                          countryCode={row.cityBreadcrumb.countryCode}
+                          stateCode={row.cityBreadcrumb.stateCode}
+                          cityNameDefault={row.cityBreadcrumb.cityNameDefault}
+                          hideRegion={row.cityBreadcrumb.hideRegion}
+                          hideCity={row.cityBreadcrumb.hideCity}
+                        />
+                      ) : (
+                        <LabelWithLeadingIcon
+                          label={row.label}
+                          iconName={row.iconName}
+                        />
+                      )}
+                      {rowLocationTarget ? (
+                        <Clickable
+                          className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                          onClick={(event) =>
+                            openGeoDimensionLocationTarget(
+                              rowLocationTarget,
+                              event,
+                            )
+                          }
+                          aria-label={messages.common.search}
+                          title={messages.common.search}
+                        >
+                          <RiSearchLine size="1.2em" />
+                        </Clickable>
+                      ) : null}
+                    </span>
+                  );
+                },
+                getSearchText: (row) => row.rawLabel?.trim() || row.label,
+                getExportLabel: (row) => row.rawLabel?.trim() || row.label,
+                getActive: (row, tab) => {
+                  const activeGeoHighlightValue = isGeoLocationTab(tab)
+                    ? resolveGeoLocationHighlightValue(
+                        tab,
+                        activeGeoDimensionCardQueryValue,
+                      )
+                    : activeGeoDimensionCardQueryValue;
+                  return (
+                    activeGeoHighlightValue === (row.filterValue ?? row.label)
+                  );
+                },
+                getInteractive: () => true,
+                onClick: (row, { tab }) => {
+                  const normalized = (row.filterValue ?? row.label).trim();
+                  setGeoDimensionCardQueryFilter(
+                    activeGeoDimensionCardQueryValue === normalized
+                      ? null
+                      : { tab, value: normalized },
+                  );
+                },
               }}
-              getRowSearchText={(row) => `${row.label} ${row.rawLabel ?? ""}`}
               filterRows={(rows, tab) => {
                 if (!activeGeoDimensionCardQueryValue) return [...rows];
                 const activeGeoQueryValue = isGeoLocationTab(tab)
@@ -3550,27 +3611,10 @@ export function OverviewPagesSection({
               loadingLabel={messages.common.loading}
               emptyLabel={noDataText}
               search={searchConfig}
+              export={{
+                labels: messages.common.tableExport,
+              }}
               className="h-full"
-              getRowActive={(row, tab) => {
-                const activeGeoHighlightValue = isGeoLocationTab(tab)
-                  ? resolveGeoLocationHighlightValue(
-                      tab,
-                      activeGeoDimensionCardQueryValue,
-                    )
-                  : activeGeoDimensionCardQueryValue;
-                return (
-                  activeGeoHighlightValue === (row.filterValue ?? row.label)
-                );
-              }}
-              getRowInteractive={() => true}
-              onRowClick={(row, { tab }) => {
-                const normalized = (row.filterValue ?? row.label).trim();
-                setGeoDimensionCardQueryFilter(
-                  activeGeoDimensionCardQueryValue === normalized
-                    ? null
-                    : { tab, value: normalized },
-                );
-              }}
             />
           </div>
         ) : null}
@@ -3587,49 +3631,48 @@ interface OverviewDataSectionProps {
   filters: DashboardFilters;
 }
 
-export function OverviewMetricsSection({
-  locale,
-  messages,
+function useOverviewSummaryQuery({
   siteId,
-  window,
+  window: timeWindow,
   filters,
-}: OverviewDataSectionProps) {
-  const [loading, setLoading] = useState(true);
-  const [overview, setOverview] = useState<OverviewData>(emptyOverviewData);
-  const [previousOverview, setPreviousOverview] =
-    useState<OverviewData>(emptyOverviewData);
-  const [detailSeries, setDetailSeries] = useState<TrendData["data"]>([]);
+}: Pick<OverviewDataSectionProps, "siteId" | "window" | "filters">) {
+  const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setOverview(emptyOverviewData());
-    setPreviousOverview(emptyOverviewData());
-
-    const previousTo = Math.max(window.from - 1, 0);
-    const previousFrom = Math.max(previousTo - (window.to - window.from), 0);
-    const previousWindow: TimeWindow = {
-      ...window,
-      from: previousFrom,
-      to: previousTo,
-    };
-
-    (async () => {
-      const current = await fetchOverview(siteId, window, filters, {
+  return useQuery({
+    queryKey: [
+      "dashboard",
+      "overview-summary",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => {
+      const current = await fetchOverview(siteId, timeWindow, filters, {
         includeChange: true,
         includeDetail: true,
-      }).catch(() => emptyOverviewData());
-      if (!active) return;
-      setOverview(current);
-
+        signal,
+      }).catch((error) => fallbackUnlessAborted(error, emptyOverviewData));
+      const previousTo = Math.max(timeWindow.from - 1, 0);
+      const previousFrom = Math.max(
+        previousTo - (timeWindow.to - timeWindow.from),
+        0,
+      );
+      const previousWindow: TimeWindow = {
+        ...timeWindow,
+        from: previousFrom,
+        to: previousTo,
+      };
       const [previous, trend] = await Promise.all([
         current.previousData
           ? Promise.resolve({
               ok: current.ok,
               data: current.previousData,
             } as OverviewData)
-          : fetchOverview(siteId, previousWindow, filters).catch(() =>
-              emptyOverviewData(),
+          : fetchOverview(siteId, previousWindow, filters, { signal }).catch(
+              (error) => fallbackUnlessAborted(error, emptyOverviewData),
             ),
         current.detail
           ? Promise.resolve({
@@ -3637,23 +3680,46 @@ export function OverviewMetricsSection({
               interval: current.detail.interval,
               data: current.detail.data,
             } as TrendData)
-          : fetchTrend(siteId, window, filters).catch(() =>
-              emptyTrendData(window.interval),
+          : fetchTrend(siteId, timeWindow, filters, { signal }).catch((error) =>
+              fallbackUnlessAborted(error, () =>
+                emptyTrendData(timeWindow.interval),
+              ),
             ),
       ]);
 
-      if (!active) return;
-      setPreviousOverview(previous);
-      setDetailSeries(trend.data);
-    })().finally(() => {
-      if (!active) return;
-      setLoading(false);
-    });
+      return {
+        overview: current,
+        previousOverview: previous,
+        trendData: trend,
+        dataWindow: {
+          from: timeWindow.from,
+          to: timeWindow.to,
+          interval: timeWindow.interval,
+          timeZone: timeWindow.timeZone,
+        },
+      };
+    },
+    enabled: typeof window !== "undefined",
+    placeholderData: keepPreviousData,
+  });
+}
 
-    return () => {
-      active = false;
-    };
-  }, [filters, siteId, window.from, window.interval, window.to]);
+export function OverviewMetricsSection({
+  locale,
+  messages,
+  siteId,
+  window,
+  filters,
+}: OverviewDataSectionProps) {
+  const {
+    data: metricsData,
+    isFetching,
+    isPending,
+  } = useOverviewSummaryQuery({ siteId, window, filters });
+  const loading = isPending || isFetching;
+  const overview = metricsData?.overview ?? emptyOverviewData();
+  const previousOverview = metricsData?.previousOverview ?? emptyOverviewData();
+  const detailSeries = metricsData?.trendData.data ?? [];
 
   const pagesPerSessionFormatter = useMemo(
     () =>
@@ -3830,56 +3896,28 @@ export function OverviewTrendSection({
   window,
   filters,
 }: OverviewDataSectionProps) {
-  const [loading, setLoading] = useState(true);
-  const [trendHydrated, setTrendHydrated] = useState(false);
-  const [trendData, setTrendData] = useState<TrendData>(() =>
-    emptyTrendData(window.interval),
+  const currentDataWindow = useMemo(
+    () => ({
+      from: window.from,
+      to: window.to,
+      interval: window.interval,
+      timeZone: window.timeZone,
+    }),
+    [window.from, window.interval, window.timeZone, window.to],
   );
-  const [dataWindow, setDataWindow] = useState<
-    Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">
-  >(() => ({
-    from: window.from,
-    to: window.to,
-    interval: window.interval,
-    timeZone: window.timeZone,
-  }));
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    fetchTrend(siteId, window, filters)
-      .catch(() => emptyTrendData(window.interval))
-      .then((nextTrend) => {
-        if (!active) return;
-        setTrendData(nextTrend);
-        setDataWindow({
-          from: window.from,
-          to: window.to,
-          interval: window.interval,
-          timeZone: window.timeZone,
-        });
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-        setTrendHydrated(true);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    filters,
-    siteId,
-    window.from,
-    window.interval,
-    window.timeZone,
-    window.to,
-  ]);
+  const {
+    data: trendQueryData,
+    isFetching,
+    isPending,
+  } = useOverviewSummaryQuery({ siteId, window, filters });
+  const loading = isPending || isFetching;
+  const trendData =
+    trendQueryData?.trendData ?? emptyTrendData(window.interval);
+  const dataWindow = trendQueryData?.dataWindow ?? currentDataWindow;
+  const hasTrendData = Boolean(trendQueryData);
 
   const trendDisplayData = useMemo(() => {
-    if (!trendHydrated && loading) {
+    if (!hasTrendData && isPending) {
       return buildEmptyTrendData(dataWindow);
     }
     return normalizeTrendData(dataWindow, trendData.data);
@@ -3888,8 +3926,8 @@ export function OverviewTrendSection({
     dataWindow.interval,
     dataWindow.timeZone,
     dataWindow.to,
-    loading,
-    trendHydrated,
+    hasTrendData,
+    isPending,
     trendData.data,
   ]);
   const visitorTrendChartData = useMemo(
@@ -3901,7 +3939,7 @@ export function OverviewTrendSection({
       })),
     [trendDisplayData],
   );
-  const showTrendOverlayLoading = loading && trendHydrated;
+  const showTrendOverlayLoading = loading && hasTrendData;
 
   return (
     <Card className="overflow-visible">

@@ -1,7 +1,5 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 
 import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
 import { SiteBrandIcon } from "@/components/dashboard/site-brand-icon";
@@ -22,6 +20,7 @@ import {
 } from "@/lib/dashboard/time-zone";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import Link from "@/lib/router";
 
 interface SiteOverviewMetrics {
   views: number;
@@ -142,7 +141,7 @@ async function fetchTeamDashboard(
   window: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">,
   signal?: AbortSignal,
 ): Promise<TeamDashboardData> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: "/api/private/team-dashboard",
@@ -224,6 +223,24 @@ export function SidebarSiteDetails({
   const [shouldRenderCharts, setShouldRenderCharts] = useState(
     isMobile || sidebarState !== "collapsed",
   );
+  const teamDashboardQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "sidebar-team-dashboard",
+      teamId,
+      window.from,
+      window.to,
+      window.interval,
+      window.timeZone,
+    ],
+    queryFn: ({ signal }) => fetchTeamDashboard(teamId, window, signal),
+    enabled:
+      typeof window !== "undefined" &&
+      Boolean(teamId) &&
+      sites.length > 0 &&
+      shouldRenderCharts,
+    retry: false,
+  });
 
   useEffect(() => {
     if (isMobile) {
@@ -246,55 +263,52 @@ export function SidebarSiteDetails({
   }, [sidebarState, isMobile]);
 
   useEffect(() => {
-    if (!teamId || sites.length === 0) {
-      setTeamTrend([]);
-      setChartWindow({
-        from: window.from,
-        to: window.to,
-        interval: window.interval,
-        timeZone: window.timeZone,
-      });
-      return;
-    }
-
-    if (!shouldRenderCharts) {
-      return;
-    }
-
-    const controller = new AbortController();
-    let active = true;
-
-    fetchTeamDashboard(teamId, window, controller.signal)
-      .then((dashboard) => {
-        if (!active) return;
-        setTeamTrend(dashboard.trend);
-        setChartWindow({
-          from: window.from,
-          to: window.to,
-          interval: window.interval,
-          timeZone: window.timeZone,
-        });
-      })
-      .catch((error: unknown) => {
-        if ((error as { name?: string } | null)?.name === "AbortError") return;
-        if (!active) return;
-        setTeamTrend([]);
-        setChartWindow({
-          from: window.from,
-          to: window.to,
-          interval: window.interval,
-          timeZone: window.timeZone,
-        });
-      });
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
+    if (teamId && sites.length > 0) return;
+    setTeamTrend([]);
+    setChartWindow({
+      from: window.from,
+      to: window.to,
+      interval: window.interval,
+      timeZone: window.timeZone,
+    });
   }, [
     teamId,
     sites.length,
-    shouldRenderCharts,
+    window.from,
+    window.to,
+    window.interval,
+    window.timeZone,
+  ]);
+
+  useEffect(() => {
+    if (!teamDashboardQuery.data) return;
+    setTeamTrend(teamDashboardQuery.data.trend);
+    setChartWindow({
+      from: window.from,
+      to: window.to,
+      interval: window.interval,
+      timeZone: window.timeZone,
+    });
+  }, [
+    teamDashboardQuery.data,
+    window.from,
+    window.to,
+    window.interval,
+    window.timeZone,
+  ]);
+
+  useEffect(() => {
+    if (!teamDashboardQuery.isError) return;
+    setTeamTrend([]);
+    setChartWindow({
+      from: window.from,
+      to: window.to,
+      interval: window.interval,
+      timeZone: window.timeZone,
+    });
+  }, [
+    teamDashboardQuery.errorUpdatedAt,
+    teamDashboardQuery.isError,
     window.from,
     window.to,
     window.interval,

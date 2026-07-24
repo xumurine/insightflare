@@ -71,31 +71,42 @@ async function runPrebuild(options: CommonOptions): Promise<void> {
   );
 }
 
-async function runEnsureAstGrep(options: CommonOptions): Promise<void> {
+async function runViteBuild(options: CommonOptions): Promise<void> {
+  const mode =
+    options.target === "cf"
+      ? "production"
+      : options.target === "demo"
+        ? "demo"
+        : "local";
+  fs.rmSync(path.join(ROOT_DIR, "dist"), { recursive: true, force: true });
+  await runtime.runCommand(
+    process.execPath,
+    [
+      localCli(ROOT_DIR, "vite", path.join("bin", "vite.js")),
+      "build",
+      "--mode",
+      mode,
+    ],
+    {
+      ...targetEnv(options.target),
+      CLOUDFLARE_VITE_WRANGLER_CONFIG_PATH: path.resolve(
+        ROOT_DIR,
+        options.config,
+      ),
+      ...(options.envName ? { CLOUDFLARE_ENV: options.envName } : {}),
+    },
+    ROOT_DIR,
+    `vite build --mode ${mode}`,
+  );
   await runtime.runCommand(
     process.execPath,
     [
       localCli(ROOT_DIR, "tsx", path.join("dist", "cli.mjs")),
-      path.join(ROOT_DIR, "scripts", "ensure-ast-grep-binding.ts"),
-    ],
-    targetEnv(options.target),
-  );
-}
-
-async function runOpenNextBuild(options: CommonOptions): Promise<void> {
-  await runtime.runCommand(
-    process.execPath,
-    [
-      localCli(
-        ROOT_DIR,
-        "@opennextjs/cloudflare",
-        path.join("dist", "cli", "index.js"),
-      ),
-      "build",
+      path.join(ROOT_DIR, "scripts", "prune-server-output.ts"),
     ],
     targetEnv(options.target),
     ROOT_DIR,
-    "opennextjs-cloudflare build",
+    "prune unreachable server modules",
   );
 }
 
@@ -110,27 +121,19 @@ async function main(): Promise<void> {
   runtime.assertEnvironment(options);
 
   stages.push(
-    await runtime.runStage(1, 3, "Preparing build inputs", () =>
+    await runtime.runStage(1, 2, "Preparing build inputs", () =>
       runPrebuild(options),
     ),
   );
   stages.push(
-    await runtime.runStage(2, 3, "Checking native build dependencies", () =>
-      runEnsureAstGrep(options),
-    ),
-  );
-  stages.push(
-    await runtime.runStage(3, 3, "Building Cloudflare worker", () =>
-      runOpenNextBuild(options),
+    await runtime.runStage(2, 2, "Building Cloudflare worker", () =>
+      runViteBuild(options),
     ),
   );
 
   runtime.logSummary(stages, startedAt);
   runtime.rlog.log(
-    `.next size${"".padEnd(25)} ${formatBytes(folderSize(path.join(ROOT_DIR, ".next")))}`,
-  );
-  runtime.rlog.log(
-    `.open-next size${"".padEnd(20)} ${formatBytes(folderSize(path.join(ROOT_DIR, ".open-next")))}`,
+    `dist size${"".padEnd(25)} ${formatBytes(folderSize(path.join(ROOT_DIR, "dist")))}`,
   );
   runtime.rlog.success("InsightFlare build completed successfully.");
 }

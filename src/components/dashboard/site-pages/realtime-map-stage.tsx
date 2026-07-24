@@ -1,5 +1,3 @@
-"use client";
-
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import Map, { useControl } from "react-map-gl/maplibre";
 import { ScatterplotLayer } from "@deck.gl/layers";

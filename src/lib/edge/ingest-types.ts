@@ -97,6 +97,9 @@ export interface BufferedCustomEventInput {
 
 export interface RecentVisitorSession {
   sessionId: string;
+  visitId?: string;
+  status?: string;
+  routeMatch?: number;
   startedAt: number;
   lastActivityAt: number;
 }

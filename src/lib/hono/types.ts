@@ -27,6 +27,7 @@ export interface HonoApiSite {
 
 export type HonoVariables = {
   requestId: string;
+  requestUrl?: URL;
   session?: EdgeSessionClaims;
   privateSite?: HonoSite;
   site?: HonoSite;

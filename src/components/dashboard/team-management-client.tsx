@@ -1,8 +1,4 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   RiAddLine,
   RiArrowDownLine,
@@ -10,6 +6,8 @@ import {
   RiArrowRightSLine,
   RiArrowUpLine,
   RiBarChartBoxLine,
+  RiCheckboxBlankCircleLine,
+  RiCheckLine,
   RiCloseLine,
   RiDeleteBinLine,
   RiFileCopyLine,
@@ -21,6 +19,7 @@ import {
   RiSave3Line,
   RiSettings3Line,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 
@@ -62,6 +61,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -95,6 +95,8 @@ import type {
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
+import Link from "@/lib/router";
+import { useRouter } from "@/lib/router";
 
 type TeamTab = "sites" | "settings" | "members";
 
@@ -265,6 +267,7 @@ interface TeamInviteData {
   email: string;
   payload: {
     teamRole?: "member" | "admin";
+    siteIds?: string[];
   };
   code?: string;
   url?: string;
@@ -284,11 +287,93 @@ interface CreatedTeamInviteData {
 
 const SITE_CARD_MAX_TREND_POINTS = 120;
 
+function normalizeSiteIds(input: unknown): string[] {
+  const raw = Array.isArray(input) ? input : [];
+  const out: string[] = [];
+  for (const value of raw) {
+    const siteId = String(value || "").trim();
+    if (!siteId || out.includes(siteId)) continue;
+    out.push(siteId);
+  }
+  return out;
+}
+
+function formatCountTemplate(template: string, count: number): string {
+  return template.replace("{count}", String(count));
+}
+
+function siteAccessSummary(
+  siteIds: string[],
+  sites: Array<Pick<SiteData, "id" | "name" | "domain">>,
+  copy: AppMessages["teamManagement"]["members"],
+): string {
+  if (siteIds.length === 0) return copy.siteAccessAll;
+  const knownIds = new Set(sites.map((site) => site.id));
+  const selectedCount =
+    knownIds.size === 0
+      ? siteIds.length
+      : siteIds.filter((siteId) => knownIds.has(siteId)).length;
+  return formatCountTemplate(
+    copy.siteAccessSelected,
+    Math.max(selectedCount, siteIds.length),
+  );
+}
+
+function SiteAccessSelectorButtons({
+  siteIds,
+  sites,
+  allSitesLabel,
+  noSitesLabel,
+  onAllSites,
+  onToggleSite,
+}: {
+  siteIds: string[];
+  sites: Array<Pick<SiteData, "id" | "name" | "domain">>;
+  allSitesLabel: string;
+  noSitesLabel: string;
+  onAllSites: () => void;
+  onToggleSite: (siteId: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button
+        type="button"
+        variant={siteIds.length === 0 ? "default" : "outline"}
+        size="sm"
+        onClick={onAllSites}
+      >
+        {siteIds.length === 0 ? <RiCheckLine /> : <RiCheckboxBlankCircleLine />}
+        <span>{allSitesLabel}</span>
+      </Button>
+      {sites.length > 0 ? (
+        sites.map((site) => {
+          const checked = siteIds.includes(site.id);
+          return (
+            <Button
+              key={site.id}
+              type="button"
+              variant={checked ? "default" : "outline"}
+              size="sm"
+              onClick={() => onToggleSite(site.id)}
+            >
+              {checked ? <RiCheckLine /> : <RiCheckboxBlankCircleLine />}
+              <span>{site.name || site.domain || site.id}</span>
+            </Button>
+          );
+        })
+      ) : (
+        <p className="text-sm text-muted-foreground">{noSitesLabel}</p>
+      )}
+    </div>
+  );
+}
+
 async function fetchTeamDashboard(
   teamId: string,
   window: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">,
+  signal?: AbortSignal,
 ): Promise<TeamDashboardData> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: "/api/private/team-dashboard",
@@ -320,6 +405,7 @@ async function fetchTeamDashboard(
     {
       method: "GET",
       credentials: "include",
+      signal,
     },
   );
   if (!response.ok) throw new Error("fetch_team_dashboard_failed");
@@ -339,8 +425,11 @@ async function fetchTeamDashboard(
   };
 }
 
-async function fetchTeamMembers(teamId: string): Promise<MemberData[]> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+async function fetchTeamMembers(
+  teamId: string,
+  signal?: AbortSignal,
+): Promise<MemberData[]> {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: "/api/private/admin/members",
@@ -353,6 +442,7 @@ async function fetchTeamMembers(teamId: string): Promise<MemberData[]> {
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   if (!response.ok) throw new Error("fetch_team_members_failed");
   const payload = (await response.json()) as {
@@ -362,8 +452,38 @@ async function fetchTeamMembers(teamId: string): Promise<MemberData[]> {
   return Array.isArray(payload.data) ? payload.data : [];
 }
 
-async function fetchTeamInvites(teamId: string): Promise<TeamInviteData[]> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+async function fetchTeamSites(
+  teamId: string,
+  signal?: AbortSignal,
+): Promise<SiteData[]> {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
+    const { handleDemoRequest } = await import("@/lib/realtime/mock");
+    const result = handleDemoRequest({
+      path: "/api/private/admin/sites",
+      params: { teamId },
+    }) as { ok: boolean; data?: SiteData[] };
+    return Array.isArray(result.data) ? result.data : [];
+  }
+  const url = `/api/private/admin/sites?teamId=${encodeURIComponent(teamId)}`;
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+    signal,
+  });
+  if (!response.ok) throw new Error("fetch_team_sites_failed");
+  const payload = (await response.json()) as {
+    ok: boolean;
+    data?: SiteData[];
+  };
+  return Array.isArray(payload.data) ? payload.data : [];
+}
+
+async function fetchTeamInvites(
+  teamId: string,
+  signal?: AbortSignal,
+): Promise<TeamInviteData[]> {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: "/api/private/admin/team-invites",
@@ -376,6 +496,7 @@ async function fetchTeamInvites(teamId: string): Promise<TeamInviteData[]> {
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   if (!response.ok) throw new Error("fetch_team_invites_failed");
   const payload = (await response.json()) as {
@@ -397,7 +518,7 @@ async function postJson<T>(
   body: Record<string, unknown>,
   method: "POST" | "PATCH" = "POST",
 ): Promise<T> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: url,
@@ -449,6 +570,9 @@ export function TeamManagementClient({
   const [invites, setInvites] = useState<TeamInviteData[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"admin" | "member">("member");
+  const [inviteSiteIds, setInviteSiteIds] = useState<string[]>([]);
+  const [inviteSiteAccessDialogOpen, setInviteSiteAccessDialogOpen] =
+    useState(false);
   const [inviteExpiresInHours, setInviteExpiresInHours] = useState("72");
   const [latestInviteUrl, setLatestInviteUrl] = useState("");
   const [savingTeam, setSavingTeam] = useState(false);
@@ -458,6 +582,12 @@ export function TeamManagementClient({
   const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [changingRoleId, setChangingRoleId] = useState<string | null>(null);
+  const [savingSiteAccessId, setSavingSiteAccessId] = useState<string | null>(
+    null,
+  );
+  const [siteAccessDialogMember, setSiteAccessDialogMember] =
+    useState<MemberData | null>(null);
+  const [editingSiteIds, setEditingSiteIds] = useState<string[]>([]);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [siteOverviewById, setSiteOverviewById] = useState<
     Record<string, SiteOverviewMetrics>
@@ -484,6 +614,35 @@ export function TeamManagementClient({
   );
   const canManageSites = canManage;
   const isRealOwner = activeTeam.ownerUserId === currentUserId;
+  const managementDataQuery = useQuery({
+    queryKey: ["dashboard", "team-management-data", activeTeam.id, canManage],
+    queryFn: async ({ signal }) => {
+      const [members, invites, sites] = await Promise.all([
+        fetchTeamMembers(activeTeam.id, signal),
+        canManage
+          ? fetchTeamInvites(activeTeam.id, signal)
+          : Promise.resolve([]),
+        canManage ? fetchTeamSites(activeTeam.id, signal) : Promise.resolve([]),
+      ]);
+      return { members, invites, sites };
+    },
+    enabled:
+      typeof window !== "undefined" &&
+      (activeTab === "settings" || activeTab === "members"),
+  });
+  const dashboardQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "team-dashboard",
+      activeTeam.id,
+      window.from,
+      window.to,
+      window.interval,
+      window.timeZone,
+    ],
+    queryFn: ({ signal }) => fetchTeamDashboard(activeTeam.id, window, signal),
+    enabled: typeof window !== "undefined" && activeTab === "sites",
+  });
   const transferableMembers = useMemo(
     () => members.filter((m) => m.userId !== activeTeam.ownerUserId),
     [members, activeTeam.ownerUserId],
@@ -491,32 +650,13 @@ export function TeamManagementClient({
 
   useEffect(() => {
     if (activeTab !== "settings" && activeTab !== "members") return;
-    let active = true;
-    setLoading(true);
-
-    Promise.all([
-      fetchTeamMembers(activeTeam.id),
-      canManage ? fetchTeamInvites(activeTeam.id) : Promise.resolve([]),
-    ])
-      .then(([nextMembers, nextInvites]) => {
-        if (!active) return;
-        setMembers(nextMembers);
-        setInvites(nextInvites);
-      })
-      .catch(() => {
-        if (!active) return;
-        setMembers([]);
-        setInvites([]);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [activeTeam.id, activeTab, canManage]);
+    setLoading(managementDataQuery.isPending);
+    if (managementDataQuery.isPending) return;
+    const data = managementDataQuery.data;
+    setMembers(data?.members ?? []);
+    setInvites(data?.invites ?? []);
+    setSites((data?.sites ?? []).map(withSiteSlug));
+  }, [activeTab, managementDataQuery.data, managementDataQuery.isPending]);
 
   useEffect(() => {
     setCreateSiteDialogOpen(false);
@@ -529,6 +669,8 @@ export function TeamManagementClient({
     setTeamSlug(activeTeam.slug);
     setInviteEmail("");
     setInviteRole("member");
+    setInviteSiteIds([]);
+    setInviteSiteAccessDialogOpen(false);
     setInviteExpiresInHours("72");
     setLatestInviteUrl("");
     setSites([]);
@@ -540,6 +682,8 @@ export function TeamManagementClient({
     setTeamTrend([]);
     setTransferTargetId("");
     setTransferDialogOpen(false);
+    setSiteAccessDialogMember(null);
+    setEditingSiteIds([]);
     setChartWindow({
       from: window.from,
       to: window.to,
@@ -550,89 +694,63 @@ export function TeamManagementClient({
 
   useEffect(() => {
     if (activeTab !== "sites") return;
-
-    let active = true;
-    setLoading(true);
-    setAnalyticsLoading(true);
-
-    fetchTeamDashboard(activeTeam.id, window)
-      .then((dashboard) => {
-        if (!active) return;
-        const nextSites = dashboard.sites.map(withSiteSlug);
-        const sortedSites = sortSitesForInitialOrder(dashboard.sites);
-        setSites(nextSites);
-        setSiteOrder((currentOrder) => {
-          const nextIds = sortedSites.map((site) => site.id);
-          if (currentOrder.length === 0) return nextIds;
-          const knownIds = new Set(currentOrder);
-          const appended = nextIds.filter((id) => !knownIds.has(id));
-          if (appended.length === 0) return currentOrder;
-          return [...currentOrder, ...appended];
-        });
-        setSiteOverviewById(
-          Object.fromEntries(
-            dashboard.sites.map((site) => [
-              site.id,
-              site.overview ?? emptyOverviewMetrics(),
-            ]),
-          ),
-        );
-        setSiteChangeRatesById(
-          Object.fromEntries(
-            dashboard.sites.map((site) => [
-              site.id,
-              {
-                views: normalizeChangeRate(site.changeRates?.views),
-                visitors: normalizeChangeRate(site.changeRates?.visitors),
-                sessions: normalizeChangeRate(site.changeRates?.sessions),
-                bounceRate: normalizeChangeRate(site.changeRates?.bounceRate),
-                avgDurationMs: normalizeChangeRate(
-                  site.changeRates?.avgDurationMs,
-                ),
-                pagesPerSession: normalizeChangeRate(
-                  site.changeRates?.pagesPerSession,
-                ),
-              },
-            ]),
-          ),
-        );
-        setTeamTrend(dashboard.trend);
-        setChartWindow({
-          from: window.from,
-          to: window.to,
-          interval: window.interval,
-          timeZone: window.timeZone,
-        });
-      })
-      .catch(() => {
-        if (!active) return;
-        setSites([]);
-        setSiteOverviewById({});
-        setSiteChangeRatesById({});
-        setTeamTrend([]);
-        setChartWindow({
-          from: window.from,
-          to: window.to,
-          interval: window.interval,
-          timeZone: window.timeZone,
-        });
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-        setAnalyticsLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
+    setLoading(dashboardQuery.isPending);
+    setAnalyticsLoading(dashboardQuery.isPending);
+    const dashboard = dashboardQuery.data;
+    if (!dashboard) return;
+    const nextSites = dashboard.sites.map(withSiteSlug);
+    const sortedSites = sortSitesForInitialOrder(dashboard.sites);
+    setSites(nextSites);
+    setSiteOrder((currentOrder) => {
+      const nextIds = sortedSites.map((site) => site.id);
+      if (currentOrder.length === 0) return nextIds;
+      const knownIds = new Set(currentOrder);
+      const appended = nextIds.filter((id) => !knownIds.has(id));
+      if (appended.length === 0) return currentOrder;
+      return [...currentOrder, ...appended];
+    });
+    setSiteOverviewById(
+      Object.fromEntries(
+        dashboard.sites.map((site) => [
+          site.id,
+          site.overview ?? emptyOverviewMetrics(),
+        ]),
+      ),
+    );
+    setSiteChangeRatesById(
+      Object.fromEntries(
+        dashboard.sites.map((site) => [
+          site.id,
+          {
+            views: normalizeChangeRate(site.changeRates?.views),
+            visitors: normalizeChangeRate(site.changeRates?.visitors),
+            sessions: normalizeChangeRate(site.changeRates?.sessions),
+            bounceRate: normalizeChangeRate(site.changeRates?.bounceRate),
+            avgDurationMs: normalizeChangeRate(site.changeRates?.avgDurationMs),
+            pagesPerSession: normalizeChangeRate(
+              site.changeRates?.pagesPerSession,
+            ),
+          },
+        ]),
+      ),
+    );
+    setTeamTrend(dashboard.trend);
+    setChartWindow({
+      from: window.from,
+      to: window.to,
+      interval: window.interval,
+      timeZone: window.timeZone,
+    });
+    setLoading(false);
+    setAnalyticsLoading(false);
   }, [
-    activeTeam.id,
     activeTab,
+    dashboardQuery.data,
+    dashboardQuery.isPending,
     window.from,
-    window.to,
     window.interval,
     window.timeZone,
+    window.to,
   ]);
 
   useEffect(() => {
@@ -642,17 +760,29 @@ export function TeamManagementClient({
   }, [activeTab]);
 
   async function refreshMembers() {
-    const nextMembers = await fetchTeamMembers(activeTeam.id);
-    setMembers(nextMembers);
+    await managementDataQuery.refetch();
   }
 
   async function refreshInvites() {
-    if (!canManage) {
-      setInvites([]);
-      return;
-    }
-    const nextInvites = await fetchTeamInvites(activeTeam.id);
-    setInvites(nextInvites);
+    await managementDataQuery.refetch();
+  }
+
+  function toggleInviteSite(siteId: string, checked: boolean) {
+    setInviteSiteIds((current) => {
+      if (checked) {
+        return current.includes(siteId) ? current : [...current, siteId];
+      }
+      return current.filter((id) => id !== siteId);
+    });
+  }
+
+  function toggleEditingSite(siteId: string, checked: boolean) {
+    setEditingSiteIds((current) => {
+      if (checked) {
+        return current.includes(siteId) ? current : [...current, siteId];
+      }
+      return current.filter((id) => id !== siteId);
+    });
   }
 
   async function handleCreateSite() {
@@ -755,11 +885,14 @@ export function TeamManagementClient({
           teamId: activeTeam.id,
           email: email || undefined,
           role: inviteRole,
+          siteIds: inviteRole === "member" ? inviteSiteIds : [],
           expiresInHours,
         },
       );
       setInviteEmail("");
       setInviteRole("member");
+      setInviteSiteIds([]);
+      setInviteSiteAccessDialogOpen(false);
       setInviteExpiresInHours("72");
       setLatestInviteUrl(created.url);
       await refreshInvites();
@@ -896,6 +1029,36 @@ export function TeamManagementClient({
       toast.error(message || copy.toasts.roleChangeFailed);
     } finally {
       setChangingRoleId(null);
+    }
+  }
+
+  async function handleSaveMemberSiteAccess() {
+    if (!siteAccessDialogMember) return;
+    const userId = siteAccessDialogMember.userId;
+    setSavingSiteAccessId(userId);
+    try {
+      await postJson(
+        "/api/private/admin/members",
+        {
+          intent: "update_site_access",
+          teamId: activeTeam.id,
+          userId,
+          siteIds: editingSiteIds,
+        },
+        "PATCH",
+      );
+      await refreshMembers();
+      setSiteAccessDialogMember(null);
+      setEditingSiteIds([]);
+      toast.success(copy.toasts.siteAccessChanged);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : copy.toasts.siteAccessChangeFailed;
+      toast.error(message || copy.toasts.siteAccessChangeFailed);
+    } finally {
+      setSavingSiteAccessId(null);
     }
   }
 
@@ -1195,7 +1358,9 @@ export function TeamManagementClient({
               <Select
                 value={inviteRole}
                 onValueChange={(value) => {
-                  setInviteRole(value === "admin" ? "admin" : "member");
+                  const nextRole = value === "admin" ? "admin" : "member";
+                  setInviteRole(nextRole);
+                  if (nextRole === "admin") setInviteSiteIds([]);
                 }}
                 disabled={!canManage}
               >
@@ -1227,6 +1392,30 @@ export function TeamManagementClient({
               />
             </div>
           </div>
+          {inviteRole === "member" ? (
+            <div className="space-y-2">
+              <Label>{copy.members.siteAccessLabel}</Label>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!canManage}
+                className="w-full justify-between"
+                onClick={() => setInviteSiteAccessDialogOpen(true)}
+              >
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  <RiGlobalLine className="size-4 shrink-0" />
+                  <span className="truncate">
+                    {siteAccessSummary(inviteSiteIds, sites, copy.members)}
+                  </span>
+                </span>
+                <RiSettings3Line className="size-4 shrink-0 text-muted-foreground" />
+              </Button>
+            </div>
+          ) : (
+            <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+              {copy.members.siteAccessAdmins}
+            </div>
+          )}
           <Button
             type="submit"
             className="mt-auto self-start"
@@ -1282,12 +1471,13 @@ export function TeamManagementClient({
           hasContent={invites.length > 0}
           loadingLabel={messages.common.loading}
           emptyLabel={copy.members.noInvites}
-          colSpan={8}
+          colSpan={9}
           header={
             <TableRow>
               <TableHead>{copy.members.columns.email}</TableHead>
               <TableHead>{copy.members.columns.inviteCode}</TableHead>
               <TableHead>{copy.members.columns.role}</TableHead>
+              <TableHead>{copy.members.columns.siteAccess}</TableHead>
               <TableHead>{copy.members.columns.status}</TableHead>
               <TableHead>{copy.members.columns.createdAt}</TableHead>
               <TableHead>{copy.members.columns.expiresAt}</TableHead>
@@ -1320,6 +1510,15 @@ export function TeamManagementClient({
                 {invite.payload.teamRole === "admin"
                   ? copy.members.roleLabels.admin
                   : copy.members.roleLabels.member}
+              </TableCell>
+              <TableCell>
+                {invite.payload.teamRole === "admin"
+                  ? copy.members.siteAccessAll
+                  : siteAccessSummary(
+                      normalizeSiteIds(invite.payload.siteIds),
+                      sites,
+                      copy.members,
+                    )}
               </TableCell>
               <TableCell>
                 {copy.members.inviteStatuses[invite.status]}
@@ -1385,13 +1584,14 @@ export function TeamManagementClient({
           hasContent={members.length > 0}
           loadingLabel={messages.common.loading}
           emptyLabel={copy.members.noMembers}
-          colSpan={6}
+          colSpan={7}
           header={
             <TableRow>
               <TableHead>{copy.members.columns.name}</TableHead>
               <TableHead>{copy.members.columns.username}</TableHead>
               <TableHead>{copy.members.columns.email}</TableHead>
               <TableHead>{copy.members.columns.role}</TableHead>
+              <TableHead>{copy.members.columns.siteAccess}</TableHead>
               <TableHead>{copy.members.columns.joinedAt}</TableHead>
               <TableHead className="text-right">
                 {copy.members.columns.action}
@@ -1461,6 +1661,52 @@ export function TeamManagementClient({
                 )}
               </TableCell>
               <TableCell>
+                {member.role === "member" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      !canManage || savingSiteAccessId === member.userId
+                    }
+                    className="justify-between"
+                    onClick={() => {
+                      setSiteAccessDialogMember(member);
+                      setEditingSiteIds(normalizeSiteIds(member.siteIds));
+                    }}
+                  >
+                    <span className="inline-flex min-w-0 items-center gap-2">
+                      <RiGlobalLine className="size-3.5 shrink-0" />
+                      <span className="min-w-0 truncate">
+                        {siteAccessSummary(
+                          normalizeSiteIds(member.siteIds),
+                          sites,
+                          copy.members,
+                        )}
+                      </span>
+                    </span>
+                    {savingSiteAccessId === member.userId ? (
+                      <Spinner className="size-3.5 shrink-0" />
+                    ) : (
+                      <RiSettings3Line className="size-3.5 shrink-0 text-muted-foreground" />
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled
+                    className="justify-start"
+                  >
+                    <RiGlobalLine className="size-3.5" />
+                    <span className="truncate">
+                      {copy.members.siteAccessAll}
+                    </span>
+                  </Button>
+                )}
+              </TableCell>
+              <TableCell>
                 {shortDateTime(
                   locale,
                   epochSecondsToMs(member.joinedAt),
@@ -1503,8 +1749,117 @@ export function TeamManagementClient({
     </div>
   );
 
+  const inviteSiteAccessDialog = (
+    <Dialog
+      open={inviteSiteAccessDialogOpen}
+      onOpenChange={setInviteSiteAccessDialogOpen}
+    >
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{copy.members.siteAccessDialogTitle}</DialogTitle>
+          <DialogDescription>{copy.members.invitesTitle}</DialogDescription>
+        </DialogHeader>
+        <Field>
+          <FieldLabel>{copy.members.siteAccessLabel}</FieldLabel>
+          <FieldDescription>
+            {copy.members.siteAccessDescription}
+          </FieldDescription>
+          <SiteAccessSelectorButtons
+            siteIds={inviteSiteIds}
+            sites={sites}
+            allSitesLabel={copy.members.siteAccessAll}
+            noSitesLabel={copy.members.noSitesForAccess}
+            onAllSites={() => setInviteSiteIds([])}
+            onToggleSite={(siteId) =>
+              toggleInviteSite(siteId, !inviteSiteIds.includes(siteId))
+            }
+          />
+        </Field>
+        <DialogFooter>
+          <Button
+            type="button"
+            onClick={() => setInviteSiteAccessDialogOpen(false)}
+          >
+            <RiSave3Line className="size-4" />
+            <span>{copy.members.saveSiteAccess}</span>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  const siteAccessDialog = (
+    <Dialog
+      open={Boolean(siteAccessDialogMember)}
+      onOpenChange={(open) => {
+        if (open) return;
+        setSiteAccessDialogMember(null);
+        setEditingSiteIds([]);
+      }}
+    >
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{copy.members.siteAccessDialogTitle}</DialogTitle>
+          <DialogDescription>
+            {siteAccessDialogMember
+              ? siteAccessDialogMember.name || siteAccessDialogMember.username
+              : copy.members.roleLabels.member}
+          </DialogDescription>
+        </DialogHeader>
+        <Field>
+          <FieldLabel>{copy.members.siteAccessLabel}</FieldLabel>
+          <FieldDescription>
+            {copy.members.siteAccessDescription}
+          </FieldDescription>
+          <SiteAccessSelectorButtons
+            siteIds={editingSiteIds}
+            sites={sites}
+            allSitesLabel={copy.members.siteAccessAll}
+            noSitesLabel={copy.members.noSitesForAccess}
+            onAllSites={() => setEditingSiteIds([])}
+            onToggleSite={(siteId) =>
+              toggleEditingSite(siteId, !editingSiteIds.includes(siteId))
+            }
+          />
+        </Field>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setSiteAccessDialogMember(null);
+              setEditingSiteIds([]);
+            }}
+          >
+            {copy.members.cancelSiteAccess}
+          </Button>
+          <Button
+            type="button"
+            disabled={
+              !siteAccessDialogMember ||
+              savingSiteAccessId === siteAccessDialogMember.userId
+            }
+            onClick={() => {
+              void handleSaveMemberSiteAccess();
+            }}
+          >
+            {siteAccessDialogMember &&
+            savingSiteAccessId === siteAccessDialogMember.userId ? (
+              <Spinner className="size-4" />
+            ) : (
+              <RiSave3Line className="size-4" />
+            )}
+            <span>{copy.members.saveSiteAccess}</span>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   return (
     <div className="space-y-6">
+      {inviteSiteAccessDialog}
+      {siteAccessDialog}
       <PageHeading
         title={`${panelTitle} · ${currentTeamName}`}
         subtitle={panelSubtitle}

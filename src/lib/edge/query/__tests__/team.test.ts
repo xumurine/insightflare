@@ -39,6 +39,7 @@ vi.mock("@/lib/edge/query/core", () => ({
   PRIVATE_CACHE_HEADERS: { "cache-control": "private, max-age=60" },
   queryD1All: vi.fn(),
   resolvePrivateTeam: vi.fn(),
+  resolvePrivateTeamForSession: vi.fn(),
   timeBucketCase: vi.fn(() => ({ sql: "CASE ...", bindings: [] })),
   timeBucketTimestamp: vi.fn(
     (_buckets: unknown, bucket: number) => bucket * 86400000,
@@ -54,9 +55,11 @@ import {
   parseWindow,
   queryD1All,
   resolvePrivateTeam,
+  resolvePrivateTeamForSession,
 } from "@/lib/edge/query/core";
 import {
   handleTeamDashboard,
+  handleTeamDashboardForSession,
   handleTeamDashboardForTeam,
   listTeamSites,
   queryTeamOverviewFromD1,
@@ -67,6 +70,9 @@ const queryOverviewMock = vi.mocked(queryOverviewForSitesFromHourlyRollups);
 const queryTrendMock = vi.mocked(queryTrendForSitesFromHourlyRollups);
 const parseWindowMock = vi.mocked(parseWindow);
 const resolvePrivateTeamMock = vi.mocked(resolvePrivateTeam);
+const resolvePrivateTeamForSessionMock = vi.mocked(
+  resolvePrivateTeamForSession,
+);
 const queryD1AllMock = vi.mocked(queryD1All);
 
 function makeDbMock() {
@@ -161,6 +167,7 @@ describe("handleTeamDashboard", () => {
   beforeEach(() => {
     parseWindowMock.mockReset();
     resolvePrivateTeamMock.mockReset();
+    resolvePrivateTeamForSessionMock.mockReset();
     queryOverviewMock.mockReset();
     queryTrendMock.mockReset();
   });
@@ -186,6 +193,39 @@ describe("handleTeamDashboard", () => {
 
     const response = await handleTeamDashboard(req, env, url);
     expect(response.status).toBe(401);
+  });
+
+  it("reuses pre-authenticated session claims", async () => {
+    parseWindowMock.mockReturnValue(makeWindow());
+    resolvePrivateTeamForSessionMock.mockResolvedValue(
+      new Response("denied", { status: 403 }),
+    );
+    const req = new Request("https://app.test/api/private/team-dashboard");
+    const env = makeEnv();
+    const url = makeUrl("/api/private/team-dashboard", { teamId: "team-1" });
+    const session = {
+      userId: "user-1",
+      username: "user",
+      displayName: "User",
+      systemRole: "user" as const,
+      exp: 9999999999,
+    };
+
+    const response = await handleTeamDashboardForSession(
+      req,
+      env,
+      url,
+      session,
+    );
+
+    expect(response.status).toBe(403);
+    expect(resolvePrivateTeamForSessionMock).toHaveBeenCalledWith(
+      req,
+      env,
+      url,
+      session,
+    );
+    expect(resolvePrivateTeamMock).not.toHaveBeenCalled();
   });
 });
 

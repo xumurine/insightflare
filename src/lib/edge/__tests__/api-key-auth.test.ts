@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  API_KEY_USAGE_WRITE_INTERVAL_SECONDS,
   authenticateApiKey,
   canAccessSiteId,
   extractApiKeyToken,
@@ -13,6 +14,10 @@ import {
   hashApiKeySecret,
 } from "@/lib/edge/api-key-store";
 import type { Env } from "@/lib/edge/types";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function createMockEnv(keyRow?: Record<string, unknown> | null) {
   return {
@@ -112,6 +117,40 @@ describe("authenticateApiKey", () => {
     expect(ctx.waitUntil).toHaveBeenCalled();
   });
 
+  it("skips last-used writes for recently active keys", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-13T12:00:00Z"));
+    const lastUsedAt = Math.floor(Date.now() / 1000);
+    const key = await makeKey({ last_used_at: lastUsedAt });
+    const env = createMockEnv(key.row);
+    const ctx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
+    const req = new Request("https://test.example", {
+      headers: { authorization: `Bearer ${key.apiKey}` },
+    });
+
+    await authenticateApiKey(req, env, ctx);
+
+    expect(ctx.waitUntil).not.toHaveBeenCalled();
+    expect(env.DB.prepare).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes last-used timestamps after the write interval", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-13T12:00:00Z"));
+    const lastUsedAt =
+      Math.floor(Date.now() / 1000) - API_KEY_USAGE_WRITE_INTERVAL_SECONDS - 1;
+    const key = await makeKey({ last_used_at: lastUsedAt });
+    const env = createMockEnv(key.row);
+    const ctx = { waitUntil: vi.fn() } as unknown as ExecutionContext;
+    const req = new Request("https://test.example", {
+      headers: { authorization: `Bearer ${key.apiKey}` },
+    });
+
+    await authenticateApiKey(req, env, ctx);
+
+    expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+  });
+
   it("returns 401 for missing key", async () => {
     const env = createMockEnv();
     const req = new Request("https://test.example");
@@ -172,6 +211,24 @@ describe("authenticateApiKey", () => {
     const key = await makeKey({
       scopes_json: "not-json",
       site_ids_json: "not-json",
+    });
+    const env = createMockEnv(key.row);
+    const req = new Request("https://test.example", {
+      headers: { authorization: `Bearer ${key.apiKey}` },
+    });
+
+    const result = await authenticateApiKey(req, env);
+    expect(result).not.toBeInstanceOf(Response);
+    if (!(result instanceof Response)) {
+      expect(result.scopes).toEqual([]);
+      expect(result.siteIds).toEqual([]);
+    }
+  });
+
+  it("treats valid non-array JSON permissions as empty", async () => {
+    const key = await makeKey({
+      scopes_json: '{"scope":"site:read"}',
+      site_ids_json: '"site-1"',
     });
     const env = createMockEnv(key.row);
     const req = new Request("https://test.example", {

@@ -1,12 +1,11 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 
 import { CampaignBreakdownCard } from "@/components/dashboard/campaign-breakdown-card";
 import { CampaignShareTrendCard } from "@/components/dashboard/campaign-share-trend-card";
 import {
-  buildCampaignRowsByTab,
+  buildCampaignRows,
   type CampaignRawRowsByTab,
+  type CampaignTab,
 } from "@/components/dashboard/campaign-utils";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
@@ -23,7 +22,6 @@ interface CampaignsClientPageProps {
 }
 
 const EMPTY_ROWS: CampaignRawRowsByTab["source"] = [];
-
 function extractDimensionRows(
   payload: unknown,
 ): CampaignRawRowsByTab["source"] {
@@ -43,6 +41,13 @@ function extractDimensionRows(
   return EMPTY_ROWS;
 }
 
+function emptyRowsUnlessAborted(
+  error: unknown,
+): CampaignRawRowsByTab["source"] {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return EMPTY_ROWS;
+}
+
 export function CampaignsClientPage({
   locale,
   messages,
@@ -52,14 +57,6 @@ export function CampaignsClientPage({
     filters: DashboardFilters;
     window: TimeWindow;
   };
-  const [loading, setLoading] = useState(true);
-  const [rowsByTab, setRowsByTab] = useState<CampaignRawRowsByTab>({
-    source: EMPTY_ROWS,
-    medium: EMPTY_ROWS,
-    campaign: EMPTY_ROWS,
-    term: EMPTY_ROWS,
-    content: EMPTY_ROWS,
-  });
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
   const requestFilters = useMemo(() => ({ ...filters }), [filtersKey]);
   const requestWindow = useMemo(
@@ -73,51 +70,32 @@ export function CampaignsClientPage({
     [window.from, window.interval, window.preset, window.timeZone, window.to],
   );
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    Promise.all([
-      fetchUtmDimension(siteId, requestWindow, "source", requestFilters)
-        .then((payload) => extractDimensionRows(payload))
-        .catch(() => EMPTY_ROWS),
-      fetchUtmDimension(siteId, requestWindow, "medium", requestFilters)
-        .then((payload) => extractDimensionRows(payload))
-        .catch(() => EMPTY_ROWS),
-      fetchUtmDimension(siteId, requestWindow, "campaign", requestFilters)
-        .then((payload) => extractDimensionRows(payload))
-        .catch(() => EMPTY_ROWS),
-      fetchUtmDimension(siteId, requestWindow, "term", requestFilters)
-        .then((payload) => extractDimensionRows(payload))
-        .catch(() => EMPTY_ROWS),
-      fetchUtmDimension(siteId, requestWindow, "content", requestFilters)
-        .then((payload) => extractDimensionRows(payload))
-        .catch(() => EMPTY_ROWS),
-    ])
-      .then(([source, medium, campaign, term, content]) => {
-        if (!active) return;
-        setRowsByTab({
-          source,
-          medium,
-          campaign,
-          term,
-          content,
-        });
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [requestFilters, requestWindow, siteId]);
-
-  const normalizedRowsByTab = useMemo(
-    () => buildCampaignRowsByTab(rowsByTab, messages.campaigns.notSet),
-    [messages.campaigns.notSet, rowsByTab],
+  const loadRows = useCallback(
+    async (tab: CampaignTab, signal: AbortSignal) => {
+      try {
+        const payload = await fetchUtmDimension(
+          siteId,
+          requestWindow,
+          tab,
+          requestFilters,
+          { signal },
+        );
+        return buildCampaignRows(
+          extractDimensionRows(payload),
+          tab,
+          messages.campaigns.notSet,
+        );
+      } catch (error) {
+        return buildCampaignRows(
+          emptyRowsUnlessAborted(error),
+          tab,
+          messages.campaigns.notSet,
+        );
+      }
+    },
+    [messages.campaigns.notSet, requestFilters, requestWindow, siteId],
   );
+  const requestKey = `${siteId}:${window.from}:${window.to}:${window.interval}:${window.timeZone}:${filtersKey}:${locale}`;
 
   return (
     <div className="space-y-6">
@@ -137,8 +115,8 @@ export function CampaignsClientPage({
       <CampaignBreakdownCard
         locale={locale}
         messages={messages}
-        rowsByTab={normalizedRowsByTab}
-        loading={loading}
+        loadRows={loadRows}
+        requestKey={requestKey}
       />
     </div>
   );

@@ -1,5 +1,3 @@
-"use client";
-
 import { useMemo } from "react";
 
 import { DIRECT_REFERRER_FILTER_VALUE } from "@/components/dashboard/referrer-utils";
@@ -56,6 +54,7 @@ function ReferrerTrendPanel({
       siteId={siteId}
       window={window}
       filters={filters}
+      queryKey={["referrer", messages.overview.direct]}
       title={messages.overview.sourceTab}
       fetchTrend={fetchTrend}
       otherLabel={messages.referrers.longTail}

@@ -60,7 +60,6 @@ describe("bot analytics config helpers", () => {
       ok: true,
       input: {
         accountId: "442fe5198bff93bdf60d4223d9618033",
-        dataset: "dataset",
         apiToken: "token",
         clearApiToken: false,
       },

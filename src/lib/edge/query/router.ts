@@ -124,9 +124,14 @@ export interface QueryRouteContext {
   env: Env;
   siteId: string;
   url: URL;
-  options: { publicMode: boolean };
+  options: QueryRouteOptions;
   request?: Request;
   responseContext?: ResponseContext;
+}
+
+export interface QueryRouteOptions {
+  publicMode: boolean;
+  deferJsonSerialization?: boolean;
 }
 
 export type QueryRouteHandler = (
@@ -315,7 +320,7 @@ export const QUERY_ROUTE_HANDLERS: Record<string, QueryRouteHandler> = {
 
 export function queryRouteHandler(
   pathname: string,
-  options: { publicMode: boolean },
+  options: QueryRouteOptions,
 ): QueryRouteHandler | null {
   if (options.publicMode && !PUBLIC_QUERY_PATH_SET.has(pathname)) {
     return null;
@@ -328,11 +333,14 @@ export async function dispatchQueryRoute(
   siteId: string,
   pathname: string,
   url: URL,
-  options: { publicMode: boolean },
+  options: QueryRouteOptions,
   request?: Request,
 ): Promise<Response> {
   const responseContext: ResponseContext | undefined = request
-    ? { requestId: getRequestId(request) }
+    ? {
+        requestId: getRequestId(request),
+        deferJsonSerialization: options.deferJsonSerialization,
+      }
     : undefined;
   const handler = queryRouteHandler(pathname, options);
   if (!handler) return notFound();
@@ -347,7 +355,7 @@ export async function routeQuery(
   siteId: string,
   pathname: string,
   url: URL,
-  options: { publicMode: boolean },
+  options: QueryRouteOptions,
   request?: Request,
 ): Promise<Response> {
   return dispatchQueryRoute(env, siteId, pathname, url, options, request);

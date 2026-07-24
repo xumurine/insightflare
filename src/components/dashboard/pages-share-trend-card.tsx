@@ -1,5 +1,3 @@
-"use client";
-
 import { ShareTrendCard } from "@/components/dashboard/share-trend-card";
 import { fetchPagesShareTrend } from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
@@ -28,6 +26,7 @@ export function PagesShareTrendCard({
       siteId={siteId}
       window={window}
       filters={filters}
+      queryKey={["pages"]}
       title={messages.pages.trendTitle}
       fetchTrend={fetchPagesShareTrend}
       limit={5}

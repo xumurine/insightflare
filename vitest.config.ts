@@ -1,10 +1,26 @@
 import path from "path";
 import { defineConfig } from "vitest/config";
+import { parse } from "yaml";
 
 export default defineConfig({
+  plugins: [
+    {
+      name: "yaml-as-json",
+      transform(code, id) {
+        if (!/\.ya?ml$/.test(id)) return null;
+        return {
+          code: `export default ${JSON.stringify(parse(code))};`,
+          map: null,
+        };
+      },
+    },
+  ],
   oxc: false,
   esbuild: {
     jsx: "automatic",
+  },
+  define: {
+    BUILD_PERFORMANCE: true,
   },
   test: {
     environment: "happy-dom",
@@ -15,17 +31,8 @@ export default defineConfig({
         __dirname,
         "./src/test/shims/cloudflare-workers.ts",
       ),
-      "server-only": path.resolve(__dirname, "./src/test/shims/server-only.ts"),
     },
-    exclude: [
-      "**/node_modules/**",
-      "**/.next/**",
-      "**/dist/**",
-      "**/.cache/**",
-    ],
-    define: {
-      BUILD_PERFORMANCE: true,
-    },
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.cache/**", "**/e2e/**"],
     coverage: {
       thresholds: {
         statements: 95,
@@ -34,7 +41,7 @@ export default defineConfig({
         lines: 96,
       },
       include: [
-        "src/app/**/route.ts",
+        "src/routes/**/*.ts",
         "src/components/dashboard/**/*.ts",
         "src/hooks/**/*.ts",
         "src/lib/**/*.ts",
@@ -79,7 +86,6 @@ export default defineConfig({
         __dirname,
         "./src/test/shims/cloudflare-workers.ts",
       ),
-      "server-only": path.resolve(__dirname, "./src/test/shims/server-only.ts"),
     },
   },
 });

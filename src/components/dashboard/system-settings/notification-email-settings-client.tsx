@@ -1,6 +1,4 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RiCloseLine,
   RiDeleteBinLine,
@@ -8,6 +6,7 @@ import {
   RiSave3Line,
   RiSendPlane2Line,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import {
@@ -46,6 +45,8 @@ import type {
   NotificationEmailProvider,
   PublicNotificationEmailConfig,
 } from "@/lib/notifications/email-config";
+
+import { SystemSettingsGuideDialog } from "./system-settings-guide-dialog";
 
 interface NotificationEmailSettingsClientProps {
   locale: Locale;
@@ -116,8 +117,10 @@ function apiMessage(payload: ApiResponse<unknown>, fallback: string): string {
   return fallback;
 }
 
-async function fetchEmailConfig(): Promise<PublicNotificationEmailConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+async function fetchEmailConfig(
+  signal?: AbortSignal,
+): Promise<PublicNotificationEmailConfig> {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: API_PATH,
@@ -129,6 +132,7 @@ async function fetchEmailConfig(): Promise<PublicNotificationEmailConfig> {
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   const payload =
     (await response.json()) as ApiResponse<PublicNotificationEmailConfig>;
@@ -141,7 +145,7 @@ async function fetchEmailConfig(): Promise<PublicNotificationEmailConfig> {
 async function saveEmailConfig(
   body: Record<string, unknown>,
 ): Promise<PublicNotificationEmailConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: API_PATH,
@@ -169,7 +173,7 @@ async function saveEmailConfig(
 }
 
 async function deleteEmailConfig(): Promise<PublicNotificationEmailConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: API_PATH,
@@ -197,7 +201,7 @@ async function sendTestEmail(to: string): Promise<TestEmailResponse> {
   const path = `${API_PATH}/test`;
   const body = { to };
 
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path,
@@ -235,12 +239,19 @@ export function NotificationEmailSettingsClient({
     toFormState(defaultConfig()),
   );
   const [apiKey, setApiKey] = useState("");
+  const [apiKeyDirty, setApiKeyDirty] = useState(false);
   const [testRecipient, setTestRecipient] = useState(currentUserEmail);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingConfig, setDeletingConfig] = useState(false);
+  const configAppliedRef = useRef(false);
+  const configQuery = useQuery({
+    queryKey: ["dashboard", "notification-email-config"],
+    queryFn: ({ signal }) => fetchEmailConfig(signal),
+    enabled: typeof window !== "undefined",
+  });
+  const loading = configQuery.isPending;
 
   const hasChanges = useMemo(() => {
     const persisted = toFormState(config);
@@ -254,32 +265,27 @@ export function NotificationEmailSettingsClient({
     );
   }, [apiKey, config, form]);
 
-  const apiKeyPlaceholder =
-    config.resend.configured && config.resend.apiKeyHint
-      ? `${copy.resendApiKeySaved}: ${config.resend.apiKeyHint}`
-      : copy.resendApiKeyPlaceholder;
+  const showSavedApiKey =
+    !apiKeyDirty &&
+    config.resend.configured &&
+    Boolean(config.resend.apiKeyHint);
+  const apiKeyDisplayValue = showSavedApiKey
+    ? config.resend.apiKeyHint
+    : apiKey;
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetchEmailConfig()
-      .then((nextConfig) => {
-        if (!active) return;
-        setConfig(nextConfig);
-        setForm(toFormState(nextConfig));
-      })
-      .catch(() => {
-        if (!active) return;
-        toast.error(copy.loadFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [copy.loadFailed]);
+    if (configQuery.isPending || configAppliedRef.current) return;
+    if (configQuery.isError) toast.error(copy.loadFailed);
+    const nextConfig = configQuery.data ?? defaultConfig();
+    setConfig(nextConfig);
+    setForm(toFormState(nextConfig));
+    configAppliedRef.current = true;
+  }, [
+    copy.loadFailed,
+    configQuery.data,
+    configQuery.isError,
+    configQuery.isPending,
+  ]);
 
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -302,6 +308,7 @@ export function NotificationEmailSettingsClient({
       setConfig(saved);
       setForm(toFormState(saved));
       setApiKey("");
+      setApiKeyDirty(false);
       toast.success(copy.saved);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : copy.saveFailed);
@@ -317,6 +324,7 @@ export function NotificationEmailSettingsClient({
       setConfig(reset);
       setForm(toFormState(reset));
       setApiKey("");
+      setApiKeyDirty(false);
       setDeleteDialogOpen(false);
       toast.success(copy.deleted);
     } catch (error) {
@@ -462,11 +470,22 @@ export function NotificationEmailSettingsClient({
                 </Label>
                 <Input
                   id="system-email-resend-api-key"
-                  type="password"
-                  value={apiKey}
-                  placeholder={apiKeyPlaceholder}
+                  type={showSavedApiKey ? "text" : "password"}
+                  value={apiKeyDisplayValue}
+                  placeholder={copy.resendApiKeyPlaceholder}
                   disabled={loading || saving || deletingConfig}
-                  onChange={(event) => setApiKey(event.target.value)}
+                  onFocus={() => {
+                    if (!showSavedApiKey) return;
+                    setApiKeyDirty(true);
+                    setApiKey("");
+                  }}
+                  onBlur={() => {
+                    if (!apiKey.trim()) setApiKeyDirty(false);
+                  }}
+                  onChange={(event) => {
+                    setApiKeyDirty(true);
+                    setApiKey(event.target.value);
+                  }}
                 />
               </div>
             </div>
@@ -615,6 +634,12 @@ export function NotificationEmailSettingsClient({
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
+              <SystemSettingsGuideDialog
+                triggerLabel={copy.guide}
+                title={copy.notificationEmailGuideTitle}
+                description={copy.notificationEmailGuideDescription}
+                steps={copy.notificationEmailGuideSteps}
+              />
             </div>
           </form>
         </CardContent>

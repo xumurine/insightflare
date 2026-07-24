@@ -6,6 +6,10 @@ import {
   una as unauthorized,
 } from "@/lib/response";
 
+import {
+  canAccessMemberSite,
+  parseMemberSiteIdsJson,
+} from "./member-site-access";
 import { requireSession } from "./session-auth";
 import type { Env } from "./types";
 import { coerceNumber, ONE_HOUR_MS } from "./utils";
@@ -39,23 +43,37 @@ function normalizeRange(
   return { start, end, length };
 }
 
-async function assertSiteMembership(
+async function assertSiteAccess(
   env: Env,
   siteId: string,
   userId: string,
 ): Promise<boolean> {
   const row = await env.DB.prepare(
     `
-      SELECT 1 AS ok
+      SELECT
+        s.id,
+        t.owner_user_id AS ownerUserId,
+        tm.role,
+        tm.site_ids_json AS siteIdsJson
       FROM sites s
-      INNER JOIN team_members tm ON tm.team_id = s.team_id
-      WHERE s.id = ? AND tm.user_id = ?
+      INNER JOIN teams t ON t.id = s.team_id
+      LEFT JOIN team_members tm ON tm.team_id = s.team_id AND tm.user_id = ?
+      WHERE s.id = ?
       LIMIT 1
     `,
   )
-    .bind(siteId, userId)
-    .first<{ ok: number }>();
-  return Boolean(row?.ok);
+    .bind(userId, siteId)
+    .first<{
+      id: string;
+      ownerUserId: string;
+      role: string | null;
+      siteIdsJson: string | null;
+    }>();
+  if (!row?.id) return false;
+  if (row.ownerUserId === userId) return true;
+  if (row.role === "owner" || row.role === "admin") return true;
+  if (!row.role) return false;
+  return canAccessMemberSite(parseMemberSiteIdsJson(row.siteIdsJson), siteId);
 }
 
 function parseWindowHours(
@@ -105,7 +123,7 @@ export async function handlePrivateArchiveManifest(
   const allowed =
     session.systemRole === "admin"
       ? true
-      : await assertSiteMembership(env, siteId, session.userId);
+      : await assertSiteAccess(env, siteId, session.userId);
   if (!allowed) {
     return unauthorized("Site access denied for current user");
   }
@@ -203,7 +221,7 @@ export async function handlePrivateArchiveFile(
   const allowed =
     session.systemRole === "admin"
       ? true
-      : await assertSiteMembership(env, row.siteId, session.userId);
+      : await assertSiteAccess(env, row.siteId, session.userId);
   if (!allowed) {
     return unauthorized("Site access denied for current user");
   }

@@ -429,7 +429,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     expect(body.kind).toBe("custom_event");
     expect(body.eventName).toBe("button_click");
     expect(body.eventData).toEqual({ color: "blue" });
-    expect(body.sequence).toBe(1);
+    expect(body.sequence).toBeUndefined();
   });
 
   it("should ignore track() invocations with empty or whitespace event names", async () => {
@@ -1145,7 +1145,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     delete (globalThis as any).IntersectionObserver;
   });
 
-  it("should normalize UA client hints when navigator.userAgentData exists", async () => {
+  it("should include UA client hints when navigator.userAgentData exists", async () => {
     const uaData = {
       brands: [{ brand: "Chromium", version: "130" }],
       mobile: false,
@@ -1437,7 +1437,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("should trim event names and increment sequence across custom events", async () => {
+  it("should trim event names without client-side sequencing", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation(() =>
@@ -1453,8 +1453,8 @@ describe("Tracker Browser SDK Integration Suite", () => {
     const firstBody = decodeFetchBody(fetchSpy, 0);
     const secondBody = decodeFetchBody(fetchSpy, 1);
     expect(firstBody.eventName).toBe("spaced_event");
-    expect(firstBody.sequence).toBe(1);
-    expect(secondBody.sequence).toBe(2);
+    expect(firstBody.sequence).toBeUndefined();
+    expect(secondBody.sequence).toBeUndefined();
   });
 
   it("should ignore inherited global property keys", async () => {
@@ -1569,7 +1569,6 @@ describe("Tracker Browser SDK Integration Suite", () => {
 
     await import("../sdk.ts");
     await new Promise((r) => queueMicrotask(r));
-    const initialVisitId = decodeFetchBody(fetchSpy).visitId;
     const api = (window as any).__insightflare_tracker_v6__;
     api.debug();
     fetchSpy.mockClear();
@@ -1586,8 +1585,10 @@ describe("Tracker Browser SDK Integration Suite", () => {
       "custom_event",
     ]);
     expect(bodies[0].pathname).toBe("/flushed-route");
-    expect(bodies[0].previousVisitId).toBe(initialVisitId);
+    expect(bodies[0].navigation).toBe("route");
+    expect(bodies[0].previousVisitId).toBeUndefined();
     expect(bodies[1].pathname).toBe("/flushed-route");
+    expect(bodies[1].navigation).toBeUndefined();
     expect(bodies[1].previousVisitId).toBeUndefined();
     expect(logSpy).toHaveBeenCalledWith(
       "[InsightFlare]",
@@ -1747,7 +1748,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     expect(body.eventData).toEqual({ label: "kept" });
   });
 
-  it("should normalize malformed UA client hints without preserving invalid values", async () => {
+  it("should forward raw UA client hints for server-side normalization", async () => {
     (navigator as any).userAgentData = {
       brands: [
         null,
@@ -1782,10 +1783,21 @@ describe("Tracker Browser SDK Integration Suite", () => {
 
     const body = decodeFetchBody(fetchSpy);
     expect(body.uaClientHints).toEqual({
-      fullVersionList: [{ brand: "Chromium", version: "130.0.6723.92" }],
-      formFactors: ["Desktop", "Foldable"],
-      model: "Surface Pro",
-      platformVersion: "15.0.0",
+      brands: [
+        null,
+        [],
+        { brand: "", version: "1" },
+        { brand: "MissingVersion", version: "" },
+      ],
+      mobile: "false",
+      platform: "   ",
+      fullVersionList: [
+        { brand: "Chromium", version: "130.0.6723.92" },
+        { brand: "", version: "bad" },
+      ],
+      formFactors: [" Desktop ", "", "Foldable"],
+      model: " Surface Pro ",
+      platformVersion: " 15.0.0 ",
     });
   });
 
@@ -2049,9 +2061,10 @@ describe("Tracker Browser SDK Integration Suite", () => {
     const body = decodeFetchBody(fetchSpy);
     expect(body.kind).toBe("pageview");
     expect(body.uaClientHints.brands).toEqual([
+      { brand: "", version: "missing-brand" },
       { brand: "Chromium", version: "130" },
     ]);
-    expect(body.uaClientHints.formFactors).toEqual(["Desktop", "Tablet"]);
+    expect(body.uaClientHints.formFactors).toEqual(["Desktop", "", "Tablet"]);
     expect(body.uaClientHints.model).toBe("Surface");
   });
 

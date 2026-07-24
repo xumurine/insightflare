@@ -1,5 +1,5 @@
 import { requireSameOrigin } from "@/lib/edge/utils";
-import { resolveLocale } from "@/lib/i18n/config";
+import { type Locale, resolveLocale } from "@/lib/i18n/config";
 import { jsonResponse } from "@/lib/response";
 
 const WIKIDATA_API_ENDPOINT = "https://www.wikidata.org/w/api.php";
@@ -8,6 +8,10 @@ const CACHE_CONTROL_HEADER =
   "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800";
 const WIKIMEDIA_USER_AGENT = "InsightFlare/0.1 (+https://insight.ravelloh.com)";
 const CACHE_HEADERS = { "cache-control": CACHE_CONTROL_HEADER };
+const WIKIPEDIA_ACCEPT_LANGUAGE: Partial<Record<Locale, string>> = {
+  zh: "zh-CN,zh;q=0.9,en;q=0.8",
+  ja: "ja-JP,ja;q=0.9,en;q=0.8",
+};
 
 interface WikidataTerm {
   value?: string;
@@ -71,7 +75,7 @@ function resolveWikipediaAcceptLanguage(request: Request): string | null {
   }
 
   const locale = resolveLocale(url.searchParams.get("locale"));
-  return locale === "zh" ? "zh-CN,zh;q=0.9,en;q=0.8" : null;
+  return WIKIPEDIA_ACCEPT_LANGUAGE[locale] ?? null;
 }
 
 function applyWikipediaVariantToUrl(
@@ -98,7 +102,7 @@ function resolveRequestedWikiLanguage(request: Request): string {
     return normalizeWikiLanguage(explicitLanguage);
   }
   const locale = resolveLocale(url.searchParams.get("locale"));
-  return locale === "zh" ? "zh" : DEFAULT_WIKI_LANGUAGE;
+  return locale === "zh" || locale === "ja" ? locale : DEFAULT_WIKI_LANGUAGE;
 }
 
 function pickPreferredValue(

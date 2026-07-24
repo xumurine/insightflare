@@ -81,6 +81,20 @@ common:
   admin: 管理员
   user: 普通用户
   search: 搜索
+  tableExport:
+    action: 导出
+    title: 导出 CSV
+    description: 将表格数据下载为 CSV 文件。
+    scopeLabel: 导出范围
+    currentTab: 当前标签页
+    allTabs: 全部标签页
+    rowsLabel: 数据
+    currentView: 当前显示数据
+    rawRows: 原始数据
+    fileNameLabel: 文件名
+    download: 导出 CSV
+    empty: 当前没有可导出的行。
+    allTabsUnavailable: 全部标签页需要在数据加载后才可导出。
   time: 时间
   cycle: 周期
   close: 关闭
@@ -389,7 +403,6 @@ funnels:
   createFailed: 创建漏斗失败。
   deleted: 漏斗已删除。
   deleteFailed: 删除漏斗失败。
-  selectPrompt: 选择一个漏斗查看转化。
   overallConversion: 总转化率
   startedSessions: 起始会话
   convertedSessions: 转化会话
@@ -646,9 +659,7 @@ performance:
   pathsAnalyzedLabel: 已分析路径
   metricValueColumn: P75 数值
   statusColumn: 状态
-share:
-  title: "{siteName} - 分析数据"
-  poweredBy: powered by
+share: {}
 siteSettings:
   title: 站点设置
   subtitle: 管理当前站点的基础信息与生命周期。
@@ -772,6 +783,7 @@ accountSettings:
   preferredLanguageDefault: 默认
   preferredLanguageEnglish: English
   preferredLanguageChinese: 中文
+  preferredLanguageJapanese: 日本語
   preferredLanguageSaved: 通知语言已保存。
   preferredLanguageSaveFailed: 保存通知语言失败。
   timeZoneTitle: 报表时区
@@ -795,17 +807,12 @@ accountSettings:
 notificationCenter:
   title: 通知中心
   subtitle: 查看你的全部通知和报告。
-  inboxTitle: 我的通知
   empty: 暂无通知。
   loading: 正在加载通知
   markRead: 标记已读
   markAllRead: 全部标记已读
   refresh: 刷新
-  unreadAttentionCount: "{count} 条未读重点通知。"
   attention: 重点
-  statusPrefix: "状态：{status}"
-  read: 已读
-  unread: 未读
   loadFailed: 加载通知失败。
   markReadFailed: 标记通知已读失败。
   markAllReadSuccess: 通知已全部标记为已读。
@@ -868,8 +875,6 @@ notificationCenter:
   emailAttempts: "尝试次数：{count}"
   emailRetryCount: "重试次数：{count}"
   emailDuration: "{duration} 毫秒"
-  filtersTitle: 筛选
-  filtersDescription: 按通知类型或严重程度缩小列表范围。
   typeFilterLabel: 类型
   severityFilterLabel: 严重程度
   allTypes: 全部类型
@@ -886,29 +891,92 @@ notificationCenter:
   alertsUnreadDescription: 阈值和健康告警保持未读。
   preferencesSaved: 通知偏好已保存。
   preferencesSaveFailed: 保存通知偏好失败。
-  showDetails: 详情
-  hideDetails: 收起详情
-  detailFields:
-    bodyText: 正文
-    type: 类型
-    severity: 严重程度
-    site: 站点
-    ruleId: 规则 ID
-    runId: 运行 ID
-    batchId: 批次 ID
-    deliveryStatus: 投递状态
-    deliveryDetails: 投递详情
-    emailStatus: 邮件状态
-    emailReason: 邮件原因
-    provider: 服务商
-    providerMessageId: 服务商消息 ID
-    duration: 耗时
-    locale: 语言
-    deliveryResults: 投递结果
-    createdAt: 创建时间
-    triggeredAt: 触发时间
-    sentAt: 发送时间
-    failedAt: 失败时间
+  detailFields: {}
+notificationEmail:
+  common:
+    brand: InsightFlare
+    date: 日期
+    coreMetrics: 核心指标
+    topPages: 热门页面
+    topReferrers: 主要来源
+    views: 浏览量
+    visitors: 访客数
+    sessions: 会话数
+    visits: 次访问
+    viewsUnit: 次浏览
+    direct: 直接访问
+    metric: 指标
+    window: 时间窗口
+    currentValue: 当前值
+    previousValue: 上一值
+    threshold: 阈值
+    milestone: 里程碑
+    change: 变化
+    mode: 模式
+    lastSeen: 最后收到数据
+    never: 从未收到
+    noPageData: 暂无页面数据。
+    noReferrerData: 暂无来源数据。
+    footer: 这封邮件由 InsightFlare 通知系统发送。
+    fallbackSubject: InsightFlare 通知
+    trackingHint: 请检查统计脚本是否正常安装，或确认站点是否仍有流量。
+    severity:
+      info: 信息
+      success: 成功
+      warning: 警告
+      critical: 严重
+  test:
+    subject: InsightFlare 通知测试
+    title: InsightFlare 通知测试
+    summary: 这是一条来自 InsightFlare 的测试通知。
+    body: 这是一条来自 InsightFlare 的测试通知。如果邮件已配置并启用，它也会验证 Resend 投递是否正常。
+  report:
+    subject: "{site} {periodLabel}访问报告"
+    title: "{site} {periodLabel}访问报告"
+    summary: "{date}：{visitors} 位访客，{views} 次浏览。"
+    periodLabels:
+      daily: 每日
+      weekly: 每周
+      monthly: 每月
+      quarterly: 每季度
+      yearly: 每年
+  milestone:
+    subject: "{site} 达到 {bucket} {metric}"
+    title: "{site} 达到 {bucket} {metric}"
+    summary: "已达到流量里程碑：{bucket} {metric}。"
+  threshold:
+    subject: "{site} 访问量达到阈值"
+    title: "{site} 访问量达到阈值"
+    summary: "{window}的{metric}为 {value}，已匹配阈值 {operator} {target}。"
+    metricLabels:
+      views: 浏览量
+      visitors: 访客数
+      sessions: 会话数
+    windows:
+      last_1h: 过去 1 小时
+      last_24h: 过去 24 小时
+      yesterday: 昨天
+  health:
+    subject: "{site} 已超过 {hours} 小时没有收到访问数据"
+    title: "{site} 已超过 {hours} 小时没有收到访问数据"
+    noHistory: 当前没有历史访问数据。请检查统计脚本是否已正确安装。
+  change:
+    subject: "{site} 流量变化提醒"
+    title: "{site} 流量变化提醒"
+    summary: "{window}的{metric}变化了 {change}。"
+runtimeConfigError:
+  title: 需要运行时配置
+  eyebrow: 部署已暂停
+  heading: InsightFlare 需要一个运行时密钥后才能加载控制台。
+  description: 应用已经启动，但当前运行环境没有读取到必需的 root secret，因此暂时阻止进入控制台。
+  requiredTitle: 必需的运行时密钥
+  requiredDescription: 请在 Cloudflare 运行时密钥中至少设置以下其中一个值。
+  secretHint: 推荐使用 MAIN_SECRET。旧部署仍可继续使用 DAILY_SALT_SECRET。
+  commandTitle: Cloudflare 命令
+  commandDescription: 使用项目内置命令写入推荐密钥，然后重新部署。
+  quickStartHint: 或者，请查看 GitHub README 的“快速开始”章节来设置这个变量。
+  docsLabel: 打开 GitHub
+  homeLabel: 重试控制台
 login:
   title: 登录
   subtitle: 使用 InsightFlare 账号登录。
@@ -967,6 +1035,7 @@ actions:
   logout: 退出登录
   switchToEnglish: English
   switchToChinese: 中文
+  switchToJapanese: 日本語
   switchToLight: 浅色
   switchToDark: 深色
 teamSelect:
@@ -998,14 +1067,13 @@ teamManagement:
     teamSaveFailed: 团队设置保存失败。
     teamDeleted: 团队已删除。
     teamDeleteFailed: 删除团队失败。
-    memberAdded: 成员已添加。
-    memberAddFailed: 添加成员失败。
     memberRemoved: 成员已移除。
     memberRemoveFailed: 移除成员失败。
     roleChanged: 成员角色已更新。
     roleChangeFailed: 更新成员角色失败。
+    siteAccessChanged: 成员站点权限已更新。
+    siteAccessChangeFailed: 更新站点权限失败。
     invalidTeamName: 团队名称至少 2 个字符。
-    invalidMemberIdentifier: 请输入有效的用户名或邮箱。
     inviteCreated: 邀请链接已创建。
     inviteCreateFailed: 创建邀请链接失败。
     inviteRevoked: 邀请已撤销。
@@ -1026,9 +1094,8 @@ teamManagement:
     openAnalytics: 查看分析
   widgets:
     title: 小组件
-    subtitle: 管理当前团队各站点的小组件配置。
-    noSites: 当前团队还没有可配置小组件的站点。
-    openWidgets: 管理小组件
+    subtitle: 小组件功能正在开发中。
+    underConstruction: 正在施工中
   notifications:
     title: 事件通知
     subtitle: 管理当前团队的事件通知规则。
@@ -1037,7 +1104,6 @@ teamManagement:
     forbiddenDescription: 你仍然可以查看自己的通知消息，并修改个人通知偏好。
     rulesTitle: 通知规则
     enabledCount: "当前团队已启用 {count} 条规则。"
-    createTestRule: 创建测试规则
     loadingRules: 正在加载通知规则
     deliveryTestTitle: 投递测试
     deliveryTestDescription: 为你创建一条站内通知；如果可用，也会尝试发送邮件。
@@ -1045,10 +1111,7 @@ teamManagement:
     emailTestConfiguredHint: 我们会向你发送一条测试邮件。
     emailTestUnconfiguredHint: 当前系统未设置邮件发送服务，请联系管理员添加。
     sendTestNotification: 发送测试通知
-    testRuleName: 每小时通知测试
     loadRulesFailed: 加载通知规则失败。
-    testRuleCreated: 测试规则已创建。
-    createTestRuleFailed: 创建测试规则失败。
     testNotificationSent: 测试通知已发送。
     sendTestNotificationFailed: 发送测试通知失败。
     createRule: 创建规则
@@ -1105,14 +1168,12 @@ teamManagement:
     ruleDeleted: 规则已删除。
     deleteRuleFailed: 删除规则失败。
     lastChecked: 上次检查
-    lastTriggered: 上次触发
     actions: 操作
     edit: 编辑
     enable: 启用
     disable: 停用
     delete: 删除
     saveRule: 保存规则
-    viewMessages: 查看消息
     emailPreview: 邮件预览
     preview: 预览
     runNow: 立即运行
@@ -1139,7 +1200,6 @@ teamManagement:
     summaryConditionThreshold: "{window}{metric}{operator}{value}"
     summaryConditionChange: "{window}{metric}{mode}变化{operator}{value}"
     summaryReportSchedule: "{period}：{schedule}"
-    summaryReportCondition: "生成{period}报告"
     summaryMilestoneCondition: "{metric} 每达到 {step} 触发"
     summaryHealthCondition: "{hours} 小时无数据"
     defaultNames:
@@ -1257,12 +1317,10 @@ teamManagement:
   publicLinks:
     title: 公开链接
     subtitle: 管理当前团队可公开访问的分享链接。
-    empty: 当前团队还没有公开链接。
     enabled: 已启用
     disabled: 未启用
     disabledHint: 未启用公开访问。前往站点设置开启。
     viewSettings: 查看设置
-    publicUrl: 公开链接
     copyLink: 复制链接
     linkCopied: 链接已复制
     noSites: 当前团队还没有站点。
@@ -1358,10 +1416,6 @@ teamManagement:
   members:
     title: 成员管理
     subtitle: 创建邀请链接或移除现有成员。
-    identifierLabel: 用户名或邮箱
-    identifierPlaceholder: 例如：alice 或 alice@example.com
-    add: 添加成员
-    adding: 添加中...
     remove: 移除
     noMembers: 当前团队暂无成员。
     invitesTitle: 创建邀请链接
@@ -1377,6 +1431,16 @@ teamManagement:
     noInvites: 当前团队暂无邀请链接。
     anyEmail: 任意邮箱
     revokeInvite: 撤销邀请
+    siteAccessLabel: 站点权限
+    siteAccessAll: 全部站点
+    siteAccessRestricted: 限定站点
+    siteAccessSelected: "已选择 {count} 个站点"
+    siteAccessDescription: 保持为全部站点，或选择此成员可以访问的具体站点。
+    siteAccessAdmins: 管理员可以访问此团队内的全部站点。
+    siteAccessDialogTitle: 编辑站点权限
+    saveSiteAccess: 保存权限
+    cancelSiteAccess: 取消
+    noSitesForAccess: 当前团队暂无站点。
     inviteStatuses:
       active: 有效
       used: 已使用
@@ -1388,6 +1452,7 @@ teamManagement:
       email: 邮箱
       inviteCode: 邀请码
       role: 角色
+      siteAccess: 站点权限
       joinedAt: 加入时间
       createdAt: 创建时间
       expiresAt: 过期时间
@@ -1442,7 +1507,6 @@ managementPages:
     empty: 暂无定时任务。
     refresh: 刷新
     loadFailed: 加载定时任务失败。
-    allTasks: 全部任务
     allStatuses: 全部状态
     runs24h: 24 小时运行
     successRate24h: 24 小时成功率
@@ -1601,48 +1665,32 @@ adminTeams:
 requestObservation:
   title: 请求观测
   subtitle: 基于 Analytics Engine 观察整体请求、异常分流与正常采集链路。
+  tabs:
+    overview: 总览
+    abnormal: 异常请求
+    normal: 正常请求
   refresh: 刷新
   loadFailed: 加载请求观测数据失败。
   notConfiguredTitle: 尚未配置 Analytics Engine 读取凭据
   notConfiguredDescription: 请先在系统设置中填写 Cloudflare Account ID 和 API Token，用于读取请求观测 Analytics Engine 数据集。
   analyticsEngineDisabledTitle: Analytics Engine 尚未启用
-  analyticsEngineDisabledDescription: 当前部署未绑定 Analytics Engine，因为 Cloudflare 账户尚未启用 Analytics Engine。请先在 Cloudflare 中启用，然后重新部署以采集请求观测数据。
+  analyticsEngineDisabledDescription:
+    当前部署未绑定 Analytics Engine，因为 Cloudflare
+    账户尚未启用 Analytics Engine。请先在 Cloudflare 中启用，然后重新部署以采集请求观测数据。
   openAnalyticsEngine: 打开 Analytics Engine
   openSettings: 打开设置
-  range1h: 最近 1 小时
-  range6h: 最近 6 小时
-  range24h: 最近 24 小时
-  range7d: 最近 7 天
-  range30d: 最近 30 天
-  total: 总请求数
-  botRequests: 机器人请求数
-  allRequests: 全站请求量
-  botRequestRatio: 机器人请求比例
-  botTrafficRatio: 机器人流量比例
   highConfidenceBots: 高置信机器人
   affectedSites: 受影响站点
-  sourceNetworks: 来源网络
-  rollupBaseline: 基于正常与异常请求数据集
-  highConfidence: 高置信度
-  mediumConfidence: ASN 分流
-  uniqueAsns: ASN 数
   uniqueCountries: 国家/地区
-  mapTitle: 请求地图
-  mapDescription: 按 Cloudflare 边缘地理信息聚合当前时间窗口内的请求。
   noData: 当前时间窗口内没有请求数据。
   trendTitle: 分流趋势
   trendDescription: 按时间间隔显示正常请求、异常请求与分流比例。
-  reasonsTitle: 判定原因
-  reasonsDescription: 触发分流的信号。
-  asnTitle: 来源网络
-  asnDescription: 最常出现的托管和云服务 ASN。
   recentTitle: 最近机器人请求
   recentDescription: 这些详细记录只写入机器人 Analytics Engine 数据集。
   recentShowing: 已显示
   recentLoadedAll: 已加载全部记录
   detailTitle: 机器人请求详情
   detailSubtitle: 查看这次分流请求的检测信号、网络和客户端上下文。
-  detection: 检测
   client: 客户端
   edge: 边缘
   identifiers: 标识符
@@ -1693,37 +1741,91 @@ requestObservation:
     pageview: 页面浏览
     custom_event: 自定义事件
     request: 请求
+  overviewLabels:
+    totalRequests: 总请求数
+    normalRequests: 正常请求
+    abnormalRequests: 异常请求
+    abnormalRatio: 异常请求比例
+    p50Latency: P50 边缘耗时
+    p75Latency: P75 边缘耗时
+    p95Latency: P95 边缘耗时
+    p99Latency: P99 边缘耗时
+    avgLatency: 平均边缘耗时
+    pageviews: 页面浏览
+    customEvents: 自定义事件
+    overviewTrendTitle: 请求分流趋势
+    overviewTrendDescription: 按顶栏时间间隔分桶显示正常与异常请求，以及异常请求比例。
+    trafficCompositionTitle: 请求构成
+    trafficCompositionDescription: 正常请求、异常请求和页面事件在同一时间轴上的变化。
+    confidenceShareTitle: 请求置信度占比
+    normalTrafficShare: 正常流量
+    lowConfidenceTraffic: 低置信度流量
+    mediumConfidenceTraffic: 中置信度流量
+    highConfidenceTraffic: 高置信度流量
+    latencyTitle: 边缘耗时趋势
+    latencyDescription: 正常请求写入 AE 时记录的 P50 / P75 / P95 / P99 边缘耗时。
+    abnormalSubtitle: 聚焦已分流的异常请求，地图和统计表只显示红色异常流量。
+    normalSubtitle: 聚焦进入正常采集链路的请求，地图和统计表只显示绿色正常流量。
+    requests: 请求数
+    windowDays: "最近 {days} 天"
+    latencyMilliseconds: "{value} 毫秒"
+  normalDetail:
+    title: 正常请求详情
+    subtitle: 查看正常请求 AE 记录的链路、位置和耗时字段。
+    requestMethod: 请求方法
+    edgeLatency: 边缘耗时
+    eventAt: 事件时间
+    receivedAt: 接收时间
+    coordinates: 坐标
+    continent: 大洲
+  recentNormal:
+    title: 最近正常请求
+    description: 这些详细记录只写入正常请求 Analytics Engine 数据集。
 systemSettings:
   title: 系统设置
   subtitle: 管理当前 InsightFlare 实例的全站配置。
-  botAnalyticsTitle: 机器人分析引擎
-  botAnalyticsDescription: 配置用于读取机器人分流 Analytics Engine 数据集的 Cloudflare 凭据。
+  guide: 教程
+  botAnalyticsTitle: 分析引擎
+  botAnalyticsDescription: 配置用于读取 Analytics Engine 数据的 Cloudflare 凭据，供机器人防护等分析功能使用。
   botAnalyticsAccountIdLabel: Cloudflare Account ID
-  botAnalyticsDatasetLabel: Analytics Engine 数据集
   botAnalyticsApiTokenLabel: Cloudflare API Token
-  botAnalyticsApiTokenPlaceholder: 留空表示保留已保存的 API Token
-  botAnalyticsTokenSaved: Token 已保存
-  botAnalyticsTokenNotSaved: 尚未保存 Token
-  botAnalyticsSaved: 机器人分析配置已保存。
-  botAnalyticsSaveFailed: 保存机器人分析配置失败。
-  botAnalyticsDeleted: 机器人分析配置已删除。
-  botAnalyticsDeleteFailed: 删除机器人分析配置失败。
-  botAnalyticsDeleteConfirm: 确认删除机器人分析读取配置吗？删除后机器人防护页面会显示需要配置。
-  botAnalyticsEngineDisabledBadge: Analytics Engine 已禁用
+  botAnalyticsApiTokenPlaceholder: 查看教程以获取 Cloudflare API Token
+  botAnalyticsSaved: 分析引擎配置已保存。
+  botAnalyticsSaveFailed: 保存分析引擎配置失败。
+  botAnalyticsDeleted: 分析引擎配置已删除。
+  botAnalyticsDeleteFailed: 删除分析引擎配置失败。
+  botAnalyticsDeleteConfirm: 确认删除分析引擎读取配置吗？删除后依赖 Analytics Engine 的功能会显示需要配置。
   botAnalyticsEngineDisabledTitle: Analytics Engine 尚未启用
-  botAnalyticsEngineDisabledDescription: 当前部署已自动禁用 Analytics Engine 绑定，因为 Cloudflare 账户尚未启用 Analytics Engine。请先在 Cloudflare 中启用 Analytics Engine，然后重新部署 InsightFlare 以激活机器人分析。
-  botAnalyticsEngineDisabledHint: 在启用 Analytics Engine 并重新部署 Worker 前，机器人分析设置不可修改。
+  botAnalyticsEngineDisabledDescription:
+    当前部署已自动禁用 Analytics Engine 绑定，因为
+    Cloudflare 账户尚未启用 Analytics Engine。请先在 Cloudflare 中启用 Analytics
+    Engine，然后重新部署 InsightFlare 以激活相关分析功能。
+  botAnalyticsEngineDisabledHint: 在启用 Analytics Engine 并重新部署 Worker 前，分析引擎设置不可修改。
   botAnalyticsOpenCloudflare: 打开 Cloudflare Analytics Engine
+  botAnalyticsGuideTitle: 获取分析引擎配置
+  botAnalyticsGuideDescription: 分析引擎需要 Cloudflare 账号信息和一个可读取 Analytics Engine 的 API Token。
+  botAnalyticsGuideSteps:
+    - 打开 Cloudflare Dashboard，进入目标账号并复制 Account ID。
+    - 在 Workers & Pages 中启用 Analytics Engine；机器人和普通请求数据集会随部署自动创建并绑定。
+    - 前往 My Profile → API Tokens，创建 Custom token。
+    - 为 Token 添加 Account Analytics 读取权限，并限制到当前账号。
+    - 保存后复制 Token，回到这里填写 Account ID 和 API Token。
   notificationEmailTitle: 邮件通知
   notificationEmailDescription: 配置系统用于发送报告、告警和测试邮件的邮件服务。
+  notificationEmailGuideTitle: 获取 Resend 邮件配置
+  notificationEmailGuideDescription: 使用 Resend 发送系统邮件前，需要准备发件域名和 API Key。
+  notificationEmailGuideSteps:
+    - 打开 Resend Dashboard，并确认要作为发件人的域名已完成 DNS 验证。
+    - 在 API Keys 页面创建新的 API Key。
+    - 选择发送邮件所需的权限，并复制生成后的 API Key。
+    - 回到这里填写发件人名称、发件邮箱、Reply-To 和 Resend API Key。
+    - 保存后使用测试收件人发送一封测试邮件，确认投递链路正常。
   loginTurnstileTitle: 登录 Turnstile 保护
   loginTurnstileDescription: 启用后，登录页会在后台执行 Cloudflare Turnstile Invisible 验证，并在服务端登录流程中强制校验。
   loginTurnstileEnabledLabel: 启用登录保护
   loginTurnstileSiteKeyLabel: Site Key
   loginTurnstileSecretKeyLabel: Secret Key
-  loginTurnstileSecretKeyPlaceholder: 留空表示保留已保存的 Secret Key
-  loginTurnstileSecretKeySaved: 已保存
-  loginTurnstileSecretKeyNotSaved: 尚未保存 Secret Key
+  loginTurnstileSecretKeyPlaceholder: 查看教程以获取 Turnstile Secret Key
   loginTurnstileModeLabel: 验证模式
   loginTurnstileModeInvisible: Invisible
   loginTurnstileTest: 测试验证
@@ -1738,7 +1840,16 @@ systemSettings:
   loginTurnstileDeleteFailed: 删除登录 Turnstile 配置失败。
   loginTurnstileDeleteConfirm: 确认删除登录 Turnstile 配置吗？删除后登录保护将关闭。
   loginTurnstileLoadFailed: 加载登录 Turnstile 配置失败。
-  loginTurnstilePrivacyNotice: 请在 Cloudflare Turnstile 控制台创建 Invisible widget。自托管站点启用后，请自行确认隐私政策与 Cloudflare Turnstile 要求匹配。
+  loginTurnstilePrivacyNotice: 请在 Cloudflare Turnstile 控制台创建 Invisible
+    widget。自托管站点启用后，请自行确认隐私政策与 Cloudflare Turnstile 要求匹配。
+  loginTurnstileGuideTitle: 获取 Turnstile 配置
+  loginTurnstileGuideDescription: 登录保护需要 Cloudflare Turnstile 的 Site Key 和 Secret Key。
+  loginTurnstileGuideSteps:
+    - 打开 Cloudflare Dashboard，进入 Turnstile。
+    - 新建一个 widget，并选择 Invisible 模式。
+    - 添加当前 InsightFlare 登录域名到允许的主机名列表。
+    - 创建后复制 Site Key 和 Secret Key。
+    - 回到这里填写 Site Key 和 Secret Key，先运行测试验证，再保存配置。
   enabledLabel: 启用邮件发送
   enabledOn: 开启
   enabledOff: 关闭
@@ -1749,9 +1860,7 @@ systemSettings:
   replyToLabel: Reply-To 邮箱
   replyToPlaceholder: 可选，默认使用发件人邮箱
   resendApiKeyLabel: Resend API Key
-  resendApiKeyPlaceholder: 留空表示保留已保存的 API Key
-  resendApiKeySaved: 已保存
-  clearApiKey: 清除已保存的 API Key
+  resendApiKeyPlaceholder: 查看教程以获取 Resend API Key
   testRecipientLabel: 测试收件人
   save: 保存配置
   saving: 保存中...
@@ -1768,8 +1877,6 @@ systemSettings:
   testSent: 测试邮件已发送。
   testFailed: 测试邮件发送失败。
   loadFailed: 加载邮件配置失败。
-  invalidEmail: 请填写有效邮箱。
-  missingApiKey: 启用 Resend 时需要配置 API Key。
 systemPerformance:
   title: 系统性能
   subtitle: 基于现有分析行监控 InsightFlare 的采集、缓冲和写入健康度。

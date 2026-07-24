@@ -1,4 +1,5 @@
 import { resolveReportingTimeZone } from "@/lib/dashboard/time-zone";
+import { appNow } from "@/lib/edge/e2e-clock";
 import { coerceNumber, ONE_DAY_MS } from "@/lib/edge/utils";
 
 import {
@@ -19,7 +20,7 @@ import {
 } from "./core-types";
 
 export function parseWindow(url: URL): QueryWindow | null {
-  const nowMs = Date.now();
+  const nowMs = appNow();
   const defaultFrom = nowMs - ONE_DAY_MS;
   const rawFrom = url.searchParams.get("from");
   const rawTo = url.searchParams.get("to");

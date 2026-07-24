@@ -17,11 +17,13 @@ import type {
   TeamData,
   TrendData,
 } from "@/lib/edge-client-types";
+import type { Locale } from "@/lib/i18n/config";
 import type { PublicNotificationEmailConfig } from "@/lib/notifications/email-config";
 import type { SiteScriptSettings } from "@/lib/site-settings";
 
 import { getSessionToken } from "./auth";
 import { DEFAULT_EDGE_BASE_URL } from "./constants";
+import { requestHeader } from "./request-headers";
 
 export type * from "@/lib/edge-client-types";
 
@@ -40,6 +42,7 @@ interface FetchEdgeOptions {
   params?: Record<string, string | number>;
   body?: unknown;
   isPublic?: boolean;
+  signal?: AbortSignal;
 }
 
 async function edgeBaseUrl(): Promise<string> {
@@ -52,12 +55,12 @@ async function edgeBaseUrl(): Promise<string> {
   }
 
   try {
-    const { headers } = await import("next/headers");
-    const h = await headers();
-    const host = h.get("x-forwarded-host") || h.get("host");
+    const host =
+      (await requestHeader("x-forwarded-host")) ||
+      (await requestHeader("host"));
     if (host) {
       const proto =
-        h.get("x-forwarded-proto") ||
+        (await requestHeader("x-forwarded-proto")) ||
         (host.startsWith("localhost") || host.startsWith("127.0.0.1")
           ? "http"
           : "https");
@@ -113,7 +116,7 @@ function withFilters(
 }
 
 async function fetchEdgeJson<T>(options: FetchEdgeOptions): Promise<T> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     return handleDemoRequest({
       path: options.path,
@@ -155,6 +158,7 @@ async function fetchEdgeJson<T>(options: FetchEdgeOptions): Promise<T> {
     headers,
     body: method === "GET" ? undefined : JSON.stringify(options.body ?? {}),
     cache: "no-store",
+    signal: options.signal,
   });
 
   if (!res.ok) {
@@ -333,10 +337,14 @@ export async function transferAdminTeamOwner(input: {
   return res.data;
 }
 
-export async function fetchAdminSites(teamId: string): Promise<SiteData[]> {
+export async function fetchAdminSites(
+  teamId: string,
+  options?: { signal?: AbortSignal },
+): Promise<SiteData[]> {
   const res = await fetchEdgeJson<{ ok: boolean; data: SiteData[] }>({
     path: "/api/private/admin/sites",
     params: { teamId },
+    signal: options?.signal,
   });
   return res.data;
 }
@@ -389,10 +397,14 @@ export async function removeAdminSite(input: {
   return res.data;
 }
 
-export async function fetchAdminMembers(teamId: string): Promise<MemberData[]> {
+export async function fetchAdminMembers(
+  teamId: string,
+  options?: { signal?: AbortSignal },
+): Promise<MemberData[]> {
   const res = await fetchEdgeJson<{ ok: boolean; data: MemberData[] }>({
     path: "/api/private/admin/members",
     params: { teamId },
+    signal: options?.signal,
   });
   return res.data;
 }
@@ -402,6 +414,7 @@ export async function addAdminMember(input: {
   identifier: string;
   userId?: string;
   role?: TeamRole;
+  siteIds?: string[];
 }): Promise<MemberData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: MemberData }>({
     method: "POST",
@@ -423,6 +436,22 @@ export async function updateAdminMemberRole(input: {
     method: "PATCH",
     path: "/api/private/admin/members",
     body: { ...input, intent: "update_role" },
+  });
+  return res.data;
+}
+
+export async function updateAdminMemberSiteAccess(input: {
+  teamId: string;
+  userId: string;
+  siteIds: string[];
+}): Promise<{ teamId: string; userId: string; siteIds: string[] }> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: { teamId: string; userId: string; siteIds: string[] };
+  }>({
+    method: "PATCH",
+    path: "/api/private/admin/members",
+    body: { ...input, intent: "update_site_access" },
   });
   return res.data;
 }
@@ -572,6 +601,7 @@ export async function removeAdminUser(input: {
 
 export async function fetchNotificationRules(input: {
   teamId: string;
+  signal?: AbortSignal;
 }): Promise<NotificationRuleData[]> {
   const res = await fetchEdgeJson<{
     ok: boolean;
@@ -579,16 +609,20 @@ export async function fetchNotificationRules(input: {
   }>({
     path: "/api/private/admin/notification-rules",
     params: { teamId: input.teamId },
+    signal: input.signal,
   });
   return Array.isArray(res.data) ? (res.data as NotificationRuleData[]) : [];
 }
 
-export async function fetchNotificationEmailConfig(): Promise<PublicNotificationEmailConfig> {
+export async function fetchNotificationEmailConfig(options?: {
+  signal?: AbortSignal;
+}): Promise<PublicNotificationEmailConfig> {
   const res = await fetchEdgeJson<{
     ok: boolean;
     data: PublicNotificationEmailConfig;
   }>({
     path: "/api/private/admin/notification-email",
+    signal: options?.signal,
   });
   return res.data;
 }
@@ -687,8 +721,9 @@ export async function fetchNotificationMessages(input: {
   type?: string;
   severity?: string;
   unread?: boolean;
-  locale?: "en" | "zh";
+  locale?: Locale;
   limit?: number;
+  signal?: AbortSignal;
 }): Promise<{
   messages: NotificationMessageData[];
   unreadAttentionCount: number;
@@ -708,6 +743,7 @@ export async function fetchNotificationMessages(input: {
       ...(input.locale ? { locale: input.locale } : {}),
       ...(input.limit ? { limit: input.limit } : {}),
     },
+    signal: input.signal,
   });
   const data =
     res.data && typeof res.data === "object"
@@ -729,7 +765,7 @@ export async function fetchNotificationMessages(input: {
 
 export async function fetchNotificationEmailPreview(input: {
   type: "test" | "report" | "milestone" | "threshold" | "change" | "health";
-  locale: "en" | "zh";
+  locale: Locale;
   format: "html" | "text" | "json";
 }): Promise<
   | string
@@ -774,7 +810,7 @@ export async function fetchNotificationEmailPreview(input: {
 
 export async function markNotificationMessageRead(input: {
   messageId: string;
-  locale?: "en" | "zh";
+  locale?: Locale;
 }): Promise<NotificationMessageData | null> {
   const res = await fetchEdgeJson<{
     ok: boolean;
@@ -865,12 +901,15 @@ export type NotificationPreferencesUpdate = Partial<
   attention?: Partial<NotificationPreferencesData["attention"]>;
 };
 
-export async function fetchNotificationPreferences(): Promise<NotificationPreferencesData> {
+export async function fetchNotificationPreferences(options?: {
+  signal?: AbortSignal;
+}): Promise<NotificationPreferencesData> {
   const res = await fetchEdgeJson<{
     ok: boolean;
     data: NotificationPreferencesData;
   }>({
     path: "/api/private/notifications/preferences",
+    signal: options?.signal,
   });
   return normalizeNotificationPreferencesData(res.data);
 }

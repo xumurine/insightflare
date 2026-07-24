@@ -1,5 +1,3 @@
-"use client";
-
 import { useMemo } from "react";
 
 import { type CampaignTab } from "@/components/dashboard/campaign-utils";
@@ -46,6 +44,7 @@ function CampaignTrendPanel({
       siteId={siteId}
       window={window}
       filters={filters}
+      queryKey={["campaign", tab]}
       title={title}
       fetchTrend={fetchTrend}
       otherLabel={messages.browsers.otherLabel}

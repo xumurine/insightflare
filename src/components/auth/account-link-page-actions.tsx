@@ -1,12 +1,10 @@
-"use client";
-
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { RiTranslate2 } from "@remixicon/react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
-import type { Locale } from "@/lib/i18n/config";
+import { type Locale, SUPPORTED_LOCALES } from "@/lib/i18n/config";
+import Link from "@/lib/router";
 
 interface AccountLinkPageActionsProps {
   locale: Locale;
@@ -15,6 +13,7 @@ interface AccountLinkPageActionsProps {
   darkLabel: string;
   englishLabel: string;
   chineseLabel: string;
+  japaneseLabel: string;
 }
 
 export function AccountLinkPageActions({
@@ -24,8 +23,14 @@ export function AccountLinkPageActions({
   darkLabel,
   englishLabel,
   chineseLabel,
+  japaneseLabel,
 }: AccountLinkPageActionsProps) {
   const [hash, setHash] = useState("");
+  const languageLabels: Record<Locale, string> = {
+    en: englishLabel,
+    zh: chineseLabel,
+    ja: japaneseLabel,
+  };
 
   useEffect(() => {
     setHash(window.location.hash);
@@ -38,26 +43,19 @@ export function AccountLinkPageActions({
         darkLabel={darkLabel}
         className="w-fit self-end"
       />
-      <Button
-        variant={locale === "en" ? "default" : "outline"}
-        size="xs"
-        asChild
-      >
-        <Link href={`/en${path}${hash}`}>
-          <RiTranslate2 className="size-3" />
-          <span>{englishLabel}</span>
-        </Link>
-      </Button>
-      <Button
-        variant={locale === "zh" ? "default" : "outline"}
-        size="xs"
-        asChild
-      >
-        <Link href={`/zh${path}${hash}`}>
-          <RiTranslate2 className="size-3" />
-          <span>{chineseLabel}</span>
-        </Link>
-      </Button>
+      {SUPPORTED_LOCALES.map((item) => (
+        <Button
+          key={item}
+          variant={locale === item ? "default" : "outline"}
+          size="xs"
+          asChild
+        >
+          <Link href={`/${item}${path}${hash}`}>
+            <RiTranslate2 className="size-3" />
+            <span>{languageLabels[item]}</span>
+          </Link>
+        </Button>
+      ))}
     </div>
   );
 }

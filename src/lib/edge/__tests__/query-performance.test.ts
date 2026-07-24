@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { DashboardFilters, QueryWindow } from "@/lib/edge/query/core";
 import {
   handlePerformance,
+  queryAllPerformanceTrendsFromD1,
   queryPerformanceCountriesFromD1,
   queryPerformanceRoutesFromD1,
   queryPerformanceSummariesFromD1,
@@ -243,6 +244,61 @@ describe("edge query performance D1 helpers", () => {
         samples: 0,
       },
     ]);
+  });
+
+  it("queries and groups every metric trend in one D1 statement", async () => {
+    const { env, calls } = createD1Env([
+      [
+        {
+          metric: "lcp",
+          bucket: 0,
+          samples: 3,
+          avgValue: 100.3333,
+          p50: 80,
+          p75: 120.5555,
+          p95: 250.9999,
+        },
+        {
+          metric: "ttfb",
+          bucket: 1,
+          samples: 2,
+          avgValue: 50,
+          p50: 40,
+          p75: 60,
+          p95: 70,
+        },
+        { metric: "unknown", bucket: 0, samples: 99 },
+      ],
+    ]);
+
+    const result = await queryAllPerformanceTrendsFromD1(
+      env,
+      siteId,
+      window,
+      "hour",
+      { country: "US" },
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.sql).toContain("PARTITION BY metric, bucket");
+    expect(calls[0]?.sql).toContain("'ttfb' AS metric");
+    expect(calls[0]?.sql).toContain("'inp' AS metric");
+    expect(calls[0]?.bindings).toEqual([...visitBindings, "us"]);
+    expect(result.lcp).toEqual([
+      {
+        bucket: 0,
+        timestampMs: Date.UTC(2026, 0, 2, 1),
+        avg: 100.333,
+        p50: 80,
+        p75: 120.556,
+        p95: 251,
+        samples: 3,
+      },
+    ]);
+    expect(result.ttfb).toHaveLength(1);
+    expect(result.fcp).toEqual([]);
+    expect(result.cls).toEqual([]);
+    expect(result.inp).toEqual([]);
   });
 
   it("groups route metrics by normalized pathname and preserves empty metric buckets", async () => {
@@ -526,5 +582,41 @@ describe("edge query performance D1 helpers", () => {
       error: { message: "Invalid time window" },
     });
     expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it("serves the performance dashboard with four D1 statements", async () => {
+    const { env, prepare } = createD1Env([
+      [],
+      [
+        {
+          metric: "lcp",
+          bucket: 0,
+          samples: 2,
+          avgValue: 150,
+          p50: 100,
+          p75: 200,
+          p95: 200,
+        },
+      ],
+      [],
+      [],
+    ]);
+
+    const response = await handlePerformance(
+      env,
+      siteId,
+      new URL(
+        "https://edge.test/performance?from=1767317400000&to=1767323100000&interval=hour",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(prepare).toHaveBeenCalledTimes(4);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      trends: {
+        lcp: [{ bucket: 0, avg: 150, p75: 200, samples: 2 }],
+      },
+    });
   });
 });

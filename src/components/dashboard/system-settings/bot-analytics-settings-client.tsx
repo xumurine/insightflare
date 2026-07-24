@@ -1,13 +1,12 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RiCloseLine,
   RiDeleteBinLine,
   RiExternalLinkLine,
-  RiRobot2Line,
+  RiLineChartLine,
   RiSave3Line,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import {
@@ -21,8 +20,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -38,6 +37,8 @@ import type { PublicBotAnalyticsConfig } from "@/lib/bot-analytics-config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { cn } from "@/lib/utils";
 
+import { SystemSettingsGuideDialog } from "./system-settings-guide-dialog";
+
 interface BotAnalyticsSettingsClientProps {
   messages: AppMessages;
 }
@@ -49,17 +50,14 @@ interface ApiResponse<T> {
   message?: string;
 }
 
-type FormState = Pick<
-  PublicBotAnalyticsConfig,
-  "accountId" | "dataset" | "normalDataset"
->;
+type FormState = Pick<PublicBotAnalyticsConfig, "accountId">;
 
 const API_PATH = "/api/private/admin/bot-analytics-config";
 const ANALYTICS_ENGINE_ENABLE_URL =
   "https://dash.cloudflare.com/?to=/:account/workers/analytics-engine";
 
 function demoAnalyticsEngineDisabled(): boolean {
-  return process.env.NEXT_PUBLIC_INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED === "1";
+  return import.meta.env.VITE_INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED === "1";
 }
 
 function defaultConfig(): PublicBotAnalyticsConfig {
@@ -78,8 +76,6 @@ function defaultConfig(): PublicBotAnalyticsConfig {
 function toFormState(config: PublicBotAnalyticsConfig): FormState {
   return {
     accountId: config.accountId,
-    dataset: config.dataset,
-    normalDataset: config.normalDataset,
   };
 }
 
@@ -100,8 +96,10 @@ function apiMessage(payload: ApiResponse<unknown>, fallback: string): string {
   return fallback;
 }
 
-async function fetchConfig(): Promise<PublicBotAnalyticsConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+async function fetchConfig(
+  signal?: AbortSignal,
+): Promise<PublicBotAnalyticsConfig> {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     return {
       ...defaultConfig(),
       analyticsEngineDisabled: demoAnalyticsEngineDisabled(),
@@ -113,6 +111,7 @@ async function fetchConfig(): Promise<PublicBotAnalyticsConfig> {
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   const payload =
     (await response.json()) as ApiResponse<PublicBotAnalyticsConfig>;
@@ -125,12 +124,10 @@ async function fetchConfig(): Promise<PublicBotAnalyticsConfig> {
 async function saveConfig(
   body: Record<string, unknown>,
 ): Promise<PublicBotAnalyticsConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     return {
       ...defaultConfig(),
       accountId: String(body.accountId || ""),
-      dataset: String(body.dataset || "insightflare_bot_events"),
-      normalDataset: String(body.normalDataset || "insightflare_normal_events"),
       apiTokenConfigured: Boolean(body.apiToken),
       apiTokenHint: body.apiToken ? "••••demo" : "",
       analyticsEngineDisabled: false,
@@ -154,7 +151,7 @@ async function saveConfig(
 }
 
 async function deleteConfig(): Promise<PublicBotAnalyticsConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     return defaultConfig();
   }
 
@@ -177,43 +174,53 @@ export function BotAnalyticsSettingsClient({
   const [config, setConfig] = useState<PublicBotAnalyticsConfig>(defaultConfig);
   const [form, setForm] = useState<FormState>(() => toFormState(config));
   const [apiToken, setApiToken] = useState("");
-  const [clearApiToken, setClearApiToken] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [apiTokenDirty, setApiTokenDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const configAppliedRef = useRef(false);
+  const configQuery = useQuery({
+    queryKey: ["dashboard", "bot-analytics-config"],
+    queryFn: ({ signal }) => fetchConfig(signal),
+    enabled: typeof window !== "undefined",
+  });
+  const loading = configQuery.isPending;
   const analyticsEngineDisabled = config.analyticsEngineDisabled;
+  const showSavedApiToken =
+    !apiTokenDirty && config.apiTokenConfigured && Boolean(config.apiTokenHint);
+  const apiTokenDisplayValue = showSavedApiToken
+    ? config.apiTokenHint
+    : apiToken;
+  const apiTokenPlaceholder = analyticsEngineDisabled
+    ? copy.botAnalyticsEngineDisabledHint
+    : copy.botAnalyticsApiTokenPlaceholder;
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetchConfig()
-      .then((next) => {
-        if (cancelled) return;
-        setConfig(next);
-        setForm(toFormState(next));
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : copy.loadFailed);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [copy.loadFailed]);
+    if (configQuery.isPending || configAppliedRef.current) return;
+    if (configQuery.isError) {
+      toast.error(
+        configQuery.error instanceof Error
+          ? configQuery.error.message
+          : copy.loadFailed,
+      );
+    }
+    const next = configQuery.data ?? defaultConfig();
+    setConfig(next);
+    setForm(toFormState(next));
+    configAppliedRef.current = true;
+  }, [
+    copy.loadFailed,
+    configQuery.data,
+    configQuery.error,
+    configQuery.isError,
+    configQuery.isPending,
+  ]);
 
   const hasChanges = useMemo(
     () =>
       !analyticsEngineDisabled &&
-      (form.accountId !== config.accountId ||
-        form.dataset !== config.dataset ||
-        form.normalDataset !== config.normalDataset ||
-        apiToken.trim().length > 0 ||
-        clearApiToken),
-    [analyticsEngineDisabled, apiToken, clearApiToken, config, form],
+      (form.accountId !== config.accountId || apiToken.trim().length > 0),
+    [analyticsEngineDisabled, apiToken, config, form],
   );
 
   async function handleSave() {
@@ -222,15 +229,12 @@ export function BotAnalyticsSettingsClient({
     try {
       const next = await saveConfig({
         accountId: form.accountId.trim(),
-        dataset: form.dataset.trim(),
-        normalDataset: form.normalDataset.trim(),
         apiToken: apiToken.trim() || undefined,
-        clearApiToken,
       });
       setConfig(next);
       setForm(toFormState(next));
       setApiToken("");
-      setClearApiToken(false);
+      setApiTokenDirty(false);
       toast.success(copy.botAnalyticsSaved);
     } catch (error) {
       toast.error(
@@ -249,7 +253,8 @@ export function BotAnalyticsSettingsClient({
       setConfig(next);
       setForm(toFormState(next));
       setApiToken("");
-      setClearApiToken(false);
+      setApiTokenDirty(false);
+      setDeleteDialogOpen(false);
       toast.success(copy.botAnalyticsDeleted);
     } catch (error) {
       toast.error(
@@ -268,205 +273,174 @@ export function BotAnalyticsSettingsClient({
         <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0">
             <CardTitle className="flex min-w-0 items-center gap-2">
-              <RiRobot2Line className="size-4 shrink-0 text-primary" />
+              <RiLineChartLine className="size-4 shrink-0" />
               <span className="truncate">{copy.botAnalyticsTitle}</span>
             </CardTitle>
             <CardDescription>{copy.botAnalyticsDescription}</CardDescription>
           </div>
-          <Badge
-            variant={
-              analyticsEngineDisabled
-                ? "secondary"
-                : config.apiTokenConfigured
-                  ? "default"
-                  : "secondary"
-            }
-          >
-            {analyticsEngineDisabled
-              ? copy.botAnalyticsEngineDisabledBadge
-              : config.apiTokenConfigured
-                ? copy.botAnalyticsTokenSaved
-                : copy.botAnalyticsTokenNotSaved}
-          </Badge>
         </div>
       </CardHeader>
       <CardContent>
-        <AutoTransition
-          transitionKey={loading ? "loading" : "ready"}
-          type="fade"
-          duration={0.2}
-        >
-          {loading ? (
-            <div className="flex h-28 items-center justify-center">
-              <Spinner className="size-6" />
-            </div>
-          ) : (
-            <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
-              {analyticsEngineDisabled ? (
-                <div className="rounded-md border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground lg:col-span-2">
-                  <p className="font-medium text-foreground">
-                    {copy.botAnalyticsEngineDisabledTitle}
-                  </p>
-                  <p className="mt-1">
-                    {copy.botAnalyticsEngineDisabledDescription}
-                  </p>
-                  <Button asChild className="mt-3" variant="outline">
-                    <a
-                      href={config.analyticsEngineEnableUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <RiExternalLinkLine className="size-4" />
-                      {copy.botAnalyticsOpenCloudflare}
-                    </a>
-                  </Button>
+        <AutoResizer initial duration={0.24}>
+          <AutoTransition
+            transitionKey={loading ? "loading" : "ready"}
+            type="fade"
+            duration={0.2}
+          >
+            {loading ? (
+              <div className="flex h-28 items-center justify-center">
+                <Spinner className="size-6" />
+              </div>
+            ) : (
+              <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
+                {analyticsEngineDisabled ? (
+                  <div className="border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground lg:col-span-2">
+                    <p className="font-medium text-foreground">
+                      {copy.botAnalyticsEngineDisabledTitle}
+                    </p>
+                    <p className="mt-1">
+                      {copy.botAnalyticsEngineDisabledDescription}
+                    </p>
+                    <Button asChild className="mt-3" variant="outline">
+                      <a
+                        href={config.analyticsEngineEnableUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <RiExternalLinkLine className="size-4" />
+                        {copy.botAnalyticsOpenCloudflare}
+                      </a>
+                    </Button>
+                  </div>
+                ) : null}
+                <div className="space-y-2">
+                  <Label htmlFor="bot-analytics-account-id">
+                    {copy.botAnalyticsAccountIdLabel}
+                  </Label>
+                  <Input
+                    id="bot-analytics-account-id"
+                    value={form.accountId}
+                    disabled={analyticsEngineDisabled}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        accountId: event.target.value,
+                      }))
+                    }
+                  />
                 </div>
-              ) : null}
-              <div className="space-y-2">
-                <Label htmlFor="bot-analytics-account-id">
-                  {copy.botAnalyticsAccountIdLabel}
-                </Label>
-                <Input
-                  id="bot-analytics-account-id"
-                  value={form.accountId}
-                  disabled={analyticsEngineDisabled}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      accountId: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="bot-analytics-dataset">
-                  {copy.botAnalyticsDatasetLabel}
-                </Label>
-                <Input
-                  id="bot-analytics-dataset"
-                  value={form.dataset}
-                  disabled={analyticsEngineDisabled}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      dataset: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-2 lg:col-span-2">
-                <Label htmlFor="bot-analytics-normal-dataset">
-                  {copy.botAnalyticsDatasetLabel}
-                  {" / "}
-                  {messages.requestObservation.allRequests}
-                </Label>
-                <Input
-                  id="bot-analytics-normal-dataset"
-                  value={form.normalDataset}
-                  disabled={analyticsEngineDisabled}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      normalDataset: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-2 lg:col-span-2">
-                <Label htmlFor="bot-analytics-api-token">
-                  {copy.botAnalyticsApiTokenLabel}
-                </Label>
-                <Input
-                  id="bot-analytics-api-token"
-                  type="password"
-                  value={apiToken}
-                  disabled={analyticsEngineDisabled}
-                  placeholder={
-                    !analyticsEngineDisabled && config.apiTokenConfigured
-                      ? copy.botAnalyticsApiTokenPlaceholder
-                      : ""
-                  }
-                  onChange={(event) => {
-                    setApiToken(event.target.value);
-                    if (event.target.value.trim()) setClearApiToken(false);
-                  }}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {analyticsEngineDisabled
-                    ? copy.botAnalyticsEngineDisabledHint
-                    : config.apiTokenConfigured && config.apiTokenHint
-                      ? `${copy.botAnalyticsTokenSaved}: ${config.apiTokenHint}`
-                      : copy.botAnalyticsTokenNotSaved}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 lg:col-span-2">
-                <Button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={
-                    analyticsEngineDisabled || saving || deleting || !hasChanges
-                  }
-                >
-                  {saving ? (
-                    <Spinner className="size-4" />
-                  ) : (
-                    <RiSave3Line className="size-4" />
-                  )}
-                  {saving ? copy.saving : copy.save}
-                </Button>
-                {config.apiTokenConfigured && !analyticsEngineDisabled ? (
-                  <Button
-                    type="button"
-                    variant={clearApiToken ? "destructive" : "outline"}
-                    onClick={() => {
-                      setClearApiToken((value) => !value);
+                <div className="space-y-2">
+                  <Label htmlFor="bot-analytics-api-token">
+                    {copy.botAnalyticsApiTokenLabel}
+                  </Label>
+                  <Input
+                    id="bot-analytics-api-token"
+                    type={showSavedApiToken ? "text" : "password"}
+                    value={apiTokenDisplayValue}
+                    disabled={analyticsEngineDisabled}
+                    placeholder={apiTokenPlaceholder}
+                    onFocus={() => {
+                      if (!showSavedApiToken) return;
+                      setApiTokenDirty(true);
                       setApiToken("");
                     }}
+                    onBlur={() => {
+                      if (!apiToken.trim()) setApiTokenDirty(false);
+                    }}
+                    onChange={(event) => {
+                      setApiTokenDirty(true);
+                      setApiToken(event.target.value);
+                    }}
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-2 lg:col-span-2">
+                  <Button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={
+                      analyticsEngineDisabled ||
+                      saving ||
+                      deleting ||
+                      !hasChanges
+                    }
                   >
-                    {clearApiToken ? (
-                      <RiCloseLine className="size-4" />
+                    {saving ? (
+                      <Spinner className="size-4" />
                     ) : (
-                      <RiDeleteBinLine className="size-4" />
+                      <RiSave3Line className="size-4" />
                     )}
-                    {copy.clearApiKey}
+                    {saving ? copy.saving : copy.save}
                   </Button>
-                ) : null}
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={analyticsEngineDisabled || saving || deleting}
-                    >
-                      {deleting ? (
-                        <Spinner className="size-4" />
-                      ) : (
-                        <RiDeleteBinLine className="size-4" />
-                      )}
-                      {deleting ? copy.deleting : copy.delete}
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>
-                        {copy.botAnalyticsTitle}
-                      </AlertDialogTitle>
-                      <AlertDialogDescription>
-                        {copy.botAnalyticsDeleteConfirm}
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>{copy.cancel}</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleDelete}>
-                        {copy.delete}
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                  <AlertDialog
+                    open={deleteDialogOpen}
+                    onOpenChange={(open) => {
+                      if (deleting) return;
+                      setDeleteDialogOpen(open);
+                    }}
+                  >
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        disabled={
+                          analyticsEngineDisabled ||
+                          loading ||
+                          saving ||
+                          deleting ||
+                          config.updatedAt === 0
+                        }
+                      >
+                        {deleting ? (
+                          <Spinner className="size-4" />
+                        ) : (
+                          <RiDeleteBinLine className="size-4" />
+                        )}
+                        {deleting ? copy.deleting : copy.delete}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent size="sm">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle icon={RiDeleteBinLine}>
+                          {copy.botAnalyticsTitle}
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {copy.botAnalyticsDeleteConfirm}
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel disabled={deleting}>
+                          <RiCloseLine className="size-4" />
+                          <span>{copy.cancel}</span>
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                          variant="destructive"
+                          disabled={deleting}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            void handleDelete();
+                          }}
+                        >
+                          {deleting ? (
+                            <Spinner className="size-4" />
+                          ) : (
+                            <RiDeleteBinLine className="size-4" />
+                          )}
+                          {deleting ? copy.deleting : copy.delete}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                  <SystemSettingsGuideDialog
+                    triggerLabel={copy.guide}
+                    title={copy.botAnalyticsGuideTitle}
+                    description={copy.botAnalyticsGuideDescription}
+                    steps={copy.botAnalyticsGuideSteps}
+                  />
+                </div>
               </div>
-            </div>
-          )}
-        </AutoTransition>
+            )}
+          </AutoTransition>
+        </AutoResizer>
       </CardContent>
     </Card>
   );
