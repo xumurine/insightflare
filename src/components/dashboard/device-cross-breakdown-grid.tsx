@@ -1,7 +1,6 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { RiBarChartBoxLine } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
@@ -315,54 +314,44 @@ export function DeviceCrossBreakdownGrid({
   window,
   filters,
 }: DeviceCrossBreakdownGridProps) {
-  const [loading, setLoading] = useState(true);
-  const [browserData, setBrowserData] =
-    useState<BrowserCrossBreakdownDimensionData>(emptyDimension);
-  const [osData, setOsData] =
-    useState<BrowserCrossBreakdownDimensionData>(emptyDimension);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    Promise.all([
-      fetchClientCrossBreakdown(
-        siteId,
-        window,
-        "deviceType",
-        "browser",
-        filters,
-        {
-          primaryLimit: 5,
-          secondaryLimit: 6,
-        },
-      ).catch(() => emptyDimension()),
-      fetchClientCrossBreakdown(
-        siteId,
-        window,
-        "deviceType",
-        "operatingSystem",
-        filters,
-        {
-          primaryLimit: 5,
-          secondaryLimit: 6,
-        },
-      ).catch(() => emptyDimension()),
-    ])
-      .then(([nextBrowserData, nextOsData]) => {
-        if (!active) return;
-        setBrowserData(nextBrowserData);
-        setOsData(nextOsData);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [filters, siteId, window.from, window.to]);
+  const crossBreakdownQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "device-cross-breakdown",
+      siteId,
+      window.from,
+      window.to,
+      window.timeZone,
+      filters,
+    ],
+    queryFn: async ({ signal }) => {
+      const fetchDimension = (
+        secondaryDimension: "browser" | "operatingSystem",
+      ) =>
+        fetchClientCrossBreakdown(
+          siteId,
+          window,
+          "deviceType",
+          secondaryDimension,
+          filters,
+          { primaryLimit: 5, secondaryLimit: 6, signal },
+        );
+      try {
+        const [browserData, osData] = await Promise.all([
+          fetchDimension("browser"),
+          fetchDimension("operatingSystem"),
+        ]);
+        return { browserData, osData };
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") throw error;
+        return { browserData: emptyDimension(), osData: emptyDimension() };
+      }
+    },
+    enabled: typeof window !== "undefined",
+  });
+  const browserData = crossBreakdownQuery.data?.browserData ?? emptyDimension();
+  const osData = crossBreakdownQuery.data?.osData ?? emptyDimension();
+  const loading = crossBreakdownQuery.isPending;
 
   const browserDimension = useMemo(
     () =>

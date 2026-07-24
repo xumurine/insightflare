@@ -1,19 +1,13 @@
-"use client";
-
 import {
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
   type ReactNode,
   useEffect,
-  useEffectEvent,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
-import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
 import type { RemixiconComponentType } from "@remixicon/react";
 import {
   RiArrowDownSLine,
@@ -29,9 +23,11 @@ import {
   RiSearchLine,
   RiStackLine,
 } from "@remixicon/react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { AnimatePresence, useReducedMotion } from "motion/react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
+import { AnalyticsTableCard } from "@/components/dashboard/analytics-table-card";
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import {
@@ -50,11 +46,10 @@ import { PageHeading } from "@/components/dashboard/page-heading";
 import { DetailDrawer } from "@/components/dashboard/site-pages/detail-drawer";
 import {
   EVENT_FILTER_DIALOG_Z_INDEX,
-  EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
   EVENT_RECORD_DRAWER_Z_INDEX,
-  FLOATING_LAYER_Z_ATTR,
   NESTED_DETAIL_DRAWER_Z_INDEX,
 } from "@/components/dashboard/site-pages/floating-layer";
+import { useInfiniteTableSentinel } from "@/components/dashboard/use-infinite-table-sentinel";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
@@ -82,6 +77,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
+import { ModalOverlay, overlayZIndexFor } from "@/components/ui/modal-overlay";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -110,21 +106,22 @@ import type {
   EventPayloadFilterValue,
   TimeWindow,
 } from "@/lib/dashboard/query-state";
+import dynamic from "@/lib/dynamic";
 import type {
   EventField,
   EventFieldValueStat,
   EventRecord,
   EventRecordDetailData,
-  EventsRecordsMeta,
   EventsTrendData,
   EventTrendSeries,
 } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
+import { useRouter } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
-const EVENT_PAGE_SIZE = 80;
+const EVENT_PAGE_SIZE = 50;
 const EVENT_SKELETON_ROWS = 8;
 const OTHER_SERIES_KEY = "other";
 const FIELD_TREE_CHILD_TRANSITION = {
@@ -172,14 +169,6 @@ export type EventPageCopy = AppMessages["events"];
 export const DEFAULT_EVENT_RECORD_SORT: EventRecordSortState = {
   key: "occurredAt",
   direction: "desc",
-};
-
-const INITIAL_EVENT_META: EventsRecordsMeta = {
-  page: 1,
-  pageSize: EVENT_PAGE_SIZE,
-  returned: 0,
-  hasMore: false,
-  nextPage: null,
 };
 
 function shortId(value: string): string {
@@ -1109,193 +1098,187 @@ function EventRecordsTable({
         : "rows";
 
   return (
-    <Card className="py-0">
-      <CardContent className="px-0">
-        <Table className="min-w-[92rem]">
-          <TableHeader>
+    <AnalyticsTableCard minTableWidth="92rem">
+      <Table className="min-w-[92rem]">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="pl-4">{labels.visitor}</TableHead>
+            <SortHeader
+              label={labels.eventName}
+              active={sort.key === "eventName"}
+              direction={sort.direction}
+              onClick={() => onSort("eventName")}
+            />
+            <TableHead>{labels.eventId}</TableHead>
+            <SortHeader
+              label={labels.occurredAt}
+              active={sort.key === "occurredAt"}
+              direction={sort.direction}
+              onClick={() => onSort("occurredAt")}
+            />
+            <SortHeader
+              label={labels.page}
+              active={sort.key === "pathname"}
+              direction={sort.direction}
+              onClick={() => onSort("pathname")}
+            />
+            <TableHead>{labels.referrer}</TableHead>
+            <TableHead>{labels.location}</TableHead>
+            <TableHead>{labels.os}</TableHead>
+            <TableHead>{labels.browser}</TableHead>
+            <TableHead>{labels.device}</TableHead>
+            <TableHead className="pr-4 text-right">{labels.payload}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <AutoTransition
+          as="tbody"
+          transitionKey={bodyState}
+          initial={false}
+          duration={0.18}
+          type="fade"
+          presenceMode="wait"
+          aria-busy={loadingRows || loadingMore}
+          data-slot="table-body"
+          className="[&_tr:last-child]:border-0"
+        >
+          {loadingRows ? (
+            Array.from({ length: EVENT_SKELETON_ROWS }, (_, index) => (
+              <EventRowSkeleton key={index} index={index} />
+            ))
+          ) : error ? (
             <TableRow>
-              <TableHead className="pl-4">{labels.visitor}</TableHead>
-              <SortHeader
-                label={labels.eventName}
-                active={sort.key === "eventName"}
-                direction={sort.direction}
-                onClick={() => onSort("eventName")}
-              />
-              <TableHead>{labels.eventId}</TableHead>
-              <SortHeader
-                label={labels.occurredAt}
-                active={sort.key === "occurredAt"}
-                direction={sort.direction}
-                onClick={() => onSort("occurredAt")}
-              />
-              <SortHeader
-                label={labels.page}
-                active={sort.key === "pathname"}
-                direction={sort.direction}
-                onClick={() => onSort("pathname")}
-              />
-              <TableHead>{labels.referrer}</TableHead>
-              <TableHead>{labels.location}</TableHead>
-              <TableHead>{labels.os}</TableHead>
-              <TableHead>{labels.browser}</TableHead>
-              <TableHead>{labels.device}</TableHead>
-              <TableHead className="pr-4 text-right">
-                {labels.payload}
-              </TableHead>
+              <TableCell
+                colSpan={11}
+                className="h-28 text-center text-muted-foreground"
+              >
+                {labels.loadError}
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <AutoTransition
-            as="tbody"
-            transitionKey={bodyState}
-            initial={false}
-            duration={0.18}
-            type="fade"
-            presenceMode="wait"
-            aria-busy={loadingRows || loadingMore}
-            data-slot="table-body"
-            className="[&_tr:last-child]:border-0"
-          >
-            {loadingRows ? (
-              Array.from({ length: EVENT_SKELETON_ROWS }, (_, index) => (
-                <EventRowSkeleton key={index} index={index} />
-              ))
-            ) : error ? (
-              <TableRow>
-                <TableCell
-                  colSpan={11}
-                  className="h-28 text-center text-muted-foreground"
+          ) : rows.length === 0 && !hasMore ? (
+            <TableRow>
+              <TableCell
+                colSpan={11}
+                className="h-28 text-center text-muted-foreground"
+              >
+                {labels.empty}
+              </TableCell>
+            </TableRow>
+          ) : (
+            <>
+              {rows.map((row) => (
+                <TableRow
+                  key={row.eventId}
+                  role="button"
+                  tabIndex={0}
+                  className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                  onClick={() => onOpenRecord(row.eventId)}
+                  onKeyDown={(event) => handleKeyDown(event, row.eventId)}
                 >
-                  {labels.loadError}
-                </TableCell>
-              </TableRow>
-            ) : rows.length === 0 && !hasMore ? (
-              <TableRow>
-                <TableCell
-                  colSpan={11}
-                  className="h-28 text-center text-muted-foreground"
-                >
-                  {labels.empty}
-                </TableCell>
-              </TableRow>
-            ) : (
-              <>
-                {rows.map((row) => (
-                  <TableRow
-                    key={row.eventId}
-                    role="button"
-                    tabIndex={0}
-                    className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-                    onClick={() => onOpenRecord(row.eventId)}
-                    onKeyDown={(event) => handleKeyDown(event, row.eventId)}
-                  >
-                    <TableCell className="max-w-36 pl-4">
-                      <div className="flex w-28 min-w-0 items-center gap-2">
-                        <VisitorAvatar
-                          seed={row.visitorId || row.eventId}
-                          className="size-6"
-                        />
-                        <span className="min-w-0 truncate font-mono">
-                          {shortId(
-                            row.visitorId || row.sessionId || row.visitId,
-                          )}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-48">
-                      <span
-                        className="block truncate font-medium"
-                        title={row.eventName}
-                      >
-                        {row.eventName}
+                  <TableCell className="max-w-36 pl-4">
+                    <div className="flex w-28 min-w-0 items-center gap-2">
+                      <VisitorAvatar
+                        seed={row.visitorId || row.eventId}
+                        className="size-6"
+                      />
+                      <span className="min-w-0 truncate font-mono">
+                        {shortId(row.visitorId || row.sessionId || row.visitId)}
                       </span>
-                    </TableCell>
-                    <TableCell className="max-w-32">
-                      <span className="block truncate font-mono text-muted-foreground">
-                        {shortId(row.eventId)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-36 font-mono text-muted-foreground">
-                      <span className="block truncate">
-                        {formatRelativeTime(locale, row.occurredAt, now)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-64">
-                      <span
-                        className="block truncate font-mono"
-                        title={formatPath(row.pathname)}
-                      >
-                        {formatPath(row.pathname)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-44">
-                      <ReferrerMeta
-                        referrerHost={row.referrerHost || ""}
-                        directLabel={messages.overview.direct}
-                        className="w-full"
-                      />
-                    </TableCell>
-                    <TableCell className="max-w-52">
-                      <CountryRegionMeta
-                        locale={locale}
-                        messages={messages}
-                        country={row.country || ""}
-                        region={row.region}
-                        className="w-full"
-                      />
-                    </TableCell>
-                    <TableCell className="max-w-40">
-                      <OsMeta
-                        os={row.os || ""}
-                        version={row.osVersion}
-                        unknownLabel={messages.common.unknown}
-                        className="w-full"
-                      />
-                    </TableCell>
-                    <TableCell className="max-w-40">
-                      <BrowserMeta
-                        browser={row.browser || ""}
-                        version={row.browserVersion}
-                        unknownLabel={messages.common.unknown}
-                        className="w-full"
-                      />
-                    </TableCell>
-                    <TableCell className="max-w-36">
-                      <DeviceMeta
-                        deviceType={row.deviceType || ""}
-                        deviceLabels={messages.common.deviceLabels}
-                        unknownLabel={messages.common.unknown}
-                        className="w-full"
-                      />
-                    </TableCell>
-                    <TableCell className="pr-4 text-right font-mono tabular-nums">
-                      {numberFormat(locale, row.valueCount)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {appendError ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={11}
-                      className="h-16 text-center text-muted-foreground"
+                    </div>
+                  </TableCell>
+                  <TableCell className="max-w-48">
+                    <span
+                      className="block truncate font-medium"
+                      title={row.eventName}
                     >
-                      {labels.loadError}
-                    </TableCell>
-                  </TableRow>
-                ) : hasMore ? (
-                  Array.from({ length: EVENT_SKELETON_ROWS }, (_, index) => (
-                    <EventRowSkeleton
-                      key={`append-${rows.length}-${index}`}
-                      index={index}
-                      sentinelRef={index === 0 ? sentinelRef : undefined}
+                      {row.eventName}
+                    </span>
+                  </TableCell>
+                  <TableCell className="max-w-32">
+                    <span className="block truncate font-mono text-muted-foreground">
+                      {shortId(row.eventId)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="max-w-36 font-mono text-muted-foreground">
+                    <span className="block truncate">
+                      {formatRelativeTime(locale, row.occurredAt, now)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="max-w-64">
+                    <span
+                      className="block truncate font-mono"
+                      title={formatPath(row.pathname)}
+                    >
+                      {formatPath(row.pathname)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="max-w-44">
+                    <ReferrerMeta
+                      referrerHost={row.referrerHost || ""}
+                      directLabel={messages.overview.direct}
+                      className="w-full"
                     />
-                  ))
-                ) : null}
-              </>
-            )}
-          </AutoTransition>
-        </Table>
-      </CardContent>
-    </Card>
+                  </TableCell>
+                  <TableCell className="max-w-52">
+                    <CountryRegionMeta
+                      locale={locale}
+                      messages={messages}
+                      country={row.country || ""}
+                      region={row.region}
+                      className="w-full"
+                    />
+                  </TableCell>
+                  <TableCell className="max-w-40">
+                    <OsMeta
+                      os={row.os || ""}
+                      version={row.osVersion}
+                      unknownLabel={messages.common.unknown}
+                      className="w-full"
+                    />
+                  </TableCell>
+                  <TableCell className="max-w-40">
+                    <BrowserMeta
+                      browser={row.browser || ""}
+                      version={row.browserVersion}
+                      unknownLabel={messages.common.unknown}
+                      className="w-full"
+                    />
+                  </TableCell>
+                  <TableCell className="max-w-36">
+                    <DeviceMeta
+                      deviceType={row.deviceType || ""}
+                      deviceLabels={messages.common.deviceLabels}
+                      unknownLabel={messages.common.unknown}
+                      className="w-full"
+                    />
+                  </TableCell>
+                  <TableCell className="pr-4 text-right font-mono tabular-nums">
+                    {numberFormat(locale, row.valueCount)}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {appendError ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={11}
+                    className="h-16 text-center text-muted-foreground"
+                  >
+                    {labels.loadError}
+                  </TableCell>
+                </TableRow>
+              ) : hasMore ? (
+                Array.from({ length: EVENT_SKELETON_ROWS }, (_, index) => (
+                  <EventRowSkeleton
+                    key={`append-${rows.length}-${index}`}
+                    index={index}
+                    sentinelRef={index === 0 ? sentinelRef : undefined}
+                  />
+                ))
+              ) : null}
+            </>
+          )}
+        </AutoTransition>
+      </Table>
+    </AnalyticsTableCard>
   );
 }
 
@@ -1408,37 +1391,18 @@ export function EventRecordDetailDrawer({
     if (!nestedDetailOpen) onOpenChange(false);
   };
 
-  const sideDrawerOverlay =
-    typeof document !== "undefined"
-      ? createPortal(
-          <AnimatePresence>
-            {open ? (
-              <motion.div
-                aria-hidden="true"
-                data-dashboard-floating-layer="event-record-drawer-overlay"
-                data-event-record-drawer-overlay=""
-                className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
-                style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.16, ease: "easeOut" }}
-                {...{
-                  [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-                }}
-                onPointerDown={stopSideDrawerOverlayEvent}
-                onPointerUp={stopSideDrawerOverlayEvent}
-                onClick={closeSideDrawerFromOverlay}
-              />
-            ) : null}
-          </AnimatePresence>,
-          document.body,
-        )
-      : null;
-
   return (
     <>
-      {sideDrawerOverlay}
+      <ModalOverlay
+        data-event-record-drawer-overlay=""
+        layerId="event-record-drawer"
+        open={open}
+        portal
+        zIndex={overlayZIndexFor(EVENT_RECORD_DRAWER_Z_INDEX)}
+        onPointerDown={stopSideDrawerOverlayEvent}
+        onPointerUp={stopSideDrawerOverlayEvent}
+        onClick={closeSideDrawerFromOverlay}
+      />
       <Drawer
         open={open}
         onOpenChange={onOpenChange}
@@ -1450,9 +1414,6 @@ export function EventRecordDetailDrawer({
           className="!w-full !max-w-none sm:!w-[min(58vw,34rem)]"
           overlayClassName="hidden"
           style={{ zIndex: EVENT_RECORD_DRAWER_Z_INDEX }}
-          {...{
-            [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_Z_INDEX,
-          }}
           onEscapeKeyDown={(event) => {
             if (nestedDetailOpen) event.preventDefault();
           }}
@@ -1696,57 +1657,14 @@ export function EventRecordsSection({
   filters: DashboardFilters;
   eventName?: string;
 }) {
-  const [rows, setRows] = useState<EventRecord[]>([]);
-  const [meta, setMeta] = useState<EventsRecordsMeta>(INITIAL_EVENT_META);
-  const [loadingInitial, setLoadingInitial] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState(false);
-  const [appendError, setAppendError] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState<EventRecordSortState>(
     DEFAULT_EVENT_RECORD_SORT,
   );
-  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
-    null,
-  );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState("");
-  const [detail, setDetail] = useState<EventRecordDetailData["data"] | null>(
-    null,
-  );
-  const [detailLoading, setDetailLoading] = useState(false);
-  const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
-  const requestKey = useMemo(
-    () =>
-      [
-        siteId,
-        timeWindow.from,
-        timeWindow.to,
-        timeWindow.interval,
-        timeWindow.timeZone,
-        filtersKey,
-        debouncedQuery,
-        sort.key,
-        sort.direction,
-        eventName ?? "",
-      ].join(":"),
-    [
-      debouncedQuery,
-      eventName,
-      filtersKey,
-      siteId,
-      sort.direction,
-      sort.key,
-      timeWindow.from,
-      timeWindow.interval,
-      timeWindow.timeZone,
-      timeWindow.to,
-    ],
-  );
-  const replacingRows =
-    loadingInitial || latestRequestKeyRef.current !== requestKey;
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -1755,146 +1673,86 @@ export function EventRecordsSection({
     return () => window.clearTimeout(timeoutId);
   }, [query]);
 
-  const loadPage = useEffectEvent(
-    async (page: number, mode: "replace" | "append") => {
-      const capturedRequestKey = latestRequestKeyRef.current;
-      if (mode === "replace") {
-        setLoadingInitial(true);
-        setError(false);
-        setAppendError(false);
-      } else {
-        setLoadingMore(true);
-        setAppendError(false);
-      }
-
-      try {
-        const payload = await fetchEventsRecords(siteId, timeWindow, filters, {
-          page,
-          pageSize: EVENT_PAGE_SIZE,
-          sortBy: sort.key,
-          sortDir: sort.direction,
-          search: debouncedQuery,
-          eventName,
-        });
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        setRows((current) =>
-          mode === "append"
-            ? appendUniqueEvents(current, payload.data)
-            : payload.data,
-        );
-        setMeta(payload.meta);
-        setError(false);
-        setAppendError(false);
-      } catch {
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        if (mode === "replace") {
-          setRows([]);
-          setMeta(INITIAL_EVENT_META);
-          setError(true);
-          setAppendError(false);
-        } else {
-          setAppendError(true);
-        }
-      } finally {
-        if (latestRequestKeyRef.current === capturedRequestKey) {
-          if (mode === "replace") {
-            setLoadingInitial(false);
-          } else {
-            setLoadingMore(false);
-          }
-        }
-      }
-    },
+  const {
+    data,
+    error: queryError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchNextPageError,
+    isFetching,
+    isFetchingNextPage,
+    isPending,
+  } = useInfiniteQuery({
+    queryKey: [
+      "dashboard",
+      "event-records",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      filtersKey,
+      debouncedQuery,
+      sort.key,
+      sort.direction,
+      eventName ?? "",
+    ],
+    queryFn: ({ pageParam, signal }) =>
+      fetchEventsRecords(siteId, timeWindow, filters, {
+        page: pageParam,
+        pageSize: EVENT_PAGE_SIZE,
+        sortBy: sort.key,
+        sortDir: sort.direction,
+        search: debouncedQuery,
+        eventName,
+        signal,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.meta.hasMore ? lastPage.meta.nextPage : undefined,
+    enabled: typeof window !== "undefined",
+  });
+  const rows = useMemo(
+    () =>
+      data?.pages.reduce<EventRecord[]>(
+        (current, page) => appendUniqueEvents(current, page.data),
+        [],
+      ) ?? [],
+    [data?.pages],
   );
+  const loadingInitial = isPending;
+  const loadingMore = isFetchingNextPage;
+  const error = Boolean(queryError) && rows.length === 0;
+  const appendError = isFetchNextPageError;
+  const replacingRows = isPending || (isFetching && !isFetchingNextPage);
+  const hasMore = hasNextPage ?? false;
+  const loadNextPage = () => {
+    if (loadingInitial || loadingMore || appendError || !hasMore) return;
+    void fetchNextPage();
+  };
 
-  const loadNextPage = useEffectEvent(() => {
-    if (
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      !meta.hasMore ||
-      meta.nextPage === null
-    ) {
-      return;
-    }
-    void loadPage(meta.nextPage, "append");
+  const sentinelRef = useInfiniteTableSentinel({
+    enabled:
+      !loadingInitial && !loadingMore && !appendError && !error && hasMore,
+    onReachEnd: loadNextPage,
   });
 
-  useEffect(() => {
-    latestRequestKeyRef.current = requestKey;
-    setRows([]);
-    setMeta(INITIAL_EVENT_META);
-    setError(false);
-    setAppendError(false);
-    void loadPage(1, "replace");
-  }, [requestKey]);
-
-  useEffect(() => {
-    const target = sentinelNode;
-    if (
-      !target ||
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      error ||
-      !meta.hasMore ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) {
-          loadNextPage();
-        }
-      },
-      {
-        root: null,
-        rootMargin: "360px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    const frameId = window.requestAnimationFrame(() => {
-      const rect = target.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
-        loadNextPage();
-      }
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [
-    appendError,
-    error,
-    loadingInitial,
-    loadingMore,
-    meta.hasMore,
-    meta.nextPage,
-    sentinelNode,
-  ]);
-
-  useEffect(() => {
-    if (!drawerOpen || !selectedEventId) return;
-    let active = true;
-    setDetailLoading(true);
-    fetchEventRecordDetail(siteId, selectedEventId, timeWindow)
-      .then((payload) => {
-        if (!active) return;
-        setDetail(payload.data);
-      })
-      .finally(() => {
-        if (active) setDetailLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [drawerOpen, selectedEventId, siteId, timeWindow]);
+  const detailQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "event-record-detail",
+      siteId,
+      selectedEventId,
+      timeWindow.from,
+      timeWindow.to,
+    ],
+    queryFn: ({ signal }) =>
+      fetchEventRecordDetail(siteId, selectedEventId, timeWindow, { signal }),
+    enabled:
+      typeof window !== "undefined" && drawerOpen && Boolean(selectedEventId),
+  });
+  const detail = detailQuery.data?.data ?? null;
+  const detailLoading = detailQuery.isPending;
 
   const toggleSort = (key: EventRecordSortKey) => {
     setSort((current) =>
@@ -1909,7 +1767,6 @@ export function EventRecordsSection({
 
   const openRecord = (eventId: string) => {
     setSelectedEventId(eventId);
-    setDetail(null);
     setDrawerOpen(true);
   };
 
@@ -1945,8 +1802,8 @@ export function EventRecordsSection({
         loadingMore={loadingMore}
         error={error}
         appendError={appendError}
-        hasMore={meta.hasMore}
-        sentinelRef={setSentinelNode}
+        hasMore={hasMore}
+        sentinelRef={sentinelRef}
       />
 
       <EventRecordDetailDrawer
@@ -2006,9 +1863,28 @@ export function EventFieldsCard({
     () => JSON.stringify(effectiveFilters ?? {}),
     [effectiveFilters],
   );
-  const [filteredFields, setFilteredFields] = useState<EventField[]>([]);
-  const [filteredFieldsLoading, setFilteredFieldsLoading] = useState(false);
-  const [filteredFieldsError, setFilteredFieldsError] = useState(false);
+  const filteredFieldsQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "event-filtered-fields",
+      siteId,
+      eventName,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      effectiveFiltersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchEventTypeDetail(siteId, timeWindow, eventName, effectiveFilters, {
+        signal,
+      }),
+    enabled:
+      typeof window !== "undefined" && activePayloadFilterCount > 0 && !loading,
+  });
+  const filteredFields = filteredFieldsQuery.data?.fields ?? [];
+  const filteredFieldsLoading = filteredFieldsQuery.isPending;
+  const filteredFieldsError = filteredFieldsQuery.isError;
   const activeFields =
     activePayloadFilterCount > 0
       ? filteredFieldsLoading && filteredFields.length === 0
@@ -2067,9 +1943,6 @@ export function EventFieldsCard({
   const [expandedFieldKeys, setExpandedFieldKeys] = useState<Set<string>>(
     () => new Set(defaultExpandedFieldKeys),
   );
-  const [fieldValues, setFieldValues] = useState<EventFieldValueStat[]>([]);
-  const [fieldValuesLoading, setFieldValuesLoading] = useState(false);
-  const [fieldValuesError, setFieldValuesError] = useState(false);
 
   const selectedField = useMemo(() => {
     if (activeFields.length === 0) return null;
@@ -2090,99 +1963,38 @@ export function EventFieldsCard({
     setExpandedFieldKeys(new Set(defaultExpandedFieldKeys));
   }, [defaultExpandedFieldKeys, fieldRequestKey]);
 
-  useEffect(() => {
-    if (activePayloadFilterCount === 0) {
-      setFilteredFields([]);
-      setFilteredFieldsLoading(false);
-      setFilteredFieldsError(false);
-      return;
-    }
-    if (loading) return;
-
-    let active = true;
-    setFilteredFieldsLoading(true);
-    setFilteredFieldsError(false);
-
-    fetchEventTypeDetail(siteId, timeWindow, eventName, effectiveFilters)
-      .then((payload) => {
-        if (!active) return;
-        setFilteredFields(payload.fields);
-      })
-      .catch(() => {
-        if (!active) return;
-        setFilteredFields([]);
-        setFilteredFieldsError(true);
-      })
-      .finally(() => {
-        if (active) setFilteredFieldsLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    activePayloadFilterCount,
-    effectiveFilters,
-    effectiveFiltersKey,
-    eventName,
-    loading,
-    siteId,
-    timeWindow,
-  ]);
-
-  useEffect(() => {
-    if (fieldListLoading) return;
-    if (!selectedField) {
-      setFieldValues([]);
-      setFieldValuesLoading(false);
-      setFieldValuesError(false);
-      return;
-    }
-
-    let active = true;
-    setFieldValuesLoading(true);
-    setFieldValuesError(false);
-
-    fetchEventTypeFieldValues(
+  const fieldValuesQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "event-field-values",
       siteId,
-      timeWindow,
       eventName,
-      selectedField.path,
-      selectedField.valueType,
-      effectiveFilters,
-      {
-        limit: 25,
-      },
-    )
-      .then((payload) => {
-        if (!active) return;
-        setFieldValues(payload.data);
-      })
-      .catch(() => {
-        if (!active) return;
-        setFieldValues([]);
-        setFieldValuesError(true);
-      })
-      .finally(() => {
-        if (active) setFieldValuesLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    effectiveFilters,
-    effectiveFiltersKey,
-    eventName,
-    fieldListLoading,
-    selectedField?.path,
-    selectedField?.valueType,
-    siteId,
-    timeWindow.from,
-    timeWindow.interval,
-    timeWindow.timeZone,
-    timeWindow.to,
-  ]);
+      selectedField?.path ?? "",
+      selectedField?.valueType ?? "",
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      effectiveFiltersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchEventTypeFieldValues(
+        siteId,
+        timeWindow,
+        eventName,
+        selectedField?.path ?? "",
+        selectedField?.valueType ?? "string",
+        effectiveFilters,
+        { limit: 25, signal },
+      ),
+    enabled:
+      typeof window !== "undefined" &&
+      !fieldListLoading &&
+      Boolean(selectedField),
+  });
+  const fieldValues = fieldValuesQuery.data?.data ?? [];
+  const fieldValuesLoading = fieldValuesQuery.isPending;
+  const fieldValuesError = fieldValuesQuery.isError;
 
   const fieldValueTotal = useMemo(
     () =>
@@ -2596,11 +2408,7 @@ export function EventFieldsCard({
         <DialogContent
           data-dashboard-floating-layer="event-filter-dialog"
           className="max-w-xl"
-          overlayClassName="z-[999]"
           style={{ zIndex: EVENT_FILTER_DIALOG_Z_INDEX }}
-          {...{
-            [FLOATING_LAYER_Z_ATTR]: EVENT_FILTER_DIALOG_Z_INDEX,
-          }}
         >
           <DialogHeader>
             <DialogTitle icon={RiFilter3Line}>

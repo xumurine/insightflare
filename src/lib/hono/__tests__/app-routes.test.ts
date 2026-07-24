@@ -22,7 +22,10 @@ import {
 import { handleMapTileRequest } from "@/lib/edge/map-tiles";
 import { handlePrivateQuery, handlePublicQuery } from "@/lib/edge/query";
 import type * as QueryCoreModule from "@/lib/edge/query/core";
-import { fetchPublicSite, resolvePrivateSite } from "@/lib/edge/query/core";
+import {
+  fetchPublicSite,
+  resolvePrivateSiteForSession,
+} from "@/lib/edge/query/core";
 import type * as QueryRouterModule from "@/lib/edge/query/router";
 import { dispatchQueryRoute } from "@/lib/edge/query/router";
 import { handleReleasesCompareRequest } from "@/lib/edge/releases-compare";
@@ -76,7 +79,7 @@ vi.mock("@/lib/edge/query/core", async (importOriginal) => {
   return {
     ...actual,
     fetchPublicSite: vi.fn(),
-    resolvePrivateSite: vi.fn(),
+    resolvePrivateSiteForSession: vi.fn(),
   };
 });
 
@@ -96,6 +99,7 @@ vi.mock("@/lib/edge/api-v1", () => ({
       .filter(Boolean),
   handleAnalytics: vi.fn(),
   handleApiV1: vi.fn(),
+  handleApiV1ForPrincipal: vi.fn(),
   handleBatch: vi.fn(),
   handleCapabilities: vi.fn(),
   handleEvents: vi.fn(),
@@ -140,6 +144,13 @@ const { requireSession } = await import("@/lib/edge/session-auth");
 const env = { DB: {}, INGEST_DO: {}, ARCHIVE_BUCKET: {} };
 const ctx = { waitUntil: vi.fn(), passThroughOnException: vi.fn() };
 const executionCtx = ctx as unknown as ExecutionContext;
+const session = {
+  userId: "user-1",
+  username: "user",
+  displayName: "User",
+  systemRole: "admin" as const,
+  exp: 9999999999,
+};
 
 function request(path: string, init?: RequestInit): Request {
   return new Request(`https://app.test${path}`, init);
@@ -177,13 +188,7 @@ describe("Hono API app routing", () => {
       new Response("compare"),
     );
     vi.mocked(handleUsersAdmin).mockResolvedValue(new Response("admin"));
-    vi.mocked(requireSession).mockResolvedValue({
-      userId: "user-1",
-      username: "user",
-      displayName: "User",
-      systemRole: "admin",
-      exp: 9999999999,
-    });
+    vi.mocked(requireSession).mockResolvedValue(session);
     vi.mocked(handlePrivateArchive).mockResolvedValue(new Response("archive"));
     vi.mocked(handlePrivateArchiveFile).mockResolvedValue(
       new Response("archive-file"),
@@ -194,7 +199,7 @@ describe("Hono API app routing", () => {
     vi.mocked(handlePrivateQuery).mockResolvedValue(
       new Response("private-query"),
     );
-    vi.mocked(resolvePrivateSite).mockResolvedValue({
+    vi.mocked(resolvePrivateSiteForSession).mockResolvedValue({
       id: "site-1",
       name: "Site",
       domain: "app.test",
@@ -398,7 +403,7 @@ describe("Hono API app routing", () => {
     expect(handleUsersAdmin).toHaveBeenCalled();
     expect(handlePrivateArchiveManifest).toHaveBeenCalled();
     expect(handlePrivateArchive).not.toHaveBeenCalled();
-    expect(resolvePrivateSite).toHaveBeenCalled();
+    expect(resolvePrivateSiteForSession).toHaveBeenCalled();
     expect(dispatchQueryRoute).toHaveBeenCalledWith(
       env,
       "site-1",
@@ -492,6 +497,24 @@ describe("Hono API app routing", () => {
     expect(requireSession).toHaveBeenCalled();
     expect(handlePrivateArchiveFile).toHaveBeenCalled();
     expect(handleAdminWs).toHaveBeenCalled();
+  });
+
+  it("reuses the authenticated session for private site resolution", async () => {
+    vi.mocked(requireSession).mockClear();
+
+    await apiApp.fetch(
+      request("/api/private/overview?siteId=site-1"),
+      env as any,
+      executionCtx,
+    );
+
+    expect(requireSession).toHaveBeenCalledTimes(1);
+    expect(resolvePrivateSiteForSession).toHaveBeenCalledWith(
+      expect.any(Request),
+      env,
+      new URL("https://app.test/api/private/overview?siteId=site-1"),
+      session,
+    );
   });
 
   it("returns 401 for private endpoints without a session", async () => {

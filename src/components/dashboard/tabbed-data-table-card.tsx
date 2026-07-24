@@ -1,5 +1,3 @@
-"use client";
-
 import {
   type ReactNode,
   startTransition,
@@ -12,8 +10,10 @@ import {
 import {
   RiArrowDownSLine,
   RiArrowUpSLine,
+  RiDownloadLine,
   RiSearchLine,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
@@ -22,10 +22,13 @@ import {
   TabbedScrollMaskCard,
   type TabbedScrollMaskCardTab,
 } from "@/components/dashboard/tabbed-scroll-mask-card";
+import { Button } from "@/components/ui/button";
 import { Clickable } from "@/components/ui/clickable";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -36,6 +39,13 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -50,7 +60,7 @@ export interface TabbedDataTableSortState<TKey extends string = string> {
 }
 
 export interface TabbedDataTableRowBase {
-  key: string;
+  key?: string;
 }
 
 export interface TabbedDataTableTab<
@@ -71,6 +81,9 @@ export interface TabbedDataTableColumn<
   format?: (value: number, row: TRow, tab: TTab) => ReactNode;
   sortable?: boolean;
   sortValue?: (row: TRow, tab: TTab) => number;
+  exportable?: boolean;
+  exportLabel?: string;
+  exportValue?: (row: TRow, tab: TTab) => string | number | null | undefined;
   className?: string;
   headerClassName?: string;
   widthClassName?: string;
@@ -98,6 +111,68 @@ export interface TabbedDataTableSearchConfig<
   actionLabel?: string;
 }
 
+export interface TabbedDataTableRowAdapter<
+  TRow extends TabbedDataTableRowBase,
+  TTab extends string,
+  TKey extends string,
+> {
+  renderLabel?: (
+    row: TRow,
+    context: TabbedDataTableRowContext<TRow, TTab, TKey>,
+  ) => ReactNode;
+  getSearchText?: (row: TRow, tab: TTab) => string;
+  getExportLabel?: (row: TRow, tab: TTab) => string;
+  getKey?: (row: TRow, tab: TTab) => string;
+  getActive?: (row: TRow, tab: TTab) => boolean;
+  getInteractive?: (row: TRow, tab: TTab) => boolean;
+  getClassName?: (
+    row: TRow,
+    context: TabbedDataTableRowContext<TRow, TTab, TKey>,
+  ) => string | undefined;
+  onClick?: (
+    row: TRow,
+    context: TabbedDataTableRowContext<TRow, TTab, TKey>,
+  ) => void;
+}
+
+export type TabbedDataTableExportScope = "currentTab" | "allTabs";
+export type TabbedDataTableExportRows = "currentView" | "rawRows";
+
+export interface TabbedDataTableExportLabels {
+  action?: string;
+  title?: string;
+  description?: string;
+  scopeLabel?: string;
+  currentTab?: string;
+  allTabs?: string;
+  rowsLabel?: string;
+  currentView?: string;
+  rawRows?: string;
+  fileNameLabel?: string;
+  download?: string;
+  empty?: string;
+  allTabsUnavailable?: string;
+}
+
+export interface TabbedDataTableExportConfig<
+  TRow extends TabbedDataTableRowBase,
+  TTab extends string,
+  TKey extends string,
+> {
+  enabled?: boolean;
+  filename?: string | ((tab: TabbedDataTableTab<TTab>) => string);
+  defaultScope?: TabbedDataTableExportScope;
+  defaultRows?: TabbedDataTableExportRows;
+  labels?: TabbedDataTableExportLabels;
+  getRowLabel?: (row: TRow, tab: TTab) => string;
+  getCellValue?: (
+    value: number,
+    row: TRow,
+    column: TabbedDataTableColumn<TRow, TKey, TTab>,
+    tab: TTab,
+  ) => string | number | null | undefined;
+}
+
 export interface TabbedDataTableCardProps<
   TTab extends string,
   TRow extends TabbedDataTableRowBase,
@@ -107,7 +182,8 @@ export interface TabbedDataTableCardProps<
   columns:
     | readonly TabbedDataTableColumn<TRow, TKey, TTab>[]
     | ((tab: TTab) => readonly TabbedDataTableColumn<TRow, TKey, TTab>[]);
-  renderLabel: (
+  rowAdapter?: TabbedDataTableRowAdapter<TRow, TTab, TKey>;
+  renderLabel?: (
     row: TRow,
     context: TabbedDataTableRowContext<TRow, TTab, TKey>,
   ) => ReactNode;
@@ -136,6 +212,7 @@ export interface TabbedDataTableCardProps<
   loadingLabel: string;
   emptyLabel: string;
   search?: false | TabbedDataTableSearchConfig<TRow, TTab>;
+  export?: false | TabbedDataTableExportConfig<TRow, TTab, TKey>;
   headerRight?: ReactNode;
   headerHidden?: boolean;
   className?: string;
@@ -200,6 +277,80 @@ function firstSortableColumnKey<
     .key;
 }
 
+function sanitizeCsvFilename(value: string): string {
+  const trimmed = value.trim() || "table-export";
+  const safe = Array.from(trimmed)
+    .map((character) =>
+      character.charCodeAt(0) < 32 || /[<>:"/\\|?*]/.test(character)
+        ? "-"
+        : character,
+    )
+    .join("")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return safe.toLocaleLowerCase().endsWith(".csv")
+    ? safe
+    : `${safe || "table-export"}.csv`;
+}
+
+function csvCell(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  const text = String(value);
+  if (!/[",\r\n]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function buildCsv(
+  rows: readonly (readonly (string | number | null | undefined)[])[],
+) {
+  return rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
+}
+
+function exportRowLabelFallback<TRow extends TabbedDataTableRowBase>(
+  row: TRow,
+): string {
+  const record = row as Record<string, unknown>;
+  for (const key of ["displayLabel", "label", "rawLabel"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value);
+    }
+  }
+  return row.key ?? "";
+}
+
+function downloadCsv(filename: string, csv: string) {
+  const blob = new Blob([`\uFEFF${csv}`], {
+    type: "text/csv;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = sanitizeCsvFilename(filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+const DEFAULT_EXPORT_LABELS = {
+  action: "Export",
+  title: "Export CSV",
+  description: "Download table data as a CSV file.",
+  scopeLabel: "Scope",
+  currentTab: "Current tab",
+  allTabs: "All tabs",
+  rowsLabel: "Data",
+  currentView: "Current displayed data",
+  rawRows: "Original data",
+  fileNameLabel: "File name",
+  download: "Export CSV",
+  empty: "No rows available to export.",
+  allTabsUnavailable: "All tabs are available after their data has loaded.",
+} satisfies Required<TabbedDataTableExportLabels>;
+
 export function TabbedDataTableCard<
   TTab extends string,
   TRow extends TabbedDataTableRowBase,
@@ -207,6 +358,7 @@ export function TabbedDataTableCard<
 >({
   tabs,
   columns,
+  rowAdapter,
   renderLabel,
   rowsByTab,
   loadingByTab,
@@ -225,6 +377,7 @@ export function TabbedDataTableCard<
   loadingLabel,
   emptyLabel,
   search,
+  export: exportConfigProp,
   headerRight,
   headerHidden = false,
   className,
@@ -261,9 +414,9 @@ export function TabbedDataTableCard<
   const [loadedRowsByTab, setLoadedRowsByTab] = useState<
     Record<TTab, TRow[] | null>
   >(() => createTabRecord(tabs, () => null));
-  const [internalLoadingByTab, setInternalLoadingByTab] = useState<
-    Record<TTab, boolean>
-  >(() => createTabRecord(tabs, () => false));
+  const [rawLoadedRowsByTab, setRawLoadedRowsByTab] = useState<
+    Record<TTab, readonly TRow[] | null>
+  >(() => createTabRecord(tabs, () => null));
   const [sortByTab, setSortByTab] = useState<
     Record<TTab, TabbedDataTableSortState<TKey>>
   >(() =>
@@ -281,25 +434,41 @@ export function TabbedDataTableCard<
   );
   const [searchTab, setSearchTab] = useState<TTab | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [loadVersion, setLoadVersion] = useState(0);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportScope, setExportScope] =
+    useState<TabbedDataTableExportScope>("currentTab");
+  const [exportRows, setExportRows] =
+    useState<TabbedDataTableExportRows>("currentView");
+  const [exportFilename, setExportFilename] = useState("");
   const deferredSearchTerm = useDeferredValue(searchTerm);
-  const latestLoadRowsRef = useRef(loadRows);
-  const latestNormalizeRowsRef = useRef(normalizeRows);
   const latestTabsRef = useRef(tabs);
   const latestColumnsRef = useRef(columns);
-  const loadedRowsByTabRef = useRef(loadedRowsByTab);
-  const loadingByTabRef = useRef(internalLoadingByTab);
-
-  loadedRowsByTabRef.current = loadedRowsByTab;
-  loadingByTabRef.current = internalLoadingByTab;
-
-  useEffect(() => {
-    latestLoadRowsRef.current = loadRows;
-  }, [loadRows]);
-
-  useEffect(() => {
-    latestNormalizeRowsRef.current = normalizeRows;
-  }, [normalizeRows]);
+  const externalRowsByTab = (rowsByTab ?? {}) as Partial<
+    Record<TTab, readonly TRow[] | null>
+  >;
+  const activeExternalRows = externalRowsByTab[activeTab];
+  const dataQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "tabbed-data",
+      requestKey ?? "",
+      tabsKey,
+      activeTab,
+    ],
+    queryFn: async ({ signal }) => {
+      if (!loadRows) return [] as readonly TRow[];
+      try {
+        return await loadRows(activeTab, signal);
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") throw error;
+        return [] as readonly TRow[];
+      }
+    },
+    enabled:
+      typeof window !== "undefined" &&
+      Boolean(loadRows) &&
+      activeExternalRows === undefined,
+  });
 
   useEffect(() => {
     latestTabsRef.current = tabs;
@@ -318,7 +487,7 @@ export function TabbedDataTableCard<
     const nextTabs = latestTabsRef.current;
     const nextColumns = latestColumnsRef.current;
     setLoadedRowsByTab(createTabRecord(nextTabs, () => null));
-    setInternalLoadingByTab(createTabRecord(nextTabs, () => false));
+    setRawLoadedRowsByTab(createTabRecord(nextTabs, () => null));
     setSortByTab(
       createTabRecord(nextTabs, (tab) => {
         const tabColumns = getColumnsForTab(nextColumns, tab.value);
@@ -334,53 +503,20 @@ export function TabbedDataTableCard<
     );
     setSearchTab(null);
     setSearchTerm("");
-    setLoadVersion((previous) => previous + 1);
   }, [defaultSort?.direction, defaultSort?.key, requestKey, tabsKey]);
 
   useEffect(() => {
-    if (!latestLoadRowsRef.current) return;
-    if (
-      loadedRowsByTabRef.current[activeTab] !== null ||
-      loadingByTabRef.current[activeTab]
-    ) {
+    if (activeExternalRows !== undefined || dataQuery.data === undefined)
       return;
-    }
-
-    const controller = new AbortController();
-    setInternalLoadingByTab((previous) => ({
+    setRawLoadedRowsByTab((previous) => ({
       ...previous,
-      [activeTab]: true,
+      [activeTab]: dataQuery.data,
     }));
-
-    latestLoadRowsRef
-      .current(activeTab, controller.signal)
-      .then((nextRows) => latestNormalizeRowsRef.current(nextRows, activeTab))
-      .then((nextRows) => {
-        if (controller.signal.aborted) return;
-        setLoadedRowsByTab((previous) => ({
-          ...previous,
-          [activeTab]: nextRows,
-        }));
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setLoadedRowsByTab((previous) => ({
-          ...previous,
-          [activeTab]: [],
-        }));
-      })
-      .finally(() => {
-        if (controller.signal.aborted) return;
-        setInternalLoadingByTab((previous) => ({
-          ...previous,
-          [activeTab]: false,
-        }));
-      });
-
-    return () => {
-      controller.abort();
-    };
-  }, [activeTab, loadVersion, requestKey]);
+    setLoadedRowsByTab((previous) => ({
+      ...previous,
+      [activeTab]: normalizeRows(dataQuery.data, activeTab),
+    }));
+  }, [activeExternalRows, activeTab, dataQuery.data, normalizeRows]);
 
   useEffect(() => {
     if (searchTab !== null) return;
@@ -397,10 +533,25 @@ export function TabbedDataTableCard<
   );
   const searchConfig = search === false ? null : (search ?? {});
   const searchEnabled = searchConfig?.enabled ?? true;
-  const externalRowsByTab = (rowsByTab ?? {}) as Partial<
-    Record<TTab, readonly TRow[] | null>
-  >;
+  const exportConfig =
+    exportConfigProp === false ? null : (exportConfigProp ?? {});
+  const exportEnabled = exportConfig?.enabled ?? true;
+  const exportLabels = {
+    ...DEFAULT_EXPORT_LABELS,
+    ...exportConfig?.labels,
+  };
   const activeSearchTab = searchTab ?? activeTab;
+
+  const rawRowsByTab = useMemo(() => {
+    return createTabRecord(tabs, (tab) => {
+      const externalRows = externalRowsByTab[tab.value];
+      if (externalRows !== undefined) return externalRows;
+      if (tab.value === activeTab && dataQuery.data !== undefined) {
+        return dataQuery.data;
+      }
+      return rawLoadedRowsByTab[tab.value];
+    });
+  }, [activeTab, dataQuery.data, externalRowsByTab, rawLoadedRowsByTab, tabs]);
 
   const resolvedRowsByTab = useMemo(() => {
     return createTabRecord(tabs, (tab) => {
@@ -410,16 +561,31 @@ export function TabbedDataTableCard<
           ? null
           : normalizeRows(externalRows, tab.value);
       }
+      if (tab.value === activeTab && dataQuery.data !== undefined) {
+        return normalizeRows(dataQuery.data, tab.value);
+      }
       return loadedRowsByTab[tab.value];
     });
-  }, [externalRowsByTab, loadedRowsByTab, normalizeRows, tabs]);
+  }, [
+    activeTab,
+    dataQuery.data,
+    externalRowsByTab,
+    loadedRowsByTab,
+    normalizeRows,
+    tabs,
+  ]);
 
   const resolvedLoadingByTab = useMemo(
     () =>
       createTabRecord(tabs, (tab) =>
-        Boolean(loadingByTab?.[tab.value] ?? internalLoadingByTab[tab.value]),
+        Boolean(
+          loadingByTab?.[tab.value] ??
+          (tab.value === activeTab &&
+            dataQuery.isFetching &&
+            dataQuery.data === undefined),
+        ),
       ),
-    [internalLoadingByTab, loadingByTab, tabs],
+    [activeTab, dataQuery.data, dataQuery.isFetching, loadingByTab, tabs],
   );
 
   const sortedRowsByTab = useMemo(() => {
@@ -449,11 +615,17 @@ export function TabbedDataTableCard<
           sortColumn.getValue(right, tabValue);
         const primary = (leftValue - rightValue) * direction;
         if (primary !== 0) return primary;
-        return String(
-          getRowSearchText?.(left, tabValue) ?? left.key,
-        ).localeCompare(
-          String(getRowSearchText?.(right, tabValue) ?? right.key),
-        );
+        const leftText =
+          rowAdapter?.getSearchText?.(left, tabValue) ??
+          getRowSearchText?.(left, tabValue) ??
+          left.key ??
+          "";
+        const rightText =
+          rowAdapter?.getSearchText?.(right, tabValue) ??
+          getRowSearchText?.(right, tabValue) ??
+          right.key ??
+          "";
+        return String(leftText).localeCompare(String(rightText));
       });
 
       return filterRows ? filterRows(sorted, tabValue) : sorted;
@@ -463,6 +635,7 @@ export function TabbedDataTableCard<
     compareRows,
     filterRows,
     getRowSearchText,
+    rowAdapter,
     resolvedRowsByTab,
     effectiveSortByTab,
     tabs,
@@ -473,7 +646,10 @@ export function TabbedDataTableCard<
     const rows = sortedRowsByTab[activeSearchTab];
     if (!normalizedSearchTerm) return rows;
     const getText =
-      searchConfig?.getText ?? getRowSearchText ?? ((row: TRow) => row.key);
+      searchConfig?.getText ??
+      rowAdapter?.getSearchText ??
+      getRowSearchText ??
+      ((row: TRow) => row.key ?? "");
     return rows.filter((row) =>
       getText(row, activeSearchTab)
         .toLocaleLowerCase()
@@ -483,6 +659,7 @@ export function TabbedDataTableCard<
     activeSearchTab,
     getRowSearchText,
     normalizedSearchTerm,
+    rowAdapter,
     searchConfig,
     sortedRowsByTab,
   ]);
@@ -503,6 +680,10 @@ export function TabbedDataTableCard<
   const activeSearchColumns = getColumnsForTab(columns, activeSearchTab);
   const colSpan = 1 + activeColumns.length;
   const searchColSpan = 1 + activeSearchColumns.length;
+  const allExportTabsLoaded = tabs.every(
+    (tab) =>
+      resolvedRowsByTab[tab.value] !== null && !resolvedLoadingByTab[tab.value],
+  );
 
   const activeSearchTitle =
     searchConfig?.title?.(activeSearchTabMeta) ??
@@ -511,6 +692,31 @@ export function TabbedDataTableCard<
   const activeSearchPlaceholder =
     searchConfig?.placeholder?.(activeSearchTabMeta) ?? activeSearchTitle;
   const searchActionLabel = searchConfig?.actionLabel ?? activeSearchTitle;
+  const defaultExportFilename = useMemo(() => {
+    const configured = exportConfig?.filename;
+    const base =
+      typeof configured === "function"
+        ? configured(activeTabMeta)
+        : (configured ?? `table-${activeTabMeta.value}`);
+    return sanitizeCsvFilename(base);
+  }, [activeTabMeta, exportConfig]);
+
+  useEffect(() => {
+    if (!exportOpen) return;
+    setExportScope(
+      exportConfig?.defaultScope === "allTabs" && allExportTabsLoaded
+        ? "allTabs"
+        : "currentTab",
+    );
+    setExportRows(exportConfig?.defaultRows ?? "currentView");
+    setExportFilename(defaultExportFilename);
+  }, [
+    allExportTabsLoaded,
+    defaultExportFilename,
+    exportConfig?.defaultRows,
+    exportConfig?.defaultScope,
+    exportOpen,
+  ]);
 
   function setActiveTab(next: TTab) {
     if (!controlled) {
@@ -636,8 +842,12 @@ export function TabbedDataTableCard<
 
     return (
       <AnimatePresence initial={false} mode="popLayout">
-        {rows.map((row) => {
-          const key = getRowKey?.(row, tab) ?? row.key;
+        {rows.map((row, index) => {
+          const key =
+            rowAdapter?.getKey?.(row, tab) ??
+            getRowKey?.(row, tab) ??
+            row.key ??
+            String(index);
           const rowValue = progressColumn
             ? Math.max(
                 0,
@@ -652,9 +862,14 @@ export function TabbedDataTableCard<
               ? Math.min(100, (rowValue / progressTotal) * 100)
               : 0;
           const context = { row, tab, sort, source };
-          const active = getRowActive?.(row, tab) ?? false;
+          const active =
+            rowAdapter?.getActive?.(row, tab) ??
+            getRowActive?.(row, tab) ??
+            false;
           const interactive =
-            getRowInteractive?.(row, tab) ?? Boolean(onRowClick);
+            rowAdapter?.getInteractive?.(row, tab) ??
+            getRowInteractive?.(row, tab) ??
+            Boolean(rowAdapter?.onClick ?? onRowClick);
 
           return (
             <AnimatedDataTableRow
@@ -666,6 +881,7 @@ export function TabbedDataTableCard<
                   ? "cursor-pointer hover:brightness-95"
                   : "cursor-default",
                 active && "brightness-95",
+                rowAdapter?.getClassName?.(row, context),
                 getRowClassName?.(row, context),
               )}
               style={
@@ -678,11 +894,17 @@ export function TabbedDataTableCard<
                     }
                   : undefined
               }
-              onClick={() => onRowClick?.(row, context)}
+              onClick={() =>
+                (rowAdapter?.onClick ?? onRowClick)?.(row, context)
+              }
             >
               <TableCell className="whitespace-normal p-0 align-top">
                 <div className="px-4 py-2 leading-5 whitespace-normal break-words">
-                  {renderLabel(row, context)}
+                  {(
+                    rowAdapter?.renderLabel ??
+                    renderLabel ??
+                    ((fallbackRow: TRow) => fallbackRow.key ?? "")
+                  )(row, context)}
                 </div>
               </TableCell>
               {metricColumns.map((column, index) => {
@@ -709,6 +931,85 @@ export function TabbedDataTableCard<
         })}
       </AnimatePresence>
     );
+  }
+
+  function rowLabel(row: TRow, tab: TTab) {
+    return (
+      exportConfig?.getRowLabel?.(row, tab) ??
+      rowAdapter?.getExportLabel?.(row, tab) ??
+      exportRowLabelFallback(row)
+    );
+  }
+
+  function exportCellValue(
+    row: TRow,
+    column: TabbedDataTableColumn<TRow, TKey, TTab>,
+    tab: TTab,
+  ) {
+    const rawValue = column.getValue(row, tab);
+    return (
+      column.exportValue?.(row, tab) ??
+      exportConfig?.getCellValue?.(rawValue, row, column, tab) ??
+      rawValue
+    );
+  }
+
+  function exportRowsForTab(tab: TTab) {
+    if (exportRows === "rawRows") {
+      return rawRowsByTab[tab] ?? [];
+    }
+    return sortedRowsByTab[tab] ?? [];
+  }
+
+  function buildExportCsv() {
+    const selectedTabs =
+      exportScope === "allTabs" && allExportTabsLoaded
+        ? [...tabs]
+        : [activeTabMeta];
+    const rows: (string | number | null | undefined)[][] = [];
+    selectedTabs.forEach((tabMeta, tabIndex) => {
+      const tabColumns = getColumnsForTab(columns, tabMeta.value).filter(
+        (column) => column.exportable !== false,
+      );
+      const firstColumnLabel =
+        typeof labelColumnLabel === "function"
+          ? labelColumnLabel(tabMeta)
+          : (labelColumnLabel ?? tabMeta.columnLabel ?? tabMeta.label);
+      if (selectedTabs.length > 1) {
+        if (tabIndex > 0) rows.push([]);
+        rows.push([tabMeta.label]);
+      }
+      rows.push([
+        firstColumnLabel,
+        ...tabColumns.map((column) => column.exportLabel ?? column.label),
+      ]);
+      exportRowsForTab(tabMeta.value).forEach((row) => {
+        rows.push([
+          rowLabel(row, tabMeta.value),
+          ...tabColumns.map((column) =>
+            exportCellValue(row, column, tabMeta.value),
+          ),
+        ]);
+      });
+    });
+    return buildCsv(rows);
+  }
+
+  function countExportRows() {
+    const selectedTabs =
+      exportScope === "allTabs" && allExportTabsLoaded
+        ? [...tabs]
+        : [activeTabMeta];
+    return selectedTabs.reduce(
+      (sum, tab) => sum + exportRowsForTab(tab.value).length,
+      0,
+    );
+  }
+
+  function handleExport() {
+    const csv = buildExportCsv();
+    downloadCsv(exportFilename || defaultExportFilename, csv);
+    setExportOpen(false);
   }
 
   const searchContent = searchEnabled ? (
@@ -783,6 +1084,116 @@ export function TabbedDataTableCard<
       </Clickable>
     ) : null;
 
+  const exportAction =
+    exportEnabled && !headerHidden ? (
+      <Clickable
+        className="size-6 text-muted-foreground hover:text-foreground"
+        onClick={() => setExportOpen(true)}
+        aria-label={exportLabels.action}
+        title={exportLabels.action}
+      >
+        <RiDownloadLine className="size-4" />
+      </Clickable>
+    ) : null;
+
+  const exportRowCount = exportEnabled ? countExportRows() : 0;
+  const exportPanel =
+    exportEnabled && !headerHidden ? (
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle icon={RiDownloadLine}>
+              {exportLabels.title}
+            </DialogTitle>
+            <DialogDescription>{exportLabels.description}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <label
+                className="text-xs font-medium"
+                htmlFor="table-export-scope"
+              >
+                {exportLabels.scopeLabel}
+              </label>
+              <Select
+                value={exportScope}
+                onValueChange={(value) =>
+                  setExportScope(value as TabbedDataTableExportScope)
+                }
+              >
+                <SelectTrigger id="table-export-scope" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="currentTab">
+                    {exportLabels.currentTab}
+                  </SelectItem>
+                  <SelectItem value="allTabs" disabled={!allExportTabsLoaded}>
+                    {exportLabels.allTabs}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              {!allExportTabsLoaded ? (
+                <p className="text-xs text-muted-foreground">
+                  {exportLabels.allTabsUnavailable}
+                </p>
+              ) : null}
+            </div>
+            <div className="grid gap-2">
+              <label
+                className="text-xs font-medium"
+                htmlFor="table-export-rows"
+              >
+                {exportLabels.rowsLabel}
+              </label>
+              <Select
+                value={exportRows}
+                onValueChange={(value) =>
+                  setExportRows(value as TabbedDataTableExportRows)
+                }
+              >
+                <SelectTrigger id="table-export-rows" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="currentView">
+                    {exportLabels.currentView}
+                  </SelectItem>
+                  <SelectItem value="rawRows">
+                    {exportLabels.rawRows}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <label
+                className="text-xs font-medium"
+                htmlFor="table-export-name"
+              >
+                {exportLabels.fileNameLabel}
+              </label>
+              <Input
+                id="table-export-name"
+                value={exportFilename}
+                onChange={(event) => setExportFilename(event.target.value)}
+              />
+            </div>
+            {exportRowCount === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {exportLabels.empty}
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button onClick={handleExport} disabled={exportRowCount === 0}>
+              <RiDownloadLine />
+              {exportLabels.download}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    ) : null;
+
   const syncKey = [
     activeTab,
     activeLoading ? "loading" : "idle",
@@ -798,9 +1209,10 @@ export function TabbedDataTableCard<
         onValueChange={(next) => setActiveTab(next)}
         tabs={[...tabs]}
         headerRight={
-          headerRight || searchAction ? (
+          headerRight || exportAction || searchAction ? (
             <div className="inline-flex items-center gap-1">
               {headerRight}
+              {exportAction}
               {searchAction}
             </div>
           ) : undefined
@@ -824,6 +1236,7 @@ export function TabbedDataTableCard<
         />
       </TabbedScrollMaskCard>
       {searchPanel}
+      {exportPanel}
     </>
   );
 }

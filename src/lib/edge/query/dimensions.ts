@@ -31,6 +31,7 @@ export async function queryDimensionFromD1(
   filters: DashboardFilters,
   limit: number,
   selectExpr: string,
+  options?: { excludeEmpty?: boolean },
 ): Promise<DimensionRow[]> {
   const filter = buildVisitFilterSql(filters);
   const sql = `
@@ -52,6 +53,7 @@ dimension_rollup AS (
 )
 SELECT value, views, sessions, visitors
 FROM dimension_rollup
+${options?.excludeEmpty ? "WHERE TRIM(value) != ''" : ""}
 ORDER BY views DESC, sessions DESC, value ASC
 LIMIT ?
 `;
@@ -113,6 +115,7 @@ SELECT
   count(*) AS sessions,
   count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors
 FROM session_edges
+WHERE TRIM(value) != ''
 GROUP BY value
 ORDER BY views DESC, value ASC
 LIMIT ?
@@ -138,8 +141,17 @@ export async function queryVisitDimensionFromD1(
   filters: DashboardFilters,
   limit: number,
   selectExpr: string,
+  options?: { excludeEmpty?: boolean },
 ): Promise<DimensionRow[]> {
-  return queryDimensionFromD1(env, siteId, window, filters, limit, selectExpr);
+  return queryDimensionFromD1(
+    env,
+    siteId,
+    window,
+    filters,
+    limit,
+    selectExpr,
+    options,
+  );
 }
 
 export async function querySessionBoundaryDimensionFromD1(

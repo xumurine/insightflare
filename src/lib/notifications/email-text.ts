@@ -46,6 +46,10 @@ function formatLastSeen(
   );
 }
 
+function usesFullwidthPunctuation(locale: Locale): boolean {
+  return locale === "zh" || locale === "ja";
+}
+
 function renderReportText(input: RenderNotificationEmailTextInput): string {
   const messages = NOTIFICATION_EMAIL_MESSAGES[input.locale];
   const data = input.message.data;
@@ -73,7 +77,7 @@ function renderReportText(input: RenderNotificationEmailTextInput): string {
           return `${index + 1}. ${name} - ${visits} ${messages.common.visits}`;
         })
       : [messages.common.noReferrerData];
-  const colon = input.locale === "zh" ? "：" : ":";
+  const colon = usesFullwidthPunctuation(input.locale) ? "：" : ":";
 
   return [
     input.content.title,
@@ -96,8 +100,8 @@ function renderReportText(input: RenderNotificationEmailTextInput): string {
 function renderThresholdText(input: RenderNotificationEmailTextInput): string {
   const messages = NOTIFICATION_EMAIL_MESSAGES[input.locale];
   const data = input.message.data;
-  const colon = input.locale === "zh" ? "：" : ":";
-  const separator = input.locale === "zh" ? "" : " ";
+  const colon = usesFullwidthPunctuation(input.locale) ? "：" : ":";
+  const separator = usesFullwidthPunctuation(input.locale) ? "" : " ";
   const operator = textValue(data.operator, ">=");
   return [
     input.content.title,
@@ -112,8 +116,8 @@ function renderThresholdText(input: RenderNotificationEmailTextInput): string {
 function renderMilestoneText(input: RenderNotificationEmailTextInput): string {
   const messages = NOTIFICATION_EMAIL_MESSAGES[input.locale];
   const data = input.message.data;
-  const colon = input.locale === "zh" ? "：" : ":";
-  const separator = input.locale === "zh" ? "" : " ";
+  const colon = usesFullwidthPunctuation(input.locale) ? "：" : ":";
+  const separator = usesFullwidthPunctuation(input.locale) ? "" : " ";
   return [
     input.content.title,
     "",
@@ -128,8 +132,8 @@ function renderMilestoneText(input: RenderNotificationEmailTextInput): string {
 function renderChangeText(input: RenderNotificationEmailTextInput): string {
   const messages = NOTIFICATION_EMAIL_MESSAGES[input.locale];
   const data = input.message.data;
-  const colon = input.locale === "zh" ? "：" : ":";
-  const separator = input.locale === "zh" ? "" : " ";
+  const colon = usesFullwidthPunctuation(input.locale) ? "：" : ":";
+  const separator = usesFullwidthPunctuation(input.locale) ? "" : " ";
   const suffix = data.mode === "percent" ? "%" : "";
   const mode =
     data.mode === "percent"
@@ -153,8 +157,8 @@ function renderChangeText(input: RenderNotificationEmailTextInput): string {
 
 function renderHealthText(input: RenderNotificationEmailTextInput): string {
   const messages = NOTIFICATION_EMAIL_MESSAGES[input.locale];
-  const colon = input.locale === "zh" ? "：" : ":";
-  const separator = input.locale === "zh" ? "" : " ";
+  const colon = usesFullwidthPunctuation(input.locale) ? "：" : ":";
+  const separator = usesFullwidthPunctuation(input.locale) ? "" : " ";
   return [
     input.content.title,
     "",

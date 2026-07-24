@@ -24,7 +24,7 @@ const SOCKET_STATE = {
   OPEN: 1,
 } as const;
 
-const USE_REALTIME_MOCK = process.env.NEXT_PUBLIC_DEMO_MODE === "1";
+const USE_REALTIME_MOCK = import.meta.env.VITE_DEMO_MODE === "1";
 
 interface ChannelContext {
   siteId: string;

@@ -23,6 +23,26 @@ export const CAMPAIGN_TABS = [
   "content",
 ] as const satisfies CampaignTab[];
 
+export function buildCampaignRows(
+  rows: CampaignRawRowsByTab[CampaignTab],
+  tab: CampaignTab,
+  notSetLabel: string,
+): CampaignBreakdownRow[] {
+  const safeRows = Array.isArray(rows) ? rows : [];
+
+  return safeRows.map((row, index) => {
+    const value = normalizeDimensionValue(row.value);
+    return {
+      key: value || createEmptyKey(tab, index),
+      value,
+      label: value || notSetLabel,
+      views: Math.max(0, Number(row.views ?? 0)),
+      sessions: Math.max(0, Number(row.sessions ?? 0)),
+      mono: tab === "term" || tab === "content",
+    };
+  });
+}
+
 function normalizeDimensionValue(value: string | null | undefined): string {
   return String(value ?? "").trim();
 }
@@ -38,19 +58,7 @@ export function buildCampaignRowsByTab(
   const next = {} as CampaignRowsByTab;
 
   for (const tab of CAMPAIGN_TABS) {
-    const rows = Array.isArray(rowsByTab[tab]) ? rowsByTab[tab] : [];
-
-    next[tab] = rows.map((row, index) => {
-      const value = normalizeDimensionValue(row.value);
-      return {
-        key: value || createEmptyKey(tab, index),
-        value,
-        label: value || notSetLabel,
-        views: Math.max(0, Number(row.views ?? 0)),
-        sessions: Math.max(0, Number(row.sessions ?? 0)),
-        mono: tab === "term" || tab === "content",
-      };
-    });
+    next[tab] = buildCampaignRows(rowsByTab[tab], tab, notSetLabel);
   }
 
   return next;

@@ -79,7 +79,6 @@ export function EmailLayout({ children, locale, preview }: EmailLayoutProps) {
   const styles = createStyles();
   return (
     <html lang={locale}>
-      {/* eslint-disable-next-line @next/next/no-head-element */}
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

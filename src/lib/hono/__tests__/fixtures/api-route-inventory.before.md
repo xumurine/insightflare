@@ -48,4 +48,4 @@ checklist; it is not an OpenAPI contract.
 | POST | `/api/v1/batch` | `routes/v1/index.ts` | `handleApiV1` | API key | per subrequest | JSON v1 envelope | Subrequests currently call `handleApiV1` |
 
 Production path match is controlled by `src/lib/hono/path-match.ts`; non-API
-page traffic continues to OpenNext.
+page traffic continues to the application router.

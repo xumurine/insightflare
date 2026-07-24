@@ -1,7 +1,4 @@
-"use client";
-
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   RiLoginBoxLine,
   RiRefreshLine,
@@ -24,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import type { Locale } from "@/lib/i18n/config";
 import { navigateWithTransition } from "@/lib/page-transition";
+import { useRouter } from "@/lib/router";
 
 interface LoginFormProps {
   locale: Locale;
@@ -113,7 +111,7 @@ function apiErrorCode(payload: LoginResponse): string {
 }
 
 async function fetchLoginTurnstileConfig(): Promise<LoginTurnstileClientConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: "/api/public/login-security",

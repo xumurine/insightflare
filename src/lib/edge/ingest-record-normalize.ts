@@ -53,6 +53,10 @@ interface NormalizeRecordContext {
     visitId: string;
     startedAt: number;
     sessionWindowMs: number;
+    routePreviousHostname?: string;
+    routePreviousPathname?: string;
+    routePreviousQueryString?: string;
+    routePreviousHashFragment?: string;
   }): Promise<RecentVisitorSession | null>;
   insertBufferedCustomEvent(record: BufferedCustomEventInput): boolean;
   ensureAlarm(): Promise<void>;
@@ -97,10 +101,12 @@ export async function normalizeIngestRecord(
   const nowMs = Date.now();
   const receivedAt = clampTimestamp(envelope.request.receivedAt, nowMs);
   const eventAt = resolveTrustedClientTimestamp(client.timestamp, receivedAt);
-  const visitorSecret =
-    (await visitorDailySaltSecret(context.env)) ||
-    context.env.DAILY_SALT_SECRET ||
-    "insightflare-visitor-secret-change-me";
+  const visitorSecret = await visitorDailySaltSecret(context.env);
+  if (!visitorSecret) {
+    throw new Error(
+      "MAIN_SECRET or DAILY_SALT_SECRET is required for visitor identity",
+    );
+  }
   const startedAt = Math.min(
     resolveTrustedClientTimestamp(client.startedAt, receivedAt, eventAt),
     eventAt,
@@ -180,10 +186,36 @@ export async function normalizeIngestRecord(
     const referrerIsSameHostname = isSameHostname(rawReferrerHost, hostname);
     const referrerUrl = referrerIsSameHostname ? "" : rawReferrerUrl;
     const referrerHost = referrerIsSameHostname ? "" : rawReferrerHost;
-    const previousVisitId = clampString(
-      coerceString(client.previousVisitId),
-      128,
-    );
+    const navigationKind = clampString(coerceString(client.navigation), 40);
+    let routePreviousHostname = "";
+    let routePreviousPathname = "";
+    let routePreviousQueryString = "";
+    let routePreviousHashFragment = "";
+    if (navigationKind === "route" && referrerIsSameHostname) {
+      try {
+        const routePreviousUrl = new URL(rawReferrerUrl);
+        routePreviousHostname = clampString(routePreviousUrl.hostname, 255)
+          .toLowerCase()
+          .replace(/\.+$/, "");
+        routePreviousPathname = clampString(
+          routePreviousUrl.pathname || "/",
+          2048,
+        );
+        routePreviousQueryString = clampString(
+          routePreviousUrl.search || "",
+          2048,
+        );
+        routePreviousHashFragment = clampString(
+          routePreviousUrl.hash || "",
+          1024,
+        );
+      } catch {
+        routePreviousHostname = "";
+        routePreviousPathname = "";
+        routePreviousQueryString = "";
+        routePreviousHashFragment = "";
+      }
+    }
     const sessionWindowMinutes = resolveSessionWindowMinutes(context.env);
     const recentSession = await context.findRecentVisitorSession({
       siteId,
@@ -191,6 +223,10 @@ export async function normalizeIngestRecord(
       visitId,
       startedAt,
       sessionWindowMs: sessionWindowMinutes * 60 * 1000,
+      routePreviousHostname,
+      routePreviousPathname,
+      routePreviousQueryString,
+      routePreviousHashFragment,
     });
     const sessionId =
       recentSession?.sessionId ||
@@ -201,6 +237,14 @@ export async function normalizeIngestRecord(
         startedAt,
         secret: visitorSecret,
       }));
+    const recentStatus = recentSession?.status || "";
+    const recentOpenVisit =
+      recentSession?.visitId &&
+      navigationKind === "route" &&
+      Number(recentSession.routeMatch ?? 0) > 0 &&
+      (recentStatus === "open" || recentStatus === "hidden_pending")
+        ? recentSession
+        : null;
     const queryString = clampString(coerceString(client.query || ""), 2048);
     return {
       record: {
@@ -211,7 +255,8 @@ export async function normalizeIngestRecord(
         visitId,
         visitorId,
         sessionId,
-        previousVisitId,
+        previousVisitId: recentOpenVisit?.visitId || "",
+        previousVisitStartedAt: recentOpenVisit?.startedAt ?? null,
         startedAt,
         pathname,
         queryString,
@@ -314,10 +359,7 @@ export async function normalizeIngestRecord(
       };
     }
     const visit = await context.getVisitContext(siteId, visitId);
-    const sequence = Math.max(
-      0,
-      Math.floor(coerceNumber(client.sequence, 0) ?? 0),
-    );
+    const sequence = 0;
     const eventId = clampString(
       coerceString(client.eventId || crypto.randomUUID()),
       128,

@@ -20,7 +20,10 @@ import {
   buildTimeBuckets,
   buildVisitFilterSql,
   buildVisitSourceCte,
+  cityValueExpr,
+  clientDimensionDefinition,
   dedupeFilterOptions,
+  geoTabLabel,
   jsonResponseWith,
   mapDimensionRowsToFilterOptions,
   mapGeoRowsToFilterOptions,
@@ -38,6 +41,7 @@ import {
   parseWindow,
   percentChange,
   queryD1All,
+  regionValueExpr,
   type ResponseContext,
   sourceLabel,
   timeBucketCase,
@@ -49,6 +53,7 @@ import {
 import {
   queryOverviewClientDimensionsFromD1,
   queryOverviewGeoDimensionsFromD1,
+  querySessionBoundaryDimensionFromD1,
 } from "./dimensions";
 import { queryGeoPointAggregate } from "./journeys";
 import {
@@ -404,6 +409,23 @@ export type OverviewGeoTabKey =
   | "timezone"
   | "organization";
 
+const PAGE_TAB_DIMENSION_EXPRESSIONS: Partial<
+  Record<OverviewPageTabKey, string>
+> = {
+  path: "pathname",
+  title: "title",
+  hostname: "hostname",
+};
+
+const GEO_TAB_DIMENSION_EXPRESSIONS: Record<OverviewGeoTabKey, string> = {
+  country: "country",
+  region: regionValueExpr(),
+  city: cityValueExpr(),
+  continent: "continent",
+  timezone: "timezone",
+  organization: "as_organization",
+};
+
 export async function handleOverviewPageTab(
   env: Env,
   siteId: string,
@@ -415,16 +437,28 @@ export async function handleOverviewPageTab(
   if (!window) return badRequest("Invalid time window");
   const filters = parseFilters(url);
   const limit = parseLimit(url, 100, 200);
-  const tabs = await queryPageTabsAggregate(
-    env,
-    siteId,
-    window,
-    filters,
-    limit,
-  );
+  const rows =
+    tab === "entry" || tab === "exit"
+      ? await querySessionBoundaryDimensionFromD1(
+          env,
+          siteId,
+          window,
+          filters,
+          limit,
+          tab,
+        )
+      : await queryDimensionAggregate(
+          env,
+          siteId,
+          window,
+          filters,
+          limit,
+          PAGE_TAB_DIMENSION_EXPRESSIONS[tab]!,
+          { excludeEmpty: true },
+        );
   return jsonResponseWith(ctx!, {
     ok: true,
-    data: mapTabs(tabs[tab]),
+    data: mapTabs(rows),
   });
 }
 
@@ -469,16 +503,20 @@ export async function handleOverviewClientTab(
   if (!window) return badRequest("Invalid time window");
   const filters = parseFilters(url);
   const limit = parseLimit(url, 100, 200);
-  const tabs = await buildOverviewClientDimensionTabs(
+  const rows = await queryDimensionAggregate(
     env,
     siteId,
     window,
     filters,
     limit,
+    clientDimensionDefinition(tab).labelExpr,
+    { excludeEmpty: true },
   );
   return jsonResponseWith(ctx!, {
     ok: true,
-    data: mapTabs(tabs[tab]),
+    // Preserve the existing response contract. The legacy client-dimension
+    // path did not expose distinct visitor counts for these cards.
+    data: mapTabs(rows.map((row) => ({ ...row, visitors: 0 }))),
   });
 }
 
@@ -494,16 +532,23 @@ export async function handleOverviewGeoTab(
   const rawFilters = parseFilters(url);
   const filters = tab === "country" ? withoutGeoFilter(rawFilters) : rawFilters;
   const limit = parseLimit(url, 100, 200);
-  const tabs = await buildOverviewGeoDimensionTabs(
+  const rows = await queryDimensionAggregate(
     env,
     siteId,
     window,
     filters,
     limit,
+    GEO_TAB_DIMENSION_EXPRESSIONS[tab],
+    { excludeEmpty: true },
   );
   return jsonResponseWith(ctx!, {
     ok: true,
-    data: mapGeoTabs(tabs[tab]),
+    data: mapGeoTabs(
+      rows.map((row) => ({
+        ...row,
+        label: geoTabLabel(row.value, tab),
+      })),
+    ),
   });
 }
 

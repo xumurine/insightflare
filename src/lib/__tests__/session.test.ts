@@ -115,16 +115,15 @@ describe("Session Authentication (Web Crypto HMAC)", () => {
     expect(verifiedWrongSecret).toBeNull();
   });
 
-  it("should handle empty or wrong secret keys gracefully conforming to fallback behaviors", async () => {
+  it("should handle empty or wrong secret key overrides gracefully", async () => {
     const token = await createSessionToken(mockClaims, 1800);
 
-    // 1. If empty string is supplied, verifySessionToken falls back to the default derived session secret.
-    // Assert it successfully verifies instead of returning null or crashing.
+    // Empty string keeps using the configured runtime session secret.
     const verifiedEmpty = await verifySessionToken(token, "");
     expect(verifiedEmpty).not.toBeNull();
     expect(verifiedEmpty!.userId).toBe(mockClaims.userId);
 
-    // 2. If a wrong non-empty key is supplied, fallback does not happen. Assert it securely fails and returns null.
+    // A wrong non-empty key override securely fails.
     const verifiedWrong = await verifySessionToken(
       token,
       "invalid-secret-key-override",
@@ -160,20 +159,14 @@ describe("Session Authentication (Web Crypto HMAC)", () => {
     expect(verified).toBeNull();
   });
 
-  it("should cover missing environment variable fallback (Line 16, 25)", async () => {
-    // Delete session secret environment variables
+  it("rejects session token creation when no root secret is configured", async () => {
     delete process.env.MAIN_SECRET;
     delete process.env.DAILY_SALT_SECRET;
 
-    // Secret should fallback to "insightflare-session-secret-change-me"
     const userClaims = { ...mockClaims, systemRole: "user" as const };
-    const token = await createSessionToken(userClaims, 3600);
-    expect(token).toBeDefined();
-
-    const verified = await verifySessionToken(token);
-    expect(verified).not.toBeNull();
-    expect(verified!.userId).toBe(mockClaims.userId);
-    expect(verified!.systemRole).toBe("user");
+    await expect(createSessionToken(userClaims, 3600)).rejects.toThrow(
+      "MAIN_SECRET or DAILY_SALT_SECRET is required for sessions",
+    );
   });
 
   it("should fail validation if base64 signature is highly malformed (Line 122)", async () => {

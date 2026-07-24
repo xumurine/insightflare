@@ -1,7 +1,6 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
 import { RiShareForwardLine } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import {
   PolarAngleAxis,
   PolarGrid,
@@ -27,7 +26,7 @@ import {
 } from "@/lib/dashboard/format";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
-import type { ReferrerRadarData, ReferrerRadarItem } from "@/lib/edge-client";
+import type { ReferrerRadarItem } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
@@ -454,28 +453,35 @@ export function ReferrerPerformanceRadarCard({
   window: tw,
   filters,
 }: ReferrerPerformanceRadarCardProps) {
-  const [data, setData] = useState<ReferrerRadarItem[]>([]);
   const [metadataByReferrer, setMetadataByReferrer] = useState<
     Record<string, ReferrerMetadata | null | undefined>
   >({});
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    fetchReferrerRadar(siteId, tw, filters, { limit: 24 })
-      .catch(() => ({ ok: true, data: [] }) as ReferrerRadarData)
-      .then((res) => {
-        if (!active) return;
-        setData(Array.isArray(res.data) ? res.data.slice(0, 24) : []);
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [siteId, tw.from, tw.to, filters]);
+  const radarQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "referrer-performance-radar",
+      siteId,
+      tw.from,
+      tw.to,
+      tw.timeZone,
+      filters,
+    ],
+    queryFn: async ({ signal }) => {
+      try {
+        const response = await fetchReferrerRadar(siteId, tw, filters, {
+          limit: 24,
+          signal,
+        });
+        return Array.isArray(response.data) ? response.data.slice(0, 24) : [];
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") throw error;
+        return [] as ReferrerRadarItem[];
+      }
+    },
+    enabled: typeof window !== "undefined",
+  });
+  const data = radarQuery.data ?? [];
+  const loading = radarQuery.isPending;
 
   useEffect(() => {
     let active = true;

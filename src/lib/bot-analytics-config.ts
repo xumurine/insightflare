@@ -24,8 +24,6 @@ export interface PublicBotAnalyticsConfig {
 
 export interface BotAnalyticsConfigUpdateInput {
   accountId?: string;
-  dataset?: string;
-  normalDataset?: string;
   apiToken?: string;
   clearApiToken?: boolean;
 }
@@ -59,9 +57,8 @@ export function normalizeBotAnalyticsConfig(
 ): BotAnalyticsConfig {
   const config = defaultBotAnalyticsConfig();
   config.accountId = cleanString(raw.accountId, 128);
-  config.dataset = cleanString(raw.dataset, 128) || DEFAULT_DATASET;
-  config.normalDataset =
-    cleanString(raw.normalDataset, 128) || DEFAULT_NORMAL_DATASET;
+  config.dataset = DEFAULT_DATASET;
+  config.normalDataset = DEFAULT_NORMAL_DATASET;
   config.apiTokenEncrypted = cleanString(raw.apiTokenEncrypted, 4096);
   config.apiTokenHint = cleanString(raw.apiTokenHint, 80);
   config.configured =
@@ -103,10 +100,6 @@ export function validateBotAnalyticsUpdateInput(
   const body = raw as Record<string, unknown>;
   const input: BotAnalyticsConfigUpdateInput = {};
   if ("accountId" in body) input.accountId = cleanString(body.accountId, 128);
-  if ("dataset" in body) input.dataset = cleanString(body.dataset, 128);
-  if ("normalDataset" in body) {
-    input.normalDataset = cleanString(body.normalDataset, 128);
-  }
   if ("apiToken" in body) input.apiToken = cleanString(body.apiToken, 4096);
   if ("clearApiToken" in body) {
     input.clearApiToken = body.clearApiToken === true;

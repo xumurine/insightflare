@@ -13,14 +13,14 @@ vi.mock("@/lib/realtime/mock", () => ({
 
 describe("dashboard client request helpers", () => {
   const realFetch = globalThis.fetch;
-  const realDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE;
+  const realDemoMode = process.env.VITE_DEMO_MODE;
 
   afterEach(() => {
     globalThis.fetch = realFetch;
     if (realDemoMode == null) {
-      delete process.env.NEXT_PUBLIC_DEMO_MODE;
+      delete process.env.VITE_DEMO_MODE;
     } else {
-      process.env.NEXT_PUBLIC_DEMO_MODE = realDemoMode;
+      process.env.VITE_DEMO_MODE = realDemoMode;
     }
     vi.restoreAllMocks();
     vi.mocked(handleDemoRequest).mockReset();
@@ -34,7 +34,7 @@ describe("dashboard client request helpers", () => {
   }
 
   it("dedupes concurrent GET requests by URL and clears the entry after settlement", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const fetchMock = vi
       .fn()
       .mockImplementation(() =>
@@ -62,7 +62,7 @@ describe("dashboard client request helpers", () => {
   });
 
   it("skips dedupe when disabled or when a signal is provided", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const fetchMock = vi
       .fn()
       .mockImplementation(() =>
@@ -111,7 +111,7 @@ describe("dashboard client request helpers", () => {
   });
 
   it("rewrites public dashboard GET requests and omits credentials", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const fetchMock = vi
       .fn()
       .mockImplementation(() =>
@@ -138,7 +138,7 @@ describe("dashboard client request helpers", () => {
   });
 
   it("keeps public and private request dedupe keys separate", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const fetchMock = vi
       .fn()
       .mockImplementation(() =>
@@ -169,7 +169,7 @@ describe("dashboard client request helpers", () => {
   });
 
   it("throws AbortError before issuing a request when the signal is already aborted", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const fetchMock = vi.fn();
     globalThis.fetch = fetchMock;
     const controller = new AbortController();
@@ -187,7 +187,7 @@ describe("dashboard client request helpers", () => {
   });
 
   it("includes response text in GET and mutate errors", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     globalThis.fetch = vi
       .fn()
       .mockResolvedValueOnce(new Response("get failed", { status: 503 }))
@@ -204,7 +204,7 @@ describe("dashboard client request helpers", () => {
   });
 
   it("serializes mutation params and optional JSON bodies", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const fetchMock = vi
       .fn()
       .mockImplementation(() =>
@@ -240,7 +240,7 @@ describe("dashboard client request helpers", () => {
   });
 
   it("routes mutations through the demo dispatcher in demo mode", async () => {
-    process.env.NEXT_PUBLIC_DEMO_MODE = "1";
+    process.env.VITE_DEMO_MODE = "1";
     const fetchMock = vi.fn();
     globalThis.fetch = fetchMock;
     vi.mocked(handleDemoRequest).mockReturnValue({ ok: true });

@@ -1,5 +1,3 @@
-"use client";
-
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   RiArrowDownSLine,

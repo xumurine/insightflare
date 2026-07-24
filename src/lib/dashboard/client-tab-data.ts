@@ -32,6 +32,11 @@ const clientPathByTab: Record<OverviewClientDimensionTab, string> = {
   screenSize: "screen-size",
 };
 
+function emptyOverviewTabUnlessAborted(error: unknown): OverviewTabData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyOverviewTab();
+}
+
 export async function fetchOverviewPageCardTab(
   siteId: string,
   window: TimeWindow,
@@ -39,6 +44,7 @@ export async function fetchOverviewPageCardTab(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<OverviewTabRows> {
   const endpoint =
@@ -57,7 +63,8 @@ export async function fetchOverviewPageCardTab(
       },
       filters,
     ),
-  ).catch(() => emptyOverviewTab());
+    { signal: options?.signal },
+  ).catch(emptyOverviewTabUnlessAborted);
   const rows = normalizeOverviewRows(payload.data);
   return tab === "query"
     ? rows.map((row) => ({
@@ -112,6 +119,7 @@ export async function fetchOverviewSourceCardTab(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<OverviewTabRows> {
   const payload = await fetchPrivateJson<OverviewTabData>(
@@ -126,7 +134,8 @@ export async function fetchOverviewSourceCardTab(
       },
       filters,
     ),
-  ).catch(() => emptyOverviewTab());
+    { signal: options?.signal },
+  ).catch(emptyOverviewTabUnlessAborted);
   return normalizeOverviewRows(payload.data);
 }
 
@@ -136,6 +145,7 @@ export async function fetchEventTypesTab(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<OverviewTabRows> {
   const payload = await fetchPrivateJson<OverviewTabData>(
@@ -150,7 +160,8 @@ export async function fetchEventTypesTab(
       },
       filters,
     ),
-  ).catch(() => emptyOverviewTab());
+    { signal: options?.signal },
+  ).catch(emptyOverviewTabUnlessAborted);
   return normalizeOverviewRows(payload.data);
 }
 

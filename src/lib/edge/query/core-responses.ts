@@ -1,4 +1,7 @@
-import type { ResponseContext } from "@/lib/response";
+import {
+  jsonResponse as createJsonResponse,
+  type ResponseContext,
+} from "@/lib/response";
 
 import {
   PRIVATE_CACHE_HEADERS,
@@ -37,11 +40,5 @@ export function siteQueryResponse(
   const body = ctx
     ? { ...base, requestId: ctx.requestId, timestamp: new Date().toISOString() }
     : base;
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...siteQueryHeaders(options),
-    },
-  });
+  return createJsonResponse(body, 200, siteQueryHeaders(options));
 }

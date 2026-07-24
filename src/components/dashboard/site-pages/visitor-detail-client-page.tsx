@@ -1,5 +1,3 @@
-"use client";
-
 import {
   type CSSProperties,
   type ReactNode,
@@ -8,9 +6,6 @@ import {
   useRef,
   useState,
 } from "react";
-import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useTheme } from "next-themes";
 import {
   RiArrowLeftLine,
   RiCalendarEventLine,
@@ -21,6 +16,7 @@ import {
   RiPulseLine,
   RiTimeLine,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 
 import {
   AsyncDimensionBreakdownCard,
@@ -65,6 +61,7 @@ import type {
   VisitorDetailMapTheme,
   VisitorLocationPoint,
 } from "@/components/dashboard/site-pages/visitor-detail-map-stage";
+import { useTheme } from "@/components/theme-provider";
 import {
   Card,
   CardContent,
@@ -84,6 +81,7 @@ import {
   percentFormat,
 } from "@/lib/dashboard/format";
 import { zonedParts } from "@/lib/dashboard/time-zone";
+import dynamic from "@/lib/dynamic";
 import type {
   JourneyEvent,
   JourneyPerformanceMetricSummary,
@@ -100,6 +98,7 @@ import {
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
+import Link from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 interface VisitorDetailClientPageProps {
@@ -2094,50 +2093,20 @@ export function VisitorDetailClientPage({
 }: VisitorDetailClientPageProps) {
   const labels = messages.visitorDetail;
   const { timeZone, window } = useDashboardQueryControls();
-  const [detail, setDetail] = useState<VisitorDetail | null>(null);
-  const [loading, setLoading] = useState(Boolean(visitorId));
-  const [error, setError] = useState(false);
   const requestKey = useMemo(
     () => [siteId, visitorId, timeZone, window.from, window.to].join(":"),
     [siteId, timeZone, visitorId, window.from, window.to],
   );
 
-  useEffect(() => {
-    if (!visitorId) {
-      setDetail(null);
-      setLoading(false);
-      return;
-    }
-    let active = true;
-    const controller = new AbortController();
-    setLoading(true);
-    setError(false);
-    fetchVisitorDetail(siteId, visitorId, timeZone, window, {
-      signal: controller.signal,
-    })
-      .then((payload) => {
-        if (!active) return;
-        setDetail(payload.data);
-      })
-      .catch((error: unknown) => {
-        if (
-          !active ||
-          controller.signal.aborted ||
-          (error instanceof Error && error.name === "AbortError")
-        ) {
-          return;
-        }
-        setDetail(null);
-        setError(true);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [requestKey, siteId, visitorId]);
+  const detailQuery = useQuery({
+    queryKey: ["dashboard", "visitor-detail", requestKey],
+    queryFn: ({ signal }) =>
+      fetchVisitorDetail(siteId, visitorId, timeZone, window, { signal }),
+    enabled: typeof window !== "undefined" && Boolean(visitorId),
+  });
+  const detail = detailQuery.data?.data ?? null;
+  const loading = detailQuery.isPending;
+  const error = detailQuery.isError;
 
   if (!visitorId) {
     return (

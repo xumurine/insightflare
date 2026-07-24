@@ -73,12 +73,12 @@ export function compareNodeShapes(
 
 export function comparePlaceholders(
   enLeaves: Map<string, string>,
-  zhLeaves: Map<string, string>,
+  targetLeaves: Map<string, string>,
 ): Array<{ key: string; en: string[]; zh: string[] }> {
   const mismatches: Array<{ key: string; en: string[]; zh: string[] }> = [];
 
   for (const [key, enValue] of enLeaves) {
-    const zhValue = zhLeaves.get(key);
+    const zhValue = targetLeaves.get(key);
     if (zhValue === undefined) continue;
     const enPlaceholders = extractPlaceholders(enValue);
     const zhPlaceholders = extractPlaceholders(zhValue);

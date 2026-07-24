@@ -8,12 +8,15 @@ import {
 } from "@/lib/edge/api-key-store";
 import {
   handleApiV1,
+  handleApiV1ForPrincipal,
+  handleBatch,
   handleCapabilities,
   handleRoot,
   handleToken,
   handleTokenCheck,
 } from "@/lib/edge/api-v1";
 import type { Env } from "@/lib/edge/types";
+import { j } from "@/lib/response";
 
 vi.mock("@/lib/edge/query/router", () => ({
   routeQuery: vi.fn(),
@@ -365,6 +368,18 @@ describe("api v1 gateway", () => {
     expect(body.data.links.openapi).toBe("/.well-known/openapi.json");
     expect(body.meta.generatedAt).toEqual(expect.any(String));
     expect(JSON.stringify(body)).not.toContain('"ok"');
+  });
+
+  it("serves root discovery through the authenticated dispatcher", async () => {
+    const req = request("/api/v1");
+    const response = await handleApiV1ForPrincipal(
+      req,
+      createEnv([]),
+      new URL(req.url),
+      principal(),
+    );
+
+    expect(response.status).toBe(200);
   });
 
   it("rejects non-GET discovery requests", async () => {
@@ -743,12 +758,30 @@ describe("api v1 gateway", () => {
       "site-1",
       "overview-geo-country",
       expect.any(URL),
-      { publicMode: false },
+      { publicMode: false, deferJsonSerialization: true },
       expect.any(Request),
     );
     expect(await breakdown.response.json()).toMatchObject({
       data: [{ key: "US", label: "United States", views: 4, sessions: 3 }],
     });
+  });
+
+  it("reuses structured payloads from internal legacy queries", async () => {
+    const internalResponse = j({
+      ok: true,
+      data: { views: 10, sessions: 8 },
+      interval: "day",
+    });
+    const json = vi.spyOn(internalResponse, "json");
+    routeQueryMock.mockResolvedValueOnce(internalResponse);
+
+    const { response } = await authed(
+      "/api/v1/sites/site-1/analytics/overview?preset=last_7_days",
+      [siteMatch("site-1", "Blog")],
+    );
+
+    expect(response.status).toBe(200);
+    expect(json).not.toHaveBeenCalled();
   });
 
   it("uses cursor pagination for events, visitors, and sessions", async () => {
@@ -1014,6 +1047,73 @@ describe("api v1 gateway", () => {
         ],
       },
       meta: { partialFailure: true },
+    });
+  });
+
+  it("authenticates a batch once and reuses its principal", async () => {
+    const generated = await keyRow();
+    const env = createEnv([authMatch(generated.row)]);
+    const prepare = vi.spyOn(env.DB, "prepare");
+    const path = "/api/v1/batch";
+
+    const response = await handleApiV1(
+      request(path, generated.apiKey, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          requests: [
+            {
+              id: "first",
+              method: "GET",
+              path: "/api/v1/capabilities",
+            },
+            {
+              id: "second",
+              method: "GET",
+              path: "/api/v1/capabilities",
+            },
+          ],
+        }),
+      }),
+      env,
+      new URL(`https://edge.test${path}`),
+    );
+
+    expect(response.status).toBe(200);
+    expect(
+      prepare.mock.calls.filter(([sql]) =>
+        String(sql).includes("FROM api_keys"),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("reuses structured payloads from internal batch responses", async () => {
+    const childResponse = j({ data: { value: 1 } });
+    const json = vi.spyOn(childResponse, "json");
+    const batchRequest = new Request("https://edge.test/api/v1/batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        requests: [
+          { id: "child", method: "GET", path: "/api/v1/capabilities" },
+        ],
+      }),
+    });
+
+    const response = await handleBatch(
+      batchRequest,
+      {} as Env,
+      new URL(batchRequest.url),
+      principal(),
+      async () => childResponse,
+    );
+
+    expect(response.status).toBe(200);
+    expect(json).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        responses: [{ id: "child", status: 200, body: { data: { value: 1 } } }],
+      },
     });
   });
 

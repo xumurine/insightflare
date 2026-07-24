@@ -943,12 +943,10 @@ describe("edge overview D1 queries and handlers", () => {
     const { env, calls } = createD1Env([
       [
         {
-          visitorId: "visitor-1",
-          sessionId: "session-1",
-          startedAt: window.fromMs,
-          pathname: "/home",
-          title: "Home",
-          hostname: "example.com",
+          value: "/home",
+          views: "1",
+          sessions: "1",
+          visitors: "1",
         },
       ],
       [
@@ -961,36 +959,18 @@ describe("edge overview D1 queries and handlers", () => {
       ],
       [
         {
-          sessionId: "session-1",
-          browser: "Chrome",
-          os: "macOS",
-          osVersion: "14",
-          deviceType: "desktop",
-          language: "en-US",
-          screenWidth: 1440,
-          screenHeight: 900,
-        },
-        {
-          sessionId: "session-2",
-          browser: "Chrome",
-          os: "macOS",
-          osVersion: "14",
-          deviceType: "desktop",
-          language: "en-US",
-          screenWidth: 1440,
-          screenHeight: 900,
+          value: "1440x900",
+          views: "2",
+          sessions: "2",
+          visitors: "2",
         },
       ],
       [
         {
-          sessionId: "session-1",
-          visitorId: "visitor-1",
-          country: "US",
-          region: "US::CA::California",
-          city: "US::CA::California::San Francisco",
-          continent: "NA",
-          timezone: "America/Los_Angeles",
-          asOrganization: "Example ISP",
+          value: "US",
+          views: "1",
+          sessions: "1",
+          visitors: "1",
         },
       ],
     ]);
@@ -1062,11 +1042,15 @@ describe("edge overview D1 queries and handlers", () => {
       ],
     });
     expect(calls.map((call) => call.bindings)).toEqual([
-      visitBindings(),
+      [...visitBindings(), 2],
       [...visitBindings(), 3],
-      visitBindings(),
-      visitBindings(),
+      [...visitBindings(), 3],
+      [...visitBindings(), 3],
     ]);
+    for (const call of [calls[0], calls[2], calls[3]]) {
+      expect(call.sql).toContain("GROUP BY value");
+      expect(call.sql).toContain("WHERE TRIM(value) != ''");
+    }
   });
 
   it("maps filter option branches across page, source, client, geo, and scalar keys", async () => {

@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from "react";
 import type { RemixiconComponentType } from "@remixicon/react";
 import { RiInformationLine } from "@remixicon/react";

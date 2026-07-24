@@ -1,3 +1,8 @@
+import { appNow } from "./e2e-clock";
+import {
+  canAccessMemberSite,
+  parseMemberSiteIdsJson,
+} from "./member-site-access";
 import type { Env } from "./types";
 
 function base64UrlDecode(input: string): Uint8Array {
@@ -64,7 +69,7 @@ async function verifySessionToken(
 
     const { userId, username, exp } = parsed;
     if (!userId || !username || !exp) return null;
-    if (Math.floor(Date.now() / 1000) >= Number(exp)) return null;
+    if (Math.floor(appNow() / 1000) >= Number(exp)) return null;
 
     return parsed as Record<string, string>;
   } catch {
@@ -128,17 +133,30 @@ async function canSessionReadSite(
   }
 
   const site = await env.DB.prepare(
-    `SELECT s.id
+    `SELECT
+       s.id,
+       t.owner_user_id AS ownerUserId,
+       tm.role,
+       tm.site_ids_json AS siteIdsJson
      FROM sites s
      INNER JOIN teams t ON t.id = s.team_id
      LEFT JOIN team_members tm ON tm.team_id = s.team_id AND tm.user_id = ?
-     WHERE s.id = ? AND (t.owner_user_id = ? OR tm.user_id IS NOT NULL)
+     WHERE s.id = ?
      LIMIT 1`,
   )
-    .bind(session.userId, siteId, session.userId)
-    .first<{ id: string }>();
+    .bind(session.userId, siteId)
+    .first<{
+      id: string;
+      ownerUserId: string;
+      role: string | null;
+      siteIdsJson: string | null;
+    }>();
 
-  return Boolean(site?.id);
+  if (!site?.id) return false;
+  if (site.ownerUserId === session.userId) return true;
+  if (site.role === "owner" || site.role === "admin") return true;
+  if (!site.role) return false;
+  return canAccessMemberSite(parseMemberSiteIdsJson(site.siteIdsJson), siteId);
 }
 
 export async function handleAdminWs(

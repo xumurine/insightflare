@@ -14,7 +14,7 @@ import type { Env } from "./types";
 import { resolveSessionWindowMinutes } from "./utils";
 
 const SCRIPT_RESPONSE_CACHE_NAME = "insightflare-script-cache";
-const SCRIPT_RESPONSE_CACHE_TTL_SECONDS = 60 * 60;
+const SCRIPT_RESPONSE_CACHE_TTL_SECONDS = 10 * 60;
 const SCRIPT_CACHE_VERSION = "sdk-prebuilt-v1";
 const MAX_SCRIPT_RESPONSE_CACHE_TTL_SECONDS = 24 * 60 * 60;
 

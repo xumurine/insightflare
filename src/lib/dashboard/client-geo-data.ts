@@ -15,6 +15,16 @@ import type {
 import { fetchPrivateJson } from "./client-request";
 import { withFilters } from "./client-utils";
 
+function emptyGeoPointsUnlessAborted(error: unknown): OverviewGeoPointsData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyOverviewGeoPoints();
+}
+
+function emptyGeoTabUnlessAborted(error: unknown): OverviewGeoTabData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyOverviewGeoTab();
+}
+
 function normalizeGeoDimensionLabel(
   tab: OverviewGeoDimensionTab,
   row: Record<string, unknown>,
@@ -39,6 +49,7 @@ export async function fetchOverviewGeoPoints(
   options?: {
     limit?: number;
     applyGeoFilter?: boolean;
+    signal?: AbortSignal;
   },
 ): Promise<OverviewGeoPointsData> {
   return fetchPrivateJson<OverviewGeoPointsData>(
@@ -54,6 +65,7 @@ export async function fetchOverviewGeoPoints(
       },
       filters,
     ),
+    { signal: options?.signal },
   )
     .then((payload) => ({
       ok: payload.ok,
@@ -103,7 +115,7 @@ export async function fetchOverviewGeoPoints(
           }))
         : [],
     }))
-    .catch(() => emptyOverviewGeoPoints());
+    .catch(emptyGeoPointsUnlessAborted);
 }
 
 export async function fetchOverviewGeoDimensionTab(
@@ -113,6 +125,7 @@ export async function fetchOverviewGeoDimensionTab(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<OverviewGeoTabRows> {
   const payload = await fetchPrivateJson<OverviewGeoTabData>(
@@ -127,7 +140,8 @@ export async function fetchOverviewGeoDimensionTab(
       },
       filters,
     ),
-  ).catch(() => emptyOverviewGeoTab());
+    { signal: options?.signal },
+  ).catch(emptyGeoTabUnlessAborted);
   return Array.isArray(payload.data)
     ? payload.data.map((row) => ({
         value:

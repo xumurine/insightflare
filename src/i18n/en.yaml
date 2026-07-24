@@ -1,7 +1,7 @@
 appName: InsightFlare
 navigation:
   overview: Overview
-  realtime: Realtime
+  realtime: Real-time
   pages: Pages
   referrers: Referrers
   sessions: Sessions
@@ -62,7 +62,7 @@ common:
     NORTH AMERICA: North America
     OCEANIA: Oceania
     SOUTH AMERICA: South America
-  timezone: Timezone
+  timezone: Time zone
   organization: Organization
   screenSize: Screen Size
   loading: Loading
@@ -81,11 +81,25 @@ common:
   admin: Admin
   user: User
   search: Search
+  tableExport:
+    action: Export
+    title: Export CSV
+    description: Download table data as a CSV file.
+    scopeLabel: Scope
+    currentTab: Current tab
+    allTabs: All tabs
+    rowsLabel: Data
+    currentView: Current displayed data
+    rawRows: Original data
+    fileNameLabel: File name
+    download: Export CSV
+    empty: No rows available to export.
+    allTabsUnavailable: All tabs can be exported after their data finishes loading.
   time: Time
   cycle: Cycle
   close: Close
   sitesFiltered: "{active} / {total} sites filtered"
-  cumulativeTraffic: Cumulative period traffic
+  cumulativeTraffic: Cumulative traffic
 ranges:
   last30m: 30m
   last1h: 1h
@@ -136,7 +150,7 @@ filters:
   all: All
   clear: Clear
 realtime:
-  title: Realtime
+  title: Real-time
   subtitle: View traffic from the last 30 minutes.
   logTitleSeparator: ":"
   activeNow: Active now
@@ -172,7 +186,7 @@ overview:
   sourceLinkTab: Source Link
   sourceLinkColumn: Source Link
   direct: Direct
-  searchInTab: "Search {tab}"
+  searchInTab: Search {tab}
 pages:
   title: Pages
   subtitle: Most visited paths in the selected range.
@@ -292,10 +306,11 @@ sessionDetail:
   range: Range
 events:
   title: Custom Events
-  subtitle: Event volume, context, payload fields, and raw trigger records.
+  subtitle: Review event volume, context, payload fields, and raw trigger records.
   detailTitle: Event Detail
-  detailSubtitle: Inspect one event with context and payload.
-  typeDetailSubtitle: Trend, context, payload schema, and trigger records for this event.
+  detailSubtitle: Inspect a single event with its context and payload.
+  typeDetailSubtitle: Review this event's trend, context distribution, payload
+    schema, and trigger records.
   backToEvents: Back to Events
   totalEvents: Total Events
   eventTypes: Event Types
@@ -316,7 +331,9 @@ events:
   payloadFilter: Filter
   payloadFilterTitle: Payload Filters
   payloadFilterSubtitle: Add one condition per line. Combine filters with == or !=.
-  payloadFilterPlaceholder: "path.value == \"a\"\nlevel != 0"
+  payloadFilterPlaceholder: |-
+    path.value == "a"
+    level != 0
   payloadFilterApply: Apply Filters
   payloadFilterClear: Clear Filters
   payloadFilterInvalid: Unable to parse the filter conditions. Check the field
@@ -361,7 +378,9 @@ funnels:
   title: Funnels
   subtitle: Measure conversion through multi-step user journeys.
   listTitle: Funnel definitions
-  listSubtitle: Build a reusable sequence, then inspect conversion for the current dashboard window.
+  listSubtitle:
+    Build a reusable sequence, then inspect conversion for the current
+    dashboard window.
   create: New funnel
   createTitle: Create funnel
   createDescription: Define at least two ordered pageview or custom event steps.
@@ -380,7 +399,8 @@ funnels:
   cancel: Cancel
   delete: Delete
   deleteTitle: Delete funnel
-  deleteDescription: This removes the saved funnel definition. Historical analytics data is not deleted.
+  deleteDescription: This removes the saved funnel definition. Historical
+    analytics data is not deleted.
   deleteConfirm: Delete funnel
   deleting: Deleting...
   empty: No funnels yet.
@@ -392,7 +412,6 @@ funnels:
   createFailed: Unable to create funnel.
   deleted: Funnel deleted.
   deleteFailed: Unable to delete funnel.
-  selectPrompt: Select a funnel to inspect conversion.
   overallConversion: Overall conversion
   startedSessions: Started sessions
   convertedSessions: Converted sessions
@@ -480,10 +499,10 @@ retention:
   subtitle: Cohort-based visitor return analysis.
   cohortDate: Cohort
   cohortSize: Size
-  periodLabel: "Period {n}"
+  periodLabel: Period {n}
   matrixTitle: Retention Matrix
-  matrixSubtitle: "Each row is a first-seen cohort; each column shows the share
-    that returned in a later period."
+  matrixSubtitle: Each row is a first-seen cohort; each column shows the share
+    that returned in a later period.
   cohortsMetric: Cohorts
   visitorsMetric: Cohort Visitors
   periodOneMetric: First Return
@@ -522,7 +541,7 @@ geo:
     pinpoint a precise address.
   multipleNotice: Estimated locations via IP. Multi-session journeys may span multiple cities.
   investigation:
-    countryScopedLabel: "Country {label}"
+    countryScopedLabel: Country {label}
     capital: Capital
     population: Population
     gdp: GDP
@@ -531,7 +550,7 @@ geo:
     region: Region
     currency: Currency
     phonecode: Phone code
-    timezone: Timezone
+    timezone: Time zone
     type: Type
     iso: ISO
     coordinates: Coordinates
@@ -542,7 +561,7 @@ geo:
     gdpPerCapitaAboveAverage: "{value} USD/person ({percent}% above average)"
     gdpPerCapitaBelowAverage: "{value} USD/person ({percent}% below average)"
     marketPenetrationWindow: "{label} ({days} days)"
-    timezoneCount: "{count} timezones"
+    timezoneCount: "{count} time zones"
     typeLabels:
       country: Country
       state: State
@@ -575,8 +594,8 @@ devices:
   selectedViewportLabel: Selected viewport
   openSiteLabel: Open site
   previewUnavailableLabel: No previewable screen sizes are available right now.
-  browserByDeviceTitle: Device Type x Browser
-  osByDeviceTitle: Device Type x Operating System
+  browserByDeviceTitle: Device Type × Browser
+  osByDeviceTitle: Device Type × Operating System
   otherLabel: Other
   screenBucketLabels:
     phoneCompact: Compact Phone
@@ -591,8 +610,8 @@ browsers:
   trendTitle: Browser Share Trend
   engineTrendTitle: Engine Share Trend
   versionBreakdownTitle: Browser Version Breakdown
-  osBreakdownTitle: Browser x Operating System
-  deviceTypeBreakdownTitle: Browser x Device Type
+  osBreakdownTitle: Browser × Operating System
+  deviceTypeBreakdownTitle: Browser × Device Type
   otherLabel: Other
   browserShareTitle: Browser Share
   engineShareTitle: Engine Share
@@ -655,22 +674,18 @@ performance:
   poor: Poor
   datasetTitle: Dataset Overview
   interpretationTitle: Current Reading
-  currentReading:
-    "{metric} is {value} at P75 with an experience score of {score}
+  currentReading: "{metric} P75 is {value}, with an experience score of {score}
     across {samples} samples. Current status: {status}."
-  metricThresholdText:
-    "Great is at or below {good}; needs improvement is between
-    {good} and {poor}; poor is above {poor}."
-  scoreThresholdText: Great is above 90, needs improvement is 50 to 90, and poor is below 50.
+  metricThresholdText: "Great: {good} or lower; needs improvement: {good} to
+    {poor}; poor: above {poor}."
+  scoreThresholdText: "Great: above 90; needs improvement: 50 to 90; poor: below 50."
   countryHealthTitle: Country Health
   countryHealthSubtitle: Boundary fill shows {metric} health by country or region.
   pathsTitle: Path Performance
   pathsAnalyzedLabel: Paths analyzed
   metricValueColumn: P75 value
   statusColumn: Status
-share:
-  title: "{siteName} - Analytics"
-  poweredBy: powered by
+share: {}
 siteSettings:
   title: Site Settings
   subtitle: Configure this site's basic information and lifecycle.
@@ -679,7 +694,8 @@ siteSettings:
   nameLabel: Site Name
   domainLabel: Domain
   publicSharingTitle: Public Sharing
-  publicSharingSubtitle: Configure this site's public access link. When enabled, anyone with the link can view analytics data.
+  publicSharingSubtitle: Configure this site's public access link. When enabled,
+    anyone with the link can view analytics data.
   publicEnabledLabel: Enable Public Access
   publicSlugLabel: Public Slug
   publicSlugPlaceholder: e.g. my-site
@@ -695,7 +711,7 @@ siteSettings:
   trackingStrengthSmart: Smart
   trackingStrengthWeak: Weak
   trackingStrengthStrongDescription: Always use high-precision visitor tracking.
-    This may violate regulations in some countries, such as GDPR.
+    This may conflict with privacy regulations such as GDPR in some regions.
   trackingStrengthSmartDescription: Automatically switch tracking strength based on the visitor's country.
   trackingStrengthWeakDescription: Always reduce tracking precision. This can
     count the same visitor multiple times across visits and make retention
@@ -765,10 +781,10 @@ siteSettings:
     settingsPropagationHint: Global propagation to edge nodes may take up to 1 hour.
     deleted: Site deleted.
     deleteFailed: Failed to delete site.
-    invalidInput: Please provide valid site name and domain.
+    invalidInput: Please provide a valid site name and domain.
 accountSettings:
   title: Account Settings
-  subtitle: Manage your personal details, login password, and dashboard timezone.
+  subtitle: Manage your personal details, login password, and dashboard time zone.
   profileTitle: Personal Details
   profileDescription: Update your display name, username, and email.
   nicknameLabel: Display name
@@ -801,42 +817,39 @@ accountSettings:
   preferredLanguageDefault: Default
   preferredLanguageEnglish: English
   preferredLanguageChinese: Chinese
+  preferredLanguageJapanese: Japanese
   preferredLanguageSaved: Notification language saved.
   preferredLanguageSaveFailed: Failed to save notification language.
-  timeZoneTitle: Reporting Timezone
-  timeZoneDescription: Calendar ranges and aggregation buckets use this timezone
+  timeZoneTitle: Reporting Time Zone
+  timeZoneDescription:
+    Calendar ranges and aggregation buckets use this time zone
     across the dashboard.
-  activeTimeZone: Active timezone
-  browserTimeZone: Browser timezone
+  activeTimeZone: Active time zone
+  browserTimeZone: Browser time zone
   browserUnavailable: Not detected
   browserSource: Browser
   manualSource: Manual
-  preferenceLabel: Timezone preference
+  preferenceLabel: Time zone preference
   preferenceDescription: Browser mode follows this device. Manual mode keeps the
-    same timezone on every device.
-  useBrowser: Use browser timezone
-  useCustom: Choose a timezone
-  customTimeZoneLabel: Timezone
-  customTimeZoneDescription: Choose from supported IANA timezones.
-  invalidTimeZone: Please choose a valid IANA timezone.
+    same time zone on every device.
+  useBrowser: Use browser time zone
+  useCustom: Choose a time zone
+  customTimeZoneLabel: Time zone
+  customTimeZoneDescription: Choose from supported IANA time zones.
+  invalidTimeZone: Please choose a valid IANA time zone.
   save: Save preference
   saving: Saving...
-  saved: Timezone preference saved.
-  saveFailed: Failed to save timezone preference.
+  saved: Time zone preference saved.
+  saveFailed: Failed to save time zone preference.
 notificationCenter:
   title: Notification Center
   subtitle: Review all of your notifications and reports.
-  inboxTitle: Your Notifications
   empty: No notifications yet.
   loading: Loading notifications
   markRead: Mark read
   markAllRead: Mark all read
   refresh: Refresh
-  unreadAttentionCount: "{count} unread attention items."
   attention: Attention
-  statusPrefix: "Status: {status}"
-  read: Read
-  unread: Unread
   loadFailed: Failed to load notifications.
   markReadFailed: Failed to mark notification as read.
   markAllReadSuccess: Notifications marked as read.
@@ -899,14 +912,14 @@ notificationCenter:
   emailAttempts: "Attempts: {count}"
   emailRetryCount: "Retries: {count}"
   emailDuration: "{duration} ms"
-  filtersTitle: Filters
-  filtersDescription: Narrow the list by notification type or severity.
   typeFilterLabel: Type
   severityFilterLabel: Severity
   allTypes: All types
   allSeverities: All severities
   preferencesTitle: Notification preferences
-  preferencesDescription: These settings control email delivery and which messages remain unread for attention.
+  preferencesDescription:
+    These settings control email delivery and which messages
+    remain unread for attention.
   emailNotificationsLabel: Email notifications
   emailNotificationsDescription: Send email when a rule triggers.
   reportsUnreadLabel: Reports unread
@@ -917,29 +930,104 @@ notificationCenter:
   alertsUnreadDescription: Keep threshold and health alerts unread.
   preferencesSaved: Notification preferences saved.
   preferencesSaveFailed: Failed to save notification preferences.
-  showDetails: Details
-  hideDetails: Hide details
-  detailFields:
-    bodyText: Body
-    type: Type
-    severity: Severity
-    site: Site
-    ruleId: Rule ID
-    runId: Run ID
-    batchId: Batch ID
-    deliveryStatus: Delivery status
-    deliveryDetails: Delivery details
-    emailStatus: Email status
-    emailReason: Email reason
-    provider: Provider
-    providerMessageId: Provider message ID
-    duration: Duration
-    locale: Locale
-    deliveryResults: Delivery results
-    createdAt: Created at
-    triggeredAt: Triggered at
-    sentAt: Sent at
-    failedAt: Failed at
+  detailFields: {}
+notificationEmail:
+  common:
+    brand: InsightFlare
+    date: Date
+    coreMetrics: Core metrics
+    topPages: Top pages
+    topReferrers: Top referrers
+    views: views
+    visitors: visitors
+    sessions: sessions
+    visits: visits
+    viewsUnit: views
+    direct: Direct
+    metric: Metric
+    window: Window
+    currentValue: Current value
+    previousValue: Previous value
+    threshold: Threshold
+    milestone: Milestone
+    change: Change
+    mode: Mode
+    lastSeen: Last seen
+    never: Never
+    noPageData: No page data yet.
+    noReferrerData: No referrer data yet.
+    footer: This email was sent by the InsightFlare notification system.
+    fallbackSubject: InsightFlare notification
+    trackingHint: Check whether the tracking script is installed correctly or
+      whether the site still has traffic.
+    severity:
+      info: Info
+      success: Success
+      warning: Warning
+      critical: Critical
+  test:
+    subject: InsightFlare notification test
+    title: InsightFlare notification test
+    summary: This is a test notification from InsightFlare.
+    body:
+      This is a test notification from InsightFlare. If email is configured and
+      enabled, it also verifies Resend delivery.
+  report:
+    subject: "{site} {periodLabel} traffic report"
+    title: "{site} {periodLabel} traffic report"
+    summary: "{date}: {visitors} visitors and {views} views."
+    periodLabels:
+      daily: daily
+      weekly: weekly
+      monthly: monthly
+      quarterly: quarterly
+      yearly: yearly
+  milestone:
+    subject: "{site} reached {bucket} {metric}"
+    title: "{site} reached {bucket} {metric}"
+    summary: "Traffic milestone reached: {bucket} {metric}."
+  threshold:
+    subject: "{site} traffic threshold reached"
+    title: "{site} traffic threshold reached"
+    summary: "{metric} for {window} is {value}, matching threshold {operator} {target}."
+    metricLabels:
+      views: views
+      visitors: visitors
+      sessions: sessions
+    windows:
+      last_1h: Last 1 hour
+      last_24h: Last 24 hours
+      yesterday: Yesterday
+  health:
+    subject: "{site} has not received traffic data for {hours} hours"
+    title: "{site} has not received traffic data for {hours} hours"
+    noHistory:
+      No historical traffic data is available. Check whether the tracking
+      script is installed correctly.
+  change:
+    subject: "{site} traffic change alert"
+    title: "{site} traffic change alert"
+    summary: "{metric} for {window} changed by {change}."
+runtimeConfigError:
+  title: Runtime configuration required
+  eyebrow: Deployment paused
+  heading: InsightFlare needs one runtime secret before the dashboard can load.
+  description:
+    The app has started, but the current runtime environment could not
+    read the required root secret, so dashboard access is temporarily blocked.
+  requiredTitle: Required runtime secret
+  requiredDescription: Set at least one of the following values in your Cloudflare runtime secrets.
+  secretHint:
+    MAIN_SECRET is recommended. Existing deployments can continue using
+    DAILY_SALT_SECRET.
+  commandTitle: Cloudflare command
+  commandDescription: Use the project helper command to write the recommended
+    secret, then redeploy.
+  quickStartHint:
+    Or see the Quick Start section in the GitHub README to configure
+    this variable.
+  docsLabel: Open GitHub
+  homeLabel: Retry dashboard
 login:
   title: Sign in
   subtitle: Use your InsightFlare account.
@@ -998,6 +1086,7 @@ actions:
   logout: Logout
   switchToEnglish: English
   switchToChinese: 中文
+  switchToJapanese: 日本語
   switchToLight: Light
   switchToDark: Dark
 teamSelect:
@@ -1029,14 +1118,13 @@ teamManagement:
     teamSaveFailed: Failed to save team settings.
     teamDeleted: Team deleted.
     teamDeleteFailed: Failed to delete team.
-    memberAdded: Member added.
-    memberAddFailed: Failed to add member.
     memberRemoved: Member removed.
     memberRemoveFailed: Failed to remove member.
     roleChanged: Member role updated.
     roleChangeFailed: Failed to update member role.
+    siteAccessChanged: Member site access updated.
+    siteAccessChangeFailed: Failed to update site access.
     invalidTeamName: Team name must be at least 2 characters.
-    invalidMemberIdentifier: Please provide a valid username or email.
     inviteCreated: Invite link created.
     inviteCreateFailed: Failed to create invite link.
     inviteRevoked: Invite revoked.
@@ -1057,29 +1145,27 @@ teamManagement:
     openAnalytics: Open analytics
   widgets:
     title: Widgets
-    subtitle: Manage widget configuration for sites in this team.
-    noSites: No site is available for widgets in this team.
-    openWidgets: Manage widgets
+    subtitle: Widget functionality is being built.
+    underConstruction: Under construction
   notifications:
     title: Event Notifications
     subtitle: Manage event notification rules for this team.
-    empty: No event notification rule exists for this team.
+    empty: This team has no event notification rules yet.
     forbiddenTitle: Notification rules are managed by team admins
-    forbiddenDescription: You can still view your own notifications and update your personal notification preferences.
+    forbiddenDescription:
+      You can still view your own notifications and update your
+      personal notification preferences.
     rulesTitle: Notification Rules
     enabledCount: "{count} enabled rules in this team."
-    createTestRule: Create test rule
     loadingRules: Loading notification rules
     deliveryTestTitle: Delivery Test
     deliveryTestDescription: Creates one in-app notification for you and attempts email when available.
     inAppTestHint: We will send you an in-app notification.
     emailTestConfiguredHint: We will send you a test email.
-    emailTestUnconfiguredHint: Email sending is not configured for this system. Contact an administrator to add it.
+    emailTestUnconfiguredHint: Email sending is not configured for this system.
+      Contact an administrator to add it.
     sendTestNotification: Send test notification
-    testRuleName: Hourly notification test
     loadRulesFailed: Failed to load notification rules.
-    testRuleCreated: Test rule created.
-    createTestRuleFailed: Failed to create test rule.
     testNotificationSent: Test notification sent.
     sendTestNotificationFailed: Failed to send test notification.
     createRule: Create rule
@@ -1102,7 +1188,7 @@ teamManagement:
     enabledHint: Run this rule
     scheduleLabel: Schedule
     timeLabel: Time
-    timezoneLabel: Timezone
+    timezoneLabel: Time zone
     intervalLabel: Interval
     dayLabel: Day
     dayOfMonthLabel: Day of month
@@ -1118,7 +1204,7 @@ teamManagement:
     changeModeAbsolute: Absolute
     addCondition: Add condition
     removeCondition: Remove
-    conditionItemTitle: "Condition {index}"
+    conditionItemTitle: Condition {index}
     metricLabel: Metric
     windowLabel: Window
     operatorLabel: Operator
@@ -1136,43 +1222,41 @@ teamManagement:
     ruleDeleted: Rule deleted.
     deleteRuleFailed: Failed to delete rule.
     lastChecked: Last checked
-    lastTriggered: Last triggered
     actions: Actions
     edit: Edit
     enable: Enable
     disable: Disable
     delete: Delete
     saveRule: Save rule
-    viewMessages: Messages
     emailPreview: Email preview
     preview: Preview
     runNow: Run now
     previewFailed: Failed to preview rule.
     runFailed: Failed to run rule.
-    runResultToast: "Created {messages} messages. Email sent {sent}, failed {failed}."
+    runResultToast: Created {messages} messages. Email sent {sent}, failed {failed}.
     previewDialogTitle: Rule preview
     previewDialogDescription: Evaluate this rule without creating messages or sending email.
-    coolingDownUntil: "Cooling down until {time}"
-    scheduleDaily: "Daily {time}"
-    scheduleWeekly: "Weekly {day} {time}"
-    scheduleMonthly: "Monthly day {day} {time}"
-    scheduleQuarterly: "Quarterly day {day} {time}"
-    scheduleYearly: "Yearly {month}/{day} {time}"
-    scheduleInterval: "Every {minutes} min"
+    coolingDownUntil: Cooling down until {time}
+    scheduleDaily: Daily {time}
+    scheduleWeekly: Weekly {day} {time}
+    scheduleMonthly: Monthly day {day} {time}
+    scheduleQuarterly: Quarterly day {day} {time}
+    scheduleYearly: Yearly {month}/{day} {time}
+    scheduleInterval: Every {minutes} min
     scheduleCustom: Custom
     conditionReport: "{period} report"
     conditionMilestone: "{metric} every {step}"
     conditionThreshold: "{window} {metric} {operator} {value}"
     conditionChange: "{window} {metric} change {operator} {value}"
-    conditionHealth: "No data for {hours}h"
-    summaryWhenConditions: "When {combinator} of the following conditions match, send a {type} notification:"
+    conditionHealth: No data for {hours}h
+    summaryWhenConditions: "When {combinator} of the following conditions match,
+      send a {type} notification:"
     summaryWhenSingleCondition: "When this condition matches, send a {type} notification:"
     summaryConditionThreshold: "{window} {metric} {operator} {value}"
     summaryConditionChange: "{window} {metric} {mode} change {operator} {value}"
     summaryReportSchedule: "{period}: {schedule}"
-    summaryReportCondition: "Generate the {period} report"
     summaryMilestoneCondition: "{metric} reaches every {step}"
-    summaryHealthCondition: "No data for {hours} hours"
+    summaryHealthCondition: No data for {hours} hours
     defaultNames:
       report: "{site} daily report"
       milestone: "{site} traffic milestone"
@@ -1274,7 +1358,8 @@ teamManagement:
       yesterday: Yesterday
     emailPreviewPage:
       title: Notification email preview
-      subtitle: Render notification emails without creating messages or sending through Resend.
+      subtitle: Render notification emails without creating messages or sending
+        through Resend.
       typeLabel: Preview type
       localeLabel: Preview locale
       formatLabel: Preview format
@@ -1288,12 +1373,10 @@ teamManagement:
   publicLinks:
     title: Public Links
     subtitle: Manage publicly accessible sharing links for this team.
-    empty: No public link exists for this team.
     enabled: Enabled
     disabled: Disabled
     disabledHint: Public access is disabled. Open site settings to enable it.
     viewSettings: View Settings
-    publicUrl: Public Link
     copyLink: Copy Link
     linkCopied: Link copied
     noSites: This team has no sites yet.
@@ -1306,7 +1389,7 @@ teamManagement:
   apiKeys:
     title: API Keys
     subtitle: Manage API access keys for this team.
-    empty: No API key exists for this team.
+    empty: This team has no API keys yet.
     create: Create key
     creating: Creating...
     createTitle: Create API key
@@ -1393,10 +1476,6 @@ teamManagement:
   members:
     title: Members
     subtitle: Invite members or remove existing members.
-    identifierLabel: Username or Email
-    identifierPlaceholder: "For example: alice or alice@example.com"
-    add: Add member
-    adding: Adding...
     remove: Remove
     noMembers: No members found for this team.
     invitesTitle: Create invite link
@@ -1409,9 +1488,19 @@ teamManagement:
     copyInvite: Copy link
     inviteLinksTitle: Invite links
     inviteLinksSubtitle: Review invite status and revoke active links.
-    noInvites: No invite links exist for this team.
+    noInvites: This team has no invite links yet.
     anyEmail: Any email
     revokeInvite: Revoke invite
+    siteAccessLabel: Site access
+    siteAccessAll: All sites
+    siteAccessRestricted: Restricted
+    siteAccessSelected: "Selected {count} sites"
+    siteAccessDescription: Leave this set to all sites, or choose the specific sites this member can access.
+    siteAccessAdmins: Admins can access every site in this team.
+    siteAccessDialogTitle: Edit site access
+    saveSiteAccess: Save access
+    cancelSiteAccess: Cancel
+    noSitesForAccess: This team has no sites yet.
     inviteStatuses:
       active: Active
       used: Used
@@ -1423,6 +1512,7 @@ teamManagement:
       email: Email
       inviteCode: Invite token
       role: Role
+      siteAccess: Site access
       joinedAt: Joined
       createdAt: Created
       expiresAt: Expires
@@ -1445,7 +1535,7 @@ managementNav:
 managementPages:
   versionUpdates:
     subtitle: Review published InsightFlare releases and the running build.
-    empty: No version update record exists yet.
+    empty: No version update records yet.
     currentVersion: Current version
     latestVersion: Latest release
     currentCommit: Current commit
@@ -1461,7 +1551,7 @@ managementPages:
     openRelease: Open release
     viewDetails: View detailed changes
     detailsTitle: Detailed changes
-    detailsDescription: "Commits included in {range}."
+    detailsDescription: Commits included in {range}.
     detailsLoading: Loading detailed changes...
     detailsEmpty: No previous release is available for this version yet.
     detailsFailed: Failed to load detailed changes.
@@ -1474,10 +1564,9 @@ managementPages:
     unknown: Unknown
   scheduledTasks:
     subtitle: View and manage system scheduled tasks.
-    empty: No scheduled task exists yet.
+    empty: No scheduled tasks yet.
     refresh: Refresh
     loadFailed: Failed to load scheduled tasks.
-    allTasks: All tasks
     allStatuses: All statuses
     runs24h: 24h runs
     successRate24h: 24h success rate
@@ -1491,7 +1580,7 @@ managementPages:
     staleRunning: Stale running
     noStaleRunning: No stale running runs
     taskListTitle: Tasks
-    taskListDescription: Registered scheduled tasks and 30-day health.
+    taskListDescription: Registered scheduled tasks and 30-day health status.
     task: Task
     schedule: Schedule
     enabled: State
@@ -1503,7 +1592,7 @@ managementPages:
     avgDuration: Avg duration
     runHistoryTitle: Run history
     runHistoryDescription: Task runs retained over the last 30 days.
-    noRuns: No run exists yet.
+    noRuns: No runs yet.
     scheduledAt: Scheduled
     startedAt: Started
     finishedAt: Finished
@@ -1535,7 +1624,9 @@ managementPages:
     taskDefinitions:
       visit_hourly_rollup:
         name: Hourly visit aggregation
-        description: Aggregates closed visit rows into hourly rollups for dashboard counters and trends.
+        description:
+          Aggregates closed visit rows into hourly rollups for dashboard
+          counters and trends.
         schedule: Every hour
       notification_tick:
         name: Notification dispatch
@@ -1545,7 +1636,10 @@ adminUsers:
   title: User Management
   subtitle: Only system admins can create and manage dashboard users.
   createTitle: Create User
-  createTeamNotice: Creating a user here will also create a new Team owned by that user. To add someone to an existing team, create an invite link from that team's settings.
+  createTeamNotice:
+    Creating a user here will also create a new Team owned by that
+    user. To add someone to an existing team, create an invite link from that
+    team's settings.
   username: Username
   email: Email
   name: Display Name (optional)
@@ -1600,7 +1694,7 @@ adminSites:
   loadFailed: Failed to load sites.
   createSuccess: Site created.
   createFailed: Failed to create site.
-  invalidInput: Please provide valid site name and domain.
+  invalidInput: Please provide a valid site name and domain.
   open: Open analytics
   columns:
     name: Name
@@ -1635,49 +1729,38 @@ adminTeams:
     action: Action
 requestObservation:
   title: Request Observability
-  subtitle: Observe total requests, abnormal diversions, and the normal collection path from Analytics Engine.
+  subtitle: Monitor total requests, anomaly routing, and the normal collection
+    pipeline from Analytics Engine.
+  tabs:
+    overview: Overview
+    abnormal: Abnormal Requests
+    normal: Normal Requests
   refresh: Refresh
   loadFailed: Failed to load request observability data.
   notConfiguredTitle: Analytics Engine reader is not configured
-  notConfiguredDescription: Add a Cloudflare Account ID and API token in System Settings to read the request observability Analytics Engine datasets.
+  notConfiguredDescription: Add a Cloudflare Account ID and API token in System
+    Settings to read the request-observation Analytics Engine datasets.
   analyticsEngineDisabledTitle: Analytics Engine is not enabled
-  analyticsEngineDisabledDescription: This deployment was published without the Analytics Engine binding because the Cloudflare account has not enabled Analytics Engine. Enable it in Cloudflare, then redeploy to collect request observability data.
+  analyticsEngineDisabledDescription: This deployment was published without the
+    Analytics Engine binding because the Cloudflare account has not enabled
+    Analytics Engine. Enable it in Cloudflare, then redeploy to collect
+    request-observation data.
   openAnalyticsEngine: Open Analytics Engine
   openSettings: Open settings
-  range1h: Last 1 hour
-  range6h: Last 6 hours
-  range24h: Last 24 hours
-  range7d: Last 7 days
-  range30d: Last 30 days
-  total: Total Requests
-  botRequests: Bot Requests
-  allRequests: All Site Requests
-  botRequestRatio: Bot Request Ratio
-  botTrafficRatio: Bot Traffic Ratio
   highConfidenceBots: High-confidence Bots
   affectedSites: Affected Sites
-  sourceNetworks: Source Networks
-  rollupBaseline: Based on normal and abnormal request datasets
-  highConfidence: High Confidence
-  mediumConfidence: ASN Diversions
-  uniqueAsns: Unique ASNs
   uniqueCountries: Countries
-  mapTitle: Request Map
-  mapDescription: Requests in the selected window grouped by Cloudflare edge geolocation.
   noData: No request data in this window.
   trendTitle: Routing Trend
   trendDescription: Normal requests, abnormal requests, and diversion ratio by interval.
-  reasonsTitle: Detection Reasons
-  reasonsDescription: Signals that triggered diversion.
-  asnTitle: Source Networks
-  asnDescription: Hosting and cloud ASNs seen most often.
   recentTitle: Recent Bot Requests
   recentDescription: Detailed records written only to the bot Analytics Engine dataset.
   recentShowing: Showing
   recentLoadedAll: All records loaded
   detailTitle: Bot Request Detail
-  detailSubtitle: Inspect detection signals, network context, and client data for this diverted request.
-  detection: Detection
+  detailSubtitle:
+    Inspect detection signals, network context, and client data for
+    this diverted request.
   client: Client
   edge: Edge
   identifiers: Identifiers
@@ -1728,37 +1811,111 @@ requestObservation:
     pageview: Pageview
     custom_event: Custom Event
     request: Request
+  overviewLabels:
+    totalRequests: Total requests
+    normalRequests: Normal requests
+    abnormalRequests: Abnormal requests
+    abnormalRatio: Abnormal request ratio
+    p50Latency: P50 edge latency
+    p75Latency: P75 edge latency
+    p95Latency: P95 edge latency
+    p99Latency: P99 edge latency
+    avgLatency: Average edge latency
+    pageviews: Pageviews
+    customEvents: Custom events
+    overviewTrendTitle: Request routing trend
+    overviewTrendDescription:
+      Normal requests, abnormal requests, and abnormal ratio
+      bucketed by the top-bar interval.
+    trafficCompositionTitle: Request composition
+    trafficCompositionDescription: Normal requests, abnormal requests, and page events on the same timeline.
+    confidenceShareTitle: Request confidence breakdown
+    normalTrafficShare: Normal traffic
+    lowConfidenceTraffic: Low-confidence traffic
+    mediumConfidenceTraffic: Medium-confidence traffic
+    highConfidenceTraffic: High-confidence traffic
+    latencyTitle: Edge latency trend
+    latencyDescription: P50 / P75 / P95 / P99 edge latency recorded when normal
+      requests are written to AE.
+    abnormalSubtitle:
+      Focus on diverted abnormal requests. Maps and tables show only
+      red abnormal traffic.
+    normalSubtitle:
+      Focus on requests that entered the normal collection pipeline.
+      Maps and tables show only normal traffic.
+    requests: Requests
+    windowDays: "Last {days} days"
+    latencyMilliseconds: "{value} ms"
+  normalDetail:
+    title: Normal Request Detail
+    subtitle:
+      Inspect pipeline, location, and latency fields recorded for a normal
+      request in AE.
+    requestMethod: Request method
+    edgeLatency: Edge latency
+    eventAt: Event time
+    receivedAt: Received at
+    coordinates: Coordinates
+    continent: Continent
+  recentNormal:
+    title: Recent Normal Requests
+    description: Detailed records written only to the normal request Analytics
+      Engine dataset.
 systemSettings:
   title: System Settings
   subtitle: Manage instance-wide configuration for this InsightFlare deployment.
-  botAnalyticsTitle: Bot Analytics Engine
-  botAnalyticsDescription: Configure the Cloudflare credentials used to read the bot diversion Analytics Engine dataset.
+  guide: Guide
+  botAnalyticsTitle: Analytics Engine
+  botAnalyticsDescription: Configure the Cloudflare credentials used to read
+    Analytics Engine data for Bot Protection and other analysis features.
   botAnalyticsAccountIdLabel: Cloudflare Account ID
-  botAnalyticsDatasetLabel: Analytics Engine dataset
   botAnalyticsApiTokenLabel: Cloudflare API token
-  botAnalyticsApiTokenPlaceholder: Leave blank to keep the saved API token
-  botAnalyticsTokenSaved: Token saved
-  botAnalyticsTokenNotSaved: Token not saved
-  botAnalyticsSaved: Bot analytics configuration saved.
-  botAnalyticsSaveFailed: Failed to save bot analytics configuration.
-  botAnalyticsDeleted: Bot analytics configuration deleted.
-  botAnalyticsDeleteFailed: Failed to delete bot analytics configuration.
-  botAnalyticsDeleteConfirm: Delete the bot analytics read configuration? The Bot Protection page will show configuration required until it is restored.
-  botAnalyticsEngineDisabledBadge: Analytics Engine disabled
+  botAnalyticsApiTokenPlaceholder: View the guide to get a Cloudflare API token
+  botAnalyticsSaved: Analytics Engine configuration saved.
+  botAnalyticsSaveFailed: Failed to save Analytics Engine configuration.
+  botAnalyticsDeleted: Analytics Engine configuration deleted.
+  botAnalyticsDeleteFailed: Failed to delete Analytics Engine configuration.
+  botAnalyticsDeleteConfirm: Delete the Analytics Engine read configuration?
+    Features that depend on Analytics Engine will show configuration required
+    until it is restored.
   botAnalyticsEngineDisabledTitle: Analytics Engine is not enabled
-  botAnalyticsEngineDisabledDescription: This deployment automatically disabled the Analytics Engine binding because the Cloudflare account has not enabled Analytics Engine. Enable Analytics Engine in Cloudflare, then redeploy InsightFlare to activate bot analytics.
-  botAnalyticsEngineDisabledHint: Bot analytics settings are locked until Analytics Engine is enabled and the Worker is redeployed.
+  botAnalyticsEngineDisabledDescription: This deployment automatically disabled
+    the Analytics Engine binding because the Cloudflare account has not enabled
+    Analytics Engine. Enable Analytics Engine in Cloudflare, then redeploy
+    InsightFlare to activate related analysis features.
+  botAnalyticsEngineDisabledHint: Analytics Engine settings are locked until
+    Analytics Engine is enabled and the Worker is redeployed.
   botAnalyticsOpenCloudflare: Open Cloudflare Analytics Engine
+  botAnalyticsGuideTitle: Get Analytics Engine credentials
+  botAnalyticsGuideDescription:
+    Analytics Engine needs Cloudflare account details
+    and an API token that can read Analytics Engine data.
+  botAnalyticsGuideSteps:
+    - Open the Cloudflare Dashboard, enter the target account, and copy the Account ID.
+    - Enable Analytics Engine under Workers & Pages; the bot and normal request datasets are created and bound automatically during deployment.
+    - Go to My Profile → API Tokens and create a Custom token.
+    - Grant the token Account Analytics read access and scope it to the current account.
+    - Copy the token, then enter the Account ID and API token here.
   notificationEmailTitle: Email Notifications
   notificationEmailDescription: Configure the email service used for reports, alerts, and test messages.
+  notificationEmailGuideTitle: Get Resend email settings
+  notificationEmailGuideDescription:
+    To send system email through Resend, prepare
+    a verified sender domain and an API key.
+  notificationEmailGuideSteps:
+    - Open the Resend Dashboard and confirm the sender domain has passed DNS verification.
+    - Create a new API key from the API Keys page.
+    - Choose the permissions required to send email, then copy the generated API key.
+    - Enter the sender name, sender email, Reply-To, and Resend API key here.
+    - Save the configuration, then send a test email to confirm delivery works.
   loginTurnstileTitle: Login Turnstile Protection
-  loginTurnstileDescription: When enabled, the login page runs Cloudflare Turnstile Invisible verification in the background and the server enforces it during sign-in.
+  loginTurnstileDescription: When enabled, the login page runs Cloudflare
+    Turnstile Invisible verification in the background and the server enforces
+    it during sign-in.
   loginTurnstileEnabledLabel: Enable login protection
   loginTurnstileSiteKeyLabel: Site Key
   loginTurnstileSecretKeyLabel: Secret Key
-  loginTurnstileSecretKeyPlaceholder: Leave blank to keep the saved Secret Key
-  loginTurnstileSecretKeySaved: Saved
-  loginTurnstileSecretKeyNotSaved: Secret Key not saved
+  loginTurnstileSecretKeyPlaceholder: View the guide to get a Turnstile Secret Key
   loginTurnstileModeLabel: Verification mode
   loginTurnstileModeInvisible: Invisible
   loginTurnstileTest: Test verification
@@ -1773,7 +1930,17 @@ systemSettings:
   loginTurnstileDeleteFailed: Failed to delete login Turnstile configuration.
   loginTurnstileDeleteConfirm: Delete the login Turnstile configuration? Login protection will be disabled.
   loginTurnstileLoadFailed: Failed to load login Turnstile configuration.
-  loginTurnstilePrivacyNotice: Create an Invisible widget in the Cloudflare Turnstile console. For self-hosted deployments, confirm your privacy policy matches Cloudflare Turnstile requirements.
+  loginTurnstilePrivacyNotice: Create an Invisible widget in the Cloudflare
+    Turnstile console. For self-hosted deployments, confirm your privacy policy
+    matches Cloudflare Turnstile requirements.
+  loginTurnstileGuideTitle: Get Turnstile credentials
+  loginTurnstileGuideDescription: Login protection needs a Cloudflare Turnstile Site Key and Secret Key.
+  loginTurnstileGuideSteps:
+    - Open the Cloudflare Dashboard and go to Turnstile.
+    - Create a new widget and choose Invisible mode.
+    - Add the current InsightFlare login domain to the allowed hostnames.
+    - Copy the Site Key and Secret Key after the widget is created.
+    - Enter the Site Key and Secret Key here, run the verification test, then save the configuration.
   enabledLabel: Enable email sending
   enabledOn: Enabled
   enabledOff: Disabled
@@ -1784,9 +1951,7 @@ systemSettings:
   replyToLabel: Reply-To email
   replyToPlaceholder: Optional, defaults to sender email
   resendApiKeyLabel: Resend API Key
-  resendApiKeyPlaceholder: Leave blank to keep the saved API key
-  resendApiKeySaved: Saved
-  clearApiKey: Clear saved API Key
+  resendApiKeyPlaceholder: View the guide to get a Resend API key
   testRecipientLabel: Test recipient
   save: Save configuration
   saving: Saving...
@@ -1799,12 +1964,11 @@ systemSettings:
   cancel: Cancel
   deleted: Email configuration deleted.
   deleteFailed: Failed to delete email configuration.
-  deleteConfirm: Delete the email notification configuration? The system will treat email as unconfigured and disabled.
+  deleteConfirm: Delete the email notification configuration? The system will
+    treat email as unconfigured and disabled.
   testSent: Test email sent.
   testFailed: Failed to send test email.
   loadFailed: Failed to load email configuration.
-  invalidEmail: Please enter a valid email address.
-  missingApiKey: Resend requires an API Key when enabled.
 systemPerformance:
   title: System Performance
   subtitle: Monitor InsightFlare collection, buffering, and write health from
@@ -1846,9 +2010,8 @@ systemPerformance:
   timedOut: Timed out
   oldestOpen: Oldest open
   latestActivity: Latest activity
-  estimationNote:
-    Estimated delay is server write time minus client event time, so
-    browser queueing and wrong client clocks are included.
+  estimationNote: Estimated delay equals server write time minus client event
+    time, so it can include browser queueing and inaccurate client clocks.
   latencySampleHealth: Latency Sample Health
   latencySampleHealthDescription: Counts only non-negative delay samples below the trusted upper bound.
   trustedSamples: Trusted samples
@@ -1891,7 +2054,7 @@ systemPerformance:
   doDiagnosticSiteStuck: stuck
   doDiagnosticSiteFuture: future
   doDiagnosticSiteHardAged: aged
-  doDiagnosticSiteAlarm: alarm
+  doDiagnosticSiteAlarm: Alarm
   doDiagnosticSiteAlarmNone: none
   doDiagnosticSiteAlarmDue: due
   doDiagnosticSiteResponseMs: Response time

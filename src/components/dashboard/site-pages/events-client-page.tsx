@@ -1,7 +1,5 @@
-"use client";
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";
+import { useQuery } from "@tanstack/react-query";
 
 import {
   DETAIL_QUERY_PARAM,
@@ -31,6 +29,7 @@ import {
   fetchEventsTrend,
 } from "@/lib/dashboard/client-data";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
+import dynamic from "@/lib/dynamic";
 import type { EventsSummaryData, EventsTrendData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -238,14 +237,6 @@ export function EventsClientPage({
     () => parseOverviewCardFilters(new URLSearchParams(searchParamsKey)),
     [searchParamsKey],
   );
-  const [summary, setSummary] = useState<EventsSummaryData>(() =>
-    emptySummary(),
-  );
-  const [trend, setTrend] = useState<EventsTrendData>(() =>
-    emptyTrend(timeWindow.interval),
-  );
-  const [loading, setLoading] = useState(true);
-
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
 
   useEffect(() => {
@@ -254,33 +245,28 @@ export function EventsClientPage({
     }
   }, [detailEventName]);
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    void Promise.all([
-      fetchEventsSummary(siteId, timeWindow, filters),
-      fetchEventsTrend(siteId, timeWindow, filters, { limit: 8 }),
-    ])
-      .then(([nextSummary, nextTrend]) => {
-        if (!active) return;
-        setSummary(nextSummary);
-        setTrend(nextTrend);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [
-    filters,
-    filtersKey,
-    siteId,
-    timeWindow.from,
-    timeWindow.interval,
-    timeWindow.timeZone,
-    timeWindow.to,
-  ]);
+  const { data, isFetching: loading } = useQuery({
+    queryKey: [
+      "dashboard",
+      "events-overview",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => {
+      const [summary, trend] = await Promise.all([
+        fetchEventsSummary(siteId, timeWindow, filters, { signal }),
+        fetchEventsTrend(siteId, timeWindow, filters, { limit: 8, signal }),
+      ]);
+      return { summary, trend };
+    },
+    enabled: typeof window !== "undefined",
+  });
+  const summary = data?.summary ?? emptySummary();
+  const trend = data?.trend ?? emptyTrend(timeWindow.interval);
 
   const openEventType = useCallback(
     (eventName: string) => {

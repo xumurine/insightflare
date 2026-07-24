@@ -6,7 +6,7 @@ export interface Env {
   ARCHIVE_BUCKET?: R2Bucket;
   MAIN_SECRET?: string;
   DAILY_SALT_SECRET?: string;
-  NEXT_PUBLIC_DEMO_MODE?: string;
+  DEMO_MODE?: string;
   DISABLE_CRON_TASKS?: string;
   ADMIN_WS_TOKEN?: string;
   PARQUET_WASM_URL?: string;
@@ -16,6 +16,8 @@ export interface Env {
   SITE_SETTINGS_KV?: KVNamespace;
   INSIGHTFLARE_LOGIN_TURNSTILE_DISABLED?: string;
   INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED?: string;
+  INSIGHTFLARE_E2E?: string;
+  INSIGHTFLARE_E2E_CONTROL_TOKEN?: string;
 }
 
 export interface SerializedRequestPayload {
@@ -71,6 +73,7 @@ export interface TrackerClientPayload {
   performanceVisitId?: string;
   eventId?: string;
   sequence?: number;
+  navigation?: string;
   timestamp?: number;
   startedAt?: number;
   pathname?: string;
@@ -160,6 +163,7 @@ export interface NormalizedVisitContext {
 export interface NormalizedPageview extends NormalizedVisitContext {
   kind: "pageview";
   previousVisitId: string;
+  previousVisitStartedAt: number | null;
   receivedAt: number;
 }
 

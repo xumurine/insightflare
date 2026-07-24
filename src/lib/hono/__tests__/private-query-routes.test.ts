@@ -3,10 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { withDashboardCache } from "@/lib/edge/dashboard-cache";
 import type * as QueryCoreModule from "@/lib/edge/query/core";
-import { resolvePrivateSite } from "@/lib/edge/query/core";
+import { resolvePrivateSiteForSession } from "@/lib/edge/query/core";
 import type * as QueryRouterModule from "@/lib/edge/query/router";
 import { dispatchQueryRoute } from "@/lib/edge/query/router";
-import { handleTeamDashboard } from "@/lib/edge/query/team";
+import { handleTeamDashboardForSession } from "@/lib/edge/query/team";
 import { privateQueryRoutes } from "@/lib/hono/routes/private/query";
 import type { AppEnv } from "@/lib/hono/types";
 
@@ -24,7 +24,7 @@ vi.mock("@/lib/edge/query/core", async (importOriginal) => {
   const actual = await importOriginal<typeof QueryCoreModule>();
   return {
     ...actual,
-    resolvePrivateSite: vi.fn(),
+    resolvePrivateSiteForSession: vi.fn(),
   };
 });
 
@@ -37,7 +37,7 @@ vi.mock("@/lib/edge/query/router", async (importOriginal) => {
 });
 
 vi.mock("@/lib/edge/query/team", () => ({
-  handleTeamDashboard: vi.fn(),
+  handleTeamDashboardForSession: vi.fn(),
 }));
 
 const env = { DB: {} };
@@ -45,6 +45,13 @@ const ctx = {
   passThroughOnException: vi.fn(),
   waitUntil: vi.fn(),
 } as unknown as ExecutionContext;
+const session = {
+  userId: "user-1",
+  username: "user",
+  displayName: "User",
+  systemRole: "user" as const,
+  exp: 9999999999,
+};
 
 function request(path: string, init?: RequestInit): Request {
   return new Request(`https://app.test${path}`, init);
@@ -52,6 +59,10 @@ function request(path: string, init?: RequestInit): Request {
 
 function createApp() {
   const app = new Hono<AppEnv>();
+  app.use("/api/private/*", async (c, next) => {
+    c.set("session", session);
+    await next();
+  });
   app.route("/api/private", privateQueryRoutes);
   return app;
 }
@@ -59,13 +70,15 @@ function createApp() {
 describe("Hono private query routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(resolvePrivateSite).mockResolvedValue({
+    vi.mocked(resolvePrivateSiteForSession).mockResolvedValue({
       id: "site-1",
       name: "Site",
       domain: "app.test",
     });
     vi.mocked(dispatchQueryRoute).mockResolvedValue(new Response("query"));
-    vi.mocked(handleTeamDashboard).mockResolvedValue(new Response("team"));
+    vi.mocked(handleTeamDashboardForSession).mockResolvedValue(
+      new Response("team"),
+    );
   });
 
   it("routes read-only dashboard queries through site resolution and cache", async () => {
@@ -78,10 +91,11 @@ describe("Hono private query routes", () => {
     );
 
     await expect(response.text()).resolves.toBe("query");
-    expect(resolvePrivateSite).toHaveBeenCalledWith(
+    expect(resolvePrivateSiteForSession).toHaveBeenCalledWith(
       expect.any(Request),
       env,
       new URL("https://app.test/api/private/overview?siteId=site-1"),
+      session,
     );
     expect(withDashboardCache).toHaveBeenCalledWith(
       ctx,
@@ -100,7 +114,7 @@ describe("Hono private query routes", () => {
   });
 
   it("does not enter the cache generator when private site resolution fails", async () => {
-    vi.mocked(resolvePrivateSite).mockResolvedValueOnce(
+    vi.mocked(resolvePrivateSiteForSession).mockResolvedValueOnce(
       new Response("denied", { status: 404 }),
     );
     const app = createApp();
@@ -127,7 +141,7 @@ describe("Hono private query routes", () => {
     );
 
     expect(response.status).toBe(405);
-    expect(resolvePrivateSite).not.toHaveBeenCalled();
+    expect(resolvePrivateSiteForSession).not.toHaveBeenCalled();
     expect(withDashboardCache).not.toHaveBeenCalled();
     expect(dispatchQueryRoute).not.toHaveBeenCalled();
   });
@@ -169,12 +183,13 @@ describe("Hono private query routes", () => {
     );
 
     await expect(response.text()).resolves.toBe("team");
-    expect(handleTeamDashboard).toHaveBeenCalledWith(
+    expect(handleTeamDashboardForSession).toHaveBeenCalledWith(
       expect.any(Request),
       env,
       new URL("https://app.test/api/private/team-dashboard?teamId=team-1"),
+      session,
     );
-    expect(resolvePrivateSite).not.toHaveBeenCalled();
+    expect(resolvePrivateSiteForSession).not.toHaveBeenCalled();
     expect(withDashboardCache).not.toHaveBeenCalled();
     expect(dispatchQueryRoute).not.toHaveBeenCalled();
   });

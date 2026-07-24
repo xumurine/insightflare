@@ -422,6 +422,45 @@ describe("admin bot analytics handlers", () => {
             { status: 200 },
           );
         }
+        if (sql.includes("count(DISTINCT blob1)")) {
+          return new Response(
+            jsonEachRow([
+              sql.includes("blob15) AS uniqueAsns")
+                ? {
+                    total: 1,
+                    highConfidence: 0,
+                    mediumConfidence: 1,
+                    affectedSites: 1,
+                    uniqueAsns: 1,
+                    uniqueCountries: 1,
+                  }
+                : {
+                    total: 99,
+                    affectedSites: 1,
+                    uniqueAsns: 1,
+                    uniqueCountries: 1,
+                  },
+            ]),
+            { status: 200 },
+          );
+        }
+        if (sql.includes("blob15 AS label")) {
+          return new Response(
+            jsonEachRow([
+              {
+                label: "13335",
+                count: 42,
+                highConfidence: 17,
+              },
+              {
+                label: "16509",
+                count: 31,
+                highConfidence: 9,
+              },
+            ]),
+            { status: 200 },
+          );
+        }
         return new Response("", { status: 200 });
       });
 
@@ -457,15 +496,13 @@ describe("admin bot analytics handlers", () => {
     const allSql = fetchMock.mock.calls.map(([, init]) =>
       String((init as RequestInit | undefined)?.body || ""),
     );
-    expect(allSql.join("\n")).not.toMatch(/quantile/i);
+    expect(allSql.join("\n")).toContain("quantileExactWeighted(0.95)");
     expect(
       allSql.some(
         (statement) =>
           statement.includes("GROUP BY timestampMs") &&
           statement.includes("avgIf(double3") &&
-          !/p50LatencyMs|p75LatencyMs|p95LatencyMs|p99LatencyMs/.test(
-            statement,
-          ),
+          /p50LatencyMs|p75LatencyMs|p95LatencyMs|p99LatencyMs/.test(statement),
       ),
     ).toBe(true);
     expect(body.configured).toBe(true);
@@ -497,9 +534,92 @@ describe("admin bot analytics handlers", () => {
       longitude: 139.692,
       pointCount: 1,
     });
+    expect(body.abnormal.dimensions.network.asn).toEqual([
+      {
+        key: "13335\u0000\u0000",
+        label: "13335",
+        count: 42,
+        highConfidence: 17,
+        country: "",
+        region: "",
+      },
+      {
+        key: "16509\u0000\u0000",
+        label: "16509",
+        count: 31,
+        highConfidence: 9,
+        country: "",
+        region: "",
+      },
+    ]);
+    expect(
+      allSql.some(
+        (statement) =>
+          statement.includes("blob15 AS label") &&
+          statement.includes("GROUP BY label") &&
+          statement.includes("count() AS count") &&
+          statement.includes("LIMIT 30"),
+      ),
+    ).toBe(true);
     expect(body.trend.some((point: any) => point.baselineCount === 99)).toBe(
       true,
     );
+  });
+
+  it("expands day-bucket Analytics Engine windows to the full leading day", async () => {
+    const now = Date.UTC(2026, 6, 6, 7, 30, 0);
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const encrypted = await import("@/lib/edge/secret-encryption").then(
+      ({ encryptBotAnalyticsSecret }) =>
+        encryptBotAnalyticsSecret(
+          { MAIN_SECRET: "main-secret" },
+          "cf_reader_token",
+        ),
+    );
+    const env = createEnv([
+      statement({
+        first: row({
+          apiTokenEncrypted: encrypted,
+          apiTokenHint: "••••oken",
+          configured: true,
+        }),
+      }),
+    ]);
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => new Response("", { status: 200 }));
+    const rollingFrom = Date.UTC(2026, 5, 6, 7, 30, 0);
+    const expectedFrom = Date.UTC(2026, 5, 5, 16, 0, 0);
+
+    const response = await handleBotAnalyticsAdmin(
+      request(
+        `/api/private/admin/bot-analytics?from=${rollingFrom}&to=${now}&interval=day&timeZone=Asia%2FShanghai`,
+      ),
+      env,
+      new URL(
+        `https://app.test/api/private/admin/bot-analytics?from=${rollingFrom}&to=${now}&interval=day&timeZone=Asia%2FShanghai`,
+      ),
+    );
+    const body = await jsonOf(response);
+    const allSql = fetchMock.mock.calls.map(([, init]) =>
+      String((init as RequestInit | undefined)?.body || ""),
+    );
+
+    expect(response.status).toBe(200);
+    expect(body.window).toMatchObject({
+      from: expectedFrom,
+      to: now,
+      interval: "day",
+      timeZone: "Asia/Shanghai",
+    });
+    expect(allSql.join("\n")).toContain(
+      `timestamp >= toDateTime(${Math.floor(expectedFrom / 1000)})`,
+    );
+    expect(allSql.join("\n")).toContain(
+      "intDiv(toUnixTimestamp(timestamp) + 28800, 86400)",
+    );
+    expect(allSql.join("\n")).not.toContain("toStartOfInterval");
+    expect(body.trend[0]?.timestampMs).toBe(expectedFrom);
   });
 
   it("falls back to blob-only Analytics Engine queries when double columns are unavailable", async () => {
@@ -595,6 +715,28 @@ describe("admin bot analytics handlers", () => {
         if (sql.includes("GROUP BY latitude, longitude, country")) {
           return new Response("", { status: 200 });
         }
+        if (sql.includes("count(DISTINCT blob1)")) {
+          return new Response(
+            jsonEachRow([
+              sql.includes("blob15) AS uniqueAsns")
+                ? {
+                    total: 1,
+                    highConfidence: 0,
+                    mediumConfidence: 1,
+                    affectedSites: 1,
+                    uniqueAsns: 1,
+                    uniqueCountries: 1,
+                  }
+                : {
+                    total: 49,
+                    affectedSites: 1,
+                    uniqueAsns: 1,
+                    uniqueCountries: 1,
+                  },
+            ]),
+            { status: 200 },
+          );
+        }
         return new Response("", { status: 200 });
       });
 
@@ -608,7 +750,7 @@ describe("admin bot analytics handlers", () => {
     const body = await jsonOf(response);
 
     expect(response.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(7);
+    expect(fetchMock).toHaveBeenCalledTimes(21);
     const firstSql = String(
       (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body || "",
     );
@@ -616,7 +758,7 @@ describe("admin bot analytics handlers", () => {
       (fetchMock.mock.calls[1]?.[1] as RequestInit | undefined)?.body || "",
     );
     expect(firstSql).toContain("double1 AS receivedAt");
-    expect(fallbackSql).not.toContain("double1");
+    expect(fallbackSql).not.toContain("double1 AS receivedAt");
     expect(fallbackSql).toContain("ORDER BY timestamp DESC");
     expect(
       fetchMock.mock.calls
@@ -624,7 +766,7 @@ describe("admin bot analytics handlers", () => {
           String((init as RequestInit | undefined)?.body || ""),
         )
         .join("\n"),
-    ).not.toMatch(/quantile/i);
+    ).toContain("quantileExactWeighted(0.95)");
     expect(body.events[0]).toMatchObject({
       siteName: "Blog",
       asn: 16509,
@@ -775,11 +917,11 @@ describe("admin bot analytics handlers", () => {
     const body = await jsonOf(response);
 
     expect(response.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(20);
     expect(
       fetchMock.mock.calls.some(([, init]) =>
         String((init as RequestInit | undefined)?.body || "").includes(
-          "LIMIT 100",
+          "LIMIT 101",
         ),
       ),
     ).toBe(true);
@@ -807,7 +949,7 @@ describe("admin bot analytics handlers", () => {
       total: 0,
       baselineRequests: 0,
       botRequestRatio: 0,
-      highConfidence: 1,
+      highConfidence: 0,
       affectedSites: 0,
       uniqueAsns: 0,
       uniqueCountries: 0,
@@ -927,8 +1069,8 @@ describe("admin bot analytics handlers", () => {
     );
     expect(firstDetailSql).toContain("double1 AS receivedAt");
     expect(fallbackDetailSql).not.toContain("double1 AS receivedAt");
-    expect(fallbackDetailSql).toContain("blob19 = 'trace-detail'");
     expect(fallbackDetailSql).toContain("blob18 = 'ray-detail'");
+    expect(fallbackDetailSql).not.toContain("blob19");
 
     const upsert = statement();
     const clearResponse = await handleBotAnalyticsConfigAdmin(
@@ -962,5 +1104,241 @@ describe("admin bot analytics handlers", () => {
       apiTokenHint: "",
       configured: false,
     });
+  });
+
+  it("pages detail rows and reads breakdown cards from Analytics Engine", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    const encrypted = await import("@/lib/edge/secret-encryption").then(
+      ({ encryptBotAnalyticsSecret }) =>
+        encryptBotAnalyticsSecret({ MAIN_SECRET: "main-secret" }, "token"),
+    );
+    const event = {
+      timestamp: "2026-07-03 10:00:00",
+      siteId: "site-1",
+      kind: "pageview",
+      confidence: "high",
+      reasons: "hosting_asn",
+      country: "US",
+      region: "CA",
+      city: "San Francisco",
+      asnText: "13335",
+      asOrganization: "Cloudflare",
+      rayId: "ray-1",
+      traceId: "trace-1",
+    };
+    const env = createEnv([
+      statement({
+        first: row({ apiTokenEncrypted: encrypted, configured: true }),
+      }),
+      statement({ all: [{ id: "site-1", name: "Site", domain: "site.test" }] }),
+    ]);
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (_input, init) => {
+        const sql = String((init as RequestInit | undefined)?.body || "");
+        if (sql.includes("blob1 AS label")) {
+          return new Response(
+            jsonEachRow([{ label: "site-1", count: 12, highConfidence: 7 }]),
+            { status: 200 },
+          );
+        }
+        if (sql.includes("blob11 AS label, blob10 AS country")) {
+          return new Response(
+            jsonEachRow([
+              {
+                label: "Tokyo",
+                country: "JP",
+                count: 12,
+                highConfidence: 7,
+              },
+            ]),
+            { status: 200 },
+          );
+        }
+        if (sql.includes("GROUP BY label")) {
+          return new Response(
+            jsonEachRow([{ label: "13335", count: 12, highConfidence: 7 }]),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          jsonEachRow([
+            event,
+            { ...event, traceId: "trace-0", rayId: "ray-0" },
+          ]),
+          { status: 200 },
+        );
+      });
+
+    const pageResponse = await handleBotAnalyticsAdmin(
+      request("/api/private/admin/bot-analytics?page=abnormal&limit=1"),
+      env,
+      new URL(
+        "https://app.test/api/private/admin/bot-analytics?page=abnormal&limit=1",
+      ),
+    );
+    const pageBody = await jsonOf(pageResponse);
+    expect(pageResponse.status).toBe(200);
+    expect(pageBody.page).toMatchObject({
+      source: "abnormal",
+      hasMore: true,
+      events: [expect.objectContaining({ traceId: "trace-1" })],
+    });
+    expect(pageBody.page.nextCursor).toMatchObject({
+      timestamp: "2026-07-03 10:00:00",
+      receivedAt: 1783072800000,
+    });
+    expect(
+      fetchMock.mock.calls.every(
+        ([, init]) =>
+          !String((init as RequestInit | undefined)?.body || "").includes(
+            "blob19",
+          ),
+      ),
+    ).toBe(true);
+
+    const dimensionResponse = await handleBotAnalyticsAdmin(
+      request(
+        "/api/private/admin/bot-analytics?dimensionSource=abnormal&dimensionGroup=network&dimensionTab=asn",
+      ),
+      createEnv([
+        statement({
+          first: row({ apiTokenEncrypted: encrypted, configured: true }),
+        }),
+      ]),
+      new URL(
+        "https://app.test/api/private/admin/bot-analytics?dimensionSource=abnormal&dimensionGroup=network&dimensionTab=asn",
+      ),
+    );
+    const dimensionBody = await jsonOf(dimensionResponse);
+    expect(dimensionResponse.status).toBe(200);
+    expect(dimensionBody.dimension.rows).toEqual([
+      expect.objectContaining({ label: "13335", count: 12, highConfidence: 7 }),
+    ]);
+    expect(
+      fetchMock.mock.calls.some(([, init]) =>
+        String((init as RequestInit | undefined)?.body || "").includes(
+          "GROUP BY label",
+        ),
+      ),
+    ).toBe(true);
+
+    const siteDimensionResponse = await handleBotAnalyticsAdmin(
+      request(
+        "/api/private/admin/bot-analytics?dimensionSource=abnormal&dimensionGroup=target&dimensionTab=site",
+      ),
+      createEnv([
+        statement({
+          first: row({ apiTokenEncrypted: encrypted, configured: true }),
+        }),
+        statement({
+          all: [{ id: "site-1", name: "Site", domain: "site.test" }],
+        }),
+      ]),
+      new URL(
+        "https://app.test/api/private/admin/bot-analytics?dimensionSource=abnormal&dimensionGroup=target&dimensionTab=site",
+      ),
+    );
+    const siteDimensionBody = await jsonOf(siteDimensionResponse);
+    expect(siteDimensionResponse.status).toBe(200);
+    expect(siteDimensionBody.dimension.rows).toEqual([
+      expect.objectContaining({
+        label: "Site",
+        iconLabel: "site.test",
+        count: 12,
+      }),
+    ]);
+
+    const regionDimensionResponse = await handleBotAnalyticsAdmin(
+      request(
+        "/api/private/admin/bot-analytics?dimensionSource=abnormal&dimensionGroup=network&dimensionTab=region",
+      ),
+      createEnv([
+        statement({
+          first: row({ apiTokenEncrypted: encrypted, configured: true }),
+        }),
+      ]),
+      new URL(
+        "https://app.test/api/private/admin/bot-analytics?dimensionSource=abnormal&dimensionGroup=network&dimensionTab=region",
+      ),
+    );
+    const regionDimensionBody = await jsonOf(regionDimensionResponse);
+    expect(regionDimensionResponse.status).toBe(200);
+    expect(regionDimensionBody.dimension.rows).toEqual([
+      expect.objectContaining({
+        label: "Tokyo",
+        country: "JP",
+        region: "Tokyo",
+      }),
+    ]);
+
+    for (const [source, group, tab] of [
+      ["abnormal", "detection", "confidence"],
+      ["abnormal", "target", "pathname"],
+      ["abnormal", "client", "userAgentLengthBucket"],
+      ["normal", "target", "hostname"],
+      ["normal", "network", "city"],
+    ] as const) {
+      const response = await handleBotAnalyticsAdmin(
+        request(
+          `/api/private/admin/bot-analytics?dimensionSource=${source}&dimensionGroup=${group}&dimensionTab=${tab}`,
+        ),
+        createEnv([
+          statement({
+            first: row({ apiTokenEncrypted: encrypted, configured: true }),
+          }),
+        ]),
+        new URL(
+          `https://app.test/api/private/admin/bot-analytics?dimensionSource=${source}&dimensionGroup=${group}&dimensionTab=${tab}`,
+        ),
+      );
+      expect(response.status).toBe(200);
+    }
+
+    const invalidCursor = await handleBotAnalyticsAdmin(
+      request("/api/private/admin/bot-analytics?page=normal&cursor=invalid"),
+      createEnv([
+        statement({
+          first: row({ apiTokenEncrypted: encrypted, configured: true }),
+        }),
+      ]),
+      new URL(
+        "https://app.test/api/private/admin/bot-analytics?page=normal&cursor=invalid",
+      ),
+    );
+    expect(invalidCursor.status).toBe(400);
+
+    const normalPage = await handleBotAnalyticsAdmin(
+      request(
+        `/api/private/admin/bot-analytics?page=normal&cursor=${encodeURIComponent(JSON.stringify({ timestamp: "2026-07-03 10:00:00", receivedAt: 1783072800000 }))}`,
+      ),
+      createEnv([
+        statement({
+          first: row({ apiTokenEncrypted: encrypted, configured: true }),
+        }),
+        statement({
+          all: [{ id: "site-1", name: "Site", domain: "site.test" }],
+        }),
+      ]),
+      new URL(
+        `https://app.test/api/private/admin/bot-analytics?page=normal&cursor=${encodeURIComponent(JSON.stringify({ timestamp: "2026-07-03 10:00:00", receivedAt: 1783072800000 }))}`,
+      ),
+    );
+    expect(normalPage.status).toBe(200);
+
+    const invalidDimension = await handleBotAnalyticsAdmin(
+      request(
+        "/api/private/admin/bot-analytics?dimensionSource=normal&dimensionGroup=client&dimensionTab=ip",
+      ),
+      createEnv([
+        statement({
+          first: row({ apiTokenEncrypted: encrypted, configured: true }),
+        }),
+      ]),
+      new URL(
+        "https://app.test/api/private/admin/bot-analytics?dimensionSource=normal&dimensionGroup=client&dimensionTab=ip",
+      ),
+    );
+    expect(invalidDimension.status).toBe(400);
   });
 });

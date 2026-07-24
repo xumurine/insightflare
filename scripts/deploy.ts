@@ -27,7 +27,11 @@ function deployArgs(options: CommonOptions, configPath: string): string[] {
   if (options.dryRun) {
     args.push("--dry-run");
   }
-  args.push("--minify");
+  // Cloudflare's Vite output is already bundled and minified. Passing
+  // --minify with its generated no_bundle JSON config only emits a warning.
+  if (path.extname(configPath).toLowerCase() !== ".json") {
+    args.push("--minify");
+  }
   return args;
 }
 
@@ -50,6 +54,22 @@ function writeAnalyticsEngineDisabledConfig(
 ): string {
   const fallbackPath = analyticsEngineDisabledConfigPath(configPath);
   const source = fs.readFileSync(configPath, "utf8");
+  if (path.extname(configPath).toLowerCase() === ".json") {
+    const parsed = JSON.parse(source) as {
+      analytics_engine_datasets?: unknown[];
+      vars?: Record<string, string>;
+    };
+    delete parsed.analytics_engine_datasets;
+    parsed.vars = {
+      ...parsed.vars,
+      INSIGHTFLARE_ANALYTICS_ENGINE_DISABLED: "1",
+    };
+    fs.writeFileSync(fallbackPath, `${JSON.stringify(parsed, null, 2)}\n`);
+    runtime.rlog.info(
+      `Analytics Engine disabled fallback config: ${fallbackPath}`,
+    );
+    return fallbackPath;
+  }
   const result = applyAnalyticsEngineDisabledFallback(source, envName);
   fs.writeFileSync(fallbackPath, result.content);
   runtime.rlog.info(
@@ -84,7 +104,15 @@ async function deployWithAnalyticsEngineFallback(
     );
   }
 
-  const configPath = resolveConfigPath(options.config);
+  const generatedConfig = path.join(
+    ROOT_DIR,
+    "dist",
+    "server",
+    "wrangler.json",
+  );
+  const configPath = fs.existsSync(generatedConfig)
+    ? generatedConfig
+    : resolveConfigPath(options.config);
   try {
     await runWranglerDeploy(options, configPath);
     return;

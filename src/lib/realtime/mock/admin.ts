@@ -4,7 +4,7 @@ import type {
   NotificationMessageData,
   NotificationRuleData,
 } from "@/lib/edge-client-types/admin";
-import type { Locale } from "@/lib/i18n/config";
+import { isValidLocale, type Locale } from "@/lib/i18n/config";
 import { buildNotificationContent } from "@/lib/notifications/content";
 import { renderNotificationPlainText } from "@/lib/notifications/email-text";
 import type { NotificationMessage } from "@/lib/notifications/message-store";
@@ -152,6 +152,7 @@ export function getDemoSites(teamId: string) {
 }
 
 export function getDemoMembers(teamId: string) {
+  const sites = getDemoSites(teamId);
   return getDemoUsers().map((user, index) => ({
     teamId,
     userId: user.id,
@@ -161,6 +162,7 @@ export function getDemoMembers(teamId: string) {
         : index === 3
           ? ("admin" as const)
           : ("member" as const),
+    siteIds: index === 2 ? sites.slice(0, 2).map((site) => site.id) : [],
     joinedAt: user.createdAt,
     username: user.username,
     email: user.email,
@@ -178,7 +180,7 @@ export function generateDemoTeamInvites(teamId: string) {
       teamId: tid,
       userId: "",
       email: "product@example.test",
-      payload: { teamRole: "admin", siteAccess: { mode: "all" } },
+      payload: { teamRole: "admin", siteIds: [] },
       code: "demo_product_admin_token",
       url: "https://demo.insightflare.app/invite#token=demo_product_admin_token",
       createdByUserId: getDemoUser().id,
@@ -195,7 +197,7 @@ export function generateDemoTeamInvites(teamId: string) {
       teamId: tid,
       userId: "",
       email: "",
-      payload: { teamRole: "member", siteAccess: { mode: "all" } },
+      payload: { teamRole: "member", siteIds: [] },
       code: "demo_open_member_token",
       url: "https://demo.insightflare.app/invite#token=demo_open_member_token",
       createdByUserId: getDemoUser().id,
@@ -212,7 +214,12 @@ export function generateDemoTeamInvites(teamId: string) {
       teamId: tid,
       userId: "",
       email: "mia@example.test",
-      payload: { teamRole: "member", siteAccess: { mode: "all" } },
+      payload: {
+        teamRole: "member",
+        siteIds: getDemoSites(tid)
+          .slice(0, 1)
+          .map((site) => site.id),
+      },
       code: "demo_used_member_token",
       url: "https://demo.insightflare.app/invite#token=demo_used_member_token",
       createdByUserId: getDemoUser().id,
@@ -871,7 +878,10 @@ export function generateDemoNotificationTest(body: unknown): {
     body && typeof body === "object" ? (body as Record<string, unknown>) : {};
   const teamId = String(raw.teamId || getDemoTeams()[0].id);
   const userId = String(raw.userId || getDemoUser().id);
-  const locale = raw.locale === "zh" ? "zh" : "en";
+  const requestedLocale = String(raw.locale || "");
+  const locale: Locale = isValidLocale(requestedLocale)
+    ? requestedLocale
+    : "en";
   const message = demoTypedNotificationMessage({
     id: `demo-notification-test-${nowSeconds()}`,
     teamId,

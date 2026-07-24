@@ -2,7 +2,7 @@ import { getRequestId, jsonResponse } from "@/lib/response";
 
 import type { ApiKeyScope } from "./api-key-store";
 
-export const API_V1_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "1.0.0";
+export const API_V1_VERSION = import.meta.env.VITE_APP_VERSION || "1.0.0";
 export const DEFAULT_PAGE_LIMIT = 100;
 export const MAX_PAGE_LIMIT = 1000;
 export const BATCH_MAX_REQUESTS = 20;

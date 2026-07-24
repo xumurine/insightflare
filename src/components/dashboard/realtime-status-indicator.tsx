@@ -1,5 +1,3 @@
-"use client";
-
 import { AutoTransition } from "@/components/ui/auto-transition";
 import type { AppMessages } from "@/lib/i18n/messages";
 import type { RealtimeConnectionState } from "@/lib/realtime/types";

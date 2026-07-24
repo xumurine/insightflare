@@ -1,7 +1,6 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { RiGlobalLine } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { Cell, Pie, PieChart } from "recharts";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
@@ -217,6 +216,13 @@ function BrowserVersionDonutCard({
   );
 }
 
+function emptyBreakdownUnlessAborted(
+  error: unknown,
+): BrowserVersionBreakdownData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyBrowserVersionBreakdown();
+}
+
 export function BrowserVersionBreakdownGrid({
   locale,
   messages,
@@ -224,40 +230,32 @@ export function BrowserVersionBreakdownGrid({
   window,
   filters,
 }: BrowserVersionBreakdownGridProps) {
-  const [loading, setLoading] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
-  const [breakdownData, setBreakdownData] =
-    useState<BrowserVersionBreakdownData>(() => emptyBrowserVersionBreakdown());
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    fetchBrowserVersionBreakdown(siteId, window, filters, {
-      browserLimit: 0,
-      versionLimit: 5,
-    })
-      .catch(() => emptyBrowserVersionBreakdown())
-      .then((nextData) => {
-        if (!active) return;
-        setBreakdownData(nextData);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-        setHydrated(true);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [filters, siteId, window.from, window.to]);
+  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const { data, isFetching } = useQuery({
+    queryKey: [
+      "dashboard",
+      "browser-version-breakdown",
+      siteId,
+      window.from,
+      window.to,
+      window.timeZone,
+      filtersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchBrowserVersionBreakdown(siteId, window, filters, {
+        browserLimit: 0,
+        versionLimit: 5,
+        signal,
+      }).catch(emptyBreakdownUnlessAborted),
+    enabled: typeof window !== "undefined",
+  });
+  const breakdownData = data ?? emptyBrowserVersionBreakdown();
 
   const browsers = useMemo(
     () => buildVersionCardData(breakdownData, messages),
     [breakdownData, messages],
   );
-  const showOverlayLoading = loading && hydrated;
+  const showOverlayLoading = isFetching && data !== undefined;
 
   return (
     <section className="space-y-4">
@@ -269,7 +267,7 @@ export function BrowserVersionBreakdownGrid({
       </div>
 
       <ContentSwitch
-        loading={loading && !hydrated}
+        loading={isFetching && data === undefined}
         hasContent={browsers.length > 0}
         loadingLabel={messages.common.loading}
         emptyContent={<p>{messages.common.noData}</p>}

@@ -51,7 +51,7 @@ vi.mock("@/lib/edge/dashboard-cache", () => ({
 
 vi.mock("@/lib/edge/query/core", () => ({
   fetchPublicSite: vi.fn(),
-  resolvePrivateSite: vi.fn(),
+  resolvePrivateSiteForSession: vi.fn(),
 }));
 
 vi.mock("@/lib/edge/session-auth", () => ({
@@ -64,7 +64,7 @@ vi.mock("@/lib/edge/utils", () => ({
 
 const { authenticateApiKey } = await import("@/lib/edge/api-key-auth");
 const { withDashboardCache } = await import("@/lib/edge/dashboard-cache");
-const { fetchPublicSite, resolvePrivateSite } =
+const { fetchPublicSite, resolvePrivateSiteForSession } =
   await import("@/lib/edge/query/core");
 const { requireSession } = await import("@/lib/edge/session-auth");
 const { requireSameOrigin } = await import("@/lib/edge/utils");
@@ -81,6 +81,13 @@ const principal: ApiKeyPrincipal = {
   scopes: ["analytics:read"],
   siteIds: ["site-1"],
 };
+const session = {
+  userId: "user-1",
+  username: "user",
+  displayName: "User",
+  systemRole: "user" as const,
+  exp: 9999999999,
+};
 
 function request(path: string, init?: RequestInit): Request {
   return new Request(`https://app.test${path}`, init);
@@ -92,6 +99,17 @@ function createApp(
 ) {
   const app = new Hono<AppEnv>();
   app.use("*", middleware);
+  app.all("*", handler);
+  return app;
+}
+
+function createPrivateSiteApp(handler: Handler<AppEnv>) {
+  const app = new Hono<AppEnv>();
+  app.use("*", async (c, next) => {
+    c.set("session", session);
+    await next();
+  });
+  app.use("*", resolvePrivateSiteMiddleware());
   app.all("*", handler);
   return app;
 }
@@ -476,7 +494,7 @@ describe("Hono middleware foundation", () => {
   });
 
   it("resolves private, public, and API site context", async () => {
-    vi.mocked(resolvePrivateSite).mockResolvedValue({
+    vi.mocked(resolvePrivateSiteForSession).mockResolvedValue({
       id: "private-site",
       name: "Private Site",
       domain: "app.test",
@@ -487,7 +505,7 @@ describe("Hono middleware foundation", () => {
       domain: "app.test",
     });
 
-    const privateApp = createApp(resolvePrivateSiteMiddleware(), (c) =>
+    const privateApp = createPrivateSiteApp((c) =>
       c.json({ id: c.get("privateSite")?.id }),
     );
     const publicApp = new Hono<AppEnv>();
@@ -533,20 +551,24 @@ describe("Hono middleware foundation", () => {
     await expect(privateResponse.json()).resolves.toEqual({
       id: "private-site",
     });
+    expect(resolvePrivateSiteForSession).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.any(Object),
+      new URL("https://app.test/api/private/overview"),
+      session,
+    );
     await expect(publicResponse.json()).resolves.toEqual({ slug: "demo" });
     await expect(apiResponse.json()).resolves.toEqual({ id: "site-1" });
   });
 
   it("passes through site resolver response failures", async () => {
-    vi.mocked(resolvePrivateSite).mockResolvedValueOnce(
+    vi.mocked(resolvePrivateSiteForSession).mockResolvedValueOnce(
       new Response("private-denied", { status: 403 }),
     );
     vi.mocked(fetchPublicSite).mockResolvedValueOnce(
       new Response("public-missing", { status: 404 }),
     );
-    const privateApp = createApp(resolvePrivateSiteMiddleware(), () =>
-      Response.json({ ok: true }),
-    );
+    const privateApp = createPrivateSiteApp(() => Response.json({ ok: true }));
     const publicApp = createApp(resolvePublicSiteMiddleware(), () =>
       Response.json({ ok: true }),
     );

@@ -15,7 +15,7 @@ async function sessionSecret(): Promise<string> {
   if (configured) {
     return configured;
   }
-  return "insightflare-session-secret-change-me";
+  throw new Error("MAIN_SECRET or DAILY_SALT_SECRET is required for sessions");
 }
 
 export function sessionSecretSourceFromProcessEnv(): SecretSource {

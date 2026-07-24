@@ -354,24 +354,13 @@ if (!Array.isArray(complexFilterValue?.oneOf)) {
   issues.push("ComplexFilter.value must define a constrained oneOf schema");
 }
 
-const collect = openapi.paths?.["/collect"]?.post;
-if (collect?.responses?.["429"]) {
-  issues.push("/collect must not declare a 429 response");
+if (openapi.paths?.["/collect"]) {
+  issues.push("/collect must not be exposed in the public OpenAPI contract");
 }
-const collectBodyName = refName(
-  collect?.requestBody?.content?.["application/json"]?.schema,
-);
-if (collectBodyName === "GenericObjectResponse") {
-  issues.push("/collect requestBody must not use GenericObjectResponse");
-}
-const collectPayload = openapi.components?.schemas?.CollectPayload;
-if (
-  !collectPayload ||
-  collectPayload.additionalProperties === true ||
-  !collectPayload.properties?.siteId ||
-  !collectPayload.properties?.type
-) {
-  issues.push("CollectPayload must define explicit siteId/type properties");
+if (openapi.components?.schemas?.CollectPayload) {
+  issues.push(
+    "CollectPayload must not be exposed in the public OpenAPI contract",
+  );
 }
 
 const eventTypesExample = exampleValue(

@@ -1,5 +1,3 @@
-"use client";
-
 import { ShareTrendCard } from "@/components/dashboard/share-trend-card";
 import { fetchBrowserEngineTrend } from "@/lib/dashboard/client-data";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
@@ -28,6 +26,7 @@ export function BrowserEngineShareTrendCard({
       siteId={siteId}
       window={window}
       filters={filters}
+      queryKey={["browser-engine"]}
       title={messages.browsers.engineTrendTitle}
       fetchTrend={fetchBrowserEngineTrend}
     />

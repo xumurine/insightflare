@@ -8,6 +8,13 @@ import {
   validateBotAnalyticsConfig,
   validateBotAnalyticsUpdateInput,
 } from "@/lib/bot-analytics-config";
+import {
+  addZonedInterval,
+  resolveReportingTimeZone,
+  startOfZonedDay,
+  startOfZonedInterval,
+  timeZoneOffsetMinutes,
+} from "@/lib/dashboard/time-zone";
 
 import { requireActor } from "./admin-auth";
 import { bad, forb, jsonResponseFor, na, parseJson } from "./admin-response";
@@ -20,14 +27,43 @@ import { deleteConfig, readConfig, upsertConfig } from "./system-config";
 import type { Env } from "./types";
 import { clampString, ONE_HOUR_MS } from "./utils";
 
-const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 500;
+const DETAIL_PAGE_SIZE = 100;
+const MAX_DETAIL_PAGE_SIZE = DETAIL_PAGE_SIZE;
+const NETWORK_DIMENSION_LIMIT = 30;
 const WINDOW_OPTIONS_MINUTES = new Set([60, 1440, 10080, 43200]);
 const MAX_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 const CF_ANALYTICS_ENGINE_SQL_ENDPOINT =
   "https://api.cloudflare.com/client/v4/accounts";
 
 type AdminActor = Awaited<ReturnType<typeof requireActor>>;
+type BotAnalyticsInterval = "minute" | "hour" | "day" | "week";
+type NetworkDimension =
+  | "asOrganization"
+  | "asn"
+  | "country"
+  | "region"
+  | "city"
+  | "colo";
+type DetailSource = "abnormal" | "normal";
+type DimensionGroup = "detection" | "target" | "network" | "client";
+
+interface DetailCursor {
+  timestamp: string;
+  receivedAt: number;
+}
+
+const DIMENSION_TABS: Record<DimensionGroup, readonly string[]> = {
+  detection: [
+    "reason",
+    "confidence",
+    "kind",
+    "botScoreBucket",
+    "verifiedBotCategory",
+  ],
+  target: ["site", "hostname", "pathname", "origin"],
+  network: ["asOrganization", "asn", "country", "region", "city", "colo"],
+  client: ["ip", "userAgent", "userAgentLengthBucket", "ipPrefix"],
+};
 
 interface BotAnalyticsEvent {
   timestamp: string;
@@ -109,6 +145,7 @@ function parseTimeWindow(url: URL, now = Date.now()) {
   const rawFrom = Number(url.searchParams.get("from"));
   const rawTo = Number(url.searchParams.get("to"));
   const hasExplicitWindow = Number.isFinite(rawFrom) && Number.isFinite(rawTo);
+  const timeZone = resolveReportingTimeZone(url.searchParams.get("timeZone"));
   const fallbackMinutes = parseWindowMinutes(url);
   const fallbackFrom = now - fallbackMinutes * 60 * 1000;
   const requestedTo = hasExplicitWindow ? rawTo : now;
@@ -116,21 +153,23 @@ function parseTimeWindow(url: URL, now = Date.now()) {
   const to = Math.min(now, Math.max(1, Math.floor(requestedTo)));
   const from = Math.max(0, Math.floor(requestedFrom));
   const boundedFrom = Math.max(0, Math.min(from, to - 1));
-  const safeFrom = Math.max(boundedFrom, to - MAX_WINDOW_MS);
-  const interval = parseInterval(url, to - safeFrom);
+  const cappedFrom = Math.max(boundedFrom, to - MAX_WINDOW_MS);
+  const interval = parseInterval(url, to - cappedFrom);
+  const safeFrom =
+    interval === "day" || interval === "week"
+      ? Math.max(0, startOfZonedDay(cappedFrom, timeZone))
+      : cappedFrom;
   return {
     from: safeFrom,
     to,
     minutes: Math.max(1, Math.ceil((to - safeFrom) / 60000)),
     interval,
     bucketMs: intervalToBucketMs(interval),
+    timeZone,
   };
 }
 
-function parseInterval(
-  url: URL,
-  spanMs: number,
-): "minute" | "hour" | "day" | "week" {
+function parseInterval(url: URL, spanMs: number): BotAnalyticsInterval {
   const raw = url.searchParams.get("interval");
   if (raw === "minute" && spanMs <= 24 * 60 * 60 * 1000) return "minute";
   if (raw === "hour") return "hour";
@@ -141,7 +180,7 @@ function parseInterval(
   return "day";
 }
 
-function intervalToBucketMs(interval: "minute" | "hour" | "day" | "week") {
+function intervalToBucketMs(interval: BotAnalyticsInterval) {
   if (interval === "minute") return 60 * 1000;
   if (interval === "hour") return ONE_HOUR_MS;
   if (interval === "week") return 7 * 24 * ONE_HOUR_MS;
@@ -149,9 +188,25 @@ function intervalToBucketMs(interval: "minute" | "hour" | "day" | "week") {
 }
 
 function parseLimit(url: URL): number {
-  const value = Number(url.searchParams.get("limit") || DEFAULT_LIMIT);
-  if (!Number.isFinite(value)) return DEFAULT_LIMIT;
-  return Math.max(1, Math.min(MAX_LIMIT, Math.trunc(value)));
+  const value = Number(url.searchParams.get("limit") || DETAIL_PAGE_SIZE);
+  if (!Number.isFinite(value)) return DETAIL_PAGE_SIZE;
+  return Math.max(1, Math.min(MAX_DETAIL_PAGE_SIZE, Math.trunc(value)));
+}
+
+function parseDetailCursor(url: URL): DetailCursor | null {
+  const raw = url.searchParams.get("cursor");
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Partial<DetailCursor>;
+    const timestamp = clampString(String(value.timestamp || ""), 64);
+    if (!timestamp) return null;
+    return {
+      timestamp,
+      receivedAt: Math.max(0, toFiniteNumber(value.receivedAt)),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function analyticsDatasetIdentifier(value: string): string {
@@ -171,6 +226,7 @@ function buildBotAnalyticsSql(input: {
   from: number;
   to: number;
   limit: number;
+  cursor?: DetailCursor | null;
   includeDoubles?: boolean;
 }) {
   const dataset = analyticsDatasetIdentifier(input.dataset);
@@ -184,6 +240,20 @@ function buildBotAnalyticsSql(input: {
       double4 AS longitude,
       double5 AS botScore,
       double6 AS userAgentLength`
+    : "";
+  const cursorFilter = input.cursor
+    ? `
+      AND (
+        timestamp < toDateTime(${analyticsSqlString(input.cursor.timestamp)})
+        ${
+          input.includeDoubles
+            ? `OR (
+          timestamp = toDateTime(${analyticsSqlString(input.cursor.timestamp)})
+          AND double1 < ${input.cursor.receivedAt}
+        )`
+            : ""
+        }
+      )`
     : "";
   return `
     SELECT
@@ -206,12 +276,12 @@ function buildBotAnalyticsSql(input: {
       blob16 AS asOrganization,
       blob17 AS verifiedBotCategory,
       blob18 AS rayId,
-      blob19 AS traceId,
-      blob20 AS metadataJson${doubleSelect}
+      '' AS traceId,
+      '' AS metadataJson${doubleSelect}
     FROM ${dataset}
     WHERE timestamp >= toDateTime(${fromSeconds})
-      AND timestamp <= toDateTime(${toSeconds})
-    ORDER BY timestamp DESC
+      AND timestamp <= toDateTime(${toSeconds})${cursorFilter}
+    ORDER BY timestamp DESC${input.includeDoubles ? ", double1 DESC" : ""}
     LIMIT ${input.limit}
     FORMAT JSONEachRow
   `;
@@ -222,6 +292,7 @@ function buildNormalAnalyticsSql(input: {
   from: number;
   to: number;
   limit: number;
+  cursor?: DetailCursor | null;
   includeDoubles?: boolean;
 }) {
   const dataset = analyticsDatasetIdentifier(input.dataset);
@@ -236,6 +307,20 @@ function buildNormalAnalyticsSql(input: {
       double5 AS latitude,
       double6 AS longitude,
       double7 AS userAgentLength`
+    : "";
+  const cursorFilter = input.cursor
+    ? `
+      AND (
+        timestamp < toDateTime(${analyticsSqlString(input.cursor.timestamp)})
+        ${
+          input.includeDoubles
+            ? `OR (
+          timestamp = toDateTime(${analyticsSqlString(input.cursor.timestamp)})
+          AND double1 < ${input.cursor.receivedAt}
+        )`
+            : ""
+        }
+      )`
     : "";
   return `
     SELECT
@@ -258,8 +343,8 @@ function buildNormalAnalyticsSql(input: {
       blob16 AS metadataJson${doubleSelect}
     FROM ${dataset}
     WHERE timestamp >= toDateTime(${fromSeconds})
-      AND timestamp <= toDateTime(${toSeconds})
-    ORDER BY timestamp DESC
+      AND timestamp <= toDateTime(${toSeconds})${cursorFilter}
+    ORDER BY timestamp DESC${input.includeDoubles ? ", double1 DESC" : ""}
     LIMIT ${input.limit}
     FORMAT JSONEachRow
   `;
@@ -270,6 +355,8 @@ function buildCountByBucketSql(input: {
   from: number;
   to: number;
   bucketMs: number;
+  interval: BotAnalyticsInterval;
+  timeZone: string;
   source: "normal" | "abnormal";
   includeLatency?: boolean;
 }) {
@@ -277,14 +364,22 @@ function buildCountByBucketSql(input: {
   const fromSeconds = Math.floor(input.from / 1000);
   const toSeconds = Math.ceil(input.to / 1000);
   const bucketSeconds = Math.max(60, Math.floor(input.bucketMs / 1000));
+  const bucketOffsetSeconds =
+    timeZoneOffsetMinutes(input.timeZone, input.from) * 60 +
+    (input.interval === "week" ? 3 * 24 * 60 * 60 : 0);
+  const bucketExpression = `(intDiv(toUnixTimestamp(timestamp) + ${bucketOffsetSeconds}, ${bucketSeconds}) * ${bucketSeconds} - ${bucketOffsetSeconds}) * 1000`;
   const latencySelect =
     input.includeLatency && input.source === "normal"
       ? `,
-      avgIf(double3, double3 >= 0) AS avgLatencyMs`
+      avgIf(double3, double3 >= 0) AS avgLatencyMs,
+      quantileExactWeighted(0.5)(double3, _sample_interval) AS p50LatencyMs,
+      quantileExactWeighted(0.75)(double3, _sample_interval) AS p75LatencyMs,
+      quantileExactWeighted(0.95)(double3, _sample_interval) AS p95LatencyMs,
+      quantileExactWeighted(0.99)(double3, _sample_interval) AS p99LatencyMs`
       : "";
   return `
     SELECT
-      intDiv(toUnixTimestamp(timestamp), ${bucketSeconds}) * ${bucketSeconds} * 1000 AS timestampMs,
+      ${bucketExpression} AS timestampMs,
       count() AS count,
       countIf(blob2 = 'pageview') AS pageviews,
       countIf(blob2 = 'custom_event') AS customEvents${latencySelect}
@@ -328,6 +423,141 @@ function buildMapPointsSql(input: {
   `;
 }
 
+function buildNetworkDimensionSql(input: {
+  dataset: string;
+  from: number;
+  to: number;
+  source: "normal" | "abnormal";
+  dimension: NetworkDimension;
+}) {
+  const dataset = analyticsDatasetIdentifier(input.dataset);
+  const fromSeconds = Math.floor(input.from / 1000);
+  const toSeconds = Math.ceil(input.to / 1000);
+  const columns =
+    input.source === "abnormal"
+      ? {
+          asOrganization: ["blob16 AS label"],
+          asn: ["blob15 AS label"],
+          country: ["blob10 AS label"],
+          region: ["blob11 AS label", "blob10 AS country"],
+          city: ["blob12 AS label", "blob10 AS country", "blob11 AS region"],
+          colo: ["blob14 AS label"],
+        }
+      : {
+          asOrganization: ["blob12 AS label"],
+          asn: ["blob11 AS label"],
+          country: ["blob6 AS label"],
+          region: ["blob7 AS label", "blob6 AS country"],
+          city: ["blob8 AS label", "blob6 AS country", "blob7 AS region"],
+          colo: ["blob10 AS label"],
+        };
+  const groupColumns = columns[input.dimension];
+  const highConfidenceSelect =
+    input.source === "abnormal"
+      ? ",\n      countIf(blob3 = 'high') AS highConfidence"
+      : ",\n      0 AS highConfidence";
+  return `
+    SELECT
+      ${groupColumns.join(",\n      ")},
+      count() AS count${highConfidenceSelect}
+    FROM ${dataset}
+    WHERE timestamp >= toDateTime(${fromSeconds})
+      AND timestamp <= toDateTime(${toSeconds})
+    GROUP BY ${groupColumns.map((column) => column.split(" AS ")[1]).join(", ")}
+    ORDER BY count DESC
+    LIMIT ${NETWORK_DIMENSION_LIMIT}
+    FORMAT JSONEachRow
+  `;
+}
+
+function buildSourceSummarySql(input: {
+  dataset: string;
+  from: number;
+  to: number;
+  source: DetailSource;
+}) {
+  const dataset = analyticsDatasetIdentifier(input.dataset);
+  const fromSeconds = Math.floor(input.from / 1000);
+  const toSeconds = Math.ceil(input.to / 1000);
+  const columns =
+    input.source === "abnormal"
+      ? `
+      countIf(blob3 = 'high') AS highConfidence,
+      countIf(blob3 = 'medium') AS mediumConfidence,
+      count(DISTINCT blob1) AS affectedSites,
+      count(DISTINCT blob15) AS uniqueAsns,
+      count(DISTINCT blob10) AS uniqueCountries`
+      : `
+      count(DISTINCT blob1) AS affectedSites,
+      count(DISTINCT blob11) AS uniqueAsns,
+      count(DISTINCT blob6) AS uniqueCountries`;
+  return `
+    SELECT
+      count() AS total,${columns}
+    FROM ${dataset}
+    WHERE timestamp >= toDateTime(${fromSeconds})
+      AND timestamp <= toDateTime(${toSeconds})
+    FORMAT JSONEachRow
+  `;
+}
+
+function buildDimensionSql(input: {
+  dataset: string;
+  from: number;
+  to: number;
+  source: DetailSource;
+  group: DimensionGroup;
+  tab: string;
+}) {
+  const dataset = analyticsDatasetIdentifier(input.dataset);
+  const fromSeconds = Math.floor(input.from / 1000);
+  const toSeconds = Math.ceil(input.to / 1000);
+  const abnormal = input.source === "abnormal";
+  const fields: Record<string, string[]> = abnormal
+    ? {
+        reason: ["blob4 AS label"],
+        confidence: ["blob3 AS label"],
+        kind: ["blob2 AS label"],
+        botScoreBucket: [
+          "if(double5 <= 0, '', if(double5 < 20, '1-19', if(double5 < 40, '20-39', if(double5 < 60, '40-59', if(double5 < 80, '60-79', '80-99'))))) AS label",
+        ],
+        verifiedBotCategory: ["blob17 AS label"],
+        site: ["blob1 AS label"],
+        hostname: ["blob8 AS label"],
+        pathname: ["blob9 AS label"],
+        origin: ["blob7 AS label"],
+        asOrganization: ["blob16 AS label"],
+        asn: ["blob15 AS label"],
+        country: ["blob10 AS label"],
+        region: ["blob11 AS label", "blob10 AS country"],
+        city: ["blob12 AS label", "blob10 AS country", "blob11 AS region"],
+        colo: ["blob14 AS label"],
+        ip: ["blob5 AS label"],
+        userAgent: ["blob6 AS label"],
+        userAgentLengthBucket: [
+          "if(double6 <= 0, '', if(double6 < 80, '1-79', if(double6 < 160, '80-159', if(double6 < 256, '160-255', if(double6 < 512, '256-511', '512+'))))) AS label",
+        ],
+        ipPrefix: ["blob5 AS label"],
+      }
+    : {
+        site: ["blob1 AS label"],
+        hostname: ["blob4 AS label"],
+        pathname: ["blob5 AS label"],
+        origin: ["blob3 AS label"],
+        asOrganization: ["blob12 AS label"],
+        asn: ["blob11 AS label"],
+        country: ["blob6 AS label"],
+        region: ["blob7 AS label", "blob6 AS country"],
+        city: ["blob8 AS label", "blob6 AS country", "blob7 AS region"],
+        colo: ["blob10 AS label"],
+      };
+  const columns = fields[input.tab];
+  if (!columns || !DIMENSION_TABS[input.group].includes(input.tab))
+    throw new Error("Invalid analytics dimension");
+  const groupBy = columns.map((column) => column.split(" AS ")[1]).join(", ");
+  return `SELECT ${columns.join(", ")}, count() AS count${abnormal ? ", countIf(blob3 = 'high') AS highConfidence" : ", 0 AS highConfidence"} FROM ${dataset} WHERE timestamp >= toDateTime(${fromSeconds}) AND timestamp <= toDateTime(${toSeconds}) GROUP BY ${groupBy} ORDER BY count DESC LIMIT 30 FORMAT JSONEachRow`;
+}
+
 function buildBotAnalyticsDetailSql(input: {
   dataset: string;
   since: number;
@@ -346,8 +576,10 @@ function buildBotAnalyticsDetailSql(input: {
       double5 AS botScore,
       double6 AS userAgentLength`
     : "";
+  // Existing datasets may have been created before traceId and metadataJson
+  // were added, so blob19/blob20 are not guaranteed to exist. rayId is the
+  // last compatible identity field in the original layout.
   const identityFilters = [
-    input.traceId ? `blob19 = ${analyticsSqlString(input.traceId)}` : "",
     input.rayId ? `blob18 = ${analyticsSqlString(input.rayId)}` : "",
   ].filter(Boolean);
   return `
@@ -371,8 +603,8 @@ function buildBotAnalyticsDetailSql(input: {
       blob16 AS asOrganization,
       blob17 AS verifiedBotCategory,
       blob18 AS rayId,
-      blob19 AS traceId,
-      blob20 AS metadataJson${doubleSelect}
+      '' AS traceId,
+      '' AS metadataJson${doubleSelect}
     FROM ${dataset}
     WHERE timestamp >= toDateTime(${sinceSeconds})
       AND (${identityFilters.join(" OR ") || "0"})
@@ -391,8 +623,6 @@ function applyUpdateInput(
   current: BotAnalyticsConfig,
   input: {
     accountId?: string;
-    dataset?: string;
-    normalDataset?: string;
     apiToken?: string;
     clearApiToken?: boolean;
   },
@@ -401,10 +631,6 @@ function applyUpdateInput(
     current as unknown as Record<string, unknown>,
   );
   if (input.accountId !== undefined) next.accountId = input.accountId;
-  if (input.dataset !== undefined) next.dataset = input.dataset;
-  if (input.normalDataset !== undefined) {
-    next.normalDataset = input.normalDataset;
-  }
   if (input.clearApiToken) {
     next.apiTokenEncrypted = "";
     next.apiTokenHint = "";
@@ -621,6 +847,15 @@ function serializeNormalListEvent(event: NormalAnalyticsEvent) {
   return listEvent;
 }
 
+function detailCursorForEvent(
+  event: BotAnalyticsEvent | NormalAnalyticsEvent,
+): DetailCursor {
+  return {
+    timestamp: event.timestamp,
+    receivedAt: event.receivedAt,
+  };
+}
+
 function shouldRetryBotAnalyticsWithoutDoubles(result: {
   status: number;
   body: string;
@@ -632,111 +867,46 @@ function shouldRetryBotAnalyticsWithoutDoubles(result: {
   );
 }
 
-function bucketSizeMs(minutes: number): number {
-  if (minutes <= 1440) return ONE_HOUR_MS;
-  if (minutes <= 10080) return 6 * ONE_HOUR_MS;
-  return 24 * ONE_HOUR_MS;
-}
-
-function buildTrendBuckets(from: number, to: number, bucketMs: number) {
+function buildTrendBuckets(
+  from: number,
+  to: number,
+  interval: BotAnalyticsInterval,
+  timeZone: string,
+) {
   const buckets: number[] = [];
-  for (let bucket = from; bucket <= to; bucket += bucketMs) {
-    buckets.push(Math.floor(bucket / bucketMs) * bucketMs);
+  let bucket = startOfZonedInterval(from, interval, timeZone);
+  let guard = 0;
+  while (bucket <= to && guard < 5000) {
+    buckets.push(bucket);
+    const nextBucket = addZonedInterval(bucket, interval, timeZone);
+    if (nextBucket <= bucket) break;
+    bucket = nextBucket;
+    guard += 1;
   }
   return Array.from(new Set(buckets)).sort((left, right) => left - right);
 }
 
-function aggregateEvents(
-  events: BotAnalyticsEvent[],
-  minutes: number,
-  now = Date.now(),
-) {
-  const since = now - minutes * 60 * 1000;
-  const bucketMs = bucketSizeMs(minutes);
-  const reasonCounts = new Map<string, number>();
-  const countryCounts = new Map<string, number>();
-  const asnCounts = new Map<
-    string,
-    { asn: number; asOrganization: string; count: number }
-  >();
-  const trend = new Map<number, number>();
-  const mapPoints = new Map<
-    string,
-    {
-      latitude: number;
-      longitude: number;
-      country: string;
-      pointCount: number;
-    }
-  >();
+function bucketTimestamp(
+  timestampMs: number,
+  interval: BotAnalyticsInterval,
+  timeZone: string,
+): number {
+  return startOfZonedInterval(timestampMs, interval, timeZone);
+}
 
-  for (const bucket of buildTrendBuckets(since, now, bucketMs)) {
-    trend.set(bucket, 0);
-  }
+function aggregateSampleReasons(events: BotAnalyticsEvent[]) {
+  const reasonCounts = new Map<string, number>();
 
   for (const event of events) {
     for (const reason of event.reasons) {
       reasonCounts.set(reason, (reasonCounts.get(reason) || 0) + 1);
     }
-    if (event.country) {
-      countryCounts.set(
-        event.country,
-        (countryCounts.get(event.country) || 0) + 1,
-      );
-    }
-    if (event.asn) {
-      const key = String(event.asn);
-      const current = asnCounts.get(key);
-      if (current) current.count += 1;
-      else {
-        asnCounts.set(key, {
-          asn: event.asn,
-          asOrganization: event.asOrganization,
-          count: 1,
-        });
-      }
-    }
-    if (event.receivedAt > 0) {
-      const bucket = Math.floor(event.receivedAt / bucketMs) * bucketMs;
-      trend.set(bucket, (trend.get(bucket) || 0) + 1);
-    }
-    if (event.latitude !== null && event.longitude !== null) {
-      const key = `${event.country}:${event.latitude.toFixed(3)}:${event.longitude.toFixed(3)}`;
-      const current = mapPoints.get(key);
-      if (current) current.pointCount += 1;
-      else {
-        mapPoints.set(key, {
-          latitude: event.latitude,
-          longitude: event.longitude,
-          country: event.country,
-          pointCount: 1,
-        });
-      }
-    }
   }
 
-  const sortCounts = <T extends { count: number }>(items: T[]) =>
-    items.sort((left, right) => right.count - left.count).slice(0, 10);
-
-  return {
-    mapPoints: [...mapPoints.values()],
-    trend: [...trend.entries()]
-      .sort((left, right) => left[0] - right[0])
-      .map(([timestampMs, count]) => ({ timestampMs, count })),
-    reasons: sortCounts(
-      [...reasonCounts.entries()].map(([reason, count]) => ({
-        reason,
-        count,
-      })),
-    ),
-    countries: sortCounts(
-      [...countryCounts.entries()].map(([country, count]) => ({
-        country,
-        count,
-      })),
-    ),
-    asns: sortCounts([...asnCounts.values()]),
-  };
+  return [...reasonCounts.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((left, right) => right.count - left.count)
+    .slice(0, 10);
 }
 
 async function siteLookup(
@@ -744,6 +914,10 @@ async function siteLookup(
   events: Array<BotAnalyticsEvent | NormalAnalyticsEvent>,
 ) {
   const ids = [...new Set(events.map((event) => event.siteId).filter(Boolean))];
+  return siteLookupByIds(env, ids);
+}
+
+async function siteLookupByIds(env: Env, ids: string[]) {
   if (ids.length === 0)
     return new Map<string, { name: string; domain: string }>();
   const placeholders = ids.map(() => "?").join(",");
@@ -804,6 +978,25 @@ function normalizeMapRows(rows: Record<string, unknown>[]) {
     );
 }
 
+function normalizeNetworkDimensionRows(rows: Record<string, unknown>[]) {
+  return rows.map((row) => {
+    const label = clampString(String(row.label || ""), 255);
+    const country = clampString(String(row.country || ""), 10);
+    const region = clampString(String(row.region || ""), 128);
+    return {
+      key: [label, country, region].join("\u0000"),
+      label,
+      count: Math.max(0, Math.trunc(toFiniteNumber(row.count))),
+      highConfidence: Math.max(
+        0,
+        Math.trunc(toFiniteNumber(row.highConfidence)),
+      ),
+      country,
+      region,
+    };
+  });
+}
+
 function aggregateNormalEvents(events: NormalAnalyticsEvent[]) {
   const uniqueAsns = new Set(events.map((event) => event.asn).filter(Boolean));
   const uniqueCountries = new Set(
@@ -858,6 +1051,8 @@ function mergeTrendRows(input: {
   from: number;
   to: number;
   bucketMs: number;
+  interval: BotAnalyticsInterval;
+  timeZone: string;
   abnormalRows: Record<string, unknown>[];
   normalRows: Record<string, unknown>[];
   normalEvents?: NormalAnalyticsEvent[];
@@ -886,7 +1081,8 @@ function mergeTrendRows(input: {
   for (const timestampMs of buildTrendBuckets(
     input.from,
     input.to,
-    input.bucketMs,
+    input.interval,
+    input.timeZone,
   )) {
     trend.set(timestampMs, {
       timestampMs,
@@ -908,7 +1104,11 @@ function mergeTrendRows(input: {
     });
   }
   for (const row of input.abnormalRows) {
-    const timestampMs = Math.floor(toFiniteNumber(row.timestampMs));
+    const timestampMs = bucketTimestamp(
+      Math.floor(toFiniteNumber(row.timestampMs)),
+      input.interval,
+      input.timeZone,
+    );
     const current = trend.get(timestampMs);
     if (!current) continue;
     current.abnormalCount = Math.max(0, Math.trunc(toFiniteNumber(row.count)));
@@ -920,7 +1120,11 @@ function mergeTrendRows(input: {
     );
   }
   for (const row of input.normalRows) {
-    const timestampMs = Math.floor(toFiniteNumber(row.timestampMs));
+    const timestampMs = bucketTimestamp(
+      Math.floor(toFiniteNumber(row.timestampMs)),
+      input.interval,
+      input.timeZone,
+    );
     const current = trend.get(timestampMs);
     if (!current) continue;
     current.normalCount = Math.max(0, Math.trunc(toFiniteNumber(row.count)));
@@ -956,8 +1160,11 @@ function mergeTrendRows(input: {
     }
     const timestamp = event.receivedAt || event.eventAt;
     if (!Number.isFinite(timestamp) || timestamp <= 0) continue;
-    const timestampMs =
-      Math.floor(Number(timestamp) / input.bucketMs) * input.bucketMs;
+    const timestampMs = bucketTimestamp(
+      Number(timestamp),
+      input.interval,
+      input.timeZone,
+    );
     if (!trend.has(timestampMs)) continue;
     const values = latencyBuckets.get(timestampMs) ?? [];
     values.push(event.edgeLatencyMs);
@@ -970,10 +1177,10 @@ function mergeTrendRows(input: {
     const sampleAvgLatencyMs =
       sortedValues.reduce((sum, value) => sum + value, 0) / sortedValues.length;
     current.avgLatencyMs ??= sampleAvgLatencyMs;
-    current.p50LatencyMs = percentile(sortedValues, 0.5);
-    current.p75LatencyMs = percentile(sortedValues, 0.75);
-    current.p95LatencyMs = percentile(sortedValues, 0.95);
-    current.p99LatencyMs = percentile(sortedValues, 0.99);
+    current.p50LatencyMs ??= percentile(sortedValues, 0.5);
+    current.p75LatencyMs ??= percentile(sortedValues, 0.75);
+    current.p95LatencyMs ??= percentile(sortedValues, 0.95);
+    current.p99LatencyMs ??= percentile(sortedValues, 0.99);
   }
   return [...trend.values()].map((point) => {
     const totalCount = point.normalCount + point.abnormalCount;
@@ -1154,7 +1361,7 @@ export async function handleBotAnalyticsAdmin(
 
   const generatedAt = Date.now();
   const timeWindow = parseTimeWindow(url, generatedAt);
-  const { from, to, minutes, interval, bucketMs } = timeWindow;
+  const { from, to, minutes, interval, bucketMs, timeZone } = timeWindow;
   const limit = parseLimit(url);
   const detailTraceId = clampString(
     url.searchParams.get("traceId")?.trim() || "",
@@ -1238,11 +1445,176 @@ export async function handleBotAnalyticsAdmin(
     });
   }
 
+  const pageSource = url.searchParams.get("page");
+  if (pageSource === "abnormal" || pageSource === "normal") {
+    const source: DetailSource = pageSource;
+    const cursor = parseDetailCursor(url);
+    if (url.searchParams.has("cursor") && !cursor) {
+      return bad(
+        "Invalid bot analytics page cursor",
+        "bot_analytics_invalid_cursor",
+        req,
+      );
+    }
+    const pageLimit = parseLimit(url);
+    const buildSql =
+      source === "abnormal" ? buildBotAnalyticsSql : buildNormalAnalyticsSql;
+    const dataset =
+      source === "abnormal" ? config.dataset : config.normalDataset;
+    let pageResult = await queryCloudflareAnalyticsEngine({
+      accountId: config.accountId,
+      token,
+      sql: buildSql({
+        dataset,
+        from,
+        to,
+        limit: pageLimit + 1,
+        cursor,
+        includeDoubles: true,
+      }),
+    });
+    if (!pageResult.ok && shouldRetryBotAnalyticsWithoutDoubles(pageResult)) {
+      pageResult = await queryCloudflareAnalyticsEngine({
+        accountId: config.accountId,
+        token,
+        sql: buildSql({
+          dataset,
+          from,
+          to,
+          limit: pageLimit + 1,
+          cursor,
+          includeDoubles: false,
+        }),
+      });
+    }
+    if (!pageResult.ok) {
+      return bad(
+        cloudflareAnalyticsErrorMessage(pageResult),
+        "bot_analytics_query_failed",
+        req,
+      );
+    }
+    let pageRows: Record<string, unknown>[];
+    try {
+      pageRows = parseJsonEachRow(pageResult.body);
+    } catch {
+      return bad(
+        "Cloudflare Analytics Engine returned invalid JSONEachRow data",
+        "bot_analytics_parse_failed",
+        req,
+      );
+    }
+    const hasMore = pageRows.length > pageLimit;
+    const rows = pageRows.slice(0, pageLimit);
+    const preliminaryEvents = rows.map((row) =>
+      source === "abnormal"
+        ? normalizeBotRow(row, new Map())
+        : normalizeNormalRow(row, new Map()),
+    );
+    const sites = await siteLookup(env, preliminaryEvents);
+    const events = rows.map((row) =>
+      source === "abnormal"
+        ? serializeBotListEvent(normalizeBotRow(row, sites))
+        : serializeNormalListEvent(normalizeNormalRow(row, sites)),
+    );
+    const lastEvent = preliminaryEvents[preliminaryEvents.length - 1];
+    return jsonResponseFor(req, {
+      ok: true,
+      configured: true,
+      generatedAt,
+      page: {
+        source,
+        events,
+        hasMore,
+        nextCursor:
+          hasMore && lastEvent ? detailCursorForEvent(lastEvent) : null,
+      },
+    });
+  }
+
+  const dimensionGroup = url.searchParams.get(
+    "dimensionGroup",
+  ) as DimensionGroup | null;
+  const dimensionTab = url.searchParams.get("dimensionTab") || "";
+  const dimensionSource = url.searchParams.get("dimensionSource");
+  if (
+    dimensionGroup &&
+    (dimensionSource === "abnormal" || dimensionSource === "normal")
+  ) {
+    if (!DIMENSION_TABS[dimensionGroup]?.includes(dimensionTab)) {
+      return bad(
+        "Invalid bot analytics dimension",
+        "bot_analytics_invalid_dimension",
+        req,
+      );
+    }
+    let sql: string;
+    try {
+      sql = buildDimensionSql({
+        dataset:
+          dimensionSource === "abnormal"
+            ? config.dataset
+            : config.normalDataset,
+        from,
+        to,
+        source: dimensionSource,
+        group: dimensionGroup,
+        tab: dimensionTab,
+      });
+    } catch {
+      return bad(
+        "Invalid bot analytics dimension",
+        "bot_analytics_invalid_dimension",
+        req,
+      );
+    }
+    const result = await queryAnalyticsRows({
+      accountId: config.accountId,
+      token,
+      sql,
+    });
+    if (!result.ok)
+      return bad(
+        cloudflareAnalyticsErrorMessage(result),
+        "bot_analytics_query_failed",
+        req,
+      );
+    let rows = normalizeNetworkDimensionRows(result.rows);
+    if (dimensionTab === "region") {
+      rows = rows.map((row) => ({ ...row, region: row.label }));
+    }
+    if (dimensionTab === "site") {
+      const sites = await siteLookupByIds(
+        env,
+        rows.map((row) => row.label).filter(Boolean),
+      );
+      rows = rows.map((row) => {
+        const site = sites.get(row.label);
+        return {
+          ...row,
+          label: site?.name || site?.domain || row.label,
+          iconLabel: site?.domain || undefined,
+        };
+      });
+    }
+    return jsonResponseFor(req, {
+      ok: true,
+      configured: true,
+      generatedAt,
+      dimension: {
+        group: dimensionGroup,
+        tab: dimensionTab,
+        source: dimensionSource,
+        rows,
+      },
+    });
+  }
+
   const sql = buildBotAnalyticsSql({
     dataset: config.dataset,
     from,
     to,
-    limit,
+    limit: limit + 1,
     includeDoubles: true,
   });
   let result = await queryCloudflareAnalyticsEngine({
@@ -1258,7 +1630,7 @@ export async function handleBotAnalyticsAdmin(
         dataset: config.dataset,
         from,
         to,
-        limit,
+        limit: limit + 1,
         includeDoubles: false,
       }),
     });
@@ -1275,7 +1647,7 @@ export async function handleBotAnalyticsAdmin(
     dataset: config.normalDataset,
     from,
     to,
-    limit,
+    limit: limit + 1,
     includeDoubles: true,
   });
   let normalResult = await queryCloudflareAnalyticsEngine({
@@ -1291,7 +1663,7 @@ export async function handleBotAnalyticsAdmin(
         dataset: config.normalDataset,
         from,
         to,
-        limit,
+        limit: limit + 1,
         includeDoubles: false,
       }),
     });
@@ -1326,6 +1698,11 @@ export async function handleBotAnalyticsAdmin(
     );
   }
 
+  const abnormalHasMore = rawRows.length > limit;
+  const normalHasMore = normalRawRows.length > limit;
+  rawRows = rawRows.slice(0, limit);
+  normalRawRows = normalRawRows.slice(0, limit);
+
   const preliminaryEvents = rawRows.map((row) =>
     normalizeBotRow(row, new Map()),
   );
@@ -1340,15 +1717,12 @@ export async function handleBotAnalyticsAdmin(
   const normalEvents = normalRawRows.map((row) =>
     normalizeNormalRow(row, sites),
   );
-  const aggregates = aggregateEvents(events, minutes, to);
-  const uniqueAsns = new Set(events.map((event) => event.asn).filter(Boolean));
-  const uniqueCountries = new Set(
-    events.map((event) => event.country).filter(Boolean),
-  );
-  const affectedSites = new Set(
-    events.map((event) => event.siteId).filter(Boolean),
-  );
-
+  const abnormalNextCursor = abnormalHasMore
+    ? detailCursorForEvent(events[events.length - 1])
+    : null;
+  const normalNextCursor = normalHasMore
+    ? detailCursorForEvent(normalEvents[normalEvents.length - 1])
+    : null;
   const abnormalTrendResult = await queryAnalyticsRows({
     accountId: config.accountId,
     token,
@@ -1357,6 +1731,8 @@ export async function handleBotAnalyticsAdmin(
       from,
       to,
       bucketMs,
+      interval,
+      timeZone,
       source: "abnormal",
     }),
   });
@@ -1375,6 +1751,8 @@ export async function handleBotAnalyticsAdmin(
       from,
       to,
       bucketMs,
+      interval,
+      timeZone,
       source: "normal",
       includeLatency: true,
     }),
@@ -1423,10 +1801,166 @@ export async function handleBotAnalyticsAdmin(
     );
   }
 
+  const [abnormalSummaryResult, normalSummaryResult] = await Promise.all([
+    queryAnalyticsRows({
+      accountId: config.accountId,
+      token,
+      sql: buildSourceSummarySql({
+        dataset: config.dataset,
+        from,
+        to,
+        source: "abnormal",
+      }),
+    }),
+    queryAnalyticsRows({
+      accountId: config.accountId,
+      token,
+      sql: buildSourceSummarySql({
+        dataset: config.normalDataset,
+        from,
+        to,
+        source: "normal",
+      }),
+    }),
+  ]);
+  if (!abnormalSummaryResult.ok) {
+    return bad(
+      cloudflareAnalyticsErrorMessage(abnormalSummaryResult),
+      "bot_analytics_query_failed",
+      req,
+    );
+  }
+  if (!normalSummaryResult.ok) {
+    return bad(
+      cloudflareAnalyticsErrorMessage(normalSummaryResult),
+      "bot_analytics_query_failed",
+      req,
+    );
+  }
+  const abnormalSummaryRow = abnormalSummaryResult.rows[0] ?? {};
+  const normalSummaryRow = normalSummaryResult.rows[0] ?? {};
+  const abnormalSummaryValues = {
+    highConfidence: Math.max(
+      0,
+      Math.trunc(toFiniteNumber(abnormalSummaryRow.highConfidence)),
+    ),
+    mediumConfidence: Math.max(
+      0,
+      Math.trunc(toFiniteNumber(abnormalSummaryRow.mediumConfidence)),
+    ),
+    affectedSites: Math.max(
+      0,
+      Math.trunc(toFiniteNumber(abnormalSummaryRow.affectedSites)),
+    ),
+    uniqueAsns: Math.max(
+      0,
+      Math.trunc(toFiniteNumber(abnormalSummaryRow.uniqueAsns)),
+    ),
+    uniqueCountries: Math.max(
+      0,
+      Math.trunc(toFiniteNumber(abnormalSummaryRow.uniqueCountries)),
+    ),
+  };
+  const normalSummaryValues = {
+    affectedSites: Math.max(
+      0,
+      Math.trunc(toFiniteNumber(normalSummaryRow.affectedSites)),
+    ),
+    uniqueAsns: Math.max(
+      0,
+      Math.trunc(toFiniteNumber(normalSummaryRow.uniqueAsns)),
+    ),
+    uniqueCountries: Math.max(
+      0,
+      Math.trunc(toFiniteNumber(normalSummaryRow.uniqueCountries)),
+    ),
+  };
+
+  const networkDimensions: NetworkDimension[] = [
+    "asOrganization",
+    "asn",
+    "country",
+    "region",
+    "city",
+    "colo",
+  ];
+  const networkDimensionResults = await Promise.all(
+    networkDimensions.flatMap((dimension) => [
+      queryAnalyticsRows({
+        accountId: config.accountId,
+        token,
+        sql: buildNetworkDimensionSql({
+          dataset: config.dataset,
+          from,
+          to,
+          source: "abnormal",
+          dimension,
+        }),
+      }),
+      queryAnalyticsRows({
+        accountId: config.accountId,
+        token,
+        sql: buildNetworkDimensionSql({
+          dataset: config.normalDataset,
+          from,
+          to,
+          source: "normal",
+          dimension,
+        }),
+      }),
+    ]),
+  );
+  const failedNetworkDimensionResult = networkDimensionResults.find(
+    (result) => !result.ok,
+  );
+  if (failedNetworkDimensionResult && !failedNetworkDimensionResult.ok) {
+    return bad(
+      cloudflareAnalyticsErrorMessage(failedNetworkDimensionResult),
+      "bot_analytics_query_failed",
+      req,
+    );
+  }
+  const networkDimensionRows = networkDimensionResults.map((result) =>
+    result.ok ? result.rows : [],
+  );
+  const abnormalNetworkDimensions = Object.fromEntries(
+    networkDimensions.map((dimension, index) => [
+      dimension,
+      normalizeNetworkDimensionRows(networkDimensionRows[index * 2]),
+    ]),
+  );
+  const normalNetworkDimensions = Object.fromEntries(
+    networkDimensions.map((dimension, index) => [
+      dimension,
+      normalizeNetworkDimensionRows(networkDimensionRows[index * 2 + 1]),
+    ]),
+  );
+  const organizationsByAsn = new Map(
+    events
+      .filter((event) => event.asn && event.asOrganization)
+      .map((event) => [String(event.asn), event.asOrganization]),
+  );
+  const aggregates = {
+    reasons: aggregateSampleReasons(events),
+    countries: abnormalNetworkDimensions.country.map((row) => ({
+      country: row.label,
+      count: row.count,
+    })),
+    asns: abnormalNetworkDimensions.asn
+      .map((row) => ({
+        asn: Math.trunc(toFiniteNumber(row.label)),
+        asOrganization: organizationsByAsn.get(row.label) || "",
+        count: row.count,
+      }))
+      .filter((row) => row.asn > 0),
+  };
+
   const trendWithRatio = mergeTrendRows({
     from,
     to,
     bucketMs,
+    interval,
+    timeZone,
     abnormalRows: abnormalTrendResult.rows,
     normalRows: normalTrendResult.rows,
     normalEvents,
@@ -1496,19 +2030,14 @@ export async function handleBotAnalyticsAdmin(
       from,
       to,
       interval,
+      timeZone,
     },
     config: redactBotAnalyticsConfig(config, analyticsEngineAvailability(env)),
     summary: {
       total: botRequests,
       baselineRequests: normalRequests,
       botRequestRatio,
-      highConfidence: events.filter((event) => event.confidence === "high")
-        .length,
-      mediumConfidence: events.filter((event) => event.confidence === "medium")
-        .length,
-      affectedSites: affectedSites.size,
-      uniqueAsns: uniqueAsns.size,
-      uniqueCountries: uniqueCountries.size,
+      ...abnormalSummaryValues,
     },
     events: events.map(serializeBotListEvent),
     normalEvents: normalEvents.map(serializeNormalListEvent),
@@ -1533,24 +2062,23 @@ export async function handleBotAnalyticsAdmin(
       summary: {
         total: botRequests,
         ratio: botRequestRatio,
-        highConfidence: events.filter((event) => event.confidence === "high")
-          .length,
-        mediumConfidence: events.filter(
-          (event) => event.confidence === "medium",
-        ).length,
-        affectedSites: affectedSites.size,
-        uniqueAsns: uniqueAsns.size,
-        uniqueCountries: uniqueCountries.size,
+        ...abnormalSummaryValues,
       },
       mapPoints: abnormalMapPoints,
       events: events.map(serializeBotListEvent),
+      hasMore: abnormalHasMore,
+      nextCursor: abnormalNextCursor,
       reasons: aggregates.reasons,
       countries: aggregates.countries,
       asns: aggregates.asns,
+      dimensions: {
+        network: abnormalNetworkDimensions,
+      },
     },
     normal: {
       summary: {
         ...normalListSummary,
+        ...normalSummaryValues,
         total: normalRequests,
         ratio: normalRequestRatio,
         pageviews,
@@ -1563,6 +2091,11 @@ export async function handleBotAnalyticsAdmin(
       },
       mapPoints: normalMapPoints,
       events: normalEvents.map(serializeNormalListEvent),
+      hasMore: normalHasMore,
+      nextCursor: normalNextCursor,
+      dimensions: {
+        network: normalNetworkDimensions,
+      },
     },
   });
 }

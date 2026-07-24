@@ -48,20 +48,30 @@ export async function fetchUtmDimension(
   window: TimeWindow,
   tab: UtmDimensionTab,
   filters?: DashboardFilters,
+  options?: { signal?: AbortSignal },
 ): Promise<DimensionData> {
-  return fetchPrivateJson<DimensionData>(
-    `/api/private/${utmPathMap[tab]}`,
-    withFilters(
-      {
-        siteId,
-        from: window.from,
-        to: window.to,
-        timeZone: window.timeZone,
-        limit: 100,
-      },
-      filters,
-    ),
+  const requestParams = withFilters(
+    {
+      siteId,
+      from: window.from,
+      to: window.to,
+      timeZone: window.timeZone,
+      limit: 100,
+    },
+    filters,
   );
+  return options?.signal
+    ? fetchPrivateJson<DimensionData>(
+        `/api/private/${utmPathMap[tab]}`,
+        requestParams,
+        {
+          signal: options.signal,
+        },
+      )
+    : fetchPrivateJson<DimensionData>(
+        `/api/private/${utmPathMap[tab]}`,
+        requestParams,
+      );
 }
 
 export async function fetchUtmTrend(
@@ -71,6 +81,7 @@ export async function fetchUtmTrend(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<BrowserTrendData> {
   return fetchPrivateJson<BrowserTrendData>(
@@ -87,6 +98,7 @@ export async function fetchUtmTrend(
       },
       filters,
     ),
+    { signal: options?.signal },
   );
 }
 
@@ -96,6 +108,7 @@ export async function fetchReferrerTrend(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<BrowserTrendData> {
   return fetchPrivateJson<BrowserTrendData>(
@@ -111,6 +124,7 @@ export async function fetchReferrerTrend(
       },
       filters,
     ),
+    { signal: options?.signal },
   );
 }
 
@@ -120,6 +134,7 @@ export async function fetchReferrerRadar(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<ReferrerRadarData> {
   return fetchPrivateJson<ReferrerRadarData>(
@@ -134,5 +149,6 @@ export async function fetchReferrerRadar(
       },
       filters,
     ),
+    { signal: options?.signal },
   );
 }

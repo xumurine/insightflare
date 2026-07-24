@@ -126,7 +126,7 @@ describe("realtime client", () => {
 
     await expect(
       importClientWithEnv({
-        NEXT_PUBLIC_DEMO_MODE: "1",
+        VITE_DEMO_MODE: "1",
         NODE_ENV: "production",
       }).then((client) => client.isRealtimeMockEnabled()),
     ).resolves.toBe(true);
@@ -1038,7 +1038,7 @@ describe("realtime client", () => {
       ({ siteId }: { siteId: string }) => new FakeSocket(`mock://${siteId}`),
     );
     const client = await importClientWithEnv({
-      NEXT_PUBLIC_DEMO_MODE: "1",
+      VITE_DEMO_MODE: "1",
     });
 
     releases.push(client.acquireRealtimeChannel("site-mock"));
@@ -1062,7 +1062,7 @@ describe("realtime client", () => {
       ({ siteId }: { siteId: string }) => new FakeSocket(`mock://${siteId}`),
     );
     const client = await importClientWithEnv({
-      NEXT_PUBLIC_DEMO_MODE: "1",
+      VITE_DEMO_MODE: "1",
     });
 
     const release = client.acquireRealtimeChannel("site-release-before-mock");

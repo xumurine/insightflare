@@ -1,3 +1,4 @@
+import { appNow } from "@/lib/edge/e2e-clock";
 import type {
   ScheduledTaskContext,
   ScheduledTaskOutcome,
@@ -201,7 +202,7 @@ export async function runNotificationTick(
   context: ScheduledTaskContext,
 ): Promise<ScheduledTaskOutcome> {
   const { env, logger, startedAt } = context;
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor(appNow() / 1000);
   const summary = emptySummary(startedAt);
 
   await logger.info("notification_tick_start", "Notification tick started", {
@@ -218,7 +219,7 @@ export async function runNotificationTick(
   );
 
   for (const rule of rules) {
-    const checkedAt = Math.floor(Date.now() / 1000);
+    const checkedAt = Math.floor(appNow() / 1000);
     try {
       await logger.info(
         "notification_rule_checked",
@@ -309,7 +310,7 @@ export async function createNotificationRulePreview(
   env: Env,
   rule: NotificationRule,
 ): Promise<NotificationRuleEvaluationResult> {
-  return evaluateNotificationRule(env, rule, Math.floor(Date.now() / 1000));
+  return evaluateNotificationRule(env, rule, Math.floor(appNow() / 1000));
 }
 
 export async function runNotificationRuleManually(input: {
@@ -323,7 +324,7 @@ export async function runNotificationRuleManually(input: {
   summary: NotificationTaskSummary;
 }> {
   const { env, context, rule } = input;
-  const checkedAt = Math.floor(Date.now() / 1000);
+  const checkedAt = Math.floor(appNow() / 1000);
   const summary = emptySummary(context.startedAt);
   summary.rulesScanned = 1;
 
@@ -410,7 +411,7 @@ export async function createManualTestNotification(input: {
 }> {
   const { env, context, teamId, siteId, userId } = input;
   const summary = emptySummary(context.startedAt);
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor(appNow() / 1000);
   const user = await env.DB.prepare(
     `
       SELECT

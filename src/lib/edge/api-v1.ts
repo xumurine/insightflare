@@ -1,5 +1,6 @@
 import type { z } from "zod";
 
+import { readJsonResponse } from "@/lib/response";
 import { DEFAULT_SITE_SCRIPT_SETTINGS } from "@/lib/site-settings";
 import {
   FunnelAnalyzeInputSchema,
@@ -25,8 +26,8 @@ import {
 } from "./query/core";
 import { normalizeFunnelSteps, queryFunnelAnalysis } from "./query/funnels";
 import {
+  queryAllPerformanceTrendsFromD1,
   queryPerformanceSummariesFromD1,
-  queryPerformanceTrendFromD1,
 } from "./query/performance";
 import { routeQuery } from "./query/router";
 import { handleTeamDashboardForTeam } from "./query/team";
@@ -486,7 +487,7 @@ function buildInternalUrl(url: URL, timeRange?: ParsedTimeRange): URL {
 
 async function legacyJson(response: Response): Promise<LegacyPayload> {
   try {
-    return (await response.json()) as LegacyPayload;
+    return await readJsonResponse<LegacyPayload>(response);
   } catch {
     return {};
   }
@@ -993,24 +994,16 @@ async function queryPerformanceTimeseriesData(
   const filters = parseFilters(url);
   const interval = parseInterval(url);
   const buckets = buildTimeBuckets(window, interval);
-  const metricKeys = Object.keys(
-    PERFORMANCE_METRIC_COLUMNS,
-  ) as PerformanceMetricKey[];
-  const series = await Promise.all(
-    metricKeys.map((metric) =>
-      queryPerformanceTrendFromD1(
-        env,
-        siteId,
-        window,
-        interval,
-        filters,
-        metric,
-      ),
-    ),
+  const series = await queryAllPerformanceTrendsFromD1(
+    env,
+    siteId,
+    window,
+    interval,
+    filters,
   );
   const rows = new Map<number, Record<string, unknown>>();
-  for (const [metricIndex, points] of series.entries()) {
-    const metric = metricKeys[metricIndex]!;
+  for (const metric of Object.keys(series) as PerformanceMetricKey[]) {
+    const points = series[metric];
     for (const point of points) {
       const bucket = buckets[point.bucket] ?? {
         timestampMs: point.timestampMs,
@@ -1172,7 +1165,7 @@ async function runLegacyQuery(
     siteId,
     queryName,
     internalUrl,
-    { publicMode: false },
+    { publicMode: false, deferJsonSerialization: true },
     request,
   );
   const payload = await legacyJson(response);
@@ -1423,7 +1416,10 @@ async function handleTeamAnalytics(
     principal.teamId,
     toQueryWindow(timeRange),
     hasFullSiteAccess(principal) ? undefined : principal.siteIds,
-    { requestId: request.headers.get("cf-ray") || "team-analytics" },
+    {
+      requestId: request.headers.get("cf-ray") || "team-analytics",
+      deferJsonSerialization: true,
+    },
   );
   const payload = await legacyJson(dashboard);
   if (!dashboard.ok) {
@@ -2647,7 +2643,7 @@ export async function handleBatch(
       return {
         id: item.id,
         status: response.status,
-        body: response.status === 204 ? null : await response.json(),
+        body: response.status === 204 ? null : await readJsonResponse(response),
       };
     }),
   );
@@ -2677,6 +2673,36 @@ export async function handleApiV1(
   const principal = await authenticateApiKey(request, env, ctx);
   if (principal instanceof Response) return principal;
 
+  return dispatchApiV1ForPrincipal(request, env, url, path, principal, ctx);
+}
+
+export async function handleApiV1ForPrincipal(
+  request: Request,
+  env: Env,
+  url: URL,
+  principal: ApiKeyPrincipal,
+  ctx?: ExecutionContext,
+): Promise<Response> {
+  return dispatchApiV1ForPrincipal(
+    request,
+    env,
+    url,
+    apiV1Segments(url),
+    principal,
+    ctx,
+  );
+}
+
+async function dispatchApiV1ForPrincipal(
+  request: Request,
+  env: Env,
+  url: URL,
+  path: string[],
+  principal: ApiKeyPrincipal,
+  ctx?: ExecutionContext,
+): Promise<Response> {
+  if (path.length === 0) return handleRoot(request);
+
   if (path[0] === "token" && path.length === 1) {
     return handleToken(request, env, principal);
   }
@@ -2690,7 +2716,20 @@ export async function handleApiV1(
     return handleTeam(request, env, url, principal, path);
   }
   if (path[0] === "batch" && path.length === 1) {
-    return handleBatch(request, env, url, principal);
+    return handleBatch(
+      request,
+      env,
+      url,
+      principal,
+      (subrequest, subrequestEnv, subrequestUrl) =>
+        handleApiV1ForPrincipal(
+          subrequest,
+          subrequestEnv,
+          subrequestUrl,
+          principal,
+          ctx,
+        ),
+    );
   }
   if (path.length === 1 && path[0] === "sites") {
     return handleSitesCollection(request, env, principal);

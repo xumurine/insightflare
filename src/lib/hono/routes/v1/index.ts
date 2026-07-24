@@ -1,9 +1,11 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 
+import type { ApiKeyPrincipal } from "@/lib/edge/api-key-auth";
 import {
   apiV1Segments,
   handleAnalytics,
+  handleApiV1ForPrincipal,
   handleBatch,
   handleCapabilities,
   handleEvents,
@@ -58,26 +60,14 @@ function withSiteId(
   return handler(siteId, path(c));
 }
 
-function mountedV1Request(request: Request, url: URL): Request {
-  const mountedUrl = new URL(url);
-  mountedUrl.pathname = mountedUrl.pathname.replace(/^\/api\/v1\/?/, "/");
-  if (!mountedUrl.pathname.startsWith("/")) {
-    mountedUrl.pathname = `/${mountedUrl.pathname}`;
-  }
-  return new Request(mountedUrl, {
-    method: request.method,
-    headers: request.headers,
-    body: request.body,
-  });
-}
-
 async function dispatchBatchSubrequest(
   request: Request,
   env: AppEnv["Bindings"],
   url: URL,
   ctx: ExecutionContext,
+  apiPrincipal: ApiKeyPrincipal,
 ): Promise<Response> {
-  return v1Routes.fetch(mountedV1Request(request, url), env, ctx);
+  return handleApiV1ForPrincipal(request, env, url, apiPrincipal, ctx);
 }
 
 export const v1Routes = new Hono<AppEnv>();
@@ -103,7 +93,13 @@ v1Routes.all("/batch", (c) =>
     requestUrl(c),
     principal(c),
     (request, env, url) =>
-      dispatchBatchSubrequest(request, env, url, executionContext(c)),
+      dispatchBatchSubrequest(
+        request,
+        env,
+        url,
+        executionContext(c),
+        principal(c),
+      ),
   ),
 );
 v1Routes.all("/sites", (c) =>

@@ -11,6 +11,9 @@ import {
 } from "./api-key-store";
 import { jsonError } from "./api-v1-helpers";
 import type { Env } from "./types";
+import { nowEpochSeconds } from "./utils";
+
+export const API_KEY_USAGE_WRITE_INTERVAL_SECONDS = 5 * 60;
 
 export interface ApiKeyPrincipal {
   keyId: string;
@@ -99,11 +102,17 @@ export async function authenticateApiKey(
     );
   }
 
-  const update = markApiKeyUsed(env, row.id);
-  if (ctx) {
-    ctx.waitUntil(update);
-  } else {
-    await update;
+  const now = nowEpochSeconds();
+  if (
+    row.last_used_at === null ||
+    row.last_used_at < now - API_KEY_USAGE_WRITE_INTERVAL_SECONDS
+  ) {
+    const update = markApiKeyUsed(env, row.id);
+    if (ctx) {
+      ctx.waitUntil(update);
+    } else {
+      await update;
+    }
   }
 
   return {

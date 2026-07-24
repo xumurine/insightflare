@@ -1,5 +1,4 @@
 import js from "@eslint/js";
-import nextPlugin from "@next/eslint-plugin-next";
 import eslintConfigPrettier from "eslint-config-prettier";
 import noRelativeImportPaths from "eslint-plugin-no-relative-import-paths";
 import react from "eslint-plugin-react";
@@ -13,15 +12,17 @@ export default [
   {
     ignores: [
       ".cache/**",
-      ".next/**",
-      ".open-next/**",
+      ".output/**",
       ".playwright-cli/**",
+      ".tanstack/**",
       ".wrangler/**",
       "dist/**",
       "node_modules/**",
       "output/**",
+      "playwright-report/**",
+      "test-results/**",
       "tmp/**",
-      "next-env.d.ts",
+      "src/routeTree.gen.ts",
       "src/tracker/**",
       "*.tsbuildinfo",
       "coverage/**",
@@ -32,7 +33,6 @@ export default [
   ...tseslint.configs.strict,
   {
     plugins: {
-      "@next/next": nextPlugin,
       "no-relative-import-paths": noRelativeImportPaths,
       "react-hooks": reactHooks,
       "simple-import-sort": simpleImportSort,
@@ -52,12 +52,9 @@ export default [
       },
     },
     rules: {
-      ...nextPlugin.configs.recommended.rules,
-      ...nextPlugin.configs["core-web-vitals"].rules,
       ...reactHooks.configs.recommended.rules,
       "react-hooks/exhaustive-deps": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
-      "@next/next/no-img-element": "off",
       "no-empty": ["error", { allowEmptyCatch: true }],
       "no-relative-import-paths/no-relative-import-paths": [
         "error",
@@ -73,7 +70,7 @@ export default [
           groups: [
             ["^\\u0000"],
             ["^node:"],
-            ["^react", "^next", "^@?\\w"],
+            ["^react", "^@?\\w"],
             ["^@/"],
             [
               "^\\.\\.(?!/?$)",
@@ -109,14 +106,7 @@ export default [
     files: ["**/*.{ts,tsx,mts}"],
     languageOptions: {
       parserOptions: {
-        projectService: {
-          allowDefaultProject: [
-            "*.ts",
-            "src/app/.well-known/change-password/route.ts",
-            "src/app/.well-known/health/route.ts",
-            "src/app/.well-known/security.txt/route.ts",
-          ],
-        },
+        projectService: true,
         tsconfigRootDir: import.meta.dirname,
       },
     },

@@ -1,5 +1,3 @@
-"use client";
-
 import {
   type KeyboardEvent,
   type MouseEvent,
@@ -10,9 +8,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
-import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
 import {
   RiFileList3Line,
   RiGlobalLine,
@@ -21,7 +16,8 @@ import {
   RiRobot2Line,
   RiShieldCheckLine,
 } from "@remixicon/react";
-import { AnimatePresence, motion, useAnimationControls } from "motion/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { motion, useAnimationControls } from "motion/react";
 import {
   Area,
   Bar,
@@ -33,6 +29,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 
+import { AnalyticsTableCard } from "@/components/dashboard/analytics-table-card";
 import {
   AsyncDimensionBreakdownCard,
   type AsyncDimensionBreakdownLabelAppearance,
@@ -47,11 +44,8 @@ import {
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
 import { ShareRadialCard } from "@/components/dashboard/share-radial-card";
-import {
-  EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-  EVENT_RECORD_DRAWER_Z_INDEX,
-  FLOATING_LAYER_Z_ATTR,
-} from "@/components/dashboard/site-pages/floating-layer";
+import { EVENT_RECORD_DRAWER_Z_INDEX } from "@/components/dashboard/site-pages/floating-layer";
+import { useInfiniteTableSentinel } from "@/components/dashboard/use-infinite-table-sentinel";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +70,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { ModalOverlay, overlayZIndexFor } from "@/components/ui/modal-overlay";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -100,6 +95,9 @@ import {
 } from "@/lib/i18n/code-labels";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { formatI18nTemplate } from "@/lib/i18n/template";
+import Link from "@/lib/router";
+import { usePathname, useSearchParams } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 interface RequestObservationClientProps {
@@ -193,6 +191,38 @@ interface RequestTrendPoint {
   p99LatencyMs: number | null;
 }
 
+interface RequestNetworkDimensionRow {
+  key: string;
+  label: string;
+  count: number;
+  highConfidence: number;
+  country: string;
+  region: string;
+  iconLabel?: string;
+}
+
+interface RequestDetailCursor {
+  timestamp: string;
+  receivedAt: number;
+}
+
+interface RequestObservationPageData {
+  ok: true;
+  configured: boolean;
+  generatedAt: number;
+  page: {
+    source: "abnormal" | "normal";
+    events: BotEvent[] | NormalRequestEvent[];
+    hasMore: boolean;
+    nextCursor: RequestDetailCursor | null;
+  };
+}
+
+interface RequestObservationDimensionData {
+  ok: true;
+  dimension: { rows: RequestNetworkDimensionRow[] };
+}
+
 interface RequestObservationData {
   ok: true;
   configured: boolean;
@@ -254,6 +284,13 @@ interface RequestObservationData {
     reasons?: Array<{ reason: string; count: number }>;
     countries?: Array<{ country: string; count: number }>;
     asns?: Array<{ asn: number; asOrganization: string; count: number }>;
+    hasMore?: boolean;
+    nextCursor?: RequestDetailCursor | null;
+    dimensions?: {
+      network?: Partial<
+        Record<NetworkDimensionTab, RequestNetworkDimensionRow[]>
+      >;
+    };
   };
   normal?: {
     summary: {
@@ -272,6 +309,13 @@ interface RequestObservationData {
     };
     mapPoints: RequestMapPoint[];
     events: NormalRequestEvent[];
+    hasMore?: boolean;
+    nextCursor?: RequestDetailCursor | null;
+    dimensions?: {
+      network?: Partial<
+        Record<NetworkDimensionTab, RequestNetworkDimensionRow[]>
+      >;
+    };
   };
 }
 
@@ -283,8 +327,7 @@ interface RequestObservationDetailData {
 }
 
 const DIMENSION_ROW_LIMIT = 30;
-const BOT_EVENT_FETCH_LIMIT = 500;
-const BOT_EVENT_PAGE_SIZE = 80;
+const BOT_EVENT_FETCH_LIMIT = 50;
 const BOT_EVENT_SKELETON_ROWS = 8;
 const ABNORMAL_POINT_COLOR: [number, number, number] = [239, 68, 68];
 const NORMAL_POINT_COLOR: [number, number, number] = [34, 197, 154];
@@ -328,7 +371,11 @@ function botEventDetailId(event: BotEvent): string {
   return event.traceId || event.rayId || "";
 }
 
-function latencyFormat(locale: Locale, valueMs: number | null | undefined) {
+function latencyFormat(
+  locale: Locale,
+  copy: AppMessages["requestObservation"],
+  valueMs: number | null | undefined,
+) {
   if (valueMs === null || valueMs === undefined || !Number.isFinite(valueMs)) {
     return "--";
   }
@@ -337,9 +384,9 @@ function latencyFormat(locale: Locale, valueMs: number | null | undefined) {
     const formatter = new Intl.NumberFormat(intlLocale(locale), {
       maximumFractionDigits: value < 100 ? 1 : 0,
     });
-    return locale === "zh"
-      ? `${formatter.format(value)} 毫秒`
-      : `${formatter.format(value)} ms`;
+    return formatI18nTemplate(copy.overviewLabels.latencyMilliseconds, {
+      value: formatter.format(value),
+    });
   }
   return durationFormat(locale, value);
 }
@@ -505,6 +552,8 @@ function withRequestObservabilityDefaults(
       reasons: data.abnormal?.reasons ?? data.reasons,
       countries: data.abnormal?.countries ?? data.countries,
       asns: data.abnormal?.asns ?? data.asns,
+      hasMore: data.abnormal?.hasMore ?? false,
+      nextCursor: data.abnormal?.nextCursor ?? null,
     },
     normal: {
       summary: {
@@ -527,6 +576,8 @@ function withRequestObservabilityDefaults(
       },
       mapPoints: normalMapPoints,
       events: normalEvents,
+      hasMore: data.normal?.hasMore ?? false,
+      nextCursor: data.normal?.nextCursor ?? null,
     },
   };
 }
@@ -542,127 +593,127 @@ export function RequestObservationClient({
   messages,
 }: RequestObservationClientProps) {
   const copy = messages.requestObservation;
+  const queryClient = useQueryClient();
   const { window: timeWindow } = useDashboardQuery();
   const searchParams = useSearchParams();
   const activeTab = normalizeRequestObservationTab(
     searchParams.get("requestTab"),
   );
-  const [data, setData] = useState<RequestObservationData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState<"abnormal" | "normal" | null>(
+    null,
+  );
   const mapAnimationControls = useAnimationControls();
+  const observationQueryKey = [
+    "dashboard",
+    "request-observation",
+    timeWindow.from,
+    timeWindow.to,
+    timeWindow.interval,
+    timeWindow.timeZone,
+  ] as const;
+  const observationQuery = useQuery({
+    queryKey: observationQueryKey,
+    queryFn: ({ signal }) => fetchRequestObservation(timeWindow, signal),
+    enabled: typeof window !== "undefined",
+  });
+  const data = observationQuery.data ?? null;
+  const loading = observationQuery.isPending;
+  const refreshing = observationQuery.isFetching && !observationQuery.isPending;
+  const setData = (
+    updater:
+      | RequestObservationData
+      | null
+      | ((
+          current: RequestObservationData | null,
+        ) => RequestObservationData | null),
+  ) => {
+    queryClient.setQueryData<RequestObservationData | null>(
+      observationQueryKey,
+      (current = null) =>
+        typeof updater === "function" ? updater(current) : updater,
+    );
+  };
 
   const spanMs = Math.max(1, timeWindow.to - timeWindow.from);
-  const detailMinutes = Math.max(1, Math.ceil(spanMs / 60000));
-  const windowDetail =
-    locale === "zh"
-      ? `最近 ${Math.max(1, Math.ceil(spanMs / 86400000))} 天`
-      : `Last ${Math.max(1, Math.ceil(spanMs / 86400000))} days`;
+  const windowDetail = formatI18nTemplate(copy.overviewLabels.windowDays, {
+    days: Math.max(1, Math.ceil(spanMs / 86400000)),
+  });
+  const labels = copy.overviewLabels;
 
-  const labels = useMemo(
-    () =>
-      locale === "zh"
-        ? {
-            overview: "总览",
-            abnormal: "异常请求",
-            normal: "正常请求",
-            totalRequests: "总请求数",
-            normalRequests: "正常请求",
-            abnormalRequests: "异常请求",
-            abnormalRatio: "异常请求比例",
-            normalRatio: "正常请求比例",
-            p50Latency: "P50 边缘耗时",
-            p75Latency: "P75 边缘耗时",
-            p95Latency: "P95 边缘耗时",
-            p99Latency: "P99 边缘耗时",
-            avgLatency: "平均边缘耗时",
-            pageviews: "页面浏览",
-            customEvents: "自定义事件",
-            overviewTrendTitle: "请求分流趋势",
-            overviewTrendDescription:
-              "按顶栏时间间隔分桶显示正常与异常请求，以及异常请求比例。",
-            trafficCompositionTitle: "请求构成",
-            trafficCompositionDescription:
-              "正常请求、异常请求和页面事件在同一时间轴上的变化。",
-            confidenceShareTitle: "请求置信度占比",
-            confidenceShareDescription:
-              "按请求数展示正常流量、低/中/高置信度异常流量的占比。",
-            normalTrafficShare: "正常流量",
-            lowConfidenceTraffic: "低置信度流量",
-            mediumConfidenceTraffic: "中置信度流量",
-            highConfidenceTraffic: "高置信度流量",
-            latencyTitle: "边缘耗时趋势",
-            latencyDescription:
-              "正常请求写入 AE 时记录的 P50 / P75 / P95 / P99 边缘耗时。",
-            normalBreakdownTitle: "正常请求维度",
-            abnormalSubtitle:
-              "聚焦已分流的异常请求，地图和统计表只显示红色异常流量。",
-            normalSubtitle:
-              "聚焦进入正常采集链路的请求，地图和统计表只显示绿色正常流量。",
-            requests: "请求数",
-          }
-        : {
-            overview: "Overview",
-            abnormal: "Abnormal Requests",
-            normal: "Normal Requests",
-            totalRequests: "Total Requests",
-            normalRequests: "Normal Requests",
-            abnormalRequests: "Abnormal Requests",
-            abnormalRatio: "Abnormal Request Ratio",
-            normalRatio: "Normal Request Ratio",
-            p50Latency: "P50 Edge Latency",
-            p75Latency: "P75 Edge Latency",
-            p95Latency: "P95 Edge Latency",
-            p99Latency: "P99 Edge Latency",
-            avgLatency: "Average Edge Latency",
-            pageviews: "Pageviews",
-            customEvents: "Custom Events",
-            overviewTrendTitle: "Request Routing Trend",
-            overviewTrendDescription:
-              "Normal requests, abnormal requests, and abnormal ratio bucketed by the top-bar interval.",
-            trafficCompositionTitle: "Request Composition",
-            trafficCompositionDescription:
-              "Normal requests, abnormal requests, and page events on the same timeline.",
-            confidenceShareTitle: "Request Confidence Share",
-            confidenceShareDescription:
-              "Share of normal traffic and low / medium / high-confidence abnormal traffic by request count.",
-            normalTrafficShare: "Normal Traffic",
-            lowConfidenceTraffic: "Low Confidence Traffic",
-            mediumConfidenceTraffic: "Medium Confidence Traffic",
-            highConfidenceTraffic: "High Confidence Traffic",
-            latencyTitle: "Edge Latency Trend",
-            latencyDescription:
-              "P50 / P75 / P95 / P99 edge latency captured when normal requests are written to AE.",
-            normalBreakdownTitle: "Normal Request Dimensions",
-            abnormalSubtitle:
-              "Focuses on diverted abnormal requests; the map and tables show only red abnormal traffic.",
-            normalSubtitle:
-              "Focuses on requests entering the normal collection path; the map and tables show only normal request traffic.",
-            requests: "Requests",
-          },
-    [locale],
-  );
+  useEffect(() => {
+    if (!observationQuery.isError) return;
+    const message =
+      observationQuery.error instanceof Error
+        ? observationQuery.error.message
+        : copy.loadFailed;
+    toast.error(message || copy.loadFailed);
+  }, [
+    copy.loadFailed,
+    observationQuery.error,
+    observationQuery.errorUpdatedAt,
+    observationQuery.isError,
+  ]);
 
-  const load = useMemo(
-    () => async (mode: "initial" | "refresh") => {
-      if (mode === "initial") setLoading(true);
-      else setRefreshing(true);
+  const loadMoreEvents = useMemo(
+    () => async (source: "abnormal" | "normal") => {
+      const section = data?.[source];
+      if (
+        !section?.hasMore ||
+        !section.nextCursor ||
+        loadingMore !== null ||
+        import.meta.env.VITE_DEMO_MODE === "1"
+      ) {
+        return;
+      }
+      setLoadingMore(source);
       try {
-        const next = await fetchRequestObservation(timeWindow);
-        setData(next);
+        const page = await fetchRequestObservationPage(
+          timeWindow,
+          source,
+          section.nextCursor,
+        );
+        setData((current) => {
+          if (!current || page.page.source !== source) return current;
+          if (source === "abnormal") {
+            return {
+              ...current,
+              events: [...current.events, ...(page.page.events as BotEvent[])],
+              abnormal: {
+                ...current.abnormal!,
+                events: [
+                  ...current.abnormal!.events,
+                  ...(page.page.events as BotEvent[]),
+                ],
+                hasMore: page.page.hasMore,
+                nextCursor: page.page.nextCursor,
+              },
+            };
+          }
+          return {
+            ...current,
+            normalEvents: [
+              ...(current.normalEvents ?? []),
+              ...(page.page.events as NormalRequestEvent[]),
+            ],
+            normal: {
+              ...current.normal!,
+              events: [
+                ...current.normal!.events,
+                ...(page.page.events as NormalRequestEvent[]),
+              ],
+              hasMore: page.page.hasMore,
+              nextCursor: page.page.nextCursor,
+            },
+          };
+        });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : copy.loadFailed);
       } finally {
-        if (mode === "initial") setLoading(false);
-        else setRefreshing(false);
+        setLoadingMore(null);
       }
     },
-    [copy.loadFailed, timeWindow],
+    [copy.loadFailed, data, loadingMore, timeWindow],
   );
-
-  useEffect(() => {
-    void load("initial");
-  }, [load]);
 
   const formatter = useMemo(
     () => new Intl.NumberFormat(intlLocale(locale)),
@@ -1061,101 +1112,56 @@ export function RequestObservationClient({
     [copy],
   );
 
-  const detectionRowsByTab = useMemo(
+  const loadAbnormalDimensionRows = useMemo(
     () =>
-      Object.fromEntries(
-        detectionTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateDimensionRows(abnormalEvents, copy, (event) =>
-              valuesForDetectionTab(event, tab.value, copy),
-            ),
+      async (
+        group: "detection" | "target" | "network" | "client",
+        tab: string,
+      ) =>
+        toAsyncAggregatedDimensionRows(
+          await fetchRequestObservationDimension(
+            timeWindow,
+            "abnormal",
+            group,
+            tab,
           ),
-        ]),
-      ) as Record<DetectionDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [abnormalEvents, copy, detectionTabs],
+          group === "network"
+            ? {
+                networkTab: tab as NetworkDimensionTab,
+                locale,
+                unknownLabel: copy.emptyValue,
+              }
+            : group === "target"
+              ? { targetTab: tab as TargetDimensionTab }
+              : group === "detection"
+                ? {
+                    detectionTab: tab as DetectionDimensionTab,
+                    copy,
+                  }
+                : undefined,
+        ),
+    [copy.emptyValue, locale, timeWindow],
   );
-  const abnormalTargetRowsByTab = useMemo(
-    () =>
-      Object.fromEntries(
-        targetTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateDimensionRows(abnormalEvents, copy, (event) =>
-              valuesForTargetTab(event, tab.value),
-            ),
-            { targetTab: tab.value },
-          ),
-        ]),
-      ) as Record<TargetDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [abnormalEvents, copy, targetTabs],
-  );
-  const abnormalNetworkRowsByTab = useMemo(
-    () =>
-      Object.fromEntries(
-        networkTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateDimensionRows(abnormalEvents, copy, (event) =>
-              valuesForNetworkTab(event, tab.value),
-            ),
-            {
-              networkTab: tab.value,
+  const loadNormalDimensionRows = useMemo(
+    () => async (group: "target" | "network", tab: string) =>
+      toAsyncAggregatedDimensionRows(
+        await fetchRequestObservationDimension(
+          timeWindow,
+          "normal",
+          group,
+          tab,
+        ),
+        group === "network"
+          ? {
+              networkTab: tab as NetworkDimensionTab,
               locale,
               unknownLabel: copy.emptyValue,
-            },
-          ),
-        ]),
-      ) as Record<NetworkDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [abnormalEvents, copy, locale, networkTabs],
-  );
-  const clientRowsByTab = useMemo(
-    () =>
-      Object.fromEntries(
-        clientTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateDimensionRows(abnormalEvents, copy, (event) =>
-              valuesForClientTab(event, tab.value),
-            ),
-          ),
-        ]),
-      ) as Record<ClientDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [abnormalEvents, clientTabs, copy],
-  );
-  const normalTargetRowsByTab = useMemo(
-    () =>
-      Object.fromEntries(
-        targetTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateNormalDimensionRows(normalEvents, copy, (event) =>
-              valuesForNormalTargetTab(event, tab.value),
-            ),
-            { targetTab: tab.value },
-          ),
-        ]),
-      ) as Record<TargetDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [copy, normalEvents, targetTabs],
-  );
-  const normalNetworkRowsByTab = useMemo(
-    () =>
-      Object.fromEntries(
-        networkTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateNormalDimensionRows(normalEvents, copy, (event) =>
-              valuesForNormalNetworkTab(event, tab.value),
-            ),
-            {
-              networkTab: tab.value,
-              locale,
-              unknownLabel: copy.emptyValue,
-            },
-          ),
-        ]),
-      ) as Record<NetworkDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [copy, locale, networkTabs, normalEvents],
+            }
+          : group === "target"
+            ? { targetTab: tab as TargetDimensionTab }
+            : undefined,
+      ),
+    [copy.emptyValue, locale, timeWindow],
   );
 
   const requestKey = `${timeWindow.interval}:${data?.generatedAt ?? 0}`;
@@ -1246,7 +1252,7 @@ export function RequestObservationClient({
           type="button"
           variant="outline"
           className="bg-background/90 backdrop-blur"
-          onClick={() => load("refresh")}
+          onClick={() => void observationQuery.refetch()}
           disabled={loading || refreshing}
         >
           {refreshing ? (
@@ -1300,7 +1306,7 @@ export function RequestObservationClient({
                   overview?.p95LatencyMs === null ||
                   overview?.p95LatencyMs === undefined
                     ? "--"
-                    : latencyFormat(locale, overview.p95LatencyMs)
+                    : latencyFormat(locale, copy, overview.p95LatencyMs)
                 }
                 detail={labels.avgLatency}
                 loading={loading}
@@ -1519,7 +1525,7 @@ export function RequestObservationClient({
                     tickLine={false}
                     axisLine={false}
                     tickFormatter={(value) =>
-                      latencyFormat(locale, Number(value))
+                      latencyFormat(locale, copy, Number(value))
                     }
                   />
                   <ChartTooltip
@@ -1753,15 +1759,10 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={detectionTabs}
-                          rowsByTab={detectionRowsByTab}
-                          loadingByTab={{
-                            reason: loading,
-                            confidence: loading,
-                            kind: loading,
-                            botScoreBucket: loading,
-                            verifiedBotCategory: loading,
-                          }}
-                          requestKey={`${requestKey}:${abnormalEvents.length}:detection`}
+                          loadRows={(tab) =>
+                            loadAbnormalDimensionRows("detection", tab)
+                          }
+                          requestKey={`${requestKey}:detection`}
                           className="h-full"
                           secondaryMetricLabel={copy.highConfidenceRequests}
                           emptyLabel={copy.noData}
@@ -1770,14 +1771,10 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={targetTabs}
-                          rowsByTab={abnormalTargetRowsByTab}
-                          loadingByTab={{
-                            site: loading,
-                            hostname: loading,
-                            pathname: loading,
-                            origin: loading,
-                          }}
-                          requestKey={`${requestKey}:${abnormalEvents.length}:target`}
+                          loadRows={(tab) =>
+                            loadAbnormalDimensionRows("target", tab)
+                          }
+                          requestKey={`${requestKey}:target`}
                           className="h-full"
                           secondaryMetricLabel={copy.highConfidenceRequests}
                           emptyLabel={copy.noData}
@@ -1786,16 +1783,10 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={networkTabs}
-                          rowsByTab={abnormalNetworkRowsByTab}
-                          loadingByTab={{
-                            asOrganization: loading,
-                            asn: loading,
-                            country: loading,
-                            region: loading,
-                            city: loading,
-                            colo: loading,
-                          }}
-                          requestKey={`${requestKey}:${abnormalEvents.length}:network`}
+                          loadRows={(tab) =>
+                            loadAbnormalDimensionRows("network", tab)
+                          }
+                          requestKey={`${requestKey}:network`}
                           className="h-full"
                           secondaryMetricLabel={copy.highConfidenceRequests}
                           emptyLabel={copy.noData}
@@ -1804,14 +1795,10 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={clientTabs}
-                          rowsByTab={clientRowsByTab}
-                          loadingByTab={{
-                            ip: loading,
-                            userAgent: loading,
-                            userAgentLengthBucket: loading,
-                            ipPrefix: loading,
-                          }}
-                          requestKey={`${requestKey}:${abnormalEvents.length}:client`}
+                          loadRows={(tab) =>
+                            loadAbnormalDimensionRows("client", tab)
+                          }
+                          requestKey={`${requestKey}:client`}
                           className="h-full"
                           secondaryMetricLabel={copy.highConfidenceRequests}
                           emptyLabel={copy.noData}
@@ -1824,8 +1811,10 @@ export function RequestObservationClient({
                         copy={copy}
                         events={abnormalEvents}
                         loading={loading}
-                        requestKey={`${requestKey}:${abnormalEvents.length}`}
-                        minutes={detailMinutes}
+                        hasMore={data?.abnormal?.hasMore ?? false}
+                        loadingMore={loadingMore === "abnormal"}
+                        onLoadMore={() => void loadMoreEvents("abnormal")}
+                        timeWindow={timeWindow}
                       />
                     </div>
                   </div>
@@ -1888,6 +1877,7 @@ export function RequestObservationClient({
                                   ? "--"
                                   : latencyFormat(
                                       locale,
+                                      copy,
                                       normalSummary.p95LatencyMs,
                                     )
                               }
@@ -1903,14 +1893,10 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={targetTabs}
-                          rowsByTab={normalTargetRowsByTab}
-                          loadingByTab={{
-                            site: loading,
-                            hostname: loading,
-                            pathname: loading,
-                            origin: loading,
-                          }}
-                          requestKey={`${requestKey}:${normalEvents.length}:normal-target`}
+                          loadRows={(tab) =>
+                            loadNormalDimensionRows("target", tab)
+                          }
+                          requestKey={`${requestKey}:normal-target`}
                           className="h-full"
                           showVisitors={false}
                           emptyLabel={copy.noData}
@@ -1919,16 +1905,10 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={networkTabs}
-                          rowsByTab={normalNetworkRowsByTab}
-                          loadingByTab={{
-                            asOrganization: loading,
-                            asn: loading,
-                            country: loading,
-                            region: loading,
-                            city: loading,
-                            colo: loading,
-                          }}
-                          requestKey={`${requestKey}:${normalEvents.length}:normal-network`}
+                          loadRows={(tab) =>
+                            loadNormalDimensionRows("network", tab)
+                          }
+                          requestKey={`${requestKey}:normal-network`}
                           className="h-full"
                           showVisitors={false}
                           emptyLabel={copy.noData}
@@ -1941,7 +1921,9 @@ export function RequestObservationClient({
                         copy={copy}
                         events={normalEvents}
                         loading={loading}
-                        requestKey={`${requestKey}:${normalEvents.length}`}
+                        hasMore={data?.normal?.hasMore ?? false}
+                        loadingMore={loadingMore === "normal"}
+                        onLoadMore={() => void loadMoreEvents("normal")}
                       />
                     </div>
                   </div>
@@ -1993,8 +1975,9 @@ async function withDemoOverlayData(
 
 async function fetchRequestObservation(
   timeWindow: TimeWindow,
+  signal?: AbortSignal,
 ): Promise<RequestObservationData> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     return generateDemoRequestObservation(demoMinutesForWindow(timeWindow));
   }
 
@@ -2002,12 +1985,14 @@ async function fetchRequestObservation(
     from: String(Math.floor(timeWindow.from)),
     to: String(Math.floor(timeWindow.to)),
     interval: timeWindow.interval,
+    timeZone: timeWindow.timeZone,
     limit: String(BOT_EVENT_FETCH_LIMIT),
   });
   const response = await fetch(`/api/private/admin/bot-analytics?${params}`, {
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   const payload = (await response.json()) as
     | RequestObservationData
@@ -2026,14 +2011,69 @@ async function fetchRequestObservation(
   return withDemoOverlayData(timeWindow, payload);
 }
 
+async function fetchRequestObservationPage(
+  timeWindow: TimeWindow,
+  source: "abnormal" | "normal",
+  cursor: RequestDetailCursor,
+): Promise<RequestObservationPageData> {
+  const params = new URLSearchParams({
+    from: String(Math.floor(timeWindow.from)),
+    to: String(Math.floor(timeWindow.to)),
+    interval: timeWindow.interval,
+    timeZone: timeWindow.timeZone,
+    page: source,
+    limit: String(BOT_EVENT_FETCH_LIMIT),
+    cursor: JSON.stringify(cursor),
+  });
+  const response = await fetch(`/api/private/admin/bot-analytics?${params}`, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+  const payload = (await response.json()) as RequestObservationPageData;
+  if (!response.ok || payload.ok !== true) {
+    throw new Error("load_bot_protection_failed");
+  }
+  return payload;
+}
+
+async function fetchRequestObservationDimension(
+  timeWindow: TimeWindow,
+  source: "abnormal" | "normal",
+  group: "detection" | "target" | "network" | "client",
+  tab: string,
+): Promise<RequestNetworkDimensionRow[]> {
+  const params = new URLSearchParams({
+    from: String(Math.floor(timeWindow.from)),
+    to: String(Math.floor(timeWindow.to)),
+    interval: timeWindow.interval,
+    timeZone: timeWindow.timeZone,
+    dimensionSource: source,
+    dimensionGroup: group,
+    dimensionTab: tab,
+  });
+  const response = await fetch(`/api/private/admin/bot-analytics?${params}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  const payload = (await response.json()) as RequestObservationDimensionData;
+  if (!response.ok || payload.ok !== true)
+    throw new Error("load_bot_protection_failed");
+  return payload.dimension.rows;
+}
+
 async function fetchRequestObservationDetail(
-  minutes: number,
+  timeWindow: TimeWindow,
   event: BotEvent,
+  signal?: AbortSignal,
 ): Promise<BotEvent | null> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") return event;
+  if (import.meta.env.VITE_DEMO_MODE === "1") return event;
 
   const params = new URLSearchParams({
-    minutes: String(minutes),
+    from: String(Math.floor(timeWindow.from)),
+    to: String(Math.floor(timeWindow.to)),
+    interval: timeWindow.interval,
+    timeZone: timeWindow.timeZone,
     detail: "1",
   });
   if (event.traceId) params.set("traceId", event.traceId);
@@ -2043,6 +2083,7 @@ async function fetchRequestObservationDetail(
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   const payload = (await response.json()) as
     | RequestObservationDetailData
@@ -2107,16 +2148,28 @@ function botReasonLabel(
   copy: AppMessages["requestObservation"],
   reason: string,
 ): string {
-  return copy.botReasonLabels[reason] ?? compactReason(reason);
+  const labels: Readonly<Record<string, string>> = copy.botReasonLabels;
+  return labels[reason] ?? compactReason(reason);
+}
+
+function botReasonCombinationLabel(
+  copy: AppMessages["requestObservation"],
+  value: string,
+): string {
+  return value
+    .split(",")
+    .map((reason) => reason.trim())
+    .filter(Boolean)
+    .map((reason) => botReasonLabel(copy, reason))
+    .join(", ");
 }
 
 function requestKindLabel(
   copy: AppMessages["requestObservation"],
   kind: string,
 ): string {
-  return (
-    copy.requestKindLabels[kind] ?? (compactReason(kind) || emptyValue(copy))
-  );
+  const labels: Readonly<Record<string, string>> = copy.requestKindLabels;
+  return labels[kind] ?? (compactReason(kind) || emptyValue(copy));
 }
 
 function emptyValue(copy: AppMessages["requestObservation"]): string {
@@ -2152,7 +2205,7 @@ function ipPrefix(ip: string): string {
   return value;
 }
 
-function valuesForDetectionTab(
+function _valuesForDetectionTab(
   event: BotEvent,
   tab: DetectionDimensionTab,
   copy: AppMessages["requestObservation"],
@@ -2166,7 +2219,7 @@ function valuesForDetectionTab(
   return [event.verifiedBotCategory];
 }
 
-function valuesForTargetTab(
+function _valuesForTargetTab(
   event: BotEvent,
   tab: TargetDimensionTab,
 ): string[] {
@@ -2178,7 +2231,7 @@ function valuesForTargetTab(
   return [event.origin];
 }
 
-function valuesForNetworkTab(
+function _valuesForNetworkTab(
   event: BotEvent,
   tab: NetworkDimensionTab,
 ): string[] {
@@ -2190,7 +2243,7 @@ function valuesForNetworkTab(
   return [event.colo];
 }
 
-function valuesForClientTab(
+function _valuesForClientTab(
   event: BotEvent,
   tab: ClientDimensionTab,
 ): string[] {
@@ -2202,7 +2255,7 @@ function valuesForClientTab(
   return [ipPrefix(event.ip)];
 }
 
-function aggregateDimensionRows(
+function _aggregateDimensionRows(
   events: BotEvent[],
   copy: AppMessages["requestObservation"],
   resolveValues: (event: BotEvent) => string[],
@@ -2536,6 +2589,67 @@ function toAsyncDimensionRows(
   }));
 }
 
+function _toAsyncNetworkDimensionRows(
+  rows: RequestNetworkDimensionRow[] | undefined,
+  fallbackRows: BotDimensionRow[],
+  options: {
+    networkTab: NetworkDimensionTab;
+    locale: Locale;
+    unknownLabel: string;
+  },
+): AsyncDimensionBreakdownRow[] {
+  if (!rows) return toAsyncDimensionRows(fallbackRows, options);
+
+  const dimensionRows = rows.map((row) => ({
+    label:
+      options.networkTab === "asn" && row.label
+        ? `AS${row.label}`
+        : row.label || options.unknownLabel,
+    count: row.count,
+    highConfidence: row.highConfidence,
+    sampleEvent: {
+      country: row.country,
+      region: row.region,
+      city: options.networkTab === "city" ? row.label : "",
+    } as BotEvent,
+  }));
+
+  return toAsyncDimensionRows(dimensionRows, options).map((row, index) => ({
+    ...row,
+    key: rows[index]?.key || row.key,
+  }));
+}
+
+function toAsyncAggregatedDimensionRows(
+  rows: RequestNetworkDimensionRow[],
+  options?: Parameters<typeof toAsyncDimensionRows>[1] & {
+    detectionTab?: DetectionDimensionTab;
+    copy?: AppMessages["requestObservation"];
+  },
+): AsyncDimensionBreakdownRow[] {
+  return toAsyncDimensionRows(
+    rows.map((row) => ({
+      label:
+        options?.detectionTab === "reason" && options.copy
+          ? botReasonCombinationLabel(options.copy, row.label)
+          : options?.networkTab === "asn" && row.label
+            ? `AS${row.label}`
+            : row.label || options?.unknownLabel || "--",
+      count: row.count,
+      highConfidence: row.highConfidence,
+      sampleEvent: {
+        country: row.country,
+        region: options?.networkTab === "region" ? row.label : row.region,
+        city: row.label,
+        siteDomain: row.iconLabel,
+        hostname: options?.targetTab === "hostname" ? row.label : "",
+        origin: options?.targetTab === "origin" ? row.label : "",
+      } as BotEvent,
+    })),
+    options,
+  ).map((row, index) => ({ ...row, key: rows[index]?.key || row.key }));
+}
+
 function displayValue(
   value: string | number | null | undefined,
   empty: string,
@@ -2700,36 +2814,17 @@ function BotRequestDetailDrawer({
     onOpenChange(false);
   };
 
-  const sideDrawerOverlay =
-    typeof document !== "undefined"
-      ? createPortal(
-          <AnimatePresence>
-            {open ? (
-              <motion.div
-                aria-hidden="true"
-                data-dashboard-floating-layer="request-observation-drawer-overlay"
-                className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
-                style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.16, ease: "easeOut" }}
-                {...{
-                  [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-                }}
-                onPointerDown={stopSideDrawerOverlayEvent}
-                onPointerUp={stopSideDrawerOverlayEvent}
-                onClick={closeSideDrawerFromOverlay}
-              />
-            ) : null}
-          </AnimatePresence>,
-          document.body,
-        )
-      : null;
-
   return (
     <>
-      {sideDrawerOverlay}
+      <ModalOverlay
+        layerId="request-observation-drawer"
+        open={open}
+        portal
+        zIndex={overlayZIndexFor(EVENT_RECORD_DRAWER_Z_INDEX)}
+        onPointerDown={stopSideDrawerOverlayEvent}
+        onPointerUp={stopSideDrawerOverlayEvent}
+        onClick={closeSideDrawerFromOverlay}
+      />
       <Drawer
         open={open}
         onOpenChange={onOpenChange}
@@ -2741,9 +2836,6 @@ function BotRequestDetailDrawer({
           className="!w-full !max-w-none sm:!w-[min(58vw,34rem)]"
           overlayClassName="hidden"
           style={{ zIndex: EVENT_RECORD_DRAWER_Z_INDEX }}
-          {...{
-            [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_Z_INDEX,
-          }}
           onFocusOutside={(event) => {
             event.preventDefault();
           }}
@@ -3032,18 +3124,14 @@ function NormalRequestDetailDrawer({
 }) {
   const empty = copy.emptyValue;
   const eventId = event ? event.traceId || event.rayId : "";
-  const title = locale === "zh" ? "正常请求详情" : "Normal Request Detail";
-  const subtitle =
-    event?.pathname ||
-    (locale === "zh"
-      ? "查看正常请求 AE 记录的链路、位置和耗时字段。"
-      : "Inspect the normal request AE record fields, location, and latency.");
-  const requestMethodLabel = locale === "zh" ? "请求方法" : "Request Method";
-  const edgeLatencyLabel = locale === "zh" ? "边缘耗时" : "Edge Latency";
-  const eventAtLabel = locale === "zh" ? "事件时间" : "Event Time";
-  const receivedAtLabel = locale === "zh" ? "接收时间" : "Received Time";
-  const coordinatesLabel = locale === "zh" ? "坐标" : "Coordinates";
-  const continentLabel = locale === "zh" ? "大洲" : "Continent";
+  const title = copy.normalDetail.title;
+  const subtitle = event?.pathname || copy.normalDetail.subtitle;
+  const requestMethodLabel = copy.normalDetail.requestMethod;
+  const edgeLatencyLabel = copy.normalDetail.edgeLatency;
+  const eventAtLabel = copy.normalDetail.eventAt;
+  const receivedAtLabel = copy.normalDetail.receivedAt;
+  const coordinatesLabel = copy.normalDetail.coordinates;
+  const continentLabel = copy.normalDetail.continent;
   const contentKey = event ? "detail" : "empty";
 
   const stopSideDrawerOverlayEvent = (
@@ -3059,36 +3147,17 @@ function NormalRequestDetailDrawer({
     onOpenChange(false);
   };
 
-  const sideDrawerOverlay =
-    typeof document !== "undefined"
-      ? createPortal(
-          <AnimatePresence>
-            {open ? (
-              <motion.div
-                aria-hidden="true"
-                data-dashboard-floating-layer="request-observation-normal-drawer-overlay"
-                className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
-                style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.16, ease: "easeOut" }}
-                {...{
-                  [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-                }}
-                onPointerDown={stopSideDrawerOverlayEvent}
-                onPointerUp={stopSideDrawerOverlayEvent}
-                onClick={closeSideDrawerFromOverlay}
-              />
-            ) : null}
-          </AnimatePresence>,
-          document.body,
-        )
-      : null;
-
   return (
     <>
-      {sideDrawerOverlay}
+      <ModalOverlay
+        layerId="request-observation-normal-drawer"
+        open={open}
+        portal
+        zIndex={overlayZIndexFor(EVENT_RECORD_DRAWER_Z_INDEX)}
+        onPointerDown={stopSideDrawerOverlayEvent}
+        onPointerUp={stopSideDrawerOverlayEvent}
+        onClick={closeSideDrawerFromOverlay}
+      />
       <Drawer
         open={open}
         onOpenChange={onOpenChange}
@@ -3100,9 +3169,6 @@ function NormalRequestDetailDrawer({
           className="!w-full !max-w-none sm:!w-[min(58vw,34rem)]"
           overlayClassName="hidden"
           style={{ zIndex: EVENT_RECORD_DRAWER_Z_INDEX }}
-          {...{
-            [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_Z_INDEX,
-          }}
           onFocusOutside={(event) => {
             event.preventDefault();
           }}
@@ -3225,7 +3291,11 @@ function NormalRequestDetailDrawer({
                       <dl className="grid gap-3 sm:grid-cols-2">
                         <DetailItem
                           label={edgeLatencyLabel}
-                          value={latencyFormat(locale, event.edgeLatencyMs)}
+                          value={latencyFormat(
+                            locale,
+                            copy,
+                            event.edgeLatencyMs,
+                          )}
                         />
                         <DetailItem
                           label={copy.location}
@@ -3342,36 +3412,60 @@ function BotEventsTable({
   copy,
   events,
   loading,
-  requestKey,
-  minutes,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+  timeWindow,
 }: {
   locale: Locale;
   messages: AppMessages;
   copy: AppMessages["requestObservation"];
   events: BotEvent[];
   loading: boolean;
-  requestKey: string;
-  minutes: number;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
+  timeWindow: TimeWindow;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [visibleCount, setVisibleCount] = useState(BOT_EVENT_PAGE_SIZE);
-  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
-    null,
-  );
   const [selectedEvent, setSelectedEvent] = useState<BotEvent | null>(null);
-  const [detailEvent, setDetailEvent] = useState<BotEvent | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [detailParam, setDetailParam] = useState(
     () => searchParams.get("detail")?.trim() || "",
   );
-
-  useEffect(() => {
-    setVisibleCount(BOT_EVENT_PAGE_SIZE);
-  }, [requestKey]);
+  const selectedEventId = selectedEvent ? botEventDetailId(selectedEvent) : "";
+  const selectedEventCacheKey = selectedEventId
+    ? selectedEventId
+    : selectedEvent
+      ? `${selectedEvent.siteId}:${selectedEvent.pathname}:${selectedEvent.receivedAt}`
+      : "";
+  const detailQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "request-observation-detail",
+      selectedEventCacheKey,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+    ],
+    queryFn: ({ signal }) =>
+      selectedEvent
+        ? fetchRequestObservationDetail(timeWindow, selectedEvent, signal)
+        : null,
+    enabled:
+      typeof window !== "undefined" && drawerOpen && Boolean(selectedEvent),
+    retry: false,
+  });
+  const detailEvent = detailQuery.data ?? null;
+  const detailLoading = detailQuery.isPending;
+  const detailError = detailQuery.isError
+    ? detailQuery.error instanceof Error
+      ? detailQuery.error.message
+      : "load_bot_protection_detail_failed"
+    : null;
 
   useEffect(() => {
     setDetailParam(searchParams.get("detail")?.trim() || "");
@@ -3392,53 +3486,10 @@ function BotEventsTable({
     return () => window.clearInterval(interval);
   }, []);
 
-  const visibleEvents = useMemo(
-    () => events.slice(0, visibleCount),
-    [events, visibleCount],
-  );
-  const hasMore = visibleCount < events.length;
-
-  useEffect(() => {
-    const target = sentinelNode;
-    if (
-      !target ||
-      loading ||
-      !hasMore ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const loadMore = () => {
-      setVisibleCount((current) =>
-        Math.min(current + BOT_EVENT_PAGE_SIZE, events.length),
-      );
-    };
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) loadMore();
-      },
-      {
-        root: null,
-        rootMargin: "360px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    const frameId = window.requestAnimationFrame(() => {
-      const rect = target.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
-        loadMore();
-      }
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [events.length, hasMore, loading, sentinelNode]);
+  const sentinelRef = useInfiniteTableSentinel({
+    enabled: !loading && !loadingMore && hasMore,
+    onReachEnd: onLoadMore,
+  });
 
   const updateDetailParam = (detailId: string, mode: "push" | "replace") => {
     const nextParams = new URLSearchParams(window.location.search);
@@ -3458,8 +3509,6 @@ function BotEventsTable({
 
   const openEvent = (event: BotEvent, options?: { syncUrl?: boolean }) => {
     setSelectedEvent(event);
-    setDetailEvent(null);
-    setDetailError(null);
     setDrawerOpen(true);
 
     if (options?.syncUrl !== false) {
@@ -3489,31 +3538,6 @@ function BotEventsTable({
     }
     openEvent(matchingEvent, { syncUrl: false });
   }, [detailParam, events, selectedEvent]);
-
-  useEffect(() => {
-    if (!drawerOpen || !selectedEvent) return;
-    let active = true;
-    setDetailLoading(true);
-    fetchRequestObservationDetail(minutes, selectedEvent)
-      .then((detail) => {
-        if (!active) return;
-        setDetailEvent(detail ?? selectedEvent);
-      })
-      .catch((error) => {
-        if (!active) return;
-        setDetailError(
-          error instanceof Error
-            ? error.message
-            : "load_bot_protection_detail_failed",
-        );
-      })
-      .finally(() => {
-        if (active) setDetailLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [drawerOpen, minutes, selectedEvent]);
 
   const handleKeyDown = (
     keyboardEvent: KeyboardEvent<HTMLTableRowElement>,
@@ -3546,183 +3570,179 @@ function BotEventsTable({
           <div className="shrink-0 text-xs text-muted-foreground">
             {!loading && events.length > 0
               ? hasMore
-                ? `${copy.recentShowing} ${numberFormat(locale, visibleEvents.length)} / ${numberFormat(locale, events.length)}`
+                ? `${copy.recentShowing} ${numberFormat(locale, events.length)}`
                 : copy.recentLoadedAll
               : ""}
           </div>
         </div>
 
-        <Card className="py-0">
-          <CardContent className="px-0">
-            <Table className="min-w-[92rem]">
-              <TableHeader>
+        <AnalyticsTableCard minTableWidth="92rem">
+          <Table className="min-w-[92rem]">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-4">{copy.id}</TableHead>
+                <TableHead>{copy.time}</TableHead>
+                <TableHead>{copy.site}</TableHead>
+                <TableHead>{copy.reason}</TableHead>
+                <TableHead>{copy.confidence}</TableHead>
+                <TableHead>{copy.network}</TableHead>
+                <TableHead>{copy.asn}</TableHead>
+                <TableHead>{copy.ip}</TableHead>
+                <TableHead>{copy.location}</TableHead>
+                <TableHead>{copy.pathname}</TableHead>
+                <TableHead className="pr-4">{copy.userAgent}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <AutoTransition
+              as="tbody"
+              transitionKey={bodyState}
+              initial={false}
+              duration={0.18}
+              type="fade"
+              presenceMode="wait"
+              aria-busy={loading}
+              data-slot="table-body"
+              className="[&_tr:last-child]:border-0"
+            >
+              {loading ? (
+                Array.from({ length: BOT_EVENT_SKELETON_ROWS }, (_, index) => (
+                  <BotEventRowSkeleton key={index} index={index} />
+                ))
+              ) : events.length === 0 ? (
                 <TableRow>
-                  <TableHead className="pl-4">{copy.id}</TableHead>
-                  <TableHead>{copy.time}</TableHead>
-                  <TableHead>{copy.site}</TableHead>
-                  <TableHead>{copy.reason}</TableHead>
-                  <TableHead>{copy.confidence}</TableHead>
-                  <TableHead>{copy.network}</TableHead>
-                  <TableHead>{copy.asn}</TableHead>
-                  <TableHead>{copy.ip}</TableHead>
-                  <TableHead>{copy.location}</TableHead>
-                  <TableHead>{copy.pathname}</TableHead>
-                  <TableHead className="pr-4">{copy.userAgent}</TableHead>
+                  <TableCell
+                    colSpan={11}
+                    className="h-28 text-center text-muted-foreground"
+                  >
+                    {copy.noData}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <AutoTransition
-                as="tbody"
-                transitionKey={bodyState}
-                initial={false}
-                duration={0.18}
-                type="fade"
-                presenceMode="wait"
-                aria-busy={loading}
-                data-slot="table-body"
-                className="[&_tr:last-child]:border-0"
-              >
-                {loading ? (
-                  Array.from(
-                    { length: BOT_EVENT_SKELETON_ROWS },
-                    (_, index) => (
-                      <BotEventRowSkeleton key={index} index={index} />
-                    ),
-                  )
-                ) : events.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={11}
-                      className="h-28 text-center text-muted-foreground"
-                    >
-                      {copy.noData}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  <>
-                    {visibleEvents.map((event, index) => {
-                      const reasonLabel = botReasonLabel(
-                        copy,
-                        event.reasons[0] || event.confidence || "",
-                      );
-                      const eventId = event.traceId || event.rayId || "";
-                      const rowKey =
-                        eventId ||
-                        `${event.siteId}:${event.ip}:${event.pathname}:${event.receivedAt}`;
-                      return (
-                        <TableRow
-                          key={`${rowKey}:${index}`}
-                          role="button"
-                          tabIndex={0}
-                          className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-                          onClick={() => openEvent(event)}
-                          onKeyDown={(keyboardEvent) =>
-                            handleKeyDown(keyboardEvent, event)
-                          }
-                        >
-                          <TableCell className="pl-4 max-w-36">
-                            <div className="flex w-28 min-w-0 items-center gap-2">
-                              <VisitorAvatar
-                                seed={eventId || "unknown"}
-                                className="size-6"
-                              />
-                              <span
-                                className="min-w-0 truncate font-mono"
-                                title={eventId || undefined}
-                              >
-                                {eventId ? shortId(eventId) : "--"}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="max-w-36 font-mono text-muted-foreground">
-                            <span className="block truncate">
-                              {formatRelativeTime(
-                                locale,
-                                event.receivedAt,
-                                now,
-                              )}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-48">
-                            <span
-                              className="block truncate font-medium"
-                              title={event.siteName}
-                            >
-                              {event.siteName}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-48">
-                            <span
-                              className="block truncate font-medium"
-                              title={reasonLabel}
-                            >
-                              {reasonLabel}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-36">
-                            <ConfidenceBlocks
-                              confidence={event.confidence}
-                              label={event.confidence || "--"}
+              ) : (
+                <>
+                  {events.map((event, index) => {
+                    const reasonLabel = botReasonLabel(
+                      copy,
+                      event.reasons[0] || event.confidence || "",
+                    );
+                    const eventId = event.traceId || event.rayId || "";
+                    const rowKey =
+                      eventId ||
+                      `${event.siteId}:${event.ip}:${event.pathname}:${event.receivedAt}`;
+                    return (
+                      <TableRow
+                        key={`${rowKey}:${index}`}
+                        role="button"
+                        tabIndex={0}
+                        className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                        onClick={() => openEvent(event)}
+                        onKeyDown={(keyboardEvent) =>
+                          handleKeyDown(keyboardEvent, event)
+                        }
+                      >
+                        <TableCell className="pl-4 max-w-36">
+                          <div className="flex w-28 min-w-0 items-center gap-2">
+                            <VisitorAvatar
+                              seed={eventId || "unknown"}
+                              className="size-6"
                             />
-                          </TableCell>
-                          <TableCell className="max-w-44">
                             <span
-                              className="block truncate"
-                              title={event.asOrganization || undefined}
+                              className="min-w-0 truncate font-mono"
+                              title={eventId || undefined}
                             >
-                              {event.asOrganization || "--"}
+                              {eventId ? shortId(eventId) : "--"}
                             </span>
-                          </TableCell>
-                          <TableCell className="max-w-24">
-                            <span className="block truncate font-mono">
-                              {event.asn ? `AS${event.asn}` : "--"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-36">
-                            <span className="block truncate font-mono text-muted-foreground">
-                              {event.ip || "--"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-52">
-                            <CountryRegionMeta
-                              locale={locale}
-                              messages={messages}
-                              country={event.country || ""}
-                              region={event.region}
-                              className="w-full"
-                            />
-                          </TableCell>
-                          <TableCell className="max-w-64">
-                            <span
-                              className="block truncate font-mono"
-                              title={event.pathname || "/"}
-                            >
-                              {event.pathname || "/"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-80 pr-4">
-                            <span
-                              className="block truncate font-mono text-muted-foreground"
-                              title={event.userAgent || undefined}
-                            >
-                              {event.userAgent || "--"}
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                    {hasMore ? (
-                      <BotEventRowSkeleton
-                        key={`sentinel-${visibleEvents.length}`}
-                        index={visibleEvents.length}
-                        sentinelRef={setSentinelNode}
-                      />
-                    ) : null}
-                  </>
-                )}
-              </AutoTransition>
-            </Table>
-          </CardContent>
-        </Card>
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-36 font-mono text-muted-foreground">
+                          <span className="block truncate">
+                            {formatRelativeTime(locale, event.receivedAt, now)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-48">
+                          <span
+                            className="block truncate font-medium"
+                            title={event.siteName}
+                          >
+                            {event.siteName}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-48">
+                          <span
+                            className="block truncate font-medium"
+                            title={reasonLabel}
+                          >
+                            {reasonLabel}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-36">
+                          <ConfidenceBlocks
+                            confidence={event.confidence}
+                            label={event.confidence || "--"}
+                          />
+                        </TableCell>
+                        <TableCell className="max-w-44">
+                          <span
+                            className="block truncate"
+                            title={event.asOrganization || undefined}
+                          >
+                            {event.asOrganization || "--"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-24">
+                          <span className="block truncate font-mono">
+                            {event.asn ? `AS${event.asn}` : "--"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-36">
+                          <span className="block truncate font-mono text-muted-foreground">
+                            {event.ip || "--"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-52">
+                          <CountryRegionMeta
+                            locale={locale}
+                            messages={messages}
+                            country={event.country || ""}
+                            region={event.region}
+                            className="w-full"
+                          />
+                        </TableCell>
+                        <TableCell className="max-w-64">
+                          <span
+                            className="block truncate font-mono"
+                            title={event.pathname || "/"}
+                          >
+                            {event.pathname || "/"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-80 pr-4">
+                          <span
+                            className="block truncate font-mono text-muted-foreground"
+                            title={event.userAgent || undefined}
+                          >
+                            {event.userAgent || "--"}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {hasMore
+                    ? Array.from(
+                        { length: BOT_EVENT_SKELETON_ROWS },
+                        (_, index) => (
+                          <BotEventRowSkeleton
+                            key={`append-${events.length}-${index}`}
+                            index={index}
+                            sentinelRef={index === 0 ? sentinelRef : undefined}
+                          />
+                        ),
+                      )
+                    : null}
+                </>
+              )}
+            </AutoTransition>
+          </Table>
+        </AnalyticsTableCard>
       </section>
 
       <BotRequestDetailDrawer
@@ -3740,7 +3760,7 @@ function BotEventsTable({
   );
 }
 
-function valuesForNormalTargetTab(
+function _valuesForNormalTargetTab(
   event: NormalRequestEvent,
   tab: TargetDimensionTab,
 ): string[] {
@@ -3752,7 +3772,7 @@ function valuesForNormalTargetTab(
   return [event.origin];
 }
 
-function valuesForNormalNetworkTab(
+function _valuesForNormalNetworkTab(
   event: NormalRequestEvent,
   tab: NetworkDimensionTab,
 ): string[] {
@@ -3764,7 +3784,7 @@ function valuesForNormalNetworkTab(
   return [event.colo];
 }
 
-function aggregateNormalDimensionRows(
+function _aggregateNormalDimensionRows(
   events: NormalRequestEvent[],
   copy: AppMessages["requestObservation"],
   resolveValues: (event: NormalRequestEvent) => string[],
@@ -3821,19 +3841,20 @@ function NormalRequestsTable({
   copy,
   events,
   loading,
-  requestKey,
+  hasMore,
+  loadingMore,
+  onLoadMore,
 }: {
   locale: Locale;
   messages: AppMessages;
   copy: AppMessages["requestObservation"];
   events: NormalRequestEvent[];
   loading: boolean;
-  requestKey: string;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
+  requestKey?: string;
 }) {
-  const [visibleCount, setVisibleCount] = useState(BOT_EVENT_PAGE_SIZE);
-  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
-    null,
-  );
   const [selectedEvent, setSelectedEvent] = useState<NormalRequestEvent | null>(
     null,
   );
@@ -3841,72 +3862,22 @@ function NormalRequestsTable({
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    setVisibleCount(BOT_EVENT_PAGE_SIZE);
-  }, [requestKey]);
-
-  useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(interval);
   }, []);
 
-  const visibleEvents = useMemo(
-    () => events.slice(0, visibleCount),
-    [events, visibleCount],
-  );
-  const hasMore = visibleCount < events.length;
-
-  useEffect(() => {
-    const target = sentinelNode;
-    if (
-      !target ||
-      loading ||
-      !hasMore ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const loadMore = () => {
-      setVisibleCount((current) =>
-        Math.min(current + BOT_EVENT_PAGE_SIZE, events.length),
-      );
-    };
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) loadMore();
-      },
-      {
-        root: null,
-        rootMargin: "360px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    const frameId = window.requestAnimationFrame(() => {
-      const rect = target.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
-        loadMore();
-      }
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [events.length, hasMore, loading, sentinelNode]);
+  const sentinelRef = useInfiniteTableSentinel({
+    enabled: !loading && !loadingMore && hasMore,
+    onReachEnd: onLoadMore,
+  });
 
   const bodyState = loading
     ? "loading"
     : events.length === 0
       ? "empty"
       : "rows";
-  const title = locale === "zh" ? "最近正常请求" : "Recent Normal Requests";
-  const description =
-    locale === "zh"
-      ? "这些详细记录只写入正常请求 Analytics Engine 数据集。"
-      : "Detailed records written only to the normal request Analytics Engine dataset.";
+  const title = copy.recentNormal.title;
+  const description = copy.recentNormal.description;
   const openEvent = (event: NormalRequestEvent) => {
     setSelectedEvent(event);
     setDrawerOpen(true);
@@ -3934,170 +3905,164 @@ function NormalRequestsTable({
           <div className="shrink-0 text-xs text-muted-foreground">
             {!loading && events.length > 0
               ? hasMore
-                ? `${copy.recentShowing} ${numberFormat(locale, visibleEvents.length)} / ${numberFormat(locale, events.length)}`
+                ? `${copy.recentShowing} ${numberFormat(locale, events.length)}`
                 : copy.recentLoadedAll
               : ""}
           </div>
         </div>
 
-        <Card className="py-0">
-          <CardContent className="px-0">
-            <Table className="min-w-[80rem]">
-              <TableHeader>
+        <AnalyticsTableCard>
+          <Table className="min-w-[80rem]">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-4">{copy.id}</TableHead>
+                <TableHead>{copy.time}</TableHead>
+                <TableHead>{copy.site}</TableHead>
+                <TableHead>{copy.kind}</TableHead>
+                <TableHead>{copy.normalDetail.requestMethod}</TableHead>
+                <TableHead>{copy.network}</TableHead>
+                <TableHead>{copy.asn}</TableHead>
+                <TableHead>{copy.location}</TableHead>
+                <TableHead>{copy.pathname}</TableHead>
+                <TableHead className="pr-4">
+                  {copy.normalDetail.edgeLatency}
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <AutoTransition
+              as="tbody"
+              transitionKey={bodyState}
+              initial={false}
+              duration={0.18}
+              type="fade"
+              presenceMode="wait"
+              aria-busy={loading}
+              data-slot="table-body"
+              className="[&_tr:last-child]:border-0"
+            >
+              {loading ? (
+                Array.from({ length: BOT_EVENT_SKELETON_ROWS }, (_, index) => (
+                  <BotEventRowSkeleton key={index} index={index} />
+                ))
+              ) : events.length === 0 ? (
                 <TableRow>
-                  <TableHead className="pl-4">{copy.id}</TableHead>
-                  <TableHead>{copy.time}</TableHead>
-                  <TableHead>{copy.site}</TableHead>
-                  <TableHead>{copy.kind}</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>{copy.network}</TableHead>
-                  <TableHead>{copy.asn}</TableHead>
-                  <TableHead>{copy.location}</TableHead>
-                  <TableHead>{copy.pathname}</TableHead>
-                  <TableHead className="pr-4">
-                    {locale === "zh" ? "边缘耗时" : "Edge Latency"}
-                  </TableHead>
+                  <TableCell
+                    colSpan={10}
+                    className="h-28 text-center text-muted-foreground"
+                  >
+                    {copy.noData}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <AutoTransition
-                as="tbody"
-                transitionKey={bodyState}
-                initial={false}
-                duration={0.18}
-                type="fade"
-                presenceMode="wait"
-                aria-busy={loading}
-                data-slot="table-body"
-                className="[&_tr:last-child]:border-0"
-              >
-                {loading ? (
-                  Array.from(
-                    { length: BOT_EVENT_SKELETON_ROWS },
-                    (_, index) => (
-                      <BotEventRowSkeleton key={index} index={index} />
-                    ),
-                  )
-                ) : events.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={10}
-                      className="h-28 text-center text-muted-foreground"
-                    >
-                      {copy.noData}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  <>
-                    {visibleEvents.map((event, index) => {
-                      const eventId = event.traceId || event.rayId || "";
-                      const rowKey =
-                        eventId ||
-                        `${event.siteId}:${event.pathname}:${event.receivedAt}`;
-                      return (
-                        <TableRow
-                          key={`${rowKey}:${index}`}
-                          role="button"
-                          tabIndex={0}
-                          className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-                          onClick={() => openEvent(event)}
-                          onKeyDown={(keyboardEvent) =>
-                            handleKeyDown(keyboardEvent, event)
-                          }
-                        >
-                          <TableCell className="pl-4 max-w-36">
-                            <div className="flex w-28 min-w-0 items-center gap-2">
-                              <VisitorAvatar
-                                seed={eventId || "normal"}
-                                className="size-6"
-                              />
-                              <span
-                                className="min-w-0 truncate font-mono"
-                                title={eventId || undefined}
-                              >
-                                {eventId ? shortId(eventId) : "--"}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="max-w-36 font-mono text-muted-foreground">
-                            <span className="block truncate">
-                              {formatRelativeTime(
-                                locale,
-                                event.receivedAt,
-                                now,
-                              )}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-48">
-                            <span
-                              className="block truncate font-medium"
-                              title={event.siteName}
-                            >
-                              {event.siteName ||
-                                event.siteDomain ||
-                                event.siteId}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-28">
-                            <Badge variant="outline">
-                              {requestKindLabel(copy, event.kind)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="max-w-24">
-                            <span className="block truncate font-mono">
-                              {event.requestMethod || "--"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-44">
-                            <span
-                              className="block truncate"
-                              title={event.asOrganization || undefined}
-                            >
-                              {event.asOrganization || "--"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-24">
-                            <span className="block truncate font-mono">
-                              {event.asn ? `AS${event.asn}` : "--"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-52">
-                            <CountryRegionMeta
-                              locale={locale}
-                              messages={messages}
-                              country={event.country || ""}
-                              region={event.region}
-                              className="w-full"
+              ) : (
+                <>
+                  {events.map((event, index) => {
+                    const eventId = event.traceId || event.rayId || "";
+                    const rowKey =
+                      eventId ||
+                      `${event.siteId}:${event.pathname}:${event.receivedAt}`;
+                    return (
+                      <TableRow
+                        key={`${rowKey}:${index}`}
+                        role="button"
+                        tabIndex={0}
+                        className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                        onClick={() => openEvent(event)}
+                        onKeyDown={(keyboardEvent) =>
+                          handleKeyDown(keyboardEvent, event)
+                        }
+                      >
+                        <TableCell className="pl-4 max-w-36">
+                          <div className="flex w-28 min-w-0 items-center gap-2">
+                            <VisitorAvatar
+                              seed={eventId || "normal"}
+                              className="size-6"
                             />
-                          </TableCell>
-                          <TableCell className="max-w-64">
                             <span
-                              className="block truncate font-mono"
-                              title={event.pathname || "/"}
+                              className="min-w-0 truncate font-mono"
+                              title={eventId || undefined}
                             >
-                              {event.pathname || "/"}
+                              {eventId ? shortId(eventId) : "--"}
                             </span>
-                          </TableCell>
-                          <TableCell className="max-w-28 pr-4">
-                            <span className="block truncate font-mono tabular-nums text-muted-foreground">
-                              {latencyFormat(locale, event.edgeLatencyMs)}
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                    {hasMore ? (
-                      <BotEventRowSkeleton
-                        key={`sentinel-${visibleEvents.length}`}
-                        index={visibleEvents.length}
-                        sentinelRef={setSentinelNode}
-                      />
-                    ) : null}
-                  </>
-                )}
-              </AutoTransition>
-            </Table>
-          </CardContent>
-        </Card>
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-36 font-mono text-muted-foreground">
+                          <span className="block truncate">
+                            {formatRelativeTime(locale, event.receivedAt, now)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-48">
+                          <span
+                            className="block truncate font-medium"
+                            title={event.siteName}
+                          >
+                            {event.siteName || event.siteDomain || event.siteId}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-28">
+                          <Badge variant="outline">
+                            {requestKindLabel(copy, event.kind)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="max-w-24">
+                          <span className="block truncate font-mono">
+                            {event.requestMethod || "--"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-44">
+                          <span
+                            className="block truncate"
+                            title={event.asOrganization || undefined}
+                          >
+                            {event.asOrganization || "--"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-24">
+                          <span className="block truncate font-mono">
+                            {event.asn ? `AS${event.asn}` : "--"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-52">
+                          <CountryRegionMeta
+                            locale={locale}
+                            messages={messages}
+                            country={event.country || ""}
+                            region={event.region}
+                            className="w-full"
+                          />
+                        </TableCell>
+                        <TableCell className="max-w-64">
+                          <span
+                            className="block truncate font-mono"
+                            title={event.pathname || "/"}
+                          >
+                            {event.pathname || "/"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-28 pr-4">
+                          <span className="block truncate font-mono tabular-nums text-muted-foreground">
+                            {latencyFormat(locale, copy, event.edgeLatencyMs)}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {hasMore
+                    ? Array.from(
+                        { length: BOT_EVENT_SKELETON_ROWS },
+                        (_, index) => (
+                          <BotEventRowSkeleton
+                            key={`append-${events.length}-${index}`}
+                            index={index}
+                            sentinelRef={index === 0 ? sentinelRef : undefined}
+                          />
+                        ),
+                      )
+                    : null}
+                </>
+              )}
+            </AutoTransition>
+          </Table>
+        </AnalyticsTableCard>
       </section>
 
       <NormalRequestDetailDrawer

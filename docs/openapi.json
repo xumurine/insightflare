@@ -3,7 +3,11 @@
   "info": {
     "title": "InsightFlare API",
     "description": "Privacy-focused web analytics API. Authenticated endpoints require an API key passed as a Bearer token in the Authorization header. All timestamps in query parameters and response objects are ISO 8601 date-time strings unless the field name explicitly ends with `Ms`. Fields ending with `Ms` represent millisecond values, such as durations or Unix timestamps depending on context. Analytics ranges use [from, to) semantics. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time. The default timeZone is UTC.\n\nThis OpenAPI document describes the behavior of the InsightFlare origin API. Depending on deployment configuration, upstream infrastructure, proxies, gateways, or edge providers may return additional HTTP responses before requests reach the API origin, such as 429 Too Many Requests. These responses are outside the standard API error envelope and are not part of the stable API contract.",
+<<<<<<< HEAD
     "version": "0.1.0",
+=======
+    "version": "0.5.0",
+>>>>>>> b7a7aaa48ba52241509b5b0bb5615e33d0c32e9c
     "contact": {
       "name": "InsightFlare",
       "url": "https://github.com/ravelloh/InsightFlare"
@@ -83,10 +87,6 @@
       "description": "Global batch requests"
     },
     {
-      "name": "Ingestion",
-      "description": "Client SDK event collection"
-    },
-    {
       "name": "Health",
       "description": "Health checks"
     }
@@ -129,89 +129,6 @@
         "x-required-scopes": []
       }
     },
-    "/collect": {
-      "post": {
-        "operationId": "collectEvent",
-        "summary": "Collect tracking event",
-        "description": "/collect is the unauthenticated client SDK ingestion endpoint. Successful receipt or silent drop returns 204.",
-        "tags": ["Ingestion"],
-        "security": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CollectPayload"
-              },
-              "examples": {
-                "pageview": {
-                  "summary": "Pageview payload",
-                  "value": {
-                    "siteId": "550e8400-e29b-41d4-a716-446655440000",
-                    "type": "pageview",
-                    "timestamp": "2026-06-26T12:00:00Z",
-                    "anonymousId": "anon_abc123",
-                    "sessionId": "sess_abc123",
-                    "page": {
-                      "url": "https://example.com/posts/hello",
-                      "path": "/posts/hello",
-                      "title": "Hello",
-                      "referrer": "https://google.com",
-                      "hostname": "example.com"
-                    },
-                    "client": {
-                      "language": "zh-CN",
-                      "screen": {
-                        "width": 1920,
-                        "height": 1080
-                      },
-                      "viewport": {
-                        "width": 1280,
-                        "height": 720
-                      }
-                    }
-                  }
-                },
-                "event": {
-                  "summary": "Custom event payload",
-                  "value": {
-                    "siteId": "550e8400-e29b-41d4-a716-446655440000",
-                    "type": "event",
-                    "timestamp": "2026-06-26T12:01:00Z",
-                    "anonymousId": "anon_abc123",
-                    "sessionId": "sess_abc123",
-                    "page": {
-                      "url": "https://example.com/signup",
-                      "path": "/signup",
-                      "title": "Signup"
-                    },
-                    "event": {
-                      "name": "signup",
-                      "data": {
-                        "plan": "pro",
-                        "source": "pricing_page"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "204": {
-            "description": "No Content"
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "413": {
-            "$ref": "#/components/responses/PayloadTooLarge"
-          }
-        },
-        "x-required-scopes": []
-      }
-    },
     "/api/v1": {
       "get": {
         "operationId": "getApiRoot",
@@ -232,7 +149,11 @@
                     "summary": "getApiRoot",
                     "value": {
                       "data": {
+<<<<<<< HEAD
                         "version": "0.1.0",
+=======
+                        "version": "0.5.0",
+>>>>>>> b7a7aaa48ba52241509b5b0bb5615e33d0c32e9c
                         "service": "InsightFlare Analytics API",
                         "links": {
                           "self": "/api/v1",
@@ -408,7 +329,11 @@
                     "summary": "getCapabilities",
                     "value": {
                       "data": {
+<<<<<<< HEAD
                         "apiVersion": "0.1.0",
+=======
+                        "apiVersion": "0.5.0",
+>>>>>>> b7a7aaa48ba52241509b5b0bb5615e33d0c32e9c
                         "features": {
                           "sites": true,
                           "tracking": true,
@@ -7676,202 +7601,6 @@
             "format": "date-time"
           }
         }
-      },
-      "CollectPage": {
-        "type": "object",
-        "description": "Page context for a collect payload.",
-        "properties": {
-          "url": {
-            "type": "string",
-            "maxLength": 2048,
-            "description": "Full page URL."
-          },
-          "path": {
-            "type": "string",
-            "maxLength": 2048,
-            "description": "Page path."
-          },
-          "title": {
-            "type": "string",
-            "maxLength": 300,
-            "description": "Page title."
-          },
-          "referrer": {
-            "type": ["string", "null"],
-            "maxLength": 2048,
-            "description": "Full referrer URL, if available."
-          },
-          "hostname": {
-            "type": "string",
-            "maxLength": 255,
-            "description": "Page hostname."
-          },
-          "query": {
-            "type": "string",
-            "maxLength": 2048,
-            "description": "URL query string."
-          },
-          "hash": {
-            "type": "string",
-            "maxLength": 512,
-            "description": "URL hash fragment."
-          }
-        }
-      },
-      "CollectClient": {
-        "type": "object",
-        "description": "Browser and device context reported by the client SDK.",
-        "properties": {
-          "language": {
-            "type": "string",
-            "maxLength": 40,
-            "description": "Browser language."
-          },
-          "userAgent": {
-            "type": "string",
-            "maxLength": 1024,
-            "description": "Browser user agent string."
-          },
-          "screen": {
-            "type": "object",
-            "properties": {
-              "width": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "height": {
-                "type": "integer",
-                "minimum": 0
-              }
-            }
-          },
-          "viewport": {
-            "type": "object",
-            "properties": {
-              "width": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "height": {
-                "type": "integer",
-                "minimum": 0
-              }
-            }
-          }
-        }
-      },
-      "CollectEvent": {
-        "type": "object",
-        "description": "Custom event data.",
-        "required": ["name"],
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 120,
-            "description": "Event name."
-          },
-          "data": {
-            "type": "object",
-            "additionalProperties": true,
-            "description": "Custom JSON-serializable event payload."
-          }
-        }
-      },
-      "CollectEngagement": {
-        "type": "object",
-        "description": "Engagement metrics reported by the client SDK.",
-        "properties": {
-          "durationMs": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "Engagement duration in milliseconds."
-          },
-          "scrollDepth": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1,
-            "description": "Maximum scroll depth as a 0-1 ratio."
-          }
-        }
-      },
-      "CollectPerformance": {
-        "type": "object",
-        "description": "Core Web Vitals and navigation timing data.",
-        "properties": {
-          "ttfb": {
-            "type": "number",
-            "minimum": 0,
-            "description": "Time to first byte in milliseconds."
-          },
-          "fcp": {
-            "type": "number",
-            "minimum": 0,
-            "description": "First contentful paint in milliseconds."
-          },
-          "lcp": {
-            "type": "number",
-            "minimum": 0,
-            "description": "Largest contentful paint in milliseconds."
-          },
-          "cls": {
-            "type": "number",
-            "minimum": 0,
-            "description": "Cumulative layout shift."
-          },
-          "inp": {
-            "type": "number",
-            "minimum": 0,
-            "description": "Interaction to next paint in milliseconds."
-          }
-        }
-      },
-      "CollectPayload": {
-        "type": "object",
-        "description": "Payload sent by the InsightFlare client SDK to ingest pageviews, events, engagement, and performance metrics.",
-        "required": ["siteId", "type"],
-        "properties": {
-          "siteId": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Site identifier."
-          },
-          "type": {
-            "type": "string",
-            "enum": ["pageview", "event", "engagement", "performance"],
-            "description": "Tracking payload type. pageview records a page view; event records a custom user-defined event; engagement records duration or scroll; performance records Core Web Vitals."
-          },
-          "timestamp": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Client-side event time. If omitted, the server receive time may be used."
-          },
-          "anonymousId": {
-            "type": "string",
-            "maxLength": 120,
-            "description": "Anonymous visitor identifier generated by the client SDK."
-          },
-          "sessionId": {
-            "type": "string",
-            "maxLength": 120,
-            "description": "Client session identifier."
-          },
-          "page": {
-            "$ref": "#/components/schemas/CollectPage"
-          },
-          "client": {
-            "$ref": "#/components/schemas/CollectClient"
-          },
-          "event": {
-            "$ref": "#/components/schemas/CollectEvent"
-          },
-          "engagement": {
-            "$ref": "#/components/schemas/CollectEngagement"
-          },
-          "performance": {
-            "$ref": "#/components/schemas/CollectPerformance"
-          }
-        },
-        "additionalProperties": false
       }
     },
     "securitySchemes": {

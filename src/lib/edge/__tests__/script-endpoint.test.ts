@@ -251,7 +251,7 @@ describe("edge script endpoint", () => {
 
     await expect(response.text()).resolves.toContain('full:"site-1",false');
     expect(response.headers.get("cache-control")).toBe(
-      "public, max-age=3600, s-maxage=3600",
+      "public, max-age=600, s-maxage=600",
     );
   });
 

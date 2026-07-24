@@ -19,7 +19,7 @@ const TEXT_HEADERS = {
 
 const SECURITY_TXT = `Contact: mailto:contact@insightflare.net
 Expires: 2027-06-25T00:00:00.000Z
-Preferred-Languages: en, zh
+Preferred-Languages: en, zh, ja
 Acknowledgments: https://github.com/RavelloH/InsightFlare
 Policy: https://github.com/RavelloH/InsightFlare/blob/main/SECURITY.md
 `;

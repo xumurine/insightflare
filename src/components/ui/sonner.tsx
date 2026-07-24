@@ -1,6 +1,3 @@
-"use client";
-
-import { useTheme } from "next-themes";
 import {
   RiCheckboxCircleLine,
   RiCloseCircleLine,
@@ -10,6 +7,7 @@ import {
 } from "@remixicon/react";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
+import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 
 const TOAST_LAYER_Z_INDEX = 2147483647;

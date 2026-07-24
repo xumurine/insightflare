@@ -1,5 +1,3 @@
-"use client";
-
 import { useMemo } from "react";
 import { Icon } from "@iconify/react";
 
@@ -72,7 +70,10 @@ interface AsyncDimensionBreakdownCardProps<T extends string> {
   locale: Locale;
   messages: AppMessages;
   tabs: NonEmptyArray<AsyncDimensionBreakdownTab<T>>;
-  loadRows?: (tab: T) => Promise<AsyncDimensionBreakdownRow[]>;
+  loadRows?: (
+    tab: T,
+    signal?: AbortSignal,
+  ) => Promise<AsyncDimensionBreakdownRow[]>;
   rowsByTab?: Partial<Record<T, readonly AsyncDimensionBreakdownRow[] | null>>;
   loadingByTab?: Partial<Record<T, boolean>>;
   requestKey: string;
@@ -263,16 +264,20 @@ export function AsyncDimensionBreakdownCard<T extends string>({
       requestKey={requestKey}
       rowsByTab={rowsByTab}
       loadingByTab={loadingByTab}
-      loadRows={loadRows ? (tab) => loadRows(tab) : undefined}
+      loadRows={loadRows ? (tab, signal) => loadRows(tab, signal) : undefined}
       normalizeRows={normalizeRows}
-      renderLabel={(row) => (
-        <AsyncDimensionRowLabel
-          locale={locale}
-          row={row}
-          emptyLabel={resolvedEmptyLabel}
-        />
-      )}
-      getRowSearchText={(row) => row.label}
+      rowAdapter={{
+        renderLabel: (row) => (
+          <AsyncDimensionRowLabel
+            locale={locale}
+            row={row}
+            emptyLabel={resolvedEmptyLabel}
+          />
+        ),
+        getSearchText: (row) => row.label,
+        getExportLabel: (row) => row.label,
+        getClassName: () => "hover:brightness-95",
+      }}
       compareRows={(left, right, { sort }) => {
         const primary =
           (left[sort.key] - right[sort.key]) *
@@ -295,7 +300,9 @@ export function AsyncDimensionBreakdownCard<T extends string>({
             tab: tab.label,
           }),
       }}
-      getRowClassName={() => "hover:brightness-95"}
+      export={{
+        labels: messages.common.tableExport,
+      }}
     />
   );
 }

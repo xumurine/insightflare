@@ -5,9 +5,11 @@ import {
   canManageTeam,
   canReadSite,
   canReadTeam,
+  teamById,
+  teamMembershipAccess,
   toSlug,
 } from "./admin-access";
-import { requireActor } from "./admin-auth";
+import { type Actor, requireActor } from "./admin-auth";
 import {
   bad,
   bool,
@@ -80,6 +82,23 @@ export async function createSiteWithDefaultSettings(
   return siteId;
 }
 
+async function filterReadableSitesForActor<T extends { id: string }>(
+  env: Env,
+  actor: Actor,
+  teamId: string,
+  sites: T[],
+): Promise<T[]> {
+  if (actor.isAdmin) return sites;
+  const team = await teamById(env, teamId);
+  if (team?.ownerUserId === actor.user.id) return sites;
+  const membership = await teamMembershipAccess(env, teamId, actor.user.id);
+  if (!membership) return [];
+  if (membership.role === "owner" || membership.role === "admin") return sites;
+  if (membership.siteIds.length === 0) return sites;
+  const allowed = new Set(membership.siteIds);
+  return sites.filter((site) => allowed.has(site.id));
+}
+
 export async function deleteSiteData(env: Env, siteId: string): Promise<void> {
   await env.DB.prepare("DELETE FROM configs WHERE config_key=?")
     .bind(`site:${siteId}`)
@@ -137,8 +156,20 @@ export async function handleSitesAdmin(
       "SELECT id,team_id AS teamId,name,domain,public_enabled AS publicEnabled,public_slug AS publicSlug,created_at AS createdAt,updated_at AS updatedAt FROM sites WHERE team_id=? ORDER BY created_at DESC",
     )
       .bind(teamId)
-      .all<Record<string, unknown>>();
-    return jsonResponseFor(req, { ok: true, data: rows.results });
+      .all<{
+        id: string;
+        teamId: string;
+        name: string;
+        domain: string;
+        publicEnabled: number;
+        publicSlug: string | null;
+        createdAt: number;
+        updatedAt: number;
+      }>();
+    return jsonResponseFor(req, {
+      ok: true,
+      data: await filterReadableSitesForActor(env, a, teamId, rows.results),
+    });
   }
   if (req.method === "POST") {
     const body = await parseJson(req);

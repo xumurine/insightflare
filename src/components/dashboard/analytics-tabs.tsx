@@ -1,5 +1,3 @@
-"use client";
-
 import {
   useCallback,
   useEffect,
@@ -8,8 +6,6 @@ import {
   useRef,
   useState,
 } from "react";
-import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
 import {
   RiComputerLine,
   RiDashboardLine,
@@ -36,6 +32,8 @@ import {
   prepareNativeScrollbarHost,
   useNativeScrollbars,
 } from "@/components/ui/overlay-scrollbar";
+import Link from "@/lib/router";
+import { usePathname, useSearchParams } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 type AnalyticsTabKey =

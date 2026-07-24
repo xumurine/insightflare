@@ -1,13 +1,11 @@
-"use client";
-
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import {
   RiArrowDownLine,
   RiArrowRightSLine,
   RiArrowUpLine,
   RiRefreshLine,
 } from "@remixicon/react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -34,17 +32,10 @@ import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
 import { decodeUrlDisplayValue } from "@/lib/dashboard/url-display";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import Link from "@/lib/router";
 
 const PAGE_CARD_PAGE_SIZE = 12;
 const PAGE_CARD_CHART_MAX_POINTS = 36;
-
-interface PagesMeta {
-  page: number;
-  pageSize: number;
-  returned: number;
-  hasMore: boolean;
-  nextPage: number | null;
-}
 
 interface PagesClientPageProps {
   locale: Locale;
@@ -52,14 +43,6 @@ interface PagesClientPageProps {
   siteId: string;
   pathname: string;
 }
-
-const INITIAL_META: PagesMeta = {
-  page: 1,
-  pageSize: PAGE_CARD_PAGE_SIZE,
-  returned: 0,
-  hasMore: false,
-  nextPage: null,
-};
 
 function formatChangeRate(value: number | null): string | null {
   if (value === null) return null;
@@ -265,20 +248,8 @@ export function PagesClientPage({
     filters: DashboardFilters;
     window: TimeWindow;
   };
-  const [items, setItems] = useState<PagesDashboardRow[]>([]);
-  const [meta, setMeta] = useState<PagesMeta>(INITIAL_META);
-  const [loadingInitial, setLoadingInitial] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [appendError, setAppendError] = useState<string | null>(null);
   const [sentinelNode, setSentinelNode] = useState<HTMLDivElement | null>(null);
-  const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
-  const requestKey = useMemo(
-    () =>
-      [siteId, window.from, window.to, window.interval, filtersKey].join(":"),
-    [siteId, window.from, window.to, window.interval, filtersKey],
-  );
   const pagesPerSessionFormatter = useMemo(
     () =>
       new Intl.NumberFormat(intlLocale(locale), {
@@ -286,76 +257,51 @@ export function PagesClientPage({
       }),
     [locale],
   );
-
-  const loadPage = useEffectEvent(
-    async (page: number, mode: "replace" | "append") => {
-      const capturedRequestKey = latestRequestKeyRef.current;
-
-      if (mode === "replace") {
-        setLoadingInitial(true);
-        setError(null);
-        setAppendError(null);
-      } else {
-        setLoadingMore(true);
-        setAppendError(null);
-      }
-
-      try {
-        const payload = await fetchPagesDashboard(siteId, window, filters, {
-          page,
-          pageSize: PAGE_CARD_PAGE_SIZE,
-        });
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-
-        setItems((current) =>
-          mode === "append" ? [...current, ...payload.data] : payload.data,
-        );
-        setMeta(payload.meta);
-        setError(null);
-        setAppendError(null);
-      } catch {
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        if (mode === "replace") {
-          setItems([]);
-          setMeta(INITIAL_META);
-          setError(messages.pages.loadError);
-          setAppendError(null);
-        } else {
-          setAppendError(messages.pages.loadMoreError);
-        }
-      } finally {
-        if (latestRequestKeyRef.current === capturedRequestKey) {
-          if (mode === "replace") {
-            setLoadingInitial(false);
-          } else {
-            setLoadingMore(false);
-          }
-        }
-      }
-    },
-  );
-
-  const loadNextPage = useEffectEvent(() => {
-    if (
-      loadingInitial ||
-      loadingMore ||
-      appendError !== null ||
-      !meta.hasMore ||
-      meta.nextPage === null
-    ) {
-      return;
-    }
-    void loadPage(meta.nextPage, "append");
+  const {
+    data,
+    error: queryError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchNextPageError,
+    isFetchingNextPage,
+    isPending,
+  } = useInfiniteQuery({
+    queryKey: [
+      "dashboard",
+      "pages",
+      siteId,
+      window.from,
+      window.to,
+      window.interval,
+      window.timeZone,
+      filtersKey,
+    ],
+    queryFn: ({ pageParam, signal }) =>
+      fetchPagesDashboard(siteId, window, filters, {
+        page: pageParam,
+        pageSize: PAGE_CARD_PAGE_SIZE,
+        signal,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.meta.hasMore ? lastPage.meta.nextPage : undefined,
+    enabled: typeof window !== "undefined",
   });
-
-  useEffect(() => {
-    latestRequestKeyRef.current = requestKey;
-    setItems([]);
-    setMeta(INITIAL_META);
-    setError(null);
-    setAppendError(null);
-    void loadPage(1, "replace");
-  }, [requestKey]);
+  const items = useMemo(
+    () => data?.pages.flatMap((page) => page.data) ?? [],
+    [data?.pages],
+  );
+  const loadingInitial = isPending;
+  const loadingMore = isFetchingNextPage;
+  const error =
+    queryError && items.length === 0 ? messages.pages.loadError : null;
+  const appendError = isFetchNextPageError
+    ? messages.pages.loadMoreError
+    : null;
+  const loadNextPage = () => {
+    if (loadingInitial || loadingMore || appendError || !hasNextPage) return;
+    void fetchNextPage();
+  };
 
   useEffect(() => {
     const target = sentinelNode;
@@ -363,9 +309,9 @@ export function PagesClientPage({
       !target ||
       loadingInitial ||
       loadingMore ||
-      appendError !== null ||
+      appendError ||
       error !== null ||
-      !meta.hasMore ||
+      !hasNextPage ||
       typeof IntersectionObserver === "undefined"
     ) {
       return;
@@ -399,16 +345,16 @@ export function PagesClientPage({
     };
   }, [
     appendError,
+    fetchNextPage,
     error,
+    hasNextPage,
     loadingInitial,
     loadingMore,
-    meta.hasMore,
-    meta.nextPage,
     sentinelNode,
   ]);
 
   const shouldShowLoadMoreSkeletons =
-    !loadingInitial && !error && items.length > 0 && meta.hasMore;
+    !loadingInitial && !error && items.length > 0 && hasNextPage;
   const contentStateKey = loadingInitial
     ? "loading"
     : error
@@ -478,7 +424,7 @@ export function PagesClientPage({
                 {shouldShowLoadMoreSkeletons
                   ? Array.from({ length: 2 }, (_, index) => (
                       <div
-                        key={`append-skeleton-${meta.nextPage ?? "pending"}-${index}`}
+                        key={`append-skeleton-${index}`}
                         ref={index === 0 ? setSentinelNode : null}
                       >
                         <PageTrafficCardSkeleton />
@@ -487,14 +433,14 @@ export function PagesClientPage({
                   : null}
               </section>
 
-              {appendError && meta.nextPage !== null ? (
+              {appendError ? (
                 <div className="flex justify-center">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      void loadPage(meta.nextPage!, "append");
+                      void fetchNextPage();
                     }}
                   >
                     <RiRefreshLine className="size-4" />

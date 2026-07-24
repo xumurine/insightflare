@@ -1,7 +1,6 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { RiPulseLine } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import {
   PolarAngleAxis,
   PolarGrid,
@@ -24,7 +23,7 @@ import {
   percentFormat,
 } from "@/lib/dashboard/format";
 import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
-import type { BrowserRadarData, BrowserRadarItem } from "@/lib/edge-client";
+import type { BrowserRadarItem } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
@@ -51,6 +50,11 @@ const METRIC_KEYS: RadarMetricKey[] = [
   "frequency",
   "traffic",
 ];
+
+function emptyRadarUnlessAborted(error: unknown): BrowserRadarItem[] {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return [];
+}
 
 function formatRawMetric(
   locale: Locale,
@@ -177,25 +181,26 @@ export function BrowserPerformanceRadarCard({
   window: tw,
   filters,
 }: BrowserPerformanceRadarCardProps) {
-  const [data, setData] = useState<BrowserRadarItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    fetchBrowserRadar(siteId, tw, filters)
-      .catch(() => ({ ok: true, data: [] }) as BrowserRadarData)
-      .then((res) => {
-        if (!active) return;
-        setData(Array.isArray(res.data) ? res.data : []);
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [siteId, tw.from, tw.to, filters]);
+  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const { data: response, isFetching: loading } = useQuery({
+    queryKey: [
+      "dashboard",
+      "browser-radar",
+      siteId,
+      tw.from,
+      tw.to,
+      tw.timeZone,
+      filtersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchBrowserRadar(siteId, tw, filters, { signal })
+        .then((result) =>
+          Array.isArray(result.data) ? result.data : ([] as BrowserRadarItem[]),
+        )
+        .catch(emptyRadarUnlessAborted),
+    enabled: typeof window !== "undefined",
+  });
+  const data = response ?? [];
 
   const metricLabels = useMemo(
     () => ({

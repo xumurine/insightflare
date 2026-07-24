@@ -46,6 +46,21 @@ import type {
 import { fetchPrivateJson, fetchPrivateJsonMutate } from "./client-request";
 import { withFilters } from "./client-utils";
 
+function emptySessionsUnlessAborted(error: unknown): SessionsData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptySessions();
+}
+
+function emptyVisitorsUnlessAborted(error: unknown): VisitorsData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyVisitors();
+}
+
+function fallbackUnlessAborted<T>(error: unknown, fallback: () => T): T {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return fallback();
+}
+
 export async function fetchOverview(
   siteId: string,
   window: TimeWindow,
@@ -53,6 +68,7 @@ export async function fetchOverview(
   options?: {
     includeChange?: boolean;
     includeDetail?: boolean;
+    signal?: AbortSignal;
   },
 ): Promise<OverviewData> {
   return fetchPrivateJson<OverviewData>(
@@ -70,6 +86,7 @@ export async function fetchOverview(
       },
       filters,
     ),
+    { signal: options?.signal },
   );
 }
 
@@ -77,6 +94,7 @@ export async function fetchTrend(
   siteId: string,
   window: TimeWindow,
   filters?: DashboardFilters,
+  options?: { signal?: AbortSignal },
 ): Promise<TrendData> {
   return fetchPrivateJson<TrendData>(
     "/api/private/trend",
@@ -90,6 +108,7 @@ export async function fetchTrend(
       },
       filters,
     ),
+    { signal: options?.signal },
   );
 }
 
@@ -125,6 +144,7 @@ export async function fetchVisitors(
     sortBy?: VisitorListSortKey;
     sortDir?: SortDirection;
     search?: string;
+    signal?: AbortSignal;
   },
 ): Promise<VisitorsData> {
   const params: Record<string, string | number> = {
@@ -144,15 +164,18 @@ export async function fetchVisitors(
   if (options?.sortDir) params.sortDir = options.sortDir;
   const search = options?.search?.trim();
   if (search) params.search = search;
-  return fetchPrivateJson<VisitorsData>(
-    "/api/private/visitors",
-    withFilters(
-      {
-        ...params,
-      },
-      filters,
-    ),
-  ).catch(emptyVisitors);
+  const requestParams = withFilters(
+    {
+      ...params,
+    },
+    filters,
+  );
+  const request = options?.signal
+    ? fetchPrivateJson<VisitorsData>("/api/private/visitors", requestParams, {
+        signal: options.signal,
+      })
+    : fetchPrivateJson<VisitorsData>("/api/private/visitors", requestParams);
+  return request.catch(emptyVisitorsUnlessAborted);
 }
 
 export async function fetchVisitorDetail(
@@ -187,6 +210,7 @@ export async function fetchSessions(
     sortBy?: SessionListSortKey;
     sortDir?: SortDirection;
     search?: string;
+    signal?: AbortSignal;
   },
 ): Promise<SessionsData> {
   const params: Record<string, string | number> = {
@@ -206,15 +230,18 @@ export async function fetchSessions(
   if (options?.sortDir) params.sortDir = options.sortDir;
   const search = options?.search?.trim();
   if (search) params.search = search;
-  return fetchPrivateJson<SessionsData>(
-    "/api/private/sessions",
-    withFilters(
-      {
-        ...params,
-      },
-      filters,
-    ),
-  ).catch(emptySessions);
+  const requestParams = withFilters(
+    {
+      ...params,
+    },
+    filters,
+  );
+  const request = options?.signal
+    ? fetchPrivateJson<SessionsData>("/api/private/sessions", requestParams, {
+        signal: options.signal,
+      })
+    : fetchPrivateJson<SessionsData>("/api/private/sessions", requestParams);
+  return request.catch(emptySessionsUnlessAborted);
 }
 
 export async function fetchSessionDetail(
@@ -238,10 +265,19 @@ export async function fetchSessionDetail(
   );
 }
 
-export async function fetchFunnels(siteId: string): Promise<FunnelListData> {
-  return fetchPrivateJson<FunnelListData>("/api/private/funnels", {
-    siteId,
-  });
+export async function fetchFunnels(
+  siteId: string,
+  options?: { signal?: AbortSignal },
+): Promise<FunnelListData> {
+  return options?.signal
+    ? fetchPrivateJson<FunnelListData>(
+        "/api/private/funnels",
+        { siteId },
+        {
+          signal: options.signal,
+        },
+      )
+    : fetchPrivateJson<FunnelListData>("/api/private/funnels", { siteId });
 }
 
 export async function fetchFunnelDetail(
@@ -249,6 +285,7 @@ export async function fetchFunnelDetail(
   funnelId: string,
   window: TimeWindow,
   filters?: DashboardFilters,
+  options?: { signal?: AbortSignal },
 ): Promise<FunnelDetailData> {
   const normalizedFunnelId = funnelId.trim();
   if (!normalizedFunnelId) {
@@ -266,7 +303,7 @@ export async function fetchFunnelDetail(
       },
       filters,
     ),
-    { dedupe: false },
+    { dedupe: false, signal: options?.signal },
   );
 }
 
@@ -298,19 +335,30 @@ export async function fetchEventsSummary(
   siteId: string,
   window: TimeWindow,
   filters?: DashboardFilters,
+  options?: { signal?: AbortSignal },
 ): Promise<EventsSummaryData> {
-  return fetchPrivateJson<EventsSummaryData>(
-    "/api/private/events-summary",
-    withFilters(
-      {
-        siteId,
-        from: window.from,
-        to: window.to,
-        timeZone: window.timeZone,
-      },
-      filters,
-    ),
-  ).catch(emptyEventsSummary);
+  const requestParams = withFilters(
+    {
+      siteId,
+      from: window.from,
+      to: window.to,
+      timeZone: window.timeZone,
+    },
+    filters,
+  );
+  const request = options?.signal
+    ? fetchPrivateJson<EventsSummaryData>(
+        "/api/private/events-summary",
+        requestParams,
+        { signal: options.signal },
+      )
+    : fetchPrivateJson<EventsSummaryData>(
+        "/api/private/events-summary",
+        requestParams,
+      );
+  return request.catch((error) =>
+    fallbackUnlessAborted(error, emptyEventsSummary),
+  );
 }
 
 export async function fetchEventsTrend(
@@ -320,6 +368,7 @@ export async function fetchEventsTrend(
   options?: {
     limit?: number;
     eventName?: string;
+    signal?: AbortSignal;
   },
 ): Promise<EventsTrendData> {
   const params: Record<string, string | number> = {
@@ -332,10 +381,20 @@ export async function fetchEventsTrend(
   };
   const eventName = options?.eventName?.trim();
   if (eventName) params.eventName = eventName;
-  return fetchPrivateJson<EventsTrendData>(
-    "/api/private/events-trend",
-    withFilters(params, filters),
-  ).catch(() => emptyEventsTrend(window.interval));
+  const requestParams = withFilters(params, filters);
+  const request = options?.signal
+    ? fetchPrivateJson<EventsTrendData>(
+        "/api/private/events-trend",
+        requestParams,
+        { signal: options.signal },
+      )
+    : fetchPrivateJson<EventsTrendData>(
+        "/api/private/events-trend",
+        requestParams,
+      );
+  return request.catch((error) =>
+    fallbackUnlessAborted(error, () => emptyEventsTrend(window.interval)),
+  );
 }
 
 export async function fetchEventsRecords(
@@ -349,6 +408,7 @@ export async function fetchEventsRecords(
     sortDir?: SortDirection;
     search?: string;
     eventName?: string;
+    signal?: AbortSignal;
   },
 ): Promise<EventsRecordsData> {
   const pageSize = options?.pageSize ?? 80;
@@ -366,10 +426,20 @@ export async function fetchEventsRecords(
   if (search) params.search = search;
   const eventName = options?.eventName?.trim();
   if (eventName) params.eventName = eventName;
-  return fetchPrivateJson<EventsRecordsData>(
-    "/api/private/events-records",
-    withFilters(params, filters),
-  ).catch(() => emptyEventsRecords(pageSize));
+  const requestParams = withFilters(params, filters);
+  const request = options?.signal
+    ? fetchPrivateJson<EventsRecordsData>(
+        "/api/private/events-records",
+        requestParams,
+        { signal: options.signal },
+      )
+    : fetchPrivateJson<EventsRecordsData>(
+        "/api/private/events-records",
+        requestParams,
+      );
+  return request.catch((error) =>
+    fallbackUnlessAborted(error, () => emptyEventsRecords(pageSize)),
+  );
 }
 
 export async function fetchEventTypeDetail(
@@ -377,25 +447,38 @@ export async function fetchEventTypeDetail(
   window: TimeWindow,
   eventName: string,
   filters?: DashboardFilters,
+  options?: { signal?: AbortSignal },
 ): Promise<EventTypeDetailData> {
   const normalizedEventName = eventName.trim();
   if (!normalizedEventName) {
     return emptyEventTypeDetail("");
   }
-  return fetchPrivateJson<EventTypeDetailData>(
-    "/api/private/event-type-detail",
-    withFilters(
-      {
-        siteId,
-        from: window.from,
-        to: window.to,
-        timeZone: window.timeZone,
-        interval: window.interval,
-        eventName: normalizedEventName,
-      },
-      filters,
+  const requestParams = withFilters(
+    {
+      siteId,
+      from: window.from,
+      to: window.to,
+      timeZone: window.timeZone,
+      interval: window.interval,
+      eventName: normalizedEventName,
+    },
+    filters,
+  );
+  const request = options?.signal
+    ? fetchPrivateJson<EventTypeDetailData>(
+        "/api/private/event-type-detail",
+        requestParams,
+        { signal: options.signal },
+      )
+    : fetchPrivateJson<EventTypeDetailData>(
+        "/api/private/event-type-detail",
+        requestParams,
+      );
+  return request.catch((error) =>
+    fallbackUnlessAborted(error, () =>
+      emptyEventTypeDetail(normalizedEventName),
     ),
-  ).catch(() => emptyEventTypeDetail(normalizedEventName));
+  );
 }
 
 export async function fetchEventTypeFieldValues(
@@ -407,6 +490,7 @@ export async function fetchEventTypeFieldValues(
   filters?: DashboardFilters,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<EventFieldValuesData> {
   const normalizedEventName = eventName.trim();
@@ -429,13 +513,19 @@ export async function fetchEventTypeFieldValues(
       },
       filters,
     ),
-  ).catch(() => emptyEventFieldValues(normalizedFieldPath, fieldValueType));
+    { signal: options?.signal },
+  ).catch((error) =>
+    fallbackUnlessAborted(error, () =>
+      emptyEventFieldValues(normalizedFieldPath, fieldValueType),
+    ),
+  );
 }
 
 export async function fetchEventRecordDetail(
   siteId: string,
   eventId: string,
   window?: TimeWindow,
+  options?: { signal?: AbortSignal },
 ): Promise<EventRecordDetailData> {
   const normalizedEventId = eventId.trim();
   if (!normalizedEventId) return emptyEventRecordDetail();
@@ -446,27 +536,39 @@ export async function fetchEventRecordDetail(
       eventId: normalizedEventId,
       ...(window ? { from: window.from, to: window.to } : {}),
     },
-  ).catch(emptyEventRecordDetail);
+    { signal: options?.signal },
+  ).catch((error) => fallbackUnlessAborted(error, emptyEventRecordDetail));
 }
 
 export async function fetchPerformance(
   siteId: string,
   window: TimeWindow,
   filters?: DashboardFilters,
+  options?: { signal?: AbortSignal },
 ): Promise<PerformanceData> {
-  return fetchPrivateJson<PerformanceData>(
-    "/api/private/performance",
-    withFilters(
-      {
-        siteId,
-        from: window.from,
-        to: window.to,
-        timeZone: window.timeZone,
-        interval: window.interval,
-      },
-      filters,
-    ),
-  ).catch(() => emptyPerformance(window.interval));
+  const requestParams = withFilters(
+    {
+      siteId,
+      from: window.from,
+      to: window.to,
+      timeZone: window.timeZone,
+      interval: window.interval,
+    },
+    filters,
+  );
+  const request = options?.signal
+    ? fetchPrivateJson<PerformanceData>(
+        "/api/private/performance",
+        requestParams,
+        { signal: options.signal },
+      )
+    : fetchPrivateJson<PerformanceData>(
+        "/api/private/performance",
+        requestParams,
+      );
+  return request.catch((error) =>
+    fallbackUnlessAborted(error, () => emptyPerformance(window.interval)),
+  );
 }
 
 export async function fetchRetention(
@@ -475,20 +577,23 @@ export async function fetchRetention(
   filters?: DashboardFilters,
   options?: {
     granularity?: RetentionGranularity;
+    signal?: AbortSignal;
   },
 ): Promise<RetentionData> {
   const granularity = options?.granularity ?? "week";
-  return fetchPrivateJson<RetentionData>(
-    "/api/private/retention",
-    withFilters(
-      {
-        siteId,
-        from: window.from,
-        to: window.to,
-        timeZone: window.timeZone,
-        granularity,
-      },
-      filters,
-    ),
+  const requestParams = withFilters(
+    {
+      siteId,
+      from: window.from,
+      to: window.to,
+      timeZone: window.timeZone,
+      granularity,
+    },
+    filters,
   );
+  return options?.signal
+    ? fetchPrivateJson<RetentionData>("/api/private/retention", requestParams, {
+        signal: options.signal,
+      })
+    : fetchPrivateJson<RetentionData>("/api/private/retention", requestParams);
 }

@@ -1,5 +1,3 @@
-"use client";
-
 import { RiFileCopyLine } from "@remixicon/react";
 import { toast } from "sonner";
 

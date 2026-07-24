@@ -1,5 +1,3 @@
-"use client";
-
 import { type ReactNode, useState } from "react";
 import { RiArrowDownSLine, RiFileCopyLine } from "@remixicon/react";
 import { toast } from "sonner";

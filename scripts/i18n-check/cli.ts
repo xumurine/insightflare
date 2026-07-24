@@ -11,7 +11,7 @@ import {
   formatUsageRefs,
 } from "./diagnostics";
 import { rlog } from "./logger";
-import { EN_PATH, TSCONFIG_PATH, ZH_PATH } from "./paths";
+import { LOCALE_PATHS, LOCALES, TSCONFIG_PATH } from "./paths";
 import { pruneUnusedKeys } from "./prune";
 import type { NodeInfo } from "./types";
 import { collectTypePaths, parseTsConfig } from "./typescript";
@@ -21,19 +21,35 @@ import { collectNodes, readYaml } from "./yaml";
 export async function runCli(
   args: string[] = process.argv.slice(2),
 ): Promise<void> {
-  rlog.info("Loading translation files (en.yaml, zh.yaml)...");
-  const [enYaml, zhYaml] = await Promise.all([
-    readYaml(EN_PATH),
-    readYaml(ZH_PATH),
-  ]);
+  rlog.info(
+    `Loading translation files (${LOCALES.map((locale) => `${locale}.yaml`).join(", ")})...`,
+  );
+  const yamlByLocale = Object.fromEntries(
+    await Promise.all(
+      LOCALES.map(
+        async (locale) =>
+          [locale, await readYaml(LOCALE_PATHS[locale])] as const,
+      ),
+    ),
+  );
 
   rlog.info("Parsing translation keys and building tree maps...");
-  const enNodes = new Map<string, NodeInfo>();
-  const zhNodes = new Map<string, NodeInfo>();
-  const enLeaves = new Map<string, string>();
-  const zhLeaves = new Map<string, string>();
-  collectNodes(enYaml, [], enNodes, enLeaves);
-  collectNodes(zhYaml, [], zhNodes, zhLeaves);
+  const nodesByLocale = Object.fromEntries(
+    LOCALES.map((locale) => [locale, new Map<string, NodeInfo>()]),
+  ) as Record<(typeof LOCALES)[number], Map<string, NodeInfo>>;
+  const leavesByLocale = Object.fromEntries(
+    LOCALES.map((locale) => [locale, new Map<string, string>()]),
+  ) as Record<(typeof LOCALES)[number], Map<string, string>>;
+  for (const locale of LOCALES) {
+    collectNodes(
+      yamlByLocale[locale],
+      [],
+      nodesByLocale[locale],
+      leavesByLocale[locale],
+    );
+  }
+  const enNodes = nodesByLocale.en;
+  const enLeaves = leavesByLocale.en;
 
   rlog.info("Parsing tsconfig.json...");
   const config = parseTsConfig(TSCONFIG_PATH);
@@ -69,20 +85,49 @@ export async function runCli(
 
   rlog.info("Running diagnostics validation...");
 
-  const shapeDiff = compareNodeShapes(enNodes, zhNodes);
-  const placeholderMismatches = comparePlaceholders(enLeaves, zhLeaves);
+  const shapeDiffs = Object.fromEntries(
+    LOCALES.filter((locale) => locale !== "en").map((locale) => [
+      locale,
+      compareNodeShapes(enNodes, nodesByLocale[locale]),
+    ]),
+  );
+  const placeholderMismatchesByLocale = Object.fromEntries(
+    LOCALES.filter((locale) => locale !== "en").map((locale) => [
+      locale,
+      comparePlaceholders(enLeaves, leavesByLocale[locale]),
+    ]),
+  );
   const usedButMissingInEn = findUsedButMissing(usedPaths, enNodes);
-  const usedButMissingInZh = findUsedButMissing(usedPaths, zhNodes);
-  const unusedEnKeys = findUnusedLeaves(enLeaves, usedPaths);
-  const unusedZhKeys = findUnusedLeaves(zhLeaves, usedPaths);
+  const usedButMissingByLocale = Object.fromEntries(
+    LOCALES.map((locale) => [
+      locale,
+      findUsedButMissing(usedPaths, nodesByLocale[locale]),
+    ]),
+  );
+  const unusedKeysByLocale = Object.fromEntries(
+    LOCALES.map((locale) => [
+      locale,
+      findUnusedLeaves(leavesByLocale[locale], usedPaths),
+    ]),
+  );
 
   const errors =
-    shapeDiff.missingOnRight.length +
-    shapeDiff.missingOnLeft.length +
-    shapeDiff.kindMismatch.length +
-    placeholderMismatches.length +
+    Object.values(shapeDiffs).reduce(
+      (total, shapeDiff) =>
+        total +
+        shapeDiff.missingOnRight.length +
+        shapeDiff.missingOnLeft.length +
+        shapeDiff.kindMismatch.length,
+      0,
+    ) +
+    Object.values(placeholderMismatchesByLocale).reduce(
+      (total, mismatches) => total + mismatches.length,
+      0,
+    ) +
     usedButMissingInEn.length +
-    usedButMissingInZh.length;
+    Object.entries(usedButMissingByLocale)
+      .filter(([locale]) => locale !== "en")
+      .reduce((total, [, missing]) => total + missing.length, 0);
 
   if (errors > 0) {
     rlog.error("I18n Check Failed!");
@@ -90,8 +135,9 @@ export async function runCli(
     rlog.success("I18n Check Passed Successfully!");
   }
 
-  rlog.log(`- en leaf keys: ${enLeaves.size}`);
-  rlog.log(`- zh leaf keys: ${zhLeaves.size}`);
+  for (const locale of LOCALES) {
+    rlog.log(`- ${locale} leaf keys: ${leavesByLocale[locale].size}`);
+  }
   rlog.log(`- referenced key paths: ${usedPaths.length}`);
   if (errors > 0) {
     rlog.error(`- structural errors: ${errors}`);
@@ -99,88 +145,83 @@ export async function runCli(
     rlog.success(`- structural errors: ${errors}`);
   }
 
-  if (unusedEnKeys.length > 0) {
-    rlog.warn(`- unused en leaf keys: ${unusedEnKeys.length}`);
-  } else {
-    rlog.log(`- unused en leaf keys: ${unusedEnKeys.length}`);
-  }
-
-  if (unusedZhKeys.length > 0) {
-    rlog.warn(`- unused zh leaf keys: ${unusedZhKeys.length}`);
-  } else {
-    rlog.log(`- unused zh leaf keys: ${unusedZhKeys.length}`);
-  }
-
-  if (shapeDiff.missingOnRight.length > 0) {
-    rlog.error("\nMissing In zh.yaml");
-    for (const key of shapeDiff.missingOnRight) {
-      rlog.warn(`- ${key}`);
+  for (const locale of LOCALES) {
+    const unusedKeys = unusedKeysByLocale[locale];
+    if (unusedKeys.length > 0) {
+      rlog.warn(`- unused ${locale} leaf keys: ${unusedKeys.length}`);
+    } else {
+      rlog.log(`- unused ${locale} leaf keys: ${unusedKeys.length}`);
     }
   }
 
-  if (shapeDiff.missingOnLeft.length > 0) {
-    rlog.error("\nMissing In en.yaml");
-    for (const key of shapeDiff.missingOnLeft) {
-      rlog.warn(`- ${key}`);
+  for (const [locale, shapeDiff] of Object.entries(shapeDiffs)) {
+    if (shapeDiff.missingOnRight.length > 0) {
+      rlog.error(`\nMissing In ${locale}.yaml`);
+      for (const key of shapeDiff.missingOnRight) {
+        rlog.warn(`- ${key}`);
+      }
+    }
+
+    if (shapeDiff.missingOnLeft.length > 0) {
+      rlog.error(`\nExtra Keys In ${locale}.yaml`);
+      for (const key of shapeDiff.missingOnLeft) {
+        rlog.warn(`- ${key}`);
+      }
+    }
+
+    if (shapeDiff.kindMismatch.length > 0) {
+      rlog.error(`\nType Mismatches In ${locale}.yaml`);
+      for (const key of shapeDiff.kindMismatch) {
+        rlog.warn(`- ${key}`);
+      }
     }
   }
 
-  if (shapeDiff.kindMismatch.length > 0) {
-    rlog.error("\nType Mismatches");
-    for (const key of shapeDiff.kindMismatch) {
-      rlog.warn(`- ${key}`);
+  for (const [locale, placeholderMismatches] of Object.entries(
+    placeholderMismatchesByLocale,
+  )) {
+    if (placeholderMismatches.length > 0) {
+      rlog.error(`\nPlaceholder Mismatches In ${locale}.yaml`);
+      for (const mismatch of placeholderMismatches) {
+        rlog.warn(`- ${mismatch.key}`);
+        rlog.log(`  en: ${mismatch.en.join(", ") || "(none)"}`);
+        rlog.log(`  ${locale}: ${mismatch.zh.join(", ") || "(none)"}`);
+      }
     }
   }
 
-  if (placeholderMismatches.length > 0) {
-    rlog.error("\nPlaceholder Mismatches");
-    for (const mismatch of placeholderMismatches) {
-      rlog.warn(`- ${mismatch.key}`);
-      rlog.log(`  en: ${mismatch.en.join(", ") || "(none)"}`);
-      rlog.log(`  zh: ${mismatch.zh.join(", ") || "(none)"}`);
+  for (const locale of LOCALES) {
+    const usedButMissing = usedButMissingByLocale[locale];
+    if (usedButMissing.length > 0) {
+      rlog.error(`\nUsed But Missing In ${locale}.yaml`);
+      for (const key of usedButMissing) {
+        rlog.warn(`- ${key} (${formatUsageRefs(usageMap.get(key))})`);
+      }
     }
   }
 
-  if (usedButMissingInEn.length > 0) {
-    rlog.error("\nUsed But Missing In en.yaml");
-    for (const key of usedButMissingInEn) {
-      rlog.warn(`- ${key} (${formatUsageRefs(usageMap.get(key))})`);
-    }
-  }
-
-  if (usedButMissingInZh.length > 0) {
-    rlog.error("\nUsed But Missing In zh.yaml");
-    for (const key of usedButMissingInZh) {
-      rlog.warn(`- ${key} (${formatUsageRefs(usageMap.get(key))})`);
-    }
-  }
-
-  if (unusedEnKeys.length > 0) {
-    rlog.file.info("\nUnused en.yaml Keys");
-    rlog.screen.info("Writing unused en.yaml keys to local log file...");
+  for (const locale of LOCALES) {
+    const unusedKeys = unusedKeysByLocale[locale];
+    if (unusedKeys.length === 0) continue;
+    rlog.file.info(`\nUnused ${locale}.yaml Keys`);
+    rlog.screen.info(`Writing unused ${locale}.yaml keys to local log file...`);
     let i = 0;
-    for (const key of unusedEnKeys) {
+    for (const key of unusedKeys) {
       rlog.file.info(`- ${key}`);
       i += 1;
-      rlog.progress(i, unusedEnKeys.length);
-    }
-  }
-
-  if (unusedZhKeys.length > 0) {
-    rlog.file.info("\nUnused zh.yaml Keys");
-    rlog.screen.info("Writing unused zh.yaml keys to local log file...");
-    let i = 0;
-    for (const key of unusedZhKeys) {
-      rlog.file.info(`- ${key}`);
-      i += 1;
-      rlog.progress(i, unusedZhKeys.length);
+      rlog.progress(i, unusedKeys.length);
     }
   }
 
   const isPruneMode = args.includes("--prune");
 
-  if (isPruneMode && (unusedEnKeys.length > 0 || unusedZhKeys.length > 0)) {
-    await pruneUnusedKeys(unusedEnKeys, unusedZhKeys);
+  if (
+    isPruneMode &&
+    Object.values(unusedKeysByLocale).some(
+      (unusedKeys) => unusedKeys.length > 0,
+    )
+  ) {
+    await pruneUnusedKeys(unusedKeysByLocale);
   }
 
   if (errors > 0) {

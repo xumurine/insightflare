@@ -1,7 +1,4 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import {
   RiArrowRightLine,
   RiBarChartBoxLine,
@@ -17,6 +14,7 @@ import {
   RiShareForwardLine,
   RiSpeedUpLine,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -63,6 +61,7 @@ import type { SiteData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
+import { useRouter } from "@/lib/router";
 import {
   DEFAULT_SITE_SCRIPT_SETTINGS,
   formatListInput,
@@ -148,7 +147,7 @@ async function postJson<T>(
   body: Record<string, unknown>,
   method: "POST" | "PATCH" = "POST",
 ): Promise<T> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     const result = handleDemoRequest({
       path: url.split("?")[0],
@@ -214,9 +213,6 @@ export function SettingsClientPage({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [currentSiteSlug, setCurrentSiteSlug] = useState(siteSlug);
   const [transferTeamId, setTransferTeamId] = useState(activeTeamId);
-  const [scriptSnippet, setScriptSnippet] = useState("");
-  const [loadingScript, setLoadingScript] = useState(true);
-  const [loadingSettings, setLoadingSettings] = useState(true);
   const [trackingStrength, setTrackingStrength] = useState<TrackingStrength>(
     DEFAULT_SITE_SCRIPT_SETTINGS.trackingStrength,
   );
@@ -246,6 +242,8 @@ export function SettingsClientPage({
     DEFAULT_SITE_SCRIPT_SETTINGS,
   );
   const [origin, setOrigin] = useState("");
+  const appliedConfigSiteIdRef = useRef<string | null>(null);
+  const appliedSnippetSiteIdRef = useRef<string | null>(null);
 
   const hasAutoTrackingChanges =
     autoTrackOutboundLinks !== persistedSettings.autoTrackOutboundLinks;
@@ -312,118 +310,105 @@ export function SettingsClientPage({
     setPathBlacklistInput(formatListInput(normalized.pathBlacklist));
   }
 
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    setLoadingSettings(true);
-
-    const loadConfig = async () => {
-      if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  const siteConfigQuery = useQuery({
+    queryKey: ["dashboard", "site-config", site.id],
+    queryFn: async ({ signal }) => {
+      if (import.meta.env.VITE_DEMO_MODE === "1") {
         const { handleDemoRequest } = await import("@/lib/realtime/mock");
         const result = handleDemoRequest({
           path: "/api/private/admin/site-config",
           params: { siteId: site.id },
         }) as SiteConfigPayload;
-        if (!active) return;
-        applyTrackerSettings(result.data ?? DEFAULT_SITE_SCRIPT_SETTINGS);
-        setLoadingSettings(false);
-        return;
+        return result.data ?? DEFAULT_SITE_SCRIPT_SETTINGS;
       }
 
-      fetch(
+      const response = await fetch(
         `/api/private/admin/site-config?siteId=${encodeURIComponent(site.id)}`,
         {
           method: "GET",
           credentials: "include",
           cache: "no-store",
+          signal,
         },
-      )
-        .then(async (response) => {
-          if (!response.ok) {
-            throw new Error("load_site_config_failed");
-          }
-          const payload = (await response.json()) as SiteConfigPayload;
-          if (!payload.ok) {
-            throw new Error("load_site_config_failed");
-          }
-          if (!active) return;
-          applyTrackerSettings(payload.data ?? DEFAULT_SITE_SCRIPT_SETTINGS);
-        })
-        .catch(() => {
-          if (!active) return;
-          applyTrackerSettings(DEFAULT_SITE_SCRIPT_SETTINGS);
-          toast.error(copy.toasts.settingsLoadFailed);
-        })
-        .finally(() => {
-          if (!active) return;
-          setLoadingSettings(false);
-        });
-    };
-
-    loadConfig();
-
-    return () => {
-      active = false;
-    };
-  }, [copy.toasts.settingsLoadFailed, site.id]);
-
-  useEffect(() => {
-    let active = true;
-    setLoadingScript(true);
-    setScriptSnippet("");
-
-    const loadSnippet = async () => {
-      if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+      );
+      const payload = (await response.json()) as SiteConfigPayload;
+      if (!response.ok || !payload.ok) {
+        throw new Error("load_site_config_failed");
+      }
+      return payload.data ?? DEFAULT_SITE_SCRIPT_SETTINGS;
+    },
+    enabled: typeof window !== "undefined",
+  });
+  const scriptSnippetQuery = useQuery({
+    queryKey: ["dashboard", "site-script-snippet", site.id],
+    queryFn: async ({ signal }) => {
+      if (import.meta.env.VITE_DEMO_MODE === "1") {
         const { handleDemoRequest } = await import("@/lib/realtime/mock");
         const result = handleDemoRequest({
           path: "/api/private/admin/script-snippet",
           params: { siteId: site.id },
         }) as ScriptSnippetPayload;
-        if (!active) return;
-        setScriptSnippet(result.data?.snippet || "");
-        setLoadingScript(false);
-        return;
+        return result.data?.snippet || "";
       }
 
-      fetch(
+      const response = await fetch(
         `/api/private/admin/script-snippet?siteId=${encodeURIComponent(site.id)}`,
         {
           method: "GET",
           credentials: "include",
           cache: "no-store",
+          signal,
         },
-      )
-        .then(async (response) => {
-          if (!response.ok) {
-            throw new Error("load_script_snippet_failed");
-          }
-          const payload = (await response.json()) as ScriptSnippetPayload;
-          if (!payload.ok || !payload.data?.snippet) {
-            throw new Error("load_script_snippet_failed");
-          }
-          if (!active) return;
-          setScriptSnippet(payload.data.snippet);
-        })
-        .catch(() => {
-          if (!active) return;
-          setScriptSnippet("");
-          toast.error(copy.toasts.scriptLoadFailed);
-        })
-        .finally(() => {
-          if (!active) return;
-          setLoadingScript(false);
-        });
-    };
+      );
+      const payload = (await response.json()) as ScriptSnippetPayload;
+      if (!response.ok || !payload.ok || !payload.data?.snippet) {
+        throw new Error("load_script_snippet_failed");
+      }
+      return payload.data.snippet;
+    },
+    enabled: typeof window !== "undefined",
+  });
+  const loadingSettings = siteConfigQuery.isPending;
+  const loadingScript = scriptSnippetQuery.isPending;
+  const scriptSnippet = scriptSnippetQuery.data ?? "";
 
-    loadSnippet();
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
 
-    return () => {
-      active = false;
-    };
-  }, [copy.toasts.scriptLoadFailed, site.id]);
+  useEffect(() => {
+    if (
+      siteConfigQuery.isPending ||
+      appliedConfigSiteIdRef.current === site.id
+    ) {
+      return;
+    }
+    applyTrackerSettings(siteConfigQuery.data ?? DEFAULT_SITE_SCRIPT_SETTINGS);
+    appliedConfigSiteIdRef.current = site.id;
+    if (siteConfigQuery.isError) toast.error(copy.toasts.settingsLoadFailed);
+  }, [
+    copy.toasts.settingsLoadFailed,
+    site.id,
+    siteConfigQuery.data,
+    siteConfigQuery.isError,
+    siteConfigQuery.isPending,
+  ]);
+
+  useEffect(() => {
+    if (
+      scriptSnippetQuery.isPending ||
+      appliedSnippetSiteIdRef.current === site.id
+    ) {
+      return;
+    }
+    appliedSnippetSiteIdRef.current = site.id;
+    if (scriptSnippetQuery.isError) toast.error(copy.toasts.scriptLoadFailed);
+  }, [
+    copy.toasts.scriptLoadFailed,
+    scriptSnippetQuery.isError,
+    scriptSnippetQuery.isPending,
+    site.id,
+  ]);
 
   async function handleSave() {
     if (name.trim().length < 2 || domain.trim().length < 3) {

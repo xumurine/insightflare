@@ -1,5 +1,3 @@
-"use client";
-
 export {
   DETAIL_QUERY_PARAM,
   DetailDrawer,

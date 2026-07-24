@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
 import {
   type RemixiconComponentType,
@@ -11,6 +9,7 @@ import {
   RiSpeedUpLine,
   RiTimeLine,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 
@@ -83,8 +82,9 @@ const LATENCY_SERIES_COLORS = {
 
 async function fetchSystemPerformance(
   minutes: SystemPerformanceWindowMinutes,
+  signal?: AbortSignal,
 ): Promise<SystemPerformanceData> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     return handleDemoRequest({
       path: "/api/private/admin/system-performance",
@@ -98,6 +98,7 @@ async function fetchSystemPerformance(
       method: "GET",
       credentials: "include",
       cache: "no-store",
+      signal,
     },
   );
   const payload = (await response.json()) as
@@ -113,8 +114,10 @@ async function fetchSystemPerformance(
   return payload;
 }
 
-async function fetchDoDiagnostic(): Promise<DoDiagnosticAggregate> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+async function fetchDoDiagnostic(
+  signal?: AbortSignal,
+): Promise<DoDiagnosticAggregate> {
+  if (import.meta.env.VITE_DEMO_MODE === "1") {
     const { handleDemoRequest } = await import("@/lib/realtime/mock");
     return handleDemoRequest({
       path: "/api/private/admin/do-diagnostic",
@@ -126,6 +129,7 @@ async function fetchDoDiagnostic(): Promise<DoDiagnosticAggregate> {
     method: "GET",
     credentials: "include",
     cache: "no-store",
+    signal,
   });
   const payload = (await response.json()) as
     | DoDiagnosticAggregate
@@ -844,58 +848,48 @@ export function SystemPerformanceClient({
   const { timeZone } = useDashboardQueryControls();
   const t = messages.systemPerformance;
   const [minutes, setMinutes] = useState<SystemPerformanceWindowMinutes>(60);
-  const [refreshNonce, setRefreshNonce] = useState(0);
-  const [data, setData] = useState<SystemPerformanceData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [doData, setDoData] = useState<DoDiagnosticAggregate | null>(null);
-  const [doLoading, setDoLoading] = useState(true);
+  const performanceQuery = useQuery({
+    queryKey: ["dashboard", "system-performance", minutes],
+    queryFn: ({ signal }) => fetchSystemPerformance(minutes, signal),
+    enabled: typeof window !== "undefined",
+  });
+  const diagnosticQuery = useQuery({
+    queryKey: ["dashboard", "do-diagnostic"],
+    queryFn: ({ signal }) => fetchDoDiagnostic(signal),
+    enabled: typeof window !== "undefined",
+  });
+  const data = performanceQuery.data ?? null;
+  const doData = diagnosticQuery.data ?? null;
+  const loading = performanceQuery.isFetching;
+  const doLoading = diagnosticQuery.isFetching;
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetchSystemPerformance(minutes)
-      .then((next) => {
-        if (!active) return;
-        setData(next);
-      })
-      .catch((error) => {
-        if (!active) return;
-        const message = error instanceof Error ? error.message : t.loadFailed;
-        toast.error(message || t.loadFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [minutes, refreshNonce, t.loadFailed]);
+    if (!performanceQuery.isError) return;
+    const message =
+      performanceQuery.error instanceof Error
+        ? performanceQuery.error.message
+        : t.loadFailed;
+    toast.error(message || t.loadFailed);
+  }, [
+    performanceQuery.error,
+    performanceQuery.errorUpdatedAt,
+    performanceQuery.isError,
+    t.loadFailed,
+  ]);
 
   useEffect(() => {
-    let active = true;
-    setDoLoading(true);
-    fetchDoDiagnostic()
-      .then((next) => {
-        if (!active) return;
-        setDoData(next);
-      })
-      .catch((error) => {
-        if (!active) return;
-        const message =
-          error instanceof Error ? error.message : t.doDiagnosticLoadFailed;
-        toast.error(message || t.doDiagnosticLoadFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setDoLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [refreshNonce, t.doDiagnosticLoadFailed]);
+    if (!diagnosticQuery.isError) return;
+    const message =
+      diagnosticQuery.error instanceof Error
+        ? diagnosticQuery.error.message
+        : t.doDiagnosticLoadFailed;
+    toast.error(message || t.doDiagnosticLoadFailed);
+  }, [
+    diagnosticQuery.error,
+    diagnosticQuery.errorUpdatedAt,
+    diagnosticQuery.isError,
+    t.doDiagnosticLoadFailed,
+  ]);
 
   const bucketFormatter = useMemo(
     () =>
@@ -957,7 +951,12 @@ export function SystemPerformanceClient({
               variant="outline"
               className="gap-2"
               disabled={loading}
-              onClick={() => setRefreshNonce((value) => value + 1)}
+              onClick={() => {
+                void Promise.all([
+                  performanceQuery.refetch(),
+                  diagnosticQuery.refetch(),
+                ]);
+              }}
             >
               <span className="inline-flex size-4 shrink-0 items-center justify-center">
                 {loading ? (

@@ -21,6 +21,7 @@ type OperationObject = {
 };
 
 type OpenApiSpec = {
+  tags?: Array<{ name: string }>;
   paths: Record<string, Record<string, OperationObject>>;
   components: { schemas: Record<string, JsonSchemaObject> };
 };
@@ -248,51 +249,17 @@ describe("api v1 public docs", () => {
     );
   });
 
-  it("documents collect payloads with concrete schemas and examples", () => {
+  it("keeps SDK collect ingestion out of the public OpenAPI contract", () => {
     const spec = readJson<OpenApiSpec>("docs/openapi.json");
-    const collect = spec.paths["/collect"]?.post;
-    const collectPayload = spec.components.schemas.CollectPayload;
 
-    expect(collect?.responses).toBeDefined();
-    expect(Object.keys(collect?.responses ?? {}).sort()).toEqual([
-      "204",
-      "400",
-      "413",
-    ]);
-    expect(collect?.responses?.["429"]).toBeUndefined();
-    expect(
-      collect?.requestBody?.content?.["application/json"]?.schema?.$ref,
-    ).toBe("#/components/schemas/CollectPayload");
-
-    expect(collectPayload.required).toEqual(["siteId", "type"]);
-    expect(collectPayload.additionalProperties).toBe(false);
-    expect(collectPayload.properties).toEqual(
-      expect.objectContaining({
-        siteId: expect.objectContaining({ format: "uuid" }),
-        type: expect.objectContaining({
-          enum: ["pageview", "event", "engagement", "performance"],
-        }),
-        timestamp: expect.objectContaining({ format: "date-time" }),
-        anonymousId: expect.objectContaining({ maxLength: 120 }),
-        sessionId: expect.objectContaining({ maxLength: 120 }),
-        page: { $ref: "#/components/schemas/CollectPage" },
-        client: { $ref: "#/components/schemas/CollectClient" },
-        event: { $ref: "#/components/schemas/CollectEvent" },
-        engagement: { $ref: "#/components/schemas/CollectEngagement" },
-        performance: { $ref: "#/components/schemas/CollectPerformance" },
-      }),
-    );
-    expect(
-      spec.components.schemas.CollectEvent.properties?.data
-        ?.additionalProperties,
-    ).toBe(true);
-
-    const examples =
-      collect?.requestBody?.content?.["application/json"]?.examples ?? {};
-    expect(Object.keys(examples).sort()).toEqual(["event", "pageview"]);
-    const rawExamples = JSON.stringify(examples);
-    expect(rawExamples).not.toContain('"ok"');
-    expect(/\b\d{13}\b/.test(rawExamples)).toBe(false);
+    expect(spec.paths["/collect"]).toBeUndefined();
+    expect(spec.components.schemas.CollectPayload).toBeUndefined();
+    expect(spec.components.schemas.CollectPage).toBeUndefined();
+    expect(spec.components.schemas.CollectClient).toBeUndefined();
+    expect(spec.components.schemas.CollectEvent).toBeUndefined();
+    expect(spec.components.schemas.CollectEngagement).toBeUndefined();
+    expect(spec.components.schemas.CollectPerformance).toBeUndefined();
+    expect(spec.tags?.some((tag) => tag.name === "Ingestion")).toBe(false);
   });
 
   it("adds examples for core responses and mutating request bodies", () => {
